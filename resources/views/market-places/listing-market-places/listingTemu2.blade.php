@@ -510,6 +510,32 @@
             margin-bottom: 12px;
         }
 
+        .temu2-publish-mode {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 14px;
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            font-size: 13px;
+            color: #0f172a;
+        }
+
+        .temu2-publish-mode label {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 0;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .temu2-publish-mode input {
+            margin-top: 3px;
+        }
+
         .temu2-publish-group {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
@@ -545,6 +571,18 @@
         .temu2-publish-status.is-publish { color: #15803d; }
         .temu2-publish-status.is-skip { color: #64748b; }
         .temu2-publish-status.is-missing { color: #b45309; }
+
+        #temu2-publish-groups table tbody tr {
+            display: table-row;
+        }
+
+        #temu2-publish-groups .sku-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 700;
+            color: #0f172a;
+        }
 
         #temu2-publish-progress {
             font-size: 13px;
@@ -690,21 +728,31 @@
                         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="temu2PublishModalLabel">Publish as variation</h5>
+                                    <h5 class="modal-title" id="temu2PublishModalLabel">Publish to Temu 2</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
                                     <p class="temu2-publish-modal-note">
-                                        Each parent becomes one Temu listing. Missing L siblings are included automatically.
-                                        Already listed SKUs are skipped. Uncheck a child to leave it off this listing.
+                                        The parent is used as the Temu goods title. Check the children you want on this listing.
+                                        Unchecked siblings stay off. Products in Temu Deleted can be published again.
                                     </p>
+                                    <div class="temu2-publish-mode" role="radiogroup" aria-label="Publish mode">
+                                        <label>
+                                            <input type="radio" name="temu2-publish-mode" value="variation" checked>
+                                            <span>One variation listing — all checked SKUs under this parent</span>
+                                        </label>
+                                        <label>
+                                            <input type="radio" name="temu2-publish-mode" value="single">
+                                            <span>Each checked SKU as its own listing — still uses the parent title</span>
+                                        </label>
+                                    </div>
                                     <div id="temu2-publish-groups"></div>
                                     <div id="temu2-publish-progress"></div>
                                 </div>
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="temu2-publish-confirm">
-                                        <i class="fas fa-cloud-upload-alt"></i> Publish variation(s)
+                                        <i class="fas fa-cloud-upload-alt"></i> Publish
                                     </button>
                                 </div>
                             </div>
@@ -1240,33 +1288,239 @@
 
             function publishStatusLabel(status, reason) {
                 if (status === 'will_publish') {
-                    return '<span class="temu2-publish-status is-publish">Will publish</span>';
+                    const extra = reason ? ` title="${escapeHtml(reason)}"` : '';
+                    return `<span class="temu2-publish-status is-publish"${extra}>${reason ? escapeHtml(reason) : 'Will publish'}</span>`;
                 }
                 const text = reason || 'Skipped';
                 const missing = ['skipped_no_title', 'skipped_no_description', 'skipped_no_image', 'skipped_no_dim'].indexOf(status) !== -1;
                 return `<span class="temu2-publish-status ${missing ? 'is-missing' : 'is-skip'}">${escapeHtml(text)}</span>`;
             }
 
+            function listingRows() {
+                if (allListingData && allListingData.length) {
+                    return allListingData;
+                }
+                return (temu2ListingTable && temu2ListingTable.getData()) || [];
+            }
+
+            function skuKey(sku) {
+                return String(sku || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            }
+
+            function normalizePreviewChildren(children) {
+                if (Array.isArray(children)) {
+                    return children.filter(function (child) { return child && typeof child === 'object'; });
+                }
+                if (children && typeof children === 'object') {
+                    if (children.sku) {
+                        return [children];
+                    }
+                    return Object.keys(children).map(function (key) {
+                        return children[key];
+                    }).filter(function (child) { return child && typeof child === 'object'; });
+                }
+                return [];
+            }
+
+            function listingParentForSku(sku) {
+                sku = String(sku || '').trim();
+                const want = skuKey(sku);
+                const rows = listingRows();
+                for (let i = 0; i < rows.length; i++) {
+                    const rowSku = String(rows[i].sku || '').trim();
+                    if (rowSku === sku || skuKey(rowSku) === want) {
+                        return String(rows[i].parent || '').trim();
+                    }
+                }
+                return '';
+            }
+
+            function listingChildrenForParent(parent) {
+                parent = String(parent || '').trim();
+                const parentWant = skuKey(parent);
+                if (!parentWant) return [];
+                const out = [];
+                const seen = {};
+                listingRows().forEach(function (row) {
+                    const sku = String(row.sku || '').trim();
+                    if (!sku || isParentSku(sku) || seen[sku]) return;
+                    const rowParent = String(row.parent || '').trim();
+                    if (skuKey(rowParent) !== parentWant && rowParent.toUpperCase() !== parent.toUpperCase()) return;
+                    seen[sku] = true;
+                    out.push(row);
+                });
+                return out;
+            }
+
+            function skuParentsMap(skus) {
+                const parentKeys = {};
+                (skus || []).forEach(function (sku) {
+                    const parent = listingParentForSku(sku);
+                    if (parent) parentKeys[parent.toUpperCase()] = true;
+                });
+                const pairs = [];
+                const seen = {};
+                listingRows().forEach(function (row) {
+                    const sku = String(row.sku || '').trim();
+                    if (!sku || isParentSku(sku) || seen[sku]) return;
+                    const parent = String(row.parent || '').trim();
+                    const selected = (skus || []).some(function (s) { return String(s || '').trim() === sku; });
+                    if (selected || (parent && parentKeys[parent.toUpperCase()])) {
+                        seen[sku] = true;
+                        pairs.push({ sku: sku, parent: parent });
+                    }
+                });
+                (skus || []).forEach(function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || seen[sku]) return;
+                    seen[sku] = true;
+                    pairs.push({ sku: sku, parent: listingParentForSku(sku) });
+                });
+                return pairs;
+            }
+
+            function expandPreviewSkus(skus) {
+                const unique = [];
+                const seen = {};
+                const add = function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || isParentSku(sku) || seen[sku]) return;
+                    seen[sku] = true;
+                    unique.push(sku);
+                };
+                (skus || []).forEach(add);
+                unique.slice().forEach(function (sku) {
+                    listingChildrenForParent(listingParentForSku(sku)).forEach(function (row) {
+                        add(row.sku);
+                    });
+                });
+                return unique;
+            }
+
+            function fallbackGroupsFromTable(skus) {
+                const parentOrder = [];
+                const byParent = {};
+                (skus || []).forEach(function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || isParentSku(sku)) return;
+                    const parent = listingParentForSku(sku) || sku;
+                    const key = parent.toUpperCase();
+                    if (!byParent[key]) {
+                        byParent[key] = { parent: parent, children: [] };
+                        parentOrder.push(key);
+                    }
+                    listingChildrenForParent(parent).forEach(function (row) {
+                        const childSku = String(row.sku || '').trim();
+                        if (!childSku) return;
+                        if (byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(childSku); })) return;
+                        byParent[key].children.push({
+                            sku: childSku,
+                            spec: childSku,
+                            inv: row.INV ?? 0,
+                            status: 'will_publish',
+                            reason: '',
+                            selected: true
+                        });
+                    });
+                    if (!byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(sku); })) {
+                        byParent[key].children.push({
+                            sku: sku,
+                            spec: sku,
+                            inv: 0,
+                            status: 'will_publish',
+                            reason: '',
+                            selected: true
+                        });
+                    }
+                });
+                return parentOrder.map(function (key) { return byParent[key]; }).filter(function (g) {
+                    return g.children && g.children.length;
+                });
+            }
+
+            function mergePreviewGroups(groups, skus) {
+                const parentOrder = [];
+                const byParent = {};
+                const addChild = function (parent, child, overwrite) {
+                    parent = String(parent || '').trim() || 'Standalone';
+                    const key = parent.toUpperCase();
+                    if (!byParent[key]) {
+                        byParent[key] = { parent: parent, children: [], single_child: false };
+                        parentOrder.push(key);
+                    }
+                    const sku = String((child && child.sku) || '').trim();
+                    if (!sku) return;
+                    const existing = byParent[key].children.find(function (row) {
+                        return skuKey(row.sku) === skuKey(sku);
+                    });
+                    if (existing) {
+                        if (overwrite) Object.assign(existing, child);
+                        return;
+                    }
+                    byParent[key].children.push(child);
+                };
+                (groups || []).forEach(function (group) {
+                    const parent = String(group.parent || '').trim();
+                    if (group.single_child) {
+                        const key = (parent || 'Standalone').toUpperCase();
+                        if (!byParent[key]) {
+                            byParent[key] = { parent: parent || 'Standalone', children: [], single_child: true };
+                            parentOrder.push(key);
+                        } else {
+                            byParent[key].single_child = true;
+                        }
+                    }
+                    normalizePreviewChildren(group.children).forEach(function (child) {
+                        addChild(parent, child, true);
+                    });
+                });
+                fallbackGroupsFromTable(skus).forEach(function (group) {
+                    normalizePreviewChildren(group.children).forEach(function (child) {
+                        addChild(group.parent, child, false);
+                    });
+                });
+                return parentOrder.map(function (key) {
+                    const group = byParent[key];
+                    group.single_child = group.single_child || group.children.length <= 1;
+                    return group;
+                }).filter(function (group) {
+                    return group.children.length;
+                });
+            }
+
+            function selectedPublishMode() {
+                const mode = String($('input[name="temu2-publish-mode"]:checked').val() || 'variation').toLowerCase();
+                return mode === 'single' ? 'single' : 'variation';
+            }
+
             function renderPublishGroups(groups) {
                 if (!groups || !groups.length) {
-                    $('#temu2-publish-groups').html('<p class="text-muted mb-0">No Missing L children to publish.</p>');
+                    $('#temu2-publish-groups').html('<p class="text-muted mb-0">No children found to publish.</p>');
                     $('#temu2-publish-confirm').prop('disabled', true);
                     return;
                 }
+                const onlySingle = groups.every(function (group) {
+                    return normalizePreviewChildren(group.children).length <= 1 || group.single_child;
+                });
+                $('input[name="temu2-publish-mode"][value="' + (onlySingle ? 'single' : 'variation') + '"]').prop('checked', true);
                 let html = '';
                 let canPublish = false;
                 groups.forEach(function (group, gi) {
                     const parent = String(group.parent || 'Standalone');
-                    const count = Number(group.publish_count || 0);
-                    html += `<div class="temu2-publish-group" data-group-index="${gi}">`;
-                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${count} variation${count === 1 ? '' : 's'}</div>`;
+                    const children = normalizePreviewChildren(group.children);
+                    const selectedCount = children.filter(function (child) {
+                        return child.status === 'will_publish' && child.selected !== false;
+                    }).length;
+                    html += `<div class="temu2-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
+                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected</div>`;
                     html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
-                    (group.children || []).forEach(function (child) {
+                    children.forEach(function (child) {
                         const sku = String(child.sku || '');
                         const publishable = child.status === 'will_publish';
-                        if (publishable) canPublish = true;
+                        const checked = publishable && child.selected !== false;
+                        if (checked) canPublish = true;
                         html += '<tr>';
-                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${publishable ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
+                        html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
                         html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
                         html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
                         html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
@@ -1279,10 +1533,19 @@
                 $('#temu2-publish-progress').text('');
             }
 
+            $(document).on('change', '.temu2-publish-sku-check', function () {
+                const $group = $(this).closest('.temu2-publish-group');
+                const parent = String($group.attr('data-parent') || '').trim();
+                const selectedCount = $group.find('.temu2-publish-sku-check:checked:not(:disabled)').length;
+                $group.find('.temu2-publish-group-head').text(parent + ' · ' + selectedCount + ' selected');
+                const anyChecked = $('#temu2-publish-groups .temu2-publish-sku-check:checked:not(:disabled)').length > 0;
+                $('#temu2-publish-confirm').prop('disabled', !anyChecked);
+            });
+
             function selectedPublishGroups() {
                 const groups = [];
                 $('#temu2-publish-groups .temu2-publish-group').each(function () {
-                    const parent = $(this).find('.temu2-publish-group-head').text().split(' · ')[0] || '';
+                    const parent = String($(this).attr('data-parent') || $(this).find('.temu2-publish-group-head').text().split(' · ')[0] || '').trim();
                     const skus = [];
                     $(this).find('.temu2-publish-sku-check:checked:not(:disabled)').each(function () {
                         const sku = String($(this).attr('data-sku') || '').trim();
@@ -1313,14 +1576,7 @@
             }
 
             function openPublishPreview(skus) {
-                const unique = [];
-                const seen = {};
-                (skus || []).forEach(function (sku) {
-                    sku = String(sku || '').trim();
-                    if (!sku || seen[sku]) return;
-                    seen[sku] = true;
-                    unique.push(sku);
-                });
+                const unique = expandPreviewSkus(skus);
                 if (!unique.length) {
                     showNotification('danger', 'Select at least one SKU.');
                     return;
@@ -1328,16 +1584,33 @@
                 $('#temu2-publish-groups').html('<p class="text-muted mb-0">Loading variation preview…</p>');
                 $('#temu2-publish-confirm').prop('disabled', true);
                 $('#temu2-publish-progress').text('');
+                const onlySingle = unique.length === 1 || unique.every(function (sku) {
+                    return listingChildrenForParent(listingParentForSku(sku)).length <= 1;
+                });
+                $('input[name="temu2-publish-mode"][value="' + (onlySingle ? 'single' : 'variation') + '"]').prop('checked', true);
                 showBsModal('temu2PublishModal');
+                renderPublishGroups(fallbackGroupsFromTable(unique));
                 $.ajax({
                     url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
-                    data: { skus: unique, preview: 1, channel: 'temu2' },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify({
+                        skus: unique,
+                        sku_parents: skuParentsMap(unique),
+                        preview: 1,
+                        channel: 'temu2'
+                    }),
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     success: function (response) {
-                        renderPublishGroups((response && response.groups) || []);
+                        renderPublishGroups(mergePreviewGroups((response && response.groups) || [], unique));
                     },
                     error: function (xhr) {
+                        const groups = mergePreviewGroups((xhr.responseJSON && xhr.responseJSON.groups) || [], unique);
+                        if (groups.length) {
+                            renderPublishGroups(groups);
+                            return;
+                        }
                         hideBsModal('temu2PublishModal');
                         let msg = 'Could not build variation preview.';
                         if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
@@ -1363,12 +1636,21 @@
                 return 'Publish to Temu 2 failed.';
             }
 
-            function publishGroup(skus) {
+            function publishGroup(skus, parent) {
                 return $.ajax({
                     url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
-                    data: { skus: skus, confirmed: 1, publish: 1, channel: 'temu2' },
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify({
+                        skus: skus,
+                        confirmed: 1,
+                        publish: 1,
+                        channel: 'temu2',
+                        mode: selectedPublishMode(),
+                        parent: parent || ''
+                    }),
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     timeout: 180000
                 });
             }
@@ -1409,7 +1691,7 @@
                 if ($btn.prop('disabled')) return;
                 const groups = selectedPublishGroups();
                 if (!groups.length) {
-                    showNotification('danger', 'No Missing L children selected to publish.');
+                    showNotification('danger', 'Check at least one SKU to publish.');
                     return;
                 }
                 const originalHtml = $btn.html();
@@ -1438,7 +1720,7 @@
                     const group = groups[index];
                     index += 1;
                     $('#temu2-publish-progress').text('Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…');
-                    publishGroup(group.skus).done(function (response) {
+                    publishGroup(group.skus, group.parent).done(function (response) {
                         const goodsId = String((response && response.goods_id) || '').trim();
                         const listedSkus = (response && response.skus) || group.skus;
                         if (goodsId) {

@@ -3951,7 +3951,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/drafts/{id}/images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'uploadDraftImage'])->name('listing.manager.drafts.images');
     Route::post('/listing-manager/drafts/{id}/load-images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDraftImages'])->name('listing.manager.drafts.load-images');
     Route::post('/listing-manager/drafts/{id}/optimize-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'optimizeDescription'])->name('listing.manager.drafts.optimize');
-    Route::get('/listing-manager/ebay/categories', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'searchCategories'])->name('listing.manager.ebay.categories');
+    Route::match(['get', 'post'], '/listing-manager/ebay/categories', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'searchCategories'])->name('listing.manager.ebay.categories');
     Route::get('/listing-manager/ebay/policies', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'businessPolicies'])->name('listing.manager.ebay.policies');
     Route::post('/listing-manager/drafts/refresh-status', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'refreshDraftStatuses'])->name('listing.manager.drafts.refresh');
     Route::delete('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'deleteDraft'])->name('listing.manager.drafts.delete');

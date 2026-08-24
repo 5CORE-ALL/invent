@@ -20,11 +20,11 @@ class ListingVariationPreviewService
      * @param  list<string>  $seedSkus
      * @return array{success: bool, groups: list<array<string, mixed>>}
      */
-    public function previewFromSkus(array $seedSkus, string $channel): array
+    public function previewFromSkus(array $seedSkus, string $channel, array $skuParents = []): array
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
-            return $this->temu2->previewFromSkus($seedSkus);
+            return $this->temu2->previewFromSkus($seedSkus, $skuParents);
         }
 
         $groups = [];
@@ -42,11 +42,11 @@ class ListingVariationPreviewService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true): array
+    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = ''): array
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
-            return $this->temu2->publishSkus($skus, $expandSiblings);
+            return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint);
         }
         if ($channel === 'faire') {
             return $this->faire->publishSkus($skus, $expandSiblings);

@@ -27,7 +27,7 @@ class ListingPublishCommonController extends Controller
             ], 422);
         }
 
-        return response()->json($preview->previewFromSkus($skus, $channel));
+        return response()->json($preview->previewFromSkus($skus, $channel, $this->skuParentsFromRequest($request)));
     }
 
     public function publish(Request $request, ListingVariationPreviewService $preview)
@@ -51,8 +51,13 @@ class ListingPublishCommonController extends Controller
             ], 422);
         }
 
+        $mode = strtolower(trim((string) $request->input('mode', 'variation'))) === 'single'
+            ? 'single'
+            : 'variation';
+        $parentHint = trim((string) $request->input('parent', $request->input('parent_hint', '')));
+
         try {
-            $result = $preview->publishSkus($skus, $channel, ! $request->boolean('confirmed'));
+            $result = $preview->publishSkus($skus, $channel, ! $request->boolean('confirmed'), $mode, $parentHint);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -79,6 +84,36 @@ class ListingPublishCommonController extends Controller
             $sku = trim((string) $sku);
             if ($sku !== '') {
                 $out[] = $sku;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function skuParentsFromRequest(Request $request): array
+    {
+        $raw = $request->input('sku_parents', $request->input('skuParents', []));
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $sku => $parent) {
+            if (is_array($parent)) {
+                $sku = $parent['sku'] ?? $sku;
+                $parent = $parent['parent'] ?? '';
+            }
+            $sku = trim((string) $sku);
+            $parent = trim((string) $parent);
+            if ($sku !== '') {
+                $out[$sku] = $parent;
             }
         }
 

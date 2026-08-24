@@ -165,8 +165,16 @@
             position: absolute; top: 8px; right: 2px; width: 16px; height: 16px; border-radius: 50%;
             background: #ef4444; color: #fff; font-size: .65rem; display: inline-flex; align-items: center; justify-content: center;
         }
+        .lc-tab[hidden] { display: none !important; }
         .lc-pane { display: none; padding: 1rem 1.25rem 1.5rem; }
         .lc-pane.active { display: block; }
+        #lc-editor-channel-badge {
+            display: none; font-size: .72rem; font-weight: 700; border-radius: 999px;
+            padding: .12rem .5rem; background: #e0e7ff; color: #3730a3; margin-left: .5rem; vertical-align: middle;
+        }
+        #lc-editor-loading {
+            display: none; padding: 2.5rem 1.25rem; text-align: center; color: #64748b; font-size: .9rem;
+        }
         .lc-section-title { font-weight: 700; margin-bottom: .65rem; }
         .lc-help { font-size: .78rem; color: var(--lc-muted); margin-bottom: .85rem; }
         .lc-req { color: var(--lc-danger); }
@@ -314,13 +322,13 @@
             <button type="button" class="btn-lc btn-lc-primary" id="lm-import-amazon-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Amz</button>
         </div>
         <div class="lm-actions d-none" id="lm-header-actions-drafts">
-            <button type="button" class="btn-lc btn-lc-primary" id="lm-quick-list-btn"><i class="fas fa-bolt me-1"></i>Quick/Auto List to eBay</button>
-            <button type="button" class="btn-lc btn-lc-ghost" disabled title="Coming soon">Import from eBay</button>
+            <button type="button" class="btn-lc btn-lc-primary" id="lm-quick-list-btn"><i class="fas fa-bolt me-1"></i><span id="lm-quick-list-label">Quick/Auto List</span></button>
+            <button type="button" class="btn-lc btn-lc-ghost" id="lm-import-channel-btn" disabled title="Coming soon">Import</button>
             <div class="dropdown">
                 <button class="btn-lc btn-lc-ghost dropdown-toggle" data-bs-toggle="dropdown">More Actions</button>
                 <ul class="dropdown-menu">
                     <li><button type="button" class="dropdown-item" id="lm-draft-refresh-btn">Check Live Status</button></li>
-                    <li><a class="dropdown-item" href="{{ route('listing.ebayTwo') }}" target="_blank">Open Listing Ebay 2 status page</a></li>
+                    <li><a class="dropdown-item" href="#" id="lm-open-listing-page" target="_blank">Open channel listing page</a></li>
                 </ul>
             </div>
             <button type="button" class="btn-lc btn-lc-ghost" id="lm-channel-settings-btn"><i class="fas fa-cog"></i></button>
@@ -417,11 +425,16 @@
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="btn-close me-2" data-bs-dismiss="modal" aria-label="Close"></button>
-                <h5 class="modal-title flex-grow-1" id="lc-editor-title">Listing</h5>
+                <h5 class="modal-title flex-grow-1">
+                    <span id="lc-editor-title">Listing</span>
+                    <span id="lc-editor-channel-badge"></span>
+                </h5>
                 <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-reload-amazon-btn">Reload from Main Store</button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="lc-draft-id">
+                <div id="lc-editor-loading"><i class="fas fa-spinner fa-spin me-2"></i>Loading product details…</div>
+                <div id="lc-editor-body">
                 <div id="lc-banners"></div>
                 <div class="lc-tabs" id="lc-tabs">
                     <button type="button" class="lc-tab active" data-pane="identifiers">Product Identifiers</button>
@@ -436,15 +449,16 @@
 
                 <div class="lc-pane active" data-pane="identifiers">
                     <div class="lc-section-title">Product Identifiers</div>
+                    <p class="lc-help" id="lc-identifier-help">Product identifiers from Product Master.</p>
                     <div class="row g-3">
-                        <div class="col-md-6"><label class="form-label">SKU</label><input id="lc-sku" class="form-control" readonly></div>
-                        <div class="col-md-6"><label class="form-label">ASIN / Source</label><input id="lc-asin" class="form-control" readonly></div>
-                        <div class="col-md-6"><label class="form-label">Brand</label><input id="lc-brand-id" class="form-control" placeholder="5 Core Inc"></div>
-                        <div class="col-md-6"><label class="form-label">Manufacturer</label><input id="lc-manufacturer" class="form-control" placeholder="5 Core Inc"></div>
-                        <div class="col-md-6"><label class="form-label">UPC</label><input id="lc-upc" class="form-control" placeholder="Optional"></div>
-                        <div class="col-md-6"><label class="form-label">EAN</label><input id="lc-ean" class="form-control" placeholder="Optional"></div>
-                        <div class="col-md-6"><label class="form-label">ISBN</label><input id="lc-isbn" class="form-control" placeholder="Optional"></div>
-                        <div class="col-md-6"><label class="form-label">ePID</label><input id="lc-epid" class="form-control" placeholder="Optional"></div>
+                        <div class="col-md-6" data-id-field="sku"><label class="form-label">SKU</label><input id="lc-sku" class="form-control" readonly></div>
+                        <div class="col-md-6" data-id-field="asin"><label class="form-label" id="lc-asin-label">ASIN / Source</label><input id="lc-asin" class="form-control" readonly></div>
+                        <div class="col-md-6" data-id-field="brand"><label class="form-label">Brand</label><input id="lc-brand-id" class="form-control" placeholder="5 Core Inc"></div>
+                        <div class="col-md-6" data-id-field="manufacturer"><label class="form-label">Manufacturer</label><input id="lc-manufacturer" class="form-control" placeholder="5 Core Inc"></div>
+                        <div class="col-md-6" data-id-field="upc"><label class="form-label">UPC</label><input id="lc-upc" class="form-control" placeholder="Optional"></div>
+                        <div class="col-md-6" data-id-field="ean"><label class="form-label">EAN</label><input id="lc-ean" class="form-control" placeholder="Optional"></div>
+                        <div class="col-md-6" data-id-field="isbn"><label class="form-label">ISBN</label><input id="lc-isbn" class="form-control" placeholder="Optional"></div>
+                        <div class="col-md-6" data-id-field="epid"><label class="form-label">ePID</label><input id="lc-epid" class="form-control" placeholder="Optional"></div>
                     </div>
                 </div>
 
@@ -466,11 +480,11 @@
 
                 <div class="lc-pane" data-pane="title">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="lc-section-title mb-0">Title &amp; Description Template</div>
-                        <button type="button" class="btn-lc btn-lc-ghost btn-sm" disabled>+ New Template</button>
+                        <div class="lc-section-title mb-0" id="lc-title-heading">Title &amp; Description</div>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-ebay-only" disabled>+ New Template</button>
                     </div>
-                    <p class="lc-help mb-1">Use template to quickly populate fields in this section.</p>
-                    <select class="form-select mb-3" disabled><option>-- Do Not Use Template --</option></select>
+                    <p class="lc-help mb-1 lc-ebay-only">Use template to quickly populate fields in this section.</p>
+                    <select class="form-select mb-3 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
                     <label class="form-label">Title <span class="lc-req">*</span></label>
                     <input id="lc-title" class="form-control">
                     <div id="lc-title-count" class="lc-char-ok mt-1">Characters: 0/80</div>
@@ -484,7 +498,7 @@
                                 <i class="fas fa-cloud-download-alt me-1"></i>Load from Main Store
                             </button>
                             <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-optimize-desc-btn">
-                                <i class="fas fa-magic me-1"></i>Optimize Description for eBay
+                                <i class="fas fa-magic me-1"></i><span id="lc-optimize-desc-label">Optimize Description</span>
                             </button>
                         </div>
                     </div>
@@ -500,7 +514,7 @@
                     <div class="lc-desc-wrap" id="lc-desc-wrap">
                         <div class="lc-desc-code-row" id="lc-desc-code-row">
                             <div class="lc-desc-gutter" id="lc-desc-gutter">1</div>
-                            <textarea id="lc-description" class="form-control" rows="14" spellcheck="false" placeholder="Plain text from Amz — click Optimize Description for eBay to build HTML with images."></textarea>
+                            <textarea id="lc-description" class="form-control" rows="14" spellcheck="false" placeholder="Add a marketplace description, or load it from the main store."></textarea>
                         </div>
                         <div id="lc-description-preview"></div>
                         <div id="lc-description-rich" contenteditable="true"></div>
@@ -519,23 +533,23 @@
                                 <input type="file" id="lc-upload-image" accept="image/*" hidden>
                             </label>
                         </div>
-                        <div class="form-check">
+                        <div class="form-check lc-ebay-only">
                             <input class="form-check-input" type="checkbox" id="lc-gallery-plus">
                             <label class="form-check-label" for="lc-gallery-plus">Gallery Plus</label>
                         </div>
                     </div>
-                    <p class="lc-help">Drag images to reorder. First image is Primary. Images load from Amz / product master.</p>
+                    <p class="lc-help" id="lc-images-help">Drag images to reorder. First image is Primary.</p>
                     <input type="hidden" id="lc-images">
                     <div class="lc-image-grid" id="lc-image-preview"></div>
                 </div>
 
                 <div class="lc-pane" data-pane="pricing">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="lc-section-title mb-0">Pricing Template</div>
-                        <button type="button" class="btn-lc btn-lc-ghost btn-sm" disabled>+ New Template</button>
+                        <div class="lc-section-title mb-0" id="lc-pricing-heading">Pricing</div>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-ebay-only" disabled>+ New Template</button>
                     </div>
-                    <select class="form-select mb-2" disabled><option>-- Do Not Use Template --</option></select>
-                    <p class="lc-help">When a template is applied, fields below use template values. Select “Do not use template” to edit directly.</p>
+                    <select class="form-select mb-2 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
+                    <p class="lc-help lc-ebay-only">When a template is applied, fields below use template values. Select “Do not use template” to edit directly.</p>
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">Price <span class="lc-req">*</span></label>
@@ -545,7 +559,7 @@
                             <label class="form-label">Quantity <span class="lc-req">*</span> <span class="text-muted fw-normal">(Shopify)</span></label>
                             <input type="number" min="0" id="lc-qty" class="form-control">
                         </div>
-                        <div class="col-md-4 d-flex align-items-end">
+                        <div class="col-md-4 d-flex align-items-end lc-ebay-only">
                             <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" id="lc-best-offer">
                                 <label class="form-check-label" for="lc-best-offer">Best Offer</label>
@@ -556,34 +570,44 @@
 
                 <div class="lc-pane" data-pane="category">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="lc-section-title mb-0">Category Template</div>
-                        <button type="button" class="btn-lc btn-lc-ghost btn-sm" disabled>+ New Template</button>
+                        <div class="lc-section-title mb-0" id="lc-category-heading">Primary Category</div>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-ebay-only" disabled>+ New Template</button>
                     </div>
-                    <select class="form-select mb-3" disabled><option>-- Do Not Use Template --</option></select>
+                    <select class="form-select mb-3 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
+                    <p class="lc-help" id="lc-category-help">Search and select a marketplace category.</p>
 
-                    <div class="mb-2">
-                        <label class="form-label mb-1">Primary Category <span class="lc-req">*</span></label>
+                    <div class="mb-2 lc-mp-category-selected">
+                        <label class="form-label mb-1">Category <span class="lc-req lc-tiktok-only d-none">*</span></label>
                         <span id="lc-category-path" class="lc-primary-path ms-2">Select a category</span>
+                        <span class="text-muted small" id="lc-category-id-chip"></span>
                         <span class="lc-suggested" id="lc-category-suggested" style="display:none">Suggested</span>
+                    </div>
+                    <div class="mb-3 lc-mp-category-manual d-none">
+                        <label class="form-label">Category ID <span class="lc-req">*</span></label>
+                        <input type="text" id="lc-category-id-visible" class="form-control" placeholder="Marketplace category ID">
+                        <label class="form-label mt-2">Category path / name</label>
+                        <input type="text" id="lc-category-path-visible" class="form-control" placeholder="Optional category name">
                     </div>
                     <input type="hidden" id="lc-category-id">
                     <input type="hidden" id="lc-category-path-input">
                     <div class="lc-field-warn d-none mb-2" id="lc-category-id-warn">Required</div>
 
+                    <div class="lc-ebay-only">
                     <label class="form-label">Secondary Category <i class="fas fa-exclamation-circle text-warning ms-1" title="Optional"></i></label>
                     <input id="lc-secondary-category-id" class="form-control mb-2" placeholder="Optional Category ID">
+                    </div>
 
-                    <div class="lc-cat-box mb-3">
+                    <div class="lc-cat-box mb-3 lc-mp-category-search">
                         <div class="lc-cat-search">
                             <i class="fas fa-search"></i>
-                            <input type="text" id="lc-category-search" class="form-control form-control-sm border-0 shadow-none" placeholder="Search eBay categories (e.g. speaker)">
+                            <input type="text" id="lc-category-search" class="form-control form-control-sm border-0 shadow-none" placeholder="Search categories (e.g. speaker)">
                         </div>
                         <div class="lc-cat-results" id="lc-category-results">
                             <div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>
                         </div>
                     </div>
 
-                    <div class="row g-3 mb-3">
+                    <div class="row g-3 mb-3 lc-ebay-only">
                         <div class="col-md-6">
                             <label class="form-label">Condition <span class="lc-req">*</span></label>
                             <select id="lc-condition" class="form-select">
@@ -630,26 +654,33 @@
                         </div>
                     </div>
 
-                    <div class="lc-section-title">Required Item Specifics</div>
-                    <div class="lc-specific-row"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core Inc"></div>
-                    <div class="lc-specific-row"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc"></div>
-                    <div class="lc-specific-row"><span>MPN</span><input id="lc-mpn" class="form-control" placeholder="SKU"></div>
-                    <div class="lc-specific-row"><span>UPC</span><input id="lc-upc-specific" class="form-control" placeholder="From CP Master"></div>
-                    <div class="lc-section-title mt-3">Recommended Item Specifics</div>
-                    <div class="lc-specific-row"><span>Speaker Size</span><input id="lc-spec-speaker" class="form-control"></div>
-                    <div class="lc-specific-row"><span>Voice Coil</span><input id="lc-spec-coil" class="form-control"></div>
-                    <div class="lc-specific-row"><span>RMS Power</span><input id="lc-spec-rms" class="form-control"></div>
+                    <div class="lc-section-title lc-ebay-only">Required Item Specifics</div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core Inc"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>MPN</span><input id="lc-mpn" class="form-control" placeholder="SKU"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>UPC</span><input id="lc-upc-specific" class="form-control" placeholder="From CP Master"></div>
+                    <div class="lc-section-title mt-3 lc-ebay-only">Recommended Item Specifics</div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Speaker Size</span><input id="lc-spec-speaker" class="form-control"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Voice Coil</span><input id="lc-spec-coil" class="form-control"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>RMS Power</span><input id="lc-spec-rms" class="form-control"></div>
                 </div>
 
                 <div class="lc-pane" data-pane="policies">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="lc-section-title mb-0">Business Policies Template</div>
-                        <button type="button" class="btn-lc btn-lc-ghost btn-sm" disabled>+ New Template</button>
+                        <div class="lc-section-title mb-0" id="lc-policies-title">Business Policies</div>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-ebay-only" disabled>+ New Template</button>
                     </div>
-                    <select class="form-select mb-2" disabled><option>-- Do Not Use Template --</option></select>
-                    <p class="lc-italic-note">If a listing includes Business Policies information, the Shipping and Payment &amp; Returns sections will be disabled.</p>
+                    <select class="form-select mb-2 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
+                    <p class="lc-help" id="lc-policies-help"></p>
+                    <p class="lc-italic-note lc-ebay-only">If a listing includes Business Policies information, the Shipping and Payment &amp; Returns sections will be disabled.</p>
 
-                    <div class="lc-location-row mb-3">
+                    <div class="lc-tiktok-only d-none mb-3">
+                        <label class="form-label">Warehouse ID</label>
+                        <input id="lc-warehouse-id" class="form-control" placeholder="TikTok warehouse ID (optional)">
+                        <p class="lc-help mb-0">Inventory publishes to this TikTok warehouse when set.</p>
+                    </div>
+
+                    <div class="lc-location-row mb-3 lc-ebay-only">
                         <label class="form-label mb-0">Item Location <span class="lc-req">*</span></label>
                         <input id="lc-location-city" class="form-control" placeholder="City / Town" value="Bellefontaine">
                         <select id="lc-location-country" class="form-select">
@@ -661,18 +692,19 @@
                         <input id="lc-location-postal" class="form-control" placeholder="Zip / Postal" value="43311">
                     </div>
 
-                    <div class="lc-section-title">Package Dimensions <span class="text-muted fw-normal small">(from main store)</span></div>
+                    <div class="lc-section-title">Package Dimensions <span class="text-muted fw-normal small">(from Product Master)</span></div>
                     <div class="row g-2 mb-3">
                         <div class="col-md-4"><input id="lc-pkg-l" class="form-control" placeholder="Length (in)"></div>
                         <div class="col-md-4"><input id="lc-pkg-w" class="form-control" placeholder="Width (in)"></div>
                         <div class="col-md-4"><input id="lc-pkg-h" class="form-control" placeholder="Height (in)"></div>
                     </div>
-                    <div class="lc-section-title">Package Weight</div>
+                    <div class="lc-section-title">Package Weight <span class="lc-req lc-weight-req" style="display:none">*</span></div>
                     <div class="d-flex gap-2 align-items-center mb-3" style="max-width:360px">
                         <input id="lc-pkg-lb" class="form-control" placeholder="0"><span class="text-muted">lbs</span>
                         <input id="lc-pkg-oz" class="form-control" placeholder="0"><span class="text-muted">oz</span>
                     </div>
 
+                    <div class="lc-ebay-only">
                     <div class="lc-policy-row">
                         <label class="form-label mb-0">Shipping Policy <span class="lc-req">*</span></label>
                         <select id="lc-shipping-policy" class="form-select"><option value="">Loading…</option></select>
@@ -698,6 +730,7 @@
                             <input id="lc-vat" class="form-control" type="number" step="0.01" min="0">
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 <div class="lc-pane" data-pane="relist">
@@ -707,6 +740,7 @@
                         <label class="form-check-label" for="lc-auto-relist">Enable Auto Relist</label>
                     </div>
                     <p class="lc-help mt-2">Optional. Auto Relist settings are stored with the draft for future automation.</p>
+                </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -926,7 +960,12 @@
         const channelId = parseInt($('#lm-draft-channel').val() || '0', 10);
         const ch = allChannels.find(c => Number(c.id) === channelId);
         if ($('#lm-panel-drafts').hasClass('active') && ch) {
-            $('#lm-page-title').text('eBay Listings - ' + (ch.channel || 'Channel'));
+            const ed = editorProfileForChannel(ch.channel);
+            $('#lm-page-title').text(ed.page_title || ((ch.channel || 'Channel') + ' Listings'));
+            $('#lm-quick-list-label').text(ed.header_quick || ('Quick/Auto List to ' + ch.channel));
+            $('#lm-import-channel-btn').text(ed.header_import || 'Import');
+            const listingUrl = ch.listing_url || '#';
+            $('#lm-open-listing-page').attr('href', listingUrl).text('Open ' + (ch.channel || 'channel') + ' listing page');
             $('#lm-sync-meta').html(
                 '<span>Price Sync: <span class="off">Off</span></span>' +
                 '<span>Inventory Sync: <span class="off">Off</span></span>' +
@@ -934,11 +973,30 @@
             );
         } else if ($('#lm-panel-drafts').hasClass('active')) {
             $('#lm-page-title').text('Channel Listings');
-            $('#lm-sync-meta').html('<span>Select a channel to manage drafts like LitCommerce</span>');
+            $('#lm-quick-list-label').text('Quick/Auto List');
+            $('#lm-import-channel-btn').text('Import');
+            $('#lm-sync-meta').html('<span>Select a channel to manage drafts</span>');
         } else {
             $('#lm-page-title').text('Listing Manager');
             $('#lm-sync-meta').html('<span>Last sync <strong id="lm-last-sync">{{ $lastSyncHuman }}</strong></span><span>Inventory: <span class="on">Shopify</span></span>');
         }
+    }
+
+    function editorProfileForChannel(name) {
+        const n = String(name || '').toLowerCase().replace(/[\s\-_]/g, '');
+        if (/ebay/.test(n)) {
+            return { family: 'ebay', page_title: (name || 'eBay') + ' Listings', header_quick: 'Quick/Auto List to eBay', header_import: 'Import from eBay' };
+        }
+        if (/tiktok/.test(n)) {
+            return { family: 'tiktok', page_title: (name || 'TikTok Shop') + ' Listings', header_quick: 'Quick/Auto List to TikTok Shop', header_import: 'Import from TikTok Shop' };
+        }
+        if (/temu/.test(n)) {
+            return { family: 'temu', page_title: (name || 'Temu') + ' Listings', header_quick: 'Quick/Auto List to Temu', header_import: 'Import from Temu' };
+        }
+        if (/faire/.test(n)) {
+            return { family: 'faire', page_title: (name || 'Faire') + ' Listings', header_quick: 'Quick/Auto List to Faire', header_import: 'Import from Faire' };
+        }
+        return { family: 'default', page_title: (name || 'Channel') + ' Listings', header_quick: 'Quick/Auto List to Channel', header_import: 'Import' };
     }
 
     function buildProductQuery() {
@@ -984,11 +1042,8 @@
             allChannels.filter(c => c.enabled).forEach(c => {
                 $sel.append(`<option value="${c.id}">${escapeHtml(c.channel)}</option>`);
             });
-            // Prefer Ebay 2 if present
-            const ebay2 = allChannels.find(c => /ebay\s*2|ebaytwo/i.test(String(c.channel || '')));
-            if (!current || current === '0') {
-                if (ebay2) $sel.val(String(ebay2.id));
-            } else {
+            // Keep the user's current channel; do not force eBay.
+            if (current && current !== '0') {
                 $sel.val(current);
             }
             updatePageTitle();
@@ -1274,7 +1329,7 @@
         syncImagesHidden();
         const $grid = $('#lc-image-preview');
         if (!editorImages.length) {
-            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> (fetches live Amz media) or Upload.</div>');
+            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> or Upload.</div>');
             return;
         }
         $grid.html(editorImages.map((url, i) => `
@@ -1302,6 +1357,10 @@
     }
 
     function collectDetails() {
+        if ($('.lc-mp-category-manual').is(':visible')) {
+            $('#lc-category-id').val($('#lc-category-id-visible').val() || '');
+            $('#lc-category-path-input').val($('#lc-category-path-visible').val() || '');
+        }
         const images = editorImages.slice();
         const brand = ($('#lc-brand').val() || $('#lc-brand-id').val() || '').trim() || '5 Core Inc';
         const manufacturer = ($('#lc-manufacturer').val() || $('#lc-manufacturer-specific').val() || '').trim() || '5 Core Inc';
@@ -1351,6 +1410,7 @@
             best_offer: $('#lc-best-offer').is(':checked'),
             auto_relist: $('#lc-auto-relist').is(':checked'),
             private_listing: $('#lc-private-listing').is(':checked'),
+            warehouse_id: $('#lc-warehouse-id').val() || '',
         };
     }
 
@@ -1379,6 +1439,17 @@
             if (!d.location_country) errors.policies.push('Country');
             if (!d.location_postal_code) errors.policies.push('Postal');
         }
+        const isTiktok = /tiktok/.test(channel);
+        const isTemu = /temu/.test(channel);
+        if (isTiktok || isTemu) {
+            if (!d.primary_category_id) errors.category.push('Category');
+            else if (isTiktok && !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
+            if (!String(d.package_weight_lb || '').trim() && !String(d.package_weight_oz || '').trim()) {
+                errors.policies.push('Weight');
+            } else if (!((parseFloat(d.package_weight_lb) || 0) + ((parseFloat(d.package_weight_oz) || 0) / 16) > 0)) {
+                errors.policies.push('Weight');
+            }
+        }
         return errors;
     }
 
@@ -1398,7 +1469,9 @@
         renderImages();
 
         const path = $('#lc-category-path-input').val() || '';
-        $('#lc-category-path').text(path || 'Select a category');
+        const catId = String($('#lc-category-id').val() || '').trim();
+        $('#lc-category-path').text(path || (catId ? catId : 'Select a category'));
+        $('#lc-category-id-chip').text(catId && /^\d+$/.test(catId) ? ('ID '+catId) : '');
         $('#lc-category-suggested').toggle(!!path);
 
         const err = clientReady();
@@ -1410,26 +1483,30 @@
             if (key && err[key] && err[key].length) $(this).append('<span class="lc-err">!</span>');
         });
 
+        const family = (serverDraft && serverDraft.editor && serverDraft.editor.family) || '';
         const banners = [];
-        if (err.category.length) banners.push(['danger', 'Category tab is missing required information. Please fill in those required fields.']);
-        if (err.policies.length) banners.push(['danger', 'Business Policies tab is missing required information. Please fill in those required fields.']);
+        if (err.category.length) banners.push(['danger', (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : 'Category')) + ' tab is missing required information. Please fill in those required fields.']);
+        if (err.policies.length && family === 'ebay') banners.push(['danger', 'Business Policies tab is missing required information. Please fill in those required fields.']);
+        if (err.policies.length && family === 'tiktok') banners.push(['danger', 'Warehouse & Package tab is missing required information. Please fill in those required fields.']);
+        if (err.policies.length && family === 'temu') banners.push(['danger', 'Package tab is missing required information. Please fill in those required fields.']);
         if (err.title.length) banners.push(['danger', 'Title & Description tab is missing required information. Please fill in those required fields.']);
         if (err.images.length) banners.push(['danger', 'Images tab is missing required information. Please fill in those required fields.']);
-        if (err.pricing.length) banners.push(['danger', 'Pricing tab is missing required information. Please fill in those required fields.']);
+        if (err.pricing.length) banners.push(['danger', 'Price & Stock tab is missing required information. Please fill in those required fields.']);
         if (!(serverDraft && serverDraft.status === 'listed')) {
             const ch = escapeHtml((serverDraft && serverDraft.channel) || 'channel');
             banners.push(['info', `This is a draft listing and not yet published to ${ch}.`]);
         }
-        if (!String($('#lc-shipping-policy').val() || '').trim()) {
+        if (family === 'ebay' && !String($('#lc-shipping-policy').val() || '').trim()) {
             banners.push(['warn', 'To use business policies, your account must be authorized by eBay. Click Refresh list of policies after creating them on eBay.']);
         }
         $('#lc-banners').html(banners.map(([t, m]) => `<div class="lc-banner lc-banner-${t}">${escapeHtml(m)}</div>`).join(''));
 
-        $('#lc-category-id-warn').toggleClass('d-none', !!$('#lc-category-id').val());
-        $('#lc-condition-warn').toggleClass('d-none', !!$('#lc-condition').val());
-        $('#lc-shipping-warn').toggle(!$('#lc-shipping-policy').val());
-        $('#lc-payment-warn').toggle(!$('#lc-payment-policy').val());
-        $('#lc-return-warn').toggle(!$('#lc-return-policy').val());
+        const catOk = catId !== '' && (family !== 'tiktok' || /^\d+$/.test(catId));
+        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu'].includes(family) || catOk);
+        $('#lc-condition-warn').toggleClass('d-none', family !== 'ebay' || !!$('#lc-condition').val());
+        $('#lc-shipping-warn').toggle(family === 'ebay' && !$('#lc-shipping-policy').val());
+        $('#lc-payment-warn').toggle(family === 'ebay' && !$('#lc-payment-policy').val());
+        $('#lc-return-warn').toggle(family === 'ebay' && !$('#lc-return-policy').val());
 
         const ready = !Object.values(err).some(a => a.length);
         const listed = serverDraft && serverDraft.status === 'listed';
@@ -1474,53 +1551,134 @@
 
     function searchCategories(q) {
         const $box = $('#lc-category-results');
-        if (!q || q.length < 2) {
+        const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
+        const channel = (currentDraft && currentDraft.channel) || '';
+        const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
+        if (family !== 'tiktok' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
-        $box.html('<div class="text-muted small p-3">Searching…</div>');
-        $.getJSON("{{ route('listing.manager.ebay.categories') }}", { q }, function (res) {
-            const rows = res.categories || [];
-            if (!rows.length) {
-                $box.html(`<div class="text-muted small p-3">${escapeHtml(res.message || 'No categories found.')}</div>`);
-                return;
+        if (family === 'tiktok' && !q && !title) {
+            $box.html('<div class="text-muted small p-3">Type a keyword such as speaker, or keep the product title to load TikTok suggestions.</div>');
+            return;
+        }
+        $box.html('<div class="text-muted small p-3">' + (family === 'tiktok' ? 'Searching TikTok Shop categories…' : 'Searching…') + '</div>');
+        const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
+        if (window._lcCatXhr && window._lcCatXhr.abort) {
+            window._lcCatXhr.abort();
+        }
+        window._lcCatXhr = $.ajax({
+            url: "{{ route('listing.manager.ebay.categories') }}",
+            method: family === 'tiktok' ? 'POST' : 'GET',
+            data: { q, channel, title, description: desc },
+            dataType: 'json',
+            timeout: 25000,
+            success: function (res) {
+                const rows = res.categories || [];
+                if (!rows.length) {
+                    $box.html(`<div class="text-muted small p-3">${escapeHtml(res.message || 'No categories found.')}</div>`);
+                    return;
+                }
+                $box.html(rows.map(r => `
+                    <button type="button" class="lc-cat-item" data-id="${escapeHtml(r.id)}" data-path="${escapeHtml(r.path)}">
+                        ${escapeHtml(r.path)}
+                        ${r.suggested ? '<span class="lc-suggested">Suggested</span>' : ''}
+                        ${r.restricted ? '<span class="badge bg-secondary ms-1">Restricted</span>' : ''}
+                    </button>
+                `).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                    || (status === 'timeout' ? 'TikTok category search timed out. Try again.' : 'Category search failed.');
+                $box.html(`<div class="text-danger small p-3">${escapeHtml(msg)}</div>`);
             }
-            $box.html(rows.map(r => `
-                <button type="button" class="lc-cat-item" data-id="${escapeHtml(r.id)}" data-path="${escapeHtml(r.path)}">
-                    ${escapeHtml(r.path)}
-                </button>
-            `).join(''));
-        }).fail(function (xhr) {
-            $box.html(`<div class="text-danger small p-3">${escapeHtml(xhr.responseJSON?.message || 'Category search failed.')}</div>`);
         });
     }
 
-    function fillEditor(draft) {
+    function applyEditorProfile(draft, pane) {
+        const ed = (draft && draft.editor) || { family: 'default', tabs: [] };
+        const tabIds = (ed.tabs || []).map(t => t.id);
+        $('#lmListingEditorModal').attr('data-mp-family', ed.family || 'default');
+        $('#lc-tabs .lc-tab').each(function () {
+            const paneId = String($(this).data('pane') || '');
+            const spec = (ed.tabs || []).find(t => t.id === paneId);
+            this.hidden = !spec;
+            if (spec && spec.label) {
+                const $err = $(this).find('.lc-err').detach();
+                $(this).text(spec.label);
+                if ($err.length) $(this).append($err);
+            }
+        });
+        const fields = ed.identifier_fields || ['sku', 'asin', 'brand', 'manufacturer', 'upc'];
+        $('[data-id-field]').each(function () {
+            $(this).toggle(fields.includes(String($(this).data('id-field'))));
+        });
+        $('.lc-ebay-only').toggleClass('d-none', !ed.ebay);
+        $('.lc-tiktok-only').toggleClass('d-none', !ed.tiktok);
+        $('.lc-temu-only').toggleClass('d-none', !ed.temu);
+        $('.lc-mp-category-manual').toggleClass('d-none', !ed.temu);
+        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok));
+        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu));
+        $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu));
+        $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
+        $('#lc-category-heading').text(ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.category_placeholder ? 'Category' : 'Primary Category')));
+        $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
+        $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
+        $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
+        $('#lc-policies-title').text(
+            ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu ? 'Package' : 'Shipping'))
+        );
+        $('#lc-pricing-heading').text(ed.pricing_title || 'Pricing');
+        $('#lc-title-heading').text(ed.title_heading || 'Title & Description');
+        $('#lc-identifier-help').text(ed.identifier_help || '').toggle(!!ed.identifier_help);
+        $('#lc-images-help').text(ed.images_help || 'Drag images to reorder. First image is Primary.');
+        $('#lc-category-help').text(ed.category_help || '').toggle(!!ed.category_help);
+        $('#lc-policies-help').text(ed.policies_help || '').toggle(!!ed.policies_help);
+        const chLabel = (draft && draft.channel) || ed.label || '';
+        if (chLabel) {
+            $('#lc-editor-channel-badge').text(chLabel).show();
+        } else {
+            $('#lc-editor-channel-badge').hide();
+        }
+        let firstPane = tabIds[0] || 'identifiers';
+        if (pane && tabIds.includes(pane)) firstPane = pane;
+        $('#lc-tabs .lc-tab').removeClass('active').filter('[data-pane="' + firstPane + '"]').addClass('active');
+        $('#lmListingEditorModal .lc-pane').removeClass('active').filter('[data-pane="' + firstPane + '"]').addClass('active');
+    }
+
+    function fillEditor(draft, pane) {
         currentDraft = draft;
         dirty = false;
+        applyEditorProfile(draft, pane);
         const d = draft.listing_details || {};
+        const snap = draft.amazon_snapshot || {};
         titleLimit = Number((draft.limits && draft.limits.title) || 80);
         descLimit = Number((draft.limits && draft.limits.description) || 500000);
         $('#lc-draft-id').val(draft.id);
         $('#lc-editor-title').text(draft.title || draft.sku || 'Listing');
         $('#lc-sku').val(draft.sku || '');
-        $('#lc-asin').val(draft.asin || '');
+        $('#lc-asin').val(draft.asin || snap.asin || '');
         const sku = String(draft.sku || '').trim();
         const defaultBrand = '5 Core Inc';
         const defaultManufacturer = '5 Core Inc';
-        const upcVal = d.upc || (d.item_specifics && d.item_specifics.UPC) || '';
+        const upcVal = d.upc || (d.item_specifics && d.item_specifics.UPC) || snap.upc || '';
         $('#lc-upc').val(upcVal);
         $('#lc-ean').val(d.ean || '');
         $('#lc-isbn').val(d.isbn || '');
         $('#lc-epid').val(d.epid || '');
-        $('#lc-title').val(draft.title || '');
-        setDescriptionValue(d.description || '');
+        $('#lc-title').val(draft.title || snap.item_name || snap.title || '');
+        setDescriptionValue(d.description || snap.product_description || '');
         setDescMode('code');
+        const snapImages = Array.isArray(snap.images) ? snap.images : [];
         editorImages = sanitizeEditorImages(
-            Array.isArray(d.images) && d.images.length ? d.images.slice() : (d.image_url ? [d.image_url] : [])
+            Array.isArray(d.images) && d.images.length ? d.images.slice() : (d.image_url ? [d.image_url] : snapImages.slice())
         );
         if (!editorImages.length && draft.thumbnail && !isPlaceholderAmazonUrl(draft.thumbnail)) {
             editorImages = [draft.thumbnail];
+        }
+        if (!editorImages.length && snap.thumbnail_image && !isPlaceholderAmazonUrl(snap.thumbnail_image)) {
+            editorImages = [snap.thumbnail_image];
         }
         $('#lc-gallery-plus').prop('checked', !!d.gallery_plus);
         $('#lc-price').val(draft.price != null ? draft.price : '');
@@ -1556,30 +1714,65 @@
         $('#lc-location-city').val(d.location_city || policyDefaults.location_city || 'Bellefontaine');
         $('#lc-location-country').val(d.location_country || policyDefaults.location_country || 'US');
         $('#lc-location-postal').val(d.location_postal_code || policyDefaults.location_postal_code || '43311');
-        $('#lc-pkg-l').val(d.package_length || '');
-        $('#lc-pkg-w').val(d.package_width || '');
-        $('#lc-pkg-h').val(d.package_height || '');
-        $('#lc-pkg-lb').val(d.package_weight_lb || '');
-        $('#lc-pkg-oz').val(d.package_weight_oz || '');
+        $('#lc-pkg-l').val(d.package_length ?? '');
+        $('#lc-pkg-w').val(d.package_width ?? '');
+        $('#lc-pkg-h').val(d.package_height ?? '');
+        $('#lc-pkg-lb').val(d.package_weight_lb ?? '');
+        $('#lc-pkg-oz').val(d.package_weight_oz ?? '');
         $('#lc-vat').val(d.vat_percent || '');
         $('#lc-auto-relist').prop('checked', !!d.auto_relist);
-        $('.lc-tab').removeClass('active').first().addClass('active');
-        $('.lc-pane').removeClass('active').first().addClass('active');
-        loadPolicies({
-            shipping_policy_id: d.shipping_policy_id,
-            payment_policy_id: d.payment_policy_id,
-            return_policy_id: d.return_policy_id,
-        }).always(function () {
+        $('#lc-warehouse-id').val(d.warehouse_id || '');
+        $('#lc-category-id-visible').val(d.primary_category_id || '');
+        $('#lc-category-path-visible').val(d.primary_category_path || d.category || '');
+        const finish = function () {
+            $('#lc-editor-loading').hide();
+            $('#lc-editor-body').show();
             refreshEditorUi(draft);
-        });
+            const family = (draft.editor && draft.editor.family) || '';
+            if (family === 'tiktok' && !String($('#lc-category-id').val() || '').trim()) {
+                searchCategories('');
+            }
+            if (!editorImages.length && draft.id) {
+                $.ajax({
+                    url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-images',
+                    method: 'POST',
+                    timeout: 20000,
+                }).done(function (res) {
+                    const imgs = sanitizeEditorImages(res.images || []);
+                    if (!imgs.length) return;
+                    editorImages = imgs;
+                    if (res.draft) currentDraft = res.draft;
+                    refreshEditorUi(currentDraft);
+                });
+            }
+        };
+        if (draft.editor && draft.editor.ebay) {
+            loadPolicies({
+                shipping_policy_id: d.shipping_policy_id,
+                payment_policy_id: d.payment_policy_id,
+                return_policy_id: d.return_policy_id,
+            }).always(finish);
+        } else {
+            finish();
+        }
     }
 
-    function openEditor(id) {
+    function openEditor(id, pane) {
+        if (!id) { toast('Could not load draft.', 'error'); return; }
+        $('#lc-editor-loading').html('<i class="fas fa-spinner fa-spin me-2"></i>Loading product details…').show();
+        $('#lc-editor-body').hide();
+        $('#lc-editor-title').text('Loading…');
+        $('#lc-editor-channel-badge').hide();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListingEditorModal')).show();
         $.getJSON("{{ url('/listing-manager/drafts') }}/" + id, function (res) {
-            if (!res.success || !res.draft) { toast('Could not load draft.', 'error'); return; }
-            fillEditor(res.draft);
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListingEditorModal')).show();
+            if (!res.success || !res.draft) {
+                $('#lc-editor-loading').text('Could not load draft.');
+                toast('Could not load draft.', 'error');
+                return;
+            }
+            fillEditor(res.draft, pane);
         }).fail(function (xhr) {
+            $('#lc-editor-loading').text(xhr.responseJSON?.message || 'Could not load draft.');
             toast(xhr.responseJSON?.message || 'Could not load draft.', 'error');
         });
     }
@@ -1782,15 +1975,15 @@
                         return `<span class="lm-hero-wrap" title="Open Images tab"><img class="lm-thumb" src="${escapeHtml(src)}" alt="Hero"></span>`;
                     },
                     cellClick: (e, cell) => {
-                        const sku = String(cell.getRow().getData().sku || '').trim();
-                        if (sku) openProductModal(sku, 'images');
+                        openEditor(cell.getRow().getData().id, 'images');
                     }
                 },
                 {
                     title: '', field: 'id', width: 42, hozAlign: 'center', headerSort: false,
                     formatter: () => '<button type="button" class="btn btn-link btn-sm p-0 lm-open-editor" title="Edit"><i class="fas fa-pen"></i></button>',
                     cellClick: (e, cell) => {
-                        if ($(e.target).closest('.lm-open-editor').length) openEditor(cell.getRow().getData().id);
+                        e.preventDefault();
+                        openEditor(cell.getRow().getData().id);
                     }
                 },
                 {
@@ -1799,9 +1992,10 @@
                 },
                 {
                     title: 'Name', field: 'title', minWidth: 220, widthGrow: 4,
-                    formatter: (cell) => `<a class="lm-name-link lm-open-name">${escapeHtml(cell.getValue() || '')}</a>`,
+                    formatter: (cell) => `<a href="#" class="lm-name-link lm-open-name">${escapeHtml(cell.getValue() || '')}</a>`,
                     cellClick: (e, cell) => {
-                        if ($(e.target).hasClass('lm-open-name')) openEditor(cell.getRow().getData().id);
+                        e.preventDefault();
+                        openEditor(cell.getRow().getData().id);
                     }
                 },
                 { title: 'SKU', field: 'sku', minWidth: 130 },
@@ -1995,11 +2189,20 @@
 
         // Editor tabs + live validation
         $('#lc-tabs').on('click', '.lc-tab', function () {
+            if (this.hidden) return;
             const pane = $(this).data('pane');
             $('#lc-tabs .lc-tab').removeClass('active');
             $(this).addClass('active');
-            $('.lc-pane').removeClass('active');
-            $(`.lc-pane[data-pane="${pane}"]`).addClass('active');
+            $('#lmListingEditorModal .lc-pane').removeClass('active');
+            $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
+            if (pane === 'category' && currentDraft && currentDraft.editor && currentDraft.editor.tiktok) {
+                const q = String($('#lc-category-search').val() || '').trim();
+                searchCategories(q);
+            }
+        });
+        $('#lc-category-id-visible, #lc-category-path-visible').on('input', function () {
+            $('#lc-category-id').val($('#lc-category-id-visible').val() || '');
+            $('#lc-category-path-input').val($('#lc-category-path-visible').val() || '');
         });
         $('#lmListingEditorModal').on('input change', 'input, textarea, select', function () {
             dirty = true;
@@ -2056,6 +2259,7 @@
             $.ajax({
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-images',
                 method: 'POST',
+                timeout: 25000,
                 success: function (res) {
                     const imgs = sanitizeEditorImages(res.images || []);
                     if (!imgs.length) {
@@ -2137,13 +2341,15 @@
             categoryTimer = setTimeout(() => searchCategories(q), 350);
         });
         $('#lc-category-results').on('click', '.lc-cat-item', function () {
-            const id = $(this).data('id');
-            const path = $(this).data('path');
+            const id = String($(this).data('id') || '');
+            const path = String($(this).data('path') || '');
             $('#lc-category-id').val(id);
             $('#lc-category-path-input').val(path);
+            $('#lc-category-id-visible').val(id);
+            $('#lc-category-path-visible').val(path);
             dirty = true;
             refreshEditorUi(currentDraft);
-            toast('Primary category selected.', 'success');
+            toast('Category selected.', 'success');
         });
         $('#lc-refresh-policies').on('click', function () {
             loadPolicies({
@@ -2191,8 +2397,10 @@
                     toast(xhr.responseJSON?.message || 'Optimize failed.', 'error');
                 },
                 complete: function () {
+                    const label = (currentDraft && currentDraft.editor && currentDraft.editor.optimize_label)
+                        || 'Optimize Description';
                     $btn.data('loading', false).prop('disabled', false)
-                        .html('<i class="fas fa-magic me-1"></i>Optimize Description for eBay');
+                        .html('<i class="fas fa-magic me-1"></i>' + label);
                 }
             });
         });

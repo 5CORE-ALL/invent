@@ -68,9 +68,11 @@ class TikTokShopService
 
         // Initialize the TikTok Shop client library (same as ship_hub).
         // Explicit timeouts — Guzzle defaults to 0 (wait forever), which freezes listings sync.
+        // XAMPP / Windows antivirus SSL inspection raises cURL 60 on open-api.tiktokglobalshop.com.
         $this->client = new Client($this->clientKey, $this->clientSecret, [
             'timeout' => 45,
             'connect_timeout' => 10,
+            'verify' => false,
         ]);
 
         if ($this->accessToken) {
@@ -956,7 +958,7 @@ class TikTokShopService
         }
     }
 
-    protected function ensureShopCipher(): void
+    protected function ensureShopCipher(bool $allowLiveLookup = true): void
     {
         if (is_string($this->shopCipher) && $this->shopCipher !== '') {
             $this->client->setShopCipher($this->shopCipher);
@@ -980,9 +982,13 @@ class TikTokShopService
         }
 
         $cfgCipher = config('services.'.$this->configKey.'.shop_cipher');
-        if (is_string($cfgCipher) && trim($cfgCipher) !== '') {
+        if (is_string($cfgCipher) && $this->isUsableShopCipher($cfgCipher)) {
             $this->rememberShopCipher(trim($cfgCipher));
 
+            return;
+        }
+
+        if (! $allowLiveLookup) {
             return;
         }
 
@@ -1386,27 +1392,76 @@ class TikTokShopService
     
     public function refreshAccessToken(): ?array
     {
-        if (!$this->refreshToken) {
+        if (! $this->refreshToken) {
+            Log::warning('TikTok refreshAccessToken skipped: no refresh_token', [
+                'channel' => $this->configKey,
+            ]);
+
             return null;
+        }
+
+        $apply = function (array $token): ?array {
+            $access = trim((string) ($token['access_token'] ?? ''));
+            if ($access === '') {
+                return null;
+            }
+            $this->accessToken = $access;
+            $this->refreshToken = trim((string) ($token['refresh_token'] ?? $this->refreshToken)) ?: $this->refreshToken;
+            $expiresIn = (int) ($token['expire_in'] ?? $token['expires_in'] ?? 86400);
+            if ($expiresIn < 600) {
+                $expiresIn = 86400;
+            }
+            Cache::put($this->cachePrefix.'_access_token', $this->accessToken, $expiresIn - 300);
+            Cache::put($this->cachePrefix.'_refresh_token', $this->refreshToken, 86400 * 30);
+            $this->client->setAccessToken($this->accessToken);
+            config([
+                'services.'.$this->configKey.'.access_token' => $this->accessToken,
+                'services.'.$this->configKey.'.refresh_token' => $this->refreshToken,
+            ]);
+
+            return $token;
+        };
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(20)
+                ->connectTimeout(8)
+                ->get('https://auth.tiktok-shops.com/api/v2/token/refresh', [
+                    'app_key' => $this->clientKey,
+                    'app_secret' => $this->clientSecret,
+                    'refresh_token' => $this->refreshToken,
+                    'grant_type' => 'refresh_token',
+                ]);
+            $json = $response->json();
+            if (is_array($json) && (int) ($json['code'] ?? -1) === 0 && is_array($json['data'] ?? null)) {
+                $applied = $apply($json['data']);
+                if ($applied !== null) {
+                    return $applied;
+                }
+            }
+            Log::warning('TikTok refreshAccessToken HTTP unexpected payload', [
+                'channel' => $this->configKey,
+                'http' => $response->status(),
+                'code' => is_array($json) ? ($json['code'] ?? null) : null,
+                'message' => is_array($json) ? ($json['message'] ?? null) : null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok refreshAccessToken HTTP failed', [
+                'channel' => $this->configKey,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         try {
             $auth = $this->client->auth();
             $newToken = $auth->refreshNewToken($this->refreshToken);
-            
-            if (isset($newToken['access_token'])) {
-                $this->accessToken = $newToken['access_token'];
-                $this->refreshToken = $newToken['refresh_token'] ?? $this->refreshToken;
-                
-                $expiresIn = $newToken['expire_in'] ?? 86400;
-                Cache::put($this->cachePrefix.'_access_token', $this->accessToken, $expiresIn - 300);
-                Cache::put($this->cachePrefix.'_refresh_token', $this->refreshToken, 86400 * 30);
-                
-                $this->client->setAccessToken($this->accessToken);
-                
-                return $newToken;
+            if (is_array($newToken)) {
+                $applied = $apply($newToken['data'] ?? $newToken);
+                if ($applied !== null) {
+                    return $applied;
+                }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('TikTok refreshAccessToken failed', [
                 'channel' => $this->configKey,
                 'error' => $e->getMessage(),
@@ -2865,5 +2920,487 @@ class TikTokShopService
         $source = $secret.$path.$concat.$body.$secret;
 
         return hash_hmac('sha256', $source, $secret);
+    }
+
+    /**
+     * Seller Center-style category picker: live TikTok Recommend Category + GET Categories.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, suggested?: bool, restricted?: bool}>, message?: string}
+     */
+    public function searchListingCategories(string $query, string $title = '', string $description = ''): array
+    {
+        $query = trim($query);
+        $title = trim($title);
+        $description = trim(strip_tags($description));
+        $keyword = $query !== '' ? $query : $title;
+
+        try {
+            if (! $this->accessToken) {
+                return ['success' => false, 'categories' => [], 'message' => 'TikTok Shop is not connected. Open Connect and authorize the shop.'];
+            }
+
+            $this->client->setAccessToken($this->accessToken);
+            // Cache/file/config only — getShopInfo can hang on IP allow-list and freezes the picker.
+            $this->ensureShopCipher(false);
+
+            if ($keyword === '') {
+                return ['success' => true, 'categories' => []];
+            }
+
+            $categories = $this->recommendCategoriesFromMarketplace($keyword, $description);
+            if ($categories === [] && $query !== '' && $title !== '' && strcasecmp($query, $title) !== 0) {
+                $categories = $this->recommendCategoriesFromMarketplace($title, $description);
+            }
+            if ($categories === []) {
+                $categories = $this->filterMarketplaceCategoryLeaves($keyword);
+            }
+
+            return [
+                'success' => true,
+                'categories' => $categories,
+                'message' => $categories === []
+                    ? 'TikTok returned no matching categories. Try a fuller product name (e.g. “6 inch ceiling speaker”).'
+                    : null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok category search failed', ['error' => $e->getMessage()]);
+            $message = $e->getMessage();
+            if ($this->isExpiredAccessTokenMessage(0, $message)) {
+                $message = 'TikTok Shop access token expired. Open Connect and re-authorize the shop, then search again.';
+            }
+
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'TikTok category search failed: '.$message,
+            ];
+        }
+    }
+
+    /**
+     * @return list<array{id: string, path: string, suggested?: bool, restricted?: bool}>
+     */
+    protected function recommendCategoriesFromMarketplace(string $productTitle, string $description = ''): array
+    {
+        // Use cached leaf names only. Never download the full GET /categories tree here —
+        // that call routinely exceeds 45s and leaves the editor stuck on “Searching…”.
+        $byId = [];
+        foreach ($this->listingCategoryLeaves(false) as $row) {
+            $byId[$row['id']] = $row;
+        }
+
+        $lastError = null;
+        $gotResponse = false;
+        foreach ($this->tiktokCategoryVersions() as $version) {
+            try {
+                $data = $this->fetchRecommendCategory($productTitle, $description, $version);
+                $gotResponse = true;
+                $parsed = $this->parseRecommendCategoryResponse($data, $byId);
+                if ($parsed !== []) {
+                    return $parsed;
+                }
+                Log::info('TikTok recommendCategory returned no parseable leaves', [
+                    'version' => $version,
+                    'keys' => array_keys($data),
+                ]);
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                Log::info('TikTok recommendCategory HTTP failed', [
+                    'version' => $version,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (! $gotResponse && $lastError) {
+            throw $lastError;
+        }
+
+        return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function tiktokCategoryVersions(): array
+    {
+        $preferred = strtolower(trim((string) config('services.'.$this->configKey.'.category_version', 'v2')));
+        if (! in_array($preferred, ['v1', 'v2'], true)) {
+            $preferred = 'v2';
+        }
+
+        return array_values(array_unique([$preferred, $preferred === 'v2' ? 'v1' : 'v2']));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fetchRecommendCategory(string $productTitle, string $description, string $version): array
+    {
+        $payload = [
+            'product_title' => $productTitle,
+            'description' => mb_substr($description, 0, 2000),
+            'category_version' => $version,
+        ];
+
+        $data = $this->tiktokOpenApi('POST', '/product/202309/categories/recommend', [], $payload, 15);
+        if (isset($data['data']) && is_array($data['data']) && ! isset($data['leaf_category_id']) && ! isset($data['categories'])) {
+            $data = $data['data'];
+        }
+
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, array{id: string, name: string, path: string, restricted: bool}>  $leavesById
+     * @return list<array{id: string, path: string, suggested: bool, restricted: bool}>
+     */
+    protected function parseRecommendCategoryResponse(array $data, array $leavesById): array
+    {
+        $out = [];
+        $normalizePath = static function (string $path): string {
+            $path = trim(str_replace([' > ', '>', ' / '], ' - ', $path));
+            $path = preg_replace('/\s+-\s+/', ' - ', $path) ?? $path;
+
+            return trim($path, " -\t");
+        };
+        $push = function (string $id, string $path, bool $suggested = true) use (&$out, $leavesById, $normalizePath): void {
+            $id = trim($id);
+            if ($id === '' || isset($out[$id])) {
+                return;
+            }
+            $path = $normalizePath($path);
+            if ($path === '' || $path === $id) {
+                $path = $leavesById[$id]['path'] ?? $path;
+            }
+            if ($path === '') {
+                $path = $leavesById[$id]['name'] ?? ('Category '.$id);
+            }
+            $out[$id] = [
+                'id' => $id,
+                'path' => $path,
+                'suggested' => $suggested,
+                'restricted' => (bool) ($leavesById[$id]['restricted'] ?? false),
+            ];
+        };
+
+        $pathFromRows = static function (array $rows): string {
+            $names = [];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $name = trim((string) ($row['local_name'] ?? $row['name'] ?? $row['category_name'] ?? ''));
+                if ($name !== '') {
+                    $names[] = $name;
+                }
+            }
+
+            return implode(' - ', $names);
+        };
+
+        $walkTree = function (array $items, array $ancestors) use (&$walkTree, $push): void {
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $id = trim((string) ($item['id'] ?? $item['category_id'] ?? ''));
+                $name = trim((string) ($item['local_name'] ?? $item['name'] ?? $item['category_name'] ?? ''));
+                $parts = $ancestors;
+                if ($name !== '') {
+                    $parts[] = $name;
+                }
+                $children = $item['children'] ?? $item['child_categories'] ?? null;
+                $hasChildren = is_array($children) && $children !== [];
+                $isLeaf = ! empty($item['is_leaf']) || ! $hasChildren;
+                if ($isLeaf && $id !== '') {
+                    $push($id, implode(' - ', $parts));
+                }
+                if ($hasChildren) {
+                    $walkTree($children, $parts);
+                }
+            }
+        };
+
+        $pathRows = $data['categories'] ?? $data['category_tree'] ?? null;
+        if (is_array($pathRows) && $pathRows !== [] && isset($pathRows[0]) && is_array($pathRows[0])) {
+            $looksLikeTree = isset($pathRows[0]['children']) || isset($pathRows[0]['child_categories']);
+            if ($looksLikeTree) {
+                $walkTree($pathRows, []);
+            } else {
+                $joined = $pathFromRows($pathRows);
+                $last = $pathRows[array_key_last($pathRows)];
+                $id = trim((string) ($last['id'] ?? $last['category_id'] ?? $data['leaf_category_id'] ?? ''));
+                $push($id, $joined);
+                foreach ($pathRows as $row) {
+                    if (! empty($row['is_leaf'])) {
+                        $push(
+                            trim((string) ($row['id'] ?? $row['category_id'] ?? '')),
+                            $joined !== '' ? $joined : trim((string) ($row['local_name'] ?? $row['name'] ?? ''))
+                        );
+                    }
+                }
+            }
+        }
+
+        foreach (['recommended_category_list', 'recommend_categories', 'category_list', 'product_cates', 'categories'] as $key) {
+            foreach ((array) ($data[$key] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $children = $row['children'] ?? $row['child_categories'] ?? null;
+                if (is_array($children) && $children !== []) {
+                    $walkTree([$row], []);
+                    continue;
+                }
+                if (array_key_exists('is_leaf', $row) && empty($row['is_leaf'])) {
+                    continue;
+                }
+                $id = trim((string) ($row['id'] ?? $row['category_id'] ?? $row['cate_id'] ?? $row['leaf_category_id'] ?? ''));
+                $path = trim((string) ($row['category_path'] ?? $row['path'] ?? ''));
+                if ($path === '') {
+                    $path = $pathFromRows($row['ancestors'] ?? $row['parent_categories'] ?? [])
+                        ?: trim((string) ($row['local_name'] ?? $row['name'] ?? $row['category_name'] ?? ''));
+                }
+                $push($id, $path);
+            }
+        }
+
+        $leafId = trim((string) ($data['leaf_category_id'] ?? $data['category_id'] ?? ''));
+        $push($leafId, $leavesById[$leafId]['path'] ?? '');
+
+        return array_values($out);
+    }
+
+    /**
+     * @return list<array{id: string, path: string, suggested?: bool, restricted?: bool}>
+     */
+    protected function filterMarketplaceCategoryLeaves(string $keyword): array
+    {
+        $q = mb_strtolower(trim($keyword));
+        if ($q === '') {
+            return [];
+        }
+        $out = [];
+        foreach ($this->listingCategoryLeaves(false) as $row) {
+            $hay = mb_strtolower($row['path'].' '.$row['name']);
+            if (! str_contains($hay, $q)) {
+                continue;
+            }
+            $out[] = [
+                'id' => $row['id'],
+                'path' => $row['path'],
+                'restricted' => $row['restricted'],
+            ];
+            if (count($out) >= 40) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live GET /product/202309/categories from TikTok (US shops use v2).
+     *
+     * @return list<array{id: string, name: string, path: string, restricted: bool}>
+     */
+    protected function listingCategoryLeaves(bool $fetchIfMissing = true): array
+    {
+        foreach ($this->tiktokCategoryVersions() as $version) {
+            $cacheKey = $this->cachePrefix.'_listing_category_leaves_'.$version;
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
+            if (! $fetchIfMissing) {
+                continue;
+            }
+
+            $raw = $this->fetchMarketplaceCategoryTree($version);
+            $leaves = $this->flattenTikTokCategoryLeaves($raw);
+            if ($leaves !== []) {
+                Cache::put($cacheKey, $leaves, now()->addHours(6));
+
+                return $leaves;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function fetchMarketplaceCategoryTree(string $version): array
+    {
+        $query = [
+            'locale' => 'en-US',
+            'category_version' => $version,
+        ];
+
+        try {
+            $response = $this->client->Product->useVersion('202309')->getCategories($query);
+            $raw = $response['categories'] ?? $response;
+            if (is_array($raw) && $raw !== []) {
+                return array_values($raw);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok getCategories SDK failed, retrying HTTP', [
+                'version' => $version,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $data = $this->tiktokOpenApi('GET', '/product/202309/categories', $query);
+            $raw = $data['categories'] ?? $data['category_list'] ?? [];
+
+            return is_array($raw) ? array_values($raw) : [];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok getCategories HTTP failed', [
+                'version' => $version,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Signed Open API call that skips local SSL inspection (cURL 60).
+     *
+     * @param  array<string, string>  $query
+     * @param  array<string, mixed>|null  $jsonBody
+     * @return array<string, mixed>
+     */
+    protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false): array
+    {
+        $originalQuery = $query;
+        $query['app_key'] = (string) $this->clientKey;
+        $query['timestamp'] = (string) time();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $query['shop_cipher'] = $this->shopCipher;
+        }
+        $body = $jsonBody === null ? '' : (string) json_encode($jsonBody, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $query['sign'] = $this->signTikTokRequest($path, $query, $body);
+        $base = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $url = $base.$path;
+        $request = Http::withoutVerifying()
+            ->withHeaders([
+                'x-tts-access-token' => (string) $this->accessToken,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(max(5, $timeout))
+            ->connectTimeout(8);
+
+        $response = strtoupper($method) === 'GET'
+            ? $request->get($url, $query)
+            : $request->withBody($body, 'application/json')->post($url.'?'.http_build_query($query));
+
+        $json = $response->json() ?? [];
+        $code = (int) ($json['code'] ?? -1);
+        $message = (string) ($json['message'] ?? 'TikTok API error');
+        if ($code !== 0) {
+            if (
+                ! $retried
+                && $this->isExpiredAccessTokenMessage($code, $message)
+                && $this->refreshAccessToken()
+            ) {
+                return $this->tiktokOpenApi($method, $path, $originalQuery, $jsonBody, $timeout, true);
+            }
+            throw new \RuntimeException(trim($code.': '.$message));
+        }
+
+        return is_array($json['data'] ?? null) ? $json['data'] : [];
+    }
+
+    protected function isExpiredAccessTokenMessage(int $code, string $message): bool
+    {
+        if (in_array($code, [105001, 105002, 36009004], true)) {
+            return true;
+        }
+
+        return (bool) preg_match('/expired credentials|access_token.+expir|token expir/i', $message);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $raw
+     * @return list<array{id: string, name: string, path: string, restricted: bool}>
+     */
+    protected function flattenTikTokCategoryLeaves(array $raw): array
+    {
+        $nodes = [];
+        $walk = function (array $items, array $ancestors) use (&$walk, &$nodes): void {
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $id = trim((string) ($item['id'] ?? $item['category_id'] ?? ''));
+                $name = trim((string) ($item['local_name'] ?? $item['name'] ?? $item['category_name'] ?? ''));
+                if ($id === '') {
+                    continue;
+                }
+                $pathParts = $ancestors;
+                if ($name !== '') {
+                    $pathParts[] = $name;
+                }
+                $statuses = $item['permission_statuses'] ?? [];
+                $restricted = is_array($statuses)
+                    && $statuses !== []
+                    && ! in_array('AVAILABLE', $statuses, true);
+                $nodes[$id] = [
+                    'id' => $id,
+                    'parent_id' => trim((string) ($item['parent_id'] ?? '0')),
+                    'name' => $name !== '' ? $name : $id,
+                    'path_parts' => $pathParts,
+                    'is_leaf' => (bool) ($item['is_leaf'] ?? empty($item['children'])),
+                    'restricted' => $restricted,
+                ];
+                $children = $item['children'] ?? $item['child_categories'] ?? null;
+                if (is_array($children) && $children !== []) {
+                    $nodes[$id]['is_leaf'] = false;
+                    $walk($children, $pathParts);
+                }
+            }
+        };
+        $walk($raw, []);
+
+        $hasNested = false;
+        foreach ($nodes as $node) {
+            if (count($node['path_parts']) > 1) {
+                $hasNested = true;
+                break;
+            }
+        }
+        if (! $hasNested) {
+            foreach ($nodes as $id => $node) {
+                $parts = [];
+                $guard = 0;
+                $cursor = $id;
+                while ($cursor !== '' && $cursor !== '0' && isset($nodes[$cursor]) && $guard < 12) {
+                    array_unshift($parts, $nodes[$cursor]['name']);
+                    $cursor = $nodes[$cursor]['parent_id'];
+                    $guard++;
+                }
+                $nodes[$id]['path_parts'] = $parts !== [] ? $parts : [$node['name']];
+            }
+        }
+
+        $leaves = [];
+        foreach ($nodes as $node) {
+            if (! $node['is_leaf']) {
+                continue;
+            }
+            $leaves[] = [
+                'id' => $node['id'],
+                'name' => $node['name'],
+                'path' => implode(' - ', $node['path_parts']),
+                'restricted' => $node['restricted'],
+            ];
+        }
+
+        return $leaves;
     }
 }
