@@ -190,7 +190,7 @@ class Temu2ListingPublishService
                 'product' => $product,
                 'price' => $price,
                 'qty' => $this->resolveQty($sku),
-                'dimensions' => $this->resolveDimensions($product),
+                'dimensions' => $this->resolveDimensions($product, $sku),
             ];
         }
 
@@ -913,8 +913,8 @@ class Temu2ListingPublishService
         if ($this->resolveSourceImages($product, $sku) === []) {
             return ['status' => 'skipped_no_image', 'reason' => 'Images missing in Image Master'];
         }
-        if (! $this->hasDimWt($product) && ! $this->hasDimWt($this->parentProductFor($product, $sku))) {
-            return ['status' => 'skipped_no_dim', 'reason' => 'Dimensions missing in Dim/Wt'];
+        if (! $this->hasDimWt($product, $sku)) {
+            return ['status' => 'skipped_no_dim', 'reason' => 'Dimensions missing in Dim/Wt Master'];
         }
 
         return null;
@@ -2538,78 +2538,164 @@ class Temu2ListingPublishService
     }
 
     /**
-     * @return array{length: ?float, width: ?float, height: ?float, weight_lb: ?float, weight_kg: ?float}
+     * product_master.Values for a SKU — same source as /dim-wt-master.
+     *
+     * @return array<string, mixed>
      */
-    private function dimWtValues(ProductMaster $product): array
-    {
-        $values = is_array($product->Values) ? $product->Values : [];
-        $num = static function (array $keys) use ($values): ?float {
-            foreach ($keys as $key) {
-                if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
-                    return (float) $values[$key];
-                }
-            }
-
-            return null;
-        };
-
-        return [
-            'length' => $num(['l_decl', 'l', 'L', 'length']),
-            'width' => $num(['w_decl', 'w', 'W', 'width']),
-            'height' => $num(['h_decl', 'h', 'H', 'height']),
-            'weight_lb' => $num(['wt_decl', 'wt_act', 'weight_lb', 'wt']),
-            'weight_kg' => $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']),
-        ];
-    }
-
-    private function hasDimWt(?ProductMaster $product): bool
+    private function dimWtMasterValues(?ProductMaster $product): array
     {
         if (! $product) {
-            return false;
+            return [];
         }
-        $dims = $this->dimWtValues($product);
+        $values = $product->Values;
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
 
-        return $dims['length'] !== null
-            && $dims['width'] !== null
-            && $dims['height'] !== null
-            && ($dims['weight_lb'] !== null || $dims['weight_kg'] !== null);
+        return is_array($values) ? $values : [];
+    }
+
+    private function dimWtMasterNumber(array $values, string $key): ?float
+    {
+        if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {
+            return null;
+        }
+        $raw = $values[$key];
+        if (is_string($raw)) {
+            $raw = trim(str_replace(',', '', $raw));
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+        $n = (float) $raw;
+
+        return $n > 0 ? $n : null;
     }
 
     /**
-     * Dim / Wt Items on product_master.Values (inches + lb) converted for Temu packageInfo.
+     * Item package on /dim-wt-master: Item L/W/H IN + Itm wt GW, then Decl, then Item L/W/H CM.
+     *
+     * @return array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}
+     */
+    private function dimWtMasterItemPackage(array $values): array
+    {
+        $inch = function (string $actKey, string $declKey) use ($values): ?float {
+            return $this->dimWtMasterNumber($values, $actKey)
+                ?? $this->dimWtMasterNumber($values, $declKey);
+        };
+
+        return [
+            'length_in' => $inch('l', 'l_decl'),
+            'width_in' => $inch('w', 'w_decl'),
+            'height_in' => $inch('h', 'h_decl'),
+            'weight_lb' => $inch('wt_act', 'wt_decl'),
+            'weight_kg' => $this->dimWtMasterNumber($values, 'wt_act_kg'),
+            'length_cm' => $this->dimWtMasterNumber($values, 'l_cm'),
+            'width_cm' => $this->dimWtMasterNumber($values, 'w_cm'),
+            'height_cm' => $this->dimWtMasterNumber($values, 'h_cm'),
+        ];
+    }
+
+    /**
+     * @param  array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}  $base
+     * @param  array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}  $fill
+     * @return array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}
+     */
+    private function mergeDimWtMasterPackage(array $base, array $fill): array
+    {
+        foreach ($base as $key => $value) {
+            if ($value === null && ($fill[$key] ?? null) !== null) {
+                $base[$key] = $fill[$key];
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * @param  array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}  $pkg
+     */
+    private function dimWtMasterPackageComplete(array $pkg): bool
+    {
+        $hasSize = (($pkg['length_cm'] ?? null) !== null || ($pkg['length_in'] ?? null) !== null)
+            && (($pkg['width_cm'] ?? null) !== null || ($pkg['width_in'] ?? null) !== null)
+            && (($pkg['height_cm'] ?? null) !== null || ($pkg['height_in'] ?? null) !== null);
+        $hasWeight = ($pkg['weight_lb'] ?? null) !== null || ($pkg['weight_kg'] ?? null) !== null;
+
+        return $hasSize && $hasWeight;
+    }
+
+    /**
+     * Load /dim-wt-master item package for this SKU (not the parent row, unless a field is blank).
+     *
+     * @return array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}
+     */
+    private function dimWtMasterPackageForSku(string $sku, ?ProductMaster $hint = null): array
+    {
+        $sku = trim($sku);
+        $row = $hint;
+        if (! $row || strcasecmp(trim((string) $row->sku), $sku) !== 0) {
+            $row = $this->findProductLoose($sku) ?? $hint;
+        }
+        $pkg = $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
+        if ($this->dimWtMasterPackageComplete($pkg) || ! $row) {
+            return $pkg;
+        }
+        $parent = $this->parentProductFor($row, $sku);
+        if ($parent) {
+            $pkg = $this->mergeDimWtMasterPackage(
+                $pkg,
+                $this->dimWtMasterItemPackage($this->dimWtMasterValues($parent))
+            );
+        }
+
+        return $pkg;
+    }
+
+    private function hasDimWt(?ProductMaster $product, ?string $sku = null): bool
+    {
+        $sku = trim((string) ($sku ?: ($product->sku ?? '')));
+        if ($sku === '' && ! $product) {
+            return false;
+        }
+
+        return $this->dimWtMasterPackageComplete($this->dimWtMasterPackageForSku($sku, $product));
+    }
+
+    /**
+     * Temu packageInfo from /dim-wt-master for this SKU (Item L/W/H IN + Itm wt GW, CM when stored).
      *
      * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
      */
-    private function resolveDimensions(ProductMaster $product): array
+    private function resolveDimensions(ProductMaster $product, ?string $sku = null): array
     {
-        $source = $this->hasDimWt($product) ? $product : ($this->parentProductFor($product, (string) $product->sku) ?? $product);
-        $dims = $this->dimWtValues($source);
-        $lengthIn = $dims['length'];
-        $widthIn = $dims['width'];
-        $heightIn = $dims['height'];
-        $weightLb = $dims['weight_lb'];
-        $weightKg = $dims['weight_kg'];
+        $sku = trim((string) ($sku ?: $product->sku));
+        $pkg = $this->dimWtMasterPackageForSku($sku, $product);
 
-        $toCm = static function (?float $inches): string {
-            if ($inches === null) {
-                return '1';
+        $toCm = static function (?float $cm, ?float $inches): string {
+            if ($cm !== null && $cm > 0) {
+                return (string) max(1, round($cm, 2));
+            }
+            if ($inches !== null && $inches > 0) {
+                return (string) max(1, round($inches * 2.54, 2));
             }
 
-            return (string) max(1, round($inches * 2.54, 2));
+            return '1';
         };
 
         $weightG = '1';
-        if ($weightKg !== null) {
-            $weightG = (string) max(1, round($weightKg * 1000, 2));
-        } elseif ($weightLb !== null) {
-            $weightG = (string) max(1, round($weightLb * 453.592, 2));
+        if (($pkg['weight_kg'] ?? null) !== null) {
+            $weightG = (string) max(1, round((float) $pkg['weight_kg'] * 1000, 2));
+        } elseif (($pkg['weight_lb'] ?? null) !== null) {
+            $weightG = (string) max(1, round((float) $pkg['weight_lb'] * 453.592, 2));
         }
 
         return [
             'weight' => $weightG,
-            'length' => $toCm($lengthIn),
-            'width' => $toCm($widthIn),
-            'height' => $toCm($heightIn),
+            'length' => $toCm($pkg['length_cm'] ?? null, $pkg['length_in'] ?? null),
+            'width' => $toCm($pkg['width_cm'] ?? null, $pkg['width_in'] ?? null),
+            'height' => $toCm($pkg['height_cm'] ?? null, $pkg['height_in'] ?? null),
             'weightUnit' => 'g',
             'volumeUnit' => 'cm',
         ];
