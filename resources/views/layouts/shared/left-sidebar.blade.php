@@ -80,12 +80,12 @@
                 <div class="collapse" id="dashBoardGroup">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('all.marketplace.master') }}" class="{{ request()->routeIs('all.marketplace.master') && request('tab') !== 'yesterday' ? 'active' : '' }}">
+                            <a href="{{ route('all.marketplace.master') }}" class="{{ request()->routeIs('all.marketplace.master') ? 'active' : '' }}">
                                 <i class="ri-file-line me-2"></i>Dashboard Active Channel
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('all.marketplace.master', ['tab' => 'yesterday']) }}" class="{{ request()->routeIs('all.marketplace.master') && request('tab') === 'yesterday' ? 'active' : '' }}">
+                            <a href="{{ route('yesterday.marketplace.master') }}" class="{{ request()->routeIs('yesterday.marketplace.master') ? 'active' : '' }}">
                                 <i class="ri-calendar-check-line me-2"></i>Active Channel Yesterday
                             </a>
                         </li>

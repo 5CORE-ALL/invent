@@ -1,0 +1,4 @@
+{"sessionId":"1b30dc","runId":"post-fix","hypothesisId":"E","location":"AliexpressController.php:getPricingData:entry","message":"getPricingData called","data":{"include_parents":false},"timestamp":1787610507304}
+{"sessionId":"1b30dc","runId":"post-fix","hypothesisId":"E","location":"AliexpressController.php:pricing-data","message":"pricing-data parent injection gate","data":{"include_parents":false,"total":1236,"parentCount":0,"sample":[]},"timestamp":1787610507628}
+{"sessionId":"1b30dc","runId":"post-fix","hypothesisId":"E","location":"AliexpressController.php:getPricingData:entry","message":"getPricingData called","data":{"include_parents":false},"timestamp":1787610522995}
+{"sessionId":"1b30dc","runId":"post-fix","hypothesisId":"E","location":"AliexpressController.php:pricing-data","message":"pricing-data parent injection gate","data":{"include_parents":false,"total":1236,"parentCount":0,"sample":[]},"timestamp":1787610523315}

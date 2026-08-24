@@ -628,9 +628,10 @@ class TikTokPricingController extends Controller
                 $tiktokItem = $tiktokData[$skuUpper];
                 $processedItem["TT Price"] = $tiktokItem->price ?? 0;
                 $processedItem["TT Stock"] = $tiktokItem->stock ?? 0;
-                $processedItem["video_views"] = intval($tiktokItem->video_views ?? $tiktokItem->views ?? 0);
-                $processedItem["ads_views"] = intval($tiktokItem->ads_views ?? 0);
-                $processedItem["affl_views"] = intval($tiktokItem->affl_views ?? 0);
+                $viewCounts = $this->tiktokListingViewCounts($tiktokItem);
+                $processedItem["video_views"] = $viewCounts['video_views'];
+                $processedItem["ads_views"] = $viewCounts['ads_views'];
+                $processedItem["affl_views"] = $viewCounts['affl_views'];
                 $processedItem["Missing"] = ''; // SKU exists in TikTok
             } else {
                 $processedItem["TT Price"] = 0;
@@ -697,13 +698,15 @@ class TikTokPricingController extends Controller
                 $processedItem["SGPFT"] = isset($tiktokValArr["SGPFT"]) ? floatval($tiktokValArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($tiktokValArr["SPFT"]) ? floatval(str_replace("%", "", $tiktokValArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($tiktokValArr["SROI"]) ? floatval(str_replace("%", "", $tiktokValArr["SROI"])) : 0;
-                if (array_key_exists('video_views', $tiktokValArr)) {
+                // Shop JSON often stores video_views/ads_views/affl_views as 0 from SPRICE saves.
+                // Never let those zeros wipe live listing views from tiktok_products.views.
+                if (intval($tiktokValArr['video_views'] ?? 0) > 0) {
                     $processedItem["video_views"] = intval($tiktokValArr["video_views"]);
                 }
-                if (array_key_exists('ads_views', $tiktokValArr)) {
+                if (intval($tiktokValArr['ads_views'] ?? 0) > 0) {
                     $processedItem["ads_views"] = intval($tiktokValArr["ads_views"]);
                 }
-                if (array_key_exists('affl_views', $tiktokValArr)) {
+                if (intval($tiktokValArr['affl_views'] ?? 0) > 0) {
                     $processedItem["affl_views"] = intval($tiktokValArr["affl_views"]);
                 }
                 if (array_key_exists('NR', $tiktokValArr)) {
@@ -874,6 +877,16 @@ class TikTokPricingController extends Controller
             if ((float) ($processedItem['ads_revenue_30'] ?? 0) <= 0 && (float) $gmvAds['gmv_ad_sales_l30'] > 0) {
                 $processedItem['ads_revenue_30'] = $gmvAds['gmv_ad_sales_l30'];
             }
+            // Listing CVR% = TT L30 ÷ T views (video + ads + affl), same as /tiktok-pricing CVR filter.
+            $tViews = (int) ($processedItem['video_views'] ?? 0)
+                + (int) ($processedItem['ads_views'] ?? 0)
+                + (int) ($processedItem['affl_views'] ?? 0);
+            $processedItem['t_views'] = $tViews;
+            $ttL30ForCvr = (float) ($processedItem['TT L30'] ?? 0);
+            $listingCvr = $tViews > 0 ? round(($ttL30ForCvr / $tViews) * 100, 2) : 0.0;
+            $processedItem['cvr'] = $listingCvr;
+            $processedItem['CVR%'] = $listingCvr;
+
             // TACOS% = (spend / (TT L30 * TT Price)) * 100
             $spend = (float)$processedItem["spend"];
             $ttL30 = (float)($processedItem["TT L30"] ?? 0);
@@ -1033,8 +1046,29 @@ class TikTokPricingController extends Controller
         return $result;
     }
 
+    /**
+     * Listing views: video_views if set, else tiktok_products.views (API sync writes views only).
+     *
+     * @param  object|null  $tiktokItem
+     * @return array{video_views: int, ads_views: int, affl_views: int}
+     */
+    private function tiktokListingViewCounts($tiktokItem): array
+    {
+        $video = (int) ($tiktokItem->video_views ?? 0);
+        if ($video <= 0) {
+            $video = (int) ($tiktokItem->views ?? 0);
+        }
+
+        return [
+            'video_views' => $video,
+            'ads_views' => (int) ($tiktokItem->ads_views ?? 0),
+            'affl_views' => (int) ($tiktokItem->affl_views ?? 0),
+        ];
+    }
+
     private function buildTikTokParentRow(string $parentName, array $childRows): array
     {
+        $parentName = trim(preg_replace('/^PARENT\s+/i', '', $parentName) ?? $parentName);
         $sumInv = 0;
         $sumL30 = 0;
         $sumSpend = 0;
@@ -1060,6 +1094,10 @@ class TikTokPricingController extends Controller
         $sumGmvSpendL30 = 0.0;
         $sumGmvSpendL1 = 0.0;
         $sumGmvBudget = 0.0;
+        $sumTtL30 = 0.0;
+        $sumVideoViews = 0;
+        $sumAdsViews = 0;
+        $sumAfflViews = 0;
 
         foreach ($childRows as $r) {
             $sumInv += (float)($r['INV'] ?? 0);
@@ -1095,7 +1133,12 @@ class TikTokPricingController extends Controller
             $sumGmvSpendL30 += (float) ($r['gmv_spend_l30'] ?? 0);
             $sumGmvSpendL1 += (float) ($r['gmv_spend_l1'] ?? 0);
             $sumGmvBudget += (float) ($r['gmv_budget'] ?? 0);
+            $sumTtL30 += $ttL30;
+            $sumVideoViews += (int) ($r['video_views'] ?? 0);
+            $sumAdsViews += (int) ($r['ads_views'] ?? 0);
+            $sumAfflViews += (int) ($r['affl_views'] ?? 0);
         }
+        $sumTViews = $sumVideoViews + $sumAdsViews + $sumAfflViews;
 
         $dilPct = $sumInv > 0 ? round(($sumL30 / $sumInv) * 100, 2) : 0;
         $adCvrPct = $sumAdClicks > 0 ? round(($sumAdSold / $sumAdClicks) * 100, 2) : null;
@@ -1106,14 +1149,24 @@ class TikTokPricingController extends Controller
         $roiPct = $sumCogs > 0 ? round(($parentProfit / $sumCogs) * 100, 2) : 0;
 
         $parentKey = 'PARENT ' . $parentName;
+        $imagePath = '';
+        foreach ($childRows as $r) {
+            $img = trim((string) ($r['image_path'] ?? ''));
+            if ($img !== '' && $img !== '-') {
+                $imagePath = $img;
+                break;
+            }
+        }
         $dash = '-';
         return [
             'SL No.' => $dash,
-            'Parent' => $parentKey,
+            'Parent' => $parentName,
+            'parent' => $parentName,
             '(Child) sku' => $parentKey,
             'Child_sku' => $parentKey,
             'is_parent' => true,
-            'image_path' => $dash,
+            'is_parent_summary' => true,
+            'image_path' => $imagePath,
             'INV' => $sumInv,
             'L30' => $sumL30,
             'TT Dil%' => $dilPct,
@@ -1138,6 +1191,12 @@ class TikTokPricingController extends Controller
             'status' => $dash,
             'campaign_name' => $dash,
             'MAP' => $dash,
+            'video_views' => $sumVideoViews,
+            'ads_views' => $sumAdsViews,
+            'affl_views' => $sumAfflViews,
+            't_views' => $sumTViews,
+            'cvr' => $sumTViews > 0 ? round(($sumTtL30 / $sumTViews) * 100, 2) : 0.0,
+            'CVR%' => $sumTViews > 0 ? round(($sumTtL30 / $sumTViews) * 100, 2) : 0.0,
             'GPFT%' => $gpftPct,
             'TACOS%' => $tacosPct,
             'PFT %' => $gpftPct,
@@ -1900,7 +1959,7 @@ class TikTokPricingController extends Controller
                 if (! is_array($row)) {
                     continue;
                 }
-                if (! empty($row['is_parent']) || (isset($row['Parent']) && str_starts_with((string) $row['Parent'], 'PARENT'))) {
+                if (! empty($row['is_parent']) || ! empty($row['is_parent_summary']) || (isset($row['Parent']) && str_starts_with((string) $row['Parent'], 'PARENT'))) {
                     continue;
                 }
                 $sku = strtoupper(trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? '')));
@@ -1954,6 +2013,13 @@ class TikTokPricingController extends Controller
             // Match JS updateSummary(): all non-parent SKU rows (default "All INV" badge set).
             // Do NOT restrict to INV > 0 — that under-counted sales/PFT vs the live ROI%/GPFT badges.
             $filteredData = collect($products)->filter(function ($p) {
+                if (! empty($p['is_parent']) || ! empty($p['is_parent_summary']) || ! empty($p['is_parent_row'])) {
+                    return false;
+                }
+                $sku = strtoupper(trim((string) ($p['(Child) sku'] ?? $p['sku'] ?? '')));
+                if (str_starts_with($sku, 'PARENT ')) {
+                    return false;
+                }
                 return !(isset($p['Parent']) && str_starts_with((string) $p['Parent'], 'PARENT'));
             });
             
@@ -2511,11 +2577,15 @@ class TikTokPricingController extends Controller
             if (! is_array($row)) {
                 continue;
             }
-            if (! empty($row['is_parent'])) {
+            if (! empty($row['is_parent']) || ! empty($row['is_parent_summary']) || ! empty($row['is_parent_row'])) {
                 continue;
             }
             $parent = trim((string) ($row['Parent'] ?? ''));
-            if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+            if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT ')) {
+                continue;
+            }
+            $rowSku = strtoupper(trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? '')));
+            if (str_starts_with($rowSku, 'PARENT ')) {
                 continue;
             }
             if (strtoupper(trim((string) ($row['Missing'] ?? ''))) === 'M') {

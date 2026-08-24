@@ -1,4 +1,4 @@
-@extends(request()->boolean('embed') ? 'layouts.embed' : 'layouts.vertical', ['title' => 'Active Channel Yesterday', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Active Channel Yesterday', 'sidenav' => 'condensed'])
 
 @php
     $yesterdayLabel = now('America/Los_Angeles')->subDays(2)->format('M j, Y');
@@ -174,23 +174,35 @@
 @endsection
 
 @section('content')
-    @unless(request()->boolean('embed'))
     @include('layouts.shared.page-title', [
         'page_title' => 'Active Channel Yesterday',
         'sub_title' => $yesterdayLabel . ' (latest complete day — sales, orders, qty, spend)',
     ])
-    @endunless
 
     <div class="toast-container"></div>
 
     <div class="row">
-        <div class="card shadow-sm {{ request()->boolean('embed') ? 'mb-0 border-0 shadow-none' : '' }}">
+        <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
-                    @unless(request()->boolean('embed'))
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-sm btn-outline-dark" type="button"
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            data-bs-auto-close="outside" title="Columns" aria-label="Columns">
+                            <i class="fas fa-columns" style="color: #000;"></i>
+                        </button>
+                        <div class="dropdown-menu p-0" id="column-dropdown-menu"
+                            aria-labelledby="columnVisibilityDropdown"
+                            style="max-height:none; overflow:visible; min-width:420px; width:max-content;">
+                            <ul id="column-dropdown-list" class="list-unstyled mb-0 px-2 py-1"
+                                style="display:grid; grid-template-columns:repeat(3, minmax(120px, 1fr)); gap:0 0.25rem; max-height:360px; overflow-y:auto;">
+                            </ul>
+                        </div>
+                    </div>
+
                     <a href="{{ route('l7.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
                         title="Open Active Channel 7 Days">
                         <i class="fas fa-calendar-week me-1"></i> L7 Master
@@ -199,7 +211,6 @@
                         title="Open Active Channel Master (L30)">
                         <i class="fas fa-table me-1"></i> L30 Master
                     </a>
-                    @endunless
                     <span class="badge" style="background-color:#17a2b8;color:#fff;font-weight:600;">
                         Complete day: {{ $yesterdayLabel }} PT
                     </span>
@@ -1003,6 +1014,115 @@
                         }
                     }
                 ]
+            });
+
+            const COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+            const COLUMN_VISIBILITY_CHANNEL = 'yesterday_marketplace_master_user_{{ auth()->id() ?? 'guest' }}';
+            const columnCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            let savedColumnVisibility = {};
+
+            function fetchColumnVisibility() {
+                return fetch(`${COLUMN_VISIBILITY_URL}?channel=${encodeURIComponent(COLUMN_VISIBILITY_CHANNEL)}`, {
+                        credentials: 'same-origin'
+                    })
+                    .then(r => r.json())
+                    .then(map => {
+                        savedColumnVisibility = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        return savedColumnVisibility;
+                    })
+                    .catch(() => {
+                        savedColumnVisibility = {};
+                        return {};
+                    });
+            }
+
+            function applyColumnVisibility() {
+                if (!table) return;
+                if (savedColumnVisibility && Object.keys(savedColumnVisibility).length) {
+                    table.getColumns().forEach(col => {
+                        const def = col.getDefinition();
+                        if (!def.field) return;
+                        if (savedColumnVisibility[def.field] === false) col.hide();
+                        else if (savedColumnVisibility[def.field] === true) col.show();
+                    });
+                }
+            }
+
+            function saveColumnVisibility() {
+                if (!table) return Promise.resolve();
+                const visibility = {};
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    if (def.field) visibility[def.field] = col.isVisible();
+                });
+                savedColumnVisibility = visibility;
+                return fetch(COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': columnCsrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        channel: COLUMN_VISIBILITY_CHANNEL,
+                        visibility: visibility,
+                    }),
+                }).then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json().catch(() => ({}));
+                });
+            }
+
+            function buildColumnDropdown() {
+                const menu = document.getElementById('column-dropdown-list');
+                if (!menu || !table) return;
+                menu.innerHTML = '';
+                table.getColumns().forEach(col => {
+                    const def = col.getDefinition();
+                    const field = def.field;
+                    if (!field) return;
+                    const isVisible = col.isVisible();
+                    const li = document.createElement('li');
+                    li.style.minWidth = '0';
+                    li.innerHTML =
+                        `<label class="dropdown-item py-1 px-2 text-truncate" style="white-space:nowrap;" title="${def.title}"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
+                    menu.appendChild(li);
+                });
+            }
+
+            let columnVisibilitySaveTimer = null;
+            const columnDropdownMenu = document.getElementById('column-dropdown-menu');
+            if (columnDropdownMenu) {
+                columnDropdownMenu.addEventListener('change', function(e) {
+                    if (e.target.type !== 'checkbox') return;
+                    const field = e.target.getAttribute('data-field');
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (e.target.checked) col.show();
+                    else col.hide();
+                    clearTimeout(columnVisibilitySaveTimer);
+                    columnVisibilitySaveTimer = setTimeout(function() {
+                        saveColumnVisibility().catch(function() {
+                            if (typeof showToast === 'function') {
+                                showToast('error', 'Failed to save column settings.');
+                            }
+                        });
+                    }, 300);
+                });
+            }
+
+            table.on('tableBuilt', function() {
+                fetchColumnVisibility().then(() => {
+                    applyColumnVisibility();
+                    buildColumnDropdown();
+                });
+            });
+
+            table.on('dataLoaded', function() {
+                setTimeout(function() {
+                    buildColumnDropdown();
+                }, 100);
             });
 
             $(document).on('click', '.metric-chart-icon', function(e) {
