@@ -96,6 +96,10 @@ class ListingPublishCommonController extends Controller
     private function skuParentsFromRequest(Request $request): array
     {
         $raw = $request->input('sku_parents', $request->input('skuParents', []));
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
         if (! is_array($raw)) {
             return [];
         }

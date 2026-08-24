@@ -325,7 +325,9 @@ class Temu2ListingPublishService
         }
 
         $outGoodsSn = $this->uniqueOutGoodsSn(
-            $existingGoodsId !== '' ? $primarySku : ($parentKey !== '' ? $parentKey : $primarySku),
+            count($prepared) === 1
+                ? $primarySku
+                : ($existingGoodsId !== '' ? $primarySku : ($parentKey !== '' ? $parentKey : $primarySku)),
             $primarySku
         );
 
@@ -562,37 +564,98 @@ class Temu2ListingPublishService
             $label = $parentLabels[$parent] ?? $parent;
             $children = $this->childrenForParent($label);
             foreach ($seedsByParent[$parent] ?? [] as $seedProduct) {
-                $sku = trim((string) $seedProduct->sku);
-                $already = $children->contains(function ($row) use ($sku) {
-                    return $this->skuNorm((string) $row->sku) === $this->skuNorm($sku);
-                });
-                if (! $already) {
-                    $children->push($seedProduct);
-                }
+                $this->pushChildIfMissing($children, $seedProduct);
             }
             foreach ($orphanSkusByParent[$parent] ?? [] as $orphanSku) {
                 $found = $this->findProductLoose($orphanSku);
-                if (! $found) {
-                    continue;
-                }
-                $already = $children->contains(function ($row) use ($found) {
-                    return $this->skuNorm((string) $row->sku) === $this->skuNorm((string) $found->sku);
-                });
-                if (! $already) {
-                    $children->push($found);
+                if ($found) {
+                    $this->pushChildIfMissing($children, $found);
                 }
             }
-            $children = $children
-                ->filter(fn ($p) => stripos(trim((string) $p->sku), 'PARENT') === false)
-                ->unique(fn ($p) => $this->skuNorm((string) $p->sku))
-                ->sortBy(fn ($p) => strtoupper((string) $p->sku))
-                ->values();
+            $children = $this->finalizeChildCollection($children);
             if ($children->isNotEmpty()) {
                 $groups[$label] = $children;
             }
         }
 
+        $this->ensureSeedsPresentInGroups($groups, $seeds, $skuParents);
+
         return $groups;
+    }
+
+    /**
+     * @param  array<string, \Illuminate\Support\Collection<int, ProductMaster>>  $groups
+     * @param  list<string>  $seeds
+     * @param  array<string, string>  $skuParents
+     */
+    private function ensureSeedsPresentInGroups(array &$groups, array $seeds, array $skuParents): void
+    {
+        $included = [];
+        foreach ($groups as $children) {
+            foreach ($children as $row) {
+                $included[$this->skuNorm((string) $row->sku)] = true;
+            }
+        }
+
+        foreach ($seeds as $sku) {
+            if ($this->isParentMasterSku($sku) || isset($included[$this->skuNorm($sku)])) {
+                continue;
+            }
+            $found = $this->findProductLoose($sku);
+            if (! $found || $this->isParentMasterSku((string) $found->sku)) {
+                continue;
+            }
+            $label = $this->submittedParentForSku($sku, $skuParents);
+            if ($label === '') {
+                $label = $this->groupKeyForProduct($found);
+            }
+            if ($label === '') {
+                $label = trim((string) $found->sku);
+            }
+            if (! isset($groups[$label])) {
+                $groups[$label] = collect();
+            }
+            $this->pushChildIfMissing($groups[$label], $found);
+            $groups[$label] = $this->finalizeChildCollection($groups[$label]);
+            $included[$this->skuNorm((string) $found->sku)] = true;
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ProductMaster>  $children
+     */
+    private function pushChildIfMissing($children, ProductMaster $product): void
+    {
+        $sku = trim((string) $product->sku);
+        if ($sku === '' || $this->isParentMasterSku($sku)) {
+            return;
+        }
+        $already = $children->contains(function ($row) use ($sku) {
+            return $this->skuNorm((string) $row->sku) === $this->skuNorm($sku);
+        });
+        if (! $already) {
+            $children->push($product);
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ProductMaster>  $children
+     * @return \Illuminate\Support\Collection<int, ProductMaster>
+     */
+    private function finalizeChildCollection($children)
+    {
+        return $children
+            ->filter(fn ($p) => ! $this->isParentMasterSku((string) $p->sku))
+            ->unique(fn ($p) => $this->skuNorm((string) $p->sku))
+            ->sortBy(fn ($p) => strtoupper((string) $p->sku))
+            ->values();
+    }
+
+    private function isParentMasterSku(?string $sku): bool
+    {
+        $sku = trim((string) $sku);
+
+        return $sku !== '' && stripos($sku, 'PARENT') !== false;
     }
 
     /**
@@ -601,8 +664,13 @@ class Temu2ListingPublishService
     private function submittedParentForSku(string $sku, array $skuParents): string
     {
         $want = $this->skuNorm($sku);
+        $wantCompact = $this->skuCompact($sku);
         foreach ($skuParents as $key => $parent) {
-            if ($this->skuNorm((string) $key) === $want) {
+            if (is_array($parent)) {
+                $key = $parent['sku'] ?? $key;
+                $parent = $parent['parent'] ?? '';
+            }
+            if ($this->skuNorm((string) $key) === $want || ($wantCompact !== '' && $this->skuCompact((string) $key) === $wantCompact)) {
                 return trim((string) $parent);
             }
         }
@@ -618,25 +686,23 @@ class Temu2ListingPublishService
         $parentNorm = $this->skuNorm($parent);
         $parentCompact = $this->skuCompact($parent);
 
-        return ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
-            ->where(function ($q) use ($parent, $parentNorm, $parentCompact) {
-                $q->where('parent', $parent)
-                    ->orWhereRaw('UPPER(TRIM(parent)) = ?', [$parentNorm])
-                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$parentNorm]);
-                if ($parentCompact !== '') {
-                    $q->orWhereRaw(
-                        "UPPER(REPLACE(REPLACE(REPLACE(IFNULL(parent,''),' ',''),'-',''),'.','')) = ?",
-                        [$parentCompact]
-                    )->orWhereRaw(
-                        "UPPER(REPLACE(REPLACE(REPLACE(sku,' ',''),'-',''),'.','')) = ?",
-                        [$parentCompact]
-                    );
-                }
-            })
-            ->orderBy('sku')
-            ->get();
+        return $this->finalizeChildCollection(
+            ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereRaw("UPPER(TRIM(sku)) NOT LIKE 'PARENT%'")
+                ->where(function ($q) use ($parent, $parentNorm, $parentCompact) {
+                    $q->where('parent', $parent)
+                        ->orWhereRaw('UPPER(TRIM(parent)) = ?', [$parentNorm]);
+                    if ($parentCompact !== '') {
+                        $q->orWhereRaw(
+                            "UPPER(REPLACE(REPLACE(REPLACE(IFNULL(parent,''),' ',''),'-',''),'.','')) = ?",
+                            [$parentCompact]
+                        );
+                    }
+                })
+                ->orderBy('sku')
+                ->get()
+        );
     }
 
     /**
@@ -767,11 +833,12 @@ class Temu2ListingPublishService
         $rows = [];
         $publishSkus = [];
         $selectedCount = 0;
+        $onlyChild = $children->count() === 1;
         foreach ($children as $product) {
             $sku = trim((string) $product->sku);
             $classified = $this->classifyChildSku($sku);
             $publishable = ($classified['status'] ?? '') === 'will_publish';
-            $selected = $publishable && ($seedNorm === [] || isset($seedNorm[$this->skuNorm($sku)]));
+            $selected = $publishable && ($onlyChild || $seedNorm === [] || isset($seedNorm[$this->skuNorm($sku)]));
             $rows[] = [
                 'sku' => $sku,
                 'spec' => $sku,
@@ -793,6 +860,7 @@ class Temu2ListingPublishService
             'children' => $rows,
             'publish_skus' => $publishSkus,
             'publish_count' => $selectedCount > 0 ? $selectedCount : count($publishSkus),
+            'single_child' => count($rows) === 1,
         ];
     }
 
@@ -801,7 +869,7 @@ class Temu2ListingPublishService
      */
     private function classifyChildSku(string $sku): array
     {
-        if (stripos($sku, 'PARENT') !== false) {
+        if ($this->isParentMasterSku($sku)) {
             return ['status' => 'skipped_parent', 'reason' => 'Parent row'];
         }
         if ($this->nrReqForSku($sku) === 'NR') {
@@ -845,7 +913,7 @@ class Temu2ListingPublishService
         if ($this->resolveSourceImages($product, $sku) === []) {
             return ['status' => 'skipped_no_image', 'reason' => 'Images missing in Image Master'];
         }
-        if (! $this->hasDimWt($product)) {
+        if (! $this->hasDimWt($product) && ! $this->hasDimWt($this->parentProductFor($product, $sku))) {
             return ['status' => 'skipped_no_dim', 'reason' => 'Dimensions missing in Dim/Wt'];
         }
 
@@ -2438,8 +2506,11 @@ class Temu2ListingPublishService
         ];
     }
 
-    private function hasDimWt(ProductMaster $product): bool
+    private function hasDimWt(?ProductMaster $product): bool
     {
+        if (! $product) {
+            return false;
+        }
         $dims = $this->dimWtValues($product);
 
         return $dims['length'] !== null
@@ -2455,7 +2526,8 @@ class Temu2ListingPublishService
      */
     private function resolveDimensions(ProductMaster $product): array
     {
-        $dims = $this->dimWtValues($product);
+        $source = $this->hasDimWt($product) ? $product : ($this->parentProductFor($product, (string) $product->sku) ?? $product);
+        $dims = $this->dimWtValues($source);
         $lengthIn = $dims['length'];
         $widthIn = $dims['width'];
         $heightIn = $dims['height'];
