@@ -117,27 +117,13 @@
         background-color: #dbeafe !important;
         color: #0f172a !important;
     }
-
-    /*
-     * Freeze header rows on every HTML table. --app-freeze-top is 0 inside a
-     * capped scroll wrapper and the topbar height for page-scroll tables
-     * (see public/js/freeze-table-headers.js).
-     */
-    table > thead > tr > th,
-    table > thead > tr > td {
-        position: sticky !important;
-        top: var(--app-freeze-top, 0px) !important;
-        z-index: 6 !important;
-        background-color: #dbeafe;
-        box-shadow: 0 1px 0 #93c5fd;
-    }
     .table-responsive > table > thead > tr > th,
     .table-container > table > thead > tr > th,
     .modal-body .table-responsive > table > thead > tr > th,
     #ebay-table > thead > tr > th,
     #sku-history-content .table-responsive > table > thead > tr > th {
         position: sticky !important;
-        top: var(--app-freeze-top, 0px) !important;
+        top: 0 !important;
         z-index: 6 !important;
         background-color: #dbeafe !important;
         box-shadow: 0 1px 0 #93c5fd;
@@ -145,7 +131,7 @@
     .tabulator .tabulator-header {
         position: sticky !important;
         top: 0 !important;
-        z-index: 7 !important;
+        z-index: 6 !important;
     }
 
     /*

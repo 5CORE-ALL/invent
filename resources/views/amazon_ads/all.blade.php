@@ -215,7 +215,7 @@
                         <pre id="amz-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:280px;overflow:auto;"></pre>
                     </div>
 
-                    <div id="amz-ads-raw-wrap" data-no-freeze-header>
+                    <div id="amz-ads-raw-wrap">
                         <div class="p-2 bg-light border rounded-top d-flex align-items-center gap-2">
                             <input type="search" id="amz-filter-search" class="form-control" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
                             <span id="amz-raw-source-label" class="badge bg-dark text-nowrap"></span>

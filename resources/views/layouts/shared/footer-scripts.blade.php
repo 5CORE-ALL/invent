@@ -112,8 +112,6 @@
     })();
 </script>
 
-<script src="{{ asset('js/freeze-table-headers.js') }}?v=1"></script>
-
 {{-- Global: any badge with a light background gets black text for readability --}}
 <script>
     (function () {
