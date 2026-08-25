@@ -111,11 +111,13 @@ class DobaOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('doba');
+        $queue = MarketplaceManagerRegistry::queueFor('doba');
+        MarketplaceShopifyImportQueue::releaseStuckQueued(DobaDailyData::class, $queue);
         $query = DobaDailyData::query()
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['queued', 'imported']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->when(Schema::hasColumn('doba_daily_data', 'order_time'), function ($q) {
                 $q->where('order_time', '>=', now()->subDays(14));
@@ -129,7 +131,7 @@ class DobaOrderSyncService
                 continue;
             }
             $row->update(['import_status' => 'queued']);
-            ImportDobaOrderToShopify::dispatch((int) $row->id);
+            MarketplaceShopifyImportQueue::push(new ImportDobaOrderToShopify((int) $row->id), $queue);
             $dispatched++;
         }
 

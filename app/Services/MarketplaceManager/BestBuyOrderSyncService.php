@@ -112,11 +112,13 @@ class BestBuyOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('bestbuy');
+        $queue = MarketplaceManagerRegistry::queueFor('bestbuy');
+        MarketplaceShopifyImportQueue::releaseStuckQueued(BestBuyOrderMetric::class, $queue);
         $query = BestBuyOrderMetric::query()
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['queued', 'imported']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->when(Schema::hasColumn('mirakl_daily_data', 'order_created_at'), function ($q) {
                 $q->where('order_created_at', '>=', now()->subDays(14));
@@ -130,7 +132,7 @@ class BestBuyOrderSyncService
                 continue;
             }
             $row->update(['import_status' => 'queued']);
-            ImportBestBuyOrderToShopify::dispatch((int) $row->id);
+            MarketplaceShopifyImportQueue::push(new ImportBestBuyOrderToShopify((int) $row->id), $queue);
             $dispatched++;
         }
 

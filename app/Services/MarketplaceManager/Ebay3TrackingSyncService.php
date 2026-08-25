@@ -4,18 +4,15 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\Ebay3OrderMetric;
 use App\Models\MarketplaceSyncSettings;
-use App\Services\EbayThreeApiService;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Tracking push stub — eBay createShippingFulfillment / CompleteSale is not wired yet.
+ * Push Shopify tracking to eBay 3 via Sell Fulfillment createShippingFulfillment.
  */
 class Ebay3TrackingSyncService
 {
     public function __construct(
-        protected EbayThreeApiService $ebay3Api,
-        protected Ebay3OrderDetailService $orderDetailService,
-        protected Ebay3DetailFormatter $formatter,
+        protected EbaySellFulfillmentTracking $fulfillment,
     ) {}
 
     /**
@@ -30,14 +27,7 @@ class Ebay3TrackingSyncService
      */
     public function pushTrackingForOrder(Ebay3OrderMetric $line): array
     {
-        return [
-            'success' => false,
-            'skipped' => true,
-            'action' => 'not_implemented',
-            'message' => 'eBay 3 tracking push is not implemented yet (Sell Fulfillment createShippingFulfillment / CompleteSale).',
-            'shopify_tracking' => null,
-            'shopify_carrier' => null,
-        ];
+        return $this->fulfillment->pushForChannel('ebay3', $line);
     }
 
     /**
@@ -52,40 +42,61 @@ class Ebay3TrackingSyncService
                 'pushed' => 0,
                 'skipped' => 0,
                 'failed' => 0,
-                'message' => 'Push Shopify tracking to eBay 3 is Off in settings (or not implemented).',
+                'message' => 'Push Shopify tracking to eBay 3 is Off in settings.',
             ];
         }
 
         $limit = max(1, min(100, $limit));
-        $lines = Ebay3OrderMetric::query()
+        $rows = Ebay3OrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
             ->orderByDesc('id')
-            ->limit($limit)
+            ->limit($limit * 5)
             ->get();
 
-        $processed = 0;
-        $skipped = 0;
-        foreach ($lines as $line) {
-            $processed++;
-            $result = $this->pushTrackingForOrder($line);
-            if (! empty($result['skipped'])) {
-                $skipped++;
+        $unique = [];
+        foreach ($rows as $row) {
+            $orderId = trim((string) $row->order_id);
+            if ($orderId === '' || isset($unique[$orderId])) {
+                continue;
+            }
+            $unique[$orderId] = $row;
+            if (count($unique) >= $limit) {
+                break;
             }
         }
 
-        Log::info('Ebay3TrackingSyncService: stub pass', [
+        $processed = 0;
+        $pushed = 0;
+        $skipped = 0;
+        $failed = 0;
+        foreach ($unique as $line) {
+            $processed++;
+            $result = $this->pushTrackingForOrder($line);
+            if (! empty($result['success']) && empty($result['skipped'])) {
+                $pushed++;
+            } elseif (! empty($result['skipped'])) {
+                $skipped++;
+            } else {
+                $failed++;
+            }
+            usleep(250000);
+        }
+
+        Log::info('Ebay3TrackingSyncService: completed', [
             'processed' => $processed,
+            'pushed' => $pushed,
             'skipped' => $skipped,
+            'failed' => $failed,
         ]);
 
         return [
-            'success' => true,
+            'success' => $failed === 0,
             'processed' => $processed,
-            'pushed' => 0,
+            'pushed' => $pushed,
             'skipped' => $skipped,
-            'failed' => 0,
-            'message' => 'Tracking push not implemented for eBay 3 yet. Checked '.$processed.' order(s).',
+            'failed' => $failed,
+            'message' => "Tracking sync: checked {$processed}, pushed {$pushed}, skipped {$skipped}, failed {$failed}.",
         ];
     }
 

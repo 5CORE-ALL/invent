@@ -1488,13 +1488,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
-        // Auto tracking/address apply disabled — use order page / Settings "Sync now" manually.
-        // $schedule->job(new \App\Jobs\SyncTemuTrackingJob(true, 40))
-        //     ->everyFiveMinutes()
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('temu-sync-tracking')
-        //     ->withoutOverlapping(4)
-        //     ->appendOutputTo($log);
+        // Auto tracking from Shopify fulfillments (settings: push_tracking_to_temu).
+        $schedule->job(new \App\Jobs\SyncTemuTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
 
         // $schedule->job(new \App\Jobs\SyncTemuAddressJob(true, 40))
         //     ->everyFifteenMinutes()
@@ -1534,13 +1534,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
-        // Auto tracking/address apply disabled — use order page / Settings "Sync now" manually.
-        // $schedule->job(new \App\Jobs\SyncTemu2TrackingJob(true, 40))
-        //     ->everyFiveMinutes()
-        //     ->timezone('Asia/Kolkata')
-        //     ->name('temu2-sync-tracking')
-        //     ->withoutOverlapping(4)
-        //     ->appendOutputTo($log);
+        // Auto tracking from Shopify fulfillments (settings: push_tracking_to_temu2).
+        $schedule->job(new \App\Jobs\SyncTemu2TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
 
         // $schedule->job(new \App\Jobs\SyncTemu2AddressJob(true, 40))
         //     ->everyFifteenMinutes()
@@ -1970,12 +1970,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->command('tiktok:sync-orders --days=7 --import')
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '', true, 7))
             ->everyTenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok-sync-orders')
             ->withoutOverlapping(9)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTikTokTrackingJob(true, 40))
@@ -2015,12 +2014,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->command('tiktok2:sync-orders --days=2 --import')
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 2))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-orders')
             ->withoutOverlapping(28)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncTikTok2TrackingJob(true, 40))
@@ -2045,12 +2043,12 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
+        // Run inline — runInBackground() would sit on the default queue and never dispatch mm-* imports.
         $schedule->command('mm:dispatch-unpushed-shopify')
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('mm-dispatch-unpushed-shopify')
             ->withoutOverlapping(14)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         // $schedule->command('shopify:retry-pending-orders')

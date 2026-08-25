@@ -146,6 +146,8 @@ class Ebay2OrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('ebay2', $settings);
+        $queue = MarketplaceManagerRegistry::queueFor('ebay2');
+        MarketplaceShopifyImportQueue::releaseStuckQueued(Ebay2OrderMetric::class, $queue);
 
         $orders = Ebay2OrderMetric::query()
             ->whereNull('shopify_order_id')
@@ -164,7 +166,10 @@ class Ebay2OrderSyncService
             }
 
             try {
-                \App\Jobs\ImportEbay2OrderToShopify::dispatch((int) $order->id);
+                MarketplaceShopifyImportQueue::push(
+                    new \App\Jobs\ImportEbay2OrderToShopify((int) $order->id),
+                    $queue
+                );
                 $order->update(['import_status' => 'queued']);
                 $dispatched++;
             } catch (\Throwable $e) {

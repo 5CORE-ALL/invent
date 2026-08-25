@@ -29,6 +29,8 @@ class EnsureQueueWorkerWatchdogDaemonCommand extends Command
 
         $this->warn('Could not start queue watchdog daemon. Check storage/logs/queue-watchdog-daemon.log');
 
-        return self::FAILURE;
+        // Best-effort: never fail schedule:run / cron-monitor over a daemon that
+        // may already be starting, or a host that needs a later retry.
+        return self::SUCCESS;
     }
 }

@@ -30,10 +30,25 @@ class RefreshFulfillmentShipmentStatus extends Command
     /** Marketplaces that commonly sit in Label Created / No Scan until status advances. */
     protected array $orderSyncMarketplaces = [
         'amazon',
+        'aliexpress',
+        'alibaba',
+        'reverb',
+        'newegg',
+        'shein',
+        'topdawg',
         'temu',
+        'temu2',
+        'purchasingpower',
+        'wayfair',
+        'bestbuy',
+        'macy',
+        'doba',
         'ebay1',
         'ebay2',
         'ebay3',
+        'faire',
+        'tiktok',
+        'tiktok2',
     ];
 
     public function handle(ShipmentTrackingService $tracking): int
