@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ShopifyInventoryLog;
 use App\Jobs\UpdateShopifyInventoryJob;
 use App\Models\LostGainAqHistory;
+use App\Models\User;
 use Illuminate\Support\Str;
 
 
@@ -2643,19 +2644,35 @@ GQL;
             // Get the stored spreadsheet ID (if configured to use the same sheet)
             $spreadsheetId = config('services.google_apps_script.verification_adjustment_sheet_id');
 
-            // Explicit emails to grant editor access (in case Workspace blocks "anyone with link")
-            $shareEmails = array_values(array_unique(array_filter([
-                Auth::user()?->email,
-                'inventory@5core.com',
-                'ritu.kaur013@gmail.com',
-                'president@5core.com',
-            ])));
+            $shareDomain = (string) config('services.google_apps_script.share_domain', '5core.com');
+
+            // Everyone with a @5core.com account gets Editor. Domain share is the
+            // primary path; these emails are a fallback if Workspace blocks it.
+            $shareEmails = User::query()
+                ->where('email', 'like', '%@'.$shareDomain)
+                ->pluck('email')
+                ->map(fn ($email) => strtolower(trim((string) $email)))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $currentEmail = strtolower(trim((string) Auth::user()?->email));
+            if (
+                $currentEmail !== ''
+                && str_ends_with($currentEmail, '@'.$shareDomain)
+                && ! in_array($currentEmail, $shareEmails, true)
+            ) {
+                $shareEmails[] = $currentEmail;
+            }
 
             // Prepare payload
             $payload = [
                 'data' => $data,
                 'sheetTitle' => 'Verification Adjustment',
                 'spreadsheetId' => $spreadsheetId, // Empty string means create new
+                'shareDomain' => $shareDomain,
+                'shareRole' => 'writer',
                 'shareEmails' => $shareEmails,
             ];
 
@@ -2663,7 +2680,9 @@ GQL;
             Log::info('Sending data to Google Apps Script', [
                 'url' => $appsScriptUrl,
                 'rows' => count($data),
-                'spreadsheetId' => $spreadsheetId ?: 'new'
+                'spreadsheetId' => $spreadsheetId ?: 'new',
+                'shareDomain' => $shareDomain,
+                'shareEmailCount' => count($shareEmails),
             ]);
 
             $response = Http::timeout(120)
@@ -2698,7 +2717,8 @@ GQL;
             Log::info('Data exported successfully to Google Sheets', [
                 'spreadsheetId' => $result['spreadsheetId'],
                 'url' => $result['spreadsheetUrl'],
-                'rows' => $result['rowsWritten'] ?? 0
+                'rows' => $result['rowsWritten'] ?? 0,
+                'sharing' => $result['sharing'] ?? null,
             ]);
 
             return response()->json([

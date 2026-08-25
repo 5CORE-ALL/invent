@@ -1,6 +1,8 @@
 /**
  * Inventory Management - Google Sheets Export Service
  *
+ * New sheets are shared with the 5core.com Workspace as Editor.
+ *
  * CRITICAL: Editing this file in Laravel does NOTHING until you paste it into
  * Google Apps Script and redeploy:
  *   1. Open https://script.google.com → your Verification Adjustment export project
@@ -16,6 +18,8 @@ function doPost(e) {
     var sheetTitle = data.sheetTitle || 'Sheet1';
     var spreadsheetId = data.spreadsheetId || '';
     var shareEmails = data.shareEmails || [];
+    var shareDomain = data.shareDomain || '5core.com';
+    var shareRole = data.shareRole || 'writer';
 
     if (rows.length === 0) {
       return jsonOut_({
@@ -73,7 +77,7 @@ function doPost(e) {
       }
     }
 
-    var shareResult = ensureOpenAccess_(spreadsheet.getId(), shareEmails);
+    var shareResult = ensureDomainEditAccess_(spreadsheet.getId(), shareEmails, shareDomain, shareRole);
 
     return jsonOut_({
       success: true,
@@ -93,57 +97,79 @@ function doPost(e) {
 }
 
 /**
- * Make sheet openable for every Google account.
- * Uses Drive REST API (more reliable than DriveApp.setSharing on Workspace).
+ * Default share: every @5core.com Workspace account can Edit.
+ * Domain permission is primary; individual editors are only added if that fails.
  */
-function ensureOpenAccess_(fileId, shareEmails) {
+function ensureDomainEditAccess_(fileId, shareEmails, shareDomain, shareRole) {
+  shareDomain = shareDomain || '5core.com';
+  shareRole = shareRole || 'writer';
+
   var result = {
+    domainShared: false,
     anyoneWithLink: false,
     editorsAdded: [],
     errors: []
   };
 
-  // 1) Anyone with the link can edit (works for ALL emails, including Gmail)
-  var anyoneRes = createDrivePermission_(fileId, {
-    type: 'anyone',
-    role: 'writer'
+  var domainRes = createDrivePermission_(fileId, {
+    type: 'domain',
+    role: shareRole,
+    domain: shareDomain,
+    allowFileDiscovery: true
   });
-  if (anyoneRes.ok) {
-    result.anyoneWithLink = true;
-  } else {
-    result.errors.push('anyone: ' + anyoneRes.error);
 
-    // Fallback: domain with link (Workspace only)
-    var domainRes = createDrivePermission_(fileId, {
-      type: 'domain',
-      role: 'writer',
-      domain: '5core.com',
-      allowFileDiscovery: false
-    });
-    if (!domainRes.ok) {
-      result.errors.push('domain: ' + domainRes.error);
+  if (domainRes.ok) {
+    result.domainShared = true;
+  } else {
+    result.errors.push('domain-api: ' + domainRes.error);
+
+    try {
+      DriveApp.getFileById(fileId).setSharing(
+        DriveApp.Access.DOMAIN,
+        DriveApp.Permission.EDIT
+      );
+      result.domainShared = true;
+    } catch (e1) {
+      result.errors.push('DriveApp.DOMAIN: ' + e1.toString());
+      try {
+        DriveApp.getFileById(fileId).setSharing(
+          DriveApp.Access.DOMAIN_WITH_LINK,
+          DriveApp.Permission.EDIT
+        );
+        result.domainShared = true;
+      } catch (e2) {
+        result.errors.push('DriveApp.DOMAIN_WITH_LINK: ' + e2.toString());
+      }
     }
   }
 
-  // 2) Also add explicit emails as editors
-  var emails = shareEmails && shareEmails.length
-    ? shareEmails
-    : ['inventory@5core.com', 'ritu.kaur013@gmail.com', 'president@5core.com'];
+  // If org-wide share is blocked, grant Editor to each @domain email.
+  if (!result.domainShared) {
+    addEditorsByEmail_(fileId, shareEmails, shareDomain, result);
+  }
+
+  Logger.log('Share result: ' + JSON.stringify(result));
+  return result;
+}
+
+function addEditorsByEmail_(fileId, shareEmails, shareDomain, result) {
+  var domainSuffix = '@' + String(shareDomain || '5core.com').toLowerCase();
+  var emails = shareEmails && shareEmails.length ? shareEmails : [];
 
   for (var i = 0; i < emails.length; i++) {
     var email = String(emails[i] || '').trim().toLowerCase();
     if (!email || email.indexOf('@') === -1) continue;
+    if (email.slice(-domainSuffix.length) !== domainSuffix) continue;
 
     var userRes = createDrivePermission_(fileId, {
       type: 'user',
       role: 'writer',
       emailAddress: email
-    }, true);
+    }, false);
 
     if (userRes.ok) {
       result.editorsAdded.push(email);
     } else if (String(userRes.error || '').indexOf('alreadyExists') === -1) {
-      // also try DriveApp fallback
       try {
         DriveApp.getFileById(fileId).addEditor(email);
         result.editorsAdded.push(email);
@@ -154,22 +180,11 @@ function ensureOpenAccess_(fileId, shareEmails) {
       result.editorsAdded.push(email);
     }
   }
+}
 
-  // 3) Last DriveApp fallback for link sharing
-  if (!result.anyoneWithLink) {
-    try {
-      DriveApp.getFileById(fileId).setSharing(
-        DriveApp.Access.ANYONE_WITH_LINK,
-        DriveApp.Permission.EDIT
-      );
-      result.anyoneWithLink = true;
-    } catch (e3) {
-      result.errors.push('DriveApp.setSharing: ' + e3.toString());
-    }
-  }
-
-  Logger.log('Share result: ' + JSON.stringify(result));
-  return result;
+/** @deprecated Use ensureDomainEditAccess_ */
+function ensureOpenAccess_(fileId, shareEmails) {
+  return ensureDomainEditAccess_(fileId, shareEmails, '5core.com', 'writer');
 }
 
 function createDrivePermission_(fileId, permission, sendEmail) {
@@ -219,11 +234,10 @@ function jsonOut_(obj) {
  */
 function forceShareLatestSheet() {
   var SHEET_ID = 'PASTE_SPREADSHEET_ID_HERE'; // e.g. 1b48kfSf3ZzEMIGcXWiX1830wB7blssahVq0ei9WpuUQ
-  var result = ensureOpenAccess_(SHEET_ID, [
+  var result = ensureDomainEditAccess_(SHEET_ID, [
     'inventory@5core.com',
-    'ritu.kaur013@gmail.com',
     'president@5core.com'
-  ]);
+  ], '5core.com', 'writer');
   Logger.log(JSON.stringify(result, null, 2));
 }
 
@@ -237,7 +251,9 @@ function testDoPost() {
         ],
         sheetTitle: 'Test Sheet',
         spreadsheetId: '',
-        shareEmails: ['inventory@5core.com', 'ritu.kaur013@gmail.com']
+        shareDomain: '5core.com',
+        shareRole: 'writer',
+        shareEmails: ['inventory@5core.com', 'president@5core.com']
       })
     }
   };

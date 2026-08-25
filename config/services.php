@@ -273,6 +273,7 @@ return [
     'google_apps_script' => [
         'export_url' => env('GOOGLE_APPS_SCRIPT_EXPORT_URL', ''),
         'verification_adjustment_sheet_id' => env('GOOGLE_SHEETS_VERIFICATION_ADJUSTMENT_ID', ''),
+        'share_domain' => env('GOOGLE_SHEETS_SHARE_DOMAIN', '5core.com'),
     ],
 
     /*

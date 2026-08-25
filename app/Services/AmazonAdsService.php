@@ -711,8 +711,8 @@ class AmazonAdsService
     public function createPausedAutoCampaignWithProductAds(
         string $campaignName,
         array $sellerSkus,
-        float $dailyBudget = 10.0,
-        float $defaultBid = 0.50,
+        float $dailyBudget = 3.0,
+        float $defaultBid = 0.60,
         string $targetingType = 'AUTO'
     ): array {
         $campaignName = trim($campaignName);

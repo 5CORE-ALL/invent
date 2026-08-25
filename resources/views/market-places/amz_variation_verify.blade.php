@@ -72,19 +72,15 @@
         }
         .amz-stat-badge > span { margin-left: 4px; font-size: 16px; font-weight: 800; }
         .amz-stat-badge--parents { background: #4c7ed8; }
-        .amz-stat-badge--children { background: #8b5cf6; }
-        .amz-stat-badge--listed { background: #16a34a; }
         .amz-stat-badge--campaigns { background: #ea580c; }
         .amz-stat-badge--issues { background: #dc2626; cursor: pointer; }
         .amz-stat-badge--issues.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
         .amz-stat-badge--missing { background: #dc2626; cursor: pointer; }
         .amz-stat-badge--missing.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
-        .amz-stat-badge--missing-inv { background: #b91c1c; cursor: pointer; }
-        .amz-stat-badge--missing-inv.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #b91c1c; }
-        .amz-stat-badge--extra { background: #2563eb; cursor: pointer; }
-        .amz-stat-badge--extra.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2563eb; }
-        .amz-stat-badge--archived-extra { background: #6b7280; cursor: pointer; }
-        .amz-stat-badge--archived-extra.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #6b7280; }
+        .amz-stat-badge--extra { background: #dc2626; cursor: pointer; }
+        .amz-stat-badge--extra.is-zero { background: #16a34a; }
+        .amz-stat-badge--extra.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
+        .amz-stat-badge--extra.is-zero.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #16a34a; }
         .amz-stat-badge--issues .amz-vv-trend-dot {
             display: inline-block; width: 6px; height: 6px; border-radius: 50%;
             margin-left: 4px; vertical-align: middle; cursor: pointer; flex-shrink: 0;
@@ -147,6 +143,65 @@
             padding: 4px 6px; text-align: left; line-height: 1.35;
             white-space: normal; word-break: break-word; max-width: 320px;
         }
+        .amz-vv-pm-status {
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: 6px; font-weight: 600; color: #334155; white-space: nowrap;
+        }
+        .amz-vv-pm-marble {
+            display: inline-block; width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+            box-shadow: inset 2px 2px 4px rgba(255,255,255,0.55), inset -2px -3px 5px rgba(0,0,0,0.35);
+        }
+        .amz-vv-pm-marble--active { background: radial-gradient(circle at 32% 28%, #bbf7d0, #22c55e 42%, #14532d); }
+        .amz-vv-pm-marble--inactive,
+        .amz-vv-pm-marble--dc { background: radial-gradient(circle at 32% 28%, #fecaca, #ef4444 42%, #7f1d1d); }
+        .amz-vv-pm-marble--upcoming { background: radial-gradient(circle at 32% 28%, #fffef2, #eab308 45%, #713f12); }
+        .amz-vv-pm-marble--2bdc { background: radial-gradient(circle at 32% 28%, #bfdbfe, #2563eb 45%, #1e3a8a); }
+        .amz-vv-pm-marble--muted { background: radial-gradient(circle at 32% 28%, #e5e7eb, #9ca3af 45%, #374151); }
+        .amz-vv-p-btn {
+            min-width: 28px; height: 26px; padding: 0 8px; font-size: 12px; font-weight: 800;
+            line-height: 24px; border-radius: 6px;
+        }
+        #amzVvParentSkusModal .amz-vv-sku-pen {
+            color: #4361ee; padding: 0 4px; line-height: 1; border: 0; background: transparent;
+        }
+        #amzVvParentSkusModal .amz-vv-sku-pen:hover { color: #1e40af; }
+        #amzVvParentSkusModal .amz-vv-status-select { min-width: 130px; display: inline-block; }
+
+        #amz-vv-wrap .amz-vv-link-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: #e7f5ff; color: #1971c2; border: 1px solid #a5d8ff;
+            border-radius: 10px; padding: 1px 7px; margin: 1px 2px;
+            font-size: 11px; white-space: nowrap;
+        }
+        #amz-vv-wrap .amz-vv-link-chip .chip-x {
+            cursor: pointer; color: #868e96; margin-left: 2px;
+        }
+        #amz-vv-wrap .amz-vv-link-chip .chip-x:hover { color: #495057; }
+        #amz-vv-wrap .amz-vv-link-add-btn {
+            border: 1px solid #adb5bd; background: #fff; border-radius: 6px;
+            padding: 0 6px; line-height: 1.4; cursor: pointer; color: #2f9e44;
+        }
+        #amz-vv-wrap .amz-vv-link-add-btn:hover { background: #f1f3f5; }
+        #amz-vv-wrap .amz-vv-campaign-dot {
+            display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.15); flex: 0 0 auto;
+        }
+        #amz-vv-wrap .amz-vv-campaign-dot-green { background-color: #16a34a; }
+        #amz-vv-wrap .amz-vv-campaign-dot-red { background-color: #dc2626; }
+        .amz-vv-campaign-picker {
+            position: absolute; z-index: 2000; width: 300px; max-height: 280px;
+            background: #fff; border: 1px solid #ced4da; border-radius: 6px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.18); padding: 6px;
+            display: flex; flex-direction: column;
+        }
+        .amz-vv-campaign-picker.d-none { display: none !important; }
+        .amz-vv-campaign-picker .amz-vv-picker-list { overflow-y: auto; margin-top: 6px; }
+        .amz-vv-campaign-picker .amz-vv-picker-option {
+            padding: 4px 6px; font-size: 12px; cursor: pointer; border-radius: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .amz-vv-campaign-picker .amz-vv-picker-option:hover { background: #e7f5ff; }
+        .amz-vv-campaign-picker .amz-vv-picker-empty { padding: 6px; color: #868e96; font-size: 12px; }
     </style>
 @endsection
 
@@ -164,35 +219,27 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="amz-stat-badge amz-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="amz-vv-badge-parents">0</span></span>
-                            <span class="amz-stat-badge amz-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="amz-vv-badge-children">0</span></span>
-                            <span class="amz-stat-badge amz-stat-badge--listed" title="Amz listings cache">LISTED:<span id="amz-vv-badge-listed">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 campaigns">CAMPAIGNS:<span id="amz-vv-badge-campaigns">0</span></span>
-                            <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-issues-wrap" title="Parents with KW/PT missing or extra ads — click badge to filter. Click dot for rolling history.">
-                                VARIATIONS ISSUES:<span id="amz-vv-badge-issues">0</span>
-                                <span class="amz-vv-trend-dot none" id="amz-vv-issues-trend-dot" title="Rolling history" role="button" tabindex="0"></span>
+                            <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-kw-issues-wrap" title="Parents with KW missing or extra ads — click to filter the KW column. Click dot for rolling history.">
+                                KW ISSUES:<span id="amz-vv-badge-kw-issues">0</span>
+                                <span class="amz-vv-trend-dot none" id="amz-vv-kw-issues-trend-dot" title="Rolling history" role="button" tabindex="0"></span>
+                            </span>
+                            <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-pt-issues-wrap" title="Parents with PT missing or extra ads — click to filter the PT column. Click dot for rolling history.">
+                                PT ISSUES:<span id="amz-vv-badge-pt-issues">0</span>
+                                <span class="amz-vv-trend-dot none" id="amz-vv-pt-issues-trend-dot" title="Rolling history" role="button" tabindex="0"></span>
                             </span>
                             <span class="amz-stat-badge amz-stat-badge--missing" id="amz-vv-badge-missing-wrap" title="All missing SKUs (KW or PT) — click to filter" role="button" tabindex="0">
                                 MISSING:<span id="amz-vv-badge-missing">0</span>
                             </span>
-                            <span class="amz-stat-badge amz-stat-badge--missing-inv" id="amz-vv-badge-missing-inv-wrap" title="Missing SKUs with INV &gt; 0 — click to filter" role="button" tabindex="0">
-                                MISSING INV&gt;0:<span id="amz-vv-badge-missing-inv">0</span>
-                            </span>
-                            <span class="amz-stat-badge amz-stat-badge--extra" id="amz-vv-badge-extra-wrap" title="Extra ad SKUs not in CP Master (not archived) — click to filter" role="button" tabindex="0">
+                            <span class="amz-stat-badge amz-stat-badge--extra is-zero" id="amz-vv-badge-extra-wrap" title="Extra ad SKUs not in CP Master (not archived) — click to filter" role="button" tabindex="0">
                                 EXTRA:<span id="amz-vv-badge-extra">0</span>
-                            </span>
-                            <span class="amz-stat-badge amz-stat-badge--archived-extra" id="amz-vv-badge-archived-extra-wrap" title="Extra ads already ARCHIVED — click to filter" role="button" tabindex="0">
-                                ARCHIVED:<span id="amz-vv-badge-archived-extra">0</span>
                             </span>
                         </div>
                         <span id="amz-vv-total" class="badge bg-secondary">Total: —</span>
-                        <span id="amz-vv-page-info" class="badge bg-light text-dark border">Page: —</span>
                         <button type="button" id="amz-vv-refresh-btn" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh from CP Master" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="amz-vv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Amz listings (SP-API)">
-                            <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
-                        </button>
-                        <button type="button" id="amz-vv-add-missing-btn" class="btn btn-sm btn-success" title="Add all Missing SKUs to their PARENT KW/PT campaigns (INV 0 allowed)">
+                        <button type="button" id="amz-vv-add-missing-btn" class="btn btn-sm btn-success" title="Add all Missing SKUs to their PARENT KW/PT campaigns (Coming, NRL, and INV ≤ 1 skipped)">
                             <i class="fas fa-plus me-1"></i> Add Missing SKU
                         </button>
                         <button type="button" id="amz-vv-archive-extra-btn" class="btn btn-sm btn-outline-danger" title="Archive Extra ads campaigns that are not already ARCHIVED">
@@ -205,10 +252,35 @@
                     <div id="amz-vv-wrap">
                         <div class="p-2 bg-light border rounded-top d-flex align-items-center gap-2">
                             <input type="search" id="amz-vv-search" class="form-control" placeholder="Search Parent..." autocomplete="off" aria-label="Search Parent" maxlength="100">
-                            <span id="amz-vv-source-label" class="badge bg-dark text-nowrap">CP Master</span>
                         </div>
                         <div id="amz-variation-verify-table"></div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amzVvParentSkusModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6 mb-0">
+                        Parent SKUs — <span id="amzVvParentSkusTitle"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div id="amzVvParentSkusEmpty" class="p-3 text-muted small d-none">No child SKUs found for this parent.</div>
+                    <table class="table table-sm table-hover mb-0" id="amzVvParentSkusTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">SKU</th>
+                                <th>Status</th>
+                                <th class="text-end pe-3" style="width: 56px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="amzVvParentSkusBody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -284,10 +356,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         let amzVvTable = null;
-        /** null | 'issues' | 'missing' | 'missing_inv' | 'extra' | 'archived_extra' */
+        /** null | 'kw_issues' | 'pt_issues' | 'missing' | 'extra' */
         let amzVvActiveFilter = null;
-        let amzVvIssuesLiveCount = 0;
-        let amzVvIssuesPrevDay = null;
+        let amzVvKwIssuesLiveCount = 0;
+        let amzVvKwIssuesPrevDay = null;
+        let amzVvPtIssuesLiveCount = 0;
+        let amzVvPtIssuesPrevDay = null;
+        let amzVvChartType = 'kw';
         let amzVvChartInstance = null;
         let amzVvChartAjax = null;
         let amzVvChartDays = 30;
@@ -300,11 +375,205 @@
                 .replace(/"/g, '&quot;');
         }
 
+        function amzVvSetExtraBadge(count) {
+            const n = parseInt(count, 10) || 0;
+            $('#amz-vv-badge-extra').text(n.toLocaleString());
+            $('#amz-vv-badge-extra-wrap').toggleClass('is-zero', n === 0);
+        }
+
         function amzVvDash(val) {
             if (val === null || val === undefined || val === '') {
                 return '<span class="text-muted">--</span>';
             }
             return val;
+        }
+
+        const amzVvPmStatuses = [
+            { value: 'active', label: 'Active' },
+            { value: 'inactive', label: 'Inactive' },
+            { value: 'DC', label: 'DC' },
+            { value: 'upcoming', label: 'Coming' },
+            { value: '2BDC', label: '2BDC' }
+        ];
+        let amzVvParentSkusParent = '';
+        let amzVvParentSkusModal = null;
+
+        function amzVvStatusSelectValue(raw) {
+            const s = String(raw || '').trim();
+            const lower = s.toLowerCase();
+            const upper = s.toUpperCase();
+            if (lower === 'active' || lower === 'inactive') return lower;
+            if (lower === 'upcoming' || lower === 'coming' || lower === 'comming') return 'upcoming';
+            if (upper === 'DC') return 'DC';
+            if (upper === '2BDC') return '2BDC';
+            return s;
+        }
+
+        function amzVvStatusMarbleMod(raw) {
+            const first = String(raw || '').split(',')[0].trim();
+            const lower = first.toLowerCase();
+            const upper = first.toUpperCase();
+            if (lower === 'active') return 'active';
+            if (lower === 'inactive') return 'inactive';
+            if (lower === 'upcoming' || lower === 'coming' || lower === 'comming') return 'upcoming';
+            if (upper === 'DC') return 'dc';
+            if (upper === '2BDC') return '2bdc';
+            return 'muted';
+        }
+
+        function amzVvStatusHtml(raw, label) {
+            const display = String(label || raw || '').trim();
+            if (!display) return amzVvDash(null);
+            const mod = amzVvStatusMarbleMod(raw || display);
+            return `<span class="amz-vv-pm-status"><span class="amz-vv-pm-marble amz-vv-pm-marble--${mod}" title="${amzVvEscapeHtml(raw || display)}"></span><span>${amzVvEscapeHtml(display)}</span></span>`;
+        }
+
+        function amzVvFindParentRow(parent) {
+            if (!amzVvTable || !parent) return null;
+            const rows = amzVvTable.getRows();
+            for (let i = 0; i < rows.length; i++) {
+                const d = rows[i].getData();
+                if (d && d.is_parent && String(d.parent || '') === parent) {
+                    return rows[i];
+                }
+            }
+            return null;
+        }
+
+        function amzVvRenderParentSkusModal(parent) {
+            amzVvParentSkusParent = parent;
+            $('#amzVvParentSkusTitle').text(parent || '—');
+            const row = amzVvFindParentRow(parent);
+            const children = row ? (row.getData()._children || []) : [];
+            const $body = $('#amzVvParentSkusBody');
+            $body.empty();
+            if (!children.length) {
+                $('#amzVvParentSkusTable').addClass('d-none');
+                $('#amzVvParentSkusEmpty').removeClass('d-none');
+                return;
+            }
+            $('#amzVvParentSkusEmpty').addClass('d-none');
+            $('#amzVvParentSkusTable').removeClass('d-none');
+            children.forEach(function (c) {
+                const sku = String(c.sku || '').trim();
+                if (!sku) return;
+                const raw = String(c.pm_status || '').trim();
+                const label = String(c.pm_status_label || '').trim();
+                $body.append(
+                    '<tr data-sku="' + amzVvEscapeHtml(sku) + '">'
+                    + '<td class="ps-3 fw-semibold">' + amzVvEscapeHtml(sku) + '</td>'
+                    + '<td class="amz-vv-sku-status-cell">' + amzVvStatusHtml(raw, label) + '</td>'
+                    + '<td class="text-end pe-3">'
+                    + '<button type="button" class="amz-vv-sku-pen" data-sku="' + amzVvEscapeHtml(sku) + '" data-status="' + amzVvEscapeHtml(raw) + '" title="Edit Product Master status">'
+                    + '<i class="fas fa-pen"></i></button>'
+                    + '</td></tr>'
+                );
+            });
+        }
+
+        function amzVvOpenParentSkusModal(parent) {
+            amzVvRenderParentSkusModal(parent);
+            const el = document.getElementById('amzVvParentSkusModal');
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                amzVvParentSkusModal = bootstrap.Modal.getOrCreateInstance(el);
+                amzVvParentSkusModal.show();
+            } else {
+                $(el).modal('show');
+            }
+        }
+
+        function amzVvRollupChildrenStatus(children) {
+            const byLabel = {};
+            (children || []).forEach(function (c) {
+                const label = String(c.pm_status_label || '').trim();
+                const raw = String(c.pm_status || '').trim();
+                const key = label || raw;
+                if (!key) return;
+                if (!byLabel[key]) byLabel[key] = raw || key;
+            });
+            return {
+                pm_status: Object.values(byLabel).join(','),
+                pm_status_label: Object.keys(byLabel).join(', ')
+            };
+        }
+
+        function amzVvBeginStatusEdit($btn) {
+            const sku = String($btn.data('sku') || '').trim();
+            const current = amzVvStatusSelectValue($btn.data('status'));
+            const $cell = $btn.closest('tr').find('.amz-vv-sku-status-cell');
+            let opts = '';
+            amzVvPmStatuses.forEach(function (s) {
+                opts += '<option value="' + s.value + '"' + (s.value === current ? ' selected' : '') + '>'
+                    + amzVvEscapeHtml(s.label) + '</option>';
+            });
+            $cell.html(
+                '<select class="form-select form-select-sm amz-vv-status-select" data-sku="'
+                + amzVvEscapeHtml(sku) + '" data-original="' + amzVvEscapeHtml(current) + '">'
+                + opts + '</select>'
+            );
+            $btn.addClass('d-none');
+            $cell.find('select').trigger('focus');
+        }
+
+        function amzVvSaveChildStatus(sku, nextStatus, $select) {
+            const original = String($select.data('original') || '');
+            if (nextStatus === original) {
+                amzVvRenderParentSkusModal(amzVvParentSkusParent);
+                return;
+            }
+            $select.prop('disabled', true);
+            $.ajax({
+                url: '{{ route("product_master.update-field") }}',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json'
+                },
+                data: { sku: sku, field: 'status', value: nextStatus },
+                success: function (res) {
+                    if (!res || !res.success) {
+                        alert((res && res.message) || 'Failed to update status.');
+                        amzVvRenderParentSkusModal(amzVvParentSkusParent);
+                        return;
+                    }
+                    const saved = String((res.data && res.data.value) || nextStatus);
+                    const labelMap = { active: 'Active', inactive: 'Inactive', DC: 'DC', upcoming: 'Coming', '2BDC': '2BDC' };
+                    const label = labelMap[saved] || labelMap[amzVvStatusSelectValue(saved)] || saved;
+                    const wasComing = original === 'upcoming';
+                    const nowComing = amzVvStatusSelectValue(saved) === 'upcoming';
+                    const row = amzVvFindParentRow(amzVvParentSkusParent);
+                    if (row) {
+                        const d = row.getData();
+                        const children = Array.isArray(d._children) ? d._children.slice() : [];
+                        children.forEach(function (c, i) {
+                            if (String(c.sku || '') === sku) {
+                                children[i] = Object.assign({}, c, {
+                                    pm_status: saved,
+                                    pm_status_label: label,
+                                    is_coming: nowComing
+                                });
+                            }
+                        });
+                        const rolled = amzVvRollupChildrenStatus(children);
+                        row.update(Object.assign({}, d, {
+                            _children: children,
+                            pm_status: rolled.pm_status,
+                            pm_status_label: rolled.pm_status_label
+                        }));
+                    }
+                    if (wasComing !== nowComing && amzVvTable) {
+                        amzVvTable.setData('{{ route("amz.variation.verify.data") }}')
+                            .then(function () { amzVvRenderParentSkusModal(amzVvParentSkusParent); });
+                    } else {
+                        amzVvRenderParentSkusModal(amzVvParentSkusParent);
+                    }
+                },
+                error: function (xhr) {
+                    const body = xhr.responseJSON || {};
+                    alert(body.message || ('Status update failed (' + (xhr.status || 'network') + ')'));
+                    amzVvRenderParentSkusModal(amzVvParentSkusParent);
+                }
+            });
         }
 
         function amzVvFmtNum(v) {
@@ -322,11 +591,12 @@
             return 'flat';
         }
 
-        function amzVvApplyIssuesTrendDot() {
-            const $dot = $('#amz-vv-issues-trend-dot');
+        function amzVvApplyIssuesTrendDot(type) {
+            const isPt = type === 'pt';
+            const $dot = $(isPt ? '#amz-vv-pt-issues-trend-dot' : '#amz-vv-kw-issues-trend-dot');
             if (!$dot.length) return;
-            const curr = amzVvIssuesLiveCount;
-            const prev = amzVvIssuesPrevDay;
+            const curr = isPt ? amzVvPtIssuesLiveCount : amzVvKwIssuesLiveCount;
+            const prev = isPt ? amzVvPtIssuesPrevDay : amzVvKwIssuesPrevDay;
             if (!isFinite(curr) || prev == null || !isFinite(prev)) {
                 $dot.attr('class', 'amz-vv-trend-dot none')
                     .attr('title', 'Click for rolling history (no prior day yet)');
@@ -342,44 +612,51 @@
         function amzVvUpdateMeta(meta) {
             if (!meta) return;
             const parents = meta.required_parent_count || 0;
-            const children = meta.required_child_count || 0;
-            const listed = meta.listings_count || 0;
             const campaigns = meta.ads_count || 0;
-            const issues = meta.variations_issues_count || 0;
+            const kwIssues = meta.kw_issues_count || 0;
+            const ptIssues = meta.pt_issues_count || 0;
 
-            amzVvIssuesLiveCount = issues;
-            amzVvIssuesPrevDay = (meta.variations_issues_prev_day !== null
-                && meta.variations_issues_prev_day !== undefined
-                && meta.variations_issues_prev_day !== '')
-                ? Number(meta.variations_issues_prev_day)
+            amzVvKwIssuesLiveCount = kwIssues;
+            amzVvPtIssuesLiveCount = ptIssues;
+            amzVvKwIssuesPrevDay = (meta.kw_issues_prev_day !== null
+                && meta.kw_issues_prev_day !== undefined
+                && meta.kw_issues_prev_day !== '')
+                ? Number(meta.kw_issues_prev_day)
+                : null;
+            amzVvPtIssuesPrevDay = (meta.pt_issues_prev_day !== null
+                && meta.pt_issues_prev_day !== undefined
+                && meta.pt_issues_prev_day !== '')
+                ? Number(meta.pt_issues_prev_day)
                 : null;
 
             $('#amz-vv-badge-parents').text(parents.toLocaleString());
-            $('#amz-vv-badge-children').text(children.toLocaleString());
-            $('#amz-vv-badge-listed').text(listed.toLocaleString());
             $('#amz-vv-badge-campaigns').text(campaigns.toLocaleString());
-            $('#amz-vv-badge-issues').text(issues.toLocaleString());
+            $('#amz-vv-badge-kw-issues').text(kwIssues.toLocaleString());
+            $('#amz-vv-badge-pt-issues').text(ptIssues.toLocaleString());
             $('#amz-vv-badge-missing').text((meta.missing_sku_count || 0).toLocaleString());
-            $('#amz-vv-badge-missing-inv').text((meta.missing_inv_gt0_count || 0).toLocaleString());
-            $('#amz-vv-badge-extra').text((meta.extra_sku_count || 0).toLocaleString());
-            $('#amz-vv-badge-archived-extra').text((meta.archived_extra_sku_count || 0).toLocaleString());
-            amzVvApplyIssuesTrendDot();
+            amzVvSetExtraBadge(meta.extra_sku_count || 0);
+            amzVvApplyIssuesTrendDot('kw');
+            amzVvApplyIssuesTrendDot('pt');
 
-            const parts = [];
-            if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
-            if (meta.last_pulled_at) parts.push('Listings · ' + meta.last_pulled_at);
-            if (meta.ads_source) parts.push(meta.ads_source);
-            $('#amz-vv-status-line').text(parts.join(' · '));
-            $('#amz-vv-source-label').text(meta.has_listings_cache ? 'CP Master + Listings' : 'CP Master');
+            const stamps = [meta.required_refreshed_at, meta.last_pulled_at, meta.ads_pulled_at]
+                .map(function (s) { return String(s || '').trim(); })
+                .filter(Boolean)
+                .sort();
+            const lastUpdate = stamps.length ? stamps[stamps.length - 1] : '';
+            $('#amz-vv-status-line').text(lastUpdate ? ('Last Update: ' + lastUpdate) : '');
         }
 
-        function amzVvOpenIssuesChart() {
+        function amzVvIssuesChartTitle() {
+            const kind = amzVvChartType === 'pt' ? 'PT Issues' : 'KW Issues';
+            return kind + ' — Rolling History'
+                + (amzVvChartDays === 0 ? ' (Lifetime)' : ' (L' + amzVvChartDays + ')');
+        }
+
+        function amzVvOpenIssuesChart(type) {
+            amzVvChartType = (type === 'pt') ? 'pt' : 'kw';
             amzVvChartDays = parseInt($('#amzVvChartRangeSelect').val(), 10);
             if (!isFinite(amzVvChartDays)) amzVvChartDays = 30;
-            $('#amzVvChartModalTitle').text(
-                'Variations Issues — Rolling History'
-                + (amzVvChartDays === 0 ? ' (Lifetime)' : ' (L' + amzVvChartDays + ')')
-            );
+            $('#amzVvChartModalTitle').text(amzVvIssuesChartTitle());
             const modalEl = document.getElementById('amzVvIssuesChartModal');
             if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -451,7 +728,7 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Variations Issues',
+                        label: amzVvChartType === 'pt' ? 'PT Issues' : 'KW Issues',
                         data: values,
                         backgroundColor: 'rgba(220,38,38,0.08)',
                         borderColor: '#adb5bd',
@@ -510,7 +787,8 @@
                 method: 'GET',
                 data: {
                     days: amzVvChartDays,
-                    badge_value: amzVvIssuesLiveCount
+                    type: amzVvChartType,
+                    badge_value: amzVvChartType === 'pt' ? amzVvPtIssuesLiveCount : amzVvKwIssuesLiveCount
                 },
                 success: function (resp) {
                     amzVvChartAjax = null;
@@ -537,13 +815,6 @@
             const shown = amzVvTable.getDataCount('active');
             const total = amzVvTable.getDataCount();
             $('#amz-vv-total').text('Total: ' + shown.toLocaleString() + (shown !== total ? ' / ' + total.toLocaleString() : ''));
-            try {
-                const page = amzVvTable.getPage();
-                const pages = amzVvTable.getPageMax();
-                $('#amz-vv-page-info').text('Page: ' + page + ' / ' + pages);
-            } catch (e) {
-                $('#amz-vv-page-info').text('Page: —');
-            }
         }
 
         function amzVvRowHasMissing(data) {
@@ -552,22 +823,15 @@
                 || (parseInt(data.pt_missing, 10) || 0) > 0;
         }
 
-        function amzVvRowHasMissingInv(data) {
-            return !!data.has_missing_inv_gt0
-                || (parseInt(data.missing_inv_gt0_count, 10) || 0) > 0;
-        }
-
         function amzVvRowHasExtra(data) {
             return (parseInt(data.kw_extra, 10) || 0) > 0
                 || (parseInt(data.pt_extra, 10) || 0) > 0
                 || (parseInt(data.extra_sku_count, 10) || 0) > 0;
         }
 
-        function amzVvRowHasArchivedExtra(data) {
-            return !!data.has_archived_extra
-                || (parseInt(data.kw_archived_extra, 10) || 0) > 0
-                || (parseInt(data.pt_archived_extra, 10) || 0) > 0
-                || (parseInt(data.archived_extra_sku_count, 10) || 0) > 0;
+        function amzVvRowHasTypeIssues(data, type) {
+            return (parseInt(data[type + '_missing'], 10) || 0) > 0
+                || (parseInt(data[type + '_extra'], 10) || 0) > 0;
         }
 
         function amzVvSetActiveFilter(mode) {
@@ -583,29 +847,29 @@
             if (q) {
                 amzVvTable.addFilter(function (data) {
                     return String(data.parent || '').toLowerCase().includes(q)
-                        || String(data.sku || '').toLowerCase().includes(q);
+                        || String(data.sku || '').toLowerCase().includes(q)
+                        || String(data.pm_status_label || data.pm_status || '').toLowerCase().includes(q);
                 });
             }
 
-            if (amzVvActiveFilter === 'issues') {
+            if (amzVvActiveFilter === 'kw_issues') {
                 amzVvTable.addFilter(function (data) {
-                    return amzVvRowHasMissing(data) || amzVvRowHasExtra(data);
+                    return amzVvRowHasTypeIssues(data, 'kw');
+                });
+            } else if (amzVvActiveFilter === 'pt_issues') {
+                amzVvTable.addFilter(function (data) {
+                    return amzVvRowHasTypeIssues(data, 'pt');
                 });
             } else if (amzVvActiveFilter === 'missing') {
                 amzVvTable.addFilter(amzVvRowHasMissing);
-            } else if (amzVvActiveFilter === 'missing_inv') {
-                amzVvTable.addFilter(amzVvRowHasMissingInv);
             } else if (amzVvActiveFilter === 'extra') {
                 amzVvTable.addFilter(amzVvRowHasExtra);
-            } else if (amzVvActiveFilter === 'archived_extra') {
-                amzVvTable.addFilter(amzVvRowHasArchivedExtra);
             }
 
-            $('#amz-vv-badge-issues-wrap').toggleClass('is-active', amzVvActiveFilter === 'issues');
+            $('#amz-vv-badge-kw-issues-wrap').toggleClass('is-active', amzVvActiveFilter === 'kw_issues');
+            $('#amz-vv-badge-pt-issues-wrap').toggleClass('is-active', amzVvActiveFilter === 'pt_issues');
             $('#amz-vv-badge-missing-wrap').toggleClass('is-active', amzVvActiveFilter === 'missing');
-            $('#amz-vv-badge-missing-inv-wrap').toggleClass('is-active', amzVvActiveFilter === 'missing_inv');
             $('#amz-vv-badge-extra-wrap').toggleClass('is-active', amzVvActiveFilter === 'extra');
-            $('#amz-vv-badge-archived-extra-wrap').toggleClass('is-active', amzVvActiveFilter === 'archived_extra');
             amzVvUpdateRowCount();
         }
 
@@ -638,6 +902,35 @@
                 return type.toUpperCase() + ' siblings OK';
             }
             return type.toUpperCase() + ' — ' + parts.join(' | ');
+        }
+
+        function amzVvFormatMissingCampaign(type) {
+            const field = type === 'PT' ? 'campaign_pt' : 'campaign_kw';
+            return function (cell) {
+                const d = cell.getRow().getData();
+                if (!d || !d.is_parent) return amzVvDash(null);
+                const list = Array.isArray(d[field]) ? d[field] : [];
+                const sku = String(d.campaign_link_sku || d.sku || '').trim();
+                const chips = list.map(function (c) {
+                    const name = String((c && c.campaign_name) || '').trim();
+                    const id = (c && c.id) ? String(c.id) : '';
+                    const dot = (c && (c.dot === 'green' || c.dot === 'red')) ? c.dot : '';
+                    const status = String((c && c.status) || (dot === 'green' ? 'ENABLED' : (dot === 'red' ? 'PAUSED' : '')));
+                    const dotHtml = dot
+                        ? '<span class="amz-vv-campaign-dot amz-vv-campaign-dot-' + dot + '" title="' + amzVvEscapeHtml(status) + '"></span>'
+                        : '';
+                    return '<span class="amz-vv-link-chip" title="' + amzVvEscapeHtml(name) + '">'
+                        + dotHtml
+                        + amzVvEscapeHtml(name)
+                        + ' <i class="fa fa-times chip-x" title="Unlink only" data-id="' + amzVvEscapeHtml(id)
+                        + '" data-sku="' + amzVvEscapeHtml(sku) + '"></i>'
+                        + '</span>';
+                }).join('');
+                return chips
+                    + '<button type="button" class="amz-vv-link-add-btn" data-sku="' + amzVvEscapeHtml(sku)
+                    + '" data-type="' + type + '" title="Link a campaign as ' + type + ' from amazon-ads/missing">'
+                    + '<i class="fa fa-plus"></i></button>';
+            };
         }
 
         function amzVvFormatAdSibling(type) {
@@ -677,7 +970,7 @@
                         const parentAttr = amzVvEscapeHtml(d.parent || '');
                         const missingAttr = amzVvEscapeHtml(missingSkus.join('|'));
                         skuLines += `<span class="amz-vv-ad-skus amz-vv-ad-skus--missing">Missing: ${amzVvEscapeHtml(missingSkus.join(', '))}`
-                            + ` <button type="button" class="btn btn-link btn-sm p-0 ms-1 amz-vv-add-missing-row" data-type="${type}" data-parent="${parentAttr}" data-missing="${missingAttr}" title="Add these missing SKUs to the parent campaign (INV 0 allowed)" style="font-size:10px;font-weight:700;vertical-align:baseline;">Add</button>`
+                            + ` <button type="button" class="btn btn-link btn-sm p-0 ms-1 amz-vv-add-missing-row" data-type="${type}" data-parent="${parentAttr}" data-missing="${missingAttr}" title="Add these missing SKUs to the parent campaign (Coming, NRL, and INV ≤ 1 skipped)" style="font-size:10px;font-weight:700;vertical-align:baseline;">Add</button>`
                             + `</span>`;
                     }
                     if (overSkus.length > 0) {
@@ -712,6 +1005,12 @@
                 if (status === 'coming') {
                     return '<span title="Product Master status Coming — not counted as missing">Coming</span>';
                 }
+                if (status === 'nrl') {
+                    return '<span title="Amazon NRL — not counted as missing">NRL</span>';
+                }
+                if (status === 'low_inv') {
+                    return '<span title="INV ≤ 1 — not counted as missing">INV ≤1</span>';
+                }
                 return amzVvDash(null);
             };
         }
@@ -727,11 +1026,7 @@
                 height: '650px',
                 layout: 'fitColumns',
                 layoutColumnsOnNewData: true,
-                pagination: true,
-                paginationSize: 100,
-                paginationSizeSelector: [25, 50, 100, 250, 500],
-                paginationCounter: 'rows',
-                paginationButtonCount: 10,
+                pagination: false,
                 placeholder: 'No parents found in CP Master',
                 rowFormatter: function (row) {
                     if (row.getData().is_parent === true) {
@@ -739,6 +1034,47 @@
                     }
                 },
                 columns: [
+                    {
+                        title: 'Status',
+                        field: 'pm_status_label',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 90,
+                        widthGrow: 1,
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData();
+                            const raw = String(d.pm_status || '').trim();
+                            const label = String(d.pm_status_label || '').trim();
+                            if (!raw && !label) return amzVvDash(null);
+                            const display = label || raw;
+                            const firstRaw = raw.split(',')[0] || display;
+                            const lower = firstRaw.toLowerCase();
+                            const upper = firstRaw.toUpperCase();
+                            let mod = 'muted';
+                            if (lower === 'active') mod = 'active';
+                            else if (lower === 'inactive') mod = 'inactive';
+                            else if (lower === 'upcoming' || lower === 'coming' || lower === 'comming') mod = 'upcoming';
+                            else if (upper === 'DC') mod = 'dc';
+                            else if (upper === '2BDC') mod = '2bdc';
+                            return `<span class="amz-vv-pm-status"><span class="amz-vv-pm-marble amz-vv-pm-marble--${mod}" title="${amzVvEscapeHtml(raw || display)}"></span><span>${amzVvEscapeHtml(display)}</span></span>`;
+                        }
+                    },
+                    {
+                        title: 'P',
+                        field: 'p_btn',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        width: 48,
+                        minWidth: 44,
+                        headerSort: false,
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData();
+                            if (!d || !d.is_parent) return '';
+                            const parent = amzVvEscapeHtml(d.parent || '');
+                            if (!parent) return amzVvDash(null);
+                            return `<button type="button" class="btn btn-primary amz-vv-p-btn" data-parent="${parent}" title="Child SKUs and Product Master status">P</button>`;
+                        }
+                    },
                     {
                         title: 'Parent',
                         field: 'parent',
@@ -789,6 +1125,26 @@
                         formatter: amzVvFormatAdSibling('pt')
                     },
                     {
+                        title: 'Campaign KW',
+                        field: 'campaign_kw',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        minWidth: 160,
+                        widthGrow: 2,
+                        headerSort: false,
+                        formatter: amzVvFormatMissingCampaign('KW')
+                    },
+                    {
+                        title: 'Campaign PT',
+                        field: 'campaign_pt',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        minWidth: 160,
+                        widthGrow: 2,
+                        headerSort: false,
+                        formatter: amzVvFormatMissingCampaign('PT')
+                    },
+                    {
                         title: 'Error',
                         field: 'add_error',
                         hozAlign: 'left',
@@ -821,7 +1177,7 @@
 
             amzVvTable.on('dataProcessed', amzVvApplyFilters);
             amzVvTable.on('dataFiltered', amzVvUpdateRowCount);
-            amzVvTable.on('pageLoaded', amzVvUpdateRowCount);
+            amzVvTable.on('dataLoaded', amzVvUpdateRowCount);
 
             let searchTimer = null;
             $('#amz-vv-search').on('keyup search', function () {
@@ -829,43 +1185,74 @@
                 searchTimer = setTimeout(amzVvApplyFilters, 200);
             });
 
+            $(document).on('click', '.amz-vv-p-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const parent = String($(this).attr('data-parent') || '').trim();
+                if (!parent) return;
+                amzVvOpenParentSkusModal(parent);
+            });
+
+            $(document).on('click', '#amzVvParentSkusModal .amz-vv-sku-pen', function (e) {
+                e.preventDefault();
+                const $btn = $(this);
+                $btn.data('sku', $btn.attr('data-sku') || '');
+                $btn.data('status', $btn.attr('data-status') || '');
+                amzVvBeginStatusEdit($btn);
+            });
+
+            $(document).on('change', '#amzVvParentSkusModal .amz-vv-status-select', function () {
+                const $sel = $(this);
+                const sku = String($sel.data('sku') || '').trim();
+                const next = String($sel.val() || '').trim();
+                if (!sku || !next) return;
+                amzVvSaveChildStatus(sku, next, $sel);
+            });
+
+            $(document).on('keydown', '#amzVvParentSkusModal .amz-vv-status-select', function (e) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    amzVvRenderParentSkusModal(amzVvParentSkusParent);
+                }
+            });
+
             // Badge body → filter; trend dot → rolling history
-            $('#amz-vv-badge-issues-wrap').on('click', function (e) {
+            $('#amz-vv-badge-kw-issues-wrap').on('click', function (e) {
                 if ($(e.target).closest('.amz-vv-trend-dot').length) return;
-                amzVvSetActiveFilter('issues');
+                amzVvSetActiveFilter('kw_issues');
+            });
+            $('#amz-vv-badge-pt-issues-wrap').on('click', function (e) {
+                if ($(e.target).closest('.amz-vv-trend-dot').length) return;
+                amzVvSetActiveFilter('pt_issues');
             });
             $('#amz-vv-badge-missing-wrap').on('click', function () {
                 amzVvSetActiveFilter('missing');
             });
-            $('#amz-vv-badge-missing-inv-wrap').on('click', function () {
-                amzVvSetActiveFilter('missing_inv');
-            });
             $('#amz-vv-badge-extra-wrap').on('click', function () {
                 amzVvSetActiveFilter('extra');
             });
-            $('#amz-vv-badge-archived-extra-wrap').on('click', function () {
-                amzVvSetActiveFilter('archived_extra');
-            });
-            $('#amz-vv-issues-trend-dot').on('click', function (e) {
+            $('#amz-vv-kw-issues-trend-dot').on('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                amzVvOpenIssuesChart();
+                amzVvOpenIssuesChart('kw');
             });
-            $('#amz-vv-issues-trend-dot').on('keydown', function (e) {
+            $('#amz-vv-pt-issues-trend-dot').on('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                amzVvOpenIssuesChart('pt');
+            });
+            $('#amz-vv-kw-issues-trend-dot, #amz-vv-pt-issues-trend-dot').on('keydown', function (e) {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     e.stopPropagation();
-                    amzVvOpenIssuesChart();
+                    amzVvOpenIssuesChart($(this).attr('id') === 'amz-vv-pt-issues-trend-dot' ? 'pt' : 'kw');
                 }
             });
             $('#amzVvChartRangeSelect').on('change', function () {
                 const days = parseInt(this.value, 10);
                 if (days === amzVvChartDays) return;
                 amzVvChartDays = days;
-                $('#amzVvChartModalTitle').text(
-                    'Variations Issues — Rolling History'
-                    + (amzVvChartDays === 0 ? ' (Lifetime)' : ' (L' + amzVvChartDays + ')')
-                );
+                $('#amzVvChartModalTitle').text(amzVvIssuesChartTitle());
                 amzVvLoadIssuesChart();
             });
 
@@ -997,47 +1384,36 @@
                 if (!amzVvTable) return;
 
                 const extraUnion = {};
-                const archUnion = {};
-                let issues = 0;
+                let kwIssues = 0;
+                let ptIssues = 0;
 
                 const missingUnion = {};
-                const missingInvUnion = {};
 
                 amzVvTable.getData().forEach(function (d) {
                     if (!d || !d.is_parent) return;
-                    const hasMiss = (parseInt(d.kw_missing, 10) || 0) > 0
-                        || (parseInt(d.pt_missing, 10) || 0) > 0;
-                    const hasExtra = (parseInt(d.kw_extra, 10) || 0) > 0
-                        || (parseInt(d.pt_extra, 10) || 0) > 0;
-                    if (hasMiss || hasExtra) issues++;
+                    if (amzVvRowHasTypeIssues(d, 'kw')) kwIssues++;
+                    if (amzVvRowHasTypeIssues(d, 'pt')) ptIssues++;
 
                     ['kw', 'pt'].forEach(function (t) {
                         (Array.isArray(d[t + '_extra_skus']) ? d[t + '_extra_skus'] : []).forEach(function (s) {
                             const k = String(s || '').trim().toUpperCase();
                             if (k) extraUnion[k] = true;
                         });
-                        (Array.isArray(d[t + '_archived_extra_skus']) ? d[t + '_archived_extra_skus'] : []).forEach(function (s) {
-                            const k = String(s || '').trim().toUpperCase();
-                            if (k) archUnion[k] = true;
-                        });
                         (Array.isArray(d[t + '_missing_skus']) ? d[t + '_missing_skus'] : []).forEach(function (s) {
                             const k = String(s || '').trim().toUpperCase();
                             if (k) missingUnion[k] = true;
                         });
                     });
-                    (Array.isArray(d.missing_inv_gt0_skus) ? d.missing_inv_gt0_skus : []).forEach(function (s) {
-                        const k = String(s || '').trim().toUpperCase();
-                        if (k) missingInvUnion[k] = true;
-                    });
                 });
 
                 $('#amz-vv-badge-missing').text(Object.keys(missingUnion).length.toLocaleString());
-                $('#amz-vv-badge-missing-inv').text(Object.keys(missingInvUnion).length.toLocaleString());
-                $('#amz-vv-badge-extra').text(Object.keys(extraUnion).length.toLocaleString());
-                $('#amz-vv-badge-archived-extra').text(Object.keys(archUnion).length.toLocaleString());
-                $('#amz-vv-badge-issues').text(issues.toLocaleString());
-                amzVvIssuesLiveCount = issues;
-                amzVvApplyIssuesTrendDot();
+                amzVvSetExtraBadge(Object.keys(extraUnion).length);
+                $('#amz-vv-badge-kw-issues').text(kwIssues.toLocaleString());
+                $('#amz-vv-badge-pt-issues').text(ptIssues.toLocaleString());
+                amzVvKwIssuesLiveCount = kwIssues;
+                amzVvPtIssuesLiveCount = ptIssues;
+                amzVvApplyIssuesTrendDot('kw');
+                amzVvApplyIssuesTrendDot('pt');
                 amzVvApplyFilters();
             }
 
@@ -1309,13 +1685,6 @@
                     const ptM = parseInt(d.pt_missing, 10) || 0;
                     d.has_missing = (kwM + ptM) > 0;
                     d.missing_sku_count = kwM + ptM;
-                    if (Array.isArray(d.missing_inv_gt0_skus)) {
-                        d.missing_inv_gt0_skus = d.missing_inv_gt0_skus.filter(function (s) {
-                            return !addedSet[String(s || '').trim().toUpperCase()];
-                        });
-                        d.missing_inv_gt0_count = d.missing_inv_gt0_skus.length;
-                        d.has_missing_inv_gt0 = d.missing_inv_gt0_count > 0;
-                    }
 
                     row.update(d);
                     touched++;
@@ -1337,7 +1706,7 @@
                 const label = missing.length === 1
                     ? missing[0]
                     : (missing.length + ' SKUs');
-                if (!confirm('Add ' + label + ' to PARENT ' + parent + ' ' + type + ' campaign?\n\nZero inventory is allowed.')) {
+                if (!confirm('Add ' + label + ' to PARENT ' + parent + ' ' + type + ' campaign?\n\nSKUs with INV ≤ 1 are skipped.')) {
                     return;
                 }
 
@@ -1461,7 +1830,7 @@
                 if (!confirm(
                     'Add ' + skuN + ' missing SKU' + (skuN === 1 ? '' : 's')
                     + ' to ' + parentN + ' parent campaign' + (parentN === 1 ? '' : 's')
-                    + ' via Amazon Ads API?\n\nZero inventory is allowed. Current table filter is used.'
+                    + ' via Amazon Ads API?\n\nSKUs with INV ≤ 1 are skipped. Current table filter is used.'
                 )) {
                     return;
                 }
@@ -1529,53 +1898,150 @@
                 });
             });
 
+            const amzVvLinkUrl = @json(route('amazon.ads.missing.link'));
+            const amzVvUnlinkUrl = @json(route('amazon.ads.missing.unlink'));
+            const amzVvCampaignsUrl = @json(route('amazon.ads.missing.campaigns'));
+            let amzVvCampaignNames = [];
+            fetch(amzVvCampaignsUrl, { headers: { Accept: 'application/json' } })
+                .then(function (res) { return res.json(); })
+                .then(function (body) {
+                    const rows = (body && body.data) ? body.data : [];
+                    amzVvCampaignNames = rows.map(function (r) {
+                        return r && r.campaign_name ? String(r.campaign_name) : '';
+                    }).filter(Boolean);
+                })
+                .catch(function () { amzVvCampaignNames = []; });
+
+            const amzVvPicker = document.createElement('div');
+            amzVvPicker.className = 'amz-vv-campaign-picker d-none';
+            amzVvPicker.innerHTML = '<input type="text" class="form-control form-control-sm amz-vv-picker-input" placeholder="Search campaign...">'
+                + '<div class="amz-vv-picker-list"></div>';
+            document.body.appendChild(amzVvPicker);
+            const amzVvPickerInput = amzVvPicker.querySelector('.amz-vv-picker-input');
+            const amzVvPickerList = amzVvPicker.querySelector('.amz-vv-picker-list');
+            let amzVvPickerCtx = { sku: null, type: null };
+
+            function amzVvRenderPickerList(filter) {
+                const f = String(filter || '').toLowerCase();
+                const matches = amzVvCampaignNames.filter(function (n) {
+                    return n && (!f || n.toLowerCase().indexOf(f) !== -1);
+                }).slice(0, 100);
+                if (!matches.length) {
+                    amzVvPickerList.innerHTML = '<div class="amz-vv-picker-empty">No matching campaigns</div>';
+                    return;
+                }
+                amzVvPickerList.innerHTML = matches.map(function (n) {
+                    return '<div class="amz-vv-picker-option" data-name="' + amzVvEscapeHtml(n) + '" title="'
+                        + amzVvEscapeHtml(n) + '">' + amzVvEscapeHtml(n) + '</div>';
+                }).join('');
+            }
+
+            function amzVvOpenPicker(btn, sku, type) {
+                amzVvPickerCtx = { sku: sku, type: type };
+                const rect = btn.getBoundingClientRect();
+                amzVvPicker.style.top = (window.scrollY + rect.bottom + 2) + 'px';
+                amzVvPicker.style.left = (window.scrollX + rect.left) + 'px';
+                amzVvPicker.classList.remove('d-none');
+                amzVvPickerInput.value = '';
+                amzVvRenderPickerList('');
+                amzVvPickerInput.focus();
+            }
+
+            function amzVvClosePicker() {
+                amzVvPicker.classList.add('d-none');
+                amzVvPickerCtx = { sku: null, type: null };
+            }
+
+            function amzVvFindRowByLinkSku(sku) {
+                if (!amzVvTable || !sku) return null;
+                const rows = amzVvTable.getRows();
+                for (let i = 0; i < rows.length; i++) {
+                    const d = rows[i].getData();
+                    if (d && String(d.campaign_link_sku || d.sku || '') === sku) {
+                        return rows[i];
+                    }
+                }
+                return null;
+            }
+
+            function amzVvPostMissingForm(url, payload) {
+                return fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(payload)
+                }).then(function (res) {
+                    return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+                });
+            }
+
+            function amzVvApplyMissingLinks(sku, body) {
+                const row = amzVvFindRowByLinkSku(sku);
+                if (!row || !body) return;
+                row.update({
+                    campaign_kw: Array.isArray(body.kw) ? body.kw : [],
+                    campaign_pt: Array.isArray(body.pt) ? body.pt : []
+                });
+            }
+
+            amzVvPickerInput.addEventListener('input', function () {
+                amzVvRenderPickerList(this.value);
+            });
+            amzVvPickerList.addEventListener('click', function (e) {
+                const opt = e.target.closest('.amz-vv-picker-option');
+                if (!opt) return;
+                const name = opt.getAttribute('data-name');
+                const sku = amzVvPickerCtx.sku;
+                const type = amzVvPickerCtx.type;
+                amzVvClosePicker();
+                if (!sku || !type || !name) return;
+                amzVvPostMissingForm(amzVvLinkUrl, { sku: sku, type: type, campaign_name: name }).then(function (out) {
+                    if (out.ok && out.body) {
+                        amzVvApplyMissingLinks(sku, out.body);
+                    } else {
+                        window.alert((out.body && out.body.message) || 'Failed to link campaign.');
+                    }
+                }).catch(function () {
+                    window.alert('Failed to link campaign.');
+                });
+            });
+            document.addEventListener('click', function (e) {
+                if (amzVvPicker.classList.contains('d-none')) return;
+                if (amzVvPicker.contains(e.target) || e.target.closest('.amz-vv-link-add-btn')) return;
+                amzVvClosePicker();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') amzVvClosePicker();
+            });
+
+            $(document).on('click', '.amz-vv-link-add-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                amzVvOpenPicker(this, this.getAttribute('data-sku'), this.getAttribute('data-type'));
+            });
+            $(document).on('click', '#amz-vv-wrap .chip-x', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const id = Number(this.getAttribute('data-id') || 0);
+                const sku = this.getAttribute('data-sku') || '';
+                if (!id) return;
+                amzVvPostMissingForm(amzVvUnlinkUrl, { id: id }).then(function (out) {
+                    if (out.ok && out.body) {
+                        amzVvApplyMissingLinks(sku, out.body);
+                    }
+                });
+            });
+
             $('#amz-vv-refresh-btn').on('click', function () {
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
                 $btn.prop('disabled', true);
                 amzVvTable.setData('{{ route("amz.variation.verify.data") }}')
                     .finally(function () { $btn.prop('disabled', false); });
-            });
-
-            $('#amz-vv-pull-btn').on('click', function () {
-                const $btn = $(this);
-                if ($btn.prop('disabled')) return;
-
-                if (!confirm('Pull all merchant listings from Amz SP-API?\n\nThis uses GET_MERCHANT_LISTINGS_ALL_DATA and may take several minutes.')) {
-                    return;
-                }
-
-                $btn.prop('disabled', true)
-                    .html('<span class="spinner-border spinner-border-sm me-1"></span> Pulling…');
-                $('#amz-vv-status-line').text('Requesting listings report from Amz…');
-
-                $.ajax({
-                    url: '{{ route("amz.variation.verify.pull") }}',
-                    method: 'POST',
-                    timeout: 0,
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                        'Accept': 'application/json'
-                    },
-                    success: function (res) {
-                        if (res.status === 200) {
-                            $('#amz-vv-status-line').text(res.message || 'Pull completed.');
-                            amzVvTable.setData('{{ route("amz.variation.verify.data") }}');
-                        } else {
-                            alert(res.message || 'Pull failed.');
-                        }
-                    },
-                    error: function (xhr) {
-                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
-                            ? xhr.responseJSON.message
-                            : ('Pull failed (' + (xhr.status || 'network') + ')');
-                        alert(msg);
-                    },
-                    complete: function () {
-                        $btn.prop('disabled', false)
-                            .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Listings');
-                    }
-                });
             });
         });
     </script>

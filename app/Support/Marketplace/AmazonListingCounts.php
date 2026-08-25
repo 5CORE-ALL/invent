@@ -93,9 +93,69 @@ class AmazonListingCounts
         if (! is_array($raw)) {
             $raw = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
         }
-        $nrlRaw = strtoupper(trim((string) ($raw['NRL'] ?? '')));
+        $nrlRaw = strtoupper(trim((string) ($raw['NRL'] ?? $raw['NR'] ?? '')));
 
         return in_array($nrlRaw, ['NRL', 'NR'], true) ? 'NR' : 'REQ';
+    }
+
+    public static function isNrl(mixed $raw): bool
+    {
+        return self::nrReqFromDataView($raw) === 'NR';
+    }
+
+    /**
+     * Uppercased SKU keys marked NRL/NR in amazon_data_view (Amazon listing page).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, true>
+     */
+    public static function nrlSetForSkus(array $skus): array
+    {
+        $set = [];
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === [] || ! Schema::hasTable('amazon_data_view')) {
+            return $set;
+        }
+
+        AmazonDataView::query()
+            ->whereIn('sku', $skus)
+            ->get(['sku', 'value'])
+            ->each(function ($row) use (&$set) {
+                if (! self::isNrl($row->value ?? null)) {
+                    return;
+                }
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '') {
+                    return;
+                }
+                $set[strtoupper($sku)] = true;
+                $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+                if ($norm !== '') {
+                    $set[$norm] = true;
+                }
+            });
+
+        return $set;
+    }
+
+    /**
+     * @param  array<string, true>  $nrlSet
+     */
+    public static function skuIsNrl(string $sku, array $nrlSet): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $nrlSet === []) {
+            return false;
+        }
+        if (isset($nrlSet[strtoupper($sku)])) {
+            return true;
+        }
+        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+
+        return $norm !== '' && isset($nrlSet[$norm]);
     }
 
     /**

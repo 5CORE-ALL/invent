@@ -11,7 +11,8 @@ use App\Models\ChannelMasterSummary;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsService;
-use App\Services\AmazonSpApiService;
+use App\Support\Marketplace\AmazonAdsMissingLinks;
+use App\Support\Marketplace\AmazonListingCounts;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -57,8 +58,11 @@ class AmzVariationVerifyController extends Controller
         $shopifyBySku = ShopifySku::mapByProductSkus(
             $productMasters->pluck('sku')->filter()->unique()->values()->all()
         );
+        $nrlSet = AmazonListingCounts::nrlSetForSkus(
+            $productMasters->pluck('sku')->filter()->unique()->values()->all()
+        );
 
-        $childRows = $productMasters->map(function ($pm) use ($listedSkuSet, $adLookup, $shopifyBySku) {
+        $childRows = $productMasters->map(function ($pm) use ($listedSkuSet, $adLookup, $shopifyBySku, $nrlSet) {
             $parent = trim((string) ($pm->parent ?? ''));
             $sku = trim((string) ($pm->sku ?? ''));
             $available = $this->isSkuListed($sku, $listedSkuSet);
@@ -67,12 +71,15 @@ class AmzVariationVerifyController extends Controller
             $inv = (float) ($shopifyBySku[$sku]->inv ?? 0);
 
             $isComing = $pm->isComing();
+            $isNrl = AmazonListingCounts::skuIsNrl($sku, $nrlSet);
+            $isLowInv = $inv <= 1;
+            $skipAdsRequired = $isComing || $isNrl || $isLowInv;
 
             $hasKw = $this->skuHasCampaignType($sku, $parent, $available, $adLookup, 'kw');
             $hasPt = $this->skuHasCampaignType($sku, $parent, $available, $adLookup, 'pt');
 
-            $kwFields = $this->buildSiblingAdFields($hasKw, $available, $adLookup['empty'], $isComing);
-            $ptFields = $this->buildSiblingAdFields($hasPt, $available, $adLookup['empty'], $isComing);
+            $kwFields = $this->buildSiblingAdFields($hasKw, $available, $adLookup['empty'], $isComing, $isLowInv, $isNrl);
+            $ptFields = $this->buildSiblingAdFields($hasPt, $available, $adLookup['empty'], $isComing, $isLowInv, $isNrl);
 
             if (! empty($kwFields['existing']) || ! empty($kwFields['over'])) {
                 $kwFields['campaign_names'] = $this->findMatchedCampaignNames($sku, $parent, $available, $adLookup, 'kw');
@@ -90,15 +97,22 @@ class AmzVariationVerifyController extends Controller
                 'sku' => $sku,
                 'inv' => $inv,
                 'is_parent' => false,
+                'pm_status' => $pm->statusValue(),
+                'pm_status_label' => $pm->statusLabel(),
                 'is_coming' => $isComing,
-                'child_sku_required' => ! $isComing,
-                'child_sku_required_label' => $isComing ? 'Coming' : 'Yes',
+                'is_nrl' => $isNrl,
+                'is_low_inv' => $isLowInv,
+                'skip_ads_required' => $skipAdsRequired,
+                'child_sku_required' => ! $skipAdsRequired,
+                'child_sku_required_label' => $isComing ? 'Coming' : ($isNrl ? 'NRL' : 'Yes'),
                 'child_sku_available' => $available,
                 'child_sku_available_label' => $available === null ? '—' : ($available ? 'Yes' : 'No'),
-                'match_status' => $isComing ? null : $match,
+                'match_status' => $skipAdsRequired ? null : $match,
                 'match_label' => $isComing
                     ? 'Coming'
-                    : ($match === null ? '—' : ($match ? 'match' : 'mismatch')),
+                    : ($isNrl
+                        ? 'NRL'
+                        : ($match === null ? '—' : ($match ? 'match' : 'mismatch'))),
             ], $this->prefixAdFields('kw', $kwFields), $this->prefixAdFields('pt', $ptFields));
         })->values()->all();
 
@@ -122,9 +136,12 @@ class AmzVariationVerifyController extends Controller
             ->values()
             ->all();
 
+        $parentStatusMap = $this->buildParentProductMasterStatusMap(array_keys($parentGroups));
+        $missingCampaignsByParent = AmazonAdsMissingLinks::listsByParent(array_keys($parentGroups));
+
         $formattedData = [];
         foreach ($parentGroups as $parentKey => $children) {
-            $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['is_coming'])));
+            $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['skip_ads_required'])));
             $known = array_filter($requiredChildren, fn ($c) => $c['child_sku_available'] !== null);
             $availableCount = count(array_filter($known, fn ($c) => $c['child_sku_available'] === true));
             $requiredCount = count($requiredChildren);
@@ -167,6 +184,12 @@ class AmzVariationVerifyController extends Controller
                     $missingUnion[$ms] = true;
                 }
             }
+            // INV ≤ 0 and Amazon NRL never belong in ads missing counts after refresh.
+            foreach (array_keys($missingUnion) as $ms) {
+                if (($invBySku[$ms] ?? 0) <= 0 || AmazonListingCounts::skuIsNrl($ms, $nrlSet)) {
+                    unset($missingUnion[$ms]);
+                }
+            }
             $missingInvGt0 = [];
             foreach (array_keys($missingUnion) as $ms) {
                 if (($invBySku[$ms] ?? 0) > 0) {
@@ -189,11 +212,23 @@ class AmzVariationVerifyController extends Controller
                 }
             }
 
+            $parentStatus = $parentStatusMap[$parentKey] ?? ['pm_status' => '', 'pm_status_label' => ''];
+            if (($parentStatus['pm_status'] ?? '') === '') {
+                $parentStatus = $this->rollupChildProductMasterStatus($children);
+            }
+
+            $missingCampaigns = $missingCampaignsByParent[$parentKey] ?? ['kw' => [], 'pt' => []];
+
             $formattedData[] = array_merge([
                 'parent' => $parentKey,
                 'sku' => 'PARENT ' . $parentKey,
+                'campaign_link_sku' => AmazonAdsMissingLinks::skuForParent($parentKey),
+                'campaign_kw' => $missingCampaigns['kw'] ?? [],
+                'campaign_pt' => $missingCampaigns['pt'] ?? [],
                 'inv' => array_sum(array_column($children, 'inv')),
                 'is_parent' => true,
+                'pm_status' => $parentStatus['pm_status'],
+                'pm_status_label' => $parentStatus['pm_status_label'],
                 'child_sku_required' => $requiredCount,
                 'child_sku_required_label' => (string) $requiredCount,
                 'child_sku_available' => $parentMatch,
@@ -215,6 +250,15 @@ class AmzVariationVerifyController extends Controller
                 'missing_inv_gt0_skus' => $missingInvGt0,
                 'extra_sku_count' => count($extraUnion),
                 'archived_extra_sku_count' => count($archivedExtraUnion),
+                '_children' => array_values(array_map(function ($c) {
+                    return [
+                        'sku' => trim((string) ($c['sku'] ?? '')),
+                        'pm_status' => (string) ($c['pm_status'] ?? ''),
+                        'pm_status_label' => (string) ($c['pm_status_label'] ?? ''),
+                        'is_coming' => ! empty($c['is_coming']),
+                        'is_nrl' => ! empty($c['is_nrl']),
+                    ];
+                }, $children)),
             ], $this->prefixAdFields('kw', $kwRollup), $this->prefixAdFields('pt', $ptRollup));
         }
 
@@ -222,22 +266,34 @@ class AmzVariationVerifyController extends Controller
         $listingsCount = AmazonListingRaw::query()->count();
         $campaignCount = $adLookup['campaign_count'] ?? 0;
 
-        // Variations Issues = missing and/or extra ads (two-way mismatch)
+        // Issues = missing and/or extra ads, counted separately for KW and PT.
+        $parentRows = array_values(array_filter($formattedData, fn ($r) => ! empty($r['is_parent'])));
+        $kwIssuesCount = count(array_filter(
+            $parentRows,
+            fn ($r) => ((int) ($r['kw_missing'] ?? 0) > 0) || ((int) ($r['kw_extra'] ?? 0) > 0)
+        ));
+        $ptIssuesCount = count(array_filter(
+            $parentRows,
+            fn ($r) => ((int) ($r['pt_missing'] ?? 0) > 0) || ((int) ($r['pt_extra'] ?? 0) > 0)
+        ));
         $variationsIssuesCount = count(array_filter(
-            $formattedData,
+            $parentRows,
             fn ($r) => ((int) ($r['kw_missing'] ?? 0) > 0)
                 || ((int) ($r['pt_missing'] ?? 0) > 0)
                 || ((int) ($r['kw_extra'] ?? 0) > 0)
                 || ((int) ($r['pt_extra'] ?? 0) > 0)
         ));
 
-        $missingSkuTotal = array_sum(array_map(fn ($r) => (int) ($r['missing_sku_count'] ?? 0), $formattedData));
-        $missingInvGt0Total = array_sum(array_map(fn ($r) => (int) ($r['missing_inv_gt0_count'] ?? 0), $formattedData));
-        $extraSkuTotal = array_sum(array_map(fn ($r) => (int) ($r['extra_sku_count'] ?? 0), $formattedData));
-        $archivedExtraSkuTotal = array_sum(array_map(fn ($r) => (int) ($r['archived_extra_sku_count'] ?? 0), $formattedData));
+        $missingSkuTotal = array_sum(array_map(fn ($r) => (int) ($r['missing_sku_count'] ?? 0), $parentRows));
+        $missingInvGt0Total = array_sum(array_map(fn ($r) => (int) ($r['missing_inv_gt0_count'] ?? 0), $parentRows));
+        $extraSkuTotal = array_sum(array_map(fn ($r) => (int) ($r['extra_sku_count'] ?? 0), $parentRows));
+        $archivedExtraSkuTotal = array_sum(array_map(fn ($r) => (int) ($r['archived_extra_sku_count'] ?? 0), $parentRows));
 
-        $this->persistVariationsIssuesSnapshot($variationsIssuesCount);
-        $prevDayCount = $this->previousDayVariationsIssuesCount();
+        $this->persistVariationsIssuesSnapshot([
+            'variations_issues_count' => $variationsIssuesCount,
+            'kw_issues_count' => $kwIssuesCount,
+            'pt_issues_count' => $ptIssuesCount,
+        ]);
 
         return response()->json([
             'data' => $formattedData,
@@ -248,7 +304,11 @@ class AmzVariationVerifyController extends Controller
                 'required_parent_count' => count($parentGroups),
                 'required_child_count' => count($childRows),
                 'variations_issues_count' => $variationsIssuesCount,
-                'variations_issues_prev_day' => $prevDayCount,
+                'kw_issues_count' => $kwIssuesCount,
+                'pt_issues_count' => $ptIssuesCount,
+                'kw_issues_prev_day' => $this->previousDayIssuesCount('kw_issues_count'),
+                'pt_issues_prev_day' => $this->previousDayIssuesCount('pt_issues_count'),
+                'variations_issues_prev_day' => $this->previousDayIssuesCount('variations_issues_count'),
                 'missing_sku_count' => (int) $missingSkuTotal,
                 'missing_inv_gt0_count' => (int) $missingInvGt0Total,
                 'extra_sku_count' => (int) $extraSkuTotal,
@@ -270,13 +330,15 @@ class AmzVariationVerifyController extends Controller
     {
         try {
             $days = (int) $request->input('days', 30);
+            $type = strtolower(trim((string) $request->input('type', '')));
+            $countKey = $type === 'pt' ? 'pt_issues_count' : ($type === 'kw' ? 'kw_issues_count' : 'variations_issues_count');
             $badgeValue = $request->input('badge_value');
             $live = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
                 ? (float) $badgeValue
                 : null;
 
             if ($live !== null) {
-                $this->persistVariationsIssuesSnapshot((int) $live);
+                $this->persistVariationsIssuesSnapshot([$countKey => (int) $live]);
             }
 
             if (! Schema::hasTable('channel_master_daily_data')) {
@@ -310,7 +372,7 @@ class AmzVariationVerifyController extends Controller
                     'date' => Carbon::parse($dateKey, self::TZ)->format('M d'),
                     'full_date' => $dateKey,
                     'date_key' => $dateKey,
-                    'value' => round((float) ($sd['variations_issues_count'] ?? 0), 2),
+                    'value' => round((float) ($sd[$countKey] ?? 0), 2),
                 ];
             }
 
@@ -352,13 +414,17 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
-     * Persist today's California VARIATIONS ISSUES count.
+     * Persist today's California issue counts (combined, KW, PT).
+     *
+     * @param  array<string, int>  $counts
      */
-    private function persistVariationsIssuesSnapshot(int $count): void
+    private function persistVariationsIssuesSnapshot(array $counts): void
     {
         if (! Schema::hasTable('channel_master_daily_data')) {
             return;
         }
+
+        $allowed = ['variations_issues_count', 'kw_issues_count', 'pt_issues_count'];
 
         try {
             $today = now(self::TZ)->toDateString();
@@ -366,12 +432,16 @@ class AmzVariationVerifyController extends Controller
                 ->whereDate('snapshot_date', $today)
                 ->first();
             $sd = is_array($existing?->summary_data) ? $existing->summary_data : [];
-            $sd['variations_issues_count'] = $count;
+            foreach ($allowed as $key) {
+                if (array_key_exists($key, $counts)) {
+                    $sd[$key] = (int) $counts[$key];
+                }
+            }
             $sd['captured_at'] = now(self::TZ)->toDateTimeString();
 
             ChannelMasterSummary::updateOrCreate(
                 ['channel' => self::CHANNEL_KEY, 'snapshot_date' => $today],
-                ['summary_data' => $sd, 'notes' => 'Amz Ads Variation Verify — Variations Issues (California)']
+                ['summary_data' => $sd, 'notes' => 'Amz Ads Variation Verify — KW/PT Issues (California)']
             );
         } catch (\Throwable $e) {
             Log::warning('AmzVariationVerify persistVariationsIssuesSnapshot failed: '.$e->getMessage());
@@ -381,7 +451,7 @@ class AmzVariationVerifyController extends Controller
     /**
      * Prior California-day snapshot count (for red/green/gray trend dot).
      */
-    private function previousDayVariationsIssuesCount(): ?float
+    private function previousDayIssuesCount(string $key): ?float
     {
         if (! Schema::hasTable('channel_master_daily_data')) {
             return null;
@@ -400,49 +470,9 @@ class AmzVariationVerifyController extends Controller
 
             $sd = is_array($row->summary_data) ? $row->summary_data : [];
 
-            return isset($sd['variations_issues_count'])
-                ? (float) $sd['variations_issues_count']
-                : null;
+            return isset($sd[$key]) ? (float) $sd[$key] : null;
         } catch (\Throwable $e) {
             return null;
-        }
-    }
-
-    /**
-     * Pull Amazon merchant listings (GET_MERCHANT_LISTINGS_ALL_DATA) via SP-API.
-     */
-    public function pullListings(Request $request)
-    {
-        try {
-            set_time_limit(3600);
-
-            $service = new AmazonSpApiService();
-            $result = $service->fetchAndStoreListingsReport();
-
-            if (!($result['success'] ?? false)) {
-                return response()->json([
-                    'status' => 422,
-                    'message' => $result['message'] ?? 'Failed to pull Amazon listings.',
-                ], 422);
-            }
-
-            $count = (int) ($result['count'] ?? 0);
-
-            return response()->json([
-                'status' => 200,
-                'message' => "Pulled {$count} Amazon listings. Parent Vs Listed SKU updated.",
-                'count' => $count,
-                'last_pulled_at' => AmazonListingRaw::query()->max('report_imported_at'),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Amazon Ads Variation Verification: pull listings failed', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'status' => 500,
-                'message' => 'Pull failed: ' . $e->getMessage(),
-            ], 500);
         }
     }
 
@@ -712,8 +742,13 @@ class AmzVariationVerifyController extends Controller
             ->where('parent', $parent)
             ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
             ->get(['sku', 'Values']);
+        $childSkus = $pmRows->pluck('sku')->filter()->unique()->values()->all();
+        $invBySku = ShopifySku::mapByProductSkus($childSkus);
+        $nrlSet = AmazonListingCounts::nrlSetForSkus($childSkus);
         $allowedTok = [];
         $comingTok = [];
+        $nrlTok = [];
+        $lowInvTok = [];
         foreach ($pmRows as $row) {
             $sku = trim((string) ($row->sku ?? ''));
             if ($sku === '') {
@@ -725,6 +760,10 @@ class AmzVariationVerifyController extends Controller
             }
             if ($row->isComing()) {
                 $comingTok[$tok] = $sku;
+            } elseif (AmazonListingCounts::skuIsNrl($sku, $nrlSet)) {
+                $nrlTok[$tok] = $sku;
+            } elseif ((float) ($invBySku[$sku]->inv ?? 0) <= 1) {
+                $lowInvTok[$tok] = $sku;
             } else {
                 $allowedTok[$tok] = $sku;
             }
@@ -736,6 +775,10 @@ class AmzVariationVerifyController extends Controller
             $tok = $this->normalizeCampaignToken($sku);
             if ($tok !== '' && isset($comingTok[$tok])) {
                 $rejected[] = ['sku' => $sku, 'message' => 'Coming status is not counted as missing.'];
+            } elseif ($tok !== '' && isset($nrlTok[$tok])) {
+                $rejected[] = ['sku' => $sku, 'message' => 'NRL is not counted as missing.'];
+            } elseif ($tok !== '' && isset($lowInvTok[$tok])) {
+                $rejected[] = ['sku' => $sku, 'message' => 'INV ≤ 1 is not counted as missing.'];
             } elseif ($tok !== '' && isset($allowedTok[$tok])) {
                 $toAdd[] = $allowedTok[$tok];
             } else {
@@ -1598,13 +1641,18 @@ class AmzVariationVerifyController extends Controller
 
     /**
      * Child-level KW/PT status fields.
-     * Every child SKU is counted (INV is not used to skip).
-     * Coming (Product Master upcoming) is never flagged as Missing.
+     * Coming, Amazon NRL, and INV ≤ 1 are never flagged as Missing and are not required.
      *
      * @return array{status: ?string, label: string, existing: bool, missing: bool, over: bool}
      */
-    private function buildSiblingAdFields(?bool $inCampaign, ?bool $available, bool $adsEmpty, bool $isComing = false): array
-    {
+    private function buildSiblingAdFields(
+        ?bool $inCampaign,
+        ?bool $available,
+        bool $adsEmpty,
+        bool $isComing = false,
+        bool $isLowInv = false,
+        bool $isNrl = false
+    ): array {
         if ($adsEmpty || $inCampaign === null) {
             return [
                 'status' => null,
@@ -1621,8 +1669,10 @@ class AmzVariationVerifyController extends Controller
         // Ads existing: in campaign
         $existing = $inCampaign === true;
 
-        // Missing: not in campaign (Coming is excluded)
-        $missing = $inCampaign === false && ! $isComing;
+        $skipMissing = $isComing || $isNrl || $isLowInv;
+
+        // Missing: not in campaign (Coming, NRL, and INV ≤ 1 are excluded)
+        $missing = $inCampaign === false && ! $skipMissing;
 
         if ($over) {
             $status = 'over';
@@ -1633,6 +1683,12 @@ class AmzVariationVerifyController extends Controller
         } elseif ($isComing) {
             $status = 'coming';
             $label = 'Coming';
+        } elseif ($isNrl) {
+            $status = 'nrl';
+            $label = 'NRL';
+        } elseif ($isLowInv) {
+            $status = 'low_inv';
+            $label = 'INV ≤1';
         } elseif ($missing) {
             $status = 'missing';
             $label = 'Missing';
@@ -1651,7 +1707,7 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
-     * Parent rollup for KW or PT siblings — all child SKUs (no INV skip) + Ads→CP extras.
+     * Parent rollup for KW or PT siblings — required children only (Coming / NRL / INV ≤ 1 skipped) + extras.
      *
      * @param  array<int, array>  $children
      * @param  list<string>  $extraSkus
@@ -1695,7 +1751,7 @@ class AmzVariationVerifyController extends Controller
             ];
         }
 
-        $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['is_coming'])));
+        $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['skip_ads_required']) && empty($c['is_coming']) && empty($c['is_nrl']) && empty($c['is_low_inv'])));
         $required = count($requiredChildren);
         $existing = count(array_filter($requiredChildren, fn ($c) => ! empty($c[$prefix . 'existing'])));
 
@@ -1978,6 +2034,89 @@ class AmzVariationVerifyController extends Controller
         }
 
         return $best;
+    }
+
+    /**
+     * Status from the PARENT {parent} (or sku=parent) Product Master row.
+     *
+     * @param  list<string>  $parentKeys
+     * @return array<string, array{pm_status: string, pm_status_label: string}>
+     */
+    private function buildParentProductMasterStatusMap(array $parentKeys): array
+    {
+        $map = [];
+        $parentKeys = array_values(array_filter(array_map(
+            fn ($p) => trim((string) $p),
+            $parentKeys
+        )));
+        if ($parentKeys === []) {
+            return $map;
+        }
+
+        $rows = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where(function ($q) use ($parentKeys) {
+                $q->where(function ($q2) use ($parentKeys) {
+                    $q2->whereIn('parent', $parentKeys)
+                        ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%']);
+                })->orWhereIn('sku', $parentKeys);
+            })
+            ->get(['sku', 'parent', 'Values']);
+
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            $parent = trim((string) ($row->parent ?? ''));
+            $isParentSku = (bool) preg_match('/^PARENT\s+/i', $sku);
+            $key = $isParentSku
+                ? ($parent !== '' ? $parent : trim((string) preg_replace('/^PARENT\s+/i', '', $sku)))
+                : $sku;
+            if ($key === '') {
+                continue;
+            }
+
+            $payload = [
+                'pm_status' => $row->statusValue(),
+                'pm_status_label' => $row->statusLabel(),
+            ];
+
+            if ($isParentSku || ! isset($map[$key])) {
+                $map[$key] = $payload;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<int, array{pm_status?: string, pm_status_label?: string}>  $children
+     * @return array{pm_status: string, pm_status_label: string}
+     */
+    private function rollupChildProductMasterStatus(array $children): array
+    {
+        $byLabel = [];
+        foreach ($children as $child) {
+            $label = trim((string) ($child['pm_status_label'] ?? ''));
+            $raw = trim((string) ($child['pm_status'] ?? ''));
+            if ($label === '' && $raw === '') {
+                continue;
+            }
+            $key = $label !== '' ? $label : ProductMaster::statusDisplayLabel($raw);
+            if ($key === '') {
+                continue;
+            }
+            if (! isset($byLabel[$key])) {
+                $byLabel[$key] = $raw !== '' ? $raw : $key;
+            }
+        }
+
+        if ($byLabel === []) {
+            return ['pm_status' => '', 'pm_status_label' => ''];
+        }
+
+        return [
+            'pm_status' => implode(',', array_values($byLabel)),
+            'pm_status_label' => implode(', ', array_keys($byLabel)),
+        ];
     }
 
     /**

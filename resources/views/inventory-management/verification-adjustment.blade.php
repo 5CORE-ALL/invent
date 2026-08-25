@@ -4824,11 +4824,15 @@
                             const sharing = response.sharing || null;
                             let shareNote = '';
                             if (sharing) {
-                                if (sharing.anyoneWithLink) {
-                                    shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-unlock"></i> Link is public — any email can open.</p>`;
+                                if (sharing.domainShared) {
+                                    shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-user-edit"></i> Shared with all <strong>@5core.com</strong> accounts as <strong>Editor</strong>.</p>`;
+                                } else if ((sharing.editorsAdded || []).length) {
+                                    shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-user-edit"></i> Shared as <strong>Editor</strong> with ${sharing.editorsAdded.length} @5core.com teammate(s).</p>`;
+                                } else if (sharing.anyoneWithLink) {
+                                    shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-exclamation-triangle"></i> Old Apps Script still live (public link). Paste updated <code>google-apps-script-code.js</code> and Deploy → New version.</p>`;
                                 } else {
                                     const errs = (sharing.errors || []).slice(0, 2).join('<br>');
-                                    shareNote = `<p style="color:#dc3545;font-size:13px;margin-top:8px;"><i class="fas fa-lock"></i> Sharing failed — Apps Script may need redeploy / Drive permission.<br>${errs}</p>`;
+                                    shareNote = `<p style="color:#dc3545;font-size:13px;margin-top:8px;"><i class="fas fa-lock"></i> Sharing failed — paste updated Apps Script and Deploy → New version.<br>${errs}</p>`;
                                 }
                             } else {
                                 shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-exclamation-triangle"></i> Old Apps Script still live. Paste updated <code>google-apps-script-code.js</code> and Deploy → New version.</p>`;

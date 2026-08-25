@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AmazonAdsMissingLink;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsService;
+use App\Support\Marketplace\AmazonAdsMissingLinks;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -202,7 +203,7 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
-     * Create one PAUSED AUTO Sponsored Products campaign for a parent with product ads
+     * Create one PAUSED KW/MANUAL Sponsored Products campaign for a parent with product ads
      * for selected child seller SKUs (Amazon seller rule: product ads use sku, not ASIN).
      */
     public function create(Request $request): JsonResponse
@@ -220,10 +221,7 @@ class AmazonAdsMissingController extends Controller
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
         $sku = 'PARENT '.$parent;
-        $type = strtoupper(trim((string) ($validated['type'] ?? 'PT')));
-        if (! in_array($type, self::TYPES, true)) {
-            $type = 'PT';
-        }
+        $type = 'KW';
 
         $campaignName = trim((string) ($validated['campaign_name'] ?? ''));
         if ($campaignName === '') {
@@ -263,8 +261,8 @@ class AmazonAdsMissingController extends Controller
         }
 
         $campaignName = $this->ensureUniqueCampaignName($campaignName);
-        $budget = (float) ($validated['budget_amount'] ?? 10);
-        $defaultBid = (float) ($validated['default_bid'] ?? 0.50);
+        $budget = (float) ($validated['budget_amount'] ?? 3);
+        $defaultBid = (float) ($validated['default_bid'] ?? 0.60);
         // Amazon rule: positive keywords require MANUAL; AUTO is for PT-style product ads.
         $targetingType = $type === 'KW' ? 'MANUAL' : 'AUTO';
 
@@ -1166,15 +1164,7 @@ PROMPT;
      */
     private function linksResponseForSku(string $sku): array
     {
-        $links = AmazonAdsMissingLink::where('sku', $sku)->orderBy('id')->get();
-        $statusMap = $this->campaignStatusMap();
-
-        return [
-            'ok' => true,
-            'sku' => $sku,
-            'pt' => $this->linkListForType($links, 'PT', $statusMap),
-            'kw' => $this->linkListForType($links, 'KW', $statusMap),
-        ];
+        return AmazonAdsMissingLinks::listsResponseForSku($sku);
     }
 
     /**
@@ -1184,23 +1174,7 @@ PROMPT;
      */
     private function linkListForType($links, string $type, array $statusMap = []): array
     {
-        return $links
-            ->filter(fn ($l) => (string) $l->type === $type)
-            ->map(function ($l) use ($statusMap) {
-                $name = (string) $l->campaign_name;
-                $status = $statusMap[$this->normalizeCampaignName($name)] ?? '';
-                $dot = $status === 'ENABLED' ? 'green' : ($status !== '' ? 'red' : '');
-
-                return [
-                    'id' => (int) $l->id,
-                    'campaign_id' => $l->campaign_id,
-                    'campaign_name' => $name,
-                    'status' => $status,
-                    'dot' => $dot,
-                ];
-            })
-            ->values()
-            ->all();
+        return AmazonAdsMissingLinks::linkListForType($links, $type, $statusMap);
     }
 
     /**
@@ -1211,40 +1185,7 @@ PROMPT;
      */
     private function campaignStatusMap(): array
     {
-        if (! Schema::hasTable(self::SP_TABLE)
-            || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')
-            || ! Schema::hasColumn(self::SP_TABLE, 'campaignStatus')) {
-            return [];
-        }
-
-        // Latest row per campaign name (highest id) carries the current status.
-        $latestIds = DB::table(self::SP_TABLE)
-            ->whereNotNull('campaignName')
-            ->where('campaignName', '!=', '')
-            ->selectRaw('MAX(id) AS max_id')
-            ->groupBy('campaignName')
-            ->pluck('max_id')
-            ->filter()
-            ->map(fn ($v) => (int) $v)
-            ->all();
-
-        if ($latestIds === []) {
-            return [];
-        }
-
-        $map = [];
-        DB::table(self::SP_TABLE)
-            ->whereIn('id', $latestIds)
-            ->get(['campaignName', 'campaignStatus'])
-            ->each(function ($row) use (&$map) {
-                $key = $this->normalizeCampaignName((string) ($row->campaignName ?? ''));
-                if ($key === '') {
-                    return;
-                }
-                $map[$key] = strtoupper(trim((string) ($row->campaignStatus ?? '')));
-            });
-
-        return $map;
+        return AmazonAdsMissingLinks::campaignStatusMap();
     }
 
     /**
@@ -1252,7 +1193,7 @@ PROMPT;
      */
     private function normalizeCampaignName(string $name): string
     {
-        return strtoupper(rtrim(preg_replace('/\s+/', ' ', trim($name)), '.'));
+        return AmazonAdsMissingLinks::normalizeCampaignName($name);
     }
 
     /**

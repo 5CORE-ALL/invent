@@ -4344,7 +4344,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amz-variation-verify', [AmzVariationVerifyController::class, 'index'])->name('amz.variation.verify');
     Route::get('/amz-variation-verify/data', [AmzVariationVerifyController::class, 'data'])->name('amz.variation.verify.data');
     Route::get('/amz-variation-verify/chart-data', [AmzVariationVerifyController::class, 'chartData'])->name('amz.variation.verify.chart');
-    Route::post('/amz-variation-verify/pull-listings', [AmzVariationVerifyController::class, 'pullListings'])->name('amz.variation.verify.pull');
     Route::post('/amz-variation-verify/archive-extra-ads', [AmzVariationVerifyController::class, 'archiveExtraAds'])->name('amz.variation.verify.archive.extra');
     Route::post('/amz-variation-verify/add-missing-ads', [AmzVariationVerifyController::class, 'addMissingAds'])->name('amz.variation.verify.add.missing');
     Route::post('/amz-variation-verify/add-all-missing-ads', [AmzVariationVerifyController::class, 'addAllMissingAds'])->name('amz.variation.verify.add.missing.all');

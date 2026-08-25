@@ -152,6 +152,60 @@ class ProductMaster extends Model
         return self::isComingStatus($this->Values ?? []);
     }
 
+    public static function statusValueFromValues(mixed $values): string
+    {
+        if (is_object($values)) {
+            $values = $values->Values ?? null;
+        }
+        if (is_string($values)) {
+            $values = json_decode($values, true) ?: [];
+        }
+        if (! is_array($values)) {
+            return '';
+        }
+
+        return trim((string) ($values['status'] ?? ''));
+    }
+
+    public static function statusDisplayLabel(string $status): string
+    {
+        $s = trim($status);
+        if ($s === '') {
+            return '';
+        }
+
+        $lower = strtolower($s);
+        $upper = strtoupper($s);
+
+        if ($lower === 'active') {
+            return 'Active';
+        }
+        if ($lower === 'inactive') {
+            return 'Inactive';
+        }
+        if (in_array($lower, ['upcoming', 'coming', 'comming'], true)) {
+            return 'Coming';
+        }
+        if ($upper === 'DC') {
+            return 'DC';
+        }
+        if ($upper === '2BDC') {
+            return '2BDC';
+        }
+
+        return $s;
+    }
+
+    public function statusValue(): string
+    {
+        return self::statusValueFromValues($this->Values ?? []);
+    }
+
+    public function statusLabel(): string
+    {
+        return self::statusDisplayLabel($this->statusValue());
+    }
+
     /**
      * Auto-recalculate LP, CBM and FRGHT in the Values JSON whenever the model is saved.
      * Source of truth formula:

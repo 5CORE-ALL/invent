@@ -49,6 +49,9 @@
         .amz-ads-missing .amz-missing-badge--missing.is-alert {
             background-color: #dc2626;
         }
+        .amz-ads-missing .amz-missing-badge.is-active {
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626;
+        }
         .amz-badge-panel {
             position: absolute;
             z-index: 2000;
@@ -219,7 +222,7 @@
                             <span class="amz-missing-badge-label">Missing PT</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" title="Missing KW: in-stock rows (inventory > 0) in the current view with no linked KW campaign.">
+                        <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" role="button" tabindex="0" aria-pressed="false" title="Missing KW: in-stock rows (inventory > 0) with no linked KW campaign. Click to show only those rows; click again to clear.">
                             <span class="amz-missing-badge-label">Missing KW</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingKwValue">0</span>
                         </div>
@@ -239,13 +242,13 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amzCreateCampaignModalLabel">Create Amz SP Campaign (AUTO / PT)</h5>
+                    <h5 class="modal-title" id="amzCreateCampaignModalLabel">Create Amz SP Campaign (KW / MANUAL)</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info py-2 small mb-3">
-                        Creates <strong>one PAUSED</strong> Sponsored Products <strong>AUTO</strong> campaign for the parent
-                        (e.g. <code>PARENT PMX</code>). Selected child SKUs become product ads
+                        Creates <strong>one PAUSED</strong> Sponsored Products <strong>KW / MANUAL</strong> campaign for the parent
+                        (e.g. <code>PARENT PMX KW</code>). Selected child SKUs become product ads
                         (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).
                         Campaign negative keywords support Phrase / Exact only (not Broad).
                     </div>
@@ -262,18 +265,11 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small mb-1">Daily budget ($)</label>
-                                <input type="number" class="form-control form-control-sm" id="amzCreateBudget" name="budget_amount" min="1" step="0.01" value="10">
+                                <input type="number" class="form-control form-control-sm" id="amzCreateBudget" name="budget_amount" min="1" step="0.01" value="3">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small mb-1">Default bid ($)</label>
-                                <input type="number" class="form-control form-control-sm" id="amzCreateDefaultBid" name="default_bid" min="0.02" step="0.01" value="0.50">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small mb-1">Link as</label>
-                                <select class="form-select form-select-sm" id="amzCreateType">
-                                    <option value="PT" selected>PT (AUTO product targeting)</option>
-                                    <option value="KW">KW</option>
-                                </select>
+                                <input type="number" class="form-control form-control-sm" id="amzCreateDefaultBid" name="default_bid" min="0.02" step="0.01" value="0.60">
                             </div>
                         </div>
 
@@ -311,7 +307,7 @@
                             </a>
                         </div>
                         <div class="form-text small mt-1">
-                            Negatives work on PT/AUTO. Positives require a KW/MANUAL campaign (set Link as → KW).
+                            Campaigns are created as KW/MANUAL so positive keywords can be pushed.
                         </div>
                     </form>
                     <div class="text-danger small mt-2 d-none" id="amzCreateError"></div>
@@ -500,7 +496,7 @@
                             </div>
                         </div>
                         <div class="form-text small mt-1">
-                            Requires a KW/MANUAL campaign (create with Link as → KW first). Duplicates are skipped.
+                            Requires a KW/MANUAL campaign. Duplicates are skipped.
                         </div>
                         <div class="text-success small mt-2 d-none" id="amzAiPosPushOk"></div>
                     </div>
@@ -699,22 +695,18 @@
             function openCreateModal(d) {
                 lastCreateRowData = d || null;
                 // Prefer an already-linked campaign id so Push works without re-create.
-                lastCreatedCampaignId = pickLinkedCampaignId(d, 'PT') || pickLinkedCampaignId(d, 'KW');
+                lastCreatedCampaignId = pickLinkedCampaignId(d, 'KW');
                 lastCreatedAdGroupId = '';
                 document.getElementById('amzCreateParent').value = d.parent || '';
                 document.getElementById('amzCreateParentDisplay').value = d.parent || '';
                 document.getElementById('amzCreateCampaignName').value = d.sku || ('PARENT ' + (d.parent || ''));
-                document.getElementById('amzCreateBudget').value = '10';
-                document.getElementById('amzCreateDefaultBid').value = '0.50';
-                document.getElementById('amzCreateType').value = 'PT';
-                applyCampaignTypeSuffix('PT');
-                // If a PT/KW chip already exists, use that campaign name for push targeting.
-                var preferList = (Array.isArray(d.pt) && d.pt.length) ? d.pt : (d.kw || []);
+                document.getElementById('amzCreateBudget').value = '3';
+                document.getElementById('amzCreateDefaultBid').value = '0.60';
+                applyCampaignTypeSuffix('KW');
+                // If a KW chip already exists, use that campaign name for push targeting.
+                var preferList = (Array.isArray(d.kw) && d.kw.length) ? d.kw : [];
                 if (preferList.length && preferList[0].campaign_name) {
                     document.getElementById('amzCreateCampaignName').value = preferList[0].campaign_name;
-                    if (Array.isArray(d.kw) && d.kw[0] && d.kw[0].campaign_name === preferList[0].campaign_name) {
-                        document.getElementById('amzCreateType').value = 'KW';
-                    }
                 }
                 document.getElementById('amzCreateTargetSku').value = d.target_sku || '';
                 document.getElementById('amzCreateError').classList.add('d-none');
@@ -882,10 +874,39 @@
                     if (el) { el.textContent = Number(parents).toLocaleString('en-US'); }
                 }
 
+                function isMissingKwBadgeFilterOn() {
+                    try {
+                        return table.getHeaderFilterValue('kw') === 'missing'
+                            && table.getHeaderFilterValue('inventory') === 'in';
+                    } catch (e) {
+                        return false;
+                    }
+                }
+
+                function syncMissingKwBadgeActive() {
+                    var kwWrap = document.getElementById('amzMissingKwWrap');
+                    if (!kwWrap) { return; }
+                    var on = isMissingKwBadgeFilterOn();
+                    kwWrap.classList.toggle('is-active', on);
+                    kwWrap.setAttribute('aria-pressed', on ? 'true' : 'false');
+                }
+
+                function toggleMissingKwFilter() {
+                    badgePanel.classList.add('d-none');
+                    if (isMissingKwBadgeFilterOn()) {
+                        table.setHeaderFilterValue('kw', '');
+                        table.setHeaderFilterValue('inventory', '');
+                    } else {
+                        table.setHeaderFilterValue('inventory', 'in');
+                        table.setHeaderFilterValue('kw', 'missing');
+                    }
+                }
+
                 // dataFiltered gives the filtered RowComponents reliably (fires on initial filter, toggle, and header filters).
                 table.on('dataFiltered', function (filters, rows) {
                     updateMissingBadges((rows || []).map(function (rc) { return rc.getData(); }));
                     updateParentBadge();
+                    syncMissingKwBadgeActive();
                 });
 
                 // Clicking a badge shows the list of parents behind its count.
@@ -934,9 +955,18 @@
                 bindBadge('amzMissingPtWrap', 'Missing PT', function () {
                     return parentNamesFrom(table.getData('active'), function (r) { return (Number(r.inventory) || 0) > 0 && (!r.pt || !r.pt.length); });
                 });
-                bindBadge('amzMissingKwWrap', 'Missing KW', function () {
-                    return parentNamesFrom(table.getData('active'), function (r) { return (Number(r.inventory) || 0) > 0 && (!r.kw || !r.kw.length); });
-                });
+                var missingKwWrap = document.getElementById('amzMissingKwWrap');
+                if (missingKwWrap) {
+                    missingKwWrap.addEventListener('click', function () {
+                        toggleMissingKwFilter();
+                    });
+                    missingKwWrap.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleMissingKwFilter();
+                        }
+                    });
+                }
 
                 document.addEventListener('click', function (e) {
                     if (badgePanel.classList.contains('d-none')) { return; }
@@ -1626,18 +1656,9 @@
 
                 document.getElementById('amzCreateAiPosLink').addEventListener('click', function (e) {
                     e.preventDefault();
-                    // Positives need MANUAL/KW — switch type + suffix if still on PT.
-                    if ((document.getElementById('amzCreateType').value || 'PT') !== 'KW') {
-                        document.getElementById('amzCreateType').value = 'KW';
-                        applyCampaignTypeSuffix('KW');
-                        // Avoid pushing positives onto a prior AUTO/PT campaign id.
-                        lastCreatedCampaignId = pickLinkedCampaignId(lastCreateRowData || {}, 'KW') || '';
-                        lastCreatedAdGroupId = '';
-                    } else {
-                        lastCreatedCampaignId = lastCreatedCampaignId
-                            || pickLinkedCampaignId(lastCreateRowData || {}, 'KW')
-                            || '';
-                    }
+                    lastCreatedCampaignId = lastCreatedCampaignId
+                        || pickLinkedCampaignId(lastCreateRowData || {}, 'KW')
+                        || '';
                     var modal = getAiPosModal();
                     if (!modal) {
                         window.alert('Could not open AI positives modal.');
@@ -1781,9 +1802,6 @@
                     });
                 });
 
-                document.getElementById('amzCreateType').addEventListener('change', function () {
-                    applyCampaignTypeSuffix(this.value || 'PT');
-                });
                 document.getElementById('amzCreateSelectAll').addEventListener('click', function () {
                     document.querySelectorAll('#amzCreateChildrenBody .amz-child-check').forEach(function (cb) {
                         if (!cb.disabled) { cb.checked = true; }
@@ -1812,9 +1830,9 @@
                     var payload = {
                         parent: document.getElementById('amzCreateParent').value,
                         campaign_name: document.getElementById('amzCreateCampaignName').value,
-                        budget_amount: parseFloat(document.getElementById('amzCreateBudget').value) || 10,
-                        default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.5,
-                        type: document.getElementById('amzCreateType').value || 'PT',
+                        budget_amount: parseFloat(document.getElementById('amzCreateBudget').value) || 3,
+                        default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.60,
+                        type: 'KW',
                         children: children
                     };
                     if (!payload.parent || !(payload.campaign_name || '').trim()) {
