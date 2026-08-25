@@ -38,21 +38,11 @@ use Illuminate\Support\Facades\Storage;
 
 class ListingManagerController extends Controller
 {
+    private const SYNC_FAMILY_CACHE = 'lm.sync_family.user.';
+
     public function index()
     {
-        $lastSync = null;
-        if (Schema::hasTable('amazon_listings_raw')) {
-            $raw = AmazonListingRaw::query()->max('report_imported_at')
-                ?: AmazonListingRaw::query()->max('updated_at');
-            if ($raw) {
-                $lastSync = Carbon::parse($raw);
-            }
-        }
-
-        return view('market-places.listing-manager.index', [
-            'lastSync' => $lastSync,
-            'lastSyncHuman' => $lastSync ? $lastSync->diffForHumans() : 'Never',
-        ]);
+        return view('market-places.listing-manager.index');
     }
 
     /**
@@ -485,6 +475,8 @@ class ListingManagerController extends Controller
                 'not_listed_on' => $enabledChannels,
                 'drafts' => $drafts,
                 'changelog' => $changelog,
+                'master_content' => ListingManagerMasterLoader::contentPack($sku),
+                'sync_prefs' => $this->loadSyncFamilyPrefs(),
                 'shopify_ok' => (bool) ($shopify['success'] ?? false),
                 'amazon_media_ok' => $images !== [],
                 'updated_at' => $listing?->updated_at?->toDateTimeString(),
@@ -631,8 +623,153 @@ class ListingManagerController extends Controller
         $sku = trim((string) $request->input('sku', ''));
         $source = trim((string) $request->input('source', ''));
         $payload = ListingManagerMasterLoader::load($sku, $source);
+        $siblings = $request->boolean('sync_siblings');
+        $parent = $request->boolean('sync_parent');
+        if (($payload['success'] ?? false) && ($siblings || $parent)) {
+            $copied = ListingManagerMasterLoader::copyToFamily($sku, $source, $siblings, $parent);
+            $payload['copied'] = $copied['copied'];
+            $payload['copied_skus'] = $copied['skus'];
+            if ($copied['copied'] > 0) {
+                $payload['message'] = trim((string) ($payload['message'] ?? 'Synced.')).
+                    ' Copied to '.$copied['copied'].' related SKU'.($copied['copied'] === 1 ? '' : 's').'.';
+            }
+        }
 
         return response()->json($payload, ($payload['success'] ?? false) ? 200 : 422);
+    }
+
+    public function saveMasterField(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'field' => 'required|string|in:title150,title100,title80,title60,bullet1,bullet2,bullet3,bullet4,bullet5,description_html',
+            'value' => 'nullable|string',
+            'sync_siblings' => 'sometimes|boolean',
+            'sync_parent' => 'sometimes|boolean',
+        ]);
+
+        $sku = trim($validated['sku']);
+        $field = $validated['field'];
+        $value = trim((string) ($validated['value'] ?? ''));
+        if ($field === 'title150') {
+            $value = mb_substr($value, 0, 170);
+        } elseif ($field === 'title100') {
+            $value = mb_substr($value, 0, 105);
+        } elseif ($field === 'title80') {
+            $value = mb_substr($value, 0, 80);
+        } elseif ($field === 'title60') {
+            $value = mb_substr($value, 0, 60);
+        }
+
+        if (! Schema::hasTable('product_master')) {
+            return response()->json(['success' => false, 'message' => 'product_master is missing.'], 422);
+        }
+
+        $column = $field;
+        if ($field === 'description_html' && ! Schema::hasColumn('product_master', 'description_html')) {
+            $column = Schema::hasColumn('product_master', 'description_1500') ? 'description_1500' : '';
+        }
+        if ($column === '' || ! Schema::hasColumn('product_master', $column)) {
+            return response()->json(['success' => false, 'message' => "Column {$field} is not available."], 422);
+        }
+
+        $payload = [
+            $column => $value === '' ? null : $value,
+            'updated_at' => now(),
+        ];
+        if ($field === 'description_html' && $column === 'description_html' && Schema::hasColumn('product_master', 'description_1500')) {
+            $plain = trim(html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            $payload['description_1500'] = $plain === '' ? null : mb_substr($plain, 0, 4000);
+        }
+
+        $updated = DB::table('product_master')->where('sku', $sku)->update($payload);
+        if ($updated === 0) {
+            $updated = DB::table('product_master')->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])->update($payload);
+        }
+        if ($updated === 0) {
+            return response()->json(['success' => false, 'message' => 'SKU not found in Product Master.'], 404);
+        }
+
+        $source = str_starts_with($field, 'title') ? 'title' : (str_starts_with($field, 'bullet') ? 'bullets' : 'description');
+        $copied = ListingManagerMasterLoader::copyToFamily(
+            $sku,
+            $source,
+            $request->boolean('sync_siblings'),
+            $request->boolean('sync_parent')
+        );
+        $pack = ListingManagerMasterLoader::contentPack($sku);
+        $message = 'Saved '.$field.'.';
+        if ($copied['copied'] > 0) {
+            $message .= ' Copied to '.$copied['copied'].' related SKU'.($copied['copied'] === 1 ? '' : 's').'.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'field' => $field,
+            'value' => $value,
+            'copied' => $copied['copied'],
+            'master_content' => $pack,
+        ]);
+    }
+
+    public function syncFamilyPrefs(): \Illuminate\Http\JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'prefs' => $this->loadSyncFamilyPrefs(),
+        ]);
+    }
+
+    public function saveSyncFamilyPrefs(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $request->validate([
+            'siblings' => 'required|boolean',
+            'parent' => 'required|boolean',
+        ]);
+        $userId = (int) (Auth::id() ?? 0);
+        if ($userId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Unauthenticated.'], 401);
+        }
+
+        $prefs = $this->rememberSyncFamilyPrefs($request->boolean('siblings'), $request->boolean('parent'));
+
+        return response()->json(['success' => true, 'prefs' => $prefs]);
+    }
+
+    /**
+     * @return array{siblings: bool, parent: bool}
+     */
+    private function rememberSyncFamilyPrefs(bool $siblings, bool $parent): array
+    {
+        $prefs = ['siblings' => $siblings, 'parent' => $parent];
+        $userId = (int) (Auth::id() ?? 0);
+        if ($userId > 0) {
+            Cache::forever(self::SYNC_FAMILY_CACHE.$userId, $prefs);
+        }
+
+        return $prefs;
+    }
+
+    /**
+     * @return array{siblings: bool, parent: bool}
+     */
+    private function loadSyncFamilyPrefs(): array
+    {
+        $defaults = ['siblings' => false, 'parent' => false];
+        $userId = (int) (Auth::id() ?? 0);
+        if ($userId <= 0) {
+            return $defaults;
+        }
+        $saved = Cache::get(self::SYNC_FAMILY_CACHE.$userId);
+        if (! is_array($saved)) {
+            return $defaults;
+        }
+
+        return [
+            'siblings' => (bool) ($saved['siblings'] ?? false),
+            'parent' => (bool) ($saved['parent'] ?? false),
+        ];
     }
 
     /**
@@ -874,13 +1011,11 @@ class ListingManagerController extends Controller
             }
 
             $count = (int) ($result['count'] ?? 0);
-            Cache::put('listing_manager_last_import_at', now()->toIso8601String(), now()->addDays(7));
 
             return response()->json([
                 'success' => true,
                 'message' => "Imported {$count} Amazon listings successfully.",
                 'count' => $count,
-                'last_sync' => now()->diffForHumans(),
             ]);
         } catch (\Throwable $e) {
             Log::error('ListingManager importFromAmazon failed: ' . $e->getMessage());

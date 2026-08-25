@@ -27,6 +27,7 @@ class BadgeCalculatorRegistry
             AccountHealthBadgeCalculator::class,
             InventoryVerifyBadgeCalculator::class,
             PurchaseContractBadgeCalculator::class,
+            ComplianceMasterBadgeCalculator::class,
         ];
     }
 

@@ -21,6 +21,14 @@
         #bullet-master-table tbody td { padding:8px 10px; vertical-align:middle!important; border-bottom:1px solid #edf2f9; font-size:11px; line-height:1.35; color:#475569; }
         #bullet-master-table tbody tr:nth-child(even){ background:#f8fafc; }
         #bullet-master-table tbody tr:hover{ background:#e8f0fe; }
+        #bullet-master-table tbody tr.pm-parent-row,
+        #bullet-master-table tbody tr.pm-parent-row > td {
+            background-color: #fefce8 !important;
+        }
+        #bullet-master-table tbody tr.pm-parent-row:hover,
+        #bullet-master-table tbody tr.pm-parent-row:hover > td {
+            background-color: #fef9c3 !important;
+        }
         .table-img-cell img { width:36px; height:36px; object-fit:cover; border-radius:4px; }
         #bullet-master-table th.bp-preview-col,
         #bullet-master-table td.bp-preview-col {

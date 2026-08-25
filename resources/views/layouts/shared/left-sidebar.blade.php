@@ -2481,7 +2481,11 @@
                             <a href="{{ route('reverb.listing.master') }}">PM Reverb Listing Master</a>
                         </li>
                         <li>
-                            <a href="{{ route('compliance.master') }}">PM Compliance Masters</a>
+                            <a href="{{ route('compliance.master') }}">
+                                PM Compliance Masters
+                                @php $complianceMissingCount = \App\Http\Controllers\PurchaseMaster\CategoryController::missingComplianceCountForSidebar(); @endphp
+                                <span class="badge bg-danger rounded-pill compliance-missing-sidebar-badge" title="SKUs with any REQ compliance field" @if($complianceMissingCount <= 0) style="display:none" @endif>{{ number_format($complianceMissingCount) }}</span>
+                            </a>
                         </li>
                         <li>
                             <a href="{{ route('packing.instructions.master') }}">PM Packing Inner Design</a>
@@ -2526,6 +2530,9 @@
                         </li>
                         <li>
                             <a href="{{ route('image.master') }}">PM Image Master</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('variation.name.thumbnail') }}">PM variation name / thumbnail</a>
                         </li>
                         <li>
                             <a href="{{ route('raw.images') }}">

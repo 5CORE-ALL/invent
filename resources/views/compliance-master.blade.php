@@ -1,19 +1,12 @@
-@extends('layouts.vertical', ['title' => 'Compliance Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Compliance Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
-    @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 
     <style>
         /* Aliexpress-tabulator style: full-height table area */
         #compliance-table-wrapper {
-            height: calc(100vh - 188px);
+            height: calc(100vh - 128px);
             min-height: 280px;
             display: flex;
             flex-direction: column;
@@ -120,29 +113,6 @@
             padding-right: 0 !important;
         }
 
-        /* Bulk-select column: horizontal header (checkbox) */
-        #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header .tabulator-col-title,
-        #compliance-tabulator .tabulator-header .tabulator-col[tabulator-field="_cb"] .tabulator-col-title {
-            writing-mode: horizontal-tb !important;
-            transform: none !important;
-            height: auto !important;
-            width: 100%;
-            min-height: 0;
-        }
-
-        #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header .tabulator-col-content,
-        #compliance-tabulator .tabulator-header .tabulator-col[tabulator-field="_cb"] .tabulator-col-content {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2px !important;
-        }
-
-        #compliance-tabulator .tabulator-header .tabulator-col.cm-tabulator-cb-header {
-            height: auto !important;
-            min-height: 72px !important;
-        }
-
         #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
             min-width: 0;
             padding-left: 2px;
@@ -169,15 +139,6 @@
             border-right: none;
         }
 
-        #compliance-tabulator .cm-status-marble {
-            width: 11px;
-            height: 11px;
-        }
-
-        #compliance-tabulator .tabulator-cell.compliance-status-col .cm-status-cell-inner {
-            gap: 0;
-        }
-
         #compliance-tabulator .compliance-na-badge,
         #compliance-tabulator .compliance-req-badge {
             font-size: 11px;
@@ -198,15 +159,13 @@
             border-radius: 4px;
         }
 
-        #compliance-tabulator .edit-btn,
-        #compliance-tabulator .delete-btn {
+        #compliance-tabulator .edit-btn {
             padding: 1px 5px;
             border-radius: 3px;
             line-height: 1.2;
         }
 
-        #compliance-tabulator .edit-btn:hover,
-        #compliance-tabulator .delete-btn:hover {
+        #compliance-tabulator .edit-btn:hover {
             transform: none;
             box-shadow: none;
         }
@@ -219,19 +178,6 @@
             background-color: #f1f5f9;
         }
 
-        .cm-toolbar-search-strip {
-            flex-shrink: 0;
-        }
-
-        .cm-toolbar-search-strip {
-            flex-shrink: 0;
-        }
-
-        .cm-filter-cell.cm-filter-cell--status {
-            overflow: visible;
-            z-index: 6;
-        }
-
         .cm-filter-cell .form-label {
             display: block;
             white-space: nowrap;
@@ -239,12 +185,6 @@
             text-overflow: ellipsis;
             font-size: 10px;
             line-height: 1.2;
-        }
-
-        .cm-toolbar-search-strip .form-control-sm {
-            font-size: 11px;
-            padding-top: 0.2rem;
-            padding-bottom: 0.2rem;
         }
 
         .cm-filter-cell .form-control-sm,
@@ -298,43 +238,88 @@
             color: #212529 !important;
         }
 
-        #cm-summary-stats {
-            padding: 0.5rem 0.65rem !important;
-        }
-
-        #cm-summary-stats h6 {
-            font-size: 11px;
-            margin-bottom: 0.35rem !important;
-        }
-
-        #cm-summary-stats .badge {
-            font-size: 11px;
-            font-weight: 600;
-            padding: 0.2rem 0.4rem;
-        }
-
-        .cm-filter-cell .cm-status-filter-wrap--toolbar .cm-status-filter-trigger,
-        #compliance-tabulator .tabulator-header-filter .cm-status-filter-wrap--toolbar .cm-status-filter-trigger {
-            color: #1e293b;
-            background: #fff;
-            border: 1px solid #cbd5e1;
-            padding: 3px 4px;
-            border-radius: 5px;
-            gap: 4px;
-            font-size: 10px;
+        .cm-toolbar-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 8px;
             width: 100%;
-            justify-content: space-between;
+            min-width: 0;
         }
 
-        .cm-filter-cell .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover,
-        #compliance-tabulator .tabulator-header-filter .cm-status-filter-wrap--toolbar .cm-status-filter-trigger:hover {
-            background: #f8fafc;
-            border-color: #94a3b8;
+        .cm-toolbar-actions {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: stretch;
+            gap: 6px;
         }
 
-        .cm-filter-cell .cm-status-filter-wrap--toolbar .cm-status-filter-trigger-label,
-        #compliance-tabulator .tabulator-header-filter .cm-status-filter-wrap--toolbar .cm-status-filter-trigger-label {
-            color: #334155;
+        .cm-toolbar-actions .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+
+        #cm-summary-stats {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: stretch;
+            gap: 4px;
+            padding: 0 !important;
+            margin: 0;
+            background: transparent;
+            border: none;
+        }
+
+        #cm-summary-stats .cm-summary-badge {
+            flex: 1 1 0;
+            min-width: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3.25px;
+            font-size: clamp(8.94px, 0.934vw, 17.87px);
+            font-weight: 600;
+            padding: 0.228rem 0.325rem;
+            line-height: 1.2;
+            color: #fff !important;
+            border: 0;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #cm-summary-stats .cm-summary-badge .summary-trend-dot {
+            width: 8.12px !important;
+            height: 8.12px !important;
+            min-width: 8.12px !important;
+            min-height: 8.12px !important;
+            margin-right: 0 !important;
+        }
+
+        #cm-summary-stats .cm-summary-badge:hover {
+            filter: brightness(0.92);
+        }
+
+        #cm-summary-stats .cm-summary-badge.cm-summary-badge-active {
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #111827;
+        }
+
+        #cmKpiChartModal.modal {
+            --tz-modal-width: 100%;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            z-index: 1080;
+        }
+        #cmKpiChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
         }
 
         #compliance-table-wrapper .rainbow-loader {
@@ -342,82 +327,6 @@
             padding: 16px;
             background: #fafbfc;
             border-top: 1px solid #dee2e6;
-        }
-
-        .table-responsive {
-            position: relative;
-            border: 1px solid #e9ecef;
-            border-radius: 10px;
-            max-height: 600px;
-            overflow-y: auto;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-            background-color: white;
-        }
-
-        .table-responsive thead th {
-            position: sticky;
-            top: 0;
-            background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%) !important;
-            color: white;
-            z-index: 10;
-            padding: 15px 18px;
-            font-weight: 600;
-            border-bottom: none;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            font-size: 13px;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            transition: all 0.2s ease;
-        }
-
-        .table-responsive thead th:hover {
-            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
-        }
-
-        .table-responsive thead input {
-            background-color: rgba(255, 255, 255, 0.9);
-            border: none;
-            border-radius: 4px;
-            color: #333;
-            padding: 6px 10px;
-            margin-top: 8px;
-            font-size: 12px;
-            width: 100%;
-            transition: all 0.2s;
-        }
-
-        .table-responsive thead input:focus {
-            background-color: white;
-            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.3);
-            outline: none;
-        }
-
-        .table-responsive thead input::placeholder {
-            color: #8e9ab4;
-            font-style: italic;
-        }
-
-        .table-responsive tbody td {
-            padding: 12px 18px;
-            vertical-align: middle;
-            border-bottom: 1px solid #edf2f9;
-            font-size: 13px;
-            color: #495057;
-            transition: all 0.2s ease;
-        }
-
-        .table-responsive tbody tr:nth-child(even) {
-            background-color: #f8fafc;
-        }
-
-        .table-responsive tbody tr:hover {
-            background-color: #e8f0fe;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
-
-        .table-responsive tbody tr:hover td {
-            color: #000;
         }
 
         /* Parent summary rows (SKU or Parent contains PARENT) */
@@ -433,63 +342,12 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
         }
 
-        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell.compliance-status-col {
-            background-color: #fffef2 !important;
-        }
-
-        #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell.compliance-status-col {
-            background-color: #fefce8 !important;
-        }
-
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell.compliance-parent-col:hover {
             background-color: #fffde7 !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell.compliance-parent-col:hover {
             background-color: #fffef2 !important;
-        }
-
-        .table-responsive .text-center {
-            text-align: center;
-        }
-
-        .table {
-            margin-bottom: 0;
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-        }
-
-        .edit-btn {
-            border-radius: 6px;
-            padding: 6px 12px;
-            transition: all 0.2s;
-            background: #fff;
-            border: 1px solid #1a56b7;
-            color: #1a56b7;
-        }
-
-        .edit-btn:hover {
-            background: #1a56b7;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(26, 86, 183, 0.2);
-        }
-
-        .delete-btn {
-            border-radius: 6px;
-            padding: 6px 12px;
-            transition: all 0.2s;
-            background: #fff;
-            border: 1px solid #dc3545;
-            color: #dc3545;
-        }
-
-        .delete-btn:hover {
-            background: #dc3545;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(220, 53, 69, 0.2);
         }
 
         .rainbow-loader {
@@ -590,166 +448,92 @@
             background-color: #f1f5f9;
         }
 
-        .cm-status-filter-wrap {
-            position: relative;
-            width: 100%;
+        #compliance-tabulator .tabulator-cell.cm-supplier-col {
+            text-align: center;
+            font-weight: 700;
         }
 
-        .cm-status-filter-trigger {
-            width: 100%;
-            display: flex;
+        /* Same email presence dots as /supplier.list */
+        #compliance-tabulator .cm-supplier-data-dot {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        #cm-email-hover-tip {
+            position: fixed;
+            z-index: 10850;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            max-width: min(420px, calc(100vw - 16px));
+            padding: 6px 8px;
+            background: #0f172a;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.3;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+        }
+
+        #cm-email-hover-tip .cm-email-hover-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #cm-email-hover-tip .cm-copy-supplier-email {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            line-height: 1;
+            color: #fff;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        #cm-email-hover-tip .cm-copy-supplier-email:hover {
+            color: #86efac;
+        }
+
+        #cm-email-hover-tip .cm-copy-supplier-email.is-copied {
+            color: #86efac;
+        }
+
+        #compliance-tabulator .cm-supplier-data-dot--ok {
+            background-color: #198754;
+            cursor: pointer;
+        }
+
+        #compliance-tabulator .cm-supplier-data-dot--missing {
+            background-color: #dc3545;
+        }
+
+        #compliance-tabulator .cm-supplier-email-cell {
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
-            padding: 6px 8px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #fff;
-            background: rgba(255, 255, 255, 0.12);
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            border-radius: 10px;
-            cursor: pointer;
-            transition: background 0.15s ease, border-color 0.15s ease;
         }
 
-        .cm-status-filter-trigger:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .cm-status-filter-menu {
-            display: none;
-            list-style: none;
-            margin: 0;
-            padding: 8px;
-            background: rgba(30, 34, 42, 0.88);
-            -webkit-backdrop-filter: blur(12px);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.28);
-            border-radius: 14px;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-            z-index: 4000;
-        }
-
-        .cm-status-filter-wrap.is-open .cm-status-filter-menu {
-            display: block;
-        }
-
-        .cm-status-filter-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            padding: 10px 12px;
-            margin: 0;
-            border: none;
-            border-radius: 10px;
+        #compliance-tabulator .cm-copy-supplier-email {
+            border: 0;
             background: transparent;
-            color: #fff;
-            font-size: 13px;
-            font-weight: 500;
-            text-align: left;
+            padding: 0;
+            line-height: 1;
+            color: #64748b;
             cursor: pointer;
-            transition: background 0.12s ease;
         }
 
-        .cm-status-filter-item:hover,
-        .cm-status-filter-item.is-selected {
-            background: #2563eb;
+        #compliance-tabulator .cm-copy-supplier-email:hover {
+            color: #0f172a;
         }
 
-        .cm-status-filter-check {
-            display: inline-flex;
-            width: 18px;
-            height: 18px;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-            color: #fff;
-            flex-shrink: 0;
-        }
-
-        .cm-status-filter-item-spacer {
-            width: 18px;
-            flex-shrink: 0;
-        }
-
-        .cm-status-marble {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            flex-shrink: 0;
-            box-shadow:
-                inset 2px 2px 4px rgba(255, 255, 255, 0.55),
-                inset -2px -3px 5px rgba(0, 0, 0, 0.35);
-            vertical-align: middle;
-        }
-
-        .cm-status-marble--active {
-            background: radial-gradient(circle at 32% 28%, #bbf7d0, #22c55e 42%, #14532d);
-        }
-
-        .cm-status-marble--inactive,
-        .cm-status-marble--dc {
-            background: radial-gradient(circle at 32% 28%, #fecaca, #ef4444 42%, #7f1d1d);
-        }
-
-        .cm-status-marble--upcoming {
-            background: radial-gradient(circle at 32% 28%, #fffef2, #eab308 45%, #713f12);
-        }
-
-        .cm-status-marble--2bdc {
-            background: radial-gradient(circle at 32% 28%, #bfdbfe, #2563eb 45%, #1e3a8a);
-        }
-
-        .cm-status-marble--muted {
-            background: radial-gradient(circle at 32% 28%, #e5e7eb, #9ca3af 45%, #374151);
-        }
-
-        #compliance-tabulator .tabulator-cell.compliance-status-col {
-            background-color: #f8f9fa !important;
-            color: #4a5568;
-            font-weight: 500;
-            text-align: center;
-            vertical-align: middle;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        #compliance-tabulator .tabulator-cell.compliance-status-col .cm-status-cell-inner {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        #compliance-tabulator .tabulator-cell.compliance-status-col .cm-status-cell-text {
-            line-height: 1.2;
-        }
-
-        #compliance-tabulator .tabulator-row:hover .tabulator-cell.compliance-status-col {
-            background-color: #f1f5f9 !important;
-        }
-
-        #compliance-tabulator .tabulator-row.tabulator-row-even .tabulator-cell.compliance-status-col {
-            background-color: #fafafa !important;
-        }
-
-        #compliance-tabulator .tabulator-row.tabulator-row-even:hover .tabulator-cell.compliance-status-col {
-            background-color: #f1f5f9 !important;
-        }
-
-        #compliance-tabulator .tabulator-cell.compliance-checkbox-cell {
-            width: 36px;
-            max-width: 36px;
-            text-align: center;
-            vertical-align: middle;
-            padding-left: 4px;
-            padding-right: 4px;
-        }
-
-        #complianceSelectAllCheckbox {
-            cursor: pointer;
+        #compliance-tabulator .cm-copy-supplier-email.is-copied {
+            color: #16a34a;
         }
 
         .compliance-field-block .btn-check:checked + .btn-outline-secondary {
@@ -987,21 +771,6 @@
             white-space: nowrap;
         }
 
-        #addComplianceModal .select2-container .select2-selection--single {
-            min-height: 28px !important;
-            border-color: #d1d5db;
-        }
-
-        #addComplianceModal .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
-            line-height: 26px !important;
-            font-size: 0.78rem;
-            padding-left: 0.45rem;
-        }
-
-        #addComplianceModal .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
-            height: 26px !important;
-        }
-
         @media (max-height: 720px) {
             #addComplianceModal .cm-field-label {
                 min-width: 3.2rem;
@@ -1188,48 +957,31 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-2">
-                    <h4 class="mb-1 fs-5">Compliance Masters</h4>
-                    <p class="text-muted small mb-2">Compliance Masters Analysis</p>
-                    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="complianceBulkEditBtn" title="Edit compliance fields for all selected rows">
-                            <i class="fas fa-pen-to-square me-1"></i> Bulk edit
-                        </button>
-                        <button type="button" class="btn btn-sm btn-primary" id="addComplianceBtn">
-                            <i class="fas fa-plus me-1"></i> Add Compliance Data
-                        </button>
-                        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal">
-                            <i class="fas fa-upload me-1"></i> Import Excel
-                        </button>
-                        <button type="button" class="btn btn-sm btn-success" id="downloadExcel">
-                            <i class="fas fa-file-excel me-1"></i> Download Excel
-                        </button>
-                    </div>
-                    <div id="cm-summary-stats" class="mt-1 p-2 bg-light rounded border border-light">
-                        <h6 class="mb-2 text-secondary fw-semibold">Summary statistics</h6>
-                        <div class="d-flex flex-wrap gap-1">
-                            <span class="badge bg-primary">Parents <span id="cm-summary-parent">(0)</span></span>
-                            <span class="badge bg-success">SKUs <span id="cm-summary-sku">(0)</span></span>
-                            <span class="badge bg-danger">Battery <span id="cm-summary-battery">(0)</span></span>
-                            <span class="badge bg-danger">Wireless <span id="cm-summary-wireless">(0)</span></span>
-                            <span class="badge bg-warning text-dark">Electric <span id="cm-summary-electric">(0)</span></span>
-                            <span class="badge bg-info">GCC <span id="cm-summary-gcc">(0)</span></span>
-                            <span class="badge bg-info">RoHs <span id="cm-summary-rohs">(0)</span></span>
-                            <span class="badge bg-secondary">Blanket <span id="cm-summary-blanket">(0)</span></span>
-                            <span class="badge bg-dark">Bluetooth <span id="cm-summary-bluetooth">(0)</span></span>
-                            <span class="badge bg-primary">Logo <span id="cm-summary-logo">(0)</span></span>
-                            <span class="badge" style="background-color: #6f42c1;">Graph <span id="cm-summary-graph">(0)</span></span>
+                    <div class="cm-toolbar-row">
+                        <div class="cm-toolbar-actions">
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#importModal" title="Import Excel" aria-label="Import Excel">
+                                <i class="bi bi-upload"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-success" id="downloadExcel" title="Download Excel" aria-label="Download Excel">
+                                <i class="bi bi-download"></i>
+                            </button>
+                        </div>
+                        <div id="cm-summary-stats">
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="any" data-kpi-key="badge:compliance-master|missing_any" data-kpi-label="Compliance-M" data-kpi-value="0" title="Show SKUs with any REQ compliance field"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Compliance-M <span id="cm-summary-any">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="battery" data-kpi-key="badge:compliance-master|missing_battery" data-kpi-label="Battery" data-kpi-value="0" title="Show rows with Battery REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Battery <span id="cm-summary-battery">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="wireless" data-kpi-key="badge:compliance-master|missing_wireless" data-kpi-label="Wireless" data-kpi-value="0" title="Show rows with Wireless REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Wireless <span id="cm-summary-wireless">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="electric" data-kpi-key="badge:compliance-master|missing_electric" data-kpi-label="Electric" data-kpi-value="0" title="Show rows with Electric REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Electric <span id="cm-summary-electric">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="gcc" data-kpi-key="badge:compliance-master|missing_gcc" data-kpi-label="GCC" data-kpi-value="0" title="Show rows with GCC REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>GCC <span id="cm-summary-gcc">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="rohs" data-kpi-key="badge:compliance-master|missing_rohs" data-kpi-label="RoHs" data-kpi-value="0" title="Show rows with RoHs REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>RoHs <span id="cm-summary-rohs">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="blanket" data-kpi-key="badge:compliance-master|missing_blanket" data-kpi-label="Blanket" data-kpi-value="0" title="Show rows with Blanket REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Blanket <span id="cm-summary-blanket">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="bluetooth" data-kpi-key="badge:compliance-master|missing_bluetooth" data-kpi-label="Bluetooth" data-kpi-value="0" title="Show rows with Bluetooth REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Bluetooth <span id="cm-summary-bluetooth">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="logo" data-kpi-key="badge:compliance-master|missing_logo" data-kpi-label="Logo" data-kpi-value="0" title="Show rows with Logo REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Logo <span id="cm-summary-logo">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="graph" data-kpi-key="badge:compliance-master|missing_graph" data-kpi-label="Graph" data-kpi-value="0" title="Show rows with Graph REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Graph <span id="cm-summary-graph">(0)</span></button>
                         </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div id="compliance-table-wrapper">
-                        <div class="cm-toolbar-search-strip px-2 py-1 bg-light border-bottom">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text bg-white"><i class="fas fa-search"></i></span>
-                                <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search Parent, SKU, or Status...">
-                                <button class="btn btn-outline-secondary btn-sm" type="button" id="clearSearch">Clear</button>
-                            </div>
-                        </div>
                         <div id="compliance-tabulator" class="cm-tabulator-host" aria-label="Compliance data grid"></div>
 
                         <div id="rainbow-loader" class="rainbow-loader">
@@ -1244,57 +996,48 @@
                 </div>
             </div>
 
-            <!-- Bulk edit modal -->
-            <div class="modal fade" id="complianceBulkEditModal" tabindex="-1" aria-labelledby="complianceBulkEditModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="complianceBulkEditModalLabel"><i class="fas fa-pen-to-square me-2"></i>Bulk edit compliance</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <p class="text-muted small mb-2" id="complianceBulkEditCountText">No rows selected.</p>
-                                    <p class="small text-secondary mb-3">Each field defaults to <strong>N/A</strong>. Turn on <strong>REQ</strong> to require documentation, then upload an <strong>image</strong> and a <strong>PDF</strong> (both apply to every selected SKU for that field).</p>
-                                    <div class="row g-2">
-                                        @foreach ($__cmFields as $fkey => $flabel)
-                                            <div class="col-md-6">
-                                                <div class="compliance-field-block border rounded p-2 h-100" data-bulk-field="{{ $fkey }}">
-                                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
-                                                        <span class="fw-bold">{{ $flabel }}</span>
-                                                        <div class="btn-group btn-group-sm" role="group">
-                                                            <input type="radio" class="btn-check" name="bulk_mode_{{ $fkey }}" id="bulk_na_{{ $fkey }}" value="na" checked autocomplete="off">
-                                                            <label class="btn btn-outline-secondary" for="bulk_na_{{ $fkey }}">N/A</label>
-                                                            <input type="radio" class="btn-check" name="bulk_mode_{{ $fkey }}" id="bulk_req_{{ $fkey }}" value="req" autocomplete="off">
-                                                            <label class="btn btn-outline-primary" for="bulk_req_{{ $fkey }}">REQ</label>
-                                                        </div>
-                                                    </div>
-                                                    <div class="bulk-compliance-req-wrap d-none mt-2" data-bulk-req-wrap="{{ $fkey }}">
-                                                        <div class="mb-2">
-                                                            <label class="form-label small mb-1">Image</label>
-                                                            <input type="file" class="form-control form-control-sm bulk-compliance-img-input" accept="image/*" data-field="{{ $fkey }}">
-                                                            <div class="small text-muted mt-1" data-bulk-img-status="{{ $fkey }}"></div>
-                                                        </div>
-                                                        <div>
-                                                            <label class="form-label small mb-1">PDF</label>
-                                                            <input type="file" class="form-control form-control-sm bulk-compliance-pdf-input" accept=".pdf,application/pdf" data-field="{{ $fkey }}">
-                                                            <div class="small text-muted mt-1" data-bulk-pdf-status="{{ $fkey }}"></div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                    <p class="text-danger small mt-3 mb-0 d-none" id="complianceBulkEditError"></p>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" id="complianceBulkEditApplyBtn" disabled>
-                                        <i class="fas fa-save me-1"></i> Apply to selected
-                                    </button>
-                                </div>
+            <div class="modal fade p-0" id="cmKpiChartModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog shadow-none m-0 mx-0">
+                    <div class="modal-content" style="overflow:hidden;">
+                        <div class="modal-header bg-dark text-white py-1 px-3">
+                            <h6 class="modal-title mb-0" style="font-size:13px;">
+                                <i class="bi bi-graph-up me-1"></i>
+                                <span id="cmKpiChartTitle">KPI — Rolling history</span>
+                            </h6>
+                            <div class="d-flex align-items-center gap-2">
+                                <select id="cmKpiChartRange" class="form-select form-select-sm" style="width:auto;font-size:11px;">
+                                    <option value="7">L7</option>
+                                    <option value="14">L14</option>
+                                    <option value="30" selected>L30</option>
+                                    <option value="60">L60</option>
+                                    <option value="90">L90</option>
+                                </select>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                        </div>
+                        <div class="modal-body py-2 px-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2 small">
+                                <span id="cmKpiChartSub" class="text-muted"></span>
+                                <span id="cmKpiChartTone" class="badge bg-secondary">—</span>
+                            </div>
+                            <div id="cmKpiChartLoading" class="text-center py-3" style="display:none;">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            </div>
+                            <div id="cmKpiChartNoData" class="text-center py-3 text-muted small" style="display:none;">
+                                No history yet — dots will color after a few daily snapshots.
+                            </div>
+                            <div id="cmKpiChartWrap" style="display:none;height:280px;">
+                                <canvas id="cmKpiChartCanvas"></canvas>
+                            </div>
+                            <div class="d-flex justify-content-around small mt-2" id="cmKpiChartStats" style="display:none;">
+                                <div class="text-center"><div class="text-muted" style="font-size:10px;">Highest</div><div id="cmKpiHi" class="fw-bold">—</div></div>
+                                <div class="text-center"><div class="text-muted" style="font-size:10px;">Median</div><div id="cmKpiMed" class="fw-bold">—</div></div>
+                                <div class="text-center"><div class="text-muted" style="font-size:10px;">Lowest</div><div id="cmKpiLo" class="fw-bold">—</div></div>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
             <!-- Import Modal -->
             <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
@@ -1302,13 +1045,13 @@
                     <div class="modal-content">
                         <div class="modal-header" style="background: linear-gradient(135deg, #2c6ed5 0%, #1a56b7 100%); color: white;">
                             <h5 class="modal-title" id="importModalLabel">
-                                <i class="fas fa-upload me-2"></i>Import Compliance Data
+                                <i class="bi bi-upload me-2"></i>Import Compliance Data
                             </h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
                             <div class="alert alert-info">
-                                <i class="fas fa-info-circle me-2"></i>
+                                <i class="bi bi-info-circle me-2"></i>
                                 <strong>Instructions:</strong>
                                 <ol class="mb-0 mt-2">
                                     <li>Download the sample file below</li>
@@ -1319,7 +1062,7 @@
 
                             <div class="mb-3">
                                 <button type="button" class="btn btn-outline-primary w-100" id="downloadSampleBtn">
-                                    <i class="fas fa-download me-2"></i>Download Sample File
+                                    <i class="bi bi-download me-2"></i>Download Sample File
                                 </button>
                             </div>
 
@@ -1339,7 +1082,7 @@
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                             <button type="button" class="btn btn-primary" id="importBtn" disabled>
-                                <i class="fas fa-upload me-2"></i>Import
+                                <i class="bi bi-upload me-2"></i>Import
                             </button>
                         </div>
                     </div>
@@ -1351,7 +1094,7 @@
     <!-- Add / Edit Compliance Master — right-side panel -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="addComplianceModal" aria-labelledby="addComplianceModalLabel">
         <div class="offcanvas-header">
-            <h5 class="offcanvas-title mb-0" id="addComplianceModalLabel">Add Compliance Data</h5>
+            <h5 class="offcanvas-title mb-0" id="addComplianceModalLabel">Edit Compliance Data</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
         <div class="offcanvas-body cm-panel-body">
@@ -1359,9 +1102,7 @@
                 <form id="addComplianceForm">
                     <div class="cm-sku-block">
                         <label for="addComplianceSku" class="form-label">SKU <span class="text-danger">*</span></label>
-                        <select class="form-control form-control-sm" id="addComplianceSku" name="sku" required>
-                            <option value="">Select SKU</option>
-                        </select>
+                        <input type="text" class="form-control form-control-sm" id="addComplianceSku" name="sku" readonly required>
                         <div class="cm-meta-row">
                             <label class="d-inline-flex align-items-center gap-2 mb-0 small"
                                 title="When checked, the same compliance values are saved to all child SKUs under the same parent"
@@ -1388,14 +1129,14 @@
                                     <div class="cm-file-actions d-none" id="add_{{ $fkey }}_req_wrap">
                                         <input type="file" class="d-none add-compliance-img-input" id="add_{{ $fkey }}_img_file" accept="image/*" data-field="{{ $fkey }}" data-path-input="add_{{ $fkey }}_img_path">
                                         <button type="button" class="cm-file-btn cm-img-btn missing-file" data-trigger-file="add_{{ $fkey }}_img_file" title="Upload image" aria-label="Upload {{ $flabel }} image">
-                                            <i class="fas fa-image" aria-hidden="true"></i>
+                                            <i class="bi bi-image" aria-hidden="true"></i>
                                             <span class="cm-file-dot" aria-hidden="true"></span>
                                         </button>
                                         <span class="cm-file-preview-link" id="add_{{ $fkey }}_img_preview"></span>
 
                                         <input type="file" class="d-none add-compliance-pdf-input" id="add_{{ $fkey }}_pdf_file" accept=".pdf,application/pdf" data-field="{{ $fkey }}" data-path-input="add_{{ $fkey }}_pdf_path">
                                         <button type="button" class="cm-file-btn cm-pdf-btn missing-file" data-trigger-file="add_{{ $fkey }}_pdf_file" title="Upload PDF" aria-label="Upload {{ $flabel }} PDF">
-                                            <i class="fas fa-file-pdf" aria-hidden="true"></i>
+                                            <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>
                                             <span class="cm-file-dot" aria-hidden="true"></span>
                                         </button>
                                         <span class="cm-file-preview-link" id="add_{{ $fkey }}_pdf_link"></span>
@@ -1414,7 +1155,7 @@
             <div class="cm-panel-footer">
                 <button type="button" class="btn btn-sm btn-light border" data-bs-dismiss="offcanvas">Close</button>
                 <button type="button" class="btn btn-sm btn-primary" id="saveAddComplianceBtn">
-                    <i class="fas fa-save me-1"></i> Save
+                    <i class="bi bi-save me-1"></i> Save
                 </button>
             </div>
         </div>
@@ -1422,8 +1163,7 @@
 @endsection
 
 @section('script')
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    @include('partials.lazy-chart-js')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -1431,8 +1171,7 @@
             let tableData = [];
             let filteredData = [];
             let complianceTable = null;
-            let complianceSearchSetupDone = false;
-            let complianceFormMode = 'add';
+            let complianceFormMode = 'edit';
             let complianceEditSku = '';
             let complianceFormHydrating = false;
             let complianceAutoSaveTimer = null;
@@ -1440,8 +1179,7 @@
             let complianceAutoSaveQueued = false;
 
             const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'];
-            let bulkComplianceUploadPaths = {};
-            let bulkCompliancePdfPaths = {};
+            let cmSummaryBadgeFilter = null;
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1479,6 +1217,13 @@
                 if (isComplianceNaValue(v)) return true;
                 if (v.toUpperCase() === 'REQ') return img === '' || pdf === '';
                 return false;
+            }
+
+            function rowHasAnyReqCompliance(item) {
+                if (complianceRowHasParentKeyword(item)) return false;
+                return COMPLIANCE_BULK_FIELD_KEYS.some(function(k) {
+                    return isReqFilterMatchForItem(item, k);
+                });
             }
 
             /** REQ column filter: only rows where that field is REQ (excludes N/A, empty, and other values). */
@@ -1553,7 +1298,7 @@
                 const safeUrl = escapeHtml(String(url || ''));
                 const kindSafe = kind === 'pdf' ? 'pdf' : 'image';
                 const icon = kindSafe === 'pdf'
-                    ? '<span class="compliance-pdf-icon-bg" aria-hidden="true"><i class="fas fa-file-pdf"></i></span>'
+                    ? '<span class="compliance-pdf-icon-bg" aria-hidden="true"><i class="bi bi-file-earmark-pdf"></i></span>'
                     : `<img class="compliance-field-thumb" src="${safeUrl}" alt="">`;
                 return `<span class="cm-file-chip" data-file-url="${safeUrl}" data-file-kind="${kindSafe}" tabindex="0" title="Hover for file actions">${icon}</span>`;
             }
@@ -1596,31 +1341,6 @@
                     throw new Error(data.message || 'PDF upload failed');
                 }
                 return data.path || '';
-            }
-
-            function resetBulkComplianceModal() {
-                bulkComplianceUploadPaths = {};
-                bulkCompliancePdfPaths = {};
-                const modal = document.getElementById('complianceBulkEditModal');
-                if (!modal) return;
-                COMPLIANCE_BULK_FIELD_KEYS.forEach(k => {
-                    const na = modal.querySelector(`#bulk_na_${k}`);
-                    const req = modal.querySelector(`#bulk_req_${k}`);
-                    if (na) na.checked = true;
-                    if (req) req.checked = false;
-                    const wrap = modal.querySelector(`[data-bulk-req-wrap="${k}"]`);
-                    if (wrap) {
-                        wrap.classList.add('d-none');
-                        const fi = wrap.querySelector('.bulk-compliance-img-input');
-                        if (fi) fi.value = '';
-                        const fp = wrap.querySelector('.bulk-compliance-pdf-input');
-                        if (fp) fp.value = '';
-                        const st = wrap.querySelector(`[data-bulk-img-status="${k}"]`);
-                        if (st) st.textContent = '';
-                        const pst = wrap.querySelector(`[data-bulk-pdf-status="${k}"]`);
-                        if (pst) pst.textContent = '';
-                    }
-                });
             }
 
             function resetComplianceAddFormFields() {
@@ -1709,7 +1429,7 @@
                 if (plink) {
                     if (pdfPath) {
                         const pu = complianceImagePublicUrl(pdfPath);
-                        plink.innerHTML = `<a href="${escapeHtml(pu)}" target="_blank" rel="noopener" title="Open PDF"><i class="fas fa-external-link-alt"></i></a>`;
+                        plink.innerHTML = `<a href="${escapeHtml(pu)}" target="_blank" rel="noopener" title="Open PDF"><i class="bi bi-box-arrow-up-right"></i></a>`;
                     } else {
                         plink.innerHTML = '';
                     }
@@ -1768,13 +1488,9 @@
                 const cb = document.getElementById('cm_apply_siblings');
                 if (!hint) return;
 
-                const skuSelect = document.getElementById('addComplianceSku');
-                let sku = '';
-                if (complianceFormMode === 'edit') {
-                    sku = (complianceEditSku || '').trim();
-                } else if (skuSelect) {
-                    sku = $(skuSelect).val() ? String($(skuSelect).val()).trim() : '';
-                }
+                const skuInput = document.getElementById('addComplianceSku');
+                let sku = (complianceEditSku || '').trim();
+                if (!sku && skuInput) sku = String(skuInput.value || '').trim();
 
                 if (!cb || !cb.checked) {
                     hint.textContent = '';
@@ -1849,30 +1565,6 @@
                 }
             }
 
-            function buildComplianceBulkPayloadForItem(item) {
-                const payload = { sku: String(item.SKU || '').trim() };
-                const modal = document.getElementById('complianceBulkEditModal');
-                COMPLIANCE_BULK_FIELD_KEYS.forEach(key => {
-                    const req = modal && modal.querySelector(`input[name="bulk_mode_${key}"]:checked`)?.value === 'req';
-                    const imgKey = key + '_img';
-                    const pdfKey = key + '_pdf';
-                    if (req) {
-                        payload[key] = 'REQ';
-                        const pendingImg = bulkComplianceUploadPaths[key];
-                        const existingImg = complianceFieldImagePath(item, key);
-                        payload[imgKey] = pendingImg ? pendingImg : existingImg;
-                        const pendingPdf = bulkCompliancePdfPaths[key];
-                        const existingPdf = complianceFieldPdfPath(item, key);
-                        payload[pdfKey] = pendingPdf ? pendingPdf : existingPdf;
-                    } else {
-                        payload[key] = 'N/A';
-                        payload[imgKey] = '';
-                        payload[pdfKey] = '';
-                    }
-                });
-                return payload;
-            }
-
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';
 
@@ -1895,12 +1587,159 @@
                 });
             }
 
-            // Escape HTML to prevent XSS
+            function loadXlsxLib() {
+                if (window.XLSX) return Promise.resolve(window.XLSX);
+                if (window._xlsxPromise) return window._xlsxPromise;
+                window._xlsxPromise = new Promise(function(resolve, reject) {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+                    s.async = true;
+                    s.onload = function() { resolve(window.XLSX); };
+                    s.onerror = function() {
+                        window._xlsxPromise = null;
+                        reject(new Error('Excel library failed to load'));
+                    };
+                    document.head.appendChild(s);
+                });
+                return window._xlsxPromise;
+            }
+
             function escapeHtml(text) {
                 if (text == null) return '';
                 const div = document.createElement('div');
                 div.textContent = text;
                 return div.innerHTML;
+            }
+
+            function copyComplianceText(text, btn) {
+                text = String(text || '').trim();
+                if (!text) return;
+                const done = function() {
+                    showToast('success', 'Copied: ' + text);
+                    if (!btn) return;
+                    btn.classList.add('is-copied');
+                    const icon = btn.querySelector('i');
+                    if (icon) {
+                        icon.classList.remove('bi-copy');
+                        icon.classList.add('bi-check-lg');
+                        setTimeout(function() {
+                            btn.classList.remove('is-copied');
+                            icon.classList.remove('bi-check-lg');
+                            icon.classList.add('bi-copy');
+                        }, 1200);
+                    }
+                };
+                const fallback = function() {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.top = '0';
+                    ta.style.left = '0';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    try {
+                        document.execCommand('copy');
+                        done();
+                    } catch (err) {
+                        showToast('danger', 'Could not copy email');
+                    }
+                    document.body.removeChild(ta);
+                };
+                if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(fallback);
+                } else {
+                    fallback();
+                }
+            }
+
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest && e.target.closest('.cm-copy-supplier-email');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                copyComplianceText(btn.getAttribute('data-email') || '', btn);
+            });
+
+            function setupComplianceEmailHover() {
+                const host = document.getElementById('compliance-tabulator');
+                if (!host) return;
+
+                let tip = null;
+                let hideTimer = null;
+
+                function getTip() {
+                    if (tip) return tip;
+                    tip = document.createElement('div');
+                    tip.id = 'cm-email-hover-tip';
+                    tip.innerHTML = '<span class="cm-email-hover-text"></span>' +
+                        '<button type="button" class="cm-copy-supplier-email" title="Copy email">' +
+                        '<i class="bi bi-copy"></i></button>';
+                    document.body.appendChild(tip);
+                    tip.addEventListener('mouseenter', function() {
+                        clearTimeout(hideTimer);
+                    });
+                    tip.addEventListener('mouseleave', scheduleHide);
+                    return tip;
+                }
+
+                function hideTip() {
+                    if (tip) tip.style.display = 'none';
+                }
+
+                function scheduleHide() {
+                    clearTimeout(hideTimer);
+                    hideTimer = setTimeout(hideTip, 180);
+                }
+
+                function positionTip(dot) {
+                    const el = getTip();
+                    const r = dot.getBoundingClientRect();
+                    const pad = 8;
+                    const gap = 8;
+                    requestAnimationFrame(function() {
+                        const w = el.offsetWidth || 180;
+                        const h = el.offsetHeight || 32;
+                        let left = r.left + (r.width / 2) - (w / 2);
+                        let top = r.bottom + gap;
+                        if (left + w > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - w - pad);
+                        if (left < pad) left = pad;
+                        if (top + h > window.innerHeight - pad) top = Math.max(pad, r.top - h - gap);
+                        el.style.left = left + 'px';
+                        el.style.top = top + 'px';
+                    });
+                }
+
+                function showTip(dot) {
+                    const email = String(dot.getAttribute('data-email') || '').trim();
+                    if (!email) return;
+                    clearTimeout(hideTimer);
+                    const el = getTip();
+                    el.querySelector('.cm-email-hover-text').textContent = email;
+                    const btn = el.querySelector('.cm-copy-supplier-email');
+                    btn.setAttribute('data-email', email);
+                    btn.setAttribute('title', 'Copy ' + email);
+                    el.style.display = 'flex';
+                    positionTip(dot);
+                }
+
+                host.addEventListener('mouseover', function(e) {
+                    const dot = e.target.closest('.cm-supplier-data-dot--ok[data-email]');
+                    if (dot && host.contains(dot)) showTip(dot);
+                });
+
+                host.addEventListener('mouseout', function(e) {
+                    const dot = e.target.closest('.cm-supplier-data-dot--ok[data-email]');
+                    if (!dot) return;
+                    const next = e.relatedTarget;
+                    if (next && (dot.contains(next) || (tip && tip.contains(next)))) return;
+                    scheduleHide();
+                });
+
+                window.addEventListener('scroll', hideTip, true);
+                window.addEventListener('resize', hideTip);
             }
 
             function setupComplianceImageHoverPreview() {
@@ -1992,9 +1831,9 @@
                     menuEl = document.createElement('div');
                     menuEl.id = 'cm-file-action-menu';
                     menuEl.innerHTML = `
-                        <button type="button" data-cm-file-action="copy"><i class="fas fa-copy"></i> Copy</button>
-                        <button type="button" data-cm-file-action="download"><i class="fas fa-download"></i> Download</button>
-                        <button type="button" data-cm-file-action="view"><i class="fas fa-eye"></i> View</button>
+                        <button type="button" data-cm-file-action="copy"><i class="bi bi-copy"></i> Copy</button>
+                        <button type="button" data-cm-file-action="download"><i class="bi bi-download"></i> Download</button>
+                        <button type="button" data-cm-file-action="view"><i class="bi bi-eye"></i> View</button>
                     `;
                     document.body.appendChild(menuEl);
 
@@ -2172,156 +2011,6 @@
                 return num.toFixed(decimals);
             }
 
-            /** Same field as product-master: Values.status on product_master (merged into row as status). */
-            function resolveProductMasterStatus(item) {
-                if (!item) return '';
-                let v = item.status;
-                if (v === undefined || v === null || v === '') {
-                    v = item.Status;
-                }
-                const s = v != null ? String(v).trim() : '';
-                return s;
-            }
-
-            /** Canonical labels aligned with product-master status badges / select options. */
-            function formatProductMasterStatusLabel(raw) {
-                const s = String(raw || '').trim();
-                if (!s) return '—';
-                const lower = s.toLowerCase();
-                const upper = s.toUpperCase();
-                if (lower === 'active') return 'Active';
-                if (lower === 'inactive') return 'Inactive';
-                if (upper === 'DC') return 'DC';
-                if (lower === 'upcoming') return 'Upcoming';
-                if (upper === '2BDC') return '2BDC';
-                return s;
-            }
-
-            function getComplianceStatusMarbleModifier(raw) {
-                const s = String(raw || '').trim();
-                if (!s) return 'muted';
-                const lower = s.toLowerCase();
-                const upper = s.toUpperCase();
-                if (lower === 'active') return 'active';
-                if (lower === 'inactive') return 'inactive';
-                if (upper === 'DC') return 'dc';
-                if (lower === 'upcoming') return 'upcoming';
-                if (upper === '2BDC') return '2bdc';
-                return 'muted';
-            }
-
-            function getComplianceStatusCellHtml(item) {
-                const raw = resolveProductMasterStatus(item);
-                const trimmed = String(raw || '').trim();
-                if (!trimmed) {
-                    return '<span class="cm-status-cell-inner"><span class="cm-status-marble cm-status-marble--muted" title="No status"></span></span>';
-                }
-                const mod = getComplianceStatusMarbleModifier(trimmed);
-                const label = formatProductMasterStatusLabel(trimmed);
-                const titleAttr = escapeHtml(label === '—' ? trimmed : label);
-                return '<span class="cm-status-cell-inner"><span class="cm-status-marble cm-status-marble--' + mod + '" title="' + titleAttr + '"></span></span>';
-            }
-
-            function cmStatusFilterOptionLabels() {
-                return {
-                    all: 'All',
-                    missing: 'Missing',
-                    active: 'Active',
-                    inactive: 'Inactive',
-                    DC: 'DC',
-                    upcoming: 'Upcoming',
-                    '2BDC': '2BDC'
-                };
-            }
-
-            function positionCmStatusFilterMenu(wrap) {
-                const menu = wrap.querySelector('.cm-status-filter-menu');
-                const trigger = wrap.querySelector('.cm-status-filter-trigger');
-                if (!menu || !trigger) return;
-                const r = trigger.getBoundingClientRect();
-                const w = Math.max(r.width, 200);
-                menu.style.position = 'fixed';
-                menu.style.top = (r.bottom + 4) + 'px';
-                menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
-                menu.style.minWidth = w + 'px';
-                menu.style.zIndex = '4000';
-            }
-
-            function refreshCmStatusFilterUI() {
-                const hidden = document.getElementById('filterComplianceStatus');
-                const wrap = document.querySelector('.cm-status-filter-wrap');
-                if (!hidden || !wrap) return;
-                const trigger = wrap.querySelector('.cm-status-filter-trigger');
-                const labelEl = trigger && trigger.querySelector('.cm-status-filter-trigger-label');
-                const v = hidden.value || 'all';
-                const map = cmStatusFilterOptionLabels();
-                if (labelEl) {
-                    labelEl.textContent = Object.prototype.hasOwnProperty.call(map, v) ? map[v] : v;
-                }
-                wrap.querySelectorAll('.cm-status-filter-item').forEach(btn => {
-                    btn.classList.toggle('is-selected', btn.getAttribute('data-value') === v);
-                });
-            }
-
-            let complianceStatusFilterDocClickBound = false;
-
-            function setupComplianceStatusFilter() {
-                if (complianceStatusFilterDocClickBound) return;
-                complianceStatusFilterDocClickBound = true;
-
-                const statusTrigger = document.getElementById('cmStatusFilterTrigger');
-                if (statusTrigger) {
-                    statusTrigger.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-                }
-
-                document.addEventListener('click', function(e) {
-                    const wrap = e.target.closest('.cm-status-filter-wrap');
-
-                    const item = e.target.closest('.cm-status-filter-item');
-                    const trigger = e.target.closest('.cm-status-filter-trigger');
-
-                    if (item && wrap) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const val = item.getAttribute('data-value');
-                        const hidden = document.getElementById('filterComplianceStatus');
-                        if (!hidden) return;
-                        hidden.value = val;
-                        wrap.classList.remove('is-open');
-                        const trg = wrap.querySelector('.cm-status-filter-trigger');
-                        if (trg) trg.setAttribute('aria-expanded', 'false');
-                        refreshCmStatusFilterUI();
-                        applyFilters();
-                        return;
-                    }
-
-                    if (trigger && wrap) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const wasOpen = wrap.classList.contains('is-open');
-                        document.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
-                            x.classList.remove('is-open');
-                            const t = x.querySelector('.cm-status-filter-trigger');
-                            if (t) t.setAttribute('aria-expanded', 'false');
-                        });
-                        if (!wasOpen) {
-                            wrap.classList.add('is-open');
-                            trigger.setAttribute('aria-expanded', 'true');
-                            positionCmStatusFilterMenu(wrap);
-                        }
-                        return;
-                    }
-
-                    if (!wrap) {
-                        document.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
-                            x.classList.remove('is-open');
-                            const t = x.querySelector('.cm-status-filter-trigger');
-                            if (t) t.setAttribute('aria-expanded', 'false');
-                        });
-                    }
-                });
-            }
-
             // Load compliance data from server
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
@@ -2413,6 +2102,17 @@
                 };
             }
 
+            function cmEmailHeaderFilter() {
+                const sel = document.createElement('select');
+                sel.id = 'filterSupplierEmail';
+                sel.className = 'form-select form-select-sm';
+                sel.innerHTML = '<option value="all">All</option><option value="has">Has</option><option value="missing">Missing</option>';
+                sel.addEventListener('change', function() {
+                    applyFilters();
+                });
+                return cmWrapHeaderFilter(sel);
+            }
+
             function cmSelectHeaderFilter(id, fieldKey) {
                 return function() {
                     const sel = document.createElement('select');
@@ -2428,33 +2128,8 @@
                 };
             }
 
-            function cmStatusHeaderFilter() {
-                const wrap = document.createElement('div');
-                wrap.className = 'cm-filter-cell cm-filter-cell--status';
-                wrap.innerHTML =
-                    '<div class="cm-status-filter-wrap cm-status-filter-wrap--toolbar mt-0">' +
-                    '<button type="button" class="cm-status-filter-trigger" aria-expanded="false" aria-haspopup="listbox" id="cmStatusFilterTrigger">' +
-                    '<span class="cm-status-filter-trigger-label">All</span>' +
-                    '<span style="font-size:9px;opacity:0.75;" aria-hidden="true">▼</span>' +
-                    '</button>' +
-                    '<input type="hidden" id="filterComplianceStatus" value="all" autocomplete="off">' +
-                    '<div class="cm-status-filter-menu" role="listbox" id="cmStatusFilterMenu">' +
-                    '<button type="button" class="cm-status-filter-item" data-value="all" role="option"><span class="cm-status-filter-check" aria-hidden="true">✓</span><span>All</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="missing" role="option"><span class="cm-status-filter-item-spacer"></span><span>Missing</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="active" role="option"><span class="cm-status-marble cm-status-marble--active"></span><span>Active</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="inactive" role="option"><span class="cm-status-marble cm-status-marble--inactive"></span><span>Inactive</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="DC" role="option"><span class="cm-status-marble cm-status-marble--dc"></span><span>DC</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="upcoming" role="option"><span class="cm-status-marble cm-status-marble--upcoming"></span><span>Upcoming</span></button>' +
-                    '<button type="button" class="cm-status-filter-item" data-value="2BDC" role="option"><span class="cm-status-marble cm-status-marble--2bdc"></span><span>2BDC</span></button>' +
-                    '</div></div>';
-                return wrap;
-            }
-
             function bindComplianceHeaderFilters() {
-                setupSearch();
-                refreshCmStatusFilterUI();
                 syncComplianceFieldFilterStyles();
-                updateCounts();
             }
 
             function getComplianceTabulatorColumnDefinitions() {
@@ -2477,8 +2152,8 @@
                         field: 'Parent',
                         headerSort: false,
                         cssClass: 'compliance-parent-col',
-                        minWidth: 56,
-                        widthGrow: 2,
+                        minWidth: 45,
+                        widthGrow: 1.6,
                         titleFormatter: cmTitleWithCount('Parent', 'parentCount'),
                         headerFilter: cmTextHeaderFilter('parentSearch', 'Parent'),
                         headerFilterFunc: cmPassAllHeaderFilter,
@@ -2507,45 +2182,6 @@
                         }
                     },
                     {
-                        title: '',
-                        field: '_cb',
-                        headerSort: false,
-                        headerClass: 'cm-tabulator-cb-header',
-                        width: 34,
-                        widthShrink: 1,
-                        hozAlign: 'center',
-                        cssClass: 'compliance-checkbox-cell',
-                        titleFormatter: function() {
-                            const w = document.createElement('div');
-                            w.className = 'text-center';
-                            w.innerHTML = '<input type="checkbox" id="complianceSelectAllCheckbox" title="Select all visible rows" aria-label="Select all visible rows">';
-                            return w;
-                        },
-                        formatter: function(cell) {
-                            const item = cell.getRow().getData();
-                            if (complianceRowHasParentKeyword(item)) {
-                                return '<span class="text-muted user-select-none" title="Parent summary rows cannot be bulk-edited">—</span>';
-                            }
-                            const sku = String(item.SKU || '');
-                            return '<input type="checkbox" class="compliance-row-checkbox" data-sku="' + escapeHtml(sku) + '" aria-label="Select row for bulk edit">';
-                        }
-                    },
-                    {
-                        title: 'STATUS',
-                        field: 'status',
-                        headerSort: false,
-                        cssClass: 'compliance-status-col',
-                        hozAlign: 'center',
-                        minWidth: 56,
-                        widthGrow: 1,
-                        headerFilter: cmStatusHeaderFilter,
-                        headerFilterFunc: cmPassAllHeaderFilter,
-                        headerFilterLiveFilter: false,
-                        formatter: function(cell) {
-                            return getComplianceStatusCellHtml(cell.getRow().getData());
-                        }
-                    },
-                    {
                         title: 'INV',
                         field: 'shopify_inv',
                         headerSort: false,
@@ -2558,6 +2194,43 @@
                             if (v === 0 || v === '0') return '0';
                             if (v === null || v === undefined || v === '') return '-';
                             return escapeHtml(String(v));
+                        }
+                    },
+                    {
+                        title: 'Supplier',
+                        field: 'supplier',
+                        headerSort: false,
+                        hozAlign: 'center',
+                        cssClass: 'cm-supplier-col',
+                        minWidth: 72,
+                        widthGrow: 1.4,
+                        headerFilter: cmTextHeaderFilter('supplierSearch', 'Supplier'),
+                        headerFilterFunc: cmPassAllHeaderFilter,
+                        headerFilterLiveFilter: false,
+                        formatter: function(cell) {
+                            const name = String(cell.getRow().getData().supplier || '').trim();
+                            if (!name) return '<span class="text-muted">—</span>';
+                            return '<span title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Email',
+                        field: 'supplier_email',
+                        headerSort: false,
+                        hozAlign: 'center',
+                        width: 64,
+                        widthShrink: 1,
+                        headerFilter: cmEmailHeaderFilter,
+                        headerFilterFunc: cmPassAllHeaderFilter,
+                        headerFilterLiveFilter: false,
+                        formatter: function(cell) {
+                            const email = String(cell.getRow().getData().supplier_email || '').trim();
+                            if (!email) {
+                                return '<span class="cm-supplier-email-cell"><span class="cm-supplier-data-dot cm-supplier-data-dot--missing" title="No email on file"></span></span>';
+                            }
+                            return '<span class="cm-supplier-email-cell">' +
+                                '<span class="cm-supplier-data-dot cm-supplier-data-dot--ok" data-email="' + escapeHtml(email) + '" aria-label="' + escapeHtml(email) + '"></span>' +
+                                '</span>';
                         }
                     }
                 ];
@@ -2591,15 +2264,13 @@
                     field: '_actions',
                     headerSort: false,
                     hozAlign: 'center',
-                    width: 78,
+                    width: 44,
                     widthShrink: 1,
                     formatter: function(cell) {
                         const item = cell.getRow().getData();
                         return '<div class="d-inline-flex">' +
-                            '<button type="button" class="btn btn-sm btn-outline-warning edit-btn me-1" data-sku="' + escapeHtml(String(item.SKU ?? '')) + '">' +
-                            '<i class="bi bi-pencil-square"></i></button>' +
-                            '<button type="button" class="btn btn-sm btn-outline-danger delete-btn" data-id="' + escapeHtml(String(item.id ?? '')) + '" data-sku="' + escapeHtml(String(item.SKU ?? '')) + '">' +
-                            '<i class="bi bi-archive"></i></button></div>';
+                            '<button type="button" class="btn btn-sm btn-outline-warning edit-btn" data-sku="' + escapeHtml(String(item.SKU ?? '')) + '">' +
+                            '<i class="bi bi-pencil-square"></i></button></div>';
                     }
                 });
 
@@ -2616,7 +2287,6 @@
                     complianceTable = new Tabulator('#compliance-tabulator', {
                         data: d,
                         layout: 'fitColumns',
-                        layoutColumnsOnNewData: true,
                         height: '100%',
                         placeholder: 'No compliance data found',
                         movableColumns: false,
@@ -2634,203 +2304,11 @@
                         },
                         tableBuilt: function() {
                             bindComplianceHeaderFilters();
-                        },
-                        renderComplete: function() {
-                            bindComplianceHeaderFilters();
                         }
                     });
-                    syncComplianceSelectAllCheckbox();
                 } else {
-                    complianceTable.replaceData(d).then(function() {
-                        syncComplianceSelectAllCheckbox();
-                        bindComplianceHeaderFilters();
-                    });
+                    complianceTable.replaceData(d);
                 }
-            }
-
-            function getComplianceRowCheckboxes() {
-                return [...document.querySelectorAll('#compliance-tabulator .compliance-row-checkbox')];
-            }
-
-            function syncComplianceSelectAllCheckbox() {
-                const master = document.getElementById('complianceSelectAllCheckbox');
-                if (!master) return;
-                const boxes = getComplianceRowCheckboxes();
-                const n = boxes.length;
-                const checked = boxes.filter(b => b.checked).length;
-                master.checked = n > 0 && checked === n;
-                master.indeterminate = checked > 0 && checked < n;
-            }
-
-            function updateComplianceBulkEditModalState() {
-                const n = getComplianceRowCheckboxes().filter(b => b.checked).length;
-                const countEl = document.getElementById('complianceBulkEditCountText');
-                const applyBtn = document.getElementById('complianceBulkEditApplyBtn');
-                if (countEl) {
-                    countEl.textContent = n
-                        ? `${n} row(s) selected.`
-                        : 'No rows selected. Select checkboxes in the table first.';
-                }
-                if (applyBtn) {
-                    applyBtn.disabled = n === 0;
-                }
-            }
-
-            function setupComplianceBulkEdit() {
-                const bulkBtn = document.getElementById('complianceBulkEditBtn');
-                const applyBtn = document.getElementById('complianceBulkEditApplyBtn');
-                const modalEl = document.getElementById('complianceBulkEditModal');
-
-                if (!bulkBtn || !applyBtn || !modalEl) return;
-
-                document.addEventListener('change', function complianceSelectAllChange(e) {
-                    if (e.target.id !== 'complianceSelectAllCheckbox') return;
-                    const master = e.target;
-                    getComplianceRowCheckboxes().forEach(function(cb) {
-                        cb.checked = master.checked;
-                    });
-                    syncComplianceSelectAllCheckbox();
-                    if (modalEl.classList.contains('show')) {
-                        updateComplianceBulkEditModalState();
-                    }
-                });
-
-                document.addEventListener('change', function complianceRowCheckboxChange(e) {
-                    if (!e.target.classList.contains('compliance-row-checkbox')) return;
-                    const host = document.getElementById('compliance-tabulator');
-                    if (!host || !host.contains(e.target)) return;
-                    syncComplianceSelectAllCheckbox();
-                    if (modalEl.classList.contains('show')) {
-                        updateComplianceBulkEditModalState();
-                    }
-                });
-
-                modalEl.addEventListener('show.bs.modal', function() {
-                    resetBulkComplianceModal();
-                });
-
-                modalEl.addEventListener('change', function(e) {
-                    const name = e.target.getAttribute('name');
-                    if (name && name.startsWith('bulk_mode_')) {
-                        const wrap = modalEl.querySelector(`[data-bulk-req-wrap="${name.replace('bulk_mode_', '')}"]`);
-                        const isReq = modalEl.querySelector(`input[name="${name}"]:checked`)?.value === 'req';
-                        if (wrap) wrap.classList.toggle('d-none', !isReq);
-                        updateComplianceBulkEditModalState();
-                    }
-                });
-
-                modalEl.addEventListener('change', async function(e) {
-                    const inp = e.target.closest('.bulk-compliance-img-input');
-                    if (!inp || !inp.files || !inp.files[0]) return;
-                    const field = inp.dataset.field;
-                    const wrap = inp.closest('[data-bulk-req-wrap]');
-                    const statusEl = wrap ? wrap.querySelector(`[data-bulk-img-status="${field}"]`) : null;
-                    try {
-                        if (statusEl) statusEl.textContent = 'Uploading...';
-                        const path = await uploadComplianceFieldImageToServer(field, inp.files[0]);
-                        bulkComplianceUploadPaths[field] = path;
-                        if (statusEl) statusEl.textContent = 'Image ready.';
-                    } catch (err) {
-                        if (statusEl) statusEl.textContent = err.message || 'Upload failed';
-                        showToast('danger', err.message || 'Upload failed');
-                    }
-                });
-
-                modalEl.addEventListener('change', async function(e) {
-                    const inp = e.target.closest('.bulk-compliance-pdf-input');
-                    if (!inp || !inp.files || !inp.files[0]) return;
-                    const field = inp.dataset.field;
-                    const wrap = inp.closest('[data-bulk-req-wrap]');
-                    const statusEl = wrap ? wrap.querySelector(`[data-bulk-pdf-status="${field}"]`) : null;
-                    try {
-                        if (statusEl) statusEl.textContent = 'Uploading...';
-                        const path = await uploadComplianceFieldPdfToServer(field, inp.files[0]);
-                        bulkCompliancePdfPaths[field] = path;
-                        if (statusEl) statusEl.textContent = 'PDF ready.';
-                    } catch (err) {
-                        if (statusEl) statusEl.textContent = err.message || 'Upload failed';
-                        showToast('danger', err.message || 'Upload failed');
-                    }
-                });
-
-                bulkBtn.addEventListener('click', function() {
-                    const n = getComplianceRowCheckboxes().filter(b => b.checked).length;
-                    const errEl = document.getElementById('complianceBulkEditError');
-                    errEl.classList.add('d-none');
-                    errEl.textContent = '';
-                    updateComplianceBulkEditModalState();
-                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                    modal.show();
-                    if (n === 0) {
-                        showToast('warning', 'Select at least one row using the checkboxes.');
-                    }
-                });
-
-                modalEl.addEventListener('shown.bs.modal', function() {
-                    updateComplianceBulkEditModalState();
-                });
-
-                applyBtn.addEventListener('click', async function() {
-                    const errEl = document.getElementById('complianceBulkEditError');
-                    errEl.classList.add('d-none');
-                    errEl.textContent = '';
-                    const skus = getComplianceRowCheckboxes().filter(b => b.checked).map(b => b.dataset.sku).filter(Boolean);
-                    if (!skus.length) {
-                        showToast('warning', 'No rows selected.');
-                        return;
-                    }
-                    applyBtn.disabled = true;
-                    let ok = 0;
-                    const failed = [];
-                    try {
-                        for (const sku of skus) {
-                            const item = findComplianceRowBySku(sku);
-                            if (!item) {
-                                failed.push(sku + ': row not found');
-                                continue;
-                            }
-                            const payload = buildComplianceBulkPayloadForItem(item);
-                            const response = await fetch('/compliance-master/update', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': csrfToken
-                                },
-                                body: JSON.stringify(payload)
-                            });
-                            const data = await response.json().catch(() => ({}));
-                            if (response.ok && data.success !== false) {
-                                ok++;
-                            } else {
-                                failed.push(sku + ': ' + (data.message || response.status));
-                            }
-                        }
-                        if (failed.length === 0) {
-                            showToast('success', `Updated ${ok} row(s).`);
-                            bootstrap.Modal.getInstance(modalEl)?.hide();
-                            resetBulkComplianceModal();
-                            loadData();
-                        } else {
-                            errEl.textContent = failed.slice(0, 8).join('\n') + (failed.length > 8 ? '\n…' : '');
-                            errEl.classList.remove('d-none');
-                            showToast('warning', `Updated ${ok}; ${failed.length} failed. See message in modal.`);
-                            if (ok > 0) {
-                                loadData();
-                            }
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        showToast('danger', e.message || 'Bulk update failed.');
-                    } finally {
-                        updateComplianceBulkEditModalState();
-                    }
-                });
-            }
-
-            // Check if value is missing (null, undefined, empty)
-            function isMissing(value) {
-                return value === null || value === undefined || value === '' || (typeof value === 'string' && value.trim() === '');
             }
 
             // Update counts
@@ -2851,19 +2329,18 @@
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
                         skuCount++;
-                    
-                    // Count missing data for each column (REQ without image = missing)
-                    if (isMissingComplianceFieldForItem(item, 'battery')) batteryMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'wireless')) wirelessMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'electric')) electricMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'gcc')) gccMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'rohs')) rohsMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'blanket')) blanketMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'bluetooth')) bluetoothMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'logo')) logoMissingCount++;
-                    if (isMissingComplianceFieldForItem(item, 'graph')) graphMissingCount++;
+
+                    if (isReqFilterMatchForItem(item, 'battery')) batteryMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'wireless')) wirelessMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'electric')) electricMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'gcc')) gccMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'rohs')) rohsMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'blanket')) blanketMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'bluetooth')) bluetoothMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'logo')) logoMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'graph')) graphMissingCount++;
                 });
-                
+
                 const setText = function(id, text) {
                     const el = document.getElementById(id);
                     if (el) el.textContent = text;
@@ -2880,21 +2357,343 @@
                 setText('logoMissingCount', `(${logoMissingCount})`);
                 setText('graphMissingCount', `(${graphMissingCount})`);
 
+                let summaryAny = 0;
+                let summaryBattery = 0;
+                let summaryWireless = 0;
+                let summaryElectric = 0;
+                let summaryGcc = 0;
+                let summaryRohs = 0;
+                let summaryBlanket = 0;
+                let summaryBluetooth = 0;
+                let summaryLogo = 0;
+                let summaryGraph = 0;
+                (Array.isArray(tableData) ? tableData : []).forEach(item => {
+                    if (rowHasAnyReqCompliance(item)) summaryAny++;
+                    if (isReqFilterMatchForItem(item, 'battery')) summaryBattery++;
+                    if (isReqFilterMatchForItem(item, 'wireless')) summaryWireless++;
+                    if (isReqFilterMatchForItem(item, 'electric')) summaryElectric++;
+                    if (isReqFilterMatchForItem(item, 'gcc')) summaryGcc++;
+                    if (isReqFilterMatchForItem(item, 'rohs')) summaryRohs++;
+                    if (isReqFilterMatchForItem(item, 'blanket')) summaryBlanket++;
+                    if (isReqFilterMatchForItem(item, 'bluetooth')) summaryBluetooth++;
+                    if (isReqFilterMatchForItem(item, 'logo')) summaryLogo++;
+                    if (isReqFilterMatchForItem(item, 'graph')) summaryGraph++;
+                });
+
                 const sp = (id, val) => {
                     const el = document.getElementById(id);
-                    if (el) el.textContent = `(${val})`;
+                    if (!el) return;
+                    el.textContent = `(${val})`;
+                    const badge = el.closest('.cm-summary-badge') || el.closest('.badge');
+                    if (!badge) return;
+                    badge.setAttribute('data-kpi-value', String(Number(val) || 0));
+                    badge.classList.remove(
+                        'bg-danger', 'bg-success', 'bg-primary', 'bg-warning',
+                        'bg-info', 'bg-secondary', 'bg-dark', 'text-dark'
+                    );
+                    badge.classList.add(Number(val) === 0 ? 'bg-success' : 'bg-danger');
                 };
-                sp('cm-summary-parent', parentSet.size);
-                sp('cm-summary-sku', skuCount);
-                sp('cm-summary-battery', batteryMissingCount);
-                sp('cm-summary-wireless', wirelessMissingCount);
-                sp('cm-summary-electric', electricMissingCount);
-                sp('cm-summary-gcc', gccMissingCount);
-                sp('cm-summary-rohs', rohsMissingCount);
-                sp('cm-summary-blanket', blanketMissingCount);
-                sp('cm-summary-bluetooth', bluetoothMissingCount);
-                sp('cm-summary-logo', logoMissingCount);
-                sp('cm-summary-graph', graphMissingCount);
+                sp('cm-summary-any', summaryAny);
+                sp('cm-summary-battery', summaryBattery);
+                sp('cm-summary-wireless', summaryWireless);
+                sp('cm-summary-electric', summaryElectric);
+                sp('cm-summary-gcc', summaryGcc);
+                sp('cm-summary-rohs', summaryRohs);
+                sp('cm-summary-blanket', summaryBlanket);
+                sp('cm-summary-bluetooth', summaryBluetooth);
+                sp('cm-summary-logo', summaryLogo);
+                sp('cm-summary-graph', summaryGraph);
+                syncComplianceSidebarBadge(summaryAny);
+                persistComplianceKpiSnapshot();
+            }
+
+            function syncComplianceSidebarBadge(count) {
+                const n = Number(count) || 0;
+                document.querySelectorAll('.compliance-missing-sidebar-badge').forEach(function(el) {
+                    el.textContent = n.toLocaleString();
+                    el.style.display = n > 0 ? '' : 'none';
+                });
+            }
+
+            function syncSummaryBadgeActiveState() {
+                const titles = {
+                    any: 'Show SKUs with any REQ compliance field',
+                    battery: 'Show rows with Battery REQ',
+                    wireless: 'Show rows with Wireless REQ',
+                    electric: 'Show rows with Electric REQ',
+                    gcc: 'Show rows with GCC REQ',
+                    rohs: 'Show rows with RoHs REQ',
+                    blanket: 'Show rows with Blanket REQ',
+                    bluetooth: 'Show rows with Bluetooth REQ',
+                    logo: 'Show rows with Logo REQ',
+                    graph: 'Show rows with Graph REQ'
+                };
+                document.querySelectorAll('#cm-summary-stats .cm-summary-badge').forEach(function(badge) {
+                    const key = badge.getAttribute('data-cm-filter');
+                    const on = key && key === cmSummaryBadgeFilter;
+                    badge.classList.toggle('cm-summary-badge-active', on);
+                    badge.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    const base = titles[key] || 'Filter table';
+                    badge.title = on ? base + ' (click again to clear)' : base;
+                });
+            }
+
+            function setupSummaryBadgeFilters() {
+                const host = document.getElementById('cm-summary-stats');
+                if (!host || host.dataset.cmBadgeBound === '1') return;
+                host.dataset.cmBadgeBound = '1';
+                host.addEventListener('click', function(e) {
+                    if (e.target.closest && e.target.closest('.summary-trend-dot')) return;
+                    const badge = e.target.closest('.cm-summary-badge');
+                    if (!badge || !host.contains(badge)) return;
+                    const key = badge.getAttribute('data-cm-filter');
+                    if (!key) return;
+                    cmSummaryBadgeFilter = (cmSummaryBadgeFilter === key) ? null : key;
+                    syncSummaryBadgeActiveState();
+                    applyFilters();
+                });
+                syncSummaryBadgeActiveState();
+            }
+
+            const CM_KPI_HISTORY_URL = @json(route('dashboard.kpi.history'));
+            const CM_KPI_TONES_URL = @json(route('dashboard.kpi.tones'));
+            const CM_KPI_SNAPSHOT_URL = @json(route('compliance.master.badge.snapshot'));
+            const CM_KPI_TONE_COLORS = { green: '#22c55e', red: '#ef4444', gray: '#9ca3af' };
+            let cmKpiChartInstance = null;
+            let cmKpiChartAjax = null;
+            let cmKpiSnapshotTimer = null;
+            let cmLastKpiSnapshot = '';
+            const cmKpiActive = { key: '', label: '', value: null, days: 30 };
+
+            function cmKpiFmt(v) {
+                const n = Number(v || 0);
+                if (!isFinite(n)) return '—';
+                return Math.round(n).toLocaleString('en-US');
+            }
+
+            function persistComplianceKpiSnapshot() {
+                const payload = {};
+                document.querySelectorAll('#cm-summary-stats .cm-summary-badge[data-kpi-key]').forEach(function(badge) {
+                    const key = badge.getAttribute('data-kpi-key') || '';
+                    const field = key.indexOf('|') >= 0 ? key.split('|').pop() : '';
+                    if (!field) return;
+                    payload[field] = Number(badge.getAttribute('data-kpi-value') || 0) || 0;
+                });
+                if (Object.keys(payload).length === 0) return;
+                const body = JSON.stringify(payload);
+                if (body === cmLastKpiSnapshot) {
+                    refreshComplianceKpiDotTones();
+                    return;
+                }
+                clearTimeout(cmKpiSnapshotTimer);
+                cmKpiSnapshotTimer = setTimeout(function() {
+                    cmLastKpiSnapshot = body;
+                    fetch(CM_KPI_SNAPSHOT_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload)
+                    }).then(function() {
+                        refreshComplianceKpiDotTones();
+                    }).catch(function() {});
+                }, 400);
+            }
+
+            function setComplianceKpiDotTone(badge, tone) {
+                const t = tone || 'gray';
+                const cls = t === 'green' ? 'up' : (t === 'red' ? 'down' : 'none');
+                const dot = badge.querySelector('.summary-trend-dot');
+                if (!dot) return;
+                dot.classList.remove('up', 'down', 'flat', 'none');
+                dot.classList.add(cls);
+                badge.setAttribute('data-kpi-tone', t);
+            }
+
+            function refreshComplianceKpiDotTones() {
+                const keys = [];
+                document.querySelectorAll('#cm-summary-stats .cm-summary-badge[data-kpi-key]').forEach(function(badge) {
+                    const k = badge.getAttribute('data-kpi-key');
+                    if (k) keys.push(k);
+                });
+                if (!keys.length) return;
+                fetch(CM_KPI_TONES_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ keys: keys })
+                }).then(function(r) { return r.json(); }).then(function(res) {
+                    const tones = (res && res.tones) || {};
+                    document.querySelectorAll('#cm-summary-stats .cm-summary-badge[data-kpi-key]').forEach(function(badge) {
+                        const key = badge.getAttribute('data-kpi-key');
+                        const tone = (tones[key] && tones[key].tone) || 'gray';
+                        setComplianceKpiDotTone(badge, tone);
+                    });
+                }).catch(function() {});
+            }
+
+            function openComplianceKpiChart(badge) {
+                cmKpiActive.key = badge.getAttribute('data-kpi-key') || '';
+                cmKpiActive.label = badge.getAttribute('data-kpi-label') || (badge.textContent || '').replace(/\s+/g, ' ').trim();
+                const raw = badge.getAttribute('data-kpi-value');
+                cmKpiActive.value = (raw !== null && raw !== '' && isFinite(Number(raw))) ? Number(raw) : null;
+                const rangeEl = document.getElementById('cmKpiChartRange');
+                cmKpiActive.days = parseInt(rangeEl && rangeEl.value, 10) || 30;
+
+                document.getElementById('cmKpiChartTitle').textContent = cmKpiActive.label + ' — Rolling L' + cmKpiActive.days;
+                document.getElementById('cmKpiChartSub').textContent = cmKpiActive.key;
+                const tone = badge.getAttribute('data-kpi-tone') || 'gray';
+                const toneEl = document.getElementById('cmKpiChartTone');
+                toneEl.textContent = String(tone).toUpperCase();
+                toneEl.style.background = CM_KPI_TONE_COLORS[tone] || CM_KPI_TONE_COLORS.gray;
+                toneEl.style.color = '#fff';
+
+                const modalEl = document.getElementById('cmKpiChartModal');
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                loadComplianceKpiChart();
+            }
+
+            function loadComplianceKpiChart() {
+                if (!cmKpiActive.key) return;
+                const start = function() {
+                    if (cmKpiChartAjax) cmKpiChartAjax.abort();
+                    document.getElementById('cmKpiChartLoading').style.display = 'block';
+                    document.getElementById('cmKpiChartNoData').style.display = 'none';
+                    document.getElementById('cmKpiChartWrap').style.display = 'none';
+                    document.getElementById('cmKpiChartStats').style.display = 'none';
+
+                    const params = new URLSearchParams({ key: cmKpiActive.key, days: String(cmKpiActive.days) });
+                    if (cmKpiActive.value !== null) params.set('badge_value', String(cmKpiActive.value));
+
+                    cmKpiChartAjax = fetch(CM_KPI_HISTORY_URL + '?' + params.toString(), {
+                        headers: { Accept: 'application/json' },
+                        credentials: 'same-origin'
+                    }).then(function(r) { return r.json(); }).then(function(payload) {
+                        cmKpiChartAjax = null;
+                        document.getElementById('cmKpiChartLoading').style.display = 'none';
+                        if (!payload || !payload.success || !payload.data || !payload.data.length) {
+                            document.getElementById('cmKpiChartNoData').style.display = 'block';
+                            return;
+                        }
+                        if (payload.tone) {
+                            const toneEl = document.getElementById('cmKpiChartTone');
+                            toneEl.textContent = String(payload.tone).toUpperCase();
+                            toneEl.style.background = CM_KPI_TONE_COLORS[payload.tone] || CM_KPI_TONE_COLORS.gray;
+                        }
+                        document.getElementById('cmKpiChartWrap').style.display = 'block';
+                        document.getElementById('cmKpiChartStats').style.display = 'flex';
+                        renderComplianceKpiChart(payload.data, payload.label || cmKpiActive.label);
+                    }).catch(function() {
+                        cmKpiChartAjax = null;
+                        document.getElementById('cmKpiChartLoading').style.display = 'none';
+                        document.getElementById('cmKpiChartNoData').style.display = 'block';
+                    });
+                };
+                if (typeof loadChartJs === 'function') {
+                    loadChartJs().then(start).catch(function() {
+                        document.getElementById('cmKpiChartLoading').style.display = 'none';
+                        document.getElementById('cmKpiChartNoData').style.display = 'block';
+                    });
+                    return;
+                }
+                start();
+            }
+
+            function renderComplianceKpiChart(data, label) {
+                if (typeof Chart === 'undefined') return;
+                const canvas = document.getElementById('cmKpiChartCanvas');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (cmKpiChartInstance) cmKpiChartInstance.destroy();
+
+                const labels = data.map(function(d) { return d.date; });
+                const values = data.map(function(d) { return Number(d.value || 0); });
+                const colors = data.map(function(d) { return CM_KPI_TONE_COLORS[d.tone] || CM_KPI_TONE_COLORS.gray; });
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const sorted = values.slice().sort(function(a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                const range = dataMax - dataMin || 1;
+
+                document.getElementById('cmKpiHi').textContent = cmKpiFmt(dataMax);
+                document.getElementById('cmKpiMed').textContent = cmKpiFmt(median);
+                document.getElementById('cmKpiLo').textContent = cmKpiFmt(dataMin);
+
+                cmKpiChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: label,
+                            data: values,
+                            borderColor: '#94a3b8',
+                            backgroundColor: 'rgba(148,163,184,0.12)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: colors,
+                            pointBorderColor: colors
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: {
+                                min: Math.min(0, dataMin - range * 0.08),
+                                max: dataMax + range * 0.08,
+                                ticks: { font: { size: 9 }, callback: function(v) { return cmKpiFmt(v); } }
+                            },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } }
+                        }
+                    }
+                });
+            }
+
+            function setupComplianceKpiHistory() {
+                const host = document.getElementById('cm-summary-stats');
+                if (!host || host.dataset.cmKpiBound === '1') return;
+                host.dataset.cmKpiBound = '1';
+                host.addEventListener('click', function(e) {
+                    const dot = e.target.closest && e.target.closest('.summary-trend-dot');
+                    if (!dot || !host.contains(dot)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                    const badge = dot.closest('.cm-summary-badge');
+                    if (badge) openComplianceKpiChart(badge);
+                }, true);
+                host.addEventListener('keydown', function(e) {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    const dot = e.target.closest && e.target.closest('.summary-trend-dot');
+                    if (!dot || !host.contains(dot)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const badge = dot.closest('.cm-summary-badge');
+                    if (badge) openComplianceKpiChart(badge);
+                });
+                const rangeEl = document.getElementById('cmKpiChartRange');
+                if (rangeEl) {
+                    rangeEl.addEventListener('change', function() {
+                        cmKpiActive.days = parseInt(this.value, 10) || 30;
+                        document.getElementById('cmKpiChartTitle').textContent = cmKpiActive.label + ' — Rolling L' + cmKpiActive.days;
+                        loadComplianceKpiChart();
+                    });
+                }
+                refreshComplianceKpiDotTones();
             }
 
             // Apply all filters
@@ -2914,30 +2713,19 @@
                         return false;
                     }
 
-                    // Custom search filter
-                    const customSearch = document.getElementById('customSearch').value.toLowerCase();
-                    if (customSearch) {
-                        const parent = (item.Parent || '').toLowerCase();
-                        const sku = (item.SKU || '').toLowerCase();
-                        const statusHaystack = resolveProductMasterStatus(item).toLowerCase();
-                        const statusLabel = formatProductMasterStatusLabel(resolveProductMasterStatus(item)).toLowerCase();
-                        if (!parent.includes(customSearch) && !sku.includes(customSearch)
-                            && !statusHaystack.includes(customSearch) && !statusLabel.includes(customSearch)) {
-                            return false;
-                        }
+                    const supplierSearchEl = document.getElementById('supplierSearch');
+                    const supplierSearch = supplierSearchEl ? supplierSearchEl.value.toLowerCase() : '';
+                    if (supplierSearch && !(item.supplier || '').toLowerCase().includes(supplierSearch)) {
+                        return false;
                     }
 
-                    const filterComplianceStatusEl = document.getElementById('filterComplianceStatus');
-                    const filterComplianceStatus = filterComplianceStatusEl ? filterComplianceStatusEl.value : 'all';
-                    if (filterComplianceStatus === 'missing') {
-                        if (!isMissing(resolveProductMasterStatus(item))) {
-                            return false;
-                        }
-                    } else if (filterComplianceStatus !== 'all') {
-                        const st = resolveProductMasterStatus(item);
-                        if (!st || String(st).toLowerCase() !== String(filterComplianceStatus).toLowerCase()) {
-                            return false;
-                        }
+                    const filterSupplierEmailEl = document.getElementById('filterSupplierEmail');
+                    const filterSupplierEmail = filterSupplierEmailEl ? filterSupplierEmailEl.value : 'all';
+                    if (filterSupplierEmail === 'has' && !String(item.supplier_email || '').trim()) {
+                        return false;
+                    }
+                    if (filterSupplierEmail === 'missing' && String(item.supplier_email || '').trim()) {
+                        return false;
                     }
 
                     // Compliance field filters (Battery / Wireless / …)
@@ -2960,73 +2748,16 @@
                         }
                     }
 
+                    if (cmSummaryBadgeFilter === 'any') {
+                        if (!rowHasAnyReqCompliance(item)) return false;
+                    } else if (cmSummaryBadgeFilter) {
+                        if (!isReqFilterMatchForItem(item, cmSummaryBadgeFilter)) return false;
+                    }
+
                     return true;
                 });
                 renderTable(filteredData);
                 updateCounts();
-                syncComplianceFieldFilterStyles();
-            }
-
-            // Setup search functionality
-            function setupSearch() {
-                if (complianceSearchSetupDone) return;
-
-                const parentSearch = document.getElementById('parentSearch');
-                const skuSearch = document.getElementById('skuSearch');
-                const customSearch = document.getElementById('customSearch');
-                const clearSearchBtn = document.getElementById('clearSearch');
-                if (!parentSearch || !skuSearch || !customSearch || !clearSearchBtn) return;
-
-                const filterIds = ['filterBattery', 'filterWireless', 'filterElectric', 'filterGcc', 'filterRohs', 'filterBlanket', 'filterBluetooth', 'filterLogo', 'filterGraph'];
-                for (let i = 0; i < filterIds.length; i++) {
-                    if (!document.getElementById(filterIds[i])) return;
-                }
-
-                complianceSearchSetupDone = true;
-
-                parentSearch.addEventListener('input', function() {
-                    applyFilters();
-                });
-
-                skuSearch.addEventListener('input', function() {
-                    applyFilters();
-                });
-
-                customSearch.addEventListener('input', function() {
-                    applyFilters();
-                });
-
-                clearSearchBtn.addEventListener('click', function() {
-                    customSearch.value = '';
-                    parentSearch.value = '';
-                    skuSearch.value = '';
-                    // Reset all column filters
-                    document.getElementById('filterBattery').value = 'all';
-                    document.getElementById('filterWireless').value = 'all';
-                    document.getElementById('filterElectric').value = 'all';
-                    document.getElementById('filterGcc').value = 'all';
-                    document.getElementById('filterRohs').value = 'all';
-                    document.getElementById('filterBlanket').value = 'all';
-                    document.getElementById('filterBluetooth').value = 'all';
-                    document.getElementById('filterLogo').value = 'all';
-                    document.getElementById('filterGraph').value = 'all';
-                    const fcs = document.getElementById('filterComplianceStatus');
-                    if (fcs) fcs.value = 'all';
-                    document.querySelectorAll('.cm-status-filter-wrap.is-open').forEach(x => {
-                        x.classList.remove('is-open');
-                        const t = x.querySelector('.cm-status-filter-trigger');
-                        if (t) t.setAttribute('aria-expanded', 'false');
-                    });
-                    refreshCmStatusFilterUI();
-                    applyFilters();
-                });
-
-                filterIds.forEach(function(fid) {
-                    document.getElementById(fid).addEventListener('change', function() {
-                        syncComplianceFieldFilterStyles();
-                        applyFilters();
-                    });
-                });
                 syncComplianceFieldFilterStyles();
             }
 
@@ -3066,8 +2797,22 @@
             // Setup Excel export function
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
+                    const btn = this;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+                    btn.disabled = true;
+                    loadXlsxLib().then(function() {
+                        runComplianceExcelExport(btn);
+                    }).catch(function() {
+                        showToast('danger', 'Failed to load Excel exporter.');
+                        btn.innerHTML = '<i class="bi bi-download"></i>';
+                        btn.disabled = false;
+                    });
+                });
+            }
+
+            function runComplianceExcelExport(btn) {
                     // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "Status", "INV", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"];
+                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -3077,11 +2822,14 @@
                         "SKU": {
                             key: "SKU"
                         },
-                        "Status": {
-                            key: "status"
-                        },
                         "INV": {
                             key: "shopify_inv"
+                        },
+                        "Supplier": {
+                            key: "supplier"
+                        },
+                        "Email": {
+                            key: "supplier_email"
                         },
                         "Battery": {
                             key: "battery"
@@ -3112,14 +2860,6 @@
                         }
                     };
 
-                    // Show loader or indicate download is in progress
-                    document.getElementById('downloadExcel').innerHTML =
-                        '<i class="fas fa-spinner fa-spin"></i> Generating...';
-                    document.getElementById('downloadExcel').disabled = true;
-
-                    // Compliance field keys that should mirror the on-screen badge logic
-                    // (Battery/Wireless/Electric/GCC/RoHs/Blanket/Bluetooth/Logo/Graph). For these
-                    // we render the same text the page shows: "REQ", "N/A", or a legacy value.
                     const complianceFieldKeysForExport = new Set([
                         'battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph'
                     ]);
@@ -3179,10 +2919,7 @@
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
-                                        if (col === 'Status') {
-                                            const lbl = formatProductMasterStatusLabel(resolveProductMasterStatus(item));
-                                            value = lbl === '—' ? '' : lbl;
-                                        } else if (key === "shopify_inv") {
+                                        if (key === "shopify_inv") {
                                             if (value === 0 || value === "0") {
                                                 value = 0;
                                             } else if (value === null || value === undefined || value === "") {
@@ -3211,7 +2948,7 @@
                                 // Adjust width based on column type
                                 if (["Parent", "SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
-                                } else if (["Status", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
+                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
                                     return { wch: 15 };
                                 } else {
                                     return { wch: 10 }; // Default width for numeric columns
@@ -3261,11 +2998,10 @@
                         } finally {
                             // Reset button state
                             document.getElementById('downloadExcel').innerHTML =
-                                '<i class="fas fa-file-excel me-1"></i> Download Excel';
+                                '<i class="bi bi-download"></i>';
                             document.getElementById('downloadExcel').disabled = false;
                         }
-                    }, 100); // Small timeout to allow UI to update
-                });
+                    }, 100);
             }
 
             function findComplianceRowBySku(sku) {
@@ -3273,13 +3009,6 @@
                 let row = tableData.find(i => String(i.SKU) === s);
                 if (row) return row;
                 return filteredData.find(i => String(i.SKU) === s);
-            }
-
-            // Setup add button handler
-            function setupAddButton() {
-                document.getElementById('addComplianceBtn').addEventListener('click', function() {
-                    openComplianceModal('add');
-                });
             }
 
             function setupActionButtons() {
@@ -3298,33 +3027,30 @@
             }
 
             async function openComplianceModal(mode, editSku = null) {
+                if (mode !== 'edit') {
+                    return;
+                }
                 const modalElement = document.getElementById('addComplianceModal');
                 const modalTitle = document.getElementById('addComplianceModalLabel');
                 const skuSelect = document.getElementById('addComplianceSku');
 
-                if (mode === 'edit') {
-                    const skuStr = String(editSku || '').trim();
-                    if (!skuStr) {
-                        showToast('warning', 'Could not determine SKU to edit.');
-                        return;
-                    }
-                    if (skuStr.toUpperCase().includes('PARENT')) {
-                        showToast('warning', 'Parent summary rows cannot be edited here.');
-                        return;
-                    }
-                    const item = findComplianceRowBySku(skuStr);
-                    if (!item) {
-                        showToast('warning', 'Row not found. Try refreshing the page.');
-                        return;
-                    }
-                    complianceFormMode = 'edit';
-                    complianceEditSku = skuStr;
-                    modalTitle.textContent = 'Edit Compliance Data';
-                } else {
-                    complianceFormMode = 'add';
-                    complianceEditSku = '';
-                    modalTitle.textContent = 'Add Compliance Data';
+                const skuStr = String(editSku || '').trim();
+                if (!skuStr) {
+                    showToast('warning', 'Could not determine SKU to edit.');
+                    return;
                 }
+                if (skuStr.toUpperCase().includes('PARENT')) {
+                    showToast('warning', 'Parent summary rows cannot be edited here.');
+                    return;
+                }
+                const item = findComplianceRowBySku(skuStr);
+                if (!item) {
+                    showToast('warning', 'Row not found. Try refreshing the page.');
+                    return;
+                }
+                complianceFormMode = 'edit';
+                complianceEditSku = skuStr;
+                modalTitle.textContent = 'Edit Compliance Data';
 
                 complianceFormHydrating = true;
                 document.getElementById('addComplianceForm').reset();
@@ -3332,21 +3058,8 @@
                 const siblingsCb = document.getElementById('cm_apply_siblings');
                 if (siblingsCb) siblingsCb.checked = false;
                 setComplianceAutosaveStatus('');
-                updateComplianceSiblingsHint();
-
-                if ($(skuSelect).hasClass('select2-hidden-accessible')) {
-                    $(skuSelect).select2('destroy');
-                }
-                $(skuSelect).prop('disabled', false);
-
-                await loadSkusIntoDropdown();
-
-                if (mode === 'edit') {
-                    const item = findComplianceRowBySku(complianceEditSku);
-                    $(skuSelect).val(complianceEditSku).trigger('change');
-                    $(skuSelect).prop('disabled', true);
-                    setAddComplianceFormFromItem(item);
-                }
+                if (skuSelect) skuSelect.value = skuStr;
+                setAddComplianceFormFromItem(item);
 
                 complianceFormHydrating = false;
                 updateComplianceSiblingsHint();
@@ -3363,11 +3076,7 @@
                         clearTimeout(complianceAutoSaveTimer);
                         complianceAutoSaveTimer = null;
                     }
-                    $(skuSelect).prop('disabled', false);
-                    if ($(skuSelect).hasClass('select2-hidden-accessible')) {
-                        $(skuSelect).select2('destroy');
-                    }
-                    complianceFormMode = 'add';
+                    complianceFormMode = 'edit';
                     complianceEditSku = '';
                     complianceFormHydrating = false;
                     setComplianceAutosaveStatus('');
@@ -3377,72 +3086,16 @@
                 panel.show();
             }
 
-            // Load SKUs into dropdown
-            async function loadSkusIntoDropdown() {
-                try {
-                    const response = await fetch('/general-specific-master/skus', {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
-                        }
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success && data.data) {
-                        const skuSelect = document.getElementById('addComplianceSku');
-                        
-                        // Destroy Select2 if already initialized
-                        if ($(skuSelect).hasClass('select2-hidden-accessible')) {
-                            $(skuSelect).select2('destroy');
-                        }
-                        
-                        // Clear existing options except the first one
-                        skuSelect.innerHTML = '<option value="">Select SKU</option>';
-                        
-                        // Add SKU options
-                        data.data.forEach(item => {
-                            const option = document.createElement('option');
-                            option.value = item.sku;
-                            option.textContent = item.sku;
-                            skuSelect.appendChild(option);
-                        });
-                        
-                        // Initialize Select2 with searchable dropdown
-                        $(skuSelect).select2({
-                            theme: 'bootstrap-5',
-                            placeholder: 'Select SKU',
-                            allowClear: true,
-                            width: '100%',
-                            dropdownParent: $('#addComplianceModal')
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error loading SKUs:', error);
-                    showToast('warning', 'Failed to load SKUs. Please refresh the page.');
-                }
-            }
-
             async function saveCompliance(options = {}) {
                 const opts = Object.assign({ auto: false, keepOpen: false }, options || {});
                 const saveBtn = document.getElementById('saveAddComplianceBtn');
                 const originalText = saveBtn ? saveBtn.innerHTML : '';
                 const skuSelect = document.getElementById('addComplianceSku');
-
-                let sku = '';
-                if (complianceFormMode === 'edit') {
-                    sku = (complianceEditSku || '').trim();
-                } else {
-                    sku = $(skuSelect).val() ? String($(skuSelect).val()).trim() : '';
-                }
+                const sku = (complianceEditSku || (skuSelect && skuSelect.value) || '').trim();
 
                 if (!sku) {
                     if (!opts.auto) {
-                        showToast('warning', complianceFormMode === 'edit' ? 'Missing SKU for update.' : 'Please select SKU');
-                        if (complianceFormMode !== 'edit' && $(skuSelect).hasClass('select2-hidden-accessible')) {
-                            $(skuSelect).select2('open');
-                        }
+                        showToast('warning', 'Missing SKU for update.');
                     }
                     return;
                 }
@@ -3452,21 +3105,20 @@
                     return;
                 }
 
-                let url = complianceFormMode === 'edit' ? '/compliance-master/update' : '/compliance-master/store';
-                let usedUpdate = complianceFormMode === 'edit';
+                const url = '/compliance-master/update';
 
                 try {
                     complianceAutoSaveInFlight = true;
                     if (opts.auto) {
                         setComplianceAutosaveStatus('Saving…', false);
                     } else if (saveBtn) {
-                        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
+                        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Saving...';
                         saveBtn.disabled = true;
                     }
 
                     const formData = collectComplianceFormPayload(sku);
 
-                    let response = await fetch(url, {
+                    const response = await fetch(url, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -3475,34 +3127,10 @@
                         body: JSON.stringify(formData)
                     });
 
-                    let data = await response.json().catch(() => ({}));
-
-                    // First autosave may hit store while row already has compliance → retry update.
-                    if (!usedUpdate && response.status === 409) {
-                        url = '/compliance-master/update';
-                        usedUpdate = true;
-                        response = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: JSON.stringify(formData)
-                        });
-                        data = await response.json().catch(() => ({}));
-                    }
+                    const data = await response.json().catch(() => ({}));
 
                     if (!response.ok || data.success === false) {
                         throw new Error(data.message || 'Failed to save data');
-                    }
-
-                    // After a successful create, treat further autosaves as edits.
-                    if (!usedUpdate) {
-                        complianceFormMode = 'edit';
-                        complianceEditSku = sku;
-                        const modalTitle = document.getElementById('addComplianceModalLabel');
-                        if (modalTitle) modalTitle.textContent = 'Edit Compliance Data';
-                        if (skuSelect) $(skuSelect).prop('disabled', true);
                     }
 
                     const sibCount = Number(data.siblings_count) || (Array.isArray(data.siblings) ? data.siblings.length : 0);
@@ -3518,12 +3146,9 @@
                             showToast('success', data.message || msg);
                         }
                     } else {
-                        showToast('success', data.message || (usedUpdate
-                            ? 'Compliance data updated successfully!'
-                            : 'Compliance Data added successfully!'));
+                        showToast('success', data.message || 'Compliance data updated successfully!');
                         const panel = bootstrap.Offcanvas.getInstance(document.getElementById('addComplianceModal'));
                         if (panel) panel.hide();
-                        loadData();
                     }
                 } catch (error) {
                     console.error('Error saving:', error);
@@ -3658,7 +3283,7 @@
                         if (response.ok && result.success) {
                             importResult.className = 'alert alert-success';
                             importResult.innerHTML = `
-                                <i class="fas fa-check-circle me-2"></i>
+                                <i class="bi bi-check-circle me-2"></i>
                                 <strong>Import Successful!</strong><br>
                                 ${result.message || `Successfully imported ${result.imported || 0} records.`}
                                 ${result.errors && result.errors.length > 0 ? `<br><small>Errors: ${result.errors.length}</small>` : ''}
@@ -3683,7 +3308,7 @@
                         } else {
                             importResult.className = 'alert alert-danger';
                             importResult.innerHTML = `
-                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <i class="bi bi-exclamation-triangle me-2"></i>
                                 <strong>Import Failed!</strong><br>
                                 ${result.message || 'An error occurred during import.'}
                             `;
@@ -3694,7 +3319,7 @@
                         console.error('Import error:', error);
                         importResult.className = 'alert alert-danger';
                         importResult.innerHTML = `
-                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <i class="bi bi-exclamation-triangle me-2"></i>
                             <strong>Import Failed!</strong><br>
                             ${error.message || 'An error occurred during import.'}
                         `;
@@ -3748,10 +3373,6 @@
                     }
                 });
 
-                $(document).on('change.select2', '#addComplianceSku', function() {
-                    updateComplianceSiblingsHint();
-                });
-
                 modal.addEventListener('change', async function(e) {
                     const inp = e.target.closest('.add-compliance-img-input');
                     if (!inp || !inp.files || !inp.files[0]) return;
@@ -3795,16 +3416,14 @@
 
             // Initialize
             setupComplianceImageHoverPreview();
+            setupComplianceEmailHover();
             setupComplianceFileHoverActions();
-            setupComplianceStatusFilter();
-            refreshCmStatusFilterUI();
-            setupSearch();
+            setupSummaryBadgeFilters();
+            setupComplianceKpiHistory();
             setupComplianceAddFormListeners();
             setupActionButtons();
-            setupComplianceBulkEdit();
             loadData();
             setupExcelExport();
-            setupAddButton();
             setupImport();
         });
     </script>

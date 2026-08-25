@@ -131,6 +131,95 @@ class ShopifyApiService
     }
 
     /**
+     * Update the Shopify variant option/title for a SKU (Variation Name master).
+     */
+    public function updateVariantTitle(string $sku, string $title): bool
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if ($sku === '' || $title === '') {
+            return false;
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                Log::warning('Main Shopify credentials not configured for variant title', ['sku' => $sku]);
+
+                return false;
+            }
+
+            $domain = preg_replace('#^https?://#', '', (string) $domain);
+            $domain = rtrim((string) $domain, '/');
+
+            $variantId = $this->resolveMainStoreVariantId($sku);
+            if (! $variantId) {
+                Log::warning('Main Shopify: variant mapping not found for variant title', ['sku' => $sku]);
+
+                return false;
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
+            });
+
+            if (! $variantRes->successful()) {
+                Log::error('Main Shopify variant title lookup failed', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'status' => $variantRes->status(),
+                    'body' => $variantRes->body(),
+                ]);
+
+                return false;
+            }
+
+            $variant = $variantRes->json('variant') ?? [];
+            $payload = [
+                'id' => (int) $variantId,
+                'option1' => $title,
+            ];
+            if (! empty($variant['option2'])) {
+                $payload['option2'] = $variant['option2'];
+            }
+            if (! empty($variant['option3'])) {
+                $payload['option3'] = $variant['option3'];
+            }
+
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $variantUrl, $payload) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->put($variantUrl, [
+                    'variant' => $payload,
+                ]);
+            });
+
+            if ($updateRes->successful()) {
+                return true;
+            }
+
+            Log::error('Main Shopify variant title update failed', [
+                'sku' => $sku,
+                'variant_id' => $variantId,
+                'status' => $updateRes->status(),
+                'body' => $updateRes->body(),
+            ]);
+
+            return false;
+        } catch (\Throwable $e) {
+            Log::error('Main Shopify variant title exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
      * Resolve main-store Shopify Admin variant ID for API calls (Description Master, bullets, images).
      *
      * Order: (1) main catalog SKU match, case-insensitive — synced Admin data is preferred over stale shopify_skus rows;
