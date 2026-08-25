@@ -28,6 +28,7 @@ class BadgeDataCatalog
             'verify-adjust' => 'Verify / Adjust',
             'purchase-contract' => 'Purchase Contract',
             'pricing-errors-fix' => 'Pricing Errors Fix',
+            'compliance-master' => 'Compliance Masters',
         ];
     }
 
@@ -154,6 +155,18 @@ class BadgeDataCatalog
             'pricing-errors-fix' => [
                 'groi_lt40' => 'GROI <40%',
                 'npft_lt10' => 'NPFT <10%',
+            ],
+            'compliance-master' => [
+                'missing_any' => 'Compliance-M',
+                'missing_battery' => 'Battery',
+                'missing_wireless' => 'Wireless',
+                'missing_electric' => 'Electric',
+                'missing_gcc' => 'GCC',
+                'missing_rohs' => 'RoHs',
+                'missing_blanket' => 'Blanket',
+                'missing_bluetooth' => 'Bluetooth',
+                'missing_logo' => 'Logo',
+                'missing_graph' => 'Graph',
             ],
         ];
     }

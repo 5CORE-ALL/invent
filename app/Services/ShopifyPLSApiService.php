@@ -136,6 +136,77 @@ class ShopifyPLSApiService
         }
     }
 
+    public function updateVariantTitle(string $sku, string $title): bool
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if ($sku === '' || $title === '') {
+            return false;
+        }
+
+        try {
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
+            if (! $domain || ! $token) {
+                return false;
+            }
+
+            $variantId = null;
+            $shopifySku = ShopifySku::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            if ($shopifySku && $shopifySku->variant_id) {
+                $variantId = $shopifySku->variant_id;
+            }
+            if (! $variantId) {
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $sku);
+                $variantId = $found['variant_id'] ?? null;
+            }
+            if (! $variantId) {
+                return false;
+            }
+
+            $variantUrl = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
+            $variantRes = $this->retryOnRateLimit(function () use ($token, $variantUrl) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->get($variantUrl);
+            });
+            if (! $variantRes->successful()) {
+                return false;
+            }
+
+            $variant = $variantRes->json('variant') ?? [];
+            $payload = [
+                'id' => (int) $variantId,
+                'option1' => $title,
+            ];
+            if (! empty($variant['option2'])) {
+                $payload['option2'] = $variant['option2'];
+            }
+            if (! empty($variant['option3'])) {
+                $payload['option3'] = $variant['option3'];
+            }
+
+            $updateRes = $this->retryOnRateLimit(function () use ($token, $variantUrl, $payload) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->put($variantUrl, [
+                    'variant' => $payload,
+                ]);
+            });
+
+            return $updateRes->successful();
+        } catch (\Throwable $e) {
+            Log::error('ShopifyPLS variant title failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
     /**
      * Find product/variant on PLS store by SKU.
      * Tries GraphQL first; on HTTP 403 (token lacks GraphQL scope) immediately

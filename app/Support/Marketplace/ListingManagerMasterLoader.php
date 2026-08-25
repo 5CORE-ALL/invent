@@ -52,12 +52,158 @@ class ListingManagerMasterLoader
             'images', 'image_master' => self::images($sku),
             'videos', 'video_master' => self::videos($sku),
             'bullets', 'bullet_points' => self::bullets($sku),
+            'content', 'title_bullet_description', 'masters' => self::contentPack($sku),
             'identifiers', 'product_master' => self::identifiers($sku),
             'pricing' => self::pricing($sku),
             'package' => self::package($sku),
             'reverb', 'reverb_listing_master' => self::reverb($sku),
             default => ['success' => false, 'message' => 'Unknown master source.', 'source' => $source],
         };
+    }
+
+    /**
+     * Combined Title Master + Bullet Points + Description Master snapshot for Listing Manager.
+     *
+     * @return array<string, mixed>
+     */
+    public static function contentPack(string $sku): array
+    {
+        $sku = trim($sku);
+        $pm = self::productMaster($sku);
+        $titles = [];
+        foreach ([
+            'title150' => 'Title 170',
+            'title100' => 'Title 100',
+            'title80' => 'Title 80',
+            'title60' => 'Title 60',
+        ] as $col => $label) {
+            $value = Schema::hasTable('product_master') && Schema::hasColumn('product_master', $col)
+                ? trim((string) ($pm[$col] ?? ''))
+                : '';
+            $titles[] = [
+                'key' => $col,
+                'label' => $label,
+                'value' => $value,
+                'chars' => $value !== '' ? mb_strlen($value) : 0,
+            ];
+        }
+
+        $bullets = [];
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $b = trim((string) ($pm[$col] ?? ''));
+            if ($b !== '') {
+                $bullets[] = $b;
+            }
+        }
+
+        $description = ListingManagerAmazonHydrator::descriptionMaster($sku);
+        if ($description === '') {
+            $description = trim((string) ($pm['description_html'] ?? $pm['description_1500'] ?? $pm['product_description'] ?? ''));
+        }
+
+        $primaryTitle = '';
+        foreach ($titles as $row) {
+            if ($row['value'] !== '') {
+                $primaryTitle = $row['value'];
+                break;
+            }
+        }
+
+        $hasAny = $primaryTitle !== '' || $bullets !== [] || $description !== '';
+
+        return [
+            'success' => true,
+            'message' => $hasAny
+                ? 'Synced from Title Master, Bullet Points, and Description Master.'
+                : 'No title, bullets, or description found on Product Masters for this SKU.',
+            'source' => 'content',
+            'titles' => $titles,
+            'bullets' => $bullets,
+            'description' => $description,
+            'title' => $primaryTitle,
+            'has_title' => $primaryTitle !== '',
+            'has_bullets' => $bullets !== [],
+            'has_description' => $description !== '',
+        ];
+    }
+
+    /**
+     * Copy this SKU's Title / Bullet / Description Master fields onto sibling and/or parent rows.
+     *
+     * @return array{copied: int, skus: list<string>}
+     */
+    public static function copyToFamily(string $sku, string $source, bool $siblings, bool $parent): array
+    {
+        $sku = trim($sku);
+        $empty = ['copied' => 0, 'skus' => []];
+        if ($sku === '' || (! $siblings && ! $parent) || ! Schema::hasTable('product_master')) {
+            return $empty;
+        }
+
+        $from = self::productMaster($sku);
+        if ($from === []) {
+            return $empty;
+        }
+
+        $update = self::familyCopyPayload($from, $source);
+        if ($update === []) {
+            return $empty;
+        }
+
+        $targets = ListingManagerFamily::syncTargetSkus($sku, $siblings, $parent);
+        if ($targets === []) {
+            return $empty;
+        }
+
+        $copied = DB::table('product_master')->whereIn('sku', $targets)->update($update);
+
+        return [
+            'copied' => (int) $copied,
+            'skus' => $targets,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $from
+     * @return array<string, mixed>
+     */
+    private static function familyCopyPayload(array $from, string $source): array
+    {
+        $source = strtolower(trim($source));
+        $cols = match ($source) {
+            'title', 'title_master', 'content', 'title_bullet_description', 'masters' => [
+                'title150', 'title100', 'title80', 'title60',
+            ],
+            'bullets', 'bullet_points' => [
+                'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
+            ],
+            'description', 'description_master' => [
+                'description_html', 'description_1500', 'product_description',
+                'description_1000', 'description_800', 'description_600',
+            ],
+            default => [],
+        };
+
+        $update = [];
+        foreach ($cols as $col) {
+            if (! Schema::hasColumn('product_master', $col)) {
+                continue;
+            }
+            $value = $from[$col] ?? null;
+            if ($value === null) {
+                continue;
+            }
+            $text = is_string($value) ? trim($value) : $value;
+            if ($text === '' || $text === []) {
+                continue;
+            }
+            $update[$col] = $value;
+        }
+
+        return $update;
     }
 
     /**

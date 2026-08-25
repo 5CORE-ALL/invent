@@ -21,10 +21,12 @@ use App\Models\Supplier;
 use App\Models\ShippingMasterHistory;
 use App\Models\ShippingSlabRateHistory;
 use App\Models\ShopifySku;
+use App\Models\BadgeData;
 use App\Services\AmazonSpApiService;
 use App\Services\LinkedSkuGroupService;
 use App\Services\EbayApiService;
 use App\Services\WalmartApiService;
+use App\Support\Badges\ComplianceMasterBadgeCalculator;
 use App\Support\OpenAiRequest;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -33,6 +35,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -556,6 +559,42 @@ class CategoryController extends Controller
     public static function forgetNotVerifiedSidebarCountCache(): void
     {
         Cache::forget('dim_wt_items_n_verify_sidebar_count');
+    }
+
+    /**
+     * Sidebar badge: child SKUs still missing at least one compliance field (Battery…Graph).
+     */
+    public static function missingComplianceCountForSidebar(): int
+    {
+        return ComplianceMasterBadgeCalculator::cachedMissingSkuCount();
+    }
+
+    public static function forgetMissingComplianceSidebarCountCache(): void
+    {
+        ComplianceMasterBadgeCalculator::forgetCache();
+    }
+
+    /**
+     * Persist compliance summary badge counts into badges_data (+ daily history).
+     */
+    public function snapshotComplianceMasterBadges(Request $request)
+    {
+        $data = ComplianceMasterBadgeCalculator::emptyCounts();
+        foreach (array_keys($data) as $key) {
+            $val = $request->input($key);
+            if (! is_numeric($val)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Missing numeric count for '.$key,
+                ], 422);
+            }
+            $data[$key] = (int) $val;
+        }
+
+        BadgeData::saveForPage(ComplianceMasterBadgeCalculator::PAGE_NAME, $data);
+        self::forgetMissingComplianceSidebarCountCache();
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function getDimWtMasterData(Request $request)
@@ -3479,105 +3518,163 @@ PROMPT;
 
     public function getComplianceMasterData(Request $request)
     {
-        // Fetch all products from the database ordered by parent and SKU
-        $products = ProductMaster::orderBy('parent', 'asc')
+        $products = ProductMaster::query()
+            ->select(['id', 'parent', 'sku', 'Values'])
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
-        // Fetch all shopify SKUs and normalize keys (entities, NBSP, etc.)
-        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
-            return $this->normalizeSkuDisplayValue($item->sku);
-        });
+        $shopifySkus = ShopifySku::query()
+            ->select(['sku', 'inv', 'image_src'])
+            ->get()
+            ->keyBy(function ($item) {
+                return $this->normalizeSkuDisplayValue($item->sku);
+            });
 
-        // Prepare data in the same format as your sheet (flatten Values)
+        $fieldKeys = ComplianceMasterBadgeCalculator::FIELD_KEYS;
         $result = [];
         foreach ($products as $product) {
+            $values = $product->Values;
+            if (is_string($values)) {
+                $values = json_decode($values, true);
+            }
+            if (! is_array($values)) {
+                $values = [];
+            }
+
             $row = [
                 'id' => $product->id,
                 'Parent' => $this->normalizeSkuDisplayValue($product->parent),
                 'SKU' => $this->normalizeSkuDisplayValue($product->sku),
-                'title150' => $product->title150,
-                'title100' => $product->title100,
-                'title80' => $product->title80,
-                'title60' => $product->title60,
-                'bullet1' => $product->bullet1,
-                'bullet2' => $product->bullet2,
-                'bullet3' => $product->bullet3,
-                'bullet4' => $product->bullet4,
-                'bullet5' => $product->bullet5,
-                'product_description' => $product->product_description,
-                'feature1' => $product->feature1,
-                'feature2' => $product->feature2,
-                'feature3' => $product->feature3,
-                'feature4' => $product->feature4,
-                'main_image' => $product->main_image,
-                'main_image_brand' => $product->main_image_brand,
-                'image1' => $product->image1,
-                'image2' => $product->image2,
-                'image3' => $product->image3,
-                'image4' => $product->image4,
-                'image5' => $product->image5,
-                'image6' => $product->image6,
-                'image7' => $product->image7,
-                'image8' => $product->image8,
-                'image9' => $product->image9,
-                'image10' => $product->image10,
-                'image11' => $product->image11,
-                'image12' => $product->image12,
             ];
-
-            // Merge the Values array (if not null)
-            if (is_array($product->Values)) {
-                $row = array_merge($row, $product->Values);
-            } elseif (is_string($product->Values)) {
-                $values = json_decode($product->Values, true);
-                if (is_array($values)) {
-                    $row = array_merge($row, $values);
-                }
+            foreach ($fieldKeys as $key) {
+                $row[$key] = $values[$key] ?? null;
+                $img = $values[$key.'_img'] ?? null;
+                $pdf = $values[$key.'_pdf'] ?? null;
+                $row[$key.'_img'] = is_string($img) ? trim($img) : $img;
+                $row[$key.'_pdf'] = is_string($pdf) ? trim($pdf) : $pdf;
             }
 
-            // Add Shopify inv and quantity if available
-            $normalizedSku = $this->normalizeSkuDisplayValue($product->sku);
-
-            if (isset($shopifySkus[$normalizedSku])) {
-                $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
-                $shopifyImage = $shopifyData->image_src ?? null;
-            } else {
-                $row['shopify_inv'] = 0;
-                $row['shopify_quantity'] = 0;
-                $shopifyImage = null;
-            }
-
-            // image_path is inside $row (from Values JSON)
-            $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
+            $normalizedSku = $row['SKU'];
+            $shopifyData = $shopifySkus[$normalizedSku] ?? null;
+            $row['shopify_inv'] = ($shopifyData && $shopifyData->inv !== null) ? (float) $shopifyData->inv : 0;
+            $shopifyImage = $shopifyData ? ($shopifyData->image_src ?? null) : null;
+            $localImage = isset($values['image_path']) && $values['image_path'] ? $values['image_path'] : null;
             if ($shopifyImage) {
-                $row['image_path'] = $shopifyImage; // Use Shopify URL
+                $row['image_path'] = $shopifyImage;
             } elseif ($localImage) {
-                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
+                $row['image_path'] = '/'.ltrim((string) $localImage, '/');
             } else {
                 $row['image_path'] = null;
             }
 
-            // Status: same source as CP / product master (product_master.Values JSON)
-            $statusVal = $row['status'] ?? $row['Status'] ?? null;
-            if ($statusVal !== null && $statusVal !== '') {
-                $row['status'] = is_string($statusVal) ? trim($statusVal) : $statusVal;
-            } else {
-                $row['status'] = null;
-            }
-            unset($row['Status']);
-
             $result[] = $row;
         }
+
+        $result = $this->attachComplianceSupplierColumns($result);
 
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
             'status' => 200,
         ]);
+    }
+
+    /**
+     * Supplier name + email for compliance rows: SKU from mfrg_progress (same as Dim/Wt / Forecast),
+     * then name/email from the suppliers table used by /supplier.list.
+     *
+     * @param  list<array<string, mixed>>  $result
+     * @return list<array<string, mixed>>
+     */
+    private function attachComplianceSupplierColumns(array $result): array
+    {
+        $normalizeSku = function (?string $sku): string {
+            return strtoupper($this->normalizeSkuDisplayValue($sku));
+        };
+        $compactSku = static function (string $sku): string {
+            return str_replace(' ', '', $sku);
+        };
+
+        $supplierBySku = [];
+        $supplierBySkuCompact = [];
+        if (Schema::hasTable('mfrg_progress')) {
+            $query = DB::table('mfrg_progress')->whereNotNull('supplier')->whereRaw("TRIM(supplier) != ''");
+            if (Schema::hasColumn('mfrg_progress', 'deleted_at')) {
+                $query->whereNull('deleted_at');
+            }
+            foreach ($query->get(['sku', 'supplier']) as $row) {
+                $key = $normalizeSku($row->sku ?? '');
+                $name = trim((string) ($row->supplier ?? ''));
+                if ($key === '' || $name === '') {
+                    continue;
+                }
+                $supplierBySku[$key] = $name;
+                $supplierBySkuCompact[$compactSku($key)] = $name;
+            }
+        }
+
+        $byName = [];
+        $byAlias = [];
+        $bySupplierSku = [];
+        $remember = static function (array &$map, string $key, array $payload): void {
+            if ($key === '') {
+                return;
+            }
+            $existing = $map[$key] ?? null;
+            if ($existing === null || (($payload['email'] ?? '') !== '' && ($existing['email'] ?? '') === '')) {
+                $map[$key] = $payload;
+            }
+        };
+        foreach (Supplier::query()->get(['name', 'alias', 'email', 'sku']) as $supplier) {
+            $name = trim((string) ($supplier->name ?? ''));
+            $email = trim((string) ($supplier->email ?? ''));
+            $payload = ['name' => $name, 'email' => $email];
+            if ($name !== '') {
+                $remember($byName, strtoupper($name), $payload);
+            }
+            $alias = trim((string) ($supplier->alias ?? ''));
+            if ($alias !== '') {
+                $remember($byAlias, strtoupper($alias), $payload);
+            }
+            $skuTokens = preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            foreach ($skuTokens as $skuToken) {
+                $skuKey = $normalizeSku($skuToken);
+                if ($skuKey === '') {
+                    continue;
+                }
+                $remember($bySupplierSku, $skuKey, $payload);
+                $remember($bySupplierSku, $compactSku($skuKey), $payload);
+            }
+        }
+
+        foreach ($result as &$row) {
+            $skuKey = $normalizeSku($row['SKU'] ?? '');
+            $fromMfrg = '';
+            if ($skuKey !== '') {
+                $fromMfrg = $supplierBySku[$skuKey]
+                    ?? $supplierBySkuCompact[$compactSku($skuKey)]
+                    ?? '';
+            }
+
+            $match = null;
+            if ($fromMfrg !== '') {
+                $want = strtoupper($fromMfrg);
+                $match = $byName[$want] ?? $byAlias[$want] ?? null;
+            }
+            if ($match === null && $skuKey !== '') {
+                $match = $bySupplierSku[$skuKey]
+                    ?? $bySupplierSku[$compactSku($skuKey)]
+                    ?? null;
+            }
+
+            $row['supplier'] = trim((string) (($match['name'] ?? '') !== '' ? $match['name'] : $fromMfrg));
+            $row['supplier_email'] = trim((string) ($match['email'] ?? ''));
+        }
+        unset($row);
+
+        return $result;
     }
 
     /**
@@ -3847,6 +3944,8 @@ PROMPT;
                 $message .= ' (+'.count($siblingSkus).' siblings)';
             }
 
+            self::forgetMissingComplianceSidebarCountCache();
+
             return response()->json([
                 'success' => true,
                 'message' => $message,
@@ -3941,6 +4040,8 @@ PROMPT;
             if (count($siblingSkus) > 0) {
                 $message .= ' (+'.count($siblingSkus).' siblings)';
             }
+
+            self::forgetMissingComplianceSidebarCountCache();
 
             return response()->json([
                 'success' => true,
@@ -4115,6 +4216,8 @@ PROMPT;
             if (count($errors) > 0) {
                 $message .= ' '.count($errors).' error(s) occurred.';
             }
+
+            self::forgetMissingComplianceSidebarCountCache();
 
             return response()->json([
                 'success' => true,

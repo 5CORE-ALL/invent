@@ -57,6 +57,68 @@ class ListingManagerFamily
     }
 
     /**
+     * PARENT summary row SKU for this family, if one exists in product_master.
+     */
+    public static function parentRowSku(string $sku): ?string
+    {
+        $parent = self::parentKey($sku);
+        if ($parent === '' || ! Schema::hasTable('product_master')) {
+            return null;
+        }
+
+        $upper = strtoupper($parent);
+        $row = DB::table('product_master')
+            ->where(function ($q) use ($parent, $upper) {
+                $q->where('sku', 'PARENT '.$parent)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', ['PARENT '.$upper])
+                    ->orWhere(function ($q2) use ($parent) {
+                        $q2->where('parent', $parent)
+                            ->whereRaw("UPPER(TRIM(sku)) LIKE 'PARENT %'");
+                    });
+            })
+            ->orderByRaw("CASE WHEN UPPER(TRIM(sku)) LIKE 'PARENT %' THEN 0 ELSE 1 END")
+            ->first();
+
+        $found = trim((string) ($row->sku ?? ''));
+
+        return $found !== '' ? $found : null;
+    }
+
+    /**
+     * Related SKUs to write when family sync checkboxes are on. Never includes $sku.
+     *
+     * @return list<string>
+     */
+    public static function syncTargetSkus(string $sku, bool $siblings, bool $parent): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || (! $siblings && ! $parent)) {
+            return [];
+        }
+
+        $targets = [];
+        $isParentRow = stripos($sku, 'PARENT') === 0;
+        $family = self::forSku($sku);
+
+        if ($siblings || ($parent && $isParentRow)) {
+            foreach ($family['skus'] as $child) {
+                if (strcasecmp($child, $sku) !== 0) {
+                    $targets[] = $child;
+                }
+            }
+        }
+
+        if ($parent && ! $isParentRow) {
+            $parentSku = self::parentRowSku($sku);
+            if ($parentSku !== null && strcasecmp($parentSku, $sku) !== 0) {
+                $targets[] = $parentSku;
+            }
+        }
+
+        return array_values(array_unique($targets));
+    }
+
+    /**
      * @return list<string>
      */
     public static function siblingSkus(string $parent, string $fallbackSku = ''): array

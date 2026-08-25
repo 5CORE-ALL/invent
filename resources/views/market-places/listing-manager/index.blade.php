@@ -44,9 +44,6 @@
             .lm-header { grid-template-columns: 1fr; }
         }
         .lm-header h1 { margin: 0; font-size: 1.2rem; font-weight: 750; letter-spacing: -.02em; color: var(--lc-ink); line-height: 1.2; }
-        .lm-sync-meta { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: .15rem; font-size: .74rem; color: var(--lc-muted); }
-        .lm-sync-meta .off { color: #dc2626; font-weight: 600; }
-        .lm-sync-meta .on { color: #15803d; font-weight: 600; }
         .lm-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
         .btn-lc { border-radius: 9px; font-weight: 650; font-size: .8rem; padding: .36rem .75rem; border: 1px solid transparent; }
         .btn-lc-primary { background: var(--lc-blue); border-color: var(--lc-blue-dark); color: #fff !important; }
@@ -111,6 +108,11 @@
         }
         .lm-hero-wrap { position: relative; display: inline-flex; cursor: pointer; }
         .lm-name-link:hover { text-decoration: underline; }
+        .lm-sku-magnify {
+            color: #2563eb; font-size: .95rem; line-height: 1; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+        .lm-sku-magnify:hover { color: #1d4ed8; }
         .lm-status-pill {
             display: inline-block; border-radius: 999px; padding: .18rem .55rem;
             font-size: .72rem; font-weight: 700; white-space: nowrap;
@@ -126,6 +128,12 @@
         }
         .tabulator.lm-tabulator .tabulator-row .tabulator-cell {
             padding: 6px 10px; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tabulator.lm-tabulator .tabulator-cell[tabulator-field="price"] {
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+            color: #334155;
+            text-align: right !important;
         }
         .tabulator.lm-tabulator .tabulator-row { min-height: 38px; }
         .tabulator.lm-tabulator .tabulator-row:hover { background: #f8fafc !important; }
@@ -312,6 +320,60 @@
         .lm-status-active { display: inline-block; background: #dcfce7; color: #166534; font-size: .72rem; font-weight: 700; padding: .15rem .5rem; border-radius: 999px; }
         .lm-prod-desc { border: 1px solid var(--lc-border); border-radius: 8px; padding: 1rem; max-height: 420px; overflow: auto; background: #fff; }
         .lm-prod-desc img { max-width: 100%; height: auto; }
+        .lm-masters-links { display: flex; flex-wrap: wrap; gap: .65rem 1rem; font-size: .82rem; }
+        .lm-masters-links a { font-weight: 600; }
+        .lm-masters-block { border: 1px solid var(--lc-border); border-radius: 10px; overflow: hidden; margin-bottom: 1rem; background: #fff; }
+        .lm-masters-head {
+            background: #f8fafc; color: #1e3a5f; font-weight: 700; font-size: .82rem;
+            padding: .55rem .85rem; border-bottom: 1px solid var(--lc-border);
+            display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+        }
+        .lm-masters-body { padding: .75rem .85rem; }
+        .lm-masters-title-row { display: grid; grid-template-columns: 110px 1fr auto auto; gap: .5rem .7rem; padding: .45rem 0; border-bottom: 1px solid #f3f4f6; align-items: start; }
+        .lm-masters-title-row:last-child { border-bottom: 0; }
+        .lm-masters-title-row .k { color: #6b7280; font-weight: 700; font-size: .8rem; }
+        .lm-masters-title-row .v { color: #111827; font-size: .86rem; word-break: break-word; }
+        .lm-bullet-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .lm-bullet-table th, .lm-bullet-table td {
+            padding: .5rem .65rem; vertical-align: top; border-bottom: 1px solid #eef2f7; font-size: .86rem;
+        }
+        .lm-bullet-table thead th {
+            color: #64748b; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .03em; background: #f8fafc;
+        }
+        .lm-bullet-table .num, .lm-bullet-table td.n {
+            width: 48px; text-align: center; font-weight: 700; color: #1e3a5f;
+            border-right: 1px solid #e5e7eb; background: #f8fafc;
+        }
+        .lm-bullet-table td.v { color: #111827; word-break: break-word; }
+        .lm-bullet-table td.act, .lm-bullet-table th.act { width: 40px; text-align: center; }
+        .lm-bullet-table td.cnt, .lm-bullet-table th.cnt { width: 52px; text-align: right; }
+        .lm-bullet-table tbody tr:last-child td { border-bottom: 0; }
+        .lm-masters-body.lm-masters-body--table { padding: 0; }
+        .lm-char-count {
+            font-weight: 700; font-size: .78rem; min-width: 2.4rem; text-align: right;
+            white-space: nowrap; padding-top: .35rem; line-height: 1;
+        }
+        .lm-char-count.is-short { color: #dc2626; }
+        .lm-char-count.is-ok { color: #16a34a; }
+        .lm-char-count.is-over { color: #7c3aed; }
+        .lm-masters-head-actions { display: inline-flex; align-items: center; gap: .55rem; }
+        .lm-row-edit-btn {
+            border: 1px solid #dbe3ef; background: #fff; color: #1d4ed8; border-radius: 6px;
+            width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .lm-row-edit-btn:hover { background: #eef4ff; }
+        .lm-row-edit-actions { display: flex; gap: .35rem; flex-shrink: 0; }
+        .lm-masters-title-row textarea,
+        .lm-masters-bullet-row textarea,
+        .lm-desc-edit-wrap textarea {
+            width: 100%; font-size: .84rem; min-height: 64px;
+        }
+        .lm-desc-edit-wrap { padding: .75rem .85rem; }
+        .lm-family-sync-checks { display: flex; flex-wrap: wrap; gap: .55rem 1.15rem; align-items: center; }
+        .lm-family-sync-checks .form-check { display: flex; align-items: center; gap: .4rem; margin: 0; min-height: 0; }
+        .lm-family-sync-checks .form-check-label { font-size: .82rem; font-weight: 600; color: #374151; }
         .lm-prod-images { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; }
         @media (max-width: 800px) { .lm-prod-images { grid-template-columns: 1fr; } }
         .lm-prod-main-img { border: 1px solid var(--lc-border); border-radius: 8px; background: #fafafa; min-height: 280px; display: flex; align-items: center; justify-content: center; }
@@ -341,10 +403,6 @@
     <div class="lm-header">
         <div>
             <h1 id="lm-page-title">Listing Manager</h1>
-            <div class="lm-sync-meta" id="lm-sync-meta">
-                <span>Last sync <strong id="lm-last-sync">{{ $lastSyncHuman }}</strong></span>
-                <span>Inventory: <span class="on">Shopify</span></span>
-            </div>
         </div>
         <div class="lm-page-tabs">
             <button type="button" class="lm-page-tab active" data-panel="products">All Products</button>
@@ -983,6 +1041,9 @@
             <div class="modal-body">
                 <div class="lm-prod-tabs" id="lm-prod-tabs">
                     <button type="button" class="lm-prod-tab active" data-pane="info">Product Info</button>
+                    <button type="button" class="lm-prod-tab" data-pane="title">Title</button>
+                    <button type="button" class="lm-prod-tab" data-pane="bullets">Bullet</button>
+                    <button type="button" class="lm-prod-tab" data-pane="description">Description</button>
                     <button type="button" class="lm-prod-tab" data-pane="images">Images</button>
                     <button type="button" class="lm-prod-tab" data-pane="variations">Variations</button>
                     <button type="button" class="lm-prod-tab" data-pane="metafields">Main Store MetaFields</button>
@@ -1086,6 +1147,87 @@
                                 <textarea class="form-control font-monospace" id="lm-edit-description" rows="10" placeholder="HTML or plain text"></textarea>
                             </div>
                         </form>
+                    </div>
+                    <div class="lm-prod-pane" data-pane="title">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-sync-btn" data-master-source="content">
+                                <i class="fas fa-sync-alt me-1"></i>Sync from Title Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="title">
+                                <i class="fas fa-file-import me-1"></i>Apply to Product Info
+                            </button>
+                            <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('title.master') }}" target="_blank" rel="noopener">Open Title Master</a>
+                            <span class="text-muted small lm-master-status" data-for="title"></span>
+                        </div>
+                        <div class="lm-family-sync-checks mb-3">
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input lm-sync-siblings">
+                                <span class="form-check-label">Sync to siblings</span>
+                            </label>
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input lm-sync-parent">
+                                <span class="form-check-label">Sync to parent and vice versa</span>
+                            </label>
+                        </div>
+                        <section class="lm-masters-block">
+                            <div class="lm-masters-head">Title Master</div>
+                            <div class="lm-masters-body" id="lm-masters-titles"></div>
+                        </section>
+                    </div>
+                    <div class="lm-prod-pane" data-pane="bullets">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-sync-btn" data-master-source="bullets">
+                                <i class="fas fa-sync-alt me-1"></i>Sync from Bullet Points
+                            </button>
+                            <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('bullet.points') }}" target="_blank" rel="noopener">Open Bullet Points</a>
+                            <span class="text-muted small lm-master-status" data-for="bullets"></span>
+                        </div>
+                        <div class="lm-family-sync-checks mb-3">
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input lm-sync-siblings">
+                                <span class="form-check-label">Sync to siblings</span>
+                            </label>
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input lm-sync-parent">
+                                <span class="form-check-label">Sync to parent and vice versa</span>
+                            </label>
+                        </div>
+                        <section class="lm-masters-block">
+                            <div class="lm-masters-head">Bullet Points</div>
+                            <div class="lm-masters-body lm-masters-body--table" id="lm-masters-bullets"></div>
+                        </section>
+                    </div>
+                    <div class="lm-prod-pane" data-pane="description">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-sync-btn" data-master-source="description">
+                                <i class="fas fa-sync-alt me-1"></i>Sync from Description Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-apply-btn" data-apply="description">
+                                <i class="fas fa-file-import me-1"></i>Apply to Product Info
+                            </button>
+                            <a class="btn-lc btn-lc-ghost btn-sm" href="{{ route('product.description') }}" target="_blank" rel="noopener">Open Description Master</a>
+                            <span class="text-muted small lm-master-status" data-for="description"></span>
+                        </div>
+                        <div class="lm-family-sync-checks mb-3">
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input lm-sync-siblings">
+                                <span class="form-check-label">Sync to siblings</span>
+                            </label>
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input lm-sync-parent">
+                                <span class="form-check-label">Sync to parent and vice versa</span>
+                            </label>
+                        </div>
+                        <section class="lm-masters-block">
+                            <div class="lm-masters-head">
+                                <span>Description Master</span>
+                                <div class="lm-masters-head-actions">
+                                    <button type="button" class="lm-row-edit-btn" data-field="description_html" title="Edit description"><i class="fas fa-pen"></i></button>
+                                    <span class="lm-char-count is-short" id="lm-desc-char-count">0</span>
+                                </div>
+                            </div>
+                            <div class="lm-prod-desc" id="lm-masters-description"></div>
+                        </section>
                     </div>
                     <div class="lm-prod-pane" data-pane="images">
                         <div class="mb-3">
@@ -1224,19 +1366,12 @@
             $('#lm-import-channel-btn').text(ed.header_import || 'Import');
             const listingUrl = ch.listing_url || '#';
             $('#lm-open-listing-page').attr('href', listingUrl).text('Open ' + (ch.channel || 'channel') + ' listing page');
-            $('#lm-sync-meta').html(
-                '<span>Price Sync: <span class="off">Off</span></span>' +
-                '<span>Inventory Sync: <span class="off">Off</span></span>' +
-                '<span>Order Sync: <span class="off">Off</span></span>'
-            );
         } else if ($('#lm-panel-drafts').hasClass('active')) {
             $('#lm-page-title').text('Channel Listings');
             $('#lm-quick-list-label').text('Quick/Auto List');
             $('#lm-import-channel-btn').text('Import');
-            $('#lm-sync-meta').html('<span>Select a channel to manage drafts</span>');
         } else {
             $('#lm-page-title').text('Listing Manager');
-            $('#lm-sync-meta').html('<span>Last sync <strong id="lm-last-sync">{{ $lastSyncHuman }}</strong></span><span>Inventory: <span class="on">Shopify</span></span>');
         }
     }
 
@@ -1389,6 +1524,215 @@
         $('#lm-prod-description').html(p.description || '<span class="text-muted">No description</span>');
     }
 
+    function stripLeadingBulletNum(text) {
+        return String(text || '').replace(/^\s*\d+\s*[\.\)\-:]\s*/, '');
+    }
+
+    function masterRowEditBtn(field) {
+        return `<button type="button" class="lm-row-edit-btn" data-field="${escapeHtml(field)}" title="Edit"><i class="fas fa-pen"></i></button>`;
+    }
+
+    function charCountClass(n) {
+        const count = Number(n) || 0;
+        if (count > 170) return 'is-over';
+        if (count >= 100) return 'is-ok';
+        return 'is-short';
+    }
+
+    function charCountHtml(n) {
+        const count = Number(n) || 0;
+        return `<span class="lm-char-count ${charCountClass(count)}">${count}</span>`;
+    }
+
+    function setCharCount($el, n) {
+        if (!$el || !$el.length) return;
+        const count = Number(n) || 0;
+        $el.attr('class', 'lm-char-count ' + charCountClass(count)).text(String(count));
+    }
+
+    function renderMasterContent(pack) {
+        const data = pack && typeof pack === 'object' ? pack : {};
+        const titles = Array.isArray(data.titles) ? data.titles : [];
+        const bullets = Array.isArray(data.bullets) ? data.bullets : [];
+        const description = String(data.description || '');
+        $('.lm-master-status[data-for="title"]').text(data.has_title === false ? (data.message || '') : '');
+        $('.lm-master-status[data-for="bullets"]').text(data.has_bullets === false && data.source === 'bullets' ? (data.message || '') : '');
+        $('.lm-master-status[data-for="description"]').text(data.has_description === false && data.source === 'description' ? (data.message || '') : '');
+        const titleRows = titles.length ? titles : [
+            { key: 'title150', label: 'Title 170', value: '', chars: 0 },
+            { key: 'title100', label: 'Title 100', value: '', chars: 0 },
+            { key: 'title80', label: 'Title 80', value: '', chars: 0 },
+            { key: 'title60', label: 'Title 60', value: '', chars: 0 }
+        ];
+        $('#lm-masters-titles').html(titleRows.map(function (t) {
+            const value = String(t.value || '').trim();
+            const chars = value ? (t.chars || value.length) : 0;
+            return `<div class="lm-masters-title-row" data-field="${escapeHtml(t.key || '')}">
+                <div class="k">${escapeHtml(t.label || t.key || '')}</div>
+                <div class="v">${value ? escapeHtml(value) : '<span class="text-muted">—</span>'}</div>
+                ${masterRowEditBtn(t.key || '')}
+                ${charCountHtml(chars)}
+            </div>`;
+        }).join(''));
+        const paddedBullets = [0, 1, 2, 3, 4].map(function (i) {
+            return String(bullets[i] || '').trim();
+        });
+        $('#lm-masters-bullets').html(`<table class="lm-bullet-table">
+            <thead><tr><th class="num">#</th><th>Bullet</th><th class="act"></th><th class="cnt"></th></tr></thead>
+            <tbody>${paddedBullets.map(function (b, i) {
+            const field = 'bullet' + (i + 1);
+            const display = stripLeadingBulletNum(b);
+            return `<tr class="lm-masters-bullet-row" data-field="${field}">
+                <td class="n">${i + 1}</td>
+                <td class="v">${display ? escapeHtml(display) : '<span class="text-muted">—</span>'}</td>
+                <td class="act">${masterRowEditBtn(field)}</td>
+                <td class="cnt">${charCountHtml(b.length)}</td>
+            </tr>`;
+        }).join('')}</tbody></table>`);
+        const $descHeadBtn = $('.lm-prod-pane[data-pane="description"] .lm-row-edit-btn[data-field="description_html"]');
+        $descHeadBtn.removeClass('d-none').prop('disabled', false);
+        setCharCount($('#lm-desc-char-count'), description.length);
+        $('#lm-masters-description').removeClass('lm-desc-edit-wrap').html(description
+            ? description
+            : '<span class="text-muted">No description on Description Master for this SKU.</span>');
+    }
+
+    function masterFieldValue(field) {
+        const pack = (currentProduct && currentProduct.master_content) || {};
+        if (field === 'description_html') return String(pack.description || '');
+        if (String(field).indexOf('bullet') === 0) {
+            const idx = parseInt(String(field).replace('bullet', ''), 10) - 1;
+            return String((pack.bullets || [])[idx] || '');
+        }
+        const row = (pack.titles || []).find(function (t) { return t.key === field; });
+        return String((row && row.value) || '');
+    }
+
+    function beginMasterEdit(field) {
+        cancelMasterEdit();
+        if (field === 'description_html') {
+            const current = masterFieldValue(field);
+            $('.lm-prod-pane[data-pane="description"] .lm-row-edit-btn[data-field="description_html"]').addClass('d-none');
+            $('#lm-masters-description')
+                .addClass('lm-desc-edit-wrap')
+                .html(`<textarea class="form-control font-monospace lm-master-edit-input" data-field="description_html"></textarea>
+                    <div class="lm-row-edit-actions mt-2">
+                        <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-save-btn" data-field="description_html">Save</button>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-cancel-btn">Cancel</button>
+                    </div>`);
+            $('#lm-masters-description .lm-master-edit-input').val(current).focus();
+            setCharCount($('#lm-desc-char-count'), current.length);
+            return;
+        }
+        const $row = $(`.lm-masters-title-row[data-field="${field}"], .lm-masters-bullet-row[data-field="${field}"]`).first();
+        if (!$row.length) return;
+        const current = masterFieldValue(field);
+        const rows = field.indexOf('title') === 0 ? 3 : 2;
+        $row.find('.v').html(`<textarea class="form-control lm-master-edit-input" data-field="${escapeHtml(field)}" rows="${rows}"></textarea>`);
+        $row.find('.lm-row-edit-btn').replaceWith(`<div class="lm-row-edit-actions">
+            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-master-save-btn" data-field="${escapeHtml(field)}">Save</button>
+            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-master-cancel-btn">Cancel</button>
+        </div>`);
+        $row.find('.lm-master-edit-input').val(current).focus();
+        setCharCount($row.find('.lm-char-count'), current.length);
+    }
+
+    function cancelMasterEdit() {
+        const pack = (currentProduct && currentProduct.master_content) || {};
+        if ($('.lm-master-edit-input').length) {
+            renderMasterContent(pack);
+        }
+    }
+
+    function saveMasterField(field, value) {
+        const sku = currentProductSku;
+        if (!sku) { toast('Open a product first.', 'error'); return; }
+        const prefs = currentSyncPrefs();
+        const $btn = $(`.lm-master-save-btn[data-field="${field}"]`);
+        $btn.prop('disabled', true).text('Saving…');
+        fetch("{{ url('/listing-manager/product/master-field') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrf
+            },
+            body: JSON.stringify({
+                sku,
+                field,
+                value,
+                sync_siblings: prefs.siblings,
+                sync_parent: prefs.parent
+            })
+        }).then(function (res) {
+            return res.json().then(function (json) {
+                if (!res.ok) throw new Error((json && json.message) || 'Save failed');
+                return json;
+            });
+        }).then(function (json) {
+            if (json.master_content) {
+                mergeMasterContent(json.master_content);
+            } else {
+                cancelMasterEdit();
+            }
+            if (field.indexOf('title') === 0 && json.value) {
+                currentProduct.title = json.master_content?.title || json.value;
+            }
+            if (field === 'description_html' && json.master_content?.description) {
+                currentProduct.description = json.master_content.description;
+            }
+            toast(json.message || 'Saved.', 'success');
+        }).catch(function (ex) {
+            toast(ex.message || 'Save failed.', 'error');
+            $btn.prop('disabled', false).text('Save');
+        });
+    }
+
+    function mergeMasterContent(res) {
+        if (!currentProduct) currentProduct = { sku: currentProductSku };
+        const prev = currentProduct.master_content && typeof currentProduct.master_content === 'object'
+            ? currentProduct.master_content
+            : {};
+        const next = Object.assign({}, prev, res || {});
+        if (Array.isArray(res?.titles)) next.titles = res.titles;
+        if (Array.isArray(res?.bullets)) next.bullets = res.bullets;
+        if (res && Object.prototype.hasOwnProperty.call(res, 'description') && res.description) {
+            next.description = res.description;
+        }
+        if (res?.title) next.title = res.title;
+        currentProduct.master_content = next;
+        renderMasterContent(next);
+        return next;
+    }
+
+    function applySyncPrefs(prefs) {
+        const siblings = !!(prefs && prefs.siblings);
+        const parent = !!(prefs && prefs.parent);
+        $('.lm-sync-siblings').prop('checked', siblings);
+        $('.lm-sync-parent').prop('checked', parent);
+    }
+
+    function currentSyncPrefs() {
+        return {
+            siblings: $('.lm-sync-siblings').first().is(':checked'),
+            parent: $('.lm-sync-parent').first().is(':checked')
+        };
+    }
+
+    function saveSyncPrefs() {
+        const prefs = currentSyncPrefs();
+        fetch("{{ url('/listing-manager/product/sync-prefs') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrf
+            },
+            body: JSON.stringify(prefs)
+        }).catch(function () {});
+        return prefs;
+    }
+
     function fillProductEditForm(p) {
         $('#lm-edit-title').val(p.title || '');
         $('#lm-edit-sku').val(p.sku || '');
@@ -1531,6 +1875,8 @@
         setProductEditMode(false);
         $('#lm-prod-title').text(p.title || p.sku || 'Product');
         renderProductInfo(p);
+        renderMasterContent(p.master_content || {});
+        applySyncPrefs(p.sync_prefs);
         const images = p.images || p.amazon_images || [];
         if (p.hero_image && images[0] !== p.hero_image) {
             images.unshift(p.hero_image);
@@ -1541,7 +1887,20 @@
         setProductPane('info');
     }
 
-    function openProductModal(sku, pane) {
+    function listingManagerProductUrl(sku, edit) {
+        const url = new URL("{{ url('/listing-manager') }}", window.location.origin);
+        url.searchParams.set('sku', String(sku || '').trim());
+        if (edit) url.searchParams.set('edit', '1');
+        return url.toString();
+    }
+
+    function openProductInNewTab(sku) {
+        const s = String(sku || '').trim();
+        if (!s) { toast('Missing SKU.', 'error'); return; }
+        window.open(listingManagerProductUrl(s, true), '_blank', 'noopener');
+    }
+
+    function openProductModal(sku, pane, opts) {
         if (!sku) { toast('Missing SKU.', 'error'); return; }
         currentProductSku = sku;
         currentProduct = null;
@@ -1556,6 +1915,7 @@
                 }
                 fillProductModal(res.product);
                 if (pane) setProductPane(pane);
+                if (opts && opts.edit) setProductEditMode(true);
                 $('#lm-prod-loading').addClass('d-none');
                 $('#lm-prod-content').removeClass('d-none');
             })
@@ -2367,6 +2727,16 @@
                         if (sku) openProductModal(sku, 'images');
                     }
                 },
+                { title: 'SKU', field: 'sku', minWidth: 140 },
+                {
+                    title: '', field: '_magnify', width: 42, hozAlign: 'center', headerSort: false,
+                    formatter: () => '<button type="button" class="btn btn-link btn-sm p-0 lm-sku-magnify" title="Open editor in new tab"><i class="fas fa-search"></i></button>',
+                    cellClick: (e, cell) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openProductInNewTab(cell.getRow().getData().sku);
+                    }
+                },
                 {
                     title: 'Name', field: 'name', minWidth: 220, widthGrow: 4,
                     formatter: (cell) => {
@@ -2384,16 +2754,23 @@
                         openProductModal(String(cell.getRow().getData().sku || '').trim());
                     }
                 },
-                { title: 'SKU', field: 'sku', minWidth: 140 },
-                { title: 'Origin', field: 'origin', width: 72, hozAlign: 'center', formatter: () => '<span style="color:#ff9900;font-weight:700"><i class="fab fa-amazon"></i></span>' },
+                { title: 'Origin', field: 'origin', width: 72, hozAlign: 'center', visible: false, formatter: () => '<span style="color:#ff9900;font-weight:700"><i class="fab fa-amazon"></i></span>' },
                 {
-                    title: 'Shopify INV', field: 'total_available', width: 108, hozAlign: 'center', sorter: 'number',
+                    title: 'INV', field: 'total_available', width: 72, hozAlign: 'center', sorter: 'number',
                     formatter: (cell) => {
                         const n = Number(cell.getValue() ?? 0);
                         return `<span class="lm-qty-pill ${n > 0 ? '' : 'is-zero'}">${escapeHtml(String(n))}</span>`;
                     }
                 },
-                { title: 'Price', field: 'price', width: 90, hozAlign: 'right', formatter: c => c.getValue() == null ? '—' : ('$' + Number(c.getValue()).toFixed(2)) },
+                {
+                    title: 'Price',
+                    field: 'price',
+                    width: 90,
+                    hozAlign: 'right',
+                    headerHozAlign: 'center',
+                    sorter: 'number',
+                    formatter: (cell) => money(cell.getValue())
+                },
                 { title: 'Drafts', field: 'draft_channels', width: 80, hozAlign: 'center', formatter: c => Number(c.getValue()||0) ? `<span class="badge bg-primary">${c.getValue()}</span>` : '0' },
             ],
         });
@@ -2453,6 +2830,16 @@
                     title: 'Status', field: 'ui_status', width: 120, hozAlign: 'center',
                     formatter: c => statusPill(c.getValue())
                 },
+                { title: 'SKU', field: 'sku', minWidth: 130 },
+                {
+                    title: '', field: '_magnify', width: 42, hozAlign: 'center', headerSort: false,
+                    formatter: () => '<button type="button" class="btn btn-link btn-sm p-0 lm-sku-magnify" title="Open editor in new tab"><i class="fas fa-search"></i></button>',
+                    cellClick: (e, cell) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openProductInNewTab(cell.getRow().getData().sku);
+                    }
+                },
                 {
                     title: 'Name', field: 'title', minWidth: 220, widthGrow: 4,
                     formatter: (cell) => `<a href="#" class="lm-name-link lm-open-name">${escapeHtml(cell.getValue() || '')}</a>`,
@@ -2461,12 +2848,16 @@
                         openEditor(cell.getRow().getData().id);
                     }
                 },
-                { title: 'SKU', field: 'sku', minWidth: 130 },
                 { title: 'Channel', field: 'channel', minWidth: 100 },
                 { title: 'Quantity', field: 'quantity', width: 90, hozAlign: 'center' },
                 {
-                    title: 'Price', field: 'price', width: 90, hozAlign: 'right',
-                    formatter: c => c.getValue() == null ? '—' : Number(c.getValue()).toFixed(2)
+                    title: 'Price',
+                    field: 'price',
+                    width: 90,
+                    hozAlign: 'right',
+                    headerHozAlign: 'center',
+                    sorter: 'number',
+                    formatter: (cell) => money(cell.getValue())
                 },
             ],
         });
@@ -2514,7 +2905,6 @@
                 method: 'POST',
                 success: function (res) {
                     toast(res.message || 'Import complete.', res.success ? 'success' : 'error');
-                    if (res.last_sync) $('#lm-last-sync').text(res.last_sync);
                     loadProductTypes();
                     loadTable();
                 },
@@ -2588,6 +2978,88 @@
         // Product detail modal (All Products → Name click)
         $('#lm-prod-tabs').on('click', '.lm-prod-tab', function () {
             setProductPane($(this).data('pane'));
+        });
+        $(document).on('change', '.lm-sync-siblings, .lm-sync-parent', function () {
+            const isSiblings = $(this).hasClass('lm-sync-siblings');
+            if (isSiblings) $('.lm-sync-siblings').prop('checked', this.checked);
+            else $('.lm-sync-parent').prop('checked', this.checked);
+            saveSyncPrefs();
+        });
+        $(document).on('click', '.lm-row-edit-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            beginMasterEdit(String($(this).attr('data-field') || ''));
+        });
+        $(document).on('click', '.lm-master-cancel-btn', function (e) {
+            e.preventDefault();
+            cancelMasterEdit();
+        });
+        $(document).on('click', '.lm-master-save-btn', function (e) {
+            e.preventDefault();
+            const field = String($(this).attr('data-field') || '');
+            const value = String($('.lm-master-edit-input[data-field="' + field + '"]').val() || '');
+            saveMasterField(field, value);
+        });
+        $(document).on('input', '.lm-master-edit-input', function () {
+            const field = String($(this).attr('data-field') || '');
+            const n = String($(this).val() || '').length;
+            if (field === 'description_html') {
+                setCharCount($('#lm-desc-char-count'), n);
+            } else {
+                setCharCount($(this).closest('[data-field]').find('.lm-char-count'), n);
+            }
+        });
+        $(document).on('click', '.lm-master-sync-btn', function () {
+            const sku = currentProductSku;
+            if (!sku) { toast('Open a product first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const source = String($btn.attr('data-master-source') || 'content');
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Syncing…');
+            const prefs = currentSyncPrefs();
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", {
+                sku,
+                source,
+                sync_siblings: prefs.siblings ? 1 : 0,
+                sync_parent: prefs.parent ? 1 : 0
+            })
+                .done(function (res) {
+                    const pack = mergeMasterContent(res);
+                    if (source === 'content' && pack.title) currentProduct.title = pack.title;
+                    if (source === 'description' && pack.description) currentProduct.description = pack.description;
+                    const ok = source === 'bullets'
+                        ? (Array.isArray(res.bullets) && res.bullets.length > 0)
+                        : (source === 'description' ? !!res.description : !!(res.has_title || res.title));
+                    toast(res.message || 'Synced.', ok ? 'success' : 'error');
+                })
+                .fail(xhr => toast(xhr.responseJSON?.message || 'Could not sync from Product Masters.', 'error'))
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
+        });
+        $(document).on('click', '.lm-master-apply-btn', function () {
+            if (!currentProduct) { toast('Open a product first.', 'error'); return; }
+            const pack = currentProduct.master_content || {};
+            const which = String($(this).attr('data-apply') || '');
+            if (which === 'title') {
+                const title = String(pack.title || '').trim();
+                if (!title) { toast('No Title Master value to apply. Sync first.', 'error'); return; }
+                currentProduct.title = title;
+                if (productEditMode) fillProductEditForm(currentProduct);
+                else renderProductInfo(currentProduct);
+                $('#lm-prod-title').text(title);
+                toast('Applied Title Master to Product Info.', 'success');
+                return;
+            }
+            if (which === 'description') {
+                const description = String(pack.description || '').trim();
+                if (!description) { toast('No Description Master value to apply. Sync first.', 'error'); return; }
+                currentProduct.description = description;
+                if (productEditMode) fillProductEditForm(currentProduct);
+                else renderProductInfo(currentProduct);
+                toast('Applied Description Master to Product Info.', 'success');
+            }
         });
         $('#lm-prod-update-btn').on('click', function () {
             if (!currentProductSku) return;
@@ -3244,6 +3716,10 @@
         const params = new URLSearchParams(window.location.search);
         if (params.get('tab') === 'drafts' || params.get('tab') === 'channel') {
             showPanel('drafts');
+        }
+        const skuParam = String(params.get('sku') || '').trim();
+        if (skuParam) {
+            openProductModal(skuParam, null, { edit: params.get('edit') !== '0' });
         }
 
         loadChannels().then(loadDrafts);

@@ -258,6 +258,7 @@ use App\Http\Controllers\ProductMaster\ImagesAPlusContentController;
 use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
+use App\Http\Controllers\ProductMaster\VariationNameThumbnailController;
 use App\Http\Controllers\ProductMaster\RawImagesController;
 use App\Http\Controllers\ProductMaster\MastersBarcodeController;
 use App\Http\Controllers\ProductMaster\VideoMasterController;
@@ -3942,6 +3943,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/product/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveProduct'])->name('listing.manager.product.save');
     Route::post('/listing-manager/product/push', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'pushProductToMarketplaces'])->name('listing.manager.product.push');
     Route::get('/listing-manager/product/from-master', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadProductFromMaster'])->name('listing.manager.product.from-master');
+    Route::post('/listing-manager/product/master-field', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveMasterField'])->name('listing.manager.product.master-field');
+    Route::get('/listing-manager/product/sync-prefs', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'syncFamilyPrefs'])->name('listing.manager.product.sync-prefs');
+    Route::post('/listing-manager/product/sync-prefs', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveSyncFamilyPrefs'])->name('listing.manager.product.sync-prefs.save');
     Route::post('/listing-manager/import-amazon', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'importFromAmazon'])->name('listing.manager.import');
     Route::get('/listing-manager/channels', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'channels'])->name('listing.manager.channels');
     Route::post('/listing-manager/channels/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveEnabledChannels'])->name('listing.manager.channels.save');
@@ -4046,6 +4050,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/masters-barcode-data', [MastersBarcodeController::class, 'getData'])->name('masters.barcode.data');
     Route::post('/masters-barcode/save', [MastersBarcodeController::class, 'save'])->name('masters.barcode.save');
     Route::post('/masters-barcode/autogenerate', [MastersBarcodeController::class, 'autogenerate'])->name('masters.barcode.autogenerate');
+
+    Route::get('/variation-name-thumbnail', [VariationNameThumbnailController::class, 'index'])->name('variation.name.thumbnail');
+    Route::get('/variation-name-thumbnail/data', [VariationNameThumbnailController::class, 'getData'])->name('variation.name.thumbnail.data');
+    Route::post('/variation-name-thumbnail/save', [VariationNameThumbnailController::class, 'save'])->name('variation.name.thumbnail.save');
+    Route::post('/variation-name-thumbnail/save-bulk', [VariationNameThumbnailController::class, 'saveBulk'])->name('variation.name.thumbnail.save.bulk');
+    Route::get('/variation-name-thumbnail/push-channels', [VariationNameThumbnailController::class, 'pushChannels'])->name('variation.name.thumbnail.push.channels');
+    Route::post('/variation-name-thumbnail/push-channels', [VariationNameThumbnailController::class, 'savePushChannels'])->name('variation.name.thumbnail.push.channels.save');
+    Route::post('/variation-name-thumbnail/push', [VariationNameThumbnailController::class, 'pushVariationNames'])->name('variation.name.thumbnail.push');
+    Route::get('/variation-name-thumbnail/template', [VariationNameThumbnailController::class, 'downloadTemplate'])->name('variation.name.thumbnail.template');
+    Route::post('/variation-name-thumbnail/import', [VariationNameThumbnailController::class, 'import'])->name('variation.name.thumbnail.import');
 
     Route::get('/image-master', [ImageMasterController::class, 'index'])->name('image.master');
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');
@@ -5047,6 +5061,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/compliance-master/field-image', [CategoryController::class, 'uploadComplianceFieldImage'])->name('compliance.master.field.image');
     Route::post('/compliance-master/field-pdf', [CategoryController::class, 'uploadComplianceFieldPdf'])->name('compliance.master.field.pdf');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
+    Route::post('/compliance-master/badge-snapshot', [CategoryController::class, 'snapshotComplianceMasterBadges'])->name('compliance.master.badge.snapshot');
     Route::get('/packing-instructions-master', [CategoryController::class, 'packingInstructionsMaster'])->name('packing.instructions.master');
     Route::get('/packing-instructions-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('packing.instructions.master.data');
     Route::post('/packing-instructions-master/store', [CategoryController::class, 'storePackingInstructionsMaster'])->name('packing.instructions.master.store');
