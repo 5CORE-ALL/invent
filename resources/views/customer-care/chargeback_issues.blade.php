@@ -176,6 +176,38 @@
         .cb-row-btn.cb-danger {
             color: #dc2626;
         }
+
+        .cb-case-block {
+            background: #f8fafc;
+        }
+
+        /* Keep header + footer pinned; scroll the long form (form wraps those
+           sections, so Bootstrap's modal-dialog-scrollable alone is not enough). */
+        #cb-issue-modal .modal-dialog {
+            max-height: calc(100vh - 2rem);
+            margin: 1rem auto;
+        }
+
+        #cb-issue-modal .modal-content,
+        #cb-issue-modal #cb-issue-form {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 2rem);
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #cb-issue-modal .modal-header,
+        #cb-issue-modal .modal-footer {
+            flex-shrink: 0;
+        }
+
+        #cb-issue-modal .modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
 @endsection
 
@@ -593,16 +625,82 @@
             ];
             let modal;
 
+            function caseBlocks() {
+                return Array.from(document.querySelectorAll('#cb-cases-container .cb-case-block'));
+            }
+
+            function renumberChargebackCases() {
+                const blocks = caseBlocks();
+                blocks.forEach(function (block, i) {
+                    const label = block.querySelector('.cb-case-label');
+                    if (label) label.textContent = 'Case ' + (i + 1);
+                    const removeBtn = block.querySelector('.cb-remove-case');
+                    if (removeBtn) removeBtn.classList.toggle('d-none', blocks.length < 2);
+                });
+            }
+
+            function resetChargebackCases() {
+                const container = document.getElementById('cb-cases-container');
+                const first = container && container.querySelector('.cb-case-block');
+                if (!container || !first) return;
+                caseBlocks().slice(1).forEach(function (block) { block.remove(); });
+                first.querySelectorAll('[data-field]').forEach(function (el) { el.value = ''; });
+                renumberChargebackCases();
+            }
+
+            function addChargebackCase() {
+                const container = document.getElementById('cb-cases-container');
+                const first = container && container.querySelector('.cb-case-block');
+                if (!container || !first) return;
+                const clone = first.cloneNode(true);
+                clone.querySelectorAll('[id]').forEach(function (el) { el.removeAttribute('id'); });
+                clone.querySelectorAll('[data-field]').forEach(function (el) { el.value = ''; });
+                const removeBtn = clone.querySelector('.cb-remove-case');
+                if (removeBtn) removeBtn.classList.remove('d-none');
+                container.appendChild(clone);
+                renumberChargebackCases();
+                const sku = clone.querySelector('[data-field="sku"]');
+                if (sku) sku.focus();
+            }
+
+            function readCaseBlock(block) {
+                const data = {};
+                modalFields.forEach(function (f) {
+                    const el = block.querySelector('[data-field="' + f + '"]');
+                    data[f] = el ? el.value : null;
+                });
+                return data;
+            }
+
+            function collectChargebackCases() {
+                return caseBlocks().map(readCaseBlock).filter(function (data) {
+                    return modalFields.some(function (f) {
+                        const v = data[f];
+                        return v !== null && v !== undefined && String(v).trim() !== '';
+                    });
+                });
+            }
+
+            function setMultiCaseUi(isEdit) {
+                const addBtn = document.getElementById('cb-add-case');
+                const hint = document.getElementById('cb-multi-hint');
+                if (addBtn) addBtn.classList.toggle('d-none', !!isEdit);
+                if (hint) hint.classList.toggle('d-none', !!isEdit);
+            }
+
             function openModal(data) {
                 const form = document.getElementById('cb-issue-form');
                 form.reset();
+                resetChargebackCases();
                 document.getElementById('cb-id').value = (data && data.id) || '';
                 document.getElementById('cb-issue-modal-title').textContent = data && data.id
                     ? 'Edit Chargeback Issue #' + data.id
                     : 'Add Chargeback Issue';
+                setMultiCaseUi(!!(data && data.id));
                 if (data) {
+                    const first = document.querySelector('#cb-cases-container .cb-case-block');
                     modalFields.forEach(function (f) {
-                        const el = document.getElementById('cb-' + f);
+                        const el = first ? first.querySelector('[data-field="' + f + '"]') : document.getElementById('cb-' + f);
                         if (el) el.value = data[f] === null || data[f] === undefined ? '' : data[f];
                     });
                 }
@@ -615,6 +713,15 @@
 
                 document.getElementById('cb-add').addEventListener('click', function () { openModal(null); });
                 document.getElementById('cb-refresh').addEventListener('click', refreshAll);
+                document.getElementById('cb-add-case').addEventListener('click', addChargebackCase);
+                document.getElementById('cb-cases-container').addEventListener('click', function (ev) {
+                    const btn = ev.target.closest('.cb-remove-case');
+                    if (!btn) return;
+                    const block = btn.closest('.cb-case-block');
+                    if (!block || caseBlocks().length < 2) return;
+                    block.remove();
+                    renumberChargebackCases();
+                });
 
                 document.getElementById('cb-search').addEventListener('input', function () {
                     const term = this.value.trim().toLowerCase();
@@ -631,45 +738,72 @@
 
                 form.addEventListener('submit', async function (e) {
                     e.preventDefault();
-                    const data = { id: document.getElementById('cb-id').value || null };
-                    modalFields.forEach(function (f) {
-                        const el = document.getElementById('cb-' + f);
-                        data[f] = el ? el.value : null;
-                    });
-                    if (!data.sku || !data.sku.trim()) { alert('SKU is required.'); return; }
-                    if (data.qty === '' || data.qty === null) { alert('QTY is required.'); return; }
+                    const editId = document.getElementById('cb-id').value || null;
+                    const cases = collectChargebackCases();
+                    if (!cases.length) { alert('Enter at least one case with a SKU.'); return; }
+                    for (let i = 0; i < cases.length; i++) {
+                        if (!cases[i].sku || !String(cases[i].sku).trim()) {
+                            alert('SKU is required on Case ' + (i + 1) + '.');
+                            return;
+                        }
+                        if (cases[i].qty === '' || cases[i].qty === null) {
+                            alert('QTY is required on Case ' + (i + 1) + '.');
+                            return;
+                        }
+                        if (!cases[i].order_number || !String(cases[i].order_number).trim()) {
+                            alert('Order # is required on Case ' + (i + 1) + '.');
+                            return;
+                        }
+                    }
 
                     const btn = document.getElementById('cb-save-btn');
                     btn.disabled = true;
+                    const originalLabel = btn.textContent;
                     try {
-                        await persistRow(data);
+                        if (editId) {
+                            cases[0].id = editId;
+                            await persistRow(cases[0]);
+                        } else {
+                            for (let i = 0; i < cases.length; i++) {
+                                btn.textContent = cases.length > 1
+                                    ? ('Saving ' + (i + 1) + ' of ' + cases.length + '…')
+                                    : originalLabel;
+                                await persistRow(cases[i]);
+                            }
+                        }
                         modal.hide();
                         refreshAll();
                     } catch (err) {
                         alert(err.message || 'Save failed.');
                     } finally {
                         btn.disabled = false;
+                        btn.textContent = originalLabel;
                     }
                 });
 
-                document.getElementById('cb-sku').addEventListener('blur', async function () {
-                    const sku = this.value.trim();
-                    if (!sku) return;
+                document.getElementById('cb-cases-container').addEventListener('blur', async function (ev) {
+                    const skuEl = ev.target.closest('[data-field="sku"]');
+                    if (!skuEl) return;
+                    const block = skuEl.closest('.cb-case-block');
+                    const sku = skuEl.value.trim();
+                    if (!sku || !block) return;
                     try {
                         const res = await fetch(URLS.skuDetails + '?sku=' + encodeURIComponent(sku), {
                             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         });
                         const info = await res.json();
                         if (info && info.found) {
-                            if (!document.getElementById('cb-parent').value && info.parent) {
-                                document.getElementById('cb-parent').value = info.parent;
+                            const parentEl = block.querySelector('[data-field="parent"]');
+                            const qtyEl = block.querySelector('[data-field="qty"]');
+                            if (parentEl && !parentEl.value && info.parent) {
+                                parentEl.value = info.parent;
                             }
-                            if (!document.getElementById('cb-qty').value && info.qty !== undefined && info.qty !== null) {
-                                document.getElementById('cb-qty').value = info.qty;
+                            if (qtyEl && !qtyEl.value && info.qty !== undefined && info.qty !== null) {
+                                qtyEl.value = info.qty;
                             }
                         }
                     } catch (e) { /* ignore lookup errors */ }
-                });
+                }, true);
             }
 
             async function loadDropdownOptions(fieldType, datalistId) {
@@ -748,104 +882,113 @@
 
     {{-- Add / Edit modal --}}
     <div class="modal fade" id="cb-issue-modal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <form id="cb-issue-form">
+                <form id="cb-issue-form" novalidate>
                     <div class="modal-header">
                         <h5 class="modal-title" id="cb-issue-modal-title">Add Chargeback Issue</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" id="cb-id" name="id">
-                        <div class="row g-3">
+                        <p class="small text-muted mb-3" id="cb-multi-hint">
+                            Add one block per chargeback case. Use <strong>Add another case</strong> to save several issues at once.
+                        </p>
+                        <div id="cb-cases-container">
+                            <div class="cb-case-block border rounded p-3 mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0 cb-case-label">Case 1</h6>
+                                    <button type="button" class="btn btn-sm btn-link text-danger p-0 cb-remove-case d-none">Remove</button>
+                                </div>
+                                <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label">SKU <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="cb-sku" name="sku" required>
+                                <input type="text" class="form-control" id="cb-sku" name="sku" data-field="sku">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Parent</label>
-                                <input type="text" class="form-control" id="cb-parent" name="parent">
+                                <input type="text" class="form-control" id="cb-parent" name="parent" data-field="parent">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label">QTY <span class="text-danger">*</span></label>
-                                <input type="number" step="any" class="form-control" id="cb-qty" name="qty" required>
+                                <input type="number" step="any" class="form-control" id="cb-qty" name="qty" data-field="qty">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label">Order QTY</label>
-                                <input type="number" step="any" class="form-control" id="cb-order_qty" name="order_qty">
+                                <input type="number" step="any" class="form-control" id="cb-order_qty" name="order_qty" data-field="order_qty">
                             </div>
 
                             <div class="col-md-4">
-                                <label class="form-label">Order #</label>
-                                <input type="text" class="form-control" id="cb-order_number" name="order_number">
+                                <label class="form-label">Order # <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="cb-order_number" name="order_number" data-field="order_number">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Marketplace 1</label>
                                 <input type="text" class="form-control" id="cb-marketplace_1" name="marketplace_1"
-                                    list="cb-marketplace-datalist">
+                                    data-field="marketplace_1" list="cb-marketplace-datalist">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Marketplace 2</label>
                                 <input type="text" class="form-control" id="cb-marketplace_2" name="marketplace_2"
-                                    list="cb-marketplace-datalist">
+                                    data-field="marketplace_2" list="cb-marketplace-datalist">
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label">What Happened</label>
-                                <input type="text" class="form-control" id="cb-what_happened" name="what_happened">
+                                <input type="text" class="form-control" id="cb-what_happened" name="what_happened" data-field="what_happened">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Root Cause Found</label>
                                 <input type="text" class="form-control" id="cb-issue" name="issue"
-                                    list="cb-root-cause-found-datalist">
+                                    data-field="issue" list="cb-root-cause-found-datalist">
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label">Issue Remark</label>
-                                <input type="text" class="form-control" id="cb-issue_remark" name="issue_remark">
+                                <input type="text" class="form-control" id="cb-issue_remark" name="issue_remark" data-field="issue_remark">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Action 1</label>
-                                <input type="text" class="form-control" id="cb-action_1" name="action_1">
+                                <input type="text" class="form-control" id="cb-action_1" name="action_1" data-field="action_1">
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label">Action 1 Remark</label>
-                                <input type="text" class="form-control" id="cb-action_1_remark" name="action_1_remark">
+                                <input type="text" class="form-control" id="cb-action_1_remark" name="action_1_remark" data-field="action_1_remark">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Replacement Tracking</label>
                                 <input type="text" class="form-control" id="cb-replacement_tracking"
-                                    name="replacement_tracking">
+                                    name="replacement_tracking" data-field="replacement_tracking">
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label">Root Cause Fixed</label>
                                 <input type="text" class="form-control" id="cb-c_action_1" name="c_action_1"
-                                    list="cb-root-cause-fixed-datalist">
+                                    data-field="c_action_1" list="cb-root-cause-fixed-datalist">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Root Cause Fixed Remark</label>
-                                <input type="text" class="form-control" id="cb-c_action_1_remark" name="c_action_1_remark">
+                                <input type="text" class="form-control" id="cb-c_action_1_remark" name="c_action_1_remark" data-field="c_action_1_remark">
                             </div>
 
                             <div class="col-md-4">
                                 <label class="form-label">Tracking #</label>
-                                <input type="text" class="form-control" id="cb-tracking_number" name="tracking_number">
+                                <input type="text" class="form-control" id="cb-tracking_number" name="tracking_number" data-field="tracking_number">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Refund Amount</label>
                                 <input type="number" step="any" class="form-control" id="cb-refund_amount"
-                                    name="refund_amount">
+                                    name="refund_amount" data-field="refund_amount">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Total Loss</label>
-                                <input type="number" step="any" class="form-control" id="cb-total_loss" name="total_loss">
+                                <input type="number" step="any" class="form-control" id="cb-total_loss" name="total_loss" data-field="total_loss">
                             </div>
 
                             <div class="col-md-8">
                                 <label class="form-label">Issue Link</label>
-                                <input type="url" class="form-control" id="cb-issue_link" name="issue_link">
+                                <input type="url" class="form-control" id="cb-issue_link" name="issue_link" data-field="issue_link">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Department</label>
@@ -854,9 +997,14 @@
 
                             <div class="col-12">
                                 <label class="form-label">Close Note</label>
-                                <input type="text" class="form-control" id="cb-close_note" name="close_note">
+                                <input type="text" class="form-control" id="cb-close_note" name="close_note" data-field="close_note">
+                            </div>
+                                </div>
                             </div>
                         </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="cb-add-case">
+                            <i class="fa-solid fa-plus"></i> Add another case
+                        </button>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>

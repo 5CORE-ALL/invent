@@ -80,6 +80,73 @@
         .custom-select-option:hover {
             background-color: #f1f1f1;
         }
+
+        .az-case-row {
+            background: #f8fafc;
+        }
+
+        .az-cases-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            text-align: left;
+            max-width: 280px;
+        }
+
+        .az-case-chip {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 4px 6px;
+            background: #f9fafb;
+            font-size: 0.75rem;
+            line-height: 1.35;
+        }
+
+        .az-case-chip-id {
+            font-weight: 700;
+            color: #2563eb;
+            display: block;
+        }
+
+        .az-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            border: 0;
+            border-radius: 6px;
+            background: #2563eb;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .az-action-btn:hover {
+            background: #1d4ed8;
+            color: #fff;
+        }
+
+        #accountHealthModal .modal-dialog {
+            max-height: calc(100vh - 2rem);
+        }
+
+        #accountHealthModal .modal-content {
+            max-height: calc(100vh - 2rem);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #accountHealthModal .modal-body {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
     </style>
 @endsection
 
@@ -110,16 +177,9 @@
                                 @endforeach
                             </select>
                         </div>
-                        <!-- <div class="d-flex align-items-center gap-2">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="toggleAction" checked>
-                                <label class="form-check-label" for="toggleAction">Show Actions</label>
-                            </div>
-                            <button type="button" class="btn btn-success d-flex align-items-center d-none" data-bs-toggle="modal"
-                                data-bs-target="#accountHealthModal">
-                                <i class="fas fa-plus-circle me-1"></i> Add Report
-                            </button>
-                        </div> -->
+                        <button type="button" class="btn btn-success d-flex align-items-center" id="az-add-cases-btn">
+                            <i class="fas fa-plus-circle me-1"></i> Add Cases
+                        </button>
                     </div>
 
                     <div id="odr-rate"></div>
@@ -130,11 +190,11 @@
 
     {{-- odr rate modal form --}}
     <div class="modal fade" id="accountHealthModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered shadow-none" role="document">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none" role="document">
             <div class="modal-content border border-primary rounded-2">
                 <div class="modal-header bg-white border-bottom rounded-top-2">
                     <h5 class="modal-title fw-semibold text-primary" id="modal-title">
-                        <i class="fas fa-heartbeat me-2"></i> ODR Rate Report
+                        <i class="fas fa-plus-circle me-2"></i> Add A-Z Cases
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -184,24 +244,16 @@
                             </div>
                         </div>
 
-                        <div class="row g-4 mt-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">What</label>
-                                <textarea class="form-control" name="what" id="what_input" rows="2"></textarea>
+                        <div class="d-flex align-items-center justify-content-between mt-4 mb-2">
+                            <div>
+                                <label class="form-label fw-semibold mb-0">Cases</label>
+                                <div class="small text-muted">Add one block per A-Z case. Use Add another case for more.</div>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Why</label>
-                                <textarea class="form-control" name="why" id="why_input" rows="2"></textarea>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Action</label>
-                                <input type="text" class="form-control" name="action" id="action_input">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">C+ Action</label>
-                                <input type="text" class="form-control" name="c_action" id="c_action_input">
-                            </div>
+                            <button type="button" class="btn btn-sm btn-primary" id="az-add-case">
+                                <i class="fas fa-plus-circle me-1"></i> Add another case
+                            </button>
                         </div>
+                        <div id="az-cases-container"></div>
 
                         <div class="mt-4 d-flex justify-content-end">
                             <button type="submit" class="btn btn-primary px-4" id="submit-btn">
@@ -251,6 +303,83 @@
             .catch(error => {
                 console.error("Error fetching data:", error);
             });
+
+            function azCasesForRow(data) {
+                if (Array.isArray(data.cases) && data.cases.length) {
+                    return data.cases;
+                }
+                if (data.what || data.why || data.action || data.c_action) {
+                    return [{
+                        case_id: null,
+                        what: data.what || '',
+                        why: data.why || '',
+                        action: data.action || '',
+                        c_action: data.c_action || ''
+                    }];
+                }
+                return [];
+            }
+
+            function azEscape(value) {
+                return String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
+            }
+
+            function azCaseRowHtml(caseData, index) {
+                const c = caseData || {};
+                return '<div class="az-case-row border rounded p-3 mb-2">' +
+                    '<div class="d-flex justify-content-between align-items-center mb-2">' +
+                    '<span class="small fw-semibold az-case-label">Case ' + (index + 1) + '</span>' +
+                    '<button type="button" class="btn btn-sm btn-link text-danger p-0 az-remove-case">Remove</button>' +
+                    '</div>' +
+                    '<div class="row g-3">' +
+                    '<div class="col-md-4"><label class="form-label small mb-1">Case ID</label>' +
+                    '<input type="text" class="form-control form-control-sm az-case-id" placeholder="Optional case / claim ID" value="' +
+                    azEscape(c.case_id || '') + '"></div>' +
+                    '<div class="col-md-8"><label class="form-label small mb-1">What</label>' +
+                    '<textarea class="form-control form-control-sm az-case-what" rows="2">' + azEscape(c.what || '') + '</textarea></div>' +
+                    '<div class="col-md-6"><label class="form-label small mb-1">Why</label>' +
+                    '<textarea class="form-control form-control-sm az-case-why" rows="2">' + azEscape(c.why || '') + '</textarea></div>' +
+                    '<div class="col-md-3"><label class="form-label small mb-1">Action</label>' +
+                    '<input type="text" class="form-control form-control-sm az-case-action" value="' + azEscape(c.action || '') + '"></div>' +
+                    '<div class="col-md-3"><label class="form-label small mb-1">C+ Action</label>' +
+                    '<input type="text" class="form-control form-control-sm az-case-c-action" value="' + azEscape(c.c_action || '') + '"></div>' +
+                    '</div></div>';
+            }
+
+            function azRenumberCases() {
+                const rows = document.querySelectorAll('#az-cases-container .az-case-row');
+                rows.forEach(function(row, i) {
+                    const label = row.querySelector('.az-case-label');
+                    if (label) label.textContent = 'Case ' + (i + 1);
+                    const removeBtn = row.querySelector('.az-remove-case');
+                    if (removeBtn) removeBtn.classList.toggle('d-none', rows.length < 2);
+                });
+            }
+
+            function azRenderCases(cases) {
+                const container = document.getElementById('az-cases-container');
+                if (!container) return;
+                const list = (Array.isArray(cases) && cases.length) ? cases : [{}];
+                container.innerHTML = list.map(function(c, i) { return azCaseRowHtml(c, i); }).join('');
+                azRenumberCases();
+            }
+
+            function azCollectCases() {
+                const cases = [];
+                document.querySelectorAll('#az-cases-container .az-case-row').forEach(function(row) {
+                    const caseId = String((row.querySelector('.az-case-id') || {}).value || '').trim();
+                    const what = String((row.querySelector('.az-case-what') || {}).value || '').trim();
+                    const why = String((row.querySelector('.az-case-why') || {}).value || '').trim();
+                    const action = String((row.querySelector('.az-case-action') || {}).value || '').trim();
+                    const cAction = String((row.querySelector('.az-case-c-action') || {}).value || '').trim();
+                    if (!caseId && !what && !why && !action && !cAction) return;
+                    cases.push({ case_id: caseId, what: what, why: why, action: action, c_action: cAction });
+                });
+                return cases;
+            }
 
             function initializeTable(data) {
                 table = new Tabulator("#odr-rate", {
@@ -313,26 +442,38 @@
                             hozAlign: "center"
                         },
                         {
-                            title: "Action",
-                            field: "action",
-                            editor: false,
-                            formatter: function(cell){
-                                const data = cell.getRow().getData();
-                                if (data.channel === 'eBay') {
-                                    return `<span style="cursor: pointer; color: #0d6efd; text-decoration: underline;" title="Open eBay Dashboard">
-                                        View Dashboard
-                                    </span>`;
+                            title: "Cases",
+                            field: "cases",
+                            minWidth: 220,
+                            formatter: function(cell) {
+                                const cases = azCasesForRow(cell.getRow().getData() || {});
+                                if (!cases.length) {
+                                    return '<span class="text-muted">No cases yet</span>';
                                 }
-                                const value = cell.getValue() || '';
-                                return `-`;
+                                return '<div class="az-cases-cell">' + cases.map(function(c, i) {
+                                    const id = String(c.case_id || '').trim() || ('Case ' + (i + 1));
+                                    const bits = [c.what, c.why, c.action].filter(Boolean).join(' · ');
+                                    return '<div class="az-case-chip"><span class="az-case-chip-id">' + azEscape(id) +
+                                        '</span>' + (bits ? azEscape(bits) : '') + '</div>';
+                                }).join('') + '</div>';
                             },
+                            hozAlign: "left",
+                            cellClick: function(e, cell) {
+                                openEditModal(cell.getRow());
+                            }
+                        },
+                        {
+                            title: "Add",
+                            field: "_add",
+                            width: 90,
                             hozAlign: "center",
-                            cellClick: function(e, cell){
-                                const rowData = cell.getRow().getData();
-                                if (rowData.channel === 'eBay') {
-                                    window.open('https://sellerstandards.ebay.com/dashboard?region=US', '_blank');
-                                    return;
-                                }
+                            headerSort: false,
+                            formatter: function() {
+                                return '<button type="button" class="az-action-btn az-row-add" title="Add / edit cases">' +
+                                    '<i class="fas fa-plus"></i> Add</button>';
+                            },
+                            cellClick: function(e, cell) {
+                                e.stopPropagation();
                                 openEditModal(cell.getRow());
                             }
                         },
@@ -342,14 +483,16 @@
                 // Action column toggle
                 const toggleAction = document.getElementById('toggleAction');
                 const actionColumn = table.getColumn('action');
-                toggleAction.addEventListener('change', function() {
-                    if (this.checked) {
-                        actionColumn.show();
-                    } else {
-                        actionColumn.hide();
-                    }
-                    table.redraw(true); // Redraw to adjust column widths
-                });
+                if (toggleAction && actionColumn) {
+                    toggleAction.addEventListener('change', function() {
+                        if (this.checked) {
+                            actionColumn.show();
+                        } else {
+                            actionColumn.hide();
+                        }
+                        table.redraw(true); // Redraw to adjust column widths
+                    });
+                }
 
                 // Channel filter functionality
                 const channelFilter = document.getElementById("channelFilter");
@@ -368,15 +511,23 @@
             form.addEventListener('submit', function(e){
                 e.preventDefault();
                 const formData = new FormData(form);
+                if (!formData.get('channel_id')) {
+                    alert('Please choose a marketplace channel.');
+                    return;
+                }
+                const cases = azCollectCases();
+                const first = cases[0] || {};
                 const updateData = {
                     id: formData.get('id'),
                     channel_id: formData.get('channel_id'),
+                    channel: document.querySelector(".custom-select-display")?.textContent?.trim() || '',
                     report_date: formData.get('report_date'),
                     account_health_links: formData.get('account_health_links'),
-                    what: formData.get('what'),
-                    why: formData.get('why'),
-                    action: formData.get('action'),
-                    c_action: formData.get('c_action'),
+                    what: first.what || '',
+                    why: first.why || '',
+                    action: first.action || '',
+                    c_action: first.c_action || '',
+                    cases: cases,
                 };
 
                 fetch("/AtoZClaims-rate/update", {
@@ -389,44 +540,67 @@
                     })
                     .then(res => res.json())
                     .then(response => {
-                        console.log("Updated:", response);
-                        // Update table row
-                        const rowId = updateData.id;
-                        table.updateData([updateData]); // Update the row in table
+                        if (table) {
+                            const row = table.getRows().find(function(r) {
+                                const d = r.getData();
+                                return String(d.channel_id || '') === String(updateData.channel_id || '') ||
+                                    String(d.channel || '') === String(updateData.channel || '');
+                            });
+                            if (row) {
+                                row.update({
+                                    id: response.id || updateData.id,
+                                    channel_id: response.channel_id || updateData.channel_id,
+                                    report_date: updateData.report_date,
+                                    account_health_links: updateData.account_health_links,
+                                    what: updateData.what,
+                                    why: updateData.why,
+                                    action: updateData.action,
+                                    c_action: updateData.c_action,
+                                    cases: Array.isArray(response.cases) ? response.cases : cases,
+                                });
+                            }
+                        }
                         editModal.hide();
                     })
                     .catch(error => console.error("Update failed:", error));
             });
 
+            function setChannelLock(locked, channelName, channelId) {
+                const wrapper = document.querySelector(".custom-select-wrapper");
+                const display = wrapper.querySelector(".custom-select-display");
+                const optionsContainer = wrapper.querySelector(".custom-select-options");
+                display.textContent = channelName || 'Choose a channel...';
+                document.getElementById('channel_id_hidden').value = channelId || '';
+                wrapper.classList.toggle('disabled', !!locked);
+                optionsContainer.style.display = 'none';
+            }
+
+            function openAddModal() {
+                isEditMode = false;
+                document.getElementById('modal-title').innerHTML = '<i class="fas fa-plus-circle me-2"></i> Add A-Z Cases';
+                setChannelLock(false, '', '');
+                document.getElementById('report_date_input').value = new Date().toISOString().slice(0, 10);
+                document.getElementById('account_health_links_input').value = '';
+                document.getElementById('edit_id').value = '';
+                azRenderCases([{}]);
+                document.getElementById('submit-btn').innerHTML = '<i class="fas fa-save me-1"></i> Save Cases';
+                editModal.show();
+            }
+
             function openEditModal(row){
                 const data = row.getData();
                 isEditMode = true;
 
-                // Set title
-                document.getElementById('modal-title').innerHTML = `<i class="fas fa-edit me-2"></i> Edit Report Details for ${data.channel}`;
+                document.getElementById('modal-title').innerHTML = `<i class="fas fa-plus-circle me-2"></i> Add / edit cases for ${data.channel}`;
+                setChannelLock(true, data.channel, data.channel_id || '');
 
-                // Set channel - pre-select and disable
-                const wrapper = document.querySelector(".custom-select-wrapper");
-                const display = wrapper.querySelector(".custom-select-display");
-                display.textContent = data.channel;
-                document.getElementById('channel_id_hidden').value = data.channel_id || ''; // Assuming channel_id is in data
-                wrapper.classList.add('disabled');
-                const optionsContainer = wrapper.querySelector(".custom-select-options");
-                optionsContainer.style.display = 'none'; // Ensure options are closed
-
-                // Set other fields
                 document.getElementById('report_date_input').value = data.report_date || '';
                 document.getElementById('account_health_links_input').value = data.account_health_links || '';
-                document.getElementById('what_input').value = data.what || '';
-                document.getElementById('why_input').value = data.why || '';
-                document.getElementById('action_input').value = data.action || '';
-                document.getElementById('c_action_input').value = data.c_action || '';
+                const existing = azCasesForRow(data);
+                azRenderCases(existing.length ? existing.concat([{}]) : [{}]);
 
-                // Set hidden id
                 document.getElementById('edit_id').value = data.id || '';
-
-                // Set button text
-                document.getElementById('submit-btn').innerHTML = '<i class="fas fa-save me-1"></i> Update Report';
+                document.getElementById('submit-btn').innerHTML = '<i class="fas fa-save me-1"></i> Save Cases';
 
                 editModal.show();
             }
@@ -439,7 +613,26 @@
                 display.textContent = 'Choose a channel...';
                 document.getElementById('channel_id_hidden').value = '';
                 isEditMode = false;
-                // Reset other fields if needed
+                azRenderCases([{}]);
+            });
+
+            document.getElementById('az-add-cases-btn')?.addEventListener('click', openAddModal);
+
+            document.getElementById('az-add-case')?.addEventListener('click', function() {
+                const container = document.getElementById('az-cases-container');
+                if (!container) return;
+                container.insertAdjacentHTML('beforeend', azCaseRowHtml({}, container.querySelectorAll('.az-case-row').length));
+                azRenumberCases();
+                container.querySelector('.az-case-row:last-child .az-case-id')?.focus();
+            });
+            document.getElementById('az-cases-container')?.addEventListener('click', function(ev) {
+                const btn = ev.target.closest('.az-remove-case');
+                if (!btn) return;
+                const row = btn.closest('.az-case-row');
+                const container = document.getElementById('az-cases-container');
+                if (!row || !container || container.querySelectorAll('.az-case-row').length < 2) return;
+                row.remove();
+                azRenumberCases();
             });
 
             channelSelect();

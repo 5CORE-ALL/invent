@@ -223,6 +223,38 @@
             text-align: center;
         }
 
+        #escalated-claims-tabulator .ec-cases-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            text-align: left;
+            max-width: 260px;
+            margin: 0 auto;
+        }
+
+        #escalated-claims-tabulator .ec-case-chip {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 4px 6px;
+            background: #f9fafb;
+            font-size: 0.75rem;
+            line-height: 1.35;
+        }
+
+        #escalated-claims-tabulator .ec-case-chip-id {
+            font-weight: 700;
+            color: #2563eb;
+            display: block;
+        }
+
+        .ec-case-row {
+            background: #f8fafc;
+        }
+
+        .ec-case-row .ec-remove-case {
+            font-size: 0.75rem;
+        }
+
         /* Status history chart modal — full width */
         #ecStatusHistoryModal.modal {
             --tz-modal-width: 100%;
@@ -330,7 +362,7 @@
     </div>
 
     <div class="modal fade" id="ecUpdateModal" tabindex="-1" aria-labelledby="ecUpdateModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h6 class="modal-title fw-semibold mb-0" id="ecUpdateModalLabel">Update</h6>
@@ -352,27 +384,22 @@
                             class="form-control form-control-sm" id="ec-update-current"
                             placeholder="e.g. 97.5" autocomplete="off">
                     </div>
-                    <div class="mb-2">
+                    <div class="mb-3">
                         <label class="form-label small mb-1" for="ec-update-link">Link URL</label>
                         <input type="url" class="form-control form-control-sm" id="ec-update-link"
                             placeholder="https://…" autocomplete="off">
                         <div class="small text-muted mt-1">Leave blank to clear the link.</div>
                     </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1" for="ec-update-summary-issues">Summary / Issues</label>
-                        <textarea class="form-control form-control-sm" id="ec-update-summary-issues" rows="3"
-                            placeholder="Summarize the issues…"></textarea>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div>
+                            <div class="form-label small mb-0">Cases</div>
+                            <div class="small text-muted">Add one block per case. Use Add another case for more.</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="ec-add-case">
+                            <i class="fas fa-plus me-1"></i> Add another case
+                        </button>
                     </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1" for="ec-update-root-cause">Root Cause found</label>
-                        <textarea class="form-control form-control-sm" id="ec-update-root-cause" rows="3"
-                            placeholder="Describe the root cause…"></textarea>
-                    </div>
-                    <div class="mb-1">
-                        <label class="form-label small mb-1" for="ec-update-action-fix">Action to fix root cause</label>
-                        <textarea class="form-control form-control-sm" id="ec-update-action-fix" rows="3"
-                            placeholder="Describe the action to fix…"></textarea>
-                    </div>
+                    <div id="ec-cases-container"></div>
                     <div class="small text-danger mt-2 d-none" id="ec-update-modal-error"></div>
                 </div>
                 <div class="modal-footer py-2">
@@ -801,15 +828,148 @@
                 return span;
             }
 
+            function casesForRow(data) {
+                if (Array.isArray(data.cases) && data.cases.length) {
+                    return data.cases;
+                }
+                if (data.summary_issues || data.root_cause_found || data.action_to_fix) {
+                    return [{
+                        case_id: null,
+                        summary: data.summary_issues || '',
+                        root_cause: data.root_cause_found || '',
+                        action: data.action_to_fix || ''
+                    }];
+                }
+                return [];
+            }
+
+            function casesCellFormatter(field) {
+                return function(cell) {
+                    const wrap = document.createElement('div');
+                    const cases = casesForRow(cell.getRow().getData() || {});
+                    if (!cases.length) {
+                        wrap.className = 'ec-text-cell empty';
+                        wrap.textContent = '—';
+                        return wrap;
+                    }
+                    wrap.className = 'ec-cases-cell';
+                    cases.forEach(function(c, i) {
+                        const chip = document.createElement('div');
+                        chip.className = 'ec-case-chip';
+                        const id = c.case_id ? String(c.case_id).trim() : '';
+                        const body = String(c[field] || '').trim();
+                        if (!id && !body) {
+                            return;
+                        }
+                        chip.innerHTML = (id ? '<span class="ec-case-chip-id">' + escAttr(id) + '</span>' : '') +
+                            (body ? escAttr(body) : '<span class="text-muted">—</span>');
+                        chip.title = (id ? ('Case ' + id + (body ? ': ' : '')) : '') + body;
+                        wrap.appendChild(chip);
+                    });
+                    if (!wrap.children.length) {
+                        wrap.className = 'ec-text-cell empty';
+                        wrap.textContent = '—';
+                    }
+                    return wrap;
+                };
+            }
+
+            function escapeInputValue(value) {
+                return String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;');
+            }
+
+            function escapeTextareaValue(value) {
+                return String(value ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;');
+            }
+
+            function caseRowHtml(caseData, index) {
+                const c = caseData || {};
+                return '<div class="ec-case-row border rounded p-2 mb-2">' +
+                    '<div class="d-flex justify-content-between align-items-center mb-2">' +
+                    '<span class="small fw-semibold ec-case-label">Case ' + (index + 1) + '</span>' +
+                    '<button type="button" class="btn btn-sm btn-link text-danger p-0 ec-remove-case">Remove</button>' +
+                    '</div>' +
+                    '<div class="mb-2">' +
+                    '<label class="form-label small mb-1">Case ID</label>' +
+                    '<input type="text" class="form-control form-control-sm ec-case-id" placeholder="Optional case / claim ID" autocomplete="off" value="' +
+                    escapeInputValue(c.case_id || '') + '">' +
+                    '</div>' +
+                    '<div class="mb-2">' +
+                    '<label class="form-label small mb-1">Summary / Issues</label>' +
+                    '<textarea class="form-control form-control-sm ec-case-summary" rows="2" placeholder="Summarize the issues…">' +
+                    escapeTextareaValue(c.summary || '') + '</textarea>' +
+                    '</div>' +
+                    '<div class="mb-2">' +
+                    '<label class="form-label small mb-1">Root Cause found</label>' +
+                    '<textarea class="form-control form-control-sm ec-case-root" rows="2" placeholder="Describe the root cause…">' +
+                    escapeTextareaValue(c.root_cause || '') + '</textarea>' +
+                    '</div>' +
+                    '<div class="mb-0">' +
+                    '<label class="form-label small mb-1">Action to fix root cause</label>' +
+                    '<textarea class="form-control form-control-sm ec-case-action" rows="2" placeholder="Describe the action to fix…">' +
+                    escapeTextareaValue(c.action || '') + '</textarea>' +
+                    '</div>' +
+                    '</div>';
+            }
+
+            function renumberCaseRows() {
+                const rows = document.querySelectorAll('#ec-cases-container .ec-case-row');
+                rows.forEach(function(row, i) {
+                    const label = row.querySelector('.ec-case-label');
+                    if (label) {
+                        label.textContent = 'Case ' + (i + 1);
+                    }
+                    const removeBtn = row.querySelector('.ec-remove-case');
+                    if (removeBtn) {
+                        removeBtn.classList.toggle('d-none', rows.length < 2);
+                    }
+                });
+            }
+
+            function renderCaseRows(cases) {
+                const container = document.getElementById('ec-cases-container');
+                if (!container) {
+                    return;
+                }
+                const list = (Array.isArray(cases) && cases.length) ? cases : [{}];
+                container.innerHTML = list.map(function(c, i) {
+                    return caseRowHtml(c, i);
+                }).join('');
+                renumberCaseRows();
+            }
+
+            function collectCaseRows() {
+                const rows = document.querySelectorAll('#ec-cases-container .ec-case-row');
+                const cases = [];
+                rows.forEach(function(row) {
+                    const caseId = String((row.querySelector('.ec-case-id') || {}).value || '').trim();
+                    const summary = String((row.querySelector('.ec-case-summary') || {}).value || '').trim();
+                    const root = String((row.querySelector('.ec-case-root') || {}).value || '').trim();
+                    const action = String((row.querySelector('.ec-case-action') || {}).value || '').trim();
+                    if (!caseId && !summary && !root && !action) {
+                        return;
+                    }
+                    cases.push({
+                        case_id: caseId,
+                        summary: summary,
+                        root_cause: root,
+                        action: action
+                    });
+                });
+                return cases;
+            }
+
             function openUpdateModal(data) {
                 editChannelId = data.id;
                 const channelEl = document.getElementById('ec-update-modal-channel');
                 const requiredEl = document.getElementById('ec-update-required');
                 const currentEl = document.getElementById('ec-update-current');
                 const linkEl = document.getElementById('ec-update-link');
-                const summaryEl = document.getElementById('ec-update-summary-issues');
-                const rootCauseEl = document.getElementById('ec-update-root-cause');
-                const actionFixEl = document.getElementById('ec-update-action-fix');
                 const errorEl = document.getElementById('ec-update-modal-error');
 
                 if (channelEl) {
@@ -826,15 +986,7 @@
                 if (linkEl) {
                     linkEl.value = data.link || '';
                 }
-                if (summaryEl) {
-                    summaryEl.value = data.summary_issues || '';
-                }
-                if (rootCauseEl) {
-                    rootCauseEl.value = data.root_cause_found || '';
-                }
-                if (actionFixEl) {
-                    actionFixEl.value = data.action_to_fix || '';
-                }
+                renderCaseRows(casesForRow(data));
                 if (errorEl) {
                     errorEl.classList.add('d-none');
                     errorEl.textContent = '';
@@ -856,9 +1008,6 @@
                 const requiredEl = document.getElementById('ec-update-required');
                 const currentEl = document.getElementById('ec-update-current');
                 const linkEl = document.getElementById('ec-update-link');
-                const summaryEl = document.getElementById('ec-update-summary-issues');
-                const rootCauseEl = document.getElementById('ec-update-root-cause');
-                const actionFixEl = document.getElementById('ec-update-action-fix');
                 const errorEl = document.getElementById('ec-update-modal-error');
                 const saveBtn = document.getElementById('ec-update-modal-save');
                 if (!editChannelId || !linkEl) {
@@ -880,9 +1029,7 @@
                         link: String(linkEl.value || '').trim(),
                         required_parameter: requiredEl ? String(requiredEl.value || '').trim() : '',
                         current_parameter: currentEl ? String(currentEl.value || '').trim() : '',
-                        summary_issues: summaryEl ? String(summaryEl.value || '').trim() : '',
-                        root_cause_found: rootCauseEl ? String(rootCauseEl.value || '').trim() : '',
-                        action_to_fix: actionFixEl ? String(actionFixEl.value || '').trim() : ''
+                        cases: collectCaseRows()
                     })
                 }).then(function(res) {
                     if (table) {
@@ -897,6 +1044,7 @@
                                 summary_issues: res.summary_issues || null,
                                 root_cause_found: res.root_cause_found || null,
                                 action_to_fix: res.action_to_fix || null,
+                                cases: Array.isArray(res.cases) ? res.cases : [],
                                 updated_by: res.updated_by,
                                 updated_at_ts: res.updated_at_ts,
                                 history_display: res.history_display,
@@ -999,28 +1147,61 @@
                     field: 'summary_issues',
                     minWidth: 180,
                     width: 220,
-                    headerTooltip: 'Editable via Update',
-                    formatter: textCellFormatter
+                    headerTooltip: 'One block per case. Editable via Update.',
+                    formatter: casesCellFormatter('summary')
                 }, {
                     title: 'Root Cause found',
                     field: 'root_cause_found',
                     minWidth: 180,
                     width: 220,
-                    headerTooltip: 'Editable via Update',
-                    formatter: textCellFormatter
+                    headerTooltip: 'One block per case. Editable via Update.',
+                    formatter: casesCellFormatter('root_cause')
                 }, {
                     title: 'Action to fix root cause',
                     field: 'action_to_fix',
                     minWidth: 180,
                     width: 220,
-                    headerTooltip: 'Editable via Update',
-                    formatter: textCellFormatter
+                    headerTooltip: 'One block per case. Editable via Update.',
+                    formatter: casesCellFormatter('action')
                 }];
             }
 
             const saveBtn = document.getElementById('ec-update-modal-save');
             if (saveBtn) {
                 saveBtn.addEventListener('click', commitUpdateFromModal);
+            }
+            const addCaseBtn = document.getElementById('ec-add-case');
+            if (addCaseBtn) {
+                addCaseBtn.addEventListener('click', function() {
+                    const container = document.getElementById('ec-cases-container');
+                    if (!container) {
+                        return;
+                    }
+                    container.insertAdjacentHTML('beforeend', caseRowHtml({}, container.querySelectorAll('.ec-case-row').length));
+                    renumberCaseRows();
+                    const lastId = container.querySelector('.ec-case-row:last-child .ec-case-id');
+                    if (lastId) {
+                        lastId.focus();
+                    }
+                });
+            }
+            const casesContainer = document.getElementById('ec-cases-container');
+            if (casesContainer) {
+                casesContainer.addEventListener('click', function(ev) {
+                    const btn = ev.target.closest('.ec-remove-case');
+                    if (!btn) {
+                        return;
+                    }
+                    const row = btn.closest('.ec-case-row');
+                    if (!row) {
+                        return;
+                    }
+                    if (casesContainer.querySelectorAll('.ec-case-row').length < 2) {
+                        return;
+                    }
+                    row.remove();
+                    renumberCaseRows();
+                });
             }
             ['ec-update-required', 'ec-update-current', 'ec-update-link'].forEach(function(id) {
                 const inputEl = document.getElementById(id);

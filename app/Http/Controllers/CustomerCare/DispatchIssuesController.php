@@ -5,6 +5,7 @@ namespace App\Http\Controllers\CustomerCare;
 use App\Http\Controllers\InventoryManagement\OutgoingController;
 use App\Models\AmazonDatasheet;
 use App\Support\CustomerCareDepartments;
+use App\Support\CustomerCareIssueFanout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1411,7 +1412,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
             return response()->json(['message' => 'Unauthorised.'], 403);
         }
 
-        return parent::archive($id);
+        $response = parent::archive($id);
+        if ($response->getStatusCode() < 400) {
+            CustomerCareIssueFanout::archiveFromDispatchId($id);
+        }
+
+        return $response;
     }
 
     /**
@@ -1451,6 +1457,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 ->delete();
             DB::table($this->issuesTable())->where('id', $id)->delete();
         });
+        CustomerCareIssueFanout::deleteFromDispatchId($id);
 
         return response()->json(['message' => 'Hold issue deleted permanently.']);
     }
@@ -1766,6 +1773,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                         'revision_no'             => 0,
                         'logged_at'               => $now,
                     ]));
+                    CustomerCareIssueFanout::syncFromDispatchId((int) $issueId);
 
                     $row = DB::table($this->issuesTable())->where('id', $issueId)->first();
                     $insertedRows[] = [
@@ -2189,6 +2197,13 @@ class DispatchIssuesController extends IssueBoardControllerBase
      */
     private function updateResponseAfterSave(Request $request, array $validated, string $groupId, string $sku): JsonResponse
     {
+        $fanoutIds = DB::table($this->issuesTable())
+            ->where('sku', $sku)
+            ->where('group_id', $groupId)
+            ->pluck('id')
+            ->all();
+        CustomerCareIssueFanout::syncMany($fanoutIds);
+
         $outgoingMsg          = null;
         $wrongSentOutgoingMsg = null;
         $outgoingWarning      = null;

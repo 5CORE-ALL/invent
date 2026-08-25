@@ -9,6 +9,7 @@ use App\Models\EscalatedClaimsStatusHistory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 
 class EscalatedClaimsController extends Controller
 {
@@ -111,6 +112,11 @@ class EscalatedClaimsController extends Controller
             'summary_issues' => 'nullable|string|max:5000',
             'root_cause_found' => 'nullable|string|max:5000',
             'action_to_fix' => 'nullable|string|max:5000',
+            'cases' => 'nullable|array',
+            'cases.*.case_id' => 'nullable|string|max:255',
+            'cases.*.summary' => 'nullable|string|max:5000',
+            'cases.*.root_cause' => 'nullable|string|max:5000',
+            'cases.*.action' => 'nullable|string|max:5000',
         ]);
 
         $channelId = (int) $request->input('channel_id');
@@ -125,26 +131,36 @@ class EscalatedClaimsController extends Controller
         $current = $request->input('current_parameter');
         $current = ($current === null || $current === '') ? null : (float) $current;
 
-        $summaryIssues = trim((string) $request->input('summary_issues', ''));
-        $summaryIssues = $summaryIssues === '' ? null : $summaryIssues;
+        $cases = $this->normalizeCases($request->input('cases'));
+        if ($cases === []) {
+            $cases = $this->normalizeCases([], [
+                'summary' => $request->input('summary_issues'),
+                'root_cause' => $request->input('root_cause_found'),
+                'action' => $request->input('action_to_fix'),
+            ]);
+        }
 
-        $rootCause = trim((string) $request->input('root_cause_found', ''));
-        $rootCause = $rootCause === '' ? null : $rootCause;
+        $flat = $this->flattenCases($cases);
+        $summaryIssues = $flat['summary_issues'];
+        $rootCause = $flat['root_cause_found'];
+        $actionToFix = $flat['action_to_fix'];
 
-        $actionToFix = trim((string) $request->input('action_to_fix', ''));
-        $actionToFix = $actionToFix === '' ? null : $actionToFix;
+        $payload = [
+            'link' => $link,
+            'required_parameter' => $required,
+            'current_parameter' => $current,
+            'summary_issues' => $summaryIssues,
+            'root_cause_found' => $rootCause,
+            'action_to_fix' => $actionToFix,
+            'updated_by' => optional(Auth::user())->name,
+        ];
+        if ($this->hasCasesColumn()) {
+            $payload['cases'] = $cases === [] ? null : $cases;
+        }
 
         $record = EscalatedClaimsLink::query()->updateOrCreate(
             ['channel_id' => $channelId],
-            [
-                'link' => $link,
-                'required_parameter' => $required,
-                'current_parameter' => $current,
-                'summary_issues' => $summaryIssues,
-                'root_cause_found' => $rootCause,
-                'action_to_fix' => $actionToFix,
-                'updated_by' => optional(Auth::user())->name,
-            ]
+            $payload
         );
         $record->touch();
         $record->refresh();
@@ -160,6 +176,7 @@ class EscalatedClaimsController extends Controller
             'summary_issues' => $summaryIssues,
             'root_cause_found' => $rootCause,
             'action_to_fix' => $actionToFix,
+            'cases' => $cases,
             'status_tone' => $this->parameterTone($current, $required),
         ], $this->historyPayload($record)));
     }
@@ -175,25 +192,31 @@ class EscalatedClaimsController extends Controller
             ->orderBy('channel')
             ->get(['id', 'channel', 'type', 'status', 'logo']);
 
+        $select = [
+            'channel_id',
+            'link',
+            'required_parameter',
+            'current_parameter',
+            'summary_issues',
+            'root_cause_found',
+            'action_to_fix',
+            'updated_by',
+            'updated_at',
+        ];
+        if ($this->hasCasesColumn()) {
+            $select[] = 'cases';
+        }
+
         $linkRows = EscalatedClaimsLink::query()
             ->whereIn('channel_id', $channels->pluck('id'))
-            ->get([
-                'channel_id',
-                'link',
-                'required_parameter',
-                'current_parameter',
-                'summary_issues',
-                'root_cause_found',
-                'action_to_fix',
-                'updated_by',
-                'updated_at',
-            ])
+            ->get($select)
             ->keyBy('channel_id');
 
         return $channels->map(function (ChannelMaster $c) use ($linkRows) {
             /** @var EscalatedClaimsLink|null $row */
             $row = $linkRows->get($c->id);
             $history = $this->historyPayload($row);
+            $cases = $this->hydrateCases($row);
 
             $required = $row && $row->required_parameter !== null
                 ? (float) $row->required_parameter
@@ -201,6 +224,8 @@ class EscalatedClaimsController extends Controller
             $current = $row && $row->current_parameter !== null
                 ? (float) $row->current_parameter
                 : null;
+
+            $flat = $this->flattenCases($cases);
 
             return array_merge([
                 'id' => $c->id,
@@ -212,9 +237,10 @@ class EscalatedClaimsController extends Controller
                 'current_parameter' => $current,
                 'status_tone' => $this->parameterTone($current, $required),
                 'link' => $row?->link ?: null,
-                'summary_issues' => $row?->summary_issues ?: null,
-                'root_cause_found' => $row?->root_cause_found ?: null,
-                'action_to_fix' => $row?->action_to_fix ?: null,
+                'summary_issues' => $flat['summary_issues'] ?: ($row?->summary_issues ?: null),
+                'root_cause_found' => $flat['root_cause_found'] ?: ($row?->root_cause_found ?: null),
+                'action_to_fix' => $flat['action_to_fix'] ?: ($row?->action_to_fix ?: null),
+                'cases' => $cases,
             ], $history);
         })->values()->all();
     }
@@ -286,6 +312,110 @@ class EscalatedClaimsController extends Controller
                 'green_count' => (int) ($counts['green'] ?? 0),
             ]
         );
+    }
+
+    private function hasCasesColumn(): bool
+    {
+        return Schema::hasColumn('escalated_claims_links', 'cases');
+    }
+
+    /**
+     * @param  mixed  $input
+     * @param  array{case_id?: mixed, summary?: mixed, root_cause?: mixed, action?: mixed}|null  $fallback
+     * @return list<array{case_id: ?string, summary: ?string, root_cause: ?string, action: ?string}>
+     */
+    private function normalizeCases($input, ?array $fallback = null): array
+    {
+        $cases = [];
+        if (is_array($input)) {
+            foreach ($input as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $caseId = trim((string) ($row['case_id'] ?? ''));
+                $summary = trim((string) ($row['summary'] ?? $row['summary_issues'] ?? ''));
+                $root = trim((string) ($row['root_cause'] ?? $row['root_cause_found'] ?? ''));
+                $action = trim((string) ($row['action'] ?? $row['action_to_fix'] ?? ''));
+                if ($caseId === '' && $summary === '' && $root === '' && $action === '') {
+                    continue;
+                }
+                $cases[] = [
+                    'case_id' => $caseId !== '' ? $caseId : null,
+                    'summary' => $summary !== '' ? $summary : null,
+                    'root_cause' => $root !== '' ? $root : null,
+                    'action' => $action !== '' ? $action : null,
+                ];
+            }
+        }
+
+        if ($cases === [] && is_array($fallback)) {
+            $caseId = trim((string) ($fallback['case_id'] ?? ''));
+            $summary = trim((string) ($fallback['summary'] ?? ''));
+            $root = trim((string) ($fallback['root_cause'] ?? ''));
+            $action = trim((string) ($fallback['action'] ?? ''));
+            if ($caseId !== '' || $summary !== '' || $root !== '' || $action !== '') {
+                $cases[] = [
+                    'case_id' => $caseId !== '' ? $caseId : null,
+                    'summary' => $summary !== '' ? $summary : null,
+                    'root_cause' => $root !== '' ? $root : null,
+                    'action' => $action !== '' ? $action : null,
+                ];
+            }
+        }
+
+        return $cases;
+    }
+
+    /**
+     * @param  list<array{case_id: ?string, summary: ?string, root_cause: ?string, action: ?string}>  $cases
+     * @return array{summary_issues: ?string, root_cause_found: ?string, action_to_fix: ?string}
+     */
+    private function flattenCases(array $cases): array
+    {
+        $summaries = [];
+        $roots = [];
+        $actions = [];
+
+        foreach ($cases as $i => $case) {
+            $label = ! empty($case['case_id']) ? ('Case '.$case['case_id']) : ('Case '.($i + 1));
+            if (! empty($case['summary'])) {
+                $summaries[] = $label.': '.$case['summary'];
+            }
+            if (! empty($case['root_cause'])) {
+                $roots[] = $label.': '.$case['root_cause'];
+            }
+            if (! empty($case['action'])) {
+                $actions[] = $label.': '.$case['action'];
+            }
+        }
+
+        return [
+            'summary_issues' => $summaries === [] ? null : implode("\n", $summaries),
+            'root_cause_found' => $roots === [] ? null : implode("\n", $roots),
+            'action_to_fix' => $actions === [] ? null : implode("\n", $actions),
+        ];
+    }
+
+    /**
+     * @return list<array{case_id: ?string, summary: ?string, root_cause: ?string, action: ?string}>
+     */
+    private function hydrateCases(?EscalatedClaimsLink $row): array
+    {
+        if (! $row) {
+            return [];
+        }
+
+        $stored = $row->cases;
+        if (is_string($stored)) {
+            $decoded = json_decode($stored, true);
+            $stored = is_array($decoded) ? $decoded : [];
+        }
+
+        return $this->normalizeCases(is_array($stored) ? $stored : [], [
+            'summary' => $row->summary_issues,
+            'root_cause' => $row->root_cause_found,
+            'action' => $row->action_to_fix,
+        ]);
     }
 
     /**

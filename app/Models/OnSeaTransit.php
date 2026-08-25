@@ -75,10 +75,28 @@ class OnSeaTransit extends Model
     }
 
     /**
+     * True when the payments modal has been applied (including empty lines).
+     * Null / missing means Due still follows Transit Value.
+     *
+     * @param  array<string, mixed>|list<mixed>|null  $supplierPayments
+     */
+    public static function paymentsWereApplied($supplierPayments): bool
+    {
+        if (! is_array($supplierPayments)) {
+            return false;
+        }
+
+        return array_key_exists('supplier', $supplierPayments)
+            || array_key_exists('agent', $supplierPayments)
+            || $supplierPayments !== [];
+    }
+
+    /**
      * Due for a row.
      *
-     * When payment lines exist, Due follows the payments Grand Total
-     * (Amount + Freight − Paid) so a settled Grand Total of 0 yields Due 0.
+     * After payments are applied, Due is the payments Grand Total
+     * (Amount + Freight − Paid). An applied Grand Total of 0 (including
+     * cleared / empty lines) yields Due 0.
      * Otherwise Due = Transit Value + Freight − Paid.
      */
     public static function computeDue($invoiceValue, $freight, $paid, $supplierPayments = null): float
@@ -87,12 +105,11 @@ class OnSeaTransit extends Model
         $freight = (float) ($freight ?? 0);
         $paid = (float) ($paid ?? 0);
         $payload = is_array($supplierPayments) ? $supplierPayments : null;
-        $lines = self::paymentLines($payload);
 
-        if ($lines !== []) {
+        if (self::paymentsWereApplied($payload)) {
             $amount = 0.0;
             $paidFromLines = 0.0;
-            foreach ($lines as $line) {
+            foreach (self::paymentLines($payload) as $line) {
                 $amount += (float) ($line['amount'] ?? 0);
                 $paidFromLines += (float) ($line['paid'] ?? 0);
             }

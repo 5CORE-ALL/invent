@@ -36,6 +36,17 @@ class CustomerCareDepartments
         'carrier scan issue' => 'Carrier Issue',
         'carrier scan issues' => 'Carrier Issue',
         'carrier claim issues' => 'Carrier Issue',
+        'label' => 'Label',
+        'label issue' => 'Label',
+        'label issues' => 'Label',
+        'customer care' => 'Customer Care',
+        'c care' => 'Customer Care',
+        'c-care' => 'Customer Care',
+        'ccare' => 'Customer Care',
+        'c-care issues' => 'Customer Care',
+        'qc pkg' => 'QC',
+        'qc packaging' => 'QC',
+        'qc and packing' => 'QC',
     ];
 
     public static function canonicalDepartment(string $value): string

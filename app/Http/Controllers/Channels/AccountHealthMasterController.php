@@ -22,6 +22,7 @@ use App\Models\ValidTrackingRate;
 use App\Models\VoilanceRate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\EbayApiService;
@@ -1213,8 +1214,11 @@ class AccountHealthMasterController extends Controller
     $formatted = $channels->map(function ($channel) use ($odrRates) {
         $odr = $odrRates[$channel->id] ?? null;
 
+        $cases = $this->hydrateAtoZCases($odr);
+
         return [
             'id' => $odr?->id ?? null,
+            'channel_id' => $channel->id,
             'channel' => $channel->channel,
             'allowed' => $odr?->allowed ?? '',
             'current' => $odr?->current ?? '',
@@ -1228,6 +1232,7 @@ class AccountHealthMasterController extends Controller
             'action' => $odr?->action ?? '',
             'c_action' => $odr?->c_action ?? '',
             'account_health_links' => $odr?->account_health_links ?? '',
+            'cases' => $cases,
         ];
     });
     $ebayService = new EbayApiService();
@@ -1241,7 +1246,25 @@ class AccountHealthMasterController extends Controller
 
     public function updateAtoZClaimsRate(Request $request)
     {
-        $channelId = ChannelMaster::where('channel', $request->channel)->value('id');
+        $request->merge([
+            'channel_id' => $request->filled('channel_id') ? $request->input('channel_id') : null,
+        ]);
+
+        $request->validate([
+            'channel_id' => 'nullable|integer|exists:channel_master,id',
+            'channel' => 'nullable|string',
+            'cases' => 'nullable|array',
+            'cases.*.case_id' => 'nullable|string|max:255',
+            'cases.*.what' => 'nullable|string|max:5000',
+            'cases.*.why' => 'nullable|string|max:5000',
+            'cases.*.action' => 'nullable|string|max:5000',
+            'cases.*.c_action' => 'nullable|string|max:5000',
+        ]);
+
+        $channelId = $request->input('channel_id');
+        if (! $channelId && $request->filled('channel')) {
+            $channelId = ChannelMaster::where('channel', $request->channel)->value('id');
+        }
 
         if (!$channelId) {
             return response()->json(['message' => 'Channel not found'], 404);
@@ -1250,6 +1273,13 @@ class AccountHealthMasterController extends Controller
         $atozClaims = AtoZClaimsRate::where('channel_id', $channelId)->first();
 
         $nowDate = now()->toDateString();
+        $cases = $this->normalizeAtoZCases($request->input('cases'), [
+            'what' => $request->input('what'),
+            'why' => $request->input('why'),
+            'action' => $request->input('action'),
+            'c_action' => $request->input('c_action'),
+        ]);
+        $firstCase = $cases[0] ?? [];
 
         if ($atozClaims) {
             // Only shift data if we're updating the current value
@@ -1270,18 +1300,24 @@ class AccountHealthMasterController extends Controller
                 $atozClaims->allowed = $request->allowed ?? $request->atoz_claims_rate_allowed;
             }
 
-            // Only update other fields if they're present in the request
-            if ($request->has('what')) {
-                $atozClaims->what = $request->what;
+            if ($request->has('report_date') && $request->input('report_date')) {
+                $atozClaims->report_date = $request->input('report_date');
             }
-            if ($request->has('why')) {
-                $atozClaims->why = $request->why;
+
+            if ($request->has('cases') || $request->has('what')) {
+                $atozClaims->what = $firstCase['what'] ?? $request->input('what');
             }
-            if ($request->has('action')) {
-                $atozClaims->action = $request->action;
+            if ($request->has('cases') || $request->has('why')) {
+                $atozClaims->why = $firstCase['why'] ?? $request->input('why');
             }
-            if ($request->has('c_action')) {
-                $atozClaims->c_action = $request->c_action;
+            if ($request->has('cases') || $request->has('action')) {
+                $atozClaims->action = $firstCase['action'] ?? $request->input('action');
+            }
+            if ($request->has('cases') || $request->has('c_action')) {
+                $atozClaims->c_action = $firstCase['c_action'] ?? $request->input('c_action');
+            }
+            if ($request->has('cases') && Schema::hasColumn('atoz_claims_rate', 'cases')) {
+                $atozClaims->cases = $cases === [] ? null : $cases;
             }
             if ($request->has('account_health_links')) {
                 $atozClaims->account_health_links = $request->account_health_links;
@@ -1289,20 +1325,29 @@ class AccountHealthMasterController extends Controller
 
             $atozClaims->save();
         } else {
-            $atozClaims = AtoZClaimsRate::create([
-                'channel_id' => $channelId,
-                'report_date' => $nowDate,
-                'current' => $request->current ?? $request->atoz_claims_rate ?? null,
-                'allowed' => $request->allowed ?? $request->atoz_claims_rate_allowed ?? null,
-                'what' => $request->what ?? null,
-                'why' => $request->why ?? null,
-                'action' => $request->action ?? null,
-                'c_action' => $request->c_action ?? null,
-                'account_health_links' => $request->account_health_links ?? null,
-            ]);
+            $atozClaims = new AtoZClaimsRate();
+            $atozClaims->channel_id = $channelId;
+            $atozClaims->report_date = $request->input('report_date') ?: $nowDate;
+            $atozClaims->current = $request->current ?? $request->atoz_claims_rate ?? null;
+            $atozClaims->allowed = $request->allowed ?? $request->atoz_claims_rate_allowed ?? null;
+            $atozClaims->what = $firstCase['what'] ?? $request->what ?? null;
+            $atozClaims->why = $firstCase['why'] ?? $request->why ?? null;
+            $atozClaims->action = $firstCase['action'] ?? $request->action ?? null;
+            $atozClaims->c_action = $firstCase['c_action'] ?? $request->c_action ?? null;
+            $atozClaims->account_health_links = $request->account_health_links ?? null;
+            if (Schema::hasColumn('atoz_claims_rate', 'cases')) {
+                $atozClaims->cases = $cases === [] ? null : $cases;
+            }
+            $atozClaims->save();
         }
 
-        return response()->json(['success' => true, 'message' => 'A-to-Z Claims Rate updated successfully']);
+        return response()->json([
+            'success' => true,
+            'message' => 'A-to-Z Claims Rate updated successfully',
+            'cases' => $cases,
+            'id' => $atozClaims->id,
+            'channel_id' => (int) $channelId,
+        ]);
     }
 
     public function updateAtoZClaimsHealthLink(Request $request)
@@ -1317,6 +1362,80 @@ class AccountHealthMasterController extends Controller
         ]);
 
         return response()->json(['success' => true, 'message' => 'Link updated']);
+    }
+
+    /**
+     * @param  mixed  $input
+     * @param  array{case_id?: mixed, what?: mixed, why?: mixed, action?: mixed, c_action?: mixed}|null  $fallback
+     * @return list<array{case_id: ?string, what: ?string, why: ?string, action: ?string, c_action: ?string}>
+     */
+    private function normalizeAtoZCases($input, ?array $fallback = null): array
+    {
+        $cases = [];
+        if (is_array($input)) {
+            foreach ($input as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $caseId = trim((string) ($row['case_id'] ?? ''));
+                $what = trim((string) ($row['what'] ?? ''));
+                $why = trim((string) ($row['why'] ?? ''));
+                $action = trim((string) ($row['action'] ?? ''));
+                $cAction = trim((string) ($row['c_action'] ?? ''));
+                if ($caseId === '' && $what === '' && $why === '' && $action === '' && $cAction === '') {
+                    continue;
+                }
+                $cases[] = [
+                    'case_id' => $caseId !== '' ? $caseId : null,
+                    'what' => $what !== '' ? $what : null,
+                    'why' => $why !== '' ? $why : null,
+                    'action' => $action !== '' ? $action : null,
+                    'c_action' => $cAction !== '' ? $cAction : null,
+                ];
+            }
+        }
+
+        if ($cases === [] && is_array($fallback)) {
+            $caseId = trim((string) ($fallback['case_id'] ?? ''));
+            $what = trim((string) ($fallback['what'] ?? ''));
+            $why = trim((string) ($fallback['why'] ?? ''));
+            $action = trim((string) ($fallback['action'] ?? ''));
+            $cAction = trim((string) ($fallback['c_action'] ?? ''));
+            if ($caseId !== '' || $what !== '' || $why !== '' || $action !== '' || $cAction !== '') {
+                $cases[] = [
+                    'case_id' => $caseId !== '' ? $caseId : null,
+                    'what' => $what !== '' ? $what : null,
+                    'why' => $why !== '' ? $why : null,
+                    'action' => $action !== '' ? $action : null,
+                    'c_action' => $cAction !== '' ? $cAction : null,
+                ];
+            }
+        }
+
+        return $cases;
+    }
+
+    /**
+     * @return list<array{case_id: ?string, what: ?string, why: ?string, action: ?string, c_action: ?string}>
+     */
+    private function hydrateAtoZCases(?AtoZClaimsRate $row): array
+    {
+        if (! $row) {
+            return [];
+        }
+
+        $stored = $row->cases ?? null;
+        if (is_string($stored)) {
+            $decoded = json_decode($stored, true);
+            $stored = is_array($decoded) ? $decoded : [];
+        }
+
+        return $this->normalizeAtoZCases(is_array($stored) ? $stored : [], [
+            'what' => $row->what,
+            'why' => $row->why,
+            'action' => $row->action,
+            'c_action' => $row->c_action,
+        ]);
     }
 
     // a-z-Claims rate end

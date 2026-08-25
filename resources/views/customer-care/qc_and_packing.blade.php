@@ -2174,6 +2174,7 @@
                                         <option value="Dispatch" @selected(!empty($lockedDepartment ?? null))>Dispatch</option>
                                         <option value="Shipping">Shipping</option>
                                         <option value="Listing">Listing</option>
+                                        <option value="Label">Label</option>
                                         {{-- Display labels for carrier departments; `value=` stays the
                                              same so saved rows and department filters continue to match. --}}
                                         <option value="Carrier">Carrier Claims</option>

@@ -88,6 +88,30 @@
             height: 10px;
             border-radius: 50%;
         }
+
+        /* Tabulator was collapsing to one squashed row: the wrapper was
+           display:none during init/refresh, and the global sticky header
+           + overflow:auto on .table-container broke tableholder height. */
+        #channelTableWrapper.table-container {
+            overflow-x: auto;
+            overflow-y: visible;
+            max-height: none;
+            min-height: 560px;
+        }
+
+        #channelTable.tabulator {
+            min-height: 550px;
+        }
+
+        #channelTable.tabulator .tabulator-header {
+            position: relative !important;
+            top: auto !important;
+        }
+
+        #channelTable.tabulator .tabulator-tableholder {
+            min-height: 420px !important;
+            flex: 1 1 auto;
+        }
     </style>
 @endsection
 
@@ -316,7 +340,7 @@
             </div>
         </div>
 
-        <div class="table-container" id="channelTableWrapper" style="display: none;">
+        <div class="table-container" id="channelTableWrapper">
             <div id="channelTable"></div>
         </div>
     </div>
@@ -472,11 +496,11 @@
                 paginationMode: "local",
                 movableColumns: false,
                 resizableColumns: true,
-                height: "550px",
+                height: 550,
+                renderVertical: "basic",
                 ajaxResponse: function(url, params, response) {
                     console.log('AJAX response:', response);
                     jq('#customLoader').hide();
-                    jq('#channelTableWrapper').show();
                     if (!response || !response.data) {
                         console.warn('No data in response:', response);
                         alert('No data received from server.');
@@ -526,13 +550,11 @@
                 ajaxError: function(xhr, error, thrown) {
                     console.error("AJAX error:", error, thrown, xhr.responseText);
                     jq('#customLoader').hide();
-                    jq('#channelTableWrapper').show();
                     alert('Failed to load data: ' + (xhr.responseJSON?.message ||
                         'Unknown error. Check console for details.'));
                 },
                 ajaxRequesting: function() {
                     jq('#customLoader').show();
-                    jq('#channelTableWrapper').hide();
                 },
                 columns: [{
                         title: "Channel",
@@ -1669,10 +1691,17 @@
 
         jq(document).ready(function() {
             jq('#customLoader').show();
-            jq('#channelTableWrapper').hide();
 
             table = initializeTable();
             if (!table) return;
+
+            table.on('dataProcessed', function() {
+                requestAnimationFrame(function() {
+                    if (table) {
+                        table.redraw(true);
+                    }
+                });
+            });
 
             jq.ajax({
                 url: '/account-health-master/dashboard-data',
@@ -1687,12 +1716,10 @@
                         alert('No data received from server.');
                     }
                     jq('#customLoader').hide();
-                    jq('#channelTableWrapper').show();
                 },
                 error: function(xhr, error, thrown) {
                     console.error('Error loading initial data:', error, thrown, xhr.responseText);
                     jq('#customLoader').hide();
-                    jq('#channelTableWrapper').show();
                     alert('Failed to load initial data: ' + (xhr.responseJSON?.message ||
                         'Unknown error. Check console for details.'));
                 }

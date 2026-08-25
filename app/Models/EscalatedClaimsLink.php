@@ -16,12 +16,14 @@ class EscalatedClaimsLink extends Model
         'summary_issues',
         'root_cause_found',
         'action_to_fix',
+        'cases',
         'updated_by',
     ];
 
     protected $casts = [
         'required_parameter' => 'float',
         'current_parameter' => 'float',
+        'cases' => 'array',
     ];
 
     public function channel()

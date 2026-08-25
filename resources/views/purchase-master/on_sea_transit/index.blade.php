@@ -1418,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const ostEditModalEl = document.getElementById('ostEditRowModal');
     const ostEditModal   = ostEditModalEl ? new bootstrap.Modal(ostEditModalEl) : null;
     const ostEditForm    = document.getElementById('ostEditRowForm');
+    let ostRowPaymentsApplied = false;
 
     function ostFormatDateForInput(raw) {
         if (!raw) return '';
@@ -1468,6 +1469,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('ostEditInvoiceValueHidden').value = transitInv;
 
         // Payments payload: { supplier: [...], agent: [...] }
+        ostRowPaymentsApplied = ostRawPaymentsApplied(rowData.supplier_payments);
         const payments = ostNormalizePaymentsPayload(rowData.supplier_payments, rowData);
         ostSetPaymentsPayload(payments);
         document.getElementById('ostSpFreightRowInput').value = parseFloat(rowData.freight) || 0;
@@ -1562,6 +1564,20 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function ostRawPaymentsApplied(raw) {
+        if (raw == null || raw === '') return false;
+        if (typeof raw === 'string') {
+            try { raw = JSON.parse(raw); } catch (e) { return false; }
+        }
+        if (Array.isArray(raw)) return raw.length > 0;
+        if (typeof raw === 'object') {
+            return Object.prototype.hasOwnProperty.call(raw, 'supplier')
+                || Object.prototype.hasOwnProperty.call(raw, 'agent')
+                || ostHasPaymentLines(ostNormalizePaymentsPayload(raw, null));
+        }
+        return false;
+    }
+
     function ostPaymentsTotals(payload, freightOverride) {
         let amount = 0, paid = 0;
         ostAllPaymentLines(payload).forEach(line => {
@@ -1577,8 +1593,8 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    function ostComputeDue(transitInv, paymentTotals, payload) {
-        if (ostHasPaymentLines(payload)) {
+    function ostComputeDue(transitInv, paymentTotals, payload, forcePaymentsTotal) {
+        if (forcePaymentsTotal || ostRowPaymentsApplied || ostHasPaymentLines(payload)) {
             return Math.round(paymentTotals.balance);
         }
         return Math.round(transitInv + paymentTotals.freight - paymentTotals.paid);
@@ -1741,8 +1757,8 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('ostSpTotalAmount').textContent = totals.amount.toFixed(2);
         document.getElementById('ostSpTotalPaid').textContent = totals.paid.toFixed(2);
         document.getElementById('ostSpTotalBalance').textContent = totals.balance.toFixed(2);
-        const transitInv = parseFloat(document.getElementById('ostEditInvoiceValueHidden')?.value) || 0;
-        ostSetDueDisplay(ostComputeDue(transitInv, totals, payload));
+        // While the payments modal is open, Due always tracks Grand Total (including 0).
+        ostSetDueDisplay(Math.round(totals.balance));
     }
 
     function ostAddSupplierCategoryRow(line) {
@@ -1892,6 +1908,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ostRebuildAgentSelect(firstAgent);
         }
         ostPaymentsAppliedThisOpen = true;
+        ostRowPaymentsApplied = true;
         ostSyncMoneyFieldsFromPayments(payments);
 
         const sl = document.getElementById('ostEditRowContainerSlNo').value;
@@ -1953,7 +1970,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (key === 'supplier_payments_json') return;
             payload[key] = val;
         });
-        payload.supplier_payments = ostParsePaymentsFromHidden();
+        if (ostRowPaymentsApplied) {
+            payload.supplier_payments = ostParsePaymentsFromHidden();
+        }
 
         fetch(ostUpdateUrl, {
             method: 'POST',

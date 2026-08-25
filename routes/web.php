@@ -2410,6 +2410,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ]);
     })->name('customer.care.qc.and.packing.sku.details');
     Route::get('/customer-care/qc-and-packing/issues', function () {
+        \App\Support\CustomerCareIssueFanout::ensureForDepartments(['QC', 'Packaging']);
         $rows = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);

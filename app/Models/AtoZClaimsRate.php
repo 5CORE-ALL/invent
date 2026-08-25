@@ -21,6 +21,11 @@ class AtoZClaimsRate extends Model
         'action',
         'c_action',
         'account_health_links',
+        'cases',
+    ];
+
+    protected $casts = [
+        'cases' => 'array',
     ];
 
     public function channel()

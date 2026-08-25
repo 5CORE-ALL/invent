@@ -4,6 +4,7 @@ namespace App\Http\Controllers\CustomerCare;
 
 use App\Http\Controllers\Controller;
 use App\Support\CustomerCareDepartments;
+use App\Support\CustomerCareIssueFanout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +36,16 @@ abstract class IssueBoardControllerBase extends Controller
     protected function csvImportColumnMap(): array
     {
         return [];
+    }
+
+    /**
+     * All Issues departments that should appear on this board.
+     *
+     * @return list<string>
+     */
+    protected function inboundDepartments(): array
+    {
+        return CustomerCareIssueFanout::departmentsForTable($this->issuesTable());
     }
 
     protected function normalizeFieldType(string $fieldType): string
@@ -291,6 +302,11 @@ abstract class IssueBoardControllerBase extends Controller
 
     public function issuesIndex(): JsonResponse
     {
+        $inbound = $this->inboundDepartments();
+        if ($inbound !== []) {
+            CustomerCareIssueFanout::ensureForDepartments($inbound);
+        }
+
         $rows = DB::table($this->issuesTable())
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
@@ -627,6 +643,9 @@ abstract class IssueBoardControllerBase extends Controller
                         'revision_no'             => 0,
                         'logged_at'               => $now,
                     ]));
+                    if ($this->issuesTable() === 'dispatch_issue_issues') {
+                        CustomerCareIssueFanout::syncFromDispatchId((int) $id);
+                    }
                 });
 
                 $inserted++;

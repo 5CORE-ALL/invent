@@ -1291,6 +1291,7 @@
                                     <option value="Dispatch">Dispatch</option>
                                     <option value="Shipping">Shipping</option>
                                     <option value="Listing">Listing</option>
+                                    <option value="Label">Label</option>
                                     {{-- Display labels for carrier departments; `value` attributes are
                                          left unchanged because they are persisted and used for filters. --}}
                                     <option value="Carrier">Carrier Claims</option>
