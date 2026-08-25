@@ -27,6 +27,14 @@ class TemuApiAdStatusTest extends TestCase
         ]));
     }
 
+    public function test_status_zero_without_campaign_stays_no_ad(): void
+    {
+        $this->assertSame('No ad', TemuApiService::statusFromAdDetail([
+            'goodsId' => 1,
+            'adShowStatus' => 0,
+        ]));
+    }
+
     public function test_delivering_stays_active(): void
     {
         $this->assertSame('Active', TemuApiService::statusFromAdDetail([
@@ -39,6 +47,19 @@ class TemuApiAdStatusTest extends TestCase
     {
         $this->assertSame('Inactive', TemuApiService::statusFromAdDetail([
             'adShowStatus' => 2,
+        ]));
+    }
+
+    public function test_ad_show_status_8_is_active(): void
+    {
+        $this->assertSame('Active', TemuApiService::normalizeAdStatus(8));
+        $this->assertSame('Active', TemuApiService::statusFromAdDetail([
+            'goodsId' => 610964111988643,
+            'adShowStatus' => 8,
+            'adPhase' => 0,
+            'roas' => 40000,
+            'budget' => -1,
+            'summary' => ['imprCnt' => ['total' => ['val' => 5], 'ad' => ['val' => 0]]],
         ]));
     }
 

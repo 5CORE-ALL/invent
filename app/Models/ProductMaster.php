@@ -127,6 +127,32 @@ class ProductMaster extends Model
     }
 
     /**
+     * Product Master STATUS "Coming" is stored as upcoming (aliases accepted).
+     */
+    public static function isComingStatus(mixed $statusOrValues): bool
+    {
+        $status = $statusOrValues;
+        if (is_object($statusOrValues)) {
+            $raw = $statusOrValues->Values ?? null;
+            if (is_string($raw)) {
+                $raw = json_decode($raw, true) ?: [];
+            }
+            $status = is_array($raw) ? ($raw['status'] ?? '') : '';
+        } elseif (is_array($statusOrValues)) {
+            $status = $statusOrValues['status'] ?? '';
+        }
+
+        $norm = strtolower(trim((string) $status));
+
+        return in_array($norm, ['upcoming', 'coming', 'comming'], true);
+    }
+
+    public function isComing(): bool
+    {
+        return self::isComingStatus($this->Values ?? []);
+    }
+
+    /**
      * Auto-recalculate LP, CBM and FRGHT in the Values JSON whenever the model is saved.
      * Source of truth formula:
      *   CBM   = (L * 2.54) * (W * 2.54) * (H * 2.54) / 1,000,000   (L/W/H in inches -> m^3)

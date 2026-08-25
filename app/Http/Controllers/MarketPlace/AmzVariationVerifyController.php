@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingRaw;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonSpProductAd;
 use App\Models\ChannelMasterSummary;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -35,7 +36,8 @@ class AmzVariationVerifyController extends Controller
      *
      * Two-way match:
      *  1) CP Master → Ads: missing / over (existing logic)
-     *  2) Ads → CP Master: Extra = ad SKU under this parent family that is not a CP Master child
+     *  2) Ads → CP Master: Extra = PARENT {parent} {suffix} campaign that is not
+     *     a CP Master child and is not owned by a more specific CP parent.
      */
     public function data(Request $request)
     {
@@ -50,7 +52,7 @@ class AmzVariationVerifyController extends Controller
             ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
             ->orderBy('parent')
             ->orderBy('sku')
-            ->get(['parent', 'sku']);
+            ->get(['parent', 'sku', 'Values']);
 
         $shopifyBySku = ShopifySku::mapByProductSkus(
             $productMasters->pluck('sku')->filter()->unique()->values()->all()
@@ -64,11 +66,13 @@ class AmzVariationVerifyController extends Controller
 
             $inv = (float) ($shopifyBySku[$sku]->inv ?? 0);
 
+            $isComing = $pm->isComing();
+
             $hasKw = $this->skuHasCampaignType($sku, $parent, $available, $adLookup, 'kw');
             $hasPt = $this->skuHasCampaignType($sku, $parent, $available, $adLookup, 'pt');
 
-            $kwFields = $this->buildSiblingAdFields($hasKw, $available, $adLookup['empty']);
-            $ptFields = $this->buildSiblingAdFields($hasPt, $available, $adLookup['empty']);
+            $kwFields = $this->buildSiblingAdFields($hasKw, $available, $adLookup['empty'], $isComing);
+            $ptFields = $this->buildSiblingAdFields($hasPt, $available, $adLookup['empty'], $isComing);
 
             if (! empty($kwFields['existing']) || ! empty($kwFields['over'])) {
                 $kwFields['campaign_names'] = $this->findMatchedCampaignNames($sku, $parent, $available, $adLookup, 'kw');
@@ -86,12 +90,15 @@ class AmzVariationVerifyController extends Controller
                 'sku' => $sku,
                 'inv' => $inv,
                 'is_parent' => false,
-                'child_sku_required' => true,
-                'child_sku_required_label' => 'Yes',
+                'is_coming' => $isComing,
+                'child_sku_required' => ! $isComing,
+                'child_sku_required_label' => $isComing ? 'Coming' : 'Yes',
                 'child_sku_available' => $available,
                 'child_sku_available_label' => $available === null ? '—' : ($available ? 'Yes' : 'No'),
-                'match_status' => $match,
-                'match_label' => $match === null ? '—' : ($match ? 'match' : 'mismatch'),
+                'match_status' => $isComing ? null : $match,
+                'match_label' => $isComing
+                    ? 'Coming'
+                    : ($match === null ? '—' : ($match ? 'match' : 'mismatch')),
             ], $this->prefixAdFields('kw', $kwFields), $this->prefixAdFields('pt', $ptFields));
         })->values()->all();
 
@@ -117,9 +124,10 @@ class AmzVariationVerifyController extends Controller
 
         $formattedData = [];
         foreach ($parentGroups as $parentKey => $children) {
-            $known = array_filter($children, fn ($c) => $c['child_sku_available'] !== null);
+            $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['is_coming'])));
+            $known = array_filter($requiredChildren, fn ($c) => $c['child_sku_available'] !== null);
             $availableCount = count(array_filter($known, fn ($c) => $c['child_sku_available'] === true));
-            $requiredCount = count($children);
+            $requiredCount = count($requiredChildren);
             $knownCount = count($known);
             $parentMatch = $knownCount > 0 ? ($availableCount === $requiredCount) : null;
 
@@ -597,6 +605,256 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
+     * Add Missing child SKUs to the existing PARENT {parent} KW/PT campaign.
+     * Inventory is ignored — INV 0 SKUs are added the same as in-stock ones.
+     */
+    public function addMissingAds(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'type' => ['required', 'string', 'in:KW,PT,kw,pt'],
+            'missing_skus' => ['required', 'array', 'min:1'],
+            'missing_skus.*' => ['string', 'max:255'],
+        ]);
+
+        $result = $this->addMissingSkusToParentCampaign(
+            trim((string) $validated['parent']),
+            strtolower(trim((string) $validated['type'])),
+            $validated['missing_skus'] ?? []
+        );
+
+        return response()->json($result['body'], $result['http']);
+    }
+
+    /**
+     * Bulk-add Missing SKUs: each item goes to its own PARENT {parent} KW/PT campaign.
+     */
+    public function addAllMissingAds(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.parent' => ['required', 'string', 'max:255'],
+            'items.*.type' => ['required', 'string', 'in:KW,PT,kw,pt'],
+            'items.*.missing_skus' => ['required', 'array', 'min:1'],
+            'items.*.missing_skus.*' => ['string', 'max:255'],
+        ]);
+
+        set_time_limit(3600);
+
+        $results = [];
+        $addedN = 0;
+        $failedN = 0;
+        $okN = 0;
+
+        foreach ($validated['items'] as $item) {
+            $one = $this->addMissingSkusToParentCampaign(
+                trim((string) ($item['parent'] ?? '')),
+                strtolower(trim((string) ($item['type'] ?? ''))),
+                $item['missing_skus'] ?? []
+            );
+            $body = $one['body'];
+            $results[] = $body;
+            $addedN += count($body['added'] ?? []);
+            $failedN += count($body['failed'] ?? []);
+            if (! empty($body['ok'])) {
+                $okN++;
+            }
+        }
+
+        $msgParts = [];
+        if ($addedN > 0) {
+            $msgParts[] = $addedN === 1 ? '1 SKU added' : $addedN.' SKUs added';
+        }
+        if ($failedN > 0) {
+            $msgParts[] = $failedN === 1 ? '1 failed' : $failedN.' failed';
+        }
+        if ($msgParts === []) {
+            $msgParts[] = 'No missing SKUs were added';
+        }
+
+        return response()->json([
+            'ok' => $addedN > 0 && $failedN === 0,
+            'message' => implode('. ', $msgParts).'.',
+            'added_count' => $addedN,
+            'failed_count' => $failedN,
+            'parent_count' => $okN,
+            'results' => $results,
+        ], $addedN > 0 ? ($failedN === 0 ? 200 : 207) : 422);
+    }
+
+    /**
+     * @param  list<string>  $missingSkus
+     * @return array{http: int, body: array<string, mixed>}
+     */
+    private function addMissingSkusToParentCampaign(string $parent, string $type, array $missingSkus): array
+    {
+        $missingSkus = array_values(array_unique(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            $missingSkus
+        ))));
+
+        if ($parent === '' || $missingSkus === []) {
+            return [
+                'http' => 422,
+                'body' => [
+                    'ok' => false,
+                    'message' => 'Provide parent and missing_skus to add.',
+                    'parent' => $parent,
+                    'type' => strtoupper($type),
+                    'added' => [],
+                    'failed' => [],
+                ],
+            ];
+        }
+
+        $pmRows = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parent)
+            ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
+            ->get(['sku', 'Values']);
+        $allowedTok = [];
+        $comingTok = [];
+        foreach ($pmRows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $tok = $this->normalizeCampaignToken($sku);
+            if ($tok === '') {
+                continue;
+            }
+            if ($row->isComing()) {
+                $comingTok[$tok] = $sku;
+            } else {
+                $allowedTok[$tok] = $sku;
+            }
+        }
+
+        $toAdd = [];
+        $rejected = [];
+        foreach ($missingSkus as $sku) {
+            $tok = $this->normalizeCampaignToken($sku);
+            if ($tok !== '' && isset($comingTok[$tok])) {
+                $rejected[] = ['sku' => $sku, 'message' => 'Coming status is not counted as missing.'];
+            } elseif ($tok !== '' && isset($allowedTok[$tok])) {
+                $toAdd[] = $allowedTok[$tok];
+            } else {
+                $rejected[] = ['sku' => $sku, 'message' => 'Not a CP Master child of this parent.'];
+            }
+        }
+        $toAdd = array_values(array_unique($toAdd));
+
+        if ($toAdd === []) {
+            return [
+                'http' => 422,
+                'body' => [
+                    'ok' => false,
+                    'message' => 'No valid child SKUs to add.',
+                    'parent' => $parent,
+                    'type' => strtoupper($type),
+                    'added' => [],
+                    'failed' => $rejected,
+                ],
+            ];
+        }
+
+        $campaign = $this->resolveParentFamilyCampaign($parent, $type);
+        if ($campaign === null) {
+            return [
+                'http' => 422,
+                'body' => [
+                    'ok' => false,
+                    'message' => 'No PARENT '.$parent.' '.strtoupper($type)
+                        .' campaign found. Create the parent campaign first.',
+                    'parent' => $parent,
+                    'type' => strtoupper($type),
+                    'added' => [],
+                    'failed' => array_map(
+                        fn ($s) => ['sku' => $s, 'message' => 'Parent campaign not found.'],
+                        $toAdd
+                    ),
+                ],
+            ];
+        }
+
+        $status = strtoupper(trim((string) ($campaign['campaign_status'] ?? '')));
+        if ($status === 'ARCHIVED') {
+            return [
+                'http' => 422,
+                'body' => [
+                    'ok' => false,
+                    'message' => 'Parent campaign is ARCHIVED: '.$campaign['campaign_name'],
+                    'parent' => $parent,
+                    'type' => strtoupper($type),
+                    'campaign_name' => $campaign['campaign_name'],
+                    'added' => [],
+                    'failed' => array_map(
+                        fn ($s) => ['sku' => $s, 'message' => 'Parent campaign is ARCHIVED.'],
+                        $toAdd
+                    ),
+                ],
+            ];
+        }
+
+        try {
+            $result = app(AmazonAdsService::class)->addSellerSkusToCampaign(
+                (string) $campaign['campaign_id'],
+                $toAdd
+            );
+        } catch (\Throwable $e) {
+            Log::error('AmzVariationVerify addMissingAds failed', [
+                'parent' => $parent,
+                'type' => $type,
+                'skus' => $toAdd,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'http' => 500,
+                'body' => [
+                    'ok' => false,
+                    'message' => 'Add failed: '.$e->getMessage(),
+                    'parent' => $parent,
+                    'type' => strtoupper($type),
+                    'added' => [],
+                    'failed' => array_map(
+                        fn ($s) => ['sku' => $s, 'message' => $e->getMessage()],
+                        $toAdd
+                    ),
+                ],
+            ];
+        }
+
+        $added = is_array($result['added'] ?? null) ? $result['added'] : [];
+        $failed = array_merge(
+            $rejected,
+            is_array($result['failed'] ?? null) ? $result['failed'] : []
+        );
+
+        $this->persistAddedProductAds(
+            (string) ($result['profile_id'] ?? ''),
+            (string) ($result['campaign_id'] ?? $campaign['campaign_id']),
+            (string) ($result['ad_group_id'] ?? ''),
+            $added
+        );
+
+        return [
+            'http' => ! empty($result['success']) ? 200 : 422,
+            'body' => [
+                'ok' => ! empty($result['success']),
+                'message' => (string) ($result['message'] ?? 'Done.'),
+                'parent' => $parent,
+                'type' => strtoupper($type),
+                'campaign_id' => $campaign['campaign_id'],
+                'campaign_name' => $campaign['campaign_name'],
+                'ad_group_id' => $result['ad_group_id'] ?? null,
+                'added' => $added,
+                'failed' => $failed,
+            ],
+        ];
+    }
+
+    /**
      * @return array{set: array<string, true>, empty: bool}
      */
     private function buildListedSkuLookup(): array
@@ -662,6 +920,8 @@ class AmzVariationVerifyController extends Controller
             'pt_campaign_bases' => [],
             'kw_campaign_names' => [],
             'pt_campaign_names' => [],
+            'kw_product_ad_skus' => [],
+            'pt_product_ad_skus' => [],
         ];
 
         if (! Schema::hasTable('amazon_sp_campaign_reports')) {
@@ -751,6 +1011,7 @@ class AmzVariationVerifyController extends Controller
 
         $kwNames = $kwCampaigns->map(fn ($c) => trim((string) ($c->campaignName ?? '')))->filter()->unique()->values()->all();
         $ptNames = $ptCampaigns->map(fn ($c) => trim((string) ($c->campaignName ?? '')))->filter()->unique()->values()->all();
+        $productAdSkus = $this->buildProductAdSkuLookup($kwCampaigns, $ptCampaigns);
 
         return [
             'empty' => false,
@@ -766,7 +1027,196 @@ class AmzVariationVerifyController extends Controller
             'pt_campaign_bases_active' => $this->campaignBasesFromReports($ptActive),
             'kw_campaign_names' => $kwNames,
             'pt_campaign_names' => $ptNames,
+            'kw_product_ad_skus' => $productAdSkus['kw'],
+            'pt_product_ad_skus' => $productAdSkus['pt'],
         ];
+    }
+
+    /**
+     * SKUs already pushed as product ads (INV is ignored).
+     * Used so Add-to-campaign survives a table refresh.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $kwCampaigns
+     * @param  \Illuminate\Support\Collection<int, object>  $ptCampaigns
+     * @return array{kw: array<string, true>, pt: array<string, true>}
+     */
+    private function buildProductAdSkuLookup($kwCampaigns, $ptCampaigns): array
+    {
+        $out = ['kw' => [], 'pt' => []];
+        if (! Schema::hasTable('amazon_sp_product_ads')) {
+            return $out;
+        }
+
+        $kwIds = [];
+        foreach ($kwCampaigns as $c) {
+            $cid = preg_replace('/\D+/', '', trim((string) ($c->campaign_id ?? ''))) ?: '';
+            if ($cid !== '') {
+                $kwIds[$cid] = true;
+            }
+        }
+        $ptIds = [];
+        foreach ($ptCampaigns as $c) {
+            $cid = preg_replace('/\D+/', '', trim((string) ($c->campaign_id ?? ''))) ?: '';
+            if ($cid !== '') {
+                $ptIds[$cid] = true;
+            }
+        }
+
+        $rows = AmazonSpProductAd::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) {
+                $q->whereNull('state')
+                    ->orWhereRaw('UPPER(TRIM(state)) != ?', ['ARCHIVED']);
+            })
+            ->get(['sku', 'campaign_id']);
+
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $cid = preg_replace('/\D+/', '', trim((string) ($row->campaign_id ?? ''))) ?: '';
+            $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+            $nameKey = strtoupper(trim(rtrim($sku, '.')));
+            $isKw = $cid !== '' && isset($kwIds[$cid]);
+            $isPt = $cid !== '' && isset($ptIds[$cid]);
+            // Campaign report missing (just-added) — credit both so the row stays Added.
+            if (! $isKw && ! $isPt) {
+                $isKw = true;
+                $isPt = true;
+            }
+            foreach ([$norm, $nameKey] as $key) {
+                if ($key === '') {
+                    continue;
+                }
+                if ($isKw) {
+                    $out['kw'][$key] = true;
+                }
+                if ($isPt) {
+                    $out['pt'][$key] = true;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Exact PARENT {parent} / {parent} KW or PT campaign (not a longer sibling name).
+     *
+     * @return array{campaign_id: string, campaign_name: string, campaign_status: string}|null
+     */
+    private function resolveParentFamilyCampaign(string $parent, string $type): ?array
+    {
+        $parentTok = $this->normalizeCampaignToken($parent);
+        if ($parentTok === '' || ! Schema::hasTable('amazon_sp_campaign_reports')) {
+            return null;
+        }
+
+        $isPt = $type === 'pt';
+        $wantBases = [$parentTok, 'PARENT '.$parentTok];
+
+        $rows = AmazonSpCampaignReport::query()
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->get(['campaignName', 'campaign_id', 'campaignStatus']);
+
+        $best = null;
+        $bestScore = -1;
+        foreach ($rows as $row) {
+            $rawName = trim((string) ($row->campaignName ?? ''));
+            $cn = $this->normalizeCampaignToken($rawName);
+            if ($cn === '') {
+                continue;
+            }
+            $isPtName = str_ends_with($cn, ' PT') || str_ends_with($cn, ' PT.');
+            if ($isPt && ! $isPtName) {
+                continue;
+            }
+            if (! $isPt && $isPtName) {
+                continue;
+            }
+
+            $base = $this->stripCampaignTypeSuffix($cn);
+            if (! in_array($base, $wantBases, true)) {
+                continue;
+            }
+
+            $status = strtoupper(trim((string) ($row->campaignStatus ?? '')));
+            if ($status === 'ARCHIVED') {
+                continue;
+            }
+
+            $cid = preg_replace('/\D+/', '', trim((string) ($row->campaign_id ?? ''))) ?: '';
+            if ($cid === '') {
+                continue;
+            }
+
+            $score = ($status === 'ENABLED' ? 20 : 10) + ($base === 'PARENT '.$parentTok ? 2 : 0);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = [
+                    'campaign_id' => $cid,
+                    'campaign_name' => $rawName,
+                    'campaign_status' => $status,
+                ];
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * @param  list<array{sku?: string, ad_id?: string}>  $added
+     */
+    private function persistAddedProductAds(string $profileId, string $campaignId, string $adGroupId, array $added): void
+    {
+        if ($added === [] || ! Schema::hasTable('amazon_sp_product_ads')) {
+            return;
+        }
+
+        $profileId = trim($profileId);
+        if ($profileId === '') {
+            $profileId = 'default';
+        }
+
+        foreach ($added as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $adId = preg_replace('/\D+/', '', trim((string) ($row['ad_id'] ?? ''))) ?: '';
+            if ($adId === '') {
+                $adId = $campaignId.'-'.$sku;
+            }
+
+            try {
+                AmazonSpProductAd::updateOrCreate(
+                    [
+                        'profile_id' => $profileId,
+                        'ad_id' => $adId,
+                    ],
+                    [
+                        'campaign_id' => $campaignId,
+                        'ad_group_id' => $adGroupId !== '' ? $adGroupId : null,
+                        'sku' => $sku,
+                        'state' => 'ENABLED',
+                        'pulled_at' => now(),
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('AmzVariationVerify: persist product ad failed', [
+                    'sku' => $sku,
+                    'campaign_id' => $campaignId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**
@@ -1014,15 +1464,18 @@ class AmzVariationVerifyController extends Controller
     /**
      * Child is in ads when:
      *  1) a campaign is named for this SKU (direct), OR
-     *  2) a PARENT {parent} campaign exists AND this child is listed on Amazon
-     *     (unlisted children are NOT credited — they stay Missing, not Over).
+     *  2) a product ad for this SKU was added to a KW/PT campaign (INV ignored), OR
+     *  3) a PARENT {parent} campaign exists AND this child is listed on Amazon
+     *     (unlisted children stay Missing unless explicitly added via #2).
      *
      * @param  array{
      *   empty: bool,
      *   kw_keys: array<string, true>,
      *   pt_keys: array<string, true>,
      *   kw_parent_keys: array<string, true>,
-     *   pt_parent_keys: array<string, true>
+     *   pt_parent_keys: array<string, true>,
+     *   kw_product_ad_skus: array<string, true>,
+     *   pt_product_ad_skus: array<string, true>
      * }  $lookup
      */
     private function skuHasCampaignType(string $sku, string $parent, ?bool $available, array $lookup, string $type): ?bool
@@ -1032,6 +1485,7 @@ class AmzVariationVerifyController extends Controller
         }
 
         $keys = $type === 'pt' ? ($lookup['pt_keys'] ?? []) : ($lookup['kw_keys'] ?? []);
+        $adSkus = $type === 'pt' ? ($lookup['pt_product_ad_skus'] ?? []) : ($lookup['kw_product_ad_skus'] ?? []);
         $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
         $nameKey = strtoupper(trim(rtrim($sku, '.')));
 
@@ -1039,6 +1493,12 @@ class AmzVariationVerifyController extends Controller
             return true;
         }
         if ($nameKey !== '' && isset($keys[$nameKey])) {
+            return true;
+        }
+        if ($norm !== '' && isset($adSkus[$norm])) {
+            return true;
+        }
+        if ($nameKey !== '' && isset($adSkus[$nameKey])) {
             return true;
         }
 
@@ -1139,10 +1599,11 @@ class AmzVariationVerifyController extends Controller
     /**
      * Child-level KW/PT status fields.
      * Every child SKU is counted (INV is not used to skip).
+     * Coming (Product Master upcoming) is never flagged as Missing.
      *
      * @return array{status: ?string, label: string, existing: bool, missing: bool, over: bool}
      */
-    private function buildSiblingAdFields(?bool $inCampaign, ?bool $available, bool $adsEmpty): array
+    private function buildSiblingAdFields(?bool $inCampaign, ?bool $available, bool $adsEmpty, bool $isComing = false): array
     {
         if ($adsEmpty || $inCampaign === null) {
             return [
@@ -1160,8 +1621,8 @@ class AmzVariationVerifyController extends Controller
         // Ads existing: in campaign
         $existing = $inCampaign === true;
 
-        // Missing: not in campaign
-        $missing = $inCampaign === false;
+        // Missing: not in campaign (Coming is excluded)
+        $missing = $inCampaign === false && ! $isComing;
 
         if ($over) {
             $status = 'over';
@@ -1169,6 +1630,9 @@ class AmzVariationVerifyController extends Controller
         } elseif ($existing) {
             $status = 'added';
             $label = 'Added';
+        } elseif ($isComing) {
+            $status = 'coming';
+            $label = 'Coming';
         } elseif ($missing) {
             $status = 'missing';
             $label = 'Missing';
@@ -1231,8 +1695,9 @@ class AmzVariationVerifyController extends Controller
             ];
         }
 
-        $required = count($children);
-        $existing = count(array_filter($children, fn ($c) => ! empty($c[$prefix . 'existing'])));
+        $requiredChildren = array_values(array_filter($children, fn ($c) => empty($c['is_coming'])));
+        $required = count($requiredChildren);
+        $existing = count(array_filter($requiredChildren, fn ($c) => ! empty($c[$prefix . 'existing'])));
 
         $missingSkus = [];
         $overSkus = [];
@@ -1363,7 +1828,13 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
-     * Ads → CP Master: ad campaign bases under this parent family that are not CP Master children.
+     * Ads → CP Master extras for this parent.
+     *
+     * Extra is a campaign explicitly named under this parent
+     * (`PARENT {parent} {suffix}`) that is not a CP Master child and is not
+     * owned by a more specific CP parent. Other campaigns that only share a
+     * name prefix (e.g. "DS VEL RED REST-LVR" vs parent "DS VEL") are their
+     * own ads — not extra SKUs inside PARENT {parent}.
      *
      * @param  array<int, array{sku?: string}>  $children
      * @param  list<string>  $campaignBases  type-stripped campaign names
@@ -1382,16 +1853,11 @@ class AmzVariationVerifyController extends Controller
             return [];
         }
 
-        $requiredNorms = [];
         $requiredTokens = [];
         foreach ($children as $c) {
             $sku = trim((string) ($c['sku'] ?? ''));
             if ($sku === '') {
                 continue;
-            }
-            $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-            if ($norm !== '' && ! isset($requiredNorms[$norm])) {
-                $requiredNorms[$norm] = $sku;
             }
             $tok = $this->normalizeCampaignToken($sku);
             if ($tok !== '') {
@@ -1400,8 +1866,6 @@ class AmzVariationVerifyController extends Controller
         }
 
         $parentTok = $this->normalizeCampaignToken($parentKey);
-        $parentNorm = AmazonDatasheet::normalizeSkuForLookup($parentKey);
-        $childPrefix = $this->commonPrefix(array_keys($requiredNorms));
 
         $allParentToks = [];
         foreach ($allParentKeys as $pk) {
@@ -1418,79 +1882,102 @@ class AmzVariationVerifyController extends Controller
                 continue;
             }
 
-            // Exact parent campaign (PARENT {parent} / {parent}) — not a child extra.
+            // Exact parent campaign (PARENT {parent} / {parent}) — not Extra.
             if ($base === $parentTok || $base === 'PARENT '.$parentTok) {
                 continue;
             }
 
-            // Campaign named as another CP parent (without PARENT prefix) — belongs there.
+            // Campaign named as another CP parent — belongs there.
             if (isset($allParentToks[$base]) && $base !== $parentTok) {
                 continue;
             }
 
-            if (str_starts_with($base, 'PARENT ')) {
-                $body = trim(substr($base, 7));
-                // Campaign for another CP parent (e.g. PARENT 12 CW 2PCS → parent "12 CW 2PCS").
-                if (isset($allParentToks[$body]) && $body !== $parentTok) {
-                    continue;
-                }
-                // PARENT {thisParent} {suffix} with no matching CP parent → Extra under this parent.
-                if ($body !== $parentTok && str_starts_with($body, $parentTok.' ') && ! isset($allParentToks[$body])) {
-                    $extras[$body] = $body;
-                }
+            if (! str_starts_with($base, 'PARENT ')) {
                 continue;
             }
 
-            // Named for a required child (exact or "SKU …" variant) — not Extra.
-            $matchedRequired = false;
+            $body = trim(substr($base, 7));
+            if ($body === '' || $body === $parentTok) {
+                continue;
+            }
+
+            // PARENT {otherParent} — belongs to that parent, even without a suffix.
+            if (isset($allParentToks[$body]) && $body !== $parentTok) {
+                continue;
+            }
+
+            // Named for a required child of this parent — not Extra.
+            if (isset($requiredTokens[$body])) {
+                continue;
+            }
+            $childHit = false;
             foreach ($requiredTokens as $tok => $_) {
-                if ($base === $tok || str_starts_with($base, $tok.' ')) {
-                    $matchedRequired = true;
+                if ($body === $tok || str_starts_with($body, $tok.' ')) {
+                    $childHit = true;
                     break;
                 }
             }
-            if ($matchedRequired) {
+            if ($childHit) {
                 continue;
             }
 
-            $candidates = [$base];
-            if (preg_match('/^(.+)\s+2PCS$/', $base, $m)) {
-                $candidates[] = $m[1];
-            }
-
-            foreach ($candidates as $cand) {
-                $norm = AmazonDatasheet::normalizeSkuForLookup($cand);
-                if ($norm === '') {
+            $norm = AmazonDatasheet::normalizeSkuForLookup($body);
+            $pmParent = $norm !== '' ? ($pmParentByNorm[$norm] ?? null) : null;
+            if ($pmParent !== null) {
+                $pmTok = $this->normalizeCampaignToken($pmParent);
+                if ($pmTok !== '' && $pmTok !== $parentTok) {
                     continue;
                 }
-                if (isset($requiredNorms[$norm])) {
-                    continue 2;
-                }
-
-                $pmParent = $pmParentByNorm[$norm] ?? null;
-                if ($pmParent !== null) {
-                    $pmTok = $this->normalizeCampaignToken($pmParent);
-                    // Belongs to another CP parent — not Extra for this group.
-                    if ($pmTok !== '' && $pmTok !== $parentTok) {
-                        continue 2;
-                    }
-                    // Same parent in PM would already be required; skip.
-                    if ($pmTok === $parentTok) {
-                        continue 2;
-                    }
-                }
-
-                if ($this->skuBelongsToParentFamily($norm, $parentNorm, $childPrefix)) {
-                    $extras[$cand] = $cand;
-                    continue 2;
+                if ($pmTok === $parentTok) {
+                    continue;
                 }
             }
+
+            // Only Extra when this parent is the most specific CP owner of the body.
+            // "PARENT DS VEL REST LVR LT" belongs to "DS VEL REST LVR", not "DS VEL".
+            if ($this->longestMatchingParentToken($body, $allParentToks) !== $parentTok) {
+                continue;
+            }
+
+            $extras[$body] = $body;
         }
 
         $list = array_values($extras);
         sort($list, SORT_NATURAL | SORT_FLAG_CASE);
 
         return $list;
+    }
+
+    /**
+     * Most specific CP parent whose name equals $name or is a space-delimited prefix.
+     *
+     * @param  array<string, true>  $allParentToks
+     */
+    private function longestMatchingParentToken(string $name, array $allParentToks): ?string
+    {
+        $name = $this->normalizeCampaignToken($name);
+        if ($name === '' || $allParentToks === []) {
+            return null;
+        }
+
+        $best = null;
+        $bestLen = -1;
+        foreach ($allParentToks as $tok => $_) {
+            $tok = $this->normalizeCampaignToken((string) $tok);
+            if ($tok === '') {
+                continue;
+            }
+            if ($name !== $tok && ! str_starts_with($name, $tok.' ')) {
+                continue;
+            }
+            $len = strlen($tok);
+            if ($len > $bestLen) {
+                $best = $tok;
+                $bestLen = $len;
+            }
+        }
+
+        return $best;
     }
 
     /**
@@ -1514,45 +2001,6 @@ class AmzVariationVerifyController extends Controller
         }
 
         return $map;
-    }
-
-    /**
-     * @param  list<string>  $norms
-     */
-    private function commonPrefix(array $norms): string
-    {
-        if ($norms === []) {
-            return '';
-        }
-
-        $prefix = $norms[0];
-        foreach ($norms as $norm) {
-            $max = min(strlen($prefix), strlen($norm));
-            $i = 0;
-            while ($i < $max && $prefix[$i] === $norm[$i]) {
-                $i++;
-            }
-            $prefix = substr($prefix, 0, $i);
-            if ($prefix === '') {
-                return '';
-            }
-        }
-
-        return $prefix;
-    }
-
-    private function skuBelongsToParentFamily(string $skuNorm, string $parentNorm, string $childPrefix): bool
-    {
-        if ($parentNorm !== '' && str_starts_with($skuNorm, $parentNorm)) {
-            return true;
-        }
-
-        // Avoid tiny prefixes that match unrelated SKUs (e.g. "CS").
-        if (strlen($childPrefix) >= 4 && str_starts_with($skuNorm, $childPrefix)) {
-            return true;
-        }
-
-        return false;
     }
 
     /**

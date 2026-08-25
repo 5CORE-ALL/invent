@@ -464,6 +464,146 @@ class AmazonAdsService
     }
 
     /**
+     * Add seller SKUs as product ads on an existing SP campaign.
+     * Inventory is not checked — Amazon accepts the SKU if it is a valid seller SKU.
+     *
+     * @param  list<string>  $sellerSkus
+     * @return array{
+     *   success: bool,
+     *   message: string,
+     *   campaign_id: string,
+     *   ad_group_id: string,
+     *   added: list<array{sku: string, ad_id: string}>,
+     *   failed: list<array{sku: string, message: string}>,
+     *   profile_id: string
+     * }
+     */
+    public function addSellerSkusToCampaign(string $campaignId, array $sellerSkus, ?string $adGroupId = null): array
+    {
+        $campaignId = preg_replace('/\D+/', '', trim($campaignId)) ?: '';
+        $sellerSkus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $sellerSkus
+        ))));
+
+        $empty = [
+            'success' => false,
+            'message' => '',
+            'campaign_id' => $campaignId,
+            'ad_group_id' => '',
+            'added' => [],
+            'failed' => [],
+            'profile_id' => $this->resolvedProfileId(),
+        ];
+
+        if ($campaignId === '') {
+            $empty['message'] = 'Campaign ID is required.';
+
+            return $empty;
+        }
+        if ($sellerSkus === []) {
+            $empty['message'] = 'At least one seller SKU is required.';
+
+            return $empty;
+        }
+
+        $adGroupId = preg_replace('/\D+/', '', trim((string) $adGroupId)) ?: '';
+        if ($adGroupId === '') {
+            $adGroupId = $this->resolvePrimaryAdGroupId($campaignId);
+        }
+        if ($adGroupId === '') {
+            $empty['message'] = 'Could not resolve an ad group for this campaign.';
+
+            return $empty;
+        }
+
+        $added = [];
+        $failed = [];
+        foreach (array_chunk($sellerSkus, 100) as $chunk) {
+            $payload = [];
+            foreach ($chunk as $sku) {
+                $payload[] = [
+                    'campaignId' => $campaignId,
+                    'adGroupId' => $adGroupId,
+                    'sku' => $sku,
+                    'state' => 'ENABLED',
+                ];
+            }
+
+            try {
+                $adsResp = $this->createProductAds($payload);
+            } catch (\Throwable $e) {
+                $msg = $this->formatAmazonException($e);
+                foreach ($chunk as $sku) {
+                    $failed[] = ['sku' => $sku, 'message' => $msg];
+                }
+
+                continue;
+            }
+
+            $successByIndex = [];
+            foreach (data_get($adsResp, 'productAds.success', []) ?: [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $idx = $row['index'] ?? null;
+                $adId = (string) ($row['adId'] ?? data_get($row, 'productAd.adId') ?? '');
+                $sku = (string) (data_get($row, 'productAd.sku') ?? '');
+                if (is_int($idx) || is_numeric($idx)) {
+                    $successByIndex[(int) $idx] = ['ad_id' => $adId, 'sku' => $sku];
+                } elseif ($sku !== '') {
+                    $added[] = ['sku' => $sku, 'ad_id' => $adId];
+                }
+            }
+
+            foreach ($chunk as $i => $sku) {
+                if (isset($successByIndex[$i])) {
+                    $hit = $successByIndex[$i];
+                    $added[] = [
+                        'sku' => $hit['sku'] !== '' ? $hit['sku'] : $sku,
+                        'ad_id' => $hit['ad_id'],
+                    ];
+                }
+            }
+
+            foreach (data_get($adsResp, 'productAds.error', []) ?: [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $idx = $row['index'] ?? null;
+                $sku = (is_int($idx) || is_numeric($idx))
+                    ? (string) ($chunk[(int) $idx] ?? '')
+                    : '';
+                $failed[] = [
+                    'sku' => $sku !== '' ? $sku : '(unknown)',
+                    'message' => $this->extractAmazonErrorMessage($row) ?: 'Amazon rejected this product ad.',
+                ];
+            }
+        }
+
+        $ok = $added !== [];
+        $msgParts = [];
+        if ($added !== []) {
+            $n = count($added);
+            $msgParts[] = $n === 1 ? '1 SKU added to the campaign' : $n.' SKUs added to the campaign';
+        }
+        if ($failed !== []) {
+            $n = count($failed);
+            $msgParts[] = $n === 1 ? '1 failed' : $n.' failed';
+        }
+
+        return [
+            'success' => $ok,
+            'message' => $msgParts !== [] ? implode('. ', $msgParts).'.' : 'No product ads were accepted.',
+            'campaign_id' => $campaignId,
+            'ad_group_id' => $adGroupId,
+            'added' => $added,
+            'failed' => $failed,
+            'profile_id' => $this->resolvedProfileId(),
+        ];
+    }
+
+    /**
      * Create campaign-level negative keywords (v3).
      * Match types: NEGATIVE_EXACT, NEGATIVE_PHRASE (Amazon SP campaign rules).
      *

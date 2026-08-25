@@ -1234,23 +1234,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         $mapped = self::normalizeAdStatus($raw);
-        $hasAd = isset($item['budget']) || isset($item['roas']) || isset($item['adShowStatus']) || isset($item['adPhase']);
-        if ($mapped === 'No ad' && $hasAd) {
-            return 'Inactive';
+        $hasCampaign = isset($item['budget']) || isset($item['roas']);
+        if ($mapped === 'No ad') {
+            return $hasCampaign ? 'Inactive' : 'No ad';
         }
-        // Only adShowStatus 1 is delivering. Unknown codes (e.g. 7 = Seller Center Paused)
-        // must not be forced to Active.
-        if ($mapped === 'Unknown' && $hasAd) {
-            return 'Inactive';
+        // Unknown codes: do not guess Active (7 is Paused) or Paused (8 is delivering).
+        if ($mapped === 'Unknown' && $hasCampaign) {
+            return self::adDetailImpressions($item) > 0 ? 'Active' : 'Inactive';
         }
 
         return $mapped;
     }
 
     /**
-     * adShowStatus from ad.detail.query:
-     * 0 none, 1 delivering, 2 paused, 3 deleted.
-     * 4+ (including 7) are not delivering — Seller Center shows these as Paused.
+     * adShowStatus from ad.detail.query (Seller Center + live adsDetail):
+     * 0 none, 1 delivering, 2 paused, 3 deleted,
+     * 4/5 not delivering, 7 paused, 8 delivering (Overall ROAS / in-flight).
      * String labels from Seller Center are also accepted.
      */
     public static function normalizeAdStatus(mixed $raw): string
@@ -1265,7 +1264,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $n = is_numeric($raw) ? (int) $raw : null;
         $s = strtolower(trim((string) $raw));
 
-        if ($n === 1 || in_array($s, ['1', 'active', 'enable', 'enabled', 'online', 'on', 'running', 'delivering', 'deliver', 'showing'], true)) {
+        if ($n === 1 || $n === 8 || in_array($s, ['1', '8', 'active', 'enable', 'enabled', 'online', 'on', 'running', 'delivering', 'deliver', 'showing'], true)) {
             return 'Active';
         }
         if ($n === 3 || in_array($s, ['3', 'deleted', 'delete', 'removed'], true)) {
@@ -1274,11 +1273,27 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         if ($n === 0 || in_array($s, ['0', 'none', 'no ad', 'no_ad', 'not_created'], true)) {
             return 'No ad';
         }
-        if ($n !== null || in_array($s, ['2', '4', '5', '6', '7', '8', '9', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped', 'suspend', 'forbidden', 'ended', 'not_delivering'], true)) {
+        if (in_array($n, [2, 4, 5, 7], true) || in_array($s, ['2', '4', '5', '7', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped', 'suspend', 'forbidden', 'ended', 'not_delivering'], true)) {
             return 'Inactive';
         }
 
         return 'Unknown';
+    }
+
+    /**
+     * Today's impressions on the ad.detail summary (0 if Temu sent none).
+     */
+    public static function adDetailImpressions(array $item): int
+    {
+        $summary = is_array($item['summary'] ?? null) ? $item['summary'] : [];
+        foreach (['ad', 'total'] as $bucket) {
+            $val = $summary['imprCnt'][$bucket]['val'] ?? null;
+            if (is_numeric($val) && (int) $val > 0) {
+                return (int) $val;
+            }
+        }
+
+        return 0;
     }
 
     /**

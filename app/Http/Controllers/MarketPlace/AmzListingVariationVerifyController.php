@@ -78,7 +78,7 @@ class AmzListingVariationVerifyController extends Controller
             ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
             ->orderBy('parent')
             ->orderBy('sku')
-            ->get(['parent', 'sku'])
+            ->get(['parent', 'sku', 'Values'])
             ->map(function ($pm) use ($listedSkuSet) {
                 $parent = trim((string) ($pm->parent ?? ''));
                 $sku = trim((string) ($pm->sku ?? ''));
@@ -88,6 +88,7 @@ class AmzListingVariationVerifyController extends Controller
                     'parent' => $parent,
                     'sku' => $sku,
                     'child_sku_available' => $available,
+                    'is_coming' => $pm->isComing(),
                 ];
             })
             ->values()
@@ -105,7 +106,7 @@ class AmzListingVariationVerifyController extends Controller
         foreach ($parentGroups as $parentKey => $children) {
             $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet, $pmParentByNorm);
 
-            $requiredCount = count($children);
+            $requiredCount = count(array_filter($children, fn ($c) => empty($c['is_coming'])));
             $availableCount = $diff['available_count'];
             $missingSkus = $diff['missing_skus'];
             $extraSkus = $diff['extra_skus'];
@@ -134,6 +135,7 @@ class AmzListingVariationVerifyController extends Controller
             $childPayload = [];
             foreach ($children as $child) {
                 $listed = $child['child_sku_available'];
+                $isComing = ! empty($child['is_coming']);
                 $childInv = 0;
                 if (isset($invByNorm) && is_array($invByNorm)) {
                     $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku'] ?? '');
@@ -141,22 +143,26 @@ class AmzListingVariationVerifyController extends Controller
                         $childInv = (int) round($invByNorm[$norm]);
                     }
                 }
+                $isMissing = ! $isComing && $listed === false;
                 $childPayload[] = [
                     'parent' => $parentKey,
                     'sku' => $child['sku'],
                     'is_parent' => false,
                     'INV' => $childInv,
-                    'child_sku_required' => 1,
-                    'child_sku_required_label' => '1',
+                    'is_coming' => $isComing,
+                    'child_sku_required' => $isComing ? 0 : 1,
+                    'child_sku_required_label' => $isComing ? '0' : '1',
                     'child_sku_available' => $listed,
-                    'child_sku_available_label' => $listed === null ? '—' : ($listed ? 'Listed' : 'Missing'),
-                    'child_sku_available_count' => $listed ? 1 : 0,
-                    'child_sku_total' => 1,
-                    'missing_skus' => ($listed === false) ? [$child['sku']] : [],
+                    'child_sku_available_label' => $isComing
+                        ? 'Coming'
+                        : ($listed === null ? '—' : ($listed ? 'Listed' : 'Missing')),
+                    'child_sku_available_count' => (! $isComing && $listed) ? 1 : 0,
+                    'child_sku_total' => $isComing ? 0 : 1,
+                    'missing_skus' => $isMissing ? [$child['sku']] : [],
                     'extra_skus' => [],
-                    'missing_count' => ($listed === false) ? 1 : 0,
+                    'missing_count' => $isMissing ? 1 : 0,
                     'extra_count' => 0,
-                    'match_status' => $listed,
+                    'match_status' => $isComing ? null : $listed,
                 ];
             }
             foreach ($extraSkus as $extraSku) {
@@ -227,7 +233,7 @@ class AmzListingVariationVerifyController extends Controller
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => $mismatchCount,
                 'mismatch_inv_gt0_count' => $mismatchInvGt0Count,
-                'required_child_count' => count($childRows),
+                'required_child_count' => count(array_filter($childRows, fn ($c) => empty($c['is_coming']))),
                 'required_refreshed_at' => now()->toDateTimeString(),
             ],
         ]);
@@ -269,7 +275,7 @@ class AmzListingVariationVerifyController extends Controller
     }
 
     /**
-     * @param  array<int, array{parent: string, sku: string, child_sku_available: ?bool}>  $children
+     * @param  array<int, array{parent: string, sku: string, child_sku_available: ?bool, is_coming?: bool}>  $children
      * @param  array{set: array<string, true>, empty: bool, sku_to_listed: array<string, string>}  $lookup
      * @param  array<string, string>  $pmParentByNorm
      * @return array{
@@ -285,7 +291,10 @@ class AmzListingVariationVerifyController extends Controller
         foreach ($children as $child) {
             $norm = AmazonDatasheet::normalizeSkuForLookup($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
-                $requiredNormToSku[$norm] = $child['sku'];
+                $requiredNormToSku[$norm] = [
+                    'sku' => $child['sku'],
+                    'is_coming' => ! empty($child['is_coming']),
+                ];
             }
         }
 
@@ -300,10 +309,14 @@ class AmzListingVariationVerifyController extends Controller
 
         $availableCount = 0;
         $missingSkus = [];
-        foreach ($requiredNormToSku as $norm => $sku) {
+        foreach ($requiredNormToSku as $norm => $info) {
+            $sku = $info['sku'];
+            $isComing = ! empty($info['is_coming']);
             if (isset($lookup['set'][$norm])) {
-                $availableCount++;
-            } else {
+                if (! $isComing) {
+                    $availableCount++;
+                }
+            } elseif (! $isComing) {
                 $missingSkus[] = $sku;
             }
         }

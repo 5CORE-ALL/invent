@@ -308,6 +308,40 @@ class TemuAdsApiReportService
     }
 
     /**
+     * Re-map ad_status from stored raw adDetail (no Temu call).
+     *
+     * @return array{total: int, ok: int, changed: int}
+     */
+    public function reapplyStatusesFromStoredAdDetail(?string $specificGoodsId = null): array
+    {
+        $query = TemuAdsApiReport::query()->whereNotNull('raw_response');
+        if ($specificGoodsId) {
+            $query->where('goods_id', (string) $specificGoodsId);
+        }
+
+        $total = 0;
+        $ok = 0;
+        $changed = 0;
+        foreach ($query->cursor() as $row) {
+            $total++;
+            $raw = json_decode((string) $row->raw_response, true);
+            $detail = is_array($raw['adDetail'] ?? null) ? $raw['adDetail'] : null;
+            if (! is_array($detail)) {
+                continue;
+            }
+            $status = TemuApiService::statusFromAdDetail($detail);
+            $ok++;
+            if ((string) $row->ad_status !== $status) {
+                $row->ad_status = $status;
+                $row->save();
+                $changed++;
+            }
+        }
+
+        return ['total' => $total, 'ok' => $ok, 'changed' => $changed];
+    }
+
+    /**
      * Seller Center "Overall" totals live in reportInfo.summary.*.total.
      * reportInfo.reportsSummary.*All is ad-only (often much smaller than L7 Overall).
      * Money is cents; CTR/ACOS are percent*100; raw ROAS can overflow decimal(12,4).

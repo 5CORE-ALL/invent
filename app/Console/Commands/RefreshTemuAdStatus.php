@@ -9,13 +9,22 @@ use Illuminate\Support\Facades\Log;
 class RefreshTemuAdStatus extends Command
 {
     protected $signature = 'temu:refresh-ad-status
-                            {--goods-id= : Refresh a single goods ID}';
+                            {--goods-id= : Refresh a single goods ID}
+                            {--from-stored : Re-map Status from stored adDetail JSON (no Temu call)}';
 
     protected $description = 'Sync /temu/ads Status from temu.searchrec.ad.detail.query (adsDetail.adShowStatus)';
 
     public function handle(TemuAdsApiReportService $service): int
     {
         $goodsId = $this->option('goods-id') ?: null;
+        if ($this->option('from-stored')) {
+            $this->info('Re-mapping Temu ad status from stored raw'.($goodsId ? " for goods {$goodsId}" : '').'...');
+            $stats = $service->reapplyStatusesFromStoredAdDetail($goodsId ? (string) $goodsId : null);
+            $this->info("Checked {$stats['ok']}/{$stats['total']} rows, changed {$stats['changed']}");
+
+            return 0;
+        }
+
         $this->info('Refreshing Temu ad status'.($goodsId ? " for goods {$goodsId}" : ' for all goods').'...');
 
         $stats = $service->refreshAdStatuses($goodsId ? (string) $goodsId : null);
