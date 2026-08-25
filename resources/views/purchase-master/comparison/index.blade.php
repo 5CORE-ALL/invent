@@ -3037,7 +3037,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const linked = linkedSkusForRow(row);
         if (!siblingsSyncEnabled) {
-            return linked;
+            const currentSku = String(row?.sku || currentCdRow?.sku || '').trim();
+            return currentSku ? [currentSku] : [];
         }
         const merged = [];
         const seen = new Set();
@@ -4565,20 +4566,16 @@ document.addEventListener('DOMContentLoaded', function () {
         return false;
     }
 
-    function applyDimWtDataToSheet(cells, dimWt) {
+    function applyDimWtDataToSheet(cells, dimWt, options) {
         cells = cells || [];
+        const opts = Object.assign({ migrate: true }, options || {});
         // Only run expensive section migration when headers / split rows are missing.
-        if (sheetNeedsDimWtMigration(cells)) {
+        if (opts.migrate && sheetNeedsDimWtMigration(cells)) {
             cells = ensureDimWtPkgSections(cells);
         }
         const data = dimWt && typeof dimWt === 'object' ? dimWt : {};
         const specCol = detectSpecColumnIndex(cells);
         const fiveCoreCol = Math.max(0, specCol - 1);
-        const criticalCol = detectCriticalColumnIndex(cells, specCol);
-        const qcCol = detectQcColumnIndex(cells, specCol);
-        const protectedCols = new Set(
-            [specCol, fiveCoreCol, criticalCol, qcCol].filter(col => col !== null && col !== undefined)
-        );
 
         const writeValue = (label, value) => {
             const rowIndex = findExactSpecRowIndex(cells, label, specCol);
@@ -4591,22 +4588,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 row.push('');
             }
 
-            // Dim/Wt defaults fill 5 Core only. Other columns stay blank unless user-edited.
-            row[fiveCoreCol] = text;
-
-            // Clear mirrored auto-fill leftovers (Amazon/suppliers) that still match the default.
-            for (let c = 0; c < row.length; c++) {
-                if (protectedCols.has(c)) {
-                    continue;
-                }
-                const cellVal = String(row[c] ?? '').trim();
-                if (cellVal === '') {
-                    continue;
-                }
-                if (text !== '' && cellVal === text) {
-                    row[c] = '';
-                }
+            // Fill 5 Core only when that cell is still blank. Never overwrite
+            // something the user just typed on an empty sheet.
+            if (String(row[fiveCoreCol] ?? '').trim() !== '') {
+                return;
             }
+            if (text === '') {
+                return;
+            }
+            row[fiveCoreCol] = text;
         };
 
         writeValue(INNER_PKG_SECTION.header, '');
@@ -6966,6 +6956,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (photoId) {
             params.set('photo', photoId);
         } else {
+            // Display row/col: the image endpoint reads THIS cell in the sorted
+            // grid, then follows [embedded-image:r:c] only for the file on disk.
             params.set('row', String(rowIndex));
             params.set('col', String(colIndex));
         }
@@ -7007,9 +6999,7 @@ document.addEventListener('DOMContentLoaded', function () {
             || /cdn\.shopify\.com/i.test(url)
             || /docs\.google\.com\/feeds/i.test(url)
             || /drive\.google\.com\/thumbnail/i.test(url)
-            || /alicdn\.com/i.test(url)
-            || /1688\.com/i.test(url)
-            || /alibaba\.com/i.test(url);
+            || /alicdn\.com/i.test(url);
     }
 
     function isSheetLinkUrl(value) {
@@ -7041,7 +7031,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (isSheetSpecColumn(colIndex) || isSheetCriticalColumn(colIndex) || isSheetQcColumn(colIndex)) {
             return false;
         }
-        if (isCompanyNameRow(rowIndex, currentSheetCells) || isCommRow(rowIndex, currentSheetCells)) {
+        if (
+            isSheetLinkRow(rowIndex, currentSheetCells)
+            || isCompanyNameRow(rowIndex, currentSheetCells)
+            || isCommRow(rowIndex, currentSheetCells)
+        ) {
             return false;
         }
         return true;
@@ -7290,6 +7284,26 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const rawText = String(value ?? '');
         const text = rawText.trim();
+        // Supplier Link row: any http(s) value is a clickable link dot.
+        // Alibaba / 1688 store URLs used to match isSheetImageUrl and render as
+        // broken "Product photo" images even though the link was stored.
+        if (!forceText && isSheetLinkRow(rowIndex)
+            && !isSheetSpecColumn(colIndex)
+            && !isSheetCriticalColumn(colIndex)
+            && !isSheetQcColumn(colIndex)) {
+            if (/^https?:\/\//i.test(text)) {
+                return `<div class="cd-sheet-cell cd-sheet-cell-link" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(text)}" title="${escapeHtmlAttr(text)}">
+                    <a href="${escapeHtmlAttr(text)}" target="_blank" rel="noopener noreferrer"
+                        class="cd-sheet-link-btn"
+                        title="Open link" aria-label="Open link">
+                        <span class="comparison-clink-dot comparison-clink-dot-present" aria-hidden="true"></span>
+                    </a>
+                </div>`;
+            }
+            return `<div class="cd-sheet-cell cd-sheet-cell-link cd-sheet-cell-link-missing" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(text)}" title="${escapeHtmlAttr(text || 'No link — double-click to add')}" aria-label="No link">
+                <span class="comparison-clink-dot comparison-clink-dot-missing" aria-hidden="true"></span>
+            </div>`;
+        }
         if (!forceText && isSheetImageUrl(text)) {
             const isStoredPhoto = text.startsWith('[cmp-photo:')
                 || text.startsWith('data:image/')
@@ -7302,7 +7316,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (isStoredPhoto) {
                 // Prefer the local paste preview so the photo stays visible while the
                 // server URL is still being written (or if that request 404s).
+                const coords = parseEmbeddedImageCoords(attrValue, rowIndex, colIndex);
                 const src = getSheetPastePreview(rowIndex, colIndex)
+                    || getSheetPastePreview(coords.row, coords.col)
                     || sheetEmbeddedImageSrc(rowIndex, colIndex, attrValue);
                 if (src) {
                     return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Hover to enlarge">
@@ -7322,14 +7338,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     title="Open link" aria-label="Open link">
                     <span class="comparison-clink-dot comparison-clink-dot-present" aria-hidden="true"></span>
                 </a>
-            </div>`;
-        }
-        if (!forceText && !text && isSheetLinkRow(rowIndex)
-            && !isSheetSpecColumn(colIndex)
-            && !isSheetCriticalColumn(colIndex)
-            && !isSheetQcColumn(colIndex)) {
-            return `<div class="cd-sheet-cell cd-sheet-cell-link cd-sheet-cell-link-missing" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="" title="No link — double-click to add" aria-label="No link">
-                <span class="comparison-clink-dot comparison-clink-dot-missing" aria-hidden="true"></span>
             </div>`;
         }
         if (!forceText && isCompanyNameDataCell(rowIndex, colIndex, forceText) && text) {
@@ -7529,9 +7537,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 const cell = document.querySelector(
                     `.cd-sheet-cell-image[data-row="${rowIndex}"][data-col="${colIndex}"]`
                 );
-                if (cell) {
-                    cell.dataset.value = text;
+                if (!cell) {
+                    return;
                 }
+                const current = String(cell.dataset.value || '');
+                if (current && current !== text && current.startsWith('[cmp-photo:')) {
+                    return;
+                }
+                cell.dataset.value = text;
             });
         });
     }
@@ -7872,6 +7885,77 @@ document.addEventListener('DOMContentLoaded', function () {
         return rows;
     }
 
+    function isSheetCellBeingEdited() {
+        const active = document.activeElement;
+        if (!active || !active.closest) {
+            return false;
+        }
+        const cell = active.closest('.cd-sheet-cell[contenteditable="true"]');
+        if (!cell) {
+            return false;
+        }
+        return !!document.getElementById('comparison-cd-sheet-wrap')?.contains(cell);
+    }
+
+    function writeLiveSheetCellToMemory(cell) {
+        if (!cell || sheetEditorHydrating) {
+            return;
+        }
+        const rowIndex = parseInt(cell.dataset.row, 10);
+        const colIndex = parseInt(cell.dataset.col, 10);
+        if (Number.isNaN(rowIndex) || Number.isNaN(colIndex) || rowIndex < 0 || colIndex < 0) {
+            return;
+        }
+        if (!Array.isArray(currentSheetCells[rowIndex])) {
+            const colCount = Math.max(
+                ...((currentSheetCells || []).map(row => (Array.isArray(row) ? row.length : 0))),
+                colIndex + 1,
+                1
+            );
+            currentSheetCells[rowIndex] = Array.from({ length: colCount }, () => '');
+        }
+        if (
+            cell.classList.contains('cd-sheet-cell-image')
+            || cell.classList.contains('cd-sheet-cell-link')
+            || cell.classList.contains('cd-sheet-cell-company')
+            || cell.classList.contains('cd-sheet-cell-priority')
+            || cell.getAttribute('contenteditable') !== 'true'
+        ) {
+            return;
+        }
+        const liveText = (cell.textContent || '').trimEnd();
+        while (currentSheetCells[rowIndex].length <= colIndex) {
+            currentSheetCells[rowIndex].push('');
+        }
+        currentSheetCells[rowIndex][colIndex] = liveText;
+        cell.dataset.value = liveText;
+    }
+
+    function mergeReturnedPhotoTokens(localCells, returnedCells) {
+        (returnedCells || []).forEach((row, rowIndex) => {
+            if (!Array.isArray(row) || !Array.isArray(localCells[rowIndex])) {
+                return;
+            }
+            row.forEach((value, colIndex) => {
+                const text = String(value ?? '');
+                if (!text.startsWith('[cmp-photo:') && !text.startsWith('[embedded-image:')) {
+                    return;
+                }
+                const localText = String(localCells[rowIndex][colIndex] ?? '');
+                const localEmpty = localText.trim() === '';
+                const localPlaceholder = localText.startsWith('[embedded-image:');
+                // Never overwrite a different supplier's [cmp-photo:…] at this index.
+                if (!localEmpty && !localPlaceholder && localText !== text) {
+                    return;
+                }
+                while (localCells[rowIndex].length <= colIndex) {
+                    localCells[rowIndex].push('');
+                }
+                localCells[rowIndex][colIndex] = text;
+            });
+        });
+    }
+
     function setSheetStatus(message, isError) {
         const el = document.getElementById('comparison-cd-sheet-status');
         if (!el) {
@@ -7946,17 +8030,16 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             currentSheetFormats = normalizeSheetFormats(data.formats || currentSheetFormats);
             const returnedCells = sanitizeSheetCellsForUi(data.cells || cells);
-            // Keep editor state in sync without rebuilding DOM (quiet save).
-            currentSheetCells = returnedCells;
             applyAutoSheetFormatsFromPayload(data, returnedCells);
-            if (!opts.rerender) {
-                syncSheetPhotoTokensInDom(returnedCells);
-            }
-
-            // Quiet save by default: no full sheet rebuild / Tabulator reload (those hang the page).
-            // Never rebuild after a paste — that swaps the working preview for a 404 thumbnail.
+            // Quiet save must not replace the live grid with the server copy.
+            // The server may add lead columns / rewrite photo tokens; adopting that
+            // array while the DOM stays put mixed extra/manual cells on the next read.
             if (opts.rerender) {
+                currentSheetCells = returnedCells;
                 renderSheetEditor(returnedCells, { migrateDimWt: false, sortByPrice: false });
+            } else {
+                mergeReturnedPhotoTokens(currentSheetCells, returnedCells);
+                syncSheetPhotoTokensInDom(currentSheetCells);
             }
             if (opts.refreshTable) {
                 clearTimeout(tableRefreshTimer);
@@ -8029,20 +8112,22 @@ document.addEventListener('DOMContentLoaded', function () {
             clearTimeout(sheetDimWtApplyTimer);
             sheetDimWtApplyTimer = null;
         }
-        sheetDimWtApplyTimer = window.setTimeout(function () {
+        sheetDimWtApplyTimer = window.setTimeout(function applyDeferredDimWt() {
             sheetDimWtApplyTimer = null;
             if (!currentCdRow || String(currentCdRow.sku || '') !== applySku) {
                 return;
             }
-            sheetEditorHydrating = true;
-            try {
-                let next = applyDimWtDataToSheet(currentSheetCells, currentDimWtData);
-                next = sanitizeSheetCellsForUi(next);
-                currentSheetFormats = applyDimWtSectionFormats(next, currentSheetFormats);
-                renderSheetEditor(next, { migrateDimWt: false, sortByPrice: false });
-            } finally {
-                sheetEditorHydrating = false;
+            if (isSheetCellBeingEdited()) {
+                // User is typing on a blank/empty sheet — do not rebuild or retry.
+                return;
             }
+            if (!sheetEditorHydrating) {
+                readCellsFromEditor({ expandImages: false });
+            }
+            // Memory-only: fill empty 5 Core dim/wt cells. Never splice rows or
+            // renderSheetEditor here — that is what made freshly typed cells vanish.
+            currentSheetCells = applyDimWtDataToSheet(currentSheetCells, currentDimWtData, { migrate: false });
+            currentSheetFormats = applyDimWtSectionFormats(currentSheetCells, currentSheetFormats);
         }, 250);
     }
 
@@ -8057,6 +8142,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         setSheetStatus(opts.message || 'Loading comparison sheet from C link...', false);
 
+        if (!sheetEditorHydrating && currentCdRow) {
+            readCellsFromEditor({ expandImages: false });
+        }
+
         return fetch(sheetSyncClinkUrl, {
             method: 'POST',
             headers: {
@@ -8069,6 +8158,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 sku: row.sku,
                 parent: row.parent || '',
                 google_sheet_tab: document.getElementById('comparison-cd-google-tab').value.trim() || 'Sheet1',
+                // Live editor grid so unsaved extra rows/cols survive the pull.
+                cells: currentSheetCells || [],
             }),
         })
         .then(response => response.json())
@@ -8339,20 +8430,29 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!cells[supplierRowIndex]) {
             cells[supplierRowIndex] = [];
         }
-        cells[supplierRowIndex][col] = supplier.name || '';
+        const currentName = String(cells[supplierRowIndex][col] || '').trim();
+        if (!currentName) {
+            cells[supplierRowIndex][col] = supplier.name || '';
+        }
 
         if (supplierLinkRowIndex !== null) {
             if (!cells[supplierLinkRowIndex]) {
                 cells[supplierLinkRowIndex] = [];
             }
-            cells[supplierLinkRowIndex][col] = supplier.link || '';
+            const currentLink = String(cells[supplierLinkRowIndex][col] || '').trim();
+            if (!currentLink) {
+                cells[supplierLinkRowIndex][col] = supplier.link || '';
+            }
         }
 
         if (companyRowIndex !== null) {
             if (!cells[companyRowIndex]) {
                 cells[companyRowIndex] = [];
             }
-            cells[companyRowIndex][col] = supplier.company || '';
+            const currentCompany = String(cells[companyRowIndex][col] || '').trim();
+            if (!currentCompany) {
+                cells[companyRowIndex][col] = supplier.company || '';
+            }
         }
     }
 
@@ -12703,9 +12803,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('input', function (e) {
+        const cell = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
+        if (!cell) return;
+        // Keep memory in sync while typing so a later rebuild cannot drop extra cells.
+        writeLiveSheetCellToMemory(cell);
+    });
+
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('blur', function (e) {
         const cell = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
         if (!cell) return;
+
+        writeLiveSheetCellToMemory(cell);
 
         // Finishing a cell edit: quiet local save only (no full rebuild / Google push).
         if (maybeConvertSheetCellToLink(cell)) {

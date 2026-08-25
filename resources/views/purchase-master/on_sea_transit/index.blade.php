@@ -622,7 +622,7 @@
               <div class="d-flex flex-nowrap align-items-end gap-3">
                 <div class="flex-shrink-0">
                   <div class="fw-semibold" style="font-size:0.85rem;line-height:1.2;">Supplier payments</div>
-                  <small class="text-muted" style="font-size:0.7rem;">Due = Value + Freight − Paid</small>
+                  <small class="text-muted" style="font-size:0.7rem;">Due follows Grand Total when payments are entered</small>
                 </div>
                 <div class="flex-shrink-0">
                   <button type="button" class="btn btn-sm btn-outline-primary" id="ostOpenSupplierPaymentsBtn">
@@ -1553,6 +1553,15 @@ document.addEventListener('DOMContentLoaded', function () {
         return [...(p.supplier || []), ...(p.agent || [])];
     }
 
+    function ostHasPaymentLines(payload) {
+        return ostAllPaymentLines(payload).some(line => {
+            const name = String(line.name || line.agent || '').trim();
+            const amount = parseFloat(line.amount) || 0;
+            const paid = parseFloat(line.paid) || 0;
+            return name !== '' || amount !== 0 || paid !== 0;
+        });
+    }
+
     function ostPaymentsTotals(payload, freightOverride) {
         let amount = 0, paid = 0;
         ostAllPaymentLines(payload).forEach(line => {
@@ -1568,17 +1577,28 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    function ostSyncMoneyFieldsFromPayments() {
-        // Value stays Transit Container Inv; only Freight/Paid come from payments modal
+    function ostComputeDue(transitInv, paymentTotals, payload) {
+        if (ostHasPaymentLines(payload)) {
+            return Math.round(paymentTotals.balance);
+        }
+        return Math.round(transitInv + paymentTotals.freight - paymentTotals.paid);
+    }
+
+    function ostSetDueDisplay(due) {
+        const el = document.getElementById('ostEditRowBalanceDisplay');
+        if (el) el.value = due;
+    }
+
+    function ostSyncMoneyFieldsFromPayments(payloadOverride) {
+        // Value stays Transit Container Inv; Freight/Paid/Due come from payments
         const transitInv = parseFloat(document.getElementById('ostEditInvoiceValueHidden')?.value) || 0;
-        const paymentTotals = ostPaymentsTotals(ostParsePaymentsFromHidden(), ostGetFreightRowValue());
+        const payload = payloadOverride || ostParsePaymentsFromHidden();
+        const paymentTotals = ostPaymentsTotals(payload, ostGetFreightRowValue());
         const frEl = ostEditForm.querySelector('[name="freight"]');
         const pdEl = ostEditForm.querySelector('[name="paid"]');
         if (frEl) frEl.value = paymentTotals.freight.toFixed(2);
         if (pdEl) pdEl.value = paymentTotals.paid.toFixed(2);
-        // Due = Transit Inv Value + Freight − Paid
-        const due = transitInv + paymentTotals.freight - paymentTotals.paid;
-        document.getElementById('ostEditRowBalanceDisplay').value = Math.round(due);
+        ostSetDueDisplay(ostComputeDue(transitInv, paymentTotals, payload));
     }
 
     /* Agent dropdown — defaults + user-added options (localStorage) */
@@ -1716,10 +1736,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function ostUpdatePaymentsFooter() {
-        const totals = ostPaymentsTotals(ostReadPaymentsFromTables(), ostGetFreightRowValue());
+        const payload = ostReadPaymentsFromTables();
+        const totals = ostPaymentsTotals(payload, ostGetFreightRowValue());
         document.getElementById('ostSpTotalAmount').textContent = totals.amount.toFixed(2);
         document.getElementById('ostSpTotalPaid').textContent = totals.paid.toFixed(2);
         document.getElementById('ostSpTotalBalance').textContent = totals.balance.toFixed(2);
+        const transitInv = parseFloat(document.getElementById('ostEditInvoiceValueHidden')?.value) || 0;
+        ostSetDueDisplay(ostComputeDue(transitInv, totals, payload));
     }
 
     function ostAddSupplierCategoryRow(line) {
@@ -1796,14 +1819,25 @@ document.addEventListener('DOMContentLoaded', function () {
         ostUpdatePaymentsFooter();
     }
 
+    let ostPaymentsAppliedThisOpen = false;
+
     document.getElementById('ostOpenSupplierPaymentsBtn').addEventListener('click', function () {
         const sl = document.getElementById('ostEditRowContainerSlNo').value || '—';
         document.getElementById('ostSupplierPaymentsSlLabel').textContent = sl;
         const freightEl = ostEditForm.querySelector('[name="freight"]');
         document.getElementById('ostSpFreightRowInput').value = parseFloat(freightEl?.value) || 0;
+        ostPaymentsAppliedThisOpen = false;
         ostRenderPaymentsTables(ostParsePaymentsFromHidden());
         if (ostSupplierModal) ostSupplierModal.show();
     });
+
+    if (ostSupplierModalEl) {
+        ostSupplierModalEl.addEventListener('hidden.bs.modal', function () {
+            if (!ostPaymentsAppliedThisOpen) {
+                ostSyncMoneyFieldsFromPayments();
+            }
+        });
+    }
 
     document.getElementById('ostAddSupplierPaymentRowBtn').addEventListener('click', function () {
         ostAddSupplierCategoryRow();
@@ -1857,7 +1891,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (firstAgent) {
             ostRebuildAgentSelect(firstAgent);
         }
-        ostSyncMoneyFieldsFromPayments();
+        ostPaymentsAppliedThisOpen = true;
+        ostSyncMoneyFieldsFromPayments(payments);
 
         const sl = document.getElementById('ostEditRowContainerSlNo').value;
         if (!sl) {

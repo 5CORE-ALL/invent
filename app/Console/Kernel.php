@@ -226,6 +226,812 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
+        | RUN ORDER: 1) SALES  2) PRICE  3) EVERYTHING ELSE
+        | Same-minute ticks start in this order. Cron times are unchanged.
+        |--------------------------------------------------------------------------
+        */
+        $this->scheduleSalesCommands($schedule, $log, $ist, $retryFiveTimesUntil);
+        $this->schedulePriceCommands($schedule, $log, $ist, $retryFiveTimesUntil);
+        $this->scheduleOtherCommands($schedule, $log, $ist, $retryFiveTimesUntil);
+    }
+
+    /**
+     * Marketplace sales / orders / daily metrics. Registered first so they
+     * start before price and ads jobs when several events are due together.
+     */
+    protected function scheduleSalesCommands(Schedule $schedule, string $log, \Closure $ist, \Closure $retryFiveTimesUntil): void
+    {
+
+        $ist($schedule->command('app:fetch-amazon-orders --auto-sync --with-items')
+            ->cron('0 9,13,18 * * *')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-fetch-orders')
+            ->withoutOverlapping(240)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // FBA reports — shifted from 13:30 IST to 18:15 IST so it pulls data
+        // AFTER the Amazon SP/SB/SD report retries finalise at 18:10 IST. Previously
+        // it ran while PT day was still mid-afternoon → partial spend / clicks.
+        $ist($schedule->command('app:fetch-fba-reports')
+            ->dailyAt('18:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-fba-reports')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-fba-monthly-sales')
+            ->dailyAt('14:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-fba-monthly-sales')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('fba:collect-metrics')
+            ->dailyAt('18:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('fba:save-daily-metrics')
+            ->dailyAt('18:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fba-save-daily-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('amazon:store-listing-daily-metrics')
+            ->dailyAt('18:22')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-listing-daily-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('amazon:collect-metrics')
+            ->dailyAt('18:25')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-collect-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | EBAY JOBS
+        |--------------------------------------------------------------------------
+        */
+        // Not wrapped in $ist() — a delayed scheduler tick after 20:00 IST must still
+        // be allowed to refresh ebay_orders. Short mutex so a hung run cannot block
+        // the next slot for 24h (that is why 09:35 IST was missed Aug 14–17).
+        foreach (['09:35', '13:35', '18:35'] as $slot) {
+            $schedule->command('app:fetch-ebay-orders')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('fetch-ebay-orders-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
+        foreach (['09:40', '13:40', '18:40'] as $slot) {
+            $schedule->command('app:fetch-ebay2-orders')
+                ->dailyAt($slot)
+                ->timezone('Asia/Kolkata')
+                ->name('fetch-ebay2-orders-'.str_replace(':', '', $slot))
+                ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
+       
+        $ist($schedule->command('ebay3:daily --days=60')
+            ->dailyAt('19:40')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-ebay-reports')
+            ->dailyAt('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-reports')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        
+        $ist($schedule->command('app:fetch-ebay-table-data')
+            ->dailyAt('19:25')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-table-data')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-ebay-two-metrics')
+            ->dailyAt('19:30')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-two-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-ebay-three-metrics')
+            ->dailyAt('19:35')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-ebay-three-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('ebay:collect-metrics')
+            ->dailyAt('19:15')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // eBay 2 per-SKU Price / CVR snapshots for /ebay2-tabulator-view Price trend dots + charts
+        $ist($schedule->command('ebay2:collect-metrics')
+            ->dailyAt('19:18')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // TikTok 1 / 2 per-SKU Price snapshots for /tiktok-pricing Price charts
+        $ist($schedule->command('tiktok:collect-metrics')
+            ->dailyAt('19:20')
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('shopify:sync-orders --days=2')
+            ->hourly()
+            ->name('shopify-sync-orders-recent')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('shopify:sync-orders --days=60')
+            ->dailyAt('09:08')
+            ->timezone('Asia/Kolkata')
+            ->name('shopify-sync-orders-backfill')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-shopify-b2b-metrics --days=60')
+            ->twiceDaily(10, 18)
+            ->name('shopify-b2b-metrics')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-shopify-b2c-metrics --days=60')
+            ->twiceDaily(10, 18)
+            ->name('shopify-b2c-metrics')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | WAYFAIR
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('wayfair:daily --days=60')
+            ->dailyAt('14:05')
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('sync:wayfair-l30-api')
+            ->dailyAt('13:02')
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-api-sync-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('reverb:daily --days=60')
+            ->dailyAt('09:55')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('reverb:collect-metrics')
+            ->dailyAt('10:05')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-manager-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        // Fetch + import NEW open Temu 2 orders only (service skips shipped/delivered backlog; last 3 days).
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '', true, 7))
+            ->everyTenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-orders')
+            ->withoutOverlapping(9)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 2))
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-orders')
+            ->withoutOverlapping(28)
+            ->appendOutputTo($log);
+
+        // $schedule->command('shopify:retry-pending-orders')
+            //     ->hourly()
+            //     ->timezone('UTC')
+            //     ->name('shopify-retry-pending-orders')
+            //     ->withoutOverlapping(30)
+            //     ->runInBackground()
+            //     ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MACY
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('app:fetch-macy-products')
+            ->everyFiveMinutes()
+            ->name('fetch-macy-products')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | PURCHASING POWER (MCM OF21 prices/stock + OR11 orders)
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('purchasing-power:sync --days=60')
+            ->everyFifteenMinutes()
+            ->name('purchasing-power-sync')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+     
+        $ist($schedule->command('app:fetch-wayfair-data')
+            ->everyFiveMinutes()
+            ->name('fetch-wayfair-data')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+ 
+        $ist($schedule->command('mirakl:daily --days=60')
+            ->dailyAt('14:15')
+            ->timezone('Asia/Kolkata')
+            ->name('mirakl-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+       
+        $ist($schedule->command('app:fetch-temu-orders')
+            ->dailyAt('14:15')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-temu2-orders --days=60')
+            ->dailyAt('14:20')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu2-orders')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-pls-sales-data --days=90')
+            ->twiceDaily(9, 18)
+            ->name('fetch-pls-sales-data')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+
+        $ist($schedule->command('app:fetch-temu-metrics')
+            ->dailyAt('14:25')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-temu2-metrics')
+            ->dailyAt('14:35')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu2-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('temu:collect-metrics')
+            ->dailyAt('14:35')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-collect-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | DOBA
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('doba:daily --days=60')
+            ->dailyAt('14:45')
+            ->timezone('Asia/Kolkata')
+            ->name('doba-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:fetch-doba-metrics')
+            ->dailyAt('14:55')
+            ->timezone('Asia/Kolkata')
+            ->name('doba-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // L30 orders → shein_daily_data (/shein-tabulator)
+        $ist($schedule->command('shein:fetch orders --days=30 --target=l30')
+            ->dailyAt('15:10')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-fetch-orders-l30')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // L60 orders → shein_daily_data_l60
+        $ist($schedule->command('shein:fetch orders --days=60 --target=l60')
+            ->dailyAt('15:20')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-fetch-orders-l60')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+        $ist($schedule->command('app:fetch-pls-data')
+            ->twiceDaily(9, 18)
+            ->name('fetch-pls-data')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+     
+        $ist($schedule->command('newegg:orders --days=60 --save')
+            ->twiceDaily(9, 18)
+            ->name('fetch-newegg-orders')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('sync:walmart-metrics-data')
+            ->everyMinute()
+            ->name('sync-walmart-metrics')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('walmart:fetch-orders --days=60')
+            ->dailyAt('01:20')
+            ->name('walmart-fetch-orders')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('tiktok:fetch-orders --days=60 --prune')
+            ->dailyAt('02:10')
+            ->name('tiktok-fetch-orders')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('tiktok:fetch-orders --channel=tiktok2 --days=60 --prune')
+            ->dailyAt('02:25')
+            ->name('tiktok2-fetch-orders')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('app:update-marketplace-daily-metrics')
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('update-marketplace-daily-metrics')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+     
+        $ist($schedule->command('channel:calculate-data --force')
+            ->everyTenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('channel-master-calculate-data')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
+        $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
+
+        // SOF summary history — always one row per Pacific day (even if metrics unchanged).
+        // Primary write at 00:00 PST (stores the day that just ended).
+        $schedule->command('sof:snapshot-daily')
+            ->dailyAt('00:00')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-snapshot-daily-pst')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Catch-up: if 00:00 was missed, create any missing recent Pacific-day rows (never skip unchanged).
+        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
+            ->dailyAt('00:30')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-snapshot-daily-catchup-0030')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
+            ->dailyAt('06:00')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-snapshot-daily-catchup-0600')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+    }
+
+    /**
+     * Live / competitor / listed / S-PRC price jobs. Run after sales pulls.
+     */
+    protected function schedulePriceCommands(Schedule $schedule, string $log, \Closure $ist, \Closure $retryFiveTimesUntil): void
+    {
+
+        $ist($schedule->command('app:fetch-fba-inventory --insert --prices')
+            ->dailyAt('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-fba-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // Amazon Dil vs PRMT → Listings our_price (4:00 AM America/New_York = EST/EDT).
+        // Uses shared pef_dil_vs_prmt rules; pushes only SKUs whose target price changed.
+        $schedule->command('amazon:dil-prmt-auto-push')
+            ->dailyAt('04:00')
+            ->timezone('America/New_York')
+            ->name('amazon-dil-prmt-auto-push-4am-et')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
+        // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
+        $schedule->command('amazon:cvr-cpn-auto-push')
+            ->dailyAt('04:05')
+            ->timezone('America/New_York')
+            ->name('amazon-cvr-cpn-auto-push-4am-et')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        /*
+        |--------------------------------------------------------------------------
+        | EBAY COMPETITOR PRICE UPDATES (Weekly)
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('ebay:update-prices')
+            ->weekly()
+            ->sundays()
+            ->at('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('ebay:update-sku-prices')
+            ->weekly()
+            ->sundays()
+            ->at('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-sku-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | AMAZON COMPETITOR PRICE UPDATES (Weekly)
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('amazon:update-prices')
+            ->weekly()
+            ->mondays()
+            ->at('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('amazon:update-sku-prices')
+            ->weekly()
+            ->mondays()
+            ->at('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sku-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('google:update-sku-prices --skip-search-refresh')
+            ->weekly()
+            ->mondays()
+            ->at('15:30')
+            ->timezone('Asia/Kolkata')
+            ->name('google-sku-competitor-prices-weekly')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('store:sync-prices')
+            ->twiceDaily(10, 18)
+            ->name('store-sync-price-sold-views')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // Listed product price + AE stock → aliexpress_pricing_prices (/aliexpress-pricing).
+        $schedule->command('app:fetch-aliexpress-metrics --listed')
+            ->dailyAt('04:45')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-fetch-listed-prices')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        // Recommended supply prices → temu_metrics.recommended_base_price (10=low traffic, 20=restricted)
+        $retryFiveTimesUntil('temu:fetch-recommended-prices --both', 'temu-recommended-prices', '16:05');
+
+        /*
+        |--------------------------------------------------------------------------
+        | SHEIN (Open API → shein_metrics / shein_pricing_prices / shein_daily_data)
+        |--------------------------------------------------------------------------
+        */
+        // Products + price/stock → shein_metrics + shein_pricing_prices
+        $ist($schedule->command('shein:fetch sync')
+            ->dailyAt('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-fetch-sync')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+      
+        $ist($schedule->command('products:recalc-lp')
+            ->hourly()
+            ->name('products-recalc-lp')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | HIGH-FREQUENCY SYNCS (every minute / 5 minutes)
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('sync:amazon-prices')
+            ->everyMinute()
+            ->name('sync-amazon-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        $ist($schedule->command('walmart:fetch-listed-prices')
+            ->cron('0 */3 * * *')
+            ->name('walmart-fetch-listed-prices')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // PEF Dil vs PRMT → eBay1 Promotion API (always once/day, even if Dil/INV/rules unchanged).
+        // INV=0 forces PRMT%=0 (pause). Uses saved pef_dil_vs_prmt rules or first-time defaults.
+        $schedule->command('pef:dil-prmt-auto-apply')
+            ->dailyAt('00:00')
+            ->timezone('Asia/Kolkata')
+            ->name('pef-dil-prmt-auto-apply-midnight-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // PEF CVR vs CPN → eBay1 public coded coupon API (always once/day after Dil/PRMT / price window).
+        // Same CPN% reuses campaign (SAVE{nn}PCT); CPN%=0 removes SKU from coupon.
+        $schedule->command('pef:cvr-cpn-auto-apply')
+            ->dailyAt('00:30')
+            ->timezone('Asia/Kolkata')
+            ->name('pef-cvr-cpn-auto-apply-after-price-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Pull business5core.com price / sold / views into store_listing_prices.
+        $schedule->command('store:sync-prices')
+            ->dailyAt('16:30')
+            ->timezone('Asia/Kolkata')
+            ->name('store-sync-website-prices-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // S PRC → live eBay listing price (ebay1 / ebay2 / ebay3). Page not required.
+        $schedule->command('channel:push-sprice-daily')
+            ->dailyAt('17:00')
+            ->timezone('Asia/Kolkata')
+            ->name('channel-push-sprice-daily-ist')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+    }
+
+    /**
+     * Ads, inventory, sheets, tasks, CRM, tracking, and other jobs.
+     */
+    protected function scheduleOtherCommands(Schedule $schedule, string $log, \Closure $ist, \Closure $retryFiveTimesUntil): void
+    {
+
+        /*
+        |--------------------------------------------------------------------------
         | CRM — FOLLOW-UP REMINDERS
         |--------------------------------------------------------------------------
         */
@@ -333,14 +1139,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('amazon-sync-products')
             ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-amazon-orders --auto-sync --with-items')
-            ->cron('0 9,13,18 * * *')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-fetch-orders')
-            ->withoutOverlapping(240)
             ->runInBackground()
             ->appendOutputTo($log));
 
@@ -483,49 +1281,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // FBA reports — shifted from 13:30 IST to 18:15 IST so it pulls data
-        // AFTER the Amazon SP/SB/SD report retries finalise at 18:10 IST. Previously
-        // it ran while PT day was still mid-afternoon → partial spend / clicks.
-        $ist($schedule->command('app:fetch-fba-reports')
-            ->dailyAt('18:15')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-fba-reports')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-fba-inventory --insert --prices')
-            ->dailyAt('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-fba-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-fba-monthly-sales')
-            ->dailyAt('14:30')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-fba-monthly-sales')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('fba:collect-metrics')
-            ->dailyAt('18:15')
-            ->timezone('Asia/Kolkata')
-            ->name('fba-collect-metrics')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('fba:save-daily-metrics')
-            ->dailyAt('18:30')
-            ->timezone('Asia/Kolkata')
-            ->name('fba-save-daily-metrics')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('fba:sync-shipment-status')
             ->dailyAt('18:45')
             ->timezone('Asia/Kolkata')
@@ -542,26 +1297,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('amazon:store-listing-daily-metrics')
-            ->dailyAt('18:22')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-listing-daily-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('amazon-fba:store-utilization-counts')
             ->dailyAt('19:50')
             ->timezone('Asia/Kolkata')
             ->name('fba-utilization-counts')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('amazon:collect-metrics')
-            ->dailyAt('18:25')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-collect-metrics')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
@@ -589,96 +1328,6 @@ class Kernel extends ConsoleKernel
             ->dailyAt('18:40')
             ->timezone('Asia/Kolkata')
             ->name('amazon-collect-reviews')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | EBAY JOBS
-        |--------------------------------------------------------------------------
-        */
-        // Not wrapped in $ist() — a delayed scheduler tick after 20:00 IST must still
-        // be allowed to refresh ebay_orders. Short mutex so a hung run cannot block
-        // the next slot for 24h (that is why 09:35 IST was missed Aug 14–17).
-        foreach (['09:35', '13:35', '18:35'] as $slot) {
-            $schedule->command('app:fetch-ebay-orders')
-                ->dailyAt($slot)
-                ->timezone('Asia/Kolkata')
-                ->name('fetch-ebay-orders-'.str_replace(':', '', $slot))
-                ->withoutOverlapping(self::HF_MUTEX_HOURLY)
-                ->runInBackground()
-                ->appendOutputTo($log);
-        }
-
-        foreach (['09:40', '13:40', '18:40'] as $slot) {
-            $schedule->command('app:fetch-ebay2-orders')
-                ->dailyAt($slot)
-                ->timezone('Asia/Kolkata')
-                ->name('fetch-ebay2-orders-'.str_replace(':', '', $slot))
-                ->withoutOverlapping(self::HF_MUTEX_HOURLY)
-                ->runInBackground()
-                ->appendOutputTo($log);
-        }
-
-       
-        $ist($schedule->command('ebay3:daily --days=60')
-            ->dailyAt('19:40')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-ebay-reports')
-            ->dailyAt('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-reports')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // Amazon Dil vs PRMT → Listings our_price (4:00 AM America/New_York = EST/EDT).
-        // Uses shared pef_dil_vs_prmt rules; pushes only SKUs whose target price changed.
-        $schedule->command('amazon:dil-prmt-auto-push')
-            ->dailyAt('04:00')
-            ->timezone('America/New_York')
-            ->name('amazon-dil-prmt-auto-push-4am-et')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Amazon CVR vs CPN → 5%/10% coupons (1/day) → Listings our_price (4:05 AM ET).
-        // Uses shared pef_cvr_vs_cpn rules; pushes only SKUs whose target price/tier changed.
-        $schedule->command('amazon:cvr-cpn-auto-push')
-            ->dailyAt('04:05')
-            ->timezone('America/New_York')
-            ->name('amazon-cvr-cpn-auto-push-4am-et')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        
-        $ist($schedule->command('app:fetch-ebay-table-data')
-            ->dailyAt('19:25')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-table-data')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-ebay-two-metrics')
-            ->dailyAt('19:30')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-two-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-ebay-three-metrics')
-            ->dailyAt('19:35')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-ebay-three-metrics')
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
@@ -781,32 +1430,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay:collect-metrics')
-            ->dailyAt('19:15')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-collect-metrics')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // eBay 2 per-SKU Price / CVR snapshots for /ebay2-tabulator-view Price trend dots + charts
-        $ist($schedule->command('ebay2:collect-metrics')
-            ->dailyAt('19:18')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-collect-metrics')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // TikTok 1 / 2 per-SKU Price snapshots for /tiktok-pricing Price charts
-        $ist($schedule->command('tiktok:collect-metrics')
-            ->dailyAt('19:20')
-            ->timezone('Asia/Kolkata')
-            ->name('tiktok-collect-metrics')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $schedule->command('ebay:store-utilization-counts')
             ->dailyAt('21:40')
             ->timezone('Asia/Kolkata')
@@ -814,66 +1437,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
-
-        /*
-        |--------------------------------------------------------------------------
-        | EBAY COMPETITOR PRICE UPDATES (Weekly)
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('ebay:update-prices')
-            ->weekly()
-            ->sundays()
-            ->at('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('ebay:update-sku-prices')
-            ->weekly()
-            ->sundays()
-            ->at('15:00')
-            ->timezone('Asia/Kolkata')
-            ->name('ebay-sku-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | AMAZON COMPETITOR PRICE UPDATES (Weekly)
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('amazon:update-prices')
-            ->weekly()
-            ->mondays()
-            ->at('14:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('amazon:update-sku-prices')
-            ->weekly()
-            ->mondays()
-            ->at('15:00')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sku-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('google:update-sku-prices --skip-search-refresh')
-            ->weekly()
-            ->mondays()
-            ->at('15:30')
-            ->timezone('Asia/Kolkata')
-            ->name('google-sku-competitor-prices-weekly')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
 
         $retryFiveTimesUntil('app:fetch-google-ads-campaigns', 'fetch-google-ads-campaigns', '17:00');
 
@@ -982,21 +1545,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('shopify:sync-orders --days=2')
-            ->hourly()
-            ->name('shopify-sync-orders-recent')
-            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('shopify:sync-orders --days=60')
-            ->dailyAt('09:08')
-            ->timezone('Asia/Kolkata')
-            ->name('shopify-sync-orders-backfill')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('sync:shopify-quantity')
             ->twiceDaily(9, 18)
             ->name('sync-shopify-quantity')
@@ -1004,52 +1552,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('app:fetch-shopify-b2b-metrics --days=60')
-            ->twiceDaily(10, 18)
-            ->name('shopify-b2b-metrics')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('store:sync-prices')
-            ->twiceDaily(10, 18)
-            ->name('store-sync-price-sold-views')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-shopify-b2c-metrics --days=60')
-            ->twiceDaily(10, 18)
-            ->name('shopify-b2c-metrics')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('app:fetch-shopify-product-views --days=30')
             ->twiceDaily(10, 18)
             ->name('shopify-product-views')
             ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | WAYFAIR
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('wayfair:daily --days=60')
-            ->dailyAt('14:05')
-            ->timezone('Asia/Kolkata')
-            ->name('wayfair-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('sync:wayfair-l30-api')
-            ->dailyAt('13:02')
-            ->timezone('Asia/Kolkata')
-            ->name('wayfair-api-sync-daily')
-            ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo($log));
 
@@ -1069,27 +1575,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $ist($schedule->command('reverb:daily --days=60')
-            ->dailyAt('09:55')
-            ->timezone('Asia/Kolkata')
-            ->name('reverb-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('reverb:sync-listing-statuses')
             ->dailyAt('10:00')
             ->timezone('Asia/Kolkata')
             ->name('reverb-sync-listing-statuses')
             ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('reverb:collect-metrics')
-            ->dailyAt('10:05')
-            ->timezone('Asia/Kolkata')
-            ->name('reverb-collect-metrics')
-            ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));
 
@@ -1123,13 +1613,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('aliexpress', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('aliexpress-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         // Shopify label/tracking → AliExpress declare/modify shipment (settings-gated).
         $schedule->job(new \App\Jobs\SyncAliexpressTrackingJob(true, 40))
             ->everyFiveMinutes()
@@ -1144,15 +1627,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-address')
             ->withoutOverlapping(20)
-            ->appendOutputTo($log);
-
-        // Listed product price + AE stock → aliexpress_pricing_prices (/aliexpress-pricing).
-        $schedule->command('app:fetch-aliexpress-metrics --listed')
-            ->dailyAt('04:45')
-            ->timezone('Asia/Kolkata')
-            ->name('aliexpress-fetch-listed-prices')
-            ->withoutOverlapping(180)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         // L30 page views → aliexpress_metric.views (/aliexpress-pricing Views column).
@@ -1187,13 +1661,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('alibaba', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('alibaba-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         // Shopify label/tracking → Alibaba declare/modify shipment (settings-gated).
         $schedule->job(new \App\Jobs\SyncAlibabaTrackingJob(true, 40))
             ->everyFiveMinutes()
@@ -1223,13 +1690,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('reverb-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('reverb', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('reverb-manager-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Shopify label/tracking → Reverb mark shipped (settings-gated).
@@ -1288,13 +1748,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('newegg-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         // Shopify label/tracking → Newegg Ship Order (settings-gated).
         $schedule->job(new \App\Jobs\SyncNeweggTrackingJob(true, 40))
             ->everyFiveMinutes()
@@ -1332,13 +1785,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('shein-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('shein-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncSheinTrackingJob(true, 40))
@@ -1385,13 +1831,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncAmazonTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -1436,13 +1875,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('topdawg-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncTopDawgTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -1478,14 +1910,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('temu-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('temu-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         // Auto tracking from Shopify fulfillments (settings: push_tracking_to_temu).
@@ -1526,14 +1950,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        // Fetch + import NEW open Temu 2 orders only (service skips shipped/delivered backlog; last 3 days).
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('temu2-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         // Auto tracking from Shopify fulfillments (settings: push_tracking_to_temu2).
         $schedule->job(new \App\Jobs\SyncTemu2TrackingJob(true, 40))
             ->everyFiveMinutes()
@@ -1570,13 +1986,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('purchasingpower-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('purchasingpower-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncPurchasingPowerTrackingJob(true, 40))
@@ -1618,13 +2027,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(14)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('wayfair-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncWayfairTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -1660,13 +2062,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('bestbuy-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('bestbuy-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncBestBuyTrackingJob(true, 40))
@@ -1706,13 +2101,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('macy-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncMacyTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -1748,13 +2136,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('doba-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('doba-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncDobaTrackingJob(true, 40))
@@ -1794,13 +2175,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('ebay1-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncEbay1TrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -1836,13 +2210,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('ebay2-sync-mismatch-inventory')
             ->withoutOverlapping(50)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('ebay2-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay2TrackingJob(true, 40))
@@ -1882,13 +2249,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('ebay3-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncEbay3TrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -1924,13 +2284,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('faire-sync-mismatch-inventory')
             ->withoutOverlapping(12)
-            ->appendOutputTo($log);
-
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('faire-sync-orders')
-            ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncFaireTrackingJob(true, 40))
@@ -1970,13 +2323,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '', true, 7))
-            ->everyTenMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('tiktok-sync-orders')
-            ->withoutOverlapping(9)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncTikTokTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -2014,13 +2360,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(45)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 2))
-            ->everyThirtyMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('tiktok2-sync-orders')
-            ->withoutOverlapping(28)
-            ->appendOutputTo($log);
-
         $schedule->job(new \App\Jobs\SyncTikTok2TrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
@@ -2051,88 +2390,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(14)
             ->appendOutputTo($log);
 
-        // $schedule->command('shopify:retry-pending-orders')
-            //     ->hourly()
-            //     ->timezone('UTC')
-            //     ->name('shopify-retry-pending-orders')
-            //     ->withoutOverlapping(30)
-            //     ->runInBackground()
-            //     ->appendOutputTo($log);
-
-        /*
-        |--------------------------------------------------------------------------
-        | MACY
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('app:fetch-macy-products')
-            ->everyFiveMinutes()
-            ->name('fetch-macy-products')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | PURCHASING POWER (MCM OF21 prices/stock + OR11 orders)
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('purchasing-power:sync --days=60')
-            ->everyFifteenMinutes()
-            ->name('purchasing-power-sync')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-     
-        $ist($schedule->command('app:fetch-wayfair-data')
-            ->everyFiveMinutes()
-            ->name('fetch-wayfair-data')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
- 
-        $ist($schedule->command('mirakl:daily --days=60')
-            ->dailyAt('14:15')
-            ->timezone('Asia/Kolkata')
-            ->name('mirakl-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-       
-        $ist($schedule->command('app:fetch-temu-orders')
-            ->dailyAt('14:15')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-temu-orders')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-temu-metrics')
-            ->dailyAt('14:25')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-temu-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-temu2-metrics')
-            ->dailyAt('14:35')
-            ->timezone('Asia/Kolkata')
-            ->name('fetch-temu2-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('temu:collect-metrics')
-            ->dailyAt('14:35')
-            ->timezone('Asia/Kolkata')
-            ->name('temu-collect-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
      
         // Stores full raw into temu_ads_api_reports + syncs impressions/clicks to temu_metrics
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
@@ -2147,61 +2404,6 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu2:fetch-ads-data --period=L60', 'temu2-ads-data-sync-l60', '16:25');
         $retryFiveTimesUntil('temu2:fetch-ads-api-reports --period=L7', 'temu2-ads-api-reports-l7', '16:30');
         $retryFiveTimesUntil('temu2:auto-pause-ads', 'temu2-ads-auto-pause', '16:40');
-        // Recommended supply prices → temu_metrics.recommended_base_price (10=low traffic, 20=restricted)
-        $retryFiveTimesUntil('temu:fetch-recommended-prices --both', 'temu-recommended-prices', '16:05');
-
-        /*
-        |--------------------------------------------------------------------------
-        | DOBA
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('doba:daily --days=60')
-            ->dailyAt('14:45')
-            ->timezone('Asia/Kolkata')
-            ->name('doba-daily')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('app:fetch-doba-metrics')
-            ->dailyAt('14:55')
-            ->timezone('Asia/Kolkata')
-            ->name('doba-metrics')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | SHEIN (Open API → shein_metrics / shein_pricing_prices / shein_daily_data)
-        |--------------------------------------------------------------------------
-        */
-        // Products + price/stock → shein_metrics + shein_pricing_prices
-        $ist($schedule->command('shein:fetch sync')
-            ->dailyAt('15:00')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-sync')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // L30 orders → shein_daily_data (/shein-tabulator)
-        $ist($schedule->command('shein:fetch orders --days=30 --target=l30')
-            ->dailyAt('15:10')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-orders-l30')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // L60 orders → shein_daily_data_l60
-        $ist($schedule->command('shein:fetch orders --days=60 --target=l60')
-            ->dailyAt('15:20')
-            ->timezone('Asia/Kolkata')
-            ->name('shein-fetch-orders-l60')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
 
         /*
         |--------------------------------------------------------------------------
@@ -2262,24 +2464,10 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));
-        $ist($schedule->command('app:fetch-pls-data')
-            ->twiceDaily(9, 18)
-            ->name('fetch-pls-data')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
 
         $ist($schedule->command('sync:neweegg-sheet')
             ->twiceDaily(9, 18)
             ->name('sync-newegg-sheet')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-     
-        $ist($schedule->command('newegg:orders --days=60 --save')
-            ->twiceDaily(9, 18)
-            ->name('fetch-newegg-orders')
             ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));
@@ -2299,66 +2487,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-      
-        $ist($schedule->command('products:recalc-lp')
-            ->hourly()
-            ->name('products-recalc-lp')
-            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('app:process-jungle-scout-sheet-data')
             ->dailyAt('15:30')
             ->timezone('Asia/Kolkata')
             ->name('jungle-scout-sheet')
             ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        /*
-        |--------------------------------------------------------------------------
-        | HIGH-FREQUENCY SYNCS (every minute / 5 minutes)
-        |--------------------------------------------------------------------------
-        */
-        $ist($schedule->command('sync:amazon-prices')
-            ->everyMinute()
-            ->name('sync-amazon-prices')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('sync:walmart-metrics-data')
-            ->everyMinute()
-            ->name('sync-walmart-metrics')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('walmart:fetch-listed-prices')
-            ->cron('0 */3 * * *')
-            ->name('walmart-fetch-listed-prices')
-            ->withoutOverlapping(170)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('walmart:fetch-orders --days=60')
-            ->dailyAt('01:20')
-            ->name('walmart-fetch-orders')
-            ->withoutOverlapping(170)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('tiktok:fetch-orders --days=60 --prune')
-            ->dailyAt('02:10')
-            ->name('tiktok-fetch-orders')
-            ->withoutOverlapping(170)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $ist($schedule->command('tiktok:fetch-orders --channel=tiktok2 --days=60 --prune')
-            ->dailyAt('02:25')
-            ->name('tiktok2-fetch-orders')
-            ->withoutOverlapping(170)
             ->runInBackground()
             ->appendOutputTo($log));
 
@@ -2368,26 +2501,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
             ->runInBackground()
             ->appendOutputTo($log));
-
-        $ist($schedule->command('app:update-marketplace-daily-metrics')
-            ->everyFiveMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('update-marketplace-daily-metrics')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-     
-        $ist($schedule->command('channel:calculate-data --force')
-            ->everyTenMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('channel-master-calculate-data')
-            ->withoutOverlapping(120)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
-        $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
         $retryFiveTimesUntil('tiktok:sync-gmv-ads --force', 'sync-tiktok-gmv-ads', '16:20');
 
   
@@ -2488,71 +2601,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // PEF Dil vs PRMT → eBay1 Promotion API (always once/day, even if Dil/INV/rules unchanged).
-        // INV=0 forces PRMT%=0 (pause). Uses saved pef_dil_vs_prmt rules or first-time defaults.
-        $schedule->command('pef:dil-prmt-auto-apply')
-            ->dailyAt('00:00')
-            ->timezone('Asia/Kolkata')
-            ->name('pef-dil-prmt-auto-apply-midnight-ist')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // PEF CVR vs CPN → eBay1 public coded coupon API (always once/day after Dil/PRMT / price window).
-        // Same CPN% reuses campaign (SAVE{nn}PCT); CPN%=0 removes SKU from coupon.
-        $schedule->command('pef:cvr-cpn-auto-apply')
-            ->dailyAt('00:30')
-            ->timezone('Asia/Kolkata')
-            ->name('pef-cvr-cpn-auto-apply-after-price-ist')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Pull business5core.com price / sold / views into store_listing_prices.
-        $schedule->command('store:sync-prices')
-            ->dailyAt('16:30')
-            ->timezone('Asia/Kolkata')
-            ->name('store-sync-website-prices-ist')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // S PRC → live eBay listing price (ebay1 / ebay2 / ebay3). Page not required.
-        $schedule->command('channel:push-sprice-daily')
-            ->dailyAt('17:00')
-            ->timezone('Asia/Kolkata')
-            ->name('channel-push-sprice-daily-ist')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // SOF summary history — always one row per Pacific day (even if metrics unchanged).
-        // Primary write at 00:00 PST (stores the day that just ended).
-        $schedule->command('sof:snapshot-daily')
-            ->dailyAt('00:00')
-            ->timezone('America/Los_Angeles')
-            ->name('sof-snapshot-daily-pst')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        // Catch-up: if 00:00 was missed, create any missing recent Pacific-day rows (never skip unchanged).
-        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
-            ->dailyAt('00:30')
-            ->timezone('America/Los_Angeles')
-            ->name('sof-snapshot-daily-catchup-0030')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
-        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
-            ->dailyAt('06:00')
-            ->timezone('America/Los_Angeles')
-            ->name('sof-snapshot-daily-catchup-0600')
-            ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log);
-
         $schedule->command('attendance:analyze')
             ->dailyAt('23:30')
             ->timezone('Asia/Kolkata')
@@ -2599,9 +2647,6 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
     }
 
-    /**
-     * Register the commands for the application.
-     */
     protected function commands(): void
     {
         $this->load(__DIR__ . '/Commands');

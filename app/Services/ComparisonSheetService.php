@@ -2275,6 +2275,339 @@ class ComparisonSheetService
     }
 
     /**
+     * Overlay a Google / C-link import onto the local sheet without dropping
+     * manual extra rows, extra supplier columns, or filled cells the import
+     * left blank (Critical/QC, pasted photos, typed specs).
+     *
+     * @param  array<int, array<int, string>>  $imported
+     * @param  array<int, array<int, string>>|null  $local
+     * @return array<int, array<int, string>>
+     */
+    public function mergeImportedSheetPreservingLocal(array $imported, ?array $local): array
+    {
+        $imported = $this->ensureLeadColumns(ComparisonData::normalizeCells($imported));
+        if (! is_array($local) || $local === []) {
+            return $imported;
+        }
+
+        $local = $this->ensureLeadColumns(ComparisonData::normalizeCells($local));
+        $importedSpec = $this->detectSpecColumnIndex($imported);
+        $localSpec = $this->detectSpecColumnIndex($local);
+        $importedCols = $this->sheetColumnKeys($imported, $importedSpec);
+        $localCols = $this->sheetColumnKeys($local, $localSpec);
+
+        foreach ($localCols as $key => $localCol) {
+            if ($this->isLeadColumnKey($key)) {
+                continue;
+            }
+            // Named suppliers already on the import stay. Unnamed extra columns
+            // are always appended so a Google blank col is not treated as the
+            // user's manual column just because the indexes match.
+            if (! str_starts_with($key, 'extra:') && isset($importedCols[$key])) {
+                continue;
+            }
+            $imported = $this->insertColumnAt($imported, $this->sheetColumnCount($imported));
+            $importedCols[$key] = $this->sheetColumnCount($imported) - 1;
+        }
+
+        $importedRows = $this->sheetRowKeys($imported, $importedSpec);
+        $localRows = $this->sheetRowKeys($local, $localSpec);
+        $usedImportedRows = [];
+        $extraLocalRows = [];
+
+        foreach ($localRows as $localRow => $rowKey) {
+            $importedRow = $this->firstUnusedRowForKey($importedRows, $rowKey, $usedImportedRows);
+            if ($importedRow === null) {
+                $extraLocalRows[] = (int) $localRow;
+                continue;
+            }
+            $usedImportedRows[$importedRow] = true;
+            $imported = $this->fillEmptyImportedCellsFromLocal(
+                $imported,
+                $importedRow,
+                $importedCols,
+                $local,
+                (int) $localRow,
+                $localCols
+            );
+        }
+
+        foreach ($extraLocalRows as $localRow) {
+            $colCount = $this->sheetColumnCount($imported);
+            $newRow = array_fill(0, $colCount, '');
+            $newRow[$importedSpec] = (string) ($local[$localRow][$localSpec] ?? '');
+            $imported[] = $newRow;
+            $importedRow = count($imported) - 1;
+            $imported = $this->fillEmptyImportedCellsFromLocal(
+                $imported,
+                $importedRow,
+                $importedCols,
+                $local,
+                $localRow,
+                $localCols
+            );
+        }
+
+        return $this->ensureLeadColumns(ComparisonData::normalizeCells($imported));
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $imported
+     * @param  array<string, int>  $importedCols
+     * @param  array<int, array<int, string>>  $local
+     * @param  array<string, int>  $localCols
+     * @return array<int, array<int, string>>
+     */
+    protected function fillEmptyImportedCellsFromLocal(
+        array $imported,
+        int $importedRow,
+        array $importedCols,
+        array $local,
+        int $localRow,
+        array $localCols
+    ): array {
+        if (! isset($imported[$importedRow]) || ! is_array($imported[$importedRow])) {
+            return $imported;
+        }
+
+        foreach ($localCols as $key => $localCol) {
+            $importedCol = $importedCols[$key] ?? null;
+            if ($importedCol === null) {
+                continue;
+            }
+            $localVal = (string) ($local[$localRow][$localCol] ?? '');
+            $localTrim = trim($localVal);
+            if ($localTrim === '') {
+                continue;
+            }
+            $importedVal = trim((string) ($imported[$importedRow][$importedCol] ?? ''));
+            if ($importedVal !== '' && ! $this->localCellShouldOverrideImport($localTrim, $importedVal)) {
+                continue;
+            }
+            while (count($imported[$importedRow]) <= $importedCol) {
+                $imported[$importedRow][] = '';
+            }
+            $imported[$importedRow][$importedCol] = $localVal;
+        }
+
+        return $imported;
+    }
+
+    protected function localCellShouldOverrideImport(string $localVal, string $importedVal): bool
+    {
+        if ($importedVal === '') {
+            return true;
+        }
+
+        return str_starts_with($localVal, '[cmp-photo:')
+            || str_starts_with($localVal, '[embedded-image:')
+            || str_starts_with($localVal, 'data:image/');
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<string, int>
+     */
+    protected function sheetColumnKeys(array $cells, int $specCol): array
+    {
+        $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
+        $qcCol = $this->detectQcColumnIndex($cells, $specCol);
+        $colCount = $this->sheetColumnCount($cells);
+        $keys = [];
+        for ($col = 0; $col < $colCount; $col++) {
+            if ($col === $specCol) {
+                $keys['lead:spec'] = $col;
+            } elseif ($col === $specCol - 2) {
+                $keys['lead:amazon'] = $col;
+            } elseif ($col === $specCol - 1) {
+                $keys['lead:5core'] = $col;
+            } elseif ($criticalCol !== null && $col === $criticalCol) {
+                $keys['lead:critical'] = $col;
+            } elseif ($qcCol !== null && $col === $qcCol) {
+                $keys['lead:qc'] = $col;
+            } else {
+                $name = $this->supplierNameForColumn($cells, $col);
+                if ($name !== '') {
+                    $key = 'name:'.$name;
+                    if (! isset($keys[$key])) {
+                        $keys[$key] = $col;
+                    }
+                } else {
+                    $keys['extra:'.$col] = $col;
+                }
+            }
+        }
+
+        return $keys;
+    }
+
+    protected function isLeadColumnKey(string $key): bool
+    {
+        return str_starts_with($key, 'lead:');
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, string>
+     */
+    protected function sheetRowKeys(array $cells, int $specCol): array
+    {
+        $counts = [];
+        $keys = [];
+        foreach ($cells as $rowIndex => $row) {
+            $label = strtolower(trim((string) ($row[$specCol] ?? '')));
+            if ($label === '') {
+                $label = '_blank';
+            }
+            $counts[$label] = ($counts[$label] ?? 0) + 1;
+            $keys[(int) $rowIndex] = $label.'#'.$counts[$label];
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @param  array<int, string>  $rowKeys
+     * @param  array<int, true>  $used
+     */
+    protected function firstUnusedRowForKey(array $rowKeys, string $rowKey, array $used): ?int
+    {
+        foreach ($rowKeys as $rowIndex => $key) {
+            if ($key === $rowKey && ! isset($used[$rowIndex])) {
+                return (int) $rowIndex;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    protected function sheetColumnCount(array $cells): int
+    {
+        return max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells) ?: [0]);
+    }
+
+    /**
+     * Normalized supplier name for a column (Supplier Name row), or empty.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function supplierNameForColumn(array $cells, int $col): string
+    {
+        $specCol = $this->detectSpecColumnIndex($cells);
+        foreach ($cells as $rowIndex => $row) {
+            if (! $this->isSupplierNameRow($cells, (int) $rowIndex, $specCol)) {
+                continue;
+            }
+
+            return strtolower(trim((string) ($row[$col] ?? '')));
+        }
+
+        return '';
+    }
+
+    /**
+     * Copy stored photos onto empty/placeholder cells using the supplier name,
+     * not column index. Price-sort / insert-col used to park one vendor's photo
+     * on a neighbour.
+     *
+     * @param  array<int, array<int, string>>  $incoming
+     * @param  array<int, array<int, string>>|null  $existing
+     * @return array<int, array<int, string>>
+     */
+    public function restorePhotosBySupplierColumn(array $incoming, ?array $existing): array
+    {
+        $incoming = ComparisonData::normalizeCells($incoming);
+        if (! is_array($existing) || $existing === []) {
+            return $incoming;
+        }
+
+        $existing = ComparisonData::normalizeCells($existing);
+        $existingColCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $existing) ?: [0]);
+        $incomingSpec = $this->detectSpecColumnIndex($incoming);
+        $existingSpec = $this->detectSpecColumnIndex($existing);
+        $incomingPhotoRow = $this->findRowIndexByLabel($incoming, 'product photo', $incomingSpec);
+        $existingPhotoRow = $this->findRowIndexByLabel($existing, 'product photo', $existingSpec);
+        if ($incomingPhotoRow === null || $existingPhotoRow === null) {
+            return $incoming;
+        }
+
+        $existingColByKey = [];
+        for ($col = 0; $col < $existingColCount; $col++) {
+            $name = $this->supplierNameForColumn($existing, $col);
+            $key = $name !== '' ? 'name:'.$name : 'col:'.$col;
+            if (! isset($existingColByKey[$key])) {
+                $existingColByKey[$key] = $col;
+            }
+        }
+
+        // Only the Product Photo row + stacked photo rows under it — never
+        // Supplier Link / Company / Spec rows (those used to inherit photos).
+        for ($offset = 0; $offset < 8; $offset++) {
+            $rowIndex = $incomingPhotoRow + $offset;
+            $sourceRow = $existingPhotoRow + $offset;
+            if (! isset($incoming[$rowIndex]) || ! is_array($incoming[$rowIndex])) {
+                break;
+            }
+            if ($offset > 0 && ! $this->isProductPhotoStackRow($incoming, $rowIndex, $incomingSpec)) {
+                break;
+            }
+            if (! isset($existing[$sourceRow]) || ! is_array($existing[$sourceRow])) {
+                continue;
+            }
+
+            foreach ($incoming[$rowIndex] as $colIndex => $value) {
+                $text = trim((string) $value);
+                if ($this->isStoredPhotoCellValue($text)) {
+                    continue;
+                }
+                if ($text !== '' && ! str_starts_with($text, '[embedded-image:')) {
+                    continue;
+                }
+
+                $name = $this->supplierNameForColumn($incoming, (int) $colIndex);
+                $key = $name !== '' ? 'name:'.$name : 'col:'.$colIndex;
+                $sourceCol = $existingColByKey[$key] ?? (int) $colIndex;
+                $existingVal = trim((string) ($existing[$sourceRow][$sourceCol] ?? ''));
+                if ($this->isStoredPhotoCellValue($existingVal)) {
+                    $incoming[$rowIndex][$colIndex] = $existing[$sourceRow][$sourceCol];
+                }
+            }
+        }
+
+        return ComparisonData::normalizeCells($incoming);
+    }
+
+    protected function isStoredPhotoCellValue(string $text): bool
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return false;
+        }
+
+        return str_starts_with($text, '[cmp-photo:')
+            || str_starts_with($text, 'data:image/')
+            || $this->isImageUrl($text);
+    }
+
+    /**
+     * Extra photo-stack row: blank Spec label sitting under Product Photo.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     */
+    protected function isProductPhotoStackRow(array $cells, int $rowIndex, int $specCol): bool
+    {
+        $label = strtolower(trim((string) ($cells[$rowIndex][$specCol] ?? '')));
+        if ($label !== '' && ! str_contains($label, 'product photo')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * @param  array<int, array<int, string>>  $cells
      */
     public function findRowIndexByLabel(array $cells, string $labelNeedle, int $labelCol): ?int

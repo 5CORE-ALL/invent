@@ -474,14 +474,17 @@ class ComparisonController extends Controller
         $cells = $this->sheetService->ensureLeadColumns($cells);
         // 5 Core PRICE USD ← CP Master (product_master.Values.cp) for the opened SKU.
         $cells = $this->sheetService->enrichFiveCoreCpPrice($cells, $this->resolveCpForSku($sku));
-        $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
         $formats = $this->sheetStorage->formatsFromPayload(is_array($filePayload) ? $filePayload : null);
         if ($formats === ComparisonData::defaultSheetFormats() && is_array($record?->sheet_data)) {
             $formats = ComparisonData::normalizeFormats($record->sheet_data['formats'] ?? []);
         }
         // Extract base64 / legacy placeholders into stable photo files + DB-safe tokens.
+        // Persist in the stored column order — do not write the price-sorted grid back
+        // on GET (that parked photos on the wrong supplier after the next save).
         $cells = $this->sheetStorage->persistPhotosInCells($sheetSku, $cells);
-        $browserCells = $this->sheetStorage->cellsForBrowser($cells, $sheetSku);
+        $browserCells = $this->sheetService->moveLowestPriceSupplierAfterSpec(
+            $this->sheetStorage->cellsForBrowser($cells, $sheetSku)
+        );
         // Keep migrated photo tokens in file + DB (Google Sheet no longer required for photos).
         $this->sheetStorage->save($sheetSku, array_merge(
             is_array($filePayload) ? $filePayload : [],
@@ -897,29 +900,22 @@ class ComparisonController extends Controller
             $etagSeed = 'photo|' . $photoId;
         } elseif ($row >= 0 && $col >= 0) {
             // Read-only lookup — do not persist/mutate sheet cells while serving an image.
+            // Use the same price-sorted layout the browser shows so row/col maps to
+            // that supplier. Do not also probe the unsorted grid at these coords —
+            // that served a neighbour's photo after columns were reordered.
             $cells = $this->sheetStorage->cellsForSku($sheetSku);
             if (is_array($cells)) {
                 $cells = $this->sheetService->ensureLeadColumns($cells);
-                $grids = [
-                    $cells,
-                    $this->sheetService->moveLowestPriceSupplierAfterSpec($cells),
-                ];
-                $candidateVals = [];
-                foreach ($grids as $grid) {
-                    $candidateVals[] = trim((string) ($grid[$row][$col] ?? ''));
+                $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
+                $cellVal = trim((string) ($cells[$row][$col] ?? ''));
+
+                $tokenPhoto = $this->sheetStorage->photoIdFromToken($cellVal);
+                if ($tokenPhoto) {
+                    $decoded = $this->sheetStorage->readPhotoById($sheetSku, $tokenPhoto);
+                    $etagSeed = 'photo|' . $tokenPhoto;
                 }
-                $candidateVals = array_values(array_unique(array_filter($candidateVals, fn ($v) => $v !== '')));
 
-                foreach ($candidateVals as $cellVal) {
-                    $tokenPhoto = $this->sheetStorage->photoIdFromToken($cellVal);
-                    if ($tokenPhoto) {
-                        $decoded = $this->sheetStorage->readPhotoById($sheetSku, $tokenPhoto);
-                        if (is_array($decoded) && ! empty($decoded['bytes'])) {
-                            $etagSeed = 'photo|' . $tokenPhoto;
-                            break;
-                        }
-                    }
-
+                if ((! is_array($decoded) || empty($decoded['bytes'])) && $cellVal !== '') {
                     $legacyRow = $row;
                     $legacyCol = $col;
                     if (preg_match('/^\[embedded-image:(\d+):(\d+)\]$/', $cellVal, $m)) {
@@ -927,18 +923,11 @@ class ComparisonController extends Controller
                         $legacyCol = (int) $m[2];
                     }
 
-                    $decoded = $this->sheetStorage->readImageFile($sheetSku, $row, $col)
-                        ?? $this->sheetStorage->readImageFile($sheetSku, $legacyRow, $legacyCol)
+                    $decoded = $this->sheetStorage->readImageFile($sheetSku, $legacyRow, $legacyCol)
                         ?? $this->sheetStorage->decodeEmbeddedImage($cellVal);
                     if (is_array($decoded) && ! empty($decoded['bytes'])) {
-                        $etagSeed = "cell|{$row}|{$col}|{$legacyRow}|{$legacyCol}";
-                        break;
+                        $etagSeed = "cell|{$legacyRow}|{$legacyCol}";
                     }
-                }
-
-                if (! is_array($decoded) || empty($decoded['bytes'])) {
-                    $decoded = $this->sheetStorage->readImageFile($sheetSku, $row, $col);
-                    $etagSeed = "cell|{$row}|{$col}";
                 }
             }
         }
@@ -1026,15 +1015,16 @@ class ComparisonController extends Controller
         $bulkEditSkus = is_array($validated['bulk_edit_skus'] ?? null) ? $validated['bulk_edit_skus'] : [];
         $cells = ComparisonData::normalizeCells($validated['cells']);
         $cells = $this->sheetService->ensureLeadColumns($cells);
-        $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
-        // Align stored photos to the same layout, then put photo tokens / bytes back.
+        // Keep the editor's column order on save. Reordering here (lowest-price
+        // first) used to desync quiet saves: the DOM stayed in the old order
+        // while memory adopted the shuffled grid, so extra/manual cells vanished.
         $existingFileCells = $this->sheetStorage->cellsForSku($sku);
         if (is_array($existingFileCells)) {
             $existingFileCells = $this->sheetService->ensureLeadColumns($existingFileCells);
-            $existingFileCells = $this->sheetService->moveLowestPriceSupplierAfterSpec($existingFileCells);
             $existingFileCells = $this->sheetStorage->persistPhotosInCells($sku, $existingFileCells);
         }
-        $cells = $this->sheetStorage->restoreEmbeddedImages($cells, $existingFileCells);
+        // Match leftover photos to the same supplier name, not the same column index.
+        $cells = $this->sheetService->restorePhotosBySupplierColumn($cells, $existingFileCells);
         $cells = $this->sheetStorage->persistPhotosInCells($sku, $cells);
         $formats = ComparisonData::normalizeFormats($validated['formats'] ?? []);
         $autoFormats = $this->sheetService->computeAutoFormats(
@@ -1255,6 +1245,8 @@ class ComparisonController extends Controller
             'sku' => 'required|string',
             'parent' => 'nullable|string',
             'google_sheet_tab' => 'nullable|string|max:120',
+            'cells' => 'nullable|array',
+            'cells.*' => 'array',
         ]);
 
         $sku = trim($validated['sku']);
@@ -1269,11 +1261,28 @@ class ComparisonController extends Controller
         }
 
         $tab = trim((string) ($validated['google_sheet_tab'] ?? '')) ?: 'Sheet1';
+        $localCells = isset($validated['cells']) && is_array($validated['cells'])
+            ? ComparisonData::normalizeCells($validated['cells'])
+            : null;
 
-        return $this->importSheetFromUrl($sku, $parent, $clink, $tab, 'Synced comparison sheet from C link');
+        return $this->importSheetFromUrl(
+            $sku,
+            $parent,
+            $clink,
+            $tab,
+            'Synced comparison sheet from C link',
+            $localCells
+        );
     }
 
-    private function importSheetFromUrl(string $sku, string $parent, string $url, string $tab, string $historyMessage)
+    private function importSheetFromUrl(
+        string $sku,
+        string $parent,
+        string $url,
+        string $tab,
+        string $historyMessage,
+        ?array $localCells = null
+    )
     {
         // Google Sheets exports can be large (many rows/columns) and the fetch + parse +
         // normalize pipeline briefly holds several copies in memory. Raise the limit for
@@ -1293,6 +1302,17 @@ class ComparisonController extends Controller
 
             $cells = $this->sheetService->normalizeComparisonLayout($cells);
 
+            $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
+            if ($localCells === null) {
+                $fileCells = $this->sheetStorage->cellsForSku($sku);
+                $localCells = is_array($fileCells)
+                    ? $fileCells
+                    : ($record?->sheet_data['cells'] ?? null);
+            }
+            if (is_array($localCells) && $localCells !== []) {
+                $cells = $this->sheetService->mergeImportedSheetPreservingLocal($cells, $localCells);
+            }
+
             $product = ProductMaster::query()
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
                 ->first(['id', 'parent', 'sku', 'Values', 'main_image', 'image1']);
@@ -1302,10 +1322,12 @@ class ComparisonController extends Controller
             $cells = $this->sheetService->enrichFiveCoreCpPrice($cells, $this->resolveCpFromValues($product?->Values));
             $autoFormats = $this->sheetService->computeAutoFormats($cells);
 
-            $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
             $oldCells = $record?->sheet_data['cells'] ?? [];
+            $formats = ComparisonData::normalizeFormats(
+                is_array($record?->sheet_data) ? ($record->sheet_data['formats'] ?? []) : []
+            );
 
-            $this->persistSheetForSku($sku, $parent, $cells, $url, $tab, $user, $url, ComparisonData::defaultSheetFormats());
+            $this->persistSheetForSku($sku, $parent, $cells, $url, $tab, $user, $url, $formats);
             $this->sheetStorage->syncImageFiles($sku, $cells);
 
             ComparisonHistory::create([
@@ -1323,7 +1345,7 @@ class ComparisonController extends Controller
                 'success' => true,
                 'message' => 'Comparison sheet loaded from C link.',
                 'cells' => $this->sheetStorage->cellsForBrowser($cells, $sku),
-                'formats' => ComparisonData::defaultSheetFormats(),
+                'formats' => $formats,
                 'auto_formats' => $autoFormats,
                 'clink' => $url,
                 'google_sheet_url' => $url,
@@ -3079,7 +3101,31 @@ class ComparisonController extends Controller
             return $bulkEditSkus;
         }
 
-        return $this->normalizeSkuGroup($primarySku, $linkedSkus);
+        $linkedSkus = array_values(array_unique(array_filter(array_map(
+            fn ($sku) => trim((string) $sku),
+            $linkedSkus
+        ))));
+        $primarySku = trim($primarySku);
+
+        // Honor the editor's target list. Expanding a single SKU to the whole
+        // linked group overwrote sibling files and made a blank-sheet edit
+        // disappear on the next load.
+        if ($linkedSkus === []) {
+            return $primarySku !== '' ? [$primarySku] : [];
+        }
+
+        $hasPrimary = false;
+        foreach ($linkedSkus as $sku) {
+            if (strcasecmp($sku, $primarySku) === 0) {
+                $hasPrimary = true;
+                break;
+            }
+        }
+        if ($primarySku !== '' && ! $hasPrimary) {
+            array_unshift($linkedSkus, $primarySku);
+        }
+
+        return $linkedSkus;
     }
 
     /**

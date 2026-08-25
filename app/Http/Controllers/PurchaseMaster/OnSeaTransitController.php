@@ -86,7 +86,12 @@ class OnSeaTransitController extends Controller
             $invoiceValue = $transitInvBySl[$slKey] ?? $item->invoice_value ?? 0;
             $paid = $item->paid ?? 0;
             $freight = $item->freight ?? 0;
-            $balance = ($invoiceValue + $freight) - $paid;
+            $balance = OnSeaTransit::computeDue(
+                $invoiceValue,
+                $freight,
+                $paid,
+                $item->supplier_payments
+            );
             
             return [
                 'id' => $item->id,
@@ -186,11 +191,13 @@ class OnSeaTransitController extends Controller
 
         $record->{$column} = $newValue;
 
-        // Auto-calculate balance when invoice_value or paid changes
-        if ($column === 'invoice_value' || $column === 'paid') {
-            $invoiceValue = $column === 'invoice_value' ? $newValue : $record->invoice_value;
-            $paid = $column === 'paid' ? $newValue : $record->paid;
-            $record->balance = ($invoiceValue ?? 0) - ($paid ?? 0);
+        if (in_array($column, ['invoice_value', 'paid', 'freight'], true)) {
+            $record->balance = OnSeaTransit::computeDue(
+                $record->invoice_value,
+                $record->freight,
+                $record->paid,
+                $record->supplier_payments
+            );
         }
 
         $record->save();
@@ -342,11 +349,12 @@ class OnSeaTransitController extends Controller
 
         $record = OnSeaTransit::firstOrNew(['container_sl_no' => $data['container_sl_no']]);
         $record->invoice_value = $data['invoice_value'] ?? 0;
-        
-        // Auto-calculate balance
-        $invoiceValue = $record->invoice_value ?? 0;
-        $paid = $record->paid ?? 0;
-        $record->balance = $invoiceValue - $paid;
+        $record->balance = OnSeaTransit::computeDue(
+            $record->invoice_value,
+            $record->freight,
+            $record->paid,
+            $record->supplier_payments
+        );
         
         $record->save();
 
@@ -533,11 +541,13 @@ class OnSeaTransitController extends Controller
             $record->invoice_value = $transitInv[$slKey];
         }
 
-        // Due = Transit Inv Value + Freight − Paid
-        $invoiceValue = $record->invoice_value ?? 0;
-        $freight = $record->freight ?? 0;
-        $paid = $record->paid ?? 0;
-        $record->balance = ($invoiceValue + $freight) - $paid;
+        // Due follows payments Grand Total when lines exist (0 when fully paid).
+        $record->balance = OnSeaTransit::computeDue(
+            $record->invoice_value,
+            $record->freight,
+            $record->paid,
+            $record->supplier_payments
+        );
 
         $record->save();
 

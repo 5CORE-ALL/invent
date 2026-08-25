@@ -33,7 +33,7 @@ class OnSeaTransitBadgeCalculator implements PageBadgeCalculator
     {
         $rows = OnSeaTransit::query()
             ->whereNull('archived_at')
-            ->get(['status', 'invoice_value', 'balance']);
+            ->get(['status', 'invoice_value', 'freight', 'paid', 'balance', 'supplier_payments']);
 
         $visible = $rows->filter(fn (OnSeaTransit $row) => $row->status !== 'Arrived');
 
@@ -50,7 +50,12 @@ class OnSeaTransitBadgeCalculator implements PageBadgeCalculator
         );
 
         $totalValue = $nonPlanning->sum(fn (OnSeaTransit $row) => (float) ($row->invoice_value ?? 0));
-        $due = $nonPlanning->sum(fn (OnSeaTransit $row) => (float) ($row->balance ?? 0));
+        $due = $nonPlanning->sum(fn (OnSeaTransit $row) => OnSeaTransit::computeDue(
+            $row->invoice_value,
+            $row->freight,
+            $row->paid,
+            $row->supplier_payments
+        ));
         $value = $visible->sum(fn (OnSeaTransit $row) => (float) ($row->invoice_value ?? 0));
 
         return [
