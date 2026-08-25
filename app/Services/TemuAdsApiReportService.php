@@ -62,29 +62,43 @@ class TemuAdsApiReportService
 
         $range = $ranges[$period];
         $sku = TemuMetric::where('goods_id', $goodsId)->value('sku');
+        $fetchedAt = $this->usNow();
 
         try {
-            $result = $this->temuApiService->fetchAdsData(
+            $detailed = $this->temuApiService->fetchAdsDataDetailed(
                 $goodsId,
                 $range['startTs'],
                 $range['endTs']
             );
+            $result = ($detailed['ok'] ?? false) && is_array($detailed['result'] ?? null)
+                ? $detailed['result']
+                : null;
 
-            if (! $result) {
+            $statusQuery = $this->temuApiService->queryAdStatuses([$goodsId]);
+            $adDetail = $statusQuery['details'][$goodsId] ?? null;
+
+            if (! is_array($result)) {
+                $existing = TemuAdsApiReport::where('goods_id', $goodsId)->where('period', $period)->first();
                 TemuAdsApiReport::updateOrCreate(
                     ['goods_id' => $goodsId, 'period' => $period],
-                    [
+                    array_filter([
                         'sku' => $sku,
                         'start_ts' => $range['startTs'],
                         'end_ts' => $range['endTs'],
-                        'raw_response' => null,
+                        'raw_response' => $this->mergeAdDetailIntoRaw($existing?->raw_response, is_array($adDetail) ? $adDetail : null),
+                        'ad_status' => $statusQuery['statuses'][$goodsId] ?? null,
                         'success' => false,
-                        'error_msg' => 'Empty or failed API response',
-                        'fetched_at' => now(),
-                    ]
+                        'error_msg' => substr((string) ($detailed['error_msg'] ?? 'Empty or failed API response'), 0, 500),
+                        'fetched_at' => $fetchedAt,
+                    ], fn ($v) => $v !== null)
                 );
 
-                return ['ok' => false, 'goods_id' => $goodsId, 'period' => $period, 'message' => 'Empty API response'];
+                return ['ok' => false, 'goods_id' => $goodsId, 'period' => $period, 'message' => $detailed['error_msg'] ?? 'Empty API response'];
+            }
+
+            $raw = $result;
+            if (is_array($adDetail)) {
+                $raw['adDetail'] = $adDetail;
             }
 
             $metrics = $this->metricsFromApiResult($result);
@@ -92,13 +106,12 @@ class TemuAdsApiReportService
                 'sku' => $sku,
                 'start_ts' => $range['startTs'],
                 'end_ts' => $range['endTs'],
-                'raw_response' => json_encode($result, JSON_UNESCAPED_UNICODE),
+                'raw_response' => json_encode($raw, JSON_UNESCAPED_UNICODE),
                 'success' => true,
                 'error_msg' => null,
-                'fetched_at' => now(),
+                'fetched_at' => $fetchedAt,
             ]);
 
-            $statusQuery = $this->temuApiService->queryAdStatuses([$goodsId]);
             if (isset($statusQuery['statuses'][$goodsId])) {
                 $row['ad_status'] = $statusQuery['statuses'][$goodsId];
             }
@@ -126,7 +139,7 @@ class TemuAdsApiReportService
                     'end_ts' => $range['endTs'],
                     'success' => false,
                     'error_msg' => substr($e->getMessage(), 0, 500),
-                    'fetched_at' => now(),
+                    'fetched_at' => $fetchedAt,
                 ]
             );
 
@@ -245,14 +258,44 @@ class TemuAdsApiReportService
         $query = $this->temuApiService->queryAdStatuses($goodsIds);
         $ok = 0;
         $fail = 0;
+        $fetchedAt = $this->usNow();
 
         foreach ($goodsIds as $goodsId) {
             $status = $query['statuses'][$goodsId] ?? null;
-            if ($status === null) {
+            $detail = $query['details'][$goodsId] ?? null;
+            if ($status === null && ! is_array($detail)) {
                 $fail++;
                 continue;
             }
-            TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
+
+            $rows = TemuAdsApiReport::where('goods_id', $goodsId)->get();
+            if ($rows->isEmpty()) {
+                $sku = TemuMetric::where('goods_id', $goodsId)->value('sku');
+                TemuAdsApiReport::create([
+                    'goods_id' => $goodsId,
+                    'sku' => $sku,
+                    'period' => 'L30',
+                    'ad_status' => $status ?? 'Unknown',
+                    'raw_response' => is_array($detail)
+                        ? json_encode(['adDetail' => $detail], JSON_UNESCAPED_UNICODE)
+                        : null,
+                    'success' => true,
+                    'fetched_at' => $fetchedAt,
+                ]);
+                $ok++;
+                continue;
+            }
+
+            foreach ($rows as $row) {
+                $updates = ['fetched_at' => $fetchedAt];
+                if ($status !== null) {
+                    $updates['ad_status'] = $status;
+                }
+                if (is_array($detail)) {
+                    $updates['raw_response'] = $this->mergeAdDetailIntoRaw($row->raw_response, $detail);
+                }
+                $row->update($updates);
+            }
             $ok++;
         }
 
@@ -354,6 +397,24 @@ class TemuAdsApiReportService
                 'product_clicks_l60' => (int) ($row['clicks'] ?? 0),
             ]);
         }
+    }
+
+    public static function mergeAdDetailIntoRaw(?string $existingJson, ?array $adDetail): ?string
+    {
+        if ($adDetail === null) {
+            return $existingJson;
+        }
+
+        $existing = json_decode((string) $existingJson, true);
+        $base = is_array($existing) ? $existing : [];
+        $base['adDetail'] = $adDetail;
+
+        return json_encode($base, JSON_UNESCAPED_UNICODE);
+    }
+
+    private function usNow(): Carbon
+    {
+        return Carbon::now('America/Los_Angeles');
     }
 
     private function centsToDollars(mixed $val): ?float

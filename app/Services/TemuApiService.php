@@ -573,7 +573,7 @@ public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
  */
 public function adsPeriodRanges(): array
 {
-    $today = Carbon::now();
+    $today = Carbon::now('America/Los_Angeles');
 
     return [
         'L7' => [
@@ -1068,7 +1068,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * "No ad" is only used when Temu returns a successful empty/missing adsDetail row.
      *
      * @param  array<int, string|int>  $goodsIds
-     * @return array{statuses: array<string, string>, failed: array<int, string>, error: ?string}
+     * @return array{statuses: array<string, string>, details: array<string, array>, failed: array<int, string>, error: ?string}
      */
     public function queryAdStatuses(array $goodsIds): array
     {
@@ -1080,10 +1080,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
         }
         if ($ids === []) {
-            return ['statuses' => [], 'failed' => [], 'error' => null];
+            return ['statuses' => [], 'details' => [], 'failed' => [], 'error' => null];
         }
 
         $statuses = [];
+        $details = [];
         $failed = [];
         $error = null;
 
@@ -1128,6 +1129,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                     continue;
                 }
                 $statuses[$gid] = self::statusFromAdDetail($item);
+                $details[$gid] = $item;
                 $seen[$gid] = true;
             }
 
@@ -1135,6 +1137,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 $key = (string) $gid;
                 if (! isset($statuses[$key]) && ! isset($seen[$key])) {
                     $statuses[$key] = 'No ad';
+                    $details[$key] = ['goodsId' => is_numeric($gid) ? (int) $gid : $gid, 'adShowStatus' => 0];
                 }
             }
 
@@ -1143,6 +1146,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         return [
             'statuses' => $statuses,
+            'details' => $details,
             'failed' => $failed,
             'error' => $error,
         ];
@@ -1216,20 +1220,37 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
         }
 
+        if ($raw === null && is_array($item['adShowStatusList'] ?? null)) {
+            foreach ($item['adShowStatusList'] as $entry) {
+                if (is_numeric($entry)) {
+                    $raw = $entry;
+                    break;
+                }
+                if (is_array($entry) && isset($entry['adShowStatus'])) {
+                    $raw = $entry['adShowStatus'];
+                    break;
+                }
+            }
+        }
+
         $mapped = self::normalizeAdStatus($raw);
         $hasAd = isset($item['budget']) || isset($item['roas']) || isset($item['adShowStatus']) || isset($item['adPhase']);
         if ($mapped === 'No ad' && $hasAd) {
             return 'Inactive';
         }
+        // Only adShowStatus 1 is delivering. Unknown codes (e.g. 7 = Seller Center Paused)
+        // must not be forced to Active.
         if ($mapped === 'Unknown' && $hasAd) {
-            return 'Active';
+            return 'Inactive';
         }
 
         return $mapped;
     }
 
     /**
-     * adShowStatus / adPhase from ad.detail.query: 0 none, 1 delivering, 2 paused, 3 deleted.
+     * adShowStatus from ad.detail.query:
+     * 0 none, 1 delivering, 2 paused, 3 deleted.
+     * 4+ (including 7) are not delivering — Seller Center shows these as Paused.
      * String labels from Seller Center are also accepted.
      */
     public static function normalizeAdStatus(mixed $raw): string
@@ -1247,14 +1268,14 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         if ($n === 1 || in_array($s, ['1', 'active', 'enable', 'enabled', 'online', 'on', 'running', 'delivering', 'deliver', 'showing'], true)) {
             return 'Active';
         }
-        if ($n === 2 || $n === 4 || in_array($s, ['2', '4', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped', 'suspend', 'forbidden'], true)) {
-            return 'Inactive';
-        }
         if ($n === 3 || in_array($s, ['3', 'deleted', 'delete', 'removed'], true)) {
             return 'Deleted';
         }
         if ($n === 0 || in_array($s, ['0', 'none', 'no ad', 'no_ad', 'not_created'], true)) {
             return 'No ad';
+        }
+        if ($n !== null || in_array($s, ['2', '4', '5', '6', '7', '8', '9', 'inactive', 'pause', 'paused', 'offline', 'off', 'stop', 'stopped', 'suspend', 'forbidden', 'ended', 'not_delivering'], true)) {
+            return 'Inactive';
         }
 
         return 'Unknown';

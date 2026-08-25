@@ -320,7 +320,7 @@
                                     title="Filter by Status">
                                 <option value="">All Status</option>
                                 <option value="Active">Active</option>
-                                <option value="Inactive">Inactive</option>
+                                <option value="Inactive">Paused</option>
                                 <option value="No ad">No ad</option>
                                 <option value="Deleted">Deleted</option>
                                 <option value="Not sync">Not sync</option>
@@ -870,10 +870,12 @@
             const fetchedFmt = (cell) => {
                 const v = cell.getValue();
                 if (v === null || v === undefined || v === '') return '';
-                const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
                 if (!m) return String(v);
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                return String(Number(m[3])) + ' ' + months[Number(m[2]) - 1];
+                const day = String(Number(m[3])) + ' ' + months[Number(m[2]) - 1];
+                if (!m[4]) return day;
+                return day + ' ' + m[4] + ':' + m[5];
             };
 
             function dataUrl() {
@@ -1509,16 +1511,17 @@
                         minWidth: 72,
                         hozAlign: 'center',
                         sorter: 'string',
-                        headerTooltip: 'Temu ad campaign status from ad.detail.query (Active / Inactive / No ad). Not sync = API not confirmed.',
+                        headerTooltip: 'Temu ad campaign status from ad.detail.query (Active / Paused / No ad). Not sync = API not confirmed.',
                         formatter: function (cell) {
                             const v = String(cell.getValue() || 'Not sync');
+                            const label = v === 'Inactive' ? 'Paused' : v;
                             let cls = 'bg-secondary';
                             if (v === 'Active') cls = 'bg-success';
-                            else if (v === 'Inactive') cls = 'bg-warning text-dark';
+                            else if (v === 'Inactive' || v === 'Paused') cls = 'bg-warning text-dark';
                             else if (v === 'Deleted') cls = 'bg-dark';
                             else if (v === 'No ad') cls = 'bg-danger';
                             else if (v === 'Not sync') cls = 'bg-secondary';
-                            return '<span class="badge ' + cls + '">' + v + '</span>';
+                            return '<span class="badge ' + cls + '">' + label + '</span>';
                         }
                     },
                     {
@@ -1648,8 +1651,8 @@
                                 : '<span class="text-danger" title="' + (cell.getRow().getData().error_msg || '') + '"><i class="fas fa-x"></i></span>';
                         }
                     },
-                    { title: 'Fetched', field: 'fetched_at', width: 72, minWidth: 64, formatter: fetchedFmt, sorter: 'string',
-                      headerTooltip: 'Date the Ads API row was last fetched' },
+                    { title: 'Fetched', field: 'fetched_at', width: 110, minWidth: 96, formatter: fetchedFmt, sorter: 'string',
+                      headerTooltip: 'Last upsert from Temu (US Pacific). Raw JSON is stored on the row.' },
                     {
                         title: 'Raw',
                         field: 'raw_response',

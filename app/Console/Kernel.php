@@ -2397,6 +2397,29 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu:fetch-ads-api-reports --period=L7', 'temu-ads-api-reports-l7', '15:55');
         // Status column only — not Pause/Run. Picks up ads created on Temu Seller Center.
         $retryFiveTimesUntil('temu:refresh-ad-status', 'temu-ads-refresh-status', '19:30');
+        // Morning IST slots finish ~3–6 AM PDT, so /temu/ads stays stale all US day.
+        // Do not wrap in $ist() — 22:30–23:45 IST is after IST_WINDOW_END (20:00).
+        $schedule->command('temu:fetch-ads-data --period=L30')
+            ->dailyAt('22:30')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-ads-data-sync-l30-pdt-midday')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('temu:fetch-ads-api-reports --period=L7')
+            ->dailyAt('23:00')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-ads-api-reports-l7-pdt-midday')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+        $schedule->command('temu:refresh-ad-status')
+            ->dailyAt('23:45')
+            ->timezone('Asia/Kolkata')
+            ->name('temu-ads-refresh-status-pdt-midday')
+            ->withoutOverlapping(15)
+            ->runInBackground()
+            ->appendOutputTo($log);
         // After L7 reports: pause Active ads that match L7 clicks / Stop ROAS.
         // Toggle from Ad rules modal (temu_ads_auto_pause_cron). Command also no-ops when paused.
         $retryFiveTimesUntil('temu:auto-pause-ads', 'temu-ads-auto-pause', '16:10');
