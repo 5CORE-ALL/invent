@@ -5,6 +5,7 @@ namespace App\Services;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\AliexpressDataView;
 use App\Models\AliexpressMetric;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\SavesMarketplaceImageMetrics;
@@ -170,11 +171,13 @@ class AliExpressApiService
      */
     public function updateTitle(string $productId, string $title, ?string $language = 'en'): array
     {
-        $editRequest = $this->buildEditProductRequest($productId, $title, $language);
+        $title = trim($title);
+        $resolved = $this->resolveProductIdBySku($productId) ?: trim($productId);
+        if ($resolved === '' || $title === '') {
+            return ['success' => false, 'message' => 'AliExpress product ID and title are required. Sync AliExpress listings first.'];
+        }
 
-        return $this->callSync('aliexpress.solution.product.edit', [
-            'edit_product_request' => $this->encodeRequestPayload($editRequest),
-        ]);
+        return $this->callProductEdit($this->buildEditProductRequest($resolved, $title, $language));
     }
 
     /**
@@ -295,6 +298,50 @@ class AliExpressApiService
                 'json' => $response->json(),
             ],
         ];
+    }
+
+    /**
+     * Title/edit calls historically used /sync and failed with
+     * "The request signature does not conform to platform standards".
+     * Try REST (same as inventory) then Product Master-style flat /sync params.
+     *
+     * @param  array<string, mixed>  $editRequest
+     * @return array<string, mixed>
+     */
+    private function callProductEdit(array $editRequest): array
+    {
+        $json = $this->encodeRequestPayload($editRequest);
+        $productId = (string) ($editRequest['product_id'] ?? '');
+        $subject = (string) ($editRequest['multi_language_subject_list'][0]['subject'] ?? '');
+
+        $attempts = [
+            ['gateway' => 'rest', 'params' => ['edit_product_request' => $json]],
+            ['gateway' => 'rest', 'params' => ['product_id' => $productId, 'subject' => $subject]],
+            ['gateway' => 'sync', 'params' => ['product_id' => $productId, 'subject' => $subject]],
+            ['gateway' => 'sync', 'params' => ['edit_product_request' => $json]],
+        ];
+
+        $last = ['success' => false, 'message' => 'AliExpress product edit failed.'];
+        foreach ($attempts as $attempt) {
+            $last = $attempt['gateway'] === 'rest'
+                ? $this->callRestGateway('aliexpress.solution.product.edit', $attempt['params'])
+                : $this->callSync('aliexpress.solution.product.edit', $attempt['params']);
+
+            if (! empty($last['success'])) {
+                return $last;
+            }
+            if (! $this->isSignatureError($last) && empty($last['network_error'])) {
+                return $last;
+            }
+
+            Log::warning('AliExpress product.edit attempt failed', [
+                'gateway' => $attempt['gateway'],
+                'param_keys' => array_keys($attempt['params']),
+                'error' => $last['message'] ?? null,
+            ]);
+        }
+
+        return $last;
     }
 
     /**
@@ -2327,8 +2374,30 @@ class AliExpressApiService
             ->orWhere('sku', strtoupper($trim))
             ->orWhere('sku', strtolower($trim))
             ->first();
+        if ($row && $row->product_id) {
+            return (string) $row->product_id;
+        }
 
-        return $row && $row->product_id ? (string) $row->product_id : null;
+        $byId = AliexpressMetric::query()->where('product_id', $trim)->first();
+        if ($byId && $byId->product_id) {
+            return (string) $byId->product_id;
+        }
+
+        try {
+            $view = AliexpressDataView::query()
+                ->where('sku', $trim)
+                ->orWhere('sku', strtoupper($trim))
+                ->orWhere('sku', strtolower($trim))
+                ->first();
+            $value = is_array($view?->value ?? null) ? $view->value : [];
+            $id = trim((string) ($value['product_id'] ?? $value['productId'] ?? $value['id'] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
     }
 
     /**
