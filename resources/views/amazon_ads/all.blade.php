@@ -38,6 +38,7 @@
         #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 2px !important; padding-right: 2px !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignStatus"] .tabulator-col-title { white-space: nowrap !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="ruleStatus"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
         /* Pagination footer */
         #amz-ads-raw-wrap .tabulator .tabulator-footer {
@@ -122,6 +123,7 @@
                         <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS% bands">PAUSE RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                             <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -374,6 +376,96 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsPauseRuleModal" tabindex="-1" aria-labelledby="amazonAdsPauseRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS%</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Campaigns stay <strong>Active</strong> unless they fall in a <strong>Pause</strong> band.
+                        Each section is checked top to bottom; the first matching range wins for that metric.
+                        Matching any Pause band pauses the campaign on Amazon. Empty sections are ignored.
+                    </p>
+                    <div class="row g-3">
+                        <div class="col-lg-4">
+                            <h6 class="fw-semibold mb-1">Pricing ($)</h6>
+                            <p class="small text-muted mb-2">Amazon list price from the datasheet for the campaign SKU.</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-1">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Action</th>
+                                            <th>Label</th>
+                                            <th style="width:40px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsPauseRulePricingBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="pricing">
+                                <i class="fas fa-plus me-1"></i>Add band
+                            </button>
+                        </div>
+                        <div class="col-lg-4">
+                            <h6 class="fw-semibold mb-1">Dil%</h6>
+                            <p class="small text-muted mb-2">Amazon L30 units ÷ inventory × 100 for the campaign SKU.</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-1">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Action</th>
+                                            <th>Label</th>
+                                            <th style="width:40px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsPauseRuleDilBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="dil">
+                                <i class="fas fa-plus me-1"></i>Add band
+                            </button>
+                        </div>
+                        <div class="col-lg-4">
+                            <h6 class="fw-semibold mb-1">ACOS%</h6>
+                            <p class="small text-muted mb-2">Same L30 ACOS as the grid ACOS column.</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-1">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Action</th>
+                                            <th>Label</th>
+                                            <th style="width:40px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsPauseRuleAcosBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="acos">
+                                <i class="fas fa-plus me-1"></i>Add band
+                            </button>
+                        </div>
+                    </div>
+                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPauseRuleModalError" role="alert"></p>
+                    <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsPauseRuleModalOk" role="status"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsPauseRuleSaveBtn">Save &amp; refresh grid</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="amazonAdsPauseRuleApplyBtn" title="Save bands and pause/enable matching SP + SB campaigns on Amazon">Save &amp; apply to Amazon</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -391,10 +483,13 @@
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
+            var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
+            var pauseRuleSaveUrl = @json(route('amazon.ads.pause-rule.save'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
+            window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
 
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var table = null;
@@ -404,7 +499,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate'];
-            var NON_ORDERABLE_COLUMNS = ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV'];
+            var NON_ORDERABLE_COLUMNS = ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV', 'Inv', 'ovl30', 'dil', 'price', 'ruleStatus'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -541,6 +636,17 @@
                 return '<span class="amz-raw-status-cell" title="' + tip + '" style="display:inline-flex;align-items:center;justify-content:center;">'
                      + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
             }
+            function fmtRuleStatus(cell) {
+                var v = cell.getValue();
+                var raw = (v === null || v === undefined) ? '' : String(v).trim();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var tipRaw = (row && row.ruleStatusTip) ? String(row.ruleStatusTip) : (raw || '—');
+                if (raw === '') return '<span class="amz-raw-status-cell text-muted" title="' + amzEsc(tipRaw) + '">—</span>';
+                var enabled = raw.toUpperCase() === 'ENABLED';
+                var color = enabled ? '#16a34a' : '#dc2626';
+                return '<span class="amz-raw-status-cell" title="' + amzEsc(tipRaw) + '" style="display:inline-flex;align-items:center;justify-content:center;">'
+                     + '<span class="d-inline-block rounded-circle" style="width:10px;height:10px;background-color:' + color + ';"></span></span>';
+            }
             function fmtAdType(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined) return '';
@@ -570,11 +676,81 @@
                 return '<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">'
                      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>' + copy + '</span>';
             }
+            function fmtSkuInv(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var n = Math.round(parseFloat(v));
+                if (isNaN(n)) return amzDash();
+                return String(n);
+            }
+            function fmtSkuDil(cell) {
+                var row = cell.getRow().getData();
+                var inv = parseFloat(row.Inv);
+                if (!isFinite(inv) || inv === 0) {
+                    return '<span style="color: #6c757d;">0%</span>';
+                }
+                var ovl30 = parseFloat(row.ovl30) || 0;
+                var dil = (ovl30 / inv) * 100;
+                var color = '#e83e8c';
+                if (dil < 16.66) color = '#a00211';
+                else if (dil < 25) color = '#ffc107';
+                else if (dil < 50) color = '#28a745';
+                return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(dil) + '%</span>';
+            }
+            function fmtSkuPrice(cell) {
+                var row = cell.getRow().getData();
+                var price = parseFloat(cell.getValue() || 0);
+                var lmpPrice = parseFloat(row.lmp_price || 0);
+                if (!isFinite(price) || price <= 0) {
+                    if (isFinite(lmpPrice) && lmpPrice > 0) {
+                        return '<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amz listing price)">$' + lmpPrice.toFixed(2) + '</span>';
+                    }
+                    return amzDash();
+                }
+                var formatted = '$' + price.toFixed(2);
+                if (isFinite(lmpPrice) && lmpPrice > 0 && price > lmpPrice) {
+                    return '<span style="color: #dc3545; font-weight: 600;">' + formatted + '</span>';
+                }
+                return formatted;
+            }
 
             // Map a source display-column name to Tabulator column def extras.
             function amzApplyColFormat(col, c) {
                 if (c === 'campaignName') { col.formatter = fmtCampaignName; col.minWidth = 200; col.widthGrow = 4; col.hozAlign = 'left'; return; }
+                if (c === 'Inv' || c === 'INV') {
+                    col.title = 'Inv';
+                    col.headerTooltip = 'Shopify inventory — same as /amazon-tabulator-view INV';
+                    col.formatter = fmtSkuInv;
+                    col.width = 50;
+                    col.minWidth = 44;
+                    return;
+                }
+                if (c === 'ovl30') {
+                    col.title = 'ovl30';
+                    col.headerTooltip = 'Shopify L30 sold units — same as /amazon-tabulator-view OV L30';
+                    col.formatter = fmtSkuInv;
+                    col.width = 56;
+                    col.minWidth = 50;
+                    return;
+                }
+                if (c === 'dil') {
+                    col.title = 'dil';
+                    col.headerTooltip = 'OV L30 ÷ INV × 100 — same as /amazon-tabulator-view Dil';
+                    col.formatter = fmtSkuDil;
+                    col.width = 50;
+                    col.minWidth = 44;
+                    return;
+                }
+                if (c === 'price') {
+                    col.title = 'price';
+                    col.headerTooltip = 'Amazon list price — same as /amazon-tabulator-view Price (red if above LMP)';
+                    col.formatter = fmtSkuPrice;
+                    col.width = 70;
+                    col.minWidth = 60;
+                    return;
+                }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
+                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause (matched a Pause band)'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }
                 if (c === 'adGroupName') { col.title = 'Ad Group'; col.hozAlign = 'left'; col.minWidth = 150; col.widthGrow = 2; return; }
                 if (c === 'keyword') { col.title = 'Keyword'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }
@@ -592,7 +768,6 @@
                 if (c === 'sbid') { col.title = 'SBID'; col.formatter = fmtSbid; return; }
                 if (c === 'bgt') { col.title = 'BGT'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'sbgt') { col.title = 'SBGT'; col.formatter = fmtSbgt; return; }
-                if (c === 'INV') { col.title = 'INV'; col.formatter = fmtDashInt; return; }
                 if (c === 'Prchase') { col.title = 'Sold'; col.formatter = fmtDashInt; return; }
                 if (c === 'Cvr') { col.title = 'Cvr'; col.formatter = fmtCvr; return; }
                 if (c === 'ACOS') { col.title = 'ACOS'; col.formatter = fmtAcos; return; }
@@ -1436,6 +1611,184 @@
                         .finally(function () { sbidSaveBtn.disabled = false; });
                 });
             }
+
+            // ---- Pause rule modal (Pricing / Dil% / ACOS%) ----
+            var amzPauseSections = { pricing: [], dil: [], acos: [] };
+            var PAUSE_SECTION_BODIES = {
+                pricing: 'amazonAdsPauseRulePricingBody',
+                dil: 'amazonAdsPauseRuleDilBody',
+                acos: 'amazonAdsPauseRuleAcosBody'
+            };
+            function amzPauseBandDefault() {
+                return { from: 0, to: 9999, action: 'PAUSED', label: '' };
+            }
+            function amzRenderPauseSection(section) {
+                var tbody = document.getElementById(PAUSE_SECTION_BODIES[section]);
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                (amzPauseSections[section] || []).forEach(function (band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.from != null ? band.from : '') + '" data-section="' + section + '" data-idx="' + i + '" data-field="from"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.to != null ? band.to : '') + '" data-section="' + section + '" data-idx="' + i + '" data-field="to"></td>'
+                        + '<td><select class="form-select form-select-sm" data-section="' + section + '" data-idx="' + i + '" data-field="action">'
+                        + '<option value="PAUSED"' + (band.action === 'ENABLED' ? '' : ' selected') + '>Pause</option>'
+                        + '<option value="ENABLED"' + (band.action === 'ENABLED' ? ' selected' : '') + '>Activate</option>'
+                        + '</select></td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-section="' + section + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-pause-remove="' + section + '" data-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('[data-section][data-idx]').forEach(function (el) {
+                    el.addEventListener('input', function () {
+                        var sec = this.dataset.section, idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (!amzPauseSections[sec] || !amzPauseSections[sec][idx]) return;
+                        if (fld === 'from' || fld === 'to') {
+                            amzPauseSections[sec][idx][fld] = this.value === '' ? '' : parseFloat(this.value);
+                        } else {
+                            amzPauseSections[sec][idx][fld] = this.value;
+                        }
+                    });
+                    if (el.tagName === 'SELECT') {
+                        el.addEventListener('change', function () {
+                            var sec = this.dataset.section, idx = +this.dataset.idx;
+                            if (amzPauseSections[sec] && amzPauseSections[sec][idx]) amzPauseSections[sec][idx].action = this.value;
+                        });
+                    }
+                });
+                tbody.querySelectorAll('[data-pause-remove]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var sec = this.getAttribute('data-pause-remove');
+                        amzPauseSections[sec].splice(+this.dataset.idx, 1);
+                        amzRenderPauseSection(sec);
+                    });
+                });
+            }
+            function amzLoadPauseRule(rule) {
+                var r = rule || {};
+                ['pricing', 'dil', 'acos'].forEach(function (sec) {
+                    amzPauseSections[sec] = (Array.isArray(r[sec]) ? r[sec] : []).map(function (b) {
+                        return {
+                            from: b.from != null ? Number(b.from) : 0,
+                            to: b.to != null ? Number(b.to) : 9999,
+                            action: (b.action === 'ENABLED') ? 'ENABLED' : 'PAUSED',
+                            label: b.label != null ? String(b.label) : ''
+                        };
+                    });
+                    amzRenderPauseSection(sec);
+                });
+            }
+            function amzCollectPauseRule() {
+                var out = { pricing: [], dil: [], acos: [] };
+                ['pricing', 'dil', 'acos'].forEach(function (sec) {
+                    out[sec] = (amzPauseSections[sec] || []).map(function (b) {
+                        return {
+                            from: (b.from === '' || b.from == null) ? NaN : parseFloat(b.from),
+                            to: (b.to === '' || b.to == null) ? NaN : parseFloat(b.to),
+                            action: b.action === 'ENABLED' ? 'ENABLED' : 'PAUSED',
+                            label: (b.label || '').toString()
+                        };
+                    });
+                });
+                return out;
+            }
+            function amzPauseRuleValid(payload, err) {
+                var secs = ['pricing', 'dil', 'acos'];
+                for (var s = 0; s < secs.length; s++) {
+                    var bands = payload[secs[s]] || [];
+                    for (var i = 0; i < bands.length; i++) {
+                        var b = bands[i];
+                        if (!isFinite(b.from) || !isFinite(b.to)) {
+                            if (err) { err.textContent = secs[s] + ' band ' + (i + 1) + ' needs numeric From and To.'; err.classList.remove('d-none'); }
+                            return false;
+                        }
+                        if (b.from > b.to) {
+                            if (err) { err.textContent = secs[s] + ' band ' + (i + 1) + ' needs From ≤ To.'; err.classList.remove('d-none'); }
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+            function amzSavePauseRule(apply) {
+                var err = document.getElementById('amazonAdsPauseRuleModalError');
+                var ok = document.getElementById('amazonAdsPauseRuleModalOk');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                var payload = amzCollectPauseRule();
+                if (!amzPauseRuleValid(payload, err)) return;
+                payload.apply = !!apply;
+                var saveBtn = document.getElementById('amazonAdsPauseRuleSaveBtn');
+                var applyBtn = document.getElementById('amazonAdsPauseRuleApplyBtn');
+                if (saveBtn) saveBtn.disabled = true;
+                if (applyBtn) applyBtn.disabled = true;
+                fetch(pauseRuleSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                })
+                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                    .then(function (out) {
+                        var b = out.body || {};
+                        if (!out.ok || b.status === 422 || b.status === 500) {
+                            if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
+                        var msg = b.message || 'Saved.';
+                        if (b.apply) {
+                            msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
+                                + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                        }
+                        if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
+                        if (!apply && typeof bootstrap !== 'undefined') {
+                            var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsPauseRuleModal'));
+                            if (inst) inst.hide();
+                        }
+                        return table ? Promise.resolve(table.setData()) : null;
+                    })
+                    .then(function () { amzRefreshUiSoon(); })
+                    .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                    .finally(function () {
+                        if (saveBtn) saveBtn.disabled = false;
+                        if (applyBtn) applyBtn.disabled = false;
+                    });
+            }
+            document.querySelectorAll('[data-pause-section]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var sec = this.getAttribute('data-pause-section');
+                    if (!amzPauseSections[sec]) amzPauseSections[sec] = [];
+                    var last = amzPauseSections[sec][amzPauseSections[sec].length - 1];
+                    var next = amzPauseBandDefault();
+                    if (last && isFinite(Number(last.to))) next.from = Number(last.to);
+                    amzPauseSections[sec].push(next);
+                    amzRenderPauseSection(sec);
+                });
+            });
+            var pauseModalEl = document.getElementById('amazonAdsPauseRuleModal');
+            if (pauseModalEl) {
+                pauseModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsPauseRuleModalError');
+                    var ok = document.getElementById('amazonAdsPauseRuleModalOk');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                    fetch(pauseRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (body) {
+                            if (body && body.rule) window.amazonAdsPauseRule = body.rule;
+                            amzLoadPauseRule(window.amazonAdsPauseRule || {});
+                        })
+                        .catch(function () { amzLoadPauseRule(window.amazonAdsPauseRule || {}); });
+                });
+            }
+            var pauseSaveBtn = document.getElementById('amazonAdsPauseRuleSaveBtn');
+            if (pauseSaveBtn) pauseSaveBtn.addEventListener('click', function () { amzSavePauseRule(false); });
+            var pauseApplyBtn = document.getElementById('amazonAdsPauseRuleApplyBtn');
+            if (pauseApplyBtn) pauseApplyBtn.addEventListener('click', function () {
+                if (!window.confirm('Save these bands and pause/enable matching SP + SB campaigns on Amazon? Campaigns stay active unless they match a Pause band.')) return;
+                amzSavePauseRule(true);
+            });
 
             // ---- initial state ----
             (function () {
