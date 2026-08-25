@@ -14,9 +14,6 @@ class CustomerCareIssueFanout
     /** @var array<string, list<string>> */
     private static array $columnCache = [];
 
-    /** @var array<string, bool> */
-    private static array $autoIncrementCache = [];
-
     private const SOURCE_TABLE = 'dispatch_issue_issues';
 
     private const DEPT_TO_ISSUES = [
@@ -135,8 +132,23 @@ class CustomerCareIssueFanout
             }
         });
 
+        $alreadyCopied = [];
+        foreach ($departments as $dept) {
+            $table = self::DEPT_TO_ISSUES[$dept] ?? null;
+            if (! $table || ! Schema::hasTable($table) || ! in_array('source_dispatch_issue_id', self::columns($table), true)) {
+                continue;
+            }
+            foreach (DB::table($table)->whereNotNull('source_dispatch_issue_id')->pluck('source_dispatch_issue_id') as $id) {
+                $alreadyCopied[(int) $id] = true;
+            }
+        }
+
         foreach ($query->get(['id']) as $row) {
-            self::syncFromDispatchId((int) $row->id);
+            $id = (int) $row->id;
+            if (isset($alreadyCopied[$id])) {
+                continue;
+            }
+            self::syncFromDispatchId($id);
         }
     }
 
@@ -172,7 +184,7 @@ class CustomerCareIssueFanout
 
             $payload['created_at'] = $payload['created_at'] ?? $source->created_at ?? $now;
             $payload['updated_at'] = $now;
-            if (! self::hasAutoIncrement($issuesTable) && empty($payload['id'])) {
+            if (empty($payload['id'])) {
                 $payload['id'] = ((int) DB::table($issuesTable)->max('id')) + 1;
             }
             $copyId = (int) (DB::table($issuesTable)->insertGetId($payload) ?: ($payload['id'] ?? 0));
@@ -186,7 +198,7 @@ class CustomerCareIssueFanout
                 $history['logged_at'] = $now;
                 $history['created_at'] = $now;
                 $history['updated_at'] = $now;
-                if (! self::hasAutoIncrement($historyTable) && empty($history['id'])) {
+                if (empty($history['id'])) {
                     $history['id'] = ((int) DB::table($historyTable)->max('id')) + 1;
                 }
                 DB::table($historyTable)->insert($history);
@@ -197,7 +209,6 @@ class CustomerCareIssueFanout
                 'table' => $issuesTable,
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
         }
     }
 
@@ -274,16 +285,5 @@ class CustomerCareIssueFanout
         }
 
         return self::$columnCache[$table];
-    }
-
-    private static function hasAutoIncrement(string $table): bool
-    {
-        if (! isset(self::$autoIncrementCache[$table])) {
-            $col = DB::select('SHOW COLUMNS FROM `'.$table.'` LIKE ?', ['id'])[0] ?? null;
-            $extra = strtolower((string) ($col->Extra ?? ''));
-            self::$autoIncrementCache[$table] = str_contains($extra, 'auto_increment');
-        }
-
-        return self::$autoIncrementCache[$table];
     }
 }

@@ -89,28 +89,33 @@
             border-radius: 50%;
         }
 
-        /* Tabulator was collapsing to one squashed row: the wrapper was
-           display:none during init/refresh, and the global sticky header
-           + overflow:auto on .table-container broke tableholder height. */
-        #channelTableWrapper.table-container {
-            overflow-x: auto;
-            overflow-y: visible;
-            max-height: none;
-            min-height: 560px;
+        /* Do not use .table-container here: global overflow:auto + sticky
+           .tabulator-header collapses the table body to one row. */
+        .ahm-dash-table-wrap {
+            width: 100%;
+            max-height: none !important;
+            overflow: visible !important;
+            margin-bottom: 1.5rem;
         }
 
         #channelTable.tabulator {
-            min-height: 550px;
+            height: 560px !important;
+            min-height: 560px !important;
+            max-height: none !important;
         }
 
-        #channelTable.tabulator .tabulator-header {
+        #channelTable.tabulator .tabulator-header,
+        #channelTable.tabulator .tabulator-header .tabulator-col {
             position: relative !important;
             top: auto !important;
         }
 
         #channelTable.tabulator .tabulator-tableholder {
-            min-height: 420px !important;
-            flex: 1 1 auto;
+            height: 470px !important;
+            min-height: 470px !important;
+            max-height: 470px !important;
+            overflow: auto !important;
+            flex: none !important;
         }
     </style>
 @endsection
@@ -120,6 +125,16 @@
         'page_title' => 'Account Health Master Dashboard',
         'sub_title' => 'Manage your channels and monitor their performance metrics',
     ])
+    <style>
+        .ahm-dash-table-wrap { max-height: none !important; overflow: visible !important; }
+        #channelTable.tabulator { height: 560px !important; min-height: 560px !important; }
+        #channelTable.tabulator .tabulator-header,
+        #channelTable.tabulator .tabulator-header .tabulator-col { position: relative !important; top: auto !important; }
+        #channelTable.tabulator .tabulator-tableholder {
+            height: 470px !important; min-height: 470px !important; max-height: 470px !important;
+            overflow: auto !important; flex: none !important;
+        }
+    </style>
     <div class="container-fluid">
         <div class="col-md-12 mt-0 pt-0 mb-1 pb-1">
             <div class="row justify-content-center align-items-center g-3">
@@ -340,7 +355,7 @@
             </div>
         </div>
 
-        <div class="table-container" id="channelTableWrapper">
+        <div class="ahm-dash-table-wrap" id="channelTableWrapper">
             <div id="channelTable"></div>
         </div>
     </div>
@@ -496,7 +511,7 @@
                 paginationMode: "local",
                 movableColumns: false,
                 resizableColumns: true,
-                height: 550,
+                height: "560px",
                 renderVertical: "basic",
                 ajaxResponse: function(url, params, response) {
                     console.log('AJAX response:', response);
@@ -1380,7 +1395,6 @@
                             const indicator = cell.getElement().querySelector('.save-indicator');
                             if (indicator) indicator.remove();
                         }, 2000);
-                        table.redraw();
                         console.log(`Updated ${fieldName}:`, response);
                     } else {
                         alert(`Error: ${response.message || 'Failed to save field'}`);
@@ -1698,7 +1712,7 @@
             table.on('dataProcessed', function() {
                 requestAnimationFrame(function() {
                     if (table) {
-                        table.redraw(true);
+                        table.setHeight('560px');
                     }
                 });
             });

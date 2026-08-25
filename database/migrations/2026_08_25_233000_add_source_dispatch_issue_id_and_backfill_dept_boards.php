@@ -1,6 +1,5 @@
 <?php
 
-use App\Support\CustomerCareIssueFanout;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -40,14 +39,8 @@ return new class extends Migration
             });
         }
 
-        CustomerCareIssueFanout::ensureForDepartments([
-            'Listing',
-            'Label',
-            'QC',
-            'Packaging',
-            'Customer Care',
-            'Other',
-        ]);
+        // Backfill is done on board page load (ensureForDepartments), not here —
+        // this migration must stay fast and must not fail a deploy.
     }
 
     public function down(): void
@@ -69,8 +62,11 @@ return new class extends Migration
             return;
         }
 
-        $col = DB::select('SHOW COLUMNS FROM `'.$table.'` LIKE ?', ['id'])[0] ?? null;
-        $extra = strtolower((string) ($col->Extra ?? ''));
+        $col = DB::selectOne(
+            'SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            [$table, 'id']
+        );
+        $extra = strtolower((string) ($col->EXTRA ?? $col->extra ?? ''));
         if (str_contains($extra, 'auto_increment')) {
             return;
         }
