@@ -294,6 +294,9 @@ class Temu2ApiService extends TemuApiService
 
         $skuId = $this->getSkuIdBySku($sku);
         $images = $this->existingListingImageUrls($sku, (string) $goodsId, true);
+        $skuEntries = $this->skuEntriesForTitleUpdate($sku, $skuId, (string) $goodsId, $images, $skuIdField, $skuCodeField);
+        $skuEntriesInt = $this->skuEntriesWithIntegerUnits($skuEntries);
+        $skuEntriesPkg = $this->skuEntriesWithPackageInfoOnly($skuEntries);
 
         $attempts = [];
         $attempts[] = [
@@ -301,19 +304,24 @@ class Temu2ApiService extends TemuApiService
             'goodsId' => (int) $goodsId,
             $goodsBasicField => ['goodsName' => $title],
         ];
-
-        if ($skuId !== null && $skuId !== '' && $images !== []) {
-            $attempts[] = [
-                'type' => $apiType,
-                'goodsId' => (int) $goodsId,
-                $goodsBasicField => ['goodsName' => $title],
-                $skuListField => [[
-                    $skuIdField => (int) $skuId,
-                    $skuCodeField => $sku,
-                    'images' => $images,
-                ]],
-            ];
-        }
+        $attempts[] = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => ['goodsName' => $title],
+            $skuListField => $skuEntries,
+        ];
+        $attempts[] = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => ['goodsName' => $title],
+            $skuListField => $skuEntriesInt,
+        ];
+        $attempts[] = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => ['goodsName' => $title],
+            $skuListField => $skuEntriesPkg,
+        ];
 
         $lastError = 'Temu 2 title update failed.';
         foreach ($attempts as $i => $requestBody) {
@@ -344,14 +352,210 @@ class Temu2ApiService extends TemuApiService
             ]);
         }
 
-        if ($this->isTemuTitleImageError($lastError)) {
-            return [
-                'success' => false,
-                'message' => 'Temu 2 would not accept a title-only update for this SKU. The existing listing images could not be loaded to satisfy Temu’s image requirement.',
-            ];
+        return ['success' => false, 'message' => $lastError];
+    }
+
+    /**
+     * Temu re-validates every SKU package field on partial update. Never send null units.
+     *
+     * @param  list<string>  $images
+     * @return list<array<string, mixed>>
+     */
+    private function skuEntriesForTitleUpdate(
+        string $sku,
+        ?string $skuId,
+        string $goodsId,
+        array $images,
+        string $skuIdField,
+        string $skuCodeField,
+    ): array {
+        $dims = $this->getProductDimensions($sku);
+        $liveRows = $this->fetchTemu2SkuSpecRows($goodsId);
+        if ($liveRows === []) {
+            $liveRows = [[
+                'skuId' => $skuId,
+                'outSkuSn' => $sku,
+            ]];
         }
 
-        return ['success' => false, 'message' => $lastError];
+        $price = $this->getProductPrice($sku) ?? 1.00;
+        $currency = (string) config('services.temu2.currency', 'USD');
+        $entries = [];
+
+        foreach ($liveRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $pkg = is_array($row['packageInfo'] ?? null) ? $row['packageInfo'] : [];
+            $rowSkuId = trim((string) ($row['skuId'] ?? $row['sku_id'] ?? ''));
+            $rowSn = trim((string) ($row['outSkuSn'] ?? $row['sku'] ?? $row['extCode'] ?? ''));
+            $isTarget = ($skuId !== null && $skuId !== '' && $rowSkuId === (string) $skuId)
+                || ($rowSn !== '' && strcasecmp($rowSn, $sku) === 0)
+                || count($liveRows) === 1;
+
+            $weight = $this->nonEmptySpec($row['weight'] ?? $pkg['weight'] ?? null, $dims['weight'] ?? null, '1');
+            $length = $this->nonEmptySpec($row['length'] ?? $pkg['length'] ?? null, $dims['length'] ?? null, '1');
+            $width = $this->nonEmptySpec($row['width'] ?? $pkg['width'] ?? null, $dims['width'] ?? null, '1');
+            $height = $this->nonEmptySpec($row['height'] ?? $pkg['height'] ?? null, $dims['height'] ?? null, '1');
+            $weightUnit = $this->normalizeTemuWeightUnit($row['weightUnit'] ?? $pkg['weightUnit'] ?? $dims['weightUnit'] ?? 'g');
+            $volumeUnit = $this->normalizeTemuVolumeUnit($row['volumeUnit'] ?? $pkg['volumeUnit'] ?? $row['lenUnit'] ?? $dims['volumeUnit'] ?? 'cm');
+
+            $entry = [
+                $skuCodeField => $rowSn !== '' ? $rowSn : $sku,
+                'weight' => $weight,
+                'length' => $length,
+                'width' => $width,
+                'height' => $height,
+                'weightUnit' => $weightUnit,
+                'volumeUnit' => $volumeUnit,
+                'listPrice' => ['amount' => (string) $price, 'currency' => $currency],
+                'listPriceType' => 0,
+            ];
+            $id = $rowSkuId !== '' ? $rowSkuId : ($isTarget ? $skuId : null);
+            if ($id !== null && $id !== '') {
+                $entry[$skuIdField] = (int) $id;
+            }
+            if ($isTarget && $images !== []) {
+                $entry['images'] = $images;
+            } else {
+                $rowImages = $this->flattenTemuImageValues($row['images'] ?? $row['skuImageList'] ?? []);
+                if ($rowImages !== []) {
+                    $entry['images'] = $rowImages;
+                }
+            }
+            $entries[] = $entry;
+        }
+
+        return $entries !== [] ? $entries : [[
+            $skuCodeField => $sku,
+            'weight' => '1',
+            'length' => '1',
+            'width' => '1',
+            'height' => '1',
+            'weightUnit' => 'g',
+            'volumeUnit' => 'cm',
+            'listPrice' => ['amount' => (string) ($this->getProductPrice($sku) ?? 1.00), 'currency' => $currency],
+            'listPriceType' => 0,
+        ]];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $entries
+     * @return list<array<string, mixed>>
+     */
+    private function skuEntriesWithIntegerUnits(array $entries): array
+    {
+        return array_map(function (array $entry): array {
+            $entry['volumeUnit'] = $this->temuVolumeUnitCode($entry['volumeUnit'] ?? 'cm');
+            $entry['weightUnit'] = $this->temuWeightUnitCode($entry['weightUnit'] ?? 'g');
+
+            return $entry;
+        }, $entries);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $entries
+     * @return list<array<string, mixed>>
+     */
+    private function skuEntriesWithPackageInfoOnly(array $entries): array
+    {
+        return array_map(function (array $entry): array {
+            $pkg = [
+                'weight' => (string) ($entry['weight'] ?? '1'),
+                'length' => (string) ($entry['length'] ?? '1'),
+                'width' => (string) ($entry['width'] ?? '1'),
+                'height' => (string) ($entry['height'] ?? '1'),
+                'weightUnit' => $this->normalizeTemuWeightUnit($entry['weightUnit'] ?? 'g'),
+                'volumeUnit' => $this->normalizeTemuVolumeUnit($entry['volumeUnit'] ?? 'cm'),
+            ];
+            unset($entry['weight'], $entry['length'], $entry['width'], $entry['height'], $entry['weightUnit'], $entry['volumeUnit']);
+            $entry['packageInfo'] = $pkg;
+
+            return $entry;
+        }, $entries);
+    }
+
+    private function nonEmptySpec(mixed $live, mixed $fallback, string $default): string
+    {
+        foreach ([$live, $fallback, $default] as $value) {
+            $text = trim((string) ($value ?? ''));
+            if ($text !== '' && strtolower($text) !== 'null') {
+                return $text;
+            }
+        }
+
+        return $default;
+    }
+
+    private function normalizeTemuVolumeUnit(mixed $value): string
+    {
+        $v = strtolower(trim((string) ($value ?? '')));
+        if (in_array($v, ['2', 'inch', 'in', 'inches'], true)) {
+            return 'inch';
+        }
+
+        return 'cm';
+    }
+
+    private function normalizeTemuWeightUnit(mixed $value): string
+    {
+        $v = strtolower(trim((string) ($value ?? '')));
+        if (in_array($v, ['2', 'lb', 'lbs', 'pound', 'pounds'], true)) {
+            return 'lb';
+        }
+
+        return 'g';
+    }
+
+    private function temuVolumeUnitCode(mixed $value): int
+    {
+        return $this->normalizeTemuVolumeUnit($value) === 'inch' ? 2 : 1;
+    }
+
+    private function temuWeightUnitCode(mixed $value): int
+    {
+        return $this->normalizeTemuWeightUnit($value) === 'lb' ? 2 : 1;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchTemu2SkuSpecRows(string $goodsId): array
+    {
+        if ($goodsId === '') {
+            return [];
+        }
+
+        foreach (['bg.local.goods.detail.query', 'temu.local.goods.detail.retrieve'] as $type) {
+            try {
+                $data = $this->postTemuRequest([
+                    'type' => $type,
+                    'goodsId' => (int) $goodsId,
+                ]);
+            } catch (\Throwable) {
+                continue;
+            }
+            if (! ($data['success'] ?? false)) {
+                continue;
+            }
+            $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+            $skuList = $result['skuList'] ?? $result['skuInfoList'] ?? [];
+            if (! is_array($skuList) || $skuList === []) {
+                continue;
+            }
+
+            $rows = [];
+            foreach ($skuList as $row) {
+                if (is_array($row)) {
+                    $rows[] = $row;
+                }
+            }
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
     }
 
     private function isTemuTitleImageError(string $message): bool
