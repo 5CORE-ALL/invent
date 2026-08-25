@@ -219,7 +219,8 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="amz-stat-badge amz-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="amz-vv-badge-parents">0</span></span>
-                            <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 campaigns">CAMPAIGNS:<span id="amz-vv-badge-campaigns">0</span></span>
+                            <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 KW campaigns">CAMPAIGN KW:<span id="amz-vv-badge-campaigns-kw">0</span></span>
+                            <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 PT campaigns">CAMPAIGN PT:<span id="amz-vv-badge-campaigns-pt">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-kw-issues-wrap" title="Parents with KW missing or extra ads — click to filter the KW column. Click dot for rolling history.">
                                 KW ISSUES:<span id="amz-vv-badge-kw-issues">0</span>
                                 <span class="amz-vv-trend-dot none" id="amz-vv-kw-issues-trend-dot" title="Rolling history" role="button" tabindex="0"></span>
@@ -612,7 +613,8 @@
         function amzVvUpdateMeta(meta) {
             if (!meta) return;
             const parents = meta.required_parent_count || 0;
-            const campaigns = meta.ads_count || 0;
+            const kwCampaigns = meta.kw_ads_count || 0;
+            const ptCampaigns = meta.pt_ads_count || 0;
             const kwIssues = meta.kw_issues_count || 0;
             const ptIssues = meta.pt_issues_count || 0;
 
@@ -630,7 +632,8 @@
                 : null;
 
             $('#amz-vv-badge-parents').text(parents.toLocaleString());
-            $('#amz-vv-badge-campaigns').text(campaigns.toLocaleString());
+            $('#amz-vv-badge-campaigns-kw').text(kwCampaigns.toLocaleString());
+            $('#amz-vv-badge-campaigns-pt').text(ptCampaigns.toLocaleString());
             $('#amz-vv-badge-kw-issues').text(kwIssues.toLocaleString());
             $('#amz-vv-badge-pt-issues').text(ptIssues.toLocaleString());
             $('#amz-vv-badge-missing').text((meta.missing_sku_count || 0).toLocaleString());

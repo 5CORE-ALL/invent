@@ -77,9 +77,15 @@ class AmzComingStatusMissingTest extends TestCase
 
         $this->assertTrue(AmazonListingCounts::isNrl(['NRL' => 'NRL']));
         $this->assertTrue(AmazonListingCounts::isNrl(['NR' => 'NR']));
+        $this->assertTrue(AmazonListingCounts::isNrl('NRL'));
         $this->assertFalse(AmazonListingCounts::isNrl(['NRL' => 'REQ']));
+        $this->assertFalse(AmazonListingCounts::isNrl(['NRL' => 'RL']));
         $this->assertTrue(AmazonListingCounts::skuIsNrl('SKU NRL', ['SKUNRL' => true]));
+        $this->assertTrue(AmazonListingCounts::skuIsNrl('SKU  NRL', ['SKU NRL' => true]));
+        $this->assertTrue(AmazonListingCounts::skuIsNrl('SKU NRL', ['SKUNRL' => true, 'SKU NRL' => true]));
         $this->assertFalse(AmazonListingCounts::skuIsNrl('SKU ACTIVE', ['SKUNRL' => true]));
+        $this->assertContains('SKU NRL', AmazonListingCounts::skuLookupKeys('SKU  NRL'));
+        $this->assertContains('SKUNRL', AmazonListingCounts::skuLookupKeys('SKU NRL FBA'));
     }
 
     public function test_coming_child_already_in_campaign_stays_added(): void

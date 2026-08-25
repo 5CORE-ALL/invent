@@ -90,8 +90,14 @@ class AmazonListingCounts
      */
     public static function nrReqFromDataView(mixed $raw): string
     {
-        if (! is_array($raw)) {
-            $raw = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
+        if (is_string($raw)) {
+            $trimmed = strtoupper(trim($raw));
+            if (in_array($trimmed, ['NRL', 'NR'], true)) {
+                return 'NR';
+            }
+            $raw = json_decode($raw, true) ?: [];
+        } elseif (! is_array($raw)) {
+            $raw = [];
         }
         $nrlRaw = strtoupper(trim((string) ($raw['NRL'] ?? $raw['NR'] ?? '')));
 
@@ -104,7 +110,41 @@ class AmazonListingCounts
     }
 
     /**
-     * Uppercased SKU keys marked NRL/NR in amazon_data_view (Amazon listing page).
+     * Lookup keys used by the Amazon blade for NRL/NRA (exact, collapsed spaces, no spaces, datasheet fold).
+     *
+     * @return list<string>
+     */
+    public static function skuLookupKeys(string $sku): array
+    {
+        $sku = trim(str_replace("\xC2\xA0", ' ', $sku));
+        if ($sku === '') {
+            return [];
+        }
+
+        $collapsed = strtoupper(preg_replace('/\s+/u', ' ', $sku) ?? $sku);
+        $noSpace = strtoupper(str_replace(' ', '', $sku));
+        $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sku));
+
+        $keys = [
+            strtoupper($sku),
+            $collapsed,
+            $noSpace,
+        ];
+        if ($base !== '' && strcasecmp($base, $sku) !== 0) {
+            $keys = array_merge($keys, self::skuLookupKeys($base));
+        }
+
+        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+        if ($norm !== '') {
+            $keys[] = $norm;
+        }
+
+        return array_values(array_unique(array_filter($keys)));
+    }
+
+    /**
+     * Uppercased SKU keys marked NRL/NR in amazon_data_view (same source as the Amazon blade).
+     * Matches exact SKU and space/FBA variants so refresh does not count those SKUs as Missing.
      *
      * @param  list<string>  $skus
      * @return array<string, true>
@@ -120,10 +160,18 @@ class AmazonListingCounts
             return $set;
         }
 
+        $wanted = [];
+        foreach ($skus as $sku) {
+            foreach (self::skuLookupKeys($sku) as $key) {
+                $wanted[$key] = true;
+            }
+        }
+
+        // Same as /amazon-tabulator-view: load data-view rows, then match by normalized SKU.
+        // Exact whereIn misses NRL when Product Master and amazon_data_view spacing differ.
         AmazonDataView::query()
-            ->whereIn('sku', $skus)
             ->get(['sku', 'value'])
-            ->each(function ($row) use (&$set) {
+            ->each(function ($row) use (&$set, $wanted) {
                 if (! self::isNrl($row->value ?? null)) {
                     return;
                 }
@@ -131,10 +179,19 @@ class AmazonListingCounts
                 if ($sku === '') {
                     return;
                 }
-                $set[strtoupper($sku)] = true;
-                $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-                if ($norm !== '') {
-                    $set[$norm] = true;
+                $keys = self::skuLookupKeys($sku);
+                $hit = false;
+                foreach ($keys as $key) {
+                    if (isset($wanted[$key])) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if (! $hit) {
+                    return;
+                }
+                foreach ($keys as $key) {
+                    $set[$key] = true;
                 }
             });
 
@@ -146,16 +203,16 @@ class AmazonListingCounts
      */
     public static function skuIsNrl(string $sku, array $nrlSet): bool
     {
-        $sku = trim($sku);
-        if ($sku === '' || $nrlSet === []) {
+        if ($nrlSet === []) {
             return false;
         }
-        if (isset($nrlSet[strtoupper($sku)])) {
-            return true;
+        foreach (self::skuLookupKeys($sku) as $key) {
+            if (isset($nrlSet[$key])) {
+                return true;
+            }
         }
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
 
-        return $norm !== '' && isset($nrlSet[$norm]);
+        return false;
     }
 
     /**

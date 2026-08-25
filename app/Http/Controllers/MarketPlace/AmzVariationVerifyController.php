@@ -265,6 +265,8 @@ class AmzVariationVerifyController extends Controller
         $lastPulledAt = AmazonListingRaw::query()->max('report_imported_at');
         $listingsCount = AmazonListingRaw::query()->count();
         $campaignCount = $adLookup['campaign_count'] ?? 0;
+        $kwCampaignCount = $adLookup['kw_campaign_count'] ?? 0;
+        $ptCampaignCount = $adLookup['pt_campaign_count'] ?? 0;
 
         // Issues = missing and/or extra ads, counted separately for KW and PT.
         $parentRows = array_values(array_filter($formattedData, fn ($r) => ! empty($r['is_parent'])));
@@ -315,6 +317,8 @@ class AmzVariationVerifyController extends Controller
                 'archived_extra_sku_count' => (int) $archivedExtraSkuTotal,
                 'required_refreshed_at' => now()->toDateTimeString(),
                 'ads_count' => $campaignCount,
+                'kw_ads_count' => (int) $kwCampaignCount,
+                'pt_ads_count' => (int) $ptCampaignCount,
                 'ads_pulled_at' => null,
                 'has_ads_cache' => ! $adLookup['empty'],
                 'ads_source' => 'amazon_sp_campaign_reports (L30 KW/PT)',
@@ -940,6 +944,8 @@ class AmzVariationVerifyController extends Controller
      * @return array{
      *   empty: bool,
      *   campaign_count: int,
+     *   kw_campaign_count: int,
+     *   pt_campaign_count: int,
      *   kw_keys: array<string, true>,
      *   pt_keys: array<string, true>,
      *   kw_parent_keys: array<string, true>,
@@ -955,6 +961,8 @@ class AmzVariationVerifyController extends Controller
         $empty = [
             'empty' => true,
             'campaign_count' => 0,
+            'kw_campaign_count' => 0,
+            'pt_campaign_count' => 0,
             'kw_keys' => [],
             'pt_keys' => [],
             'kw_parent_keys' => [],
@@ -1059,6 +1067,8 @@ class AmzVariationVerifyController extends Controller
         return [
             'empty' => false,
             'campaign_count' => $campaigns->count(),
+            'kw_campaign_count' => $kwCampaigns->count(),
+            'pt_campaign_count' => $ptCampaigns->count(),
             'kw_keys' => $kwKeys,
             'pt_keys' => $ptKeys,
             'kw_parent_keys' => $kwParentKeys,

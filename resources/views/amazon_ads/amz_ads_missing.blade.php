@@ -218,13 +218,13 @@
                             <span class="amz-missing-badge-label">Missing</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingValue">0</span>
                         </div>
-                        <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" title="Missing PT: in-stock rows (inventory > 0) in the current view with no linked PT campaign.">
-                            <span class="amz-missing-badge-label">Missing PT</span>
-                            <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
-                        </div>
                         <div class="amz-missing-badge amz-missing-badge--kw" id="amzMissingKwWrap" role="button" tabindex="0" aria-pressed="false" title="Missing KW: in-stock rows (inventory > 0) with no linked KW campaign. Click to show only those rows; click again to clear.">
                             <span class="amz-missing-badge-label">Missing KW</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingKwValue">0</span>
+                        </div>
+                        <div class="amz-missing-badge amz-missing-badge--pt" id="amzMissingPtWrap" role="button" tabindex="0" aria-pressed="false" title="Missing PT: in-stock rows (inventory > 0) with no linked PT campaign. Click to show only those rows; click again to clear.">
+                            <span class="amz-missing-badge-label">Missing PT</span>
+                            <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
                         <button type="button" class="btn btn-success btn-sm ms-auto" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
                             <i class="fa fa-download me-1"></i> Export
@@ -874,39 +874,66 @@
                     if (el) { el.textContent = Number(parents).toLocaleString('en-US'); }
                 }
 
-                function isMissingKwBadgeFilterOn() {
+                function headerFilterValue(field) {
                     try {
-                        return table.getHeaderFilterValue('kw') === 'missing'
-                            && table.getHeaderFilterValue('inventory') === 'in';
+                        return table.getHeaderFilterValue(field) || '';
                     } catch (e) {
-                        return false;
+                        return '';
                     }
                 }
 
-                function syncMissingKwBadgeActive() {
-                    var kwWrap = document.getElementById('amzMissingKwWrap');
-                    if (!kwWrap) { return; }
-                    var on = isMissingKwBadgeFilterOn();
-                    kwWrap.classList.toggle('is-active', on);
-                    kwWrap.setAttribute('aria-pressed', on ? 'true' : 'false');
+                function isMissingTypeBadgeFilterOn(type) {
+                    var other = type === 'kw' ? 'pt' : 'kw';
+                    return headerFilterValue(type) === 'missing'
+                        && headerFilterValue('inventory') === 'in'
+                        && headerFilterValue(other) !== 'missing';
                 }
 
-                function toggleMissingKwFilter() {
+                function syncMissingTypeBadgeActive(type) {
+                    var wrap = document.getElementById(type === 'kw' ? 'amzMissingKwWrap' : 'amzMissingPtWrap');
+                    if (!wrap) { return; }
+                    var on = isMissingTypeBadgeFilterOn(type);
+                    wrap.classList.toggle('is-active', on);
+                    wrap.setAttribute('aria-pressed', on ? 'true' : 'false');
+                }
+
+                function syncMissingColumnBadgeActive() {
+                    syncMissingTypeBadgeActive('kw');
+                    syncMissingTypeBadgeActive('pt');
+                }
+
+                function toggleMissingTypeFilter(type) {
+                    var other = type === 'kw' ? 'pt' : 'kw';
                     badgePanel.classList.add('d-none');
-                    if (isMissingKwBadgeFilterOn()) {
-                        table.setHeaderFilterValue('kw', '');
+                    if (isMissingTypeBadgeFilterOn(type)) {
+                        table.setHeaderFilterValue(type, '');
                         table.setHeaderFilterValue('inventory', '');
                     } else {
+                        table.setHeaderFilterValue(other, '');
                         table.setHeaderFilterValue('inventory', 'in');
-                        table.setHeaderFilterValue('kw', 'missing');
+                        table.setHeaderFilterValue(type, 'missing');
                     }
+                }
+
+                function bindMissingColumnBadge(wrapId, type) {
+                    var el = document.getElementById(wrapId);
+                    if (!el) { return; }
+                    el.addEventListener('click', function () {
+                        toggleMissingTypeFilter(type);
+                    });
+                    el.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleMissingTypeFilter(type);
+                        }
+                    });
                 }
 
                 // dataFiltered gives the filtered RowComponents reliably (fires on initial filter, toggle, and header filters).
                 table.on('dataFiltered', function (filters, rows) {
                     updateMissingBadges((rows || []).map(function (rc) { return rc.getData(); }));
                     updateParentBadge();
-                    syncMissingKwBadgeActive();
+                    syncMissingColumnBadgeActive();
                 });
 
                 // Clicking a badge shows the list of parents behind its count.
@@ -952,21 +979,8 @@
                         return (!r.pt || !r.pt.length) || (!r.kw || !r.kw.length);
                     });
                 });
-                bindBadge('amzMissingPtWrap', 'Missing PT', function () {
-                    return parentNamesFrom(table.getData('active'), function (r) { return (Number(r.inventory) || 0) > 0 && (!r.pt || !r.pt.length); });
-                });
-                var missingKwWrap = document.getElementById('amzMissingKwWrap');
-                if (missingKwWrap) {
-                    missingKwWrap.addEventListener('click', function () {
-                        toggleMissingKwFilter();
-                    });
-                    missingKwWrap.addEventListener('keydown', function (e) {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            toggleMissingKwFilter();
-                        }
-                    });
-                }
+                bindMissingColumnBadge('amzMissingKwWrap', 'kw');
+                bindMissingColumnBadge('amzMissingPtWrap', 'pt');
 
                 document.addEventListener('click', function (e) {
                     if (badgePanel.classList.contains('d-none')) { return; }
