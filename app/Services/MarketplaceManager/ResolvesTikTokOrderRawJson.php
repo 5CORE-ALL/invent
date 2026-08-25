@@ -3,10 +3,10 @@
 namespace App\Services\MarketplaceManager;
 
 /**
- * Shared TikTok order payload helpers for TikTok1 / TikTok2 push services.
+ * Shared TikTok order payload helpers for TikTok1 / TikTok2 push + fetch.
  *
- * Prevents intermittent address sync when writers store raw_json as either
- * a JSON string or an already-decoded array (Eloquent array cast).
+ * List-order APIs often omit or mask recipient_address; Get Order Detail has
+ * the real ship-to. Writers must preserve a complete address across upserts.
  */
 trait ResolvesTikTokOrderRawJson
 {
@@ -39,41 +39,98 @@ trait ResolvesTikTokOrderRawJson
         return [];
     }
 
+    protected function unmaskTikTokValue(mixed $value): string
+    {
+        if (is_array($value)) {
+            return '';
+        }
+
+        $text = trim((string) $value);
+        if ($text === '') {
+            return '';
+        }
+        if (preg_match('/^\*+$/', $text) === 1) {
+            return '';
+        }
+        if (in_array(strtolower($text), ['null', 'n/a', 'na', 'none', 'unknown', 'redacted'], true)) {
+            return '';
+        }
+
+        return $text;
+    }
+
     /**
      * @param  array<string, mixed>  $rawJson
      * @return array<string, mixed>
      */
     protected function tikTokAddressFromRaw(array $rawJson): array
     {
-        $address = $rawJson['recipient_address'] ?? $rawJson['shipping_address'] ?? [];
+        $candidates = [
+            $rawJson['recipient_address'] ?? null,
+            $rawJson['shipping_address'] ?? null,
+            $rawJson['recipient_address_info'] ?? null,
+            is_array($rawJson['data'] ?? null) ? ($rawJson['data']['recipient_address'] ?? null) : null,
+        ];
 
-        return is_array($address) ? $address : [];
+        foreach ($candidates as $address) {
+            if (is_string($address) && trim($address) !== '') {
+                $decoded = json_decode($address, true);
+                $address = is_array($decoded) ? $decoded : null;
+            }
+            if (is_array($address) && $address !== []) {
+                return $address;
+            }
+        }
+
+        return [];
     }
 
     /**
      * @param  array<string, mixed>  $address
      */
-    protected function mapTikTokAddressToShopify(array $address): array
+    protected function tikTokPhoneFromAddress(array $address): string
     {
-        $name = trim((string) ($address['name'] ?? $address['full_name'] ?? ''));
-        $parts = $name !== '' ? explode(' ', $name, 2) : ['', ''];
-
-        $lineList = $address['address_line_list'] ?? null;
-        $line1FromList = '';
-        $line2FromList = '';
-        if (is_array($lineList)) {
-            $line1FromList = trim((string) ($lineList[0] ?? ''));
-            $line2FromList = trim((string) ($lineList[1] ?? ''));
+        $phone = $address['phone_number'] ?? $address['phone'] ?? $address['mobile'] ?? '';
+        if (is_array($phone)) {
+            $country = $this->unmaskTikTokValue($phone['country_code'] ?? $phone['calling_code'] ?? '');
+            $local = $this->unmaskTikTokValue($phone['phone_number'] ?? $phone['local_number'] ?? $phone['number'] ?? '');
+            $phone = trim($country.$local);
         }
 
-        $city = trim((string) ($address['city'] ?? ''));
-        $province = trim((string) (
+        return $this->unmaskTikTokValue($phone);
+    }
+
+    /**
+     * @param  array<string, mixed>  $address
+     * @return array<string, mixed>
+     */
+    protected function mapTikTokAddressToShopify(array $address): array
+    {
+        $first = $this->unmaskTikTokValue($address['first_name'] ?? $address['firstName'] ?? '');
+        $last = $this->unmaskTikTokValue($address['last_name'] ?? $address['lastName'] ?? '');
+        $name = $this->unmaskTikTokValue($address['name'] ?? $address['full_name'] ?? $address['recipient'] ?? '');
+        if ($first === '' && $name !== '') {
+            $parts = explode(' ', $name, 2);
+            $first = $parts[0] ?? '';
+            $last = $last !== '' ? $last : ($parts[1] ?? '');
+        }
+        if ($last === '') {
+            $last = $first;
+        }
+
+        $linesFromList = $this->tikTokStreetLinesFromList($address['address_line_list'] ?? null);
+
+        $city = $this->unmaskTikTokValue($address['city'] ?? $address['city_name'] ?? '');
+        $province = $this->unmaskTikTokValue(
             $address['state']
             ?? $address['region']
             ?? $address['province']
             ?? $address['province_code']
+            ?? $address['state_code']
             ?? ''
-        ));
+        );
+        $zip = $this->unmaskTikTokValue($address['postal_code'] ?? $address['zipcode'] ?? $address['zip'] ?? $address['postcode'] ?? '');
+        $countryCode = $this->unmaskTikTokValue($address['region_code'] ?? $address['country_code'] ?? $address['country'] ?? '');
 
         $districtInfo = $address['district_info'] ?? null;
         if (is_array($districtInfo)) {
@@ -81,50 +138,213 @@ trait ResolvesTikTokOrderRawJson
                 if (! is_array($level)) {
                     continue;
                 }
-                $levelName = strtoupper((string) ($level['address_level'] ?? $level['address_level_name'] ?? ''));
-                $value = trim((string) ($level['address_name'] ?? ''));
+                $levelName = strtoupper((string) ($level['address_level_name'] ?? $level['address_level'] ?? ''));
+                $levelCode = strtoupper((string) ($level['address_level'] ?? ''));
+                $value = $this->unmaskTikTokValue($level['address_name'] ?? $level['name'] ?? '');
                 if ($value === '') {
                     continue;
                 }
-                if ($city === '' && (str_contains($levelName, 'CITY') || str_contains($levelName, 'DISTRICT') || ($level['address_level'] ?? '') === 'L2')) {
+                if ($city === '' && (str_contains($levelName, 'CITY') || str_contains($levelName, 'TOWN') || $levelCode === 'L2')) {
                     $city = $value;
                 }
-                if ($province === '' && (str_contains($levelName, 'STATE') || str_contains($levelName, 'PROVINCE') || ($level['address_level'] ?? '') === 'L1')) {
+                if ($province === '' && (str_contains($levelName, 'STATE') || str_contains($levelName, 'PROVINCE') || $levelCode === 'L1')) {
                     $province = $value;
+                }
+                if ($countryCode === '' && (str_contains($levelName, 'COUNTRY') || $levelCode === 'L0')) {
+                    $countryCode = $value;
+                }
+                if ($city === '' && str_contains($levelName, 'DISTRICT') && $levelCode === 'L3') {
+                    // Keep district as last-resort city, after a dedicated city pass.
                 }
             }
             if ($city === '') {
-                $city = trim((string) ($districtInfo[1]['address_name'] ?? ''));
+                $city = $this->unmaskTikTokValue($districtInfo[1]['address_name'] ?? '');
             }
             if ($province === '') {
-                $province = trim((string) ($districtInfo[0]['address_name'] ?? ''));
+                $province = $this->unmaskTikTokValue($districtInfo[0]['address_name'] ?? '');
+            }
+            if ($city === '') {
+                foreach ($districtInfo as $level) {
+                    if (! is_array($level)) {
+                        continue;
+                    }
+                    $levelName = strtoupper((string) ($level['address_level_name'] ?? ''));
+                    if (str_contains($levelName, 'DISTRICT') || str_contains($levelName, 'COUNTY')) {
+                        $city = $this->unmaskTikTokValue($level['address_name'] ?? '');
+                        if ($city !== '') {
+                            break;
+                        }
+                    }
+                }
             }
         }
 
-        $address1 = trim((string) ($address['address_line1'] ?? $address['address_detail'] ?? ''));
+        $address1 = $this->unmaskTikTokValue(
+            $address['address_line1']
+            ?? $address['address_line_1']
+            ?? $address['address_detail']
+            ?? $address['addr']
+            ?? ''
+        );
         if ($address1 === '') {
-            $address1 = $line1FromList;
+            $address1 = $linesFromList[0] ?? '';
         }
+        $fullAddress = $this->unmaskTikTokValue($address['full_address'] ?? '');
         if ($address1 === '') {
-            $address1 = trim((string) ($address['full_address'] ?? ''));
+            $address1 = $fullAddress;
         }
 
-        $address2 = trim((string) ($address['address_line2'] ?? $address['address_line_2'] ?? ''));
+        $address2 = $this->unmaskTikTokValue(
+            $address['address_line2']
+            ?? $address['address_line_2']
+            ?? ''
+        );
         if ($address2 === '') {
-            $address2 = $line2FromList;
+            $address2 = $linesFromList[1] ?? '';
         }
+        $extra = array_filter([
+            $this->unmaskTikTokValue($address['address_line3'] ?? $address['address_line_3'] ?? ''),
+            $this->unmaskTikTokValue($address['address_line4'] ?? $address['address_line_4'] ?? ''),
+            $linesFromList[2] ?? '',
+        ]);
+        if ($extra !== []) {
+            $address2 = trim($address2.' '.implode(', ', $extra));
+        }
+
+        [$countryCode, $countryName] = $this->normalizeTikTokCountry($countryCode);
 
         return array_filter([
-            'first_name' => $parts[0] ?? '',
-            'last_name' => $parts[1] ?? $parts[0] ?? '',
+            'first_name' => $first,
+            'last_name' => $last,
             'address1' => $address1,
             'address2' => $address2,
             'city' => $city,
             'province' => $province,
-            'zip' => trim((string) ($address['postal_code'] ?? $address['zipcode'] ?? $address['zip'] ?? '')),
-            'country_code' => trim((string) ($address['region_code'] ?? $address['country_code'] ?? $address['country'] ?? 'US')),
-            'phone' => trim((string) ($address['phone_number'] ?? $address['phone'] ?? '')),
-        ], static fn ($v) => $v !== '');
+            'zip' => $zip,
+            'country_code' => $countryCode !== '' ? $countryCode : 'US',
+            'country' => $countryName,
+            'phone' => $this->tikTokPhoneFromAddress($address),
+        ], static fn ($v) => $v !== null && $v !== '');
+    }
+
+    /**
+     * @param  mixed  $lineList
+     * @return list<string>
+     */
+    protected function tikTokStreetLinesFromList(mixed $lineList): array
+    {
+        if (! is_array($lineList)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($lineList as $entry) {
+            if (is_string($entry) || is_numeric($entry)) {
+                $text = $this->unmaskTikTokValue($entry);
+            } elseif (is_array($entry)) {
+                $text = $this->unmaskTikTokValue(
+                    $entry['address_line']
+                    ?? $entry['address_name']
+                    ?? $entry['value']
+                    ?? $entry['text']
+                    ?? ''
+                );
+            } else {
+                $text = '';
+            }
+            if ($text !== '') {
+                $out[] = $text;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    protected function normalizeTikTokCountry(string $codeOrName): array
+    {
+        $value = strtoupper(trim($codeOrName));
+        $names = [
+            'US' => 'United States',
+            'USA' => 'United States',
+            'UNITED STATES' => 'United States',
+            'CA' => 'Canada',
+            'CANADA' => 'Canada',
+            'GB' => 'United Kingdom',
+            'UK' => 'United Kingdom',
+            'UNITED KINGDOM' => 'United Kingdom',
+            'AU' => 'Australia',
+            'AUSTRALIA' => 'Australia',
+            'MX' => 'Mexico',
+            'MEXICO' => 'Mexico',
+        ];
+        $codes = [
+            'UNITED STATES' => 'US',
+            'USA' => 'US',
+            'CANADA' => 'CA',
+            'UNITED KINGDOM' => 'GB',
+            'UK' => 'GB',
+            'AUSTRALIA' => 'AU',
+            'MEXICO' => 'MX',
+        ];
+
+        if (isset($names[$value]) && strlen($value) <= 3) {
+            $code = $value === 'USA' ? 'US' : ($value === 'UK' ? 'GB' : $value);
+
+            return [$code, $names[$value]];
+        }
+        if (isset($codes[$value])) {
+            return [$codes[$value], $names[$value] ?? $codeOrName];
+        }
+        if (strlen($value) === 2) {
+            return [$value, $names[$value] ?? ''];
+        }
+
+        return ['', $this->unmaskTikTokValue($codeOrName)];
+    }
+
+    /**
+     * @param  array<string, mixed>  $shopifyAddress
+     */
+    protected function tikTokShopifyAddressIsComplete(array $shopifyAddress): bool
+    {
+        return $this->unmaskTikTokValue($shopifyAddress['address1'] ?? '') !== ''
+            && $this->unmaskTikTokValue($shopifyAddress['city'] ?? '') !== ''
+            && $this->unmaskTikTokValue($shopifyAddress['zip'] ?? '') !== '';
+    }
+
+    /**
+     * Keep a previously stored full recipient_address when a list-API refresh
+     * comes back masked or empty so later Shopify address sync still has data.
+     *
+     * @param  array<string, mixed>  $incoming
+     * @param  array<string, mixed>  $existingRaw
+     * @return array<string, mixed>
+     */
+    protected function mergePreservedTikTokRecipientAddress(array $incoming, array $existingRaw): array
+    {
+        if ($existingRaw === []) {
+            return $incoming;
+        }
+
+        $incomingAddr = $this->tikTokAddressFromRaw($incoming);
+        $existingAddr = $this->tikTokAddressFromRaw($existingRaw);
+        $incomingMapped = $incomingAddr !== [] ? $this->mapTikTokAddressToShopify($incomingAddr) : [];
+        $existingMapped = $existingAddr !== [] ? $this->mapTikTokAddressToShopify($existingAddr) : [];
+
+        if ($this->tikTokShopifyAddressIsComplete($existingMapped)
+            && ! $this->tikTokShopifyAddressIsComplete($incomingMapped)
+        ) {
+            $incoming['recipient_address'] = $existingAddr;
+        }
+
+        if (empty($incoming['buyer_email']) && ! empty($existingRaw['buyer_email'])) {
+            $incoming['buyer_email'] = $existingRaw['buyer_email'];
+        }
+
+        return $incoming;
     }
 
     /**
@@ -162,5 +382,31 @@ trait ResolvesTikTokOrderRawJson
         $first = $orders[0] ?? null;
 
         return is_array($first) ? $first : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $rawJson
+     * @param  array<string, mixed>  $shipping
+     * @return array{0: string, 1: array<string, mixed>, 2: bool}
+     */
+    protected function tikTokShopifyCustomerAndEmail(string $orderId, array $rawJson, array $shipping, string $prefix = 'tiktok'): array
+    {
+        $email = $this->unmaskTikTokValue($rawJson['buyer_email'] ?? $rawJson['email'] ?? ($shipping['email'] ?? ''));
+        $placeholder = false;
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $domain = (string) env('TIKTOK_SHOPIFY_PLACEHOLDER_EMAIL_DOMAIN', 'import.5coremanagement.com');
+            $slug = preg_replace('/[^a-zA-Z0-9]/', '', $orderId) ?: 'order';
+            $email = $prefix.'-'.$slug.'@'.$domain;
+            $placeholder = true;
+        }
+
+        $customer = array_filter([
+            'first_name' => $shipping['first_name'] ?? '',
+            'last_name' => $shipping['last_name'] ?? '',
+            'email' => $email,
+            'phone' => $shipping['phone'] ?? '',
+        ], static fn ($v) => $v !== null && $v !== '');
+
+        return [$email, $customer, $placeholder];
     }
 }
