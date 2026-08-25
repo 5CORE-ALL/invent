@@ -292,6 +292,9 @@ class Temu2ApiService extends TemuApiService
         $skuCodeField = config('services.temu2.sku_code_field', config('services.temu.sku_code_field', 'outSkuSn'));
         $apiType = config('services.temu2.goods_update_type', config('services.temu.goods_update_type', 'bg.local.goods.partial.update'));
 
+        $skuId = $this->getSkuIdBySku($sku);
+        $images = $this->existingListingImageUrls($sku, (string) $goodsId, true);
+
         $attempts = [];
         $attempts[] = [
             'type' => $apiType,
@@ -299,8 +302,7 @@ class Temu2ApiService extends TemuApiService
             $goodsBasicField => ['goodsName' => $title],
         ];
 
-        $skuId = $this->getSkuIdBySku($sku);
-        if ($skuId !== null && $skuId !== '') {
+        if ($skuId !== null && $skuId !== '' && $images !== []) {
             $attempts[] = [
                 'type' => $apiType,
                 'goodsId' => (int) $goodsId,
@@ -308,6 +310,7 @@ class Temu2ApiService extends TemuApiService
                 $skuListField => [[
                     $skuIdField => (int) $skuId,
                     $skuCodeField => $sku,
+                    'images' => $images,
                 ]],
             ];
         }
@@ -341,7 +344,131 @@ class Temu2ApiService extends TemuApiService
             ]);
         }
 
+        if ($this->isTemuTitleImageError($lastError)) {
+            return [
+                'success' => false,
+                'message' => 'Temu 2 would not accept a title-only update for this SKU. The existing listing images could not be loaded to satisfy Temu’s image requirement.',
+            ];
+        }
+
         return ['success' => false, 'message' => $lastError];
+    }
+
+    private function isTemuTitleImageError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'upload image')
+            || str_contains($m, 'image url')
+            || str_contains($m, 'sku specifications are empty')
+            || str_contains($m, 'add at least one sku');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function existingListingImageUrls(string $sku, string $goodsId, bool $allowApi = false): array
+    {
+        $urls = [];
+        $seen = [];
+        $push = function (string $url) use (&$urls, &$seen): void {
+            $url = trim($url);
+            if ($url === '' || ! preg_match('#^https?://#i', $url) || isset($seen[$url])) {
+                return;
+            }
+            $seen[$url] = true;
+            $urls[] = $url;
+        };
+
+        try {
+            $row = Temu2Metric::query()
+                ->where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first(['image_urls', 'image_master_json']);
+            foreach ([$row?->image_urls, $row?->image_master_json] as $raw) {
+                foreach ($this->flattenTemuImageValues($raw) as $url) {
+                    $push($url);
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        foreach ($this->getProductImages($sku) as $url) {
+            $push((string) $url);
+        }
+
+        if ($urls === [] && $allowApi && $goodsId !== '') {
+            foreach ($this->flattenTemuImageValues($this->fetchTemu2GoodsImages($goodsId, $sku)) as $url) {
+                $push($url);
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function flattenTemuImageValues(mixed $raw): array
+    {
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : (preg_split('/\s+/', $raw) ?: []);
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        $walk = function ($node) use (&$walk, &$out): void {
+            if (is_string($node) && preg_match('#^https?://#i', trim($node))) {
+                $out[] = trim($node);
+
+                return;
+            }
+            if (! is_array($node)) {
+                return;
+            }
+            foreach (['url', 'imgUrl', 'imageUrl', 'image_url', 'picUrl'] as $key) {
+                if (! empty($node[$key]) && is_string($node[$key])) {
+                    $out[] = trim($node[$key]);
+                }
+            }
+            foreach ($node as $v) {
+                $walk($v);
+            }
+        };
+        $walk($raw);
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function fetchTemu2GoodsImages(string $goodsId, string $sku): array
+    {
+        foreach (['bg.local.goods.detail.query', 'temu.local.goods.detail.retrieve'] as $type) {
+            try {
+                $data = $this->postTemuRequest([
+                    'type' => $type,
+                    'goodsId' => (int) $goodsId,
+                ]);
+            } catch (\Throwable) {
+                continue;
+            }
+            if (! ($data['success'] ?? false)) {
+                continue;
+            }
+            $result = is_array($data['result'] ?? null) ? $data['result'] : [];
+            $found = $this->flattenTemuImageValues($result);
+            if ($found !== []) {
+                return $found;
+            }
+        }
+
+        return [];
     }
 
     protected function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void

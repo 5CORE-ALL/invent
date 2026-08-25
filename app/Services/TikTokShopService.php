@@ -1603,50 +1603,52 @@ class TikTokShopService
             $this->client->setShopCipher($this->shopCipher);
         }
 
-        $versions = ['202309', '202407', '202501', '202502', '202503'];
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+
+        $tries = [
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => []],
+            ['path' => "/product/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
+        ];
+
         $lastError = '';
-        foreach ($versions as $version) {
-            try {
-                $response = $this->client->Product->useVersion($version)->partialEditProduct($productId, [
-                    'title' => $title,
-                ]);
-                if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+        foreach ($hosts as $base) {
+            foreach ($tries as $try) {
+                try {
+                    $this->tiktokOpenApi('POST', $try['path'], $try['query'], ['title' => $title], 45, false, $base);
+
                     return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
-                }
-                $lastError = (string) ($response['message'] ?? json_encode($response) ?: 'TikTok title update failed.');
-                Log::warning('TikTok partialEditProduct rejected', [
-                    'product_id' => $productId,
-                    'version' => $version,
-                    'error' => $lastError,
-                ]);
-                if (! $this->isInvalidApiVersionError($lastError) && ! $this->isNoSchemaError($lastError)) {
-                    break;
-                }
-            } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
-                Log::warning('TikTok partialEditProduct failed', [
-                    'product_id' => $productId,
-                    'version' => $version,
-                    'error' => $lastError,
-                ]);
-                if (! $this->isInvalidApiVersionError($lastError) && ! $this->isNoSchemaError($lastError)) {
-                    break;
+                } catch (\Throwable $e) {
+                    $lastError = $e->getMessage();
+                    Log::warning('TikTok title signed call failed', [
+                        'product_id' => $productId,
+                        'base' => $base,
+                        'path' => $try['path'],
+                        'query' => $try['query'],
+                        'error' => $lastError,
+                    ]);
                 }
             }
         }
 
-        foreach ($versions as $version) {
-            try {
-                $response = $this->client->Product->useVersion($version)->editProduct($productId, [
-                    'title' => $title,
-                ]);
-                if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
-                    return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
-                }
-                $lastError = (string) ($response['message'] ?? $lastError);
-            } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
+        try {
+            $response = $this->client->Product->useVersion('202309')->partialEditProduct($productId, [
+                'title' => $title,
+            ]);
+            if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
             }
+            if ($response === [] || $response === null) {
+                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+            }
+            $lastError = (string) ($response['message'] ?? $lastError);
+        } catch (\Throwable $e) {
+            $code = (int) $e->getCode();
+            $lastError = $code > 0 ? $code.': '.$e->getMessage() : $e->getMessage();
         }
 
         return $this->marketplaceApiFailure(
@@ -3330,7 +3332,7 @@ class TikTokShopService
      * @param  array<string, mixed>|null  $jsonBody
      * @return array<string, mixed>
      */
-    protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false): array
+    protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false, ?string $apiBase = null): array
     {
         $originalQuery = $query;
         $query['app_key'] = (string) $this->clientKey;
@@ -3340,7 +3342,7 @@ class TikTokShopService
         }
         $body = $jsonBody === null ? '' : (string) json_encode($jsonBody, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $query['sign'] = $this->signTikTokRequest($path, $query, $body);
-        $base = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $base = rtrim((string) ($apiBase ?: (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com')), '/');
         $url = $base.$path;
         $request = Http::withoutVerifying()
             ->withHeaders([
@@ -3363,7 +3365,7 @@ class TikTokShopService
                 && $this->isExpiredAccessTokenMessage($code, $message)
                 && $this->refreshAccessToken()
             ) {
-                return $this->tiktokOpenApi($method, $path, $originalQuery, $jsonBody, $timeout, true);
+                return $this->tiktokOpenApi($method, $path, $originalQuery, $jsonBody, $timeout, true, $apiBase);
             }
             throw new \RuntimeException(trim($code.': '.$message));
         }

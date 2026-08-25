@@ -1901,7 +1901,8 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             'goods_basic_field' => $goodsBasicField,
         ]);
 
-        $requestBody = [
+        $requestBodies = [];
+        $requestBodies[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
             $goodsBasicField => [
@@ -1909,135 +1910,45 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             ],
         ];
 
-        $price = $this->getProductPrice($sku);
-        $dimensions = $this->getProductDimensions($sku);
         $images = $this->getProductImages($sku);
-
-        // Always send skuList — Temu's bg.local.goods.partial.update rejects requests without it
-        // ("Add at least one SKU"). When skuId resolution fails (transient list-API failure),
-        // we still send the minimal entry (outSkuSn + price/dim/images) so the request is valid.
         $skuEntry = [
             $skuCodeField => $sku,
-            'listPrice' => [
-                'amount' => (string) ($price ?? 1.00),
-                'currency' => 'USD',
-            ],
-            'listPriceType' => 0,
-            'weight' => $dimensions['weight'],
-            'length' => $dimensions['length'],
-            'width' => $dimensions['width'],
-            'height' => $dimensions['height'],
-            'weightUnit' => $dimensions['weightUnit'],
-            'volumeUnit' => $dimensions['volumeUnit'],
-            'images' => $images,
         ];
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
             $skuEntry[$skuIdField] = (int) $skuInfo['skuId'];
         }
-        $requestBody[$skuListField] = [$skuEntry];
-
-        Log::info('Temu - Full SKU entry (field name: ' . $skuListField . ')', [
-            'sku' => $sku,
-            'skuEntry' => $skuEntry,
-            'skuId_resolved' => isset($skuEntry[$skuIdField]),
-        ]);
-
-        Log::info('Temu updateTitle - exact request body (field name: ' . $skuListField . ')', [
-            'sku' => $sku,
-            'goodsId' => $goodsId,
-            'body' => $requestBody,
-            'body_json' => json_encode($requestBody, JSON_UNESCAPED_UNICODE),
-        ]);
-
-        $signedRequest = $this->generateSignValue($requestBody);
-
-        $request = Http::withHeaders(['Content-Type' => 'application/json']);
-        if (config('filesystems.default') === 'local') {
-            $request = $request->withoutVerifying();
+        if ($images !== []) {
+            $skuEntry['images'] = $images;
+            $requestBodies[] = [
+                'type' => $apiType,
+                'goodsId' => (int) $goodsId,
+                $goodsBasicField => ['goodsName' => $title],
+                $skuListField => [$skuEntry],
+            ];
         }
 
-        try {
-            // 2-attempt loop (same shape as pushTemuGoodsBasicField) — covers transient 5xx / network
-            // blips that previously surfaced as one-off "title push failed" on title-master.
-            $status = 0;
-            $bodyRaw = '';
-            $data = [];
-            $errorCode = null;
-            $errorMsg = '';
-            $maxAttempts = 2;
-            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        $lastError = 'Temu title update failed.';
+        foreach ($requestBodies as $attemptBody) {
+            $signedRequest = $this->generateSignValue($attemptBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            try {
                 $response = $request->post($url, $signedRequest);
-                $status = $response->status();
-                $bodyRaw = $response->body();
                 $data = $response->json() ?? [];
-
-                Log::info('Temu updateTitle response', [
-                    'sku' => $sku,
-                    'attempt' => $attempt,
-                    'status' => $status,
-                    'body' => $bodyRaw,
-                ]);
-
-                if ($response->successful() && ($data['success'] ?? false)) {
-                    Log::info('Temu title updated successfully', ['sku' => $sku, 'goodsId' => $goodsId, 'attempt' => $attempt]);
-                    return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
-                }
-
-                $errorCode = $data['errorCode'] ?? null;
-                $errorMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $bodyRaw);
-
-                // Don't retry on validation-style errors — they won't change on a retry.
-                $nonRetryableCodes = [150011003, 3000003];
-                $isAddSkuError = stripos($errorMsg, 'Add at least one SKU') !== false;
-                if (in_array((int) $errorCode, $nonRetryableCodes, true) || $isAddSkuError) {
-                    break;
-                }
-                if ($attempt < $maxAttempts) {
-                    usleep(500000);
-                }
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('Temu updateTitle request failed', ['sku' => $sku, 'error' => $lastError]);
+                continue;
             }
-
-            $isAddSkuError = stripos((string) $errorMsg, 'Add at least one SKU') !== false;
-
-            if ((int) $errorCode === 150011003) {
-                Log::warning('Temu API "Invalid Request Parameters [goodsId]" (150011003). Ensure goodsId is resolved from SKU (TemuPricing/TemuMetric or list API) and is a valid Temu product ID.', [
-                    'sku' => $sku,
-                    'goodsId' => $goodsId,
-                    'requestBody' => $requestBody,
-                ]);
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return ['success' => true, 'message' => "Title updated for SKU: {$sku}."];
             }
-            if ($isAddSkuError) {
-                Log::warning('Temu API "Add at least one SKU" - SKU fields may not be recognized. Official docs use skuList (not skuInfoList). Try TEMU_UPDATE_SKU_LIST_FIELD=skuList in .env if using skuInfoList.', [
-                    'sku' => $sku,
-                    'goodsId' => $goodsId,
-                    'sku_list_field_used' => $skuListField ?? config('services.temu.update_sku_list_field'),
-                    'skuInfo' => $skuInfo ?? null,
-                    'requestBody_keys' => array_keys($requestBody),
-                    'requestBody' => $requestBody,
-                ]);
-            }
-            if ((int) $errorCode === 3000003) {
-                Log::warning('Temu API "type not exists" (3000003). Set TEMU_GOODS_UPDATE_TYPE in .env to the correct type from Temu Partner API docs.', [
-                    'sku' => $sku,
-                    'current_type' => $apiType,
-                ]);
-            }
-
-            Log::warning('Temu title update failed', [
-                'sku' => $sku,
-                'goodsId' => $goodsId,
-                'response' => $data,
-                'status' => $status,
-            ]);
-            return ['success' => false, 'message' => (string) $errorMsg];
-        } catch (\Throwable $e) {
-            Log::error('Temu updateTitle exception: ' . $e->getMessage(), [
-                'sku' => $sku,
-                'goodsId' => $goodsId ?? null,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
+            $lastError = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body());
         }
+
+        return ['success' => false, 'message' => $lastError !== '' ? $lastError : 'Temu title update failed.'];
     }
 
     /**
