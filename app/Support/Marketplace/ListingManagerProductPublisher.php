@@ -154,13 +154,18 @@ class ListingManagerProductPublisher
             }
             $push = $this->pushToMarketplaces($sku, [$key], $fields, $parts);
             $row = $push[$key] ?? ['success' => false, 'message' => 'No response from this marketplace.'];
+            $ok = (bool) ($row['success'] ?? false);
+            $detail = trim((string) ($row['message'] ?? ''));
+            if ($detail === '') {
+                $detail = $ok ? 'Updated.' : 'Update failed.';
+            }
 
             return [
                 'channel_id' => $channelId,
                 'channel' => $channelName,
                 'marketplace' => $key,
-                'success' => (bool) ($row['success'] ?? false),
-                'message' => 'Live listing updated. '.((string) ($row['message'] ?? '')),
+                'success' => $ok,
+                'message' => $ok ? ('Live listing updated. '.$detail) : $detail,
                 'mode' => 'live',
             ];
         }
@@ -489,7 +494,7 @@ class ListingManagerProductPublisher
                 return ['success' => false, 'message' => 'eBay title update is not available.'];
             }
 
-            return $this->normalizeResult($service->updateTitle($itemId, $title), 'Title updated.');
+            return $this->normalizeResult($service->updateTitle($itemId, $title, $sku), 'Title updated.');
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }

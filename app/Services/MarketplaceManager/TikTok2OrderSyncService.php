@@ -207,13 +207,13 @@ class TikTok2OrderSyncService
 
     protected function releaseStuckQueuedImports(): void
     {
-        Tiktok2Order::query()
-            ->where('import_status', 'queued')
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where('order_created_at', '>=', $this->autoImportFromDate())
-            ->update(['import_status' => 'ready']);
+        MarketplaceShopifyImportQueue::releaseStuckQueued(
+            Tiktok2Order::class,
+            MarketplaceManagerRegistry::queueFor('tiktok2'),
+            function ($q) {
+                $q->where('order_created_at', '>=', $this->autoImportFromDate());
+            }
+        );
     }
 
     protected function upsertOrder(array $order): int

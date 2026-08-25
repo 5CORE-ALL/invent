@@ -136,6 +136,8 @@ class FaireOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('faire', $settings);
+        $queue = MarketplaceManagerRegistry::queueFor('faire');
+        MarketplaceShopifyImportQueue::releaseStuckQueued(FaireOrderMetric::class, $queue);
 
         $orders = FaireOrderMetric::query()
             ->whereNull('shopify_order_id')
@@ -154,7 +156,10 @@ class FaireOrderSyncService
             }
 
             try {
-                \App\Jobs\ImportFaireOrderToShopify::dispatch((int) $order->id);
+                MarketplaceShopifyImportQueue::push(
+                    new \App\Jobs\ImportFaireOrderToShopify((int) $order->id),
+                    $queue
+                );
                 $order->update(['import_status' => 'queued']);
                 $dispatched++;
             } catch (\Throwable $e) {

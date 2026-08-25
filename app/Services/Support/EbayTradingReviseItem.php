@@ -1623,6 +1623,398 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Update a live listing title. GTC / fixed-price listings must use
+     * ReviseFixedPriceItem — ReviseItem can Ack Success and still leave Title unchanged.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseListingTitle(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        string $title,
+        string $sku = '',
+    ): array {
+        $itemId = trim($itemId);
+        $title = mb_substr(trim($title), 0, 80);
+        $sku = trim($sku);
+        if ($itemId === '' || $title === '') {
+            return ['success' => false, 'message' => 'Item ID and title are required.'];
+        }
+
+        $fixed = self::postTitleReviseCall(
+            $endpoint,
+            $compatLevel,
+            $devId,
+            $appId,
+            $certId,
+            $siteId,
+            $authToken,
+            $itemId,
+            $title,
+            'ReviseFixedPriceItem',
+            $sku,
+        );
+
+        // Seller Hub / Inventory listings can Ack Success on Trading while the
+        // visible title stays on the inventory item. Inventory is source of truth when it exists.
+        if ($sku !== '' && $authToken !== '') {
+            $inventory = self::updateSellInventoryTitle($authToken, $sku, $title);
+            if ($inventory['exists'] ?? false) {
+                if ($inventory['success'] ?? false) {
+                    return ['success' => true, 'message' => 'Title updated successfully.'];
+                }
+
+                return [
+                    'success' => false,
+                    'message' => (string) ($inventory['message'] ?? 'eBay Inventory title update failed.'),
+                ];
+            }
+        }
+
+        if ($fixed['success']) {
+            return $fixed;
+        }
+
+        $fixedMsg = (string) ($fixed['message'] ?? '');
+        $tryReviseItem = self::isUsageLimitError($fixedMsg) || self::isWrongListingTypeError($fixedMsg);
+        if (! $tryReviseItem) {
+            return $fixed;
+        }
+
+        $reviseItem = self::postTitleReviseCall(
+            $endpoint,
+            $compatLevel,
+            $devId,
+            $appId,
+            $certId,
+            $siteId,
+            $authToken,
+            $itemId,
+            $title,
+            'ReviseItem',
+            $sku,
+        );
+        if ($reviseItem['success']) {
+            return $reviseItem;
+        }
+
+        if (self::isUsageLimitError($fixedMsg) || self::isUsageLimitError((string) ($reviseItem['message'] ?? ''))) {
+            return [
+                'success' => false,
+                'message' => 'eBay API usage limit reached on this account. Wait for the daily Trading API quota to reset, then try again. '.$fixedMsg,
+            ];
+        }
+
+        return $reviseItem['message'] !== '' ? $reviseItem : $fixed;
+    }
+
+    /**
+     * Seller Hub listings store the visible title on the Sell Inventory item.
+     *
+     * @return array{success: bool, exists: bool, message: string}
+     */
+    public static function updateSellInventoryTitle(string $bearerToken, string $sku, string $title): array
+    {
+        $sku = trim($sku);
+        $title = mb_substr(trim($title), 0, 80);
+        if ($sku === '' || $bearerToken === '' || $title === '') {
+            return ['success' => false, 'exists' => false, 'message' => 'SKU and title are required.'];
+        }
+
+        $url = 'https://api.ebay.com/sell/inventory/v1/inventory_item/'.rawurlencode($sku);
+        $headers = [
+            'Authorization' => 'Bearer '.$bearerToken,
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'Content-Language' => 'en-US',
+        ];
+
+        try {
+            $get = Http::withoutVerifying()
+                ->withHeaders($headers)
+                ->timeout(30)
+                ->get($url);
+
+            if ($get->status() === 404) {
+                return ['success' => false, 'exists' => false, 'message' => 'No eBay Inventory item for this SKU.'];
+            }
+            if (! $get->successful()) {
+                Log::warning('eBay Inventory GET failed', [
+                    'sku' => $sku,
+                    'status' => $get->status(),
+                    'body' => mb_substr($get->body(), 0, 500),
+                ]);
+
+                return [
+                    'success' => false,
+                    'exists' => false,
+                    'message' => 'eBay Inventory lookup failed (HTTP '.$get->status().').',
+                ];
+            }
+
+            $item = $get->json();
+            if (! is_array($item)) {
+                return ['success' => false, 'exists' => true, 'message' => 'eBay Inventory item response was invalid.'];
+            }
+
+            unset($item['sku'], $item['locale']);
+            if (! isset($item['product']) || ! is_array($item['product'])) {
+                $item['product'] = [];
+            }
+            $item['product']['title'] = $title;
+
+            $put = Http::withoutVerifying()
+                ->withHeaders($headers)
+                ->timeout(45)
+                ->withBody((string) json_encode($item, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'application/json')
+                ->put($url);
+
+            if ($put->successful() || $put->status() === 204) {
+                Log::info('eBay Inventory title updated', ['sku' => $sku]);
+
+                return ['success' => true, 'exists' => true, 'message' => 'Inventory title updated.'];
+            }
+
+            $msg = mb_substr($put->body(), 0, 400);
+            Log::warning('eBay Inventory title PUT failed', [
+                'sku' => $sku,
+                'status' => $put->status(),
+                'body' => $msg,
+            ]);
+
+            return [
+                'success' => false,
+                'exists' => true,
+                'message' => 'eBay Inventory title update failed: '.$msg,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay Inventory title update exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'exists' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    private static function postTitleReviseCall(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        string $title,
+        string $callName,
+        string $sku = '',
+    ): array {
+        $root = $callName === 'ReviseFixedPriceItem' ? 'ReviseFixedPriceItemRequest' : 'ReviseItemRequest';
+        $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $idEsc = htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $titleCdata = str_replace(']]>', ']]]]><![CDATA[>', $title);
+        $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+            .'<'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents">'
+            .'<RequesterCredentials><eBayAuthToken>'.$tokenEsc.'</eBayAuthToken></RequesterCredentials>'
+            .'<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>'
+            .'<Item><ItemID>'.$idEsc.'</ItemID>'
+            .'<Title><![CDATA['.$titleCdata.']]></Title>'
+            .'</Item></'.$root.'>';
+
+        $result = self::postTradingCall(
+            $endpoint,
+            $compatLevel,
+            $devId,
+            $appId,
+            $certId,
+            $siteId,
+            $itemId,
+            $xmlBody,
+            $callName,
+            'title',
+        );
+
+        if ($result['success'] && self::titleWasIgnored($result['warnings'] ?? [])) {
+            return [
+                'success' => false,
+                'message' => 'eBay accepted the request but did not change the title. Try ReviseFixedPriceItem for GTC listings.',
+            ];
+        }
+
+        return [
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => (string) ($result['message'] ?? ''),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $warnings
+     */
+    private static function titleWasIgnored(array $warnings): bool
+    {
+        foreach ($warnings as $warning) {
+            $code = (string) ($warning['ErrorCode'] ?? '');
+            $text = strtolower((string) ($warning['LongMessage'] ?? $warning['ShortMessage'] ?? ''));
+            if ($code === '21917023' || str_contains($text, 'title was ignored') || str_contains($text, 'title has not been modified')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function isUsageLimitError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, '#518')
+            || str_contains($m, 'errorcode 518')
+            || str_contains($m, 'exceeded usage limit')
+            || str_contains($m, 'exceeded the usage limit');
+    }
+
+    private static function isWrongListingTypeError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'listing type')
+            || str_contains($m, 'fixedpriceitem')
+            || str_contains($m, 'reviseitem cannot')
+            || str_contains($m, '21916270')
+            || str_contains($m, '21916264');
+    }
+
+    /**
+     * @return array{success: bool, message: string, warnings?: list<array<string, mixed>>}
+     */
+    private static function postTradingCall(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $itemId,
+        string $xmlBody,
+        string $callName,
+        string $contextLabel,
+    ): array {
+        $headers = [
+            'X-EBAY-API-COMPATIBILITY-LEVEL' => $compatLevel,
+            'X-EBAY-API-DEV-NAME' => $devId,
+            'X-EBAY-API-APP-NAME' => $appId,
+            'X-EBAY-API-CERT-NAME' => $certId,
+            'X-EBAY-API-CALL-NAME' => $callName,
+            'X-EBAY-API-SITEID' => $siteId,
+            'Content-Type' => 'text/xml',
+        ];
+
+        try {
+            $response = null;
+            $lastThrowable = null;
+            $attempts = 3;
+            $attempt = 1;
+            for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+                try {
+                    $response = Http::withoutVerifying()
+                        ->connectTimeout(15)
+                        ->timeout(60)
+                        ->withHeaders($headers)
+                        ->withBody($xmlBody, 'text/xml')
+                        ->post($endpoint);
+
+                    if ($response->successful() || ! in_array($response->status(), [408, 429, 500, 502, 503, 504], true) || $attempt === $attempts) {
+                        break;
+                    }
+                } catch (\Throwable $e) {
+                    $lastThrowable = $e;
+                    $msg = $e->getMessage();
+                    $isTimeout = str_contains(strtolower($msg), 'timed out')
+                        || str_contains(strtolower($msg), 'curl error 28')
+                        || str_contains(strtolower($msg), 'operation timed out')
+                        || str_contains(strtolower($msg), 'ssl connection timeout');
+                    if (! $isTimeout || $attempt === $attempts) {
+                        throw $e;
+                    }
+                }
+
+                usleep(300000 * $attempt);
+            }
+
+            if (! $response && $lastThrowable) {
+                throw $lastThrowable;
+            }
+            if (! $response) {
+                return ['success' => false, 'message' => 'No response from eBay API.'];
+            }
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+
+            if ($xmlResp === false) {
+                Log::error('eBay '.$callName.': invalid XML response', ['itemId' => $itemId, 'context' => $contextLabel, 'body' => mb_substr($body, 0, 800)]);
+
+                return ['success' => false, 'message' => 'Invalid eBay API response.'];
+            }
+
+            $responseArray = json_decode(json_encode($xmlResp), true);
+            $ack = $responseArray['Ack'] ?? 'Failure';
+            $errors = $responseArray['Errors'] ?? [];
+            if (! is_array($errors)) {
+                $errors = [];
+            }
+            if (isset($errors['ErrorCode']) || isset($errors['ShortMessage']) || isset($errors['LongMessage'])) {
+                $errors = [$errors];
+            }
+
+            if ($ack === 'Success' || $ack === 'Warning') {
+                Log::info('eBay '.$callName.' OK', [
+                    'item_id' => $itemId,
+                    'context' => $contextLabel,
+                    'ack' => $ack,
+                    'http_status' => $response->status(),
+                    'api_attempts' => $attempt,
+                    'warnings' => $errors,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Title updated successfully.',
+                    'warnings' => $errors,
+                ];
+            }
+
+            $firstErr = $errors[0] ?? [];
+            $msg = (string) ($firstErr['LongMessage'] ?? $firstErr['ShortMessage'] ?? $firstErr['ErrorCode'] ?? 'Unknown eBay error');
+            if (isset($firstErr['ErrorCode']) && ! str_contains($msg, (string) $firstErr['ErrorCode'])) {
+                $msg = '[eBay #'.$firstErr['ErrorCode'].'] '.$msg;
+            }
+            Log::warning('eBay '.$callName.' failed', [
+                'item_id' => $itemId,
+                'context' => $contextLabel,
+                'ack' => $ack,
+                'http_status' => $response->status(),
+                'api_attempts' => $attempt,
+                'errors' => $errors,
+            ]);
+
+            return ['success' => false, 'message' => $msg, 'warnings' => $errors];
+        } catch (\Throwable $e) {
+            Log::error('eBay '.$callName.' exception', ['itemId' => $itemId, 'context' => $contextLabel, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     private static function postReviseItemXml(

@@ -1597,55 +1597,316 @@ class TikTokShopService
             return ['success' => false, 'message' => 'TikTok access token not configured.'];
         }
 
-        $baseUrl = 'https://open-api.tiktokglobalshop.com';
-        $headers = [
-            'Authorization' => 'Bearer '.$this->accessToken,
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+
+        $tries = [
+            ['path' => "/product/202509/products/{$productId}/partial_edit", 'query' => []],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => []],
+            ['path' => "/product/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
         ];
-        $payload = ['title' => $title];
 
-        $endpoints = [
-            "/product/202309/products/{$productId}",
-            "/api/products/{$productId}",
-        ];
+        $bodies = [['title' => $title]];
+        $lastError = '';
+        foreach ($hosts as $base) {
+            foreach ($tries as $try) {
+                foreach ($bodies as $body) {
+                    try {
+                        $this->tiktokOpenApi('POST', $try['path'], $try['query'], $body, 45, false, $base);
 
-        $lastStatus = 0;
-        $lastBody = '';
-
-        foreach ($endpoints as $endpoint) {
-            try {
-                $response = Http::withoutVerifying()
-                    ->withHeaders($headers)
-                    ->timeout(45)
-                    ->patch($baseUrl.$endpoint, $payload);
-
-                $lastStatus = $response->status();
-                $lastBody = $response->body();
-
-                if ($response->successful()) {
-                    $data = $response->json();
-                    if (is_array($data) && (isset($data['data']) || ($data['success'] ?? false))) {
                         return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                    } catch (\Throwable $e) {
+                        $lastError = $e->getMessage();
+                        Log::warning('TikTok title signed call failed', [
+                            'product_id' => $productId,
+                            'base' => $base,
+                            'path' => $try['path'],
+                            'query' => $try['query'],
+                            'error' => $lastError,
+                        ]);
+                        if ($this->isMissingRequiredAttributeError($lastError) && count($bodies) === 1) {
+                            $attrs = $this->productAttributesForTitleUpdate($productId, $lastError);
+                            if ($attrs !== []) {
+                                $bodies[] = [
+                                    'title' => $title,
+                                    'product_attributes' => $attrs,
+                                ];
+                            }
+                        }
                     }
                 }
-
-                if ($lastStatus === 404) {
-                    continue;
-                }
-            } catch (\Throwable $e) {
-                return $this->handleMarketplaceThrowable('TikTok updateProductTitle', $productId, $e);
             }
+        }
+
+        try {
+            $sdkBody = ['title' => $title];
+            if ($this->isMissingRequiredAttributeError($lastError)) {
+                $attrs = $this->productAttributesForTitleUpdate($productId, $lastError);
+                if ($attrs !== []) {
+                    $sdkBody['product_attributes'] = $attrs;
+                }
+            }
+            $response = $this->client->Product->useVersion('202309')->partialEditProduct($productId, $sdkBody);
+            if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+            }
+            if ($response === [] || $response === null) {
+                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+            }
+            $lastError = (string) ($response['message'] ?? $lastError);
+        } catch (\Throwable $e) {
+            $code = (int) $e->getCode();
+            $lastError = $code > 0 ? $code.': '.$e->getMessage() : $e->getMessage();
         }
 
         return $this->marketplaceApiFailure(
             'TikTok updateProductTitle',
             $productId,
-            $lastStatus === 401 || $lastStatus === 403
-                ? "Authentication failed (HTTP {$lastStatus}). Check TikTok API credentials."
-                : ($lastBody !== '' ? mb_substr($lastBody, 0, 500) : "TikTok title update failed (HTTP {$lastStatus})."),
-            ['status' => $lastStatus]
+            $lastError !== '' ? $lastError : 'TikTok title update failed.'
         );
+    }
+
+    protected function isMissingRequiredAttributeError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'product attribute id')
+            || str_contains($m, 'missing product attribute')
+            || (str_contains($m, 'age range') && str_contains($m, 'invalid'));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function productAttributesForTitleUpdate(string $productId, string $errorMessage = ''): array
+    {
+        $data = [];
+        try {
+            $data = $this->fetchProductData($productId);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok title update could not load product attributes', [
+                'product_id' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $attrs = $this->sanitizeProductAttributes(is_array($data['product_attributes'] ?? null) ? $data['product_attributes'] : []);
+        $missingId = $this->missingAttributeIdFromError($errorMessage) ?: '100433';
+        if ($this->productAttributesHaveId($attrs, $missingId)) {
+            return $attrs;
+        }
+
+        $fromCategory = $this->categoryAttributeValue($this->tiktokCategoryIdFromProduct($data), $missingId);
+        if ($fromCategory !== null) {
+            $attrs[] = $fromCategory;
+
+            return $attrs;
+        }
+
+        $attrs[] = [
+            'id' => $missingId,
+            'values' => [['name' => 'Adults']],
+        ];
+
+        return $attrs;
+    }
+
+    protected function missingAttributeIdFromError(string $message): string
+    {
+        if (preg_match('/product attribute ID [`\'"]?(\d+)/i', $message, $m)) {
+            return (string) $m[1];
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $attrs
+     */
+    protected function productAttributesHaveId(array $attrs, string $id): bool
+    {
+        foreach ($attrs as $attr) {
+            if (trim((string) ($attr['id'] ?? '')) === $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<mixed>  $attrs
+     * @return list<array<string, mixed>>
+     */
+    protected function sanitizeProductAttributes(array $attrs): array
+    {
+        $out = [];
+        foreach ($attrs as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $id = trim((string) ($attr['id'] ?? $attr['attribute_id'] ?? ''));
+            $values = $attr['values'] ?? [];
+            if (! is_array($values)) {
+                $values = [];
+            }
+            $cleanValues = [];
+            foreach ($values as $value) {
+                if (! is_array($value)) {
+                    $name = trim((string) $value);
+                    if ($name !== '') {
+                        $cleanValues[] = ['name' => $name];
+                    }
+                    continue;
+                }
+                $row = [];
+                $valueId = trim((string) ($value['id'] ?? $value['value_id'] ?? ''));
+                $valueName = trim((string) ($value['name'] ?? $value['value_name'] ?? $value['value'] ?? ''));
+                if ($valueId !== '') {
+                    $row['id'] = $valueId;
+                }
+                if ($valueName !== '') {
+                    $row['name'] = $valueName;
+                }
+                if ($row !== []) {
+                    $cleanValues[] = $row;
+                }
+            }
+            if ($id === '' || $cleanValues === []) {
+                continue;
+            }
+            $out[] = [
+                'id' => $id,
+                'values' => $cleanValues,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function tiktokCategoryIdFromProduct(array $data): string
+    {
+        foreach (['category_id', 'leaf_category_id'] as $key) {
+            $id = trim((string) ($data[$key] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+        $category = is_array($data['category'] ?? null) ? $data['category'] : [];
+        $id = trim((string) ($category['id'] ?? $category['category_id'] ?? $category['leaf_category_id'] ?? ''));
+        if ($id !== '') {
+            return $id;
+        }
+        $chains = $data['category_chains'] ?? $data['categories'] ?? [];
+        if (is_array($chains) && $chains !== []) {
+            $last = end($chains);
+            if (is_array($last)) {
+                return trim((string) ($last['id'] ?? $last['category_id'] ?? ''));
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{id: string, values: list<array<string, string>>}|null
+     */
+    protected function categoryAttributeValue(string $categoryId, string $attributeId): ?array
+    {
+        if ($categoryId === '' || $attributeId === '') {
+            return null;
+        }
+
+        $data = [];
+        try {
+            $data = $this->tiktokOpenApi('GET', "/product/202309/categories/{$categoryId}/attributes", [
+                'locale' => 'en-US',
+            ]);
+        } catch (\Throwable) {
+            try {
+                $data = $this->tiktokOpenApi('GET', "/product/202509/categories/{$categoryId}/attributes", [
+                    'locale' => 'en-US',
+                ]);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        $list = $data['attributes'] ?? $data['category_attributes'] ?? $data;
+        if (! is_array($list)) {
+            return null;
+        }
+        foreach ($list as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $id = trim((string) ($attr['id'] ?? $attr['attribute_id'] ?? ''));
+            if ($id !== $attributeId) {
+                continue;
+            }
+            $values = $attr['values'] ?? $attr['value_list'] ?? [];
+            if (! is_array($values) || $values === []) {
+                continue;
+            }
+            $picked = $this->pickPreferredAttributeValue($values);
+            if ($picked === null) {
+                continue;
+            }
+
+            return [
+                'id' => $attributeId,
+                'values' => [$picked],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<mixed>  $values
+     * @return array<string, string>|null
+     */
+    protected function pickPreferredAttributeValue(array $values): ?array
+    {
+        $rows = [];
+        foreach ($values as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            $id = trim((string) ($value['id'] ?? $value['value_id'] ?? ''));
+            $name = trim((string) ($value['name'] ?? $value['value_name'] ?? $value['value'] ?? ''));
+            if ($id === '' && $name === '') {
+                continue;
+            }
+            $rows[] = array_filter([
+                'id' => $id !== '' ? $id : null,
+                'name' => $name !== '' ? $name : null,
+            ]);
+        }
+        if ($rows === []) {
+            return null;
+        }
+        foreach ($rows as $row) {
+            $name = strtolower((string) ($row['name'] ?? ''));
+            if (preg_match('/adult|13\+|18\+|all ages/', $name)) {
+                return $row;
+            }
+        }
+
+        return $rows[0];
     }
 
     /**
@@ -3322,7 +3583,7 @@ class TikTokShopService
      * @param  array<string, mixed>|null  $jsonBody
      * @return array<string, mixed>
      */
-    protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false): array
+    protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false, ?string $apiBase = null): array
     {
         $originalQuery = $query;
         $query['app_key'] = (string) $this->clientKey;
@@ -3332,7 +3593,7 @@ class TikTokShopService
         }
         $body = $jsonBody === null ? '' : (string) json_encode($jsonBody, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $query['sign'] = $this->signTikTokRequest($path, $query, $body);
-        $base = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $base = rtrim((string) ($apiBase ?: (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com')), '/');
         $url = $base.$path;
         $request = Http::withoutVerifying()
             ->withHeaders([
@@ -3355,7 +3616,7 @@ class TikTokShopService
                 && $this->isExpiredAccessTokenMessage($code, $message)
                 && $this->refreshAccessToken()
             ) {
-                return $this->tiktokOpenApi($method, $path, $originalQuery, $jsonBody, $timeout, true);
+                return $this->tiktokOpenApi($method, $path, $originalQuery, $jsonBody, $timeout, true, $apiBase);
             }
             throw new \RuntimeException(trim($code.': '.$message));
         }
@@ -3365,7 +3626,10 @@ class TikTokShopService
 
     protected function isExpiredAccessTokenMessage(int $code, string $message): bool
     {
-        if (in_array($code, [105001, 105002, 36009004], true)) {
+        if ($this->isInvalidApiVersionError($message)) {
+            return false;
+        }
+        if (in_array($code, [105001, 105002], true)) {
             return true;
         }
 

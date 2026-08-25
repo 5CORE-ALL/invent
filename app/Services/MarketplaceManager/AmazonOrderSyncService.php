@@ -7,11 +7,8 @@ use App\Models\AmazonDailySync;
 use App\Models\AmazonOrder;
 use App\Models\MarketplaceSyncSettings;
 use Carbon\Carbon;
-use Illuminate\Bus\UniqueLock;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -77,8 +74,9 @@ class AmazonOrderSyncService
             ];
         }
 
-        // Re-open today + yesterday so new Amazon orders after a mid-day "completed" mark are fetched.
-        $this->reopenTrailingAmazonSyncDays(1);
+        // Re-open today + trailing days so mid-day "completed" marks do not freeze new orders.
+        $this->resetStaleAmazonDailySyncs($from);
+        $this->reopenTrailingAmazonSyncDays(2);
 
         $before = (int) AmazonOrder::query()->count();
 
@@ -138,10 +136,10 @@ class AmazonOrderSyncService
             return 0;
         }
 
-        // Only recover rows left "queued" with no job after a previous insert failure.
-        if ((int) DB::table('jobs')->where('queue', 'mm-amazon')->count() === 0) {
-            $this->releaseStuckQueuedImports();
-        }
+        MarketplaceShopifyImportQueue::releaseStuckQueued(
+            AmazonOrder::class,
+            MarketplaceManagerRegistry::queueFor('amazon')
+        );
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('amazon', $settings);
         $cutoff = AmazonOrder::shopifyImportCutoff()->timezone('UTC');
@@ -188,9 +186,10 @@ class AmazonOrderSyncService
             }
 
             try {
-                $job = new ImportAmazonOrderToShopify((int) $order->id);
-                (new UniqueLock(app('cache.store')))->release($job);
-                Queue::connection('database')->pushOn('mm-amazon', $job);
+                MarketplaceShopifyImportQueue::push(
+                    new ImportAmazonOrderToShopify((int) $order->id),
+                    MarketplaceManagerRegistry::queueFor('amazon')
+                );
                 $order->update(['import_status' => 'queued']);
                 $dispatched++;
             } catch (\Throwable $e) {
@@ -202,6 +201,41 @@ class AmazonOrderSyncService
         }
 
         return $dispatched;
+    }
+
+    /**
+     * Retry failed days and abandoned in_progress rows in the fetch window so
+     * everyday Amazon sync cannot stay stuck forever.
+     */
+    protected function resetStaleAmazonDailySyncs(Carbon $from): void
+    {
+        if (! class_exists(AmazonDailySync::class) || ! Schema::hasTable('amazon_daily_syncs')) {
+            return;
+        }
+
+        $fromDate = $from->copy()->timezone('America/Los_Angeles')->toDateString();
+
+        AmazonDailySync::query()
+            ->where('sync_date', '>=', $fromDate)
+            ->where('status', AmazonDailySync::STATUS_FAILED)
+            ->update([
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'next_token' => null,
+                'error_message' => null,
+            ]);
+
+        AmazonDailySync::query()
+            ->where('sync_date', '>=', $fromDate)
+            ->where('status', AmazonDailySync::STATUS_IN_PROGRESS)
+            ->where(function ($q) {
+                $q->whereNull('started_at')
+                    ->orWhere('started_at', '<', now()->subHours(2));
+            })
+            ->update([
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'next_token' => null,
+                'error_message' => 'Reset stale in_progress daily sync',
+            ]);
     }
 
     /**
@@ -223,24 +257,6 @@ class AmazonOrderSyncService
                 'completed_at' => null,
                 'error_message' => null,
             ]);
-    }
-
-    /**
-     * Unique locks can swallow Bus::dispatch while import_status stays "queued"
-     * with no row in jobs. Reset those so the next run actually pushes work.
-     */
-    protected function releaseStuckQueuedImports(): void
-    {
-        if (! Schema::hasColumn('amazon_orders', 'import_status')) {
-            return;
-        }
-
-        AmazonOrder::query()
-            ->where('import_status', 'queued')
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->update(['import_status' => null]);
     }
 
     protected function shortOutput(string $output): string

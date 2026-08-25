@@ -113,11 +113,13 @@ class PurchasingPowerOrderSyncService
         }
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('purchasingpower');
+        $queue = MarketplaceManagerRegistry::queueFor('purchasingpower');
+        MarketplaceShopifyImportQueue::releaseStuckQueued(PurchasingPowerSale::class, $queue);
         $query = PurchasingPowerSale::query()
             ->whereNull('shopify_order_id')
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['queued', 'imported']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->when(Schema::hasColumn('purchasing_power_sales', 'date_created'), function ($q) {
                 $q->where('date_created', '>=', now()->subDays(14));
@@ -131,7 +133,7 @@ class PurchasingPowerOrderSyncService
                 continue;
             }
             $row->update(['import_status' => 'queued']);
-            ImportPurchasingPowerOrderToShopify::dispatch((int) $row->id);
+            MarketplaceShopifyImportQueue::push(new ImportPurchasingPowerOrderToShopify((int) $row->id), $queue);
             $dispatched++;
         }
 

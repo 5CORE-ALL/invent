@@ -272,6 +272,11 @@ class TemuOrderSyncService
         $importFrom = $this->autoImportFromDate();
         $allowedStatuses = self::AUTO_IMPORT_ALLOWED_STATUSES;
         $placeholders = implode(', ', array_fill(0, count($allowedStatuses), '?'));
+        $queue = MarketplaceManagerRegistry::queueFor('temu');
+        MarketplaceShopifyImportQueue::releaseStuckQueued(TemuOrder::class, $queue, function ($q) use ($importFrom) {
+            $q->whereNotNull('parent_order_time')
+                ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'));
+        });
 
         $query = TemuOrder::query()
             ->whereNull('shopify_order_id')
@@ -279,7 +284,7 @@ class TemuOrderSyncService
             ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'))
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereNotIn('import_status', ['queued', 'imported', 'skipped_pre_july7', 'skipped_closed']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->whereRaw(
                 "UPPER(TRIM(COALESCE(NULLIF(parent_order_status_text, ''), order_status_text, ''))) IN ({$placeholders})",
@@ -314,7 +319,7 @@ class TemuOrderSyncService
                 ->where('parent_order_sn', $parent)
                 ->whereNull('shopify_order_id')
                 ->update(['import_status' => 'queued']);
-            ImportTemuOrderToShopify::dispatch((int) $row->id);
+            MarketplaceShopifyImportQueue::push(new ImportTemuOrderToShopify((int) $row->id), $queue);
             $dispatched++;
         }
 
