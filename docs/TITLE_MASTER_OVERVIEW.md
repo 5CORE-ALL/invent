@@ -29,7 +29,8 @@ Canonical map: `AllMarketplaceChannelRegistry::titleMeta()` — registry key →
 
 | PM column | Tier | Marketplaces (push key) |
 |-----------|------|-------------------------|
-| `title150` / `amazon_title` | 150 | amazon, temu, temu2, reverb, wayfair, walmart, bestbuy, shein, aliexpress, alibaba, purchasing_power, newegg, topdawg, tiktok, tiktok2 |
+| `title150` / `amazon_title` | 75 | amazon (truncated to 75 chars on push) |
+| `title150` / `amazon_title` | 150 | temu, temu2, reverb, wayfair, walmart, bestbuy, shein, aliexpress, alibaba, purchasing_power, newegg, topdawg, tiktok, tiktok2 |
 | `title100` | 100 | shopify_main, shopify_pls, shopify_b5c, doba |
 | `title80` | 80 | ebay1, ebay2, ebay3 (registry keys: ebay, ebay2, ebay3) |
 | `title60` | 60 | macy, faire |
@@ -60,7 +61,7 @@ Per-tile push sends `{ sku, marketplace, title_type, title }` where `marketplace
 
 ## Push flow (Distribute ALL — Title 150)
 
-Row **Distribute ALL** and toolbar bulk push call `POST /api/marketplaces/push-title` with the row’s Title 150 / Amazon title text. The controller pushes to every channel in `titlePushKeysForType('150')` (15 marketplaces), not the legacy four (Amazon, Temu, Reverb, Wayfair only).
+Row **Distribute ALL** and toolbar bulk push call `POST /api/marketplaces/push-title` with the row’s Title 150 / Amazon title text. The controller pushes to every channel in `titlePushKeysForType('150')` (14 marketplaces). Amazon is tier 75 and is pushed from its own Market Places tile.
 
 ## Configuration
 

@@ -22,10 +22,11 @@ alwaysApply: false
 
 ## Push wiring (24 channels)
 
-- Registry: `AllMarketplaceChannelRegistry::titleMeta()` — tiers 150 / 100 / 80 / 60
+- Registry: `AllMarketplaceChannelRegistry::titleMeta()` — tiers 75 / 150 / 100 / 80 / 60
+- Amazon is tier **75** (own Market Places group); Title 150 / Distribute ALL no longer includes Amazon
 - API dispatch: `MarketplaceTitlePushService::push()` (all 24 push keys)
 - Validation: `pushSingleMarketplace` uses `titlePushKeys()` + `titleTypeForMarketplace()` (not hardcoded lists)
-- **Distribute ALL** pushes all `titlePushKeysForType('150')` (15 channels), not legacy Amazon/Temu/Reverb/Wayfair only
+- **Distribute ALL** pushes all `titlePushKeysForType('150')` (14 channels), not legacy Amazon/Temu/Reverb/Wayfair only
 
 ## Known status for this SKU (dry-run)
 

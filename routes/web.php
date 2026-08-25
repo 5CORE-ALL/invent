@@ -3938,6 +3938,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-manager', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'index'])->name('listing.manager');
     Route::get('/listing-manager/data', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'data'])->name('listing.manager.data');
     Route::get('/listing-manager/product', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showProduct'])->name('listing.manager.product');
+    Route::post('/listing-manager/product/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveProduct'])->name('listing.manager.product.save');
+    Route::post('/listing-manager/product/push', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'pushProductToMarketplaces'])->name('listing.manager.product.push');
+    Route::get('/listing-manager/product/from-master', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadProductFromMaster'])->name('listing.manager.product.from-master');
     Route::post('/listing-manager/import-amazon', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'importFromAmazon'])->name('listing.manager.import');
     Route::get('/listing-manager/channels', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'channels'])->name('listing.manager.channels');
     Route::post('/listing-manager/channels/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveEnabledChannels'])->name('listing.manager.channels.save');
@@ -3951,6 +3954,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing-manager/drafts/{id}/load-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDescriptionFromStore'])->name('listing.manager.drafts.load-description');
     Route::post('/listing-manager/drafts/{id}/images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'uploadDraftImage'])->name('listing.manager.drafts.images');
     Route::post('/listing-manager/drafts/{id}/load-images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDraftImages'])->name('listing.manager.drafts.load-images');
+    Route::post('/listing-manager/drafts/{id}/load-master', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDraftFromMaster'])->name('listing.manager.drafts.load-master');
     Route::post('/listing-manager/drafts/{id}/optimize-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'optimizeDescription'])->name('listing.manager.drafts.optimize');
     Route::match(['get', 'post'], '/listing-manager/ebay/categories', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'searchCategories'])->name('listing.manager.ebay.categories');
     Route::get('/listing-manager/ebay/policies', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'businessPolicies'])->name('listing.manager.ebay.policies');

@@ -11,6 +11,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
+use App\Services\ReverbApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\ShopifyApiService;
 use App\Services\TikTok2ShopService;
@@ -21,6 +22,8 @@ use App\Support\Marketplace\ListingManagerImageStore;
 use App\Support\Marketplace\ListingManagerEbayDescriptionBuilder;
 use App\Support\Marketplace\ListingManagerEditorProfile;
 use App\Support\Marketplace\ListingManagerFamily;
+use App\Support\Marketplace\ListingManagerMasterLoader;
+use App\Support\Marketplace\ListingManagerProductPublisher;
 use App\Support\Marketplace\ListingManagerPublishStatus;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -309,9 +312,11 @@ class ListingManagerController extends Controller
             ];
         }
         foreach ($drafts as $d) {
-            if (($d['status'] ?? '') === 'listed') {
+            $live = ListingManagerPublishStatus::check((string) ($d['channel'] ?? ''), $sku);
+            if (($d['status'] ?? '') === 'listed' || ($live['listed'] ?? false)) {
                 $listedOn[] = [
                     'channel' => $d['channel'] ?? '',
+                    'channel_id' => $d['channel_id'] ?? null,
                     'logo' => $d['channel_logo'] ?? null,
                     'product_name' => $d['title'] ?? $title,
                     'qty' => $d['quantity'] ?? null,
@@ -320,7 +325,7 @@ class ListingManagerController extends Controller
                     'external_url' => ! empty($d['external_listing_id']) && stripos((string) $d['channel'], 'ebay') !== false
                         ? 'https://www.ebay.com/itm/'.$d['external_listing_id']
                         : ($d['listing_page_url'] ?? null),
-                    'listing_id' => $d['external_listing_id'] ?? null,
+                    'listing_id' => $d['external_listing_id'] ?? ($live['listing_id'] ?? null),
                     'draft_id' => $d['id'] ?? null,
                 ];
             }
@@ -335,13 +340,29 @@ class ListingManagerController extends Controller
                 }
                 $name = (string) ($ch['channel'] ?? '');
                 $already = collect($listedOn)->contains(fn ($r) => strcasecmp((string) $r['channel'], $name) === 0);
-                if (! $already) {
-                    $enabledChannels[] = [
-                        'id' => $ch['id'],
-                        'channel' => $name,
-                        'logo' => $ch['logo'] ?? null,
-                    ];
+                if ($already) {
+                    continue;
                 }
+                $live = ListingManagerPublishStatus::check($name, $sku);
+                if ($live['listed'] ?? false) {
+                    $listedOn[] = [
+                        'channel' => $name,
+                        'channel_id' => $ch['id'] ?? null,
+                        'logo' => $ch['logo'] ?? null,
+                        'product_name' => $title,
+                        'qty' => $qty,
+                        'price' => $price,
+                        'status' => 'ACTIVE',
+                        'external_url' => null,
+                        'listing_id' => $live['listing_id'] ?? null,
+                    ];
+                    continue;
+                }
+                $enabledChannels[] = [
+                    'id' => $ch['id'],
+                    'channel' => $name,
+                    'logo' => $ch['logo'] ?? null,
+                ];
             }
         } catch (\Throwable $e) {
             // ignore
@@ -417,7 +438,7 @@ class ListingManagerController extends Controller
                 'origin' => ($pm !== [] && (trim((string) ($pm['title80'] ?? $pm['title150'] ?? '')) !== '' || trim((string) ($pm['description_1500'] ?? '')) !== ''))
                     ? 'Product Master'
                     : (($shopify['success'] ?? false) ? 'Main Store' : 'Amazon'),
-                'upc' => (string) ($listing?->external_product_id ?? ($raw['product-id'] ?? ($pm['upc'] ?? ''))),
+                'upc' => (string) ($hydrated['upc'] ?? ListingManagerAmazonHydrator::upcFromCpMaster($sku, $pm, $listing, $raw)),
                 'mpn' => (string) ($pm['mpn'] ?? $pm['part_number'] ?? $listing?->part_number ?? ''),
                 'vendor' => (string) ($hydrated['brand'] ?: config('listing_manager.default_brand', '5 Core Inc')),
             'manufacturer' => (string) ($hydrated['manufacturer'] ?: config('listing_manager.default_manufacturer', '5 Core Inc')),
@@ -467,6 +488,235 @@ class ListingManagerController extends Controller
                     : null,
             ],
         ]);
+    }
+
+    /**
+     * Save Product Info edits to Product Master (no marketplace API calls).
+     */
+    public function saveProduct(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'title' => 'nullable|string|max:500',
+            'description' => 'nullable|string',
+            'price' => 'nullable|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'upc' => 'nullable|string|max:64',
+            'vendor' => 'nullable|string|max:255',
+            'manufacturer' => 'nullable|string|max:255',
+            'product_type' => 'nullable|string|max:255',
+            'tags' => 'nullable|string|max:1000',
+            'short_description' => 'nullable|string',
+            'meta_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string',
+            'condition' => 'nullable|string|max:64',
+        ]);
+
+        $publisher = new ListingManagerProductPublisher();
+        $saved = $publisher->saveLocal((string) $validated['sku'], $validated);
+        if (! $saved['saved']) {
+            return response()->json(['success' => false, 'message' => $saved['message']], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $saved['message'],
+        ]);
+    }
+
+    /**
+     * Save Product Info edits and push title / description / price to selected marketplaces.
+     */
+    public function pushProductToMarketplaces(Request $request)
+    {
+        $ids = $request->input('channel_ids', $request->input('channel_id'));
+        if (! is_array($ids)) {
+            $ids = $ids !== null && $ids !== '' ? [$ids] : [];
+        }
+        $request->merge([
+            'channel_ids' => array_values(array_unique(array_filter(array_map('intval', $ids)))),
+        ]);
+
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'channel_ids' => 'required|array|min:1',
+            'channel_ids.*' => 'integer|exists:channel_master,id',
+            'parts' => 'nullable|array',
+            'parts.*' => 'string|in:title,description,price',
+            'skip_save' => 'nullable|boolean',
+            'title' => 'nullable|string|max:500',
+            'description' => 'nullable|string',
+            'price' => 'nullable|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'upc' => 'nullable|string|max:64',
+            'vendor' => 'nullable|string|max:255',
+            'manufacturer' => 'nullable|string|max:255',
+            'product_type' => 'nullable|string|max:255',
+            'tags' => 'nullable|string|max:1000',
+            'short_description' => 'nullable|string',
+            'meta_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string',
+            'condition' => 'nullable|string|max:64',
+        ]);
+
+        @set_time_limit(120);
+        @ini_set('max_execution_time', '120');
+
+        try {
+            $sku = (string) $validated['sku'];
+            $parts = array_values($validated['parts'] ?? ['title', 'description', 'price']);
+            $publisher = new ListingManagerProductPublisher();
+            $saved = ['saved' => true, 'message' => 'Product Master already saved.'];
+            if (! $request->boolean('skip_save')) {
+                $saved = $publisher->saveLocal($sku, $validated);
+            }
+
+            $channels = ChannelMaster::query()
+                ->whereIn('id', $validated['channel_ids'])
+                ->get(['id', 'channel']);
+
+            $rows = $publisher->pushSelectedChannels($sku, $channels, $validated, $parts);
+            $ok = 0;
+            $fail = 0;
+            $draftCount = 0;
+            foreach ($rows as $row) {
+                if (! empty($row['success'])) {
+                    $ok++;
+                } else {
+                    $fail++;
+                }
+                if (($row['mode'] ?? '') === 'draft') {
+                    $draftCount++;
+                }
+            }
+
+            return response()->json([
+                'success' => $fail === 0,
+                'message' => $saved['message']
+                    .' Live updates: '.$ok.'.'
+                    .($fail > 0 ? ' '.$fail.' failed.' : '')
+                    .($draftCount > 0 ? ' '.$draftCount.' new-to-marketplace channel(s) saved as draft only.' : ''),
+                'saved' => $saved['saved'],
+                'drafts_updated' => $draftCount,
+                'total_success' => $ok,
+                'total_failed' => $fail,
+                'results' => $rows,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('ListingManager pushProductToMarketplaces failed', [
+                'sku' => $request->input('sku'),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() !== '' ? $e->getMessage() : 'Could not update marketplaces.',
+                'results' => [],
+                'total_success' => 0,
+                'total_failed' => 1,
+            ], 200);
+        }
+    }
+
+    /**
+     * Fetch a Product Master slice for the All Products modal (does not persist).
+     */
+    public function loadProductFromMaster(Request $request)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        $source = trim((string) $request->input('source', ''));
+        $payload = ListingManagerMasterLoader::load($sku, $source);
+
+        return response()->json($payload, ($payload['success'] ?? false) ? 200 : 422);
+    }
+
+    /**
+     * Fetch a Product Master slice into a channel draft and persist.
+     */
+    public function loadDraftFromMaster(Request $request, int $id)
+    {
+        $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
+        if ($draft->status === 'listed') {
+            return response()->json(['success' => false, 'message' => 'Cannot change a published listing from masters.'], 422);
+        }
+
+        $source = trim((string) $request->input('source', ''));
+        $channelName = (string) ($draft->channel->channel ?? '');
+        $payload = ListingManagerMasterLoader::load((string) $draft->seller_sku, $source, $channelName);
+        if (! ($payload['success'] ?? false)) {
+            return response()->json($payload, 422);
+        }
+
+        $details = ListingManagerPublishStatus::normalizeDetails(
+            is_array($draft->listing_details) ? $draft->listing_details : []
+        );
+
+        if (! empty($payload['title'])) {
+            $draft->title = (string) $payload['title'];
+        }
+        if (array_key_exists('price', $payload) && $payload['price'] !== null) {
+            $draft->price = (float) $payload['price'];
+        }
+        if (array_key_exists('quantity', $payload) && $payload['quantity'] !== null) {
+            $draft->quantity = (int) $payload['quantity'];
+        }
+        if (! empty($payload['description'])) {
+            $details['description'] = (string) $payload['description'];
+        }
+        if (! empty($payload['images']) && is_array($payload['images'])) {
+            $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName));
+            $sourceImages = array_values(array_filter(array_map('strval', $payload['images'])));
+            if ($family === 'tiktok') {
+                $sourceImages = array_slice($sourceImages, 0, 9);
+            }
+            $images = ListingManagerImageStore::localizeMany($sourceImages, (string) $draft->seller_sku);
+            if ($images === []) {
+                $images = $sourceImages;
+            }
+            if ($images !== []) {
+                $details['images'] = $images;
+                $details['image_url'] = $images[0];
+                $details['image_source_urls'] = ListingManagerImageStore::sourceUrlsForSku((string) $draft->seller_sku);
+                $draft->thumbnail_image = $images[0];
+                $snap = is_array($draft->amazon_snapshot) ? $draft->amazon_snapshot : [];
+                $snap['images'] = $images;
+                $snap['thumbnail_image'] = $images[0];
+                $draft->amazon_snapshot = $snap;
+                $payload['images'] = $images;
+            }
+        }
+        if (! empty($payload['videos']) && is_array($payload['videos'])) {
+            $details['videos'] = $payload['videos'];
+        }
+        if (! empty($payload['bullets']) && is_array($payload['bullets'])) {
+            foreach (array_values($payload['bullets']) as $i => $bullet) {
+                if ($i > 4) {
+                    break;
+                }
+                $details['bullet_'.($i + 1)] = $bullet;
+            }
+        }
+        foreach (['upc', 'brand', 'manufacturer', 'make', 'model', 'finish', 'year', 'condition_name', 'shipping_profile_id', 'package_length', 'package_width', 'package_height', 'package_weight_lb', 'package_weight_oz'] as $key) {
+            if (array_key_exists($key, $payload) && $payload[$key] !== null && $payload[$key] !== '') {
+                $details[$key] = $payload[$key];
+            }
+        }
+
+        $draft->listing_details = $details;
+        $ready = ListingManagerPublishStatus::readiness(
+            $draft->title,
+            $draft->price,
+            $draft->quantity,
+            $details,
+            (string) $draft->status,
+            $channelName
+        );
+        $draft->status = $ready['ready'] ? 'ready' : 'draft';
+        $draft->save();
+
+        $payload['draft'] = $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true);
+
+        return response()->json($payload);
     }
 
     /**
@@ -946,45 +1196,46 @@ class ListingManagerController extends Controller
     }
 
     /**
-     * Explicitly load description HTML from main store (Shopify) into the draft.
+     * Load description HTML from Amazon, Description Master, or Shopify.
      */
-    public function loadDescriptionFromStore(int $id)
+    public function loadDescriptionFromStore(Request $request, int $id)
     {
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
         if ($draft->status === 'listed') {
             return response()->json(['success' => false, 'message' => 'Cannot change description on a published listing.'], 422);
         }
 
-        $main = ListingManagerAmazonHydrator::fetchMainStoreDescription((string) $draft->seller_sku, true);
-        if (trim($main['html']) === '') {
+        $source = strtolower(trim((string) $request->input('source', 'shopify')));
+        $sku = (string) $draft->seller_sku;
+        $html = '';
+        $label = 'Shopify';
+
+        if ($source === 'amazon') {
+            $html = ListingManagerAmazonHydrator::amazonDescription($sku);
+            $label = 'Amazon';
+        } elseif (in_array($source, ['description_master', 'master', 'description-master'], true)) {
+            $html = ListingManagerAmazonHydrator::descriptionMaster($sku);
+            $label = 'Description Master';
+        } else {
+            $html = ListingManagerAmazonHydrator::shopifyDescription($sku);
+            $label = 'Shopify';
+        }
+
+        if (trim($html) === '') {
             return response()->json([
                 'success' => false,
-                'message' => 'No description found on main store (Shopify / product master) for this SKU.',
+                'message' => 'No description found on '.$label.' for this SKU.',
             ], 422);
         }
 
         $details = ListingManagerPublishStatus::normalizeDetails(
             is_array($draft->listing_details) ? $draft->listing_details : []
         );
-        $details['description'] = $main['html'];
-        if ($main['images'] !== []) {
-            $stored = ListingManagerImageStore::localizeMany($main['images'], (string) $draft->seller_sku);
-            $details['images'] = $stored;
-            $details['image_url'] = $stored[0] ?? $main['images'][0];
-            $details['image_source_urls'] = ListingManagerImageStore::sourceUrlsForSku((string) $draft->seller_sku);
-            $draft->thumbnail_image = $details['image_url'];
-        }
-        if ($main['title'] !== '' && trim((string) $draft->title) === '') {
-            $draft->title = $main['title'];
-        }
+        $details['description'] = $html;
         $draft->listing_details = $details;
         $snap = is_array($draft->amazon_snapshot) ? $draft->amazon_snapshot : [];
-        $snap['product_description'] = $main['html'];
-        $snap['description_source'] = $main['source'];
-        if ($main['images'] !== []) {
-            $snap['images'] = $main['images'];
-            $snap['thumbnail_image'] = $main['images'][0];
-        }
+        $snap['product_description'] = $html;
+        $snap['description_source'] = $source;
         $draft->amazon_snapshot = $snap;
 
         $channelName = (string) ($draft->channel->channel ?? '');
@@ -1001,10 +1252,10 @@ class ListingManagerController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Description loaded from main store ('.$main['source'].').',
-            'source' => $main['source'],
-            'description' => $main['html'],
-            'images' => $main['images'],
+            'message' => 'Description loaded from '.$label.'.',
+            'source' => $source,
+            'description' => $html,
+            'images' => [],
             'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
         ]);
     }
@@ -1023,6 +1274,12 @@ class ListingManagerController extends Controller
                 ? app(TikTok2ShopService::class)
                 : app(TikTokShopService::class);
             $result = $svc->searchListingCategories($q, $title, $description);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'reverb') {
+            $result = app(ReverbApiService::class)->searchListingCategories($q, $title);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
@@ -1162,9 +1419,9 @@ class ListingManagerController extends Controller
         }
         $images = array_values(array_filter(array_map(fn ($u) => trim((string) $u), $images)));
 
-        // If draft still has no usable images, pull live Amazon media first
+        // If draft still has no usable images, pull Image Master only
         if ($images === []) {
-            $images = $this->fetchLiveAmazonImages((string) $draft->seller_sku, (string) ($draft->asin ?? ''));
+            $images = ListingManagerAmazonHydrator::imageMasterUrls((string) $draft->seller_sku);
         }
         $images = ListingManagerImageStore::localizeMany($images, (string) $draft->seller_sku);
 
@@ -1209,28 +1466,14 @@ class ListingManagerController extends Controller
     }
 
     /**
-     * Load product images from Image Master / Product Master, then Amazon if needed.
+     * Load product images from Image Master only.
      */
     public function loadDraftImages(int $id)
     {
         $draft = ListingManagerChannelDraft::query()->with('channel:id,channel,logo')->findOrFail($id);
         $sku = trim((string) $draft->seller_sku);
         $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize((string) ($draft->channel->channel ?? '')));
-        $hydrated = ListingManagerAmazonHydrator::hydrate($sku);
-        $local = is_array($hydrated['images'] ?? null) ? $hydrated['images'] : [];
-        $shopify = [];
-        try {
-            $shopify = app(ShopifyApiService::class)->fetchProductImagesBySku($sku);
-        } catch (\Throwable $e) {
-            Log::warning('ListingManager loadDraftImages Shopify gallery failed: '.$e->getMessage(), ['sku' => $sku]);
-        }
-        $amazon = [];
-        if (count($this->mergeDraftImageUrls($shopify, $local)) < 2) {
-            $amazon = $this->fetchLiveAmazonImages($sku, (string) ($draft->asin ?? ''), false);
-        }
-        $source = $this->mergeDraftImageUrls($shopify, $local, $amazon);
-        $from = $shopify !== [] ? 'main store' : ($local !== [] ? 'Image Master / Product Master' : 'Amazon');
-
+        $source = ListingManagerAmazonHydrator::imageMasterUrls($sku);
         if ($family === 'tiktok') {
             $source = array_slice($source, 0, 9);
         }
@@ -1238,7 +1481,7 @@ class ListingManagerController extends Controller
         if ($source === []) {
             return response()->json([
                 'success' => false,
-                'message' => 'No images found on Image Master, Product Master, or Amazon. Upload an image on this tab.',
+                'message' => 'No images found on Image Master for this SKU. Add photos on /image-master, then try again.',
                 'images' => [],
             ], 422);
         }
@@ -1250,7 +1493,7 @@ class ListingManagerController extends Controller
         if ($images === []) {
             return response()->json([
                 'success' => false,
-                'message' => 'No images found on Image Master, Product Master, or Amazon. Upload an image on this tab.',
+                'message' => 'No images found on Image Master for this SKU. Add photos on /image-master, then try again.',
                 'images' => [],
             ], 422);
         }
@@ -1291,7 +1534,7 @@ class ListingManagerController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Loaded '.count($images).' image(s) from '.$from.'.',
+            'message' => 'Loaded '.count($images).' image(s) from Image Master.',
             'images' => $images,
             'draft' => $this->serializeDraft($draft->fresh()->load('channel:id,channel,logo'), true),
         ]);
@@ -1859,12 +2102,15 @@ class ListingManagerController extends Controller
         $brand = trim((string) ($details['brand'] ?? '')) ?: $defaultBrand;
         $manufacturer = trim((string) ($details['manufacturer'] ?? '')) ?: $defaultManufacturer;
         $mpn = trim((string) ($details['mpn'] ?? '')) ?: $sku;
+        $specifics = is_array($details['item_specifics'] ?? null) ? $details['item_specifics'] : [];
         $upc = trim((string) ($details['upc'] ?? ''));
-        if ($upc === '' && $sku !== '') {
+        $specificsUpc = trim((string) ($specifics['UPC'] ?? ''));
+        if ($upc === '' || ListingManagerAmazonHydrator::looksLikeAsin($upc)) {
+            $upc = $specificsUpc;
+        }
+        if (($upc === '' || ListingManagerAmazonHydrator::looksLikeAsin($upc)) && $sku !== '') {
             $upc = ListingManagerAmazonHydrator::upcFromCpMaster($sku);
         }
-
-        $specifics = is_array($details['item_specifics'] ?? null) ? $details['item_specifics'] : [];
         $specifics['Brand'] = $brand;
         $specifics['Manufacturer'] = $manufacturer;
         $specifics['MPN'] = $mpn;
@@ -1902,29 +2148,13 @@ class ListingManagerController extends Controller
         $weightOk = ((float) ($details['package_weight_lb'] ?? 0) + ((float) ($details['package_weight_oz'] ?? 0) / 16)) > 0;
         $family = ListingManagerEditorProfile::family(ListingChannelCounts::normalize((string) ($draft->channel->channel ?? '')));
         $needsImages = $images === [] && trim((string) ($details['image_url'] ?? '')) === '';
-        if ($family === 'tiktok' && count($images) < 2) {
-            $needsImages = true;
-        }
         if (! $needsImages && $weightOk) {
             return;
         }
 
         if ($needsImages) {
-            $hydrated = ListingManagerAmazonHydrator::hydrate((string) $draft->seller_sku, false);
-            $fetched = is_array($hydrated['images'] ?? null) ? $hydrated['images'] : [];
+            $fetched = ListingManagerAmazonHydrator::imageMasterUrls((string) $draft->seller_sku);
             if ($family === 'tiktok') {
-                try {
-                    $shopify = app(ShopifyApiService::class)->fetchProductImagesBySku((string) $draft->seller_sku);
-                    $fetched = $this->mergeDraftImageUrls($shopify, $fetched);
-                } catch (\Throwable $e) {
-                    Log::warning('ListingManager ensureDraftMediaAndPackage Shopify gallery failed: '.$e->getMessage());
-                }
-                if (count($fetched) < 2) {
-                    $fetched = $this->mergeDraftImageUrls(
-                        $fetched,
-                        $this->fetchLiveAmazonImages((string) $draft->seller_sku, (string) ($draft->asin ?? ''), false)
-                    );
-                }
                 $fetched = array_slice($fetched, 0, 9);
             }
             if ($fetched !== []) {
@@ -1989,13 +2219,6 @@ class ListingManagerController extends Controller
             if ($url !== '' && preg_match('#^https?://#i', $url) && ! ListingManagerImageStore::isStored($url)) {
                 $needsDownload = true;
                 break;
-            }
-        }
-        if (! $needsDownload) {
-            $cached = ListingManagerImageStore::cachedForSku((string) $draft->seller_sku);
-            if ($cached !== [] && $images === []) {
-                $images = $cached;
-                $needsDownload = true;
             }
         }
         if (! $needsDownload) {

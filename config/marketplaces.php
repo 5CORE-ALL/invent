@@ -2,7 +2,7 @@
 
 return [
   'character_limits' => [
-    'amazon' => 150,
+    'amazon' => 75,
     'temu' => 150,
     'temu2' => 150,
     'reverb' => 150,

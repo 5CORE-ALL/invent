@@ -627,7 +627,11 @@ class Ebay2ApiService
                 'xml'    => $xmlBody,
             ]);
 
-            $response = Http::withHeaders($headers)->withBody($xmlBody, 'text/xml')->post($this->endpoint);
+            $request = Http::withHeaders($headers)->withBody($xmlBody, 'text/xml');
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->post($this->endpoint);
             $body     = $response->body();
             $rlogId   = $response->header('rlogid') ?? $response->header('X-EBAY-API-SERVER-LOG-ID') ?? null;
 
