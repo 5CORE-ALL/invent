@@ -192,7 +192,7 @@ class MarketplaceTitlePushService
             ];
         }
 
-        $res = app($serviceClass)->updateTitle($metric->item_id, $title);
+        $res = app($serviceClass)->updateTitle($metric->item_id, $title, (string) ($metric->sku ?? ''));
 
         return $this->wrapArray($res, $endpoint);
     }

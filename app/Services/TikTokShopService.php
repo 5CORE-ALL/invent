@@ -1597,35 +1597,63 @@ class TikTokShopService
             return ['success' => false, 'message' => 'TikTok access token not configured.'];
         }
 
-        $paths = [
-            "/product/202309/products/{$productId}/partial_edit",
-            "/product/202312/products/{$productId}/partial_edit",
-        ];
-        $lastError = '';
-        foreach ($paths as $path) {
-            try {
-                $this->tiktokOpenApi('POST', $path, [], ['title' => $title]);
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
 
-                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
-            } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
-                Log::warning('TikTok updateProductTitle signed path failed', [
+        $versions = ['202309', '202407', '202501', '202502', '202503'];
+        $lastError = '';
+        foreach ($versions as $version) {
+            try {
+                $response = $this->client->Product->useVersion($version)->partialEditProduct($productId, [
+                    'title' => $title,
+                ]);
+                if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+                    return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                }
+                $lastError = (string) ($response['message'] ?? json_encode($response) ?: 'TikTok title update failed.');
+                Log::warning('TikTok partialEditProduct rejected', [
                     'product_id' => $productId,
-                    'path' => $path,
+                    'version' => $version,
                     'error' => $lastError,
                 ]);
+                if (! $this->isInvalidApiVersionError($lastError) && ! $this->isNoSchemaError($lastError)) {
+                    break;
+                }
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('TikTok partialEditProduct failed', [
+                    'product_id' => $productId,
+                    'version' => $version,
+                    'error' => $lastError,
+                ]);
+                if (! $this->isInvalidApiVersionError($lastError) && ! $this->isNoSchemaError($lastError)) {
+                    break;
+                }
             }
         }
 
-        $viaSdk = $this->updateTikTokProductFields($productId, ['title' => $title]);
-        if ($viaSdk['success'] ?? false) {
-            return $viaSdk;
+        foreach ($versions as $version) {
+            try {
+                $response = $this->client->Product->useVersion($version)->editProduct($productId, [
+                    'title' => $title,
+                ]);
+                if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
+                    return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                }
+                $lastError = (string) ($response['message'] ?? $lastError);
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+            }
         }
 
-        $sdkMsg = trim((string) ($viaSdk['message'] ?? ''));
-        $message = $lastError !== '' ? $lastError : ($sdkMsg !== '' ? $sdkMsg : 'TikTok title update failed.');
-
-        return $this->marketplaceApiFailure('TikTok updateProductTitle', $productId, $message);
+        return $this->marketplaceApiFailure(
+            'TikTok updateProductTitle',
+            $productId,
+            $lastError !== '' ? $lastError : 'TikTok title update failed.'
+        );
     }
 
     /**
@@ -3345,7 +3373,10 @@ class TikTokShopService
 
     protected function isExpiredAccessTokenMessage(int $code, string $message): bool
     {
-        if (in_array($code, [105001, 105002, 36009004], true)) {
+        if ($this->isInvalidApiVersionError($message)) {
+            return false;
+        }
+        if (in_array($code, [105001, 105002], true)) {
             return true;
         }
 

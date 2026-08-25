@@ -529,10 +529,11 @@ class Ebay2ApiService
      * GTC / fixed-price listings require ReviseFixedPriceItem; ReviseItem can
      * Ack Success without actually changing the live title.
      */
-    public function updateTitle($itemId, $title)
+    public function updateTitle($itemId, $title, $sku = null)
     {
         $itemId = trim((string) $itemId);
         $title = mb_substr(trim((string) $title), 0, 80);
+        $sku = trim((string) ($sku ?? ''));
 
         if ($itemId === '') {
             Log::warning('eBay2 updateTitle: empty item ID');
@@ -545,10 +546,19 @@ class Ebay2ApiService
             return ['success' => false, 'message' => 'Title cannot be empty.'];
         }
 
+        if ($sku === '') {
+            try {
+                $sku = trim((string) (Ebay2Metric::query()->where('item_id', $itemId)->value('sku') ?? ''));
+            } catch (\Throwable) {
+                $sku = '';
+            }
+        }
+
         try {
             $authToken = $this->generateBearerToken();
-            Log::info('eBay2 updateTitle: ReviseFixedPriceItem', [
+            Log::info('eBay2 updateTitle: ReviseFixedPriceItem + Inventory', [
                 'itemId' => $itemId,
+                'sku' => $sku,
                 'title' => $title,
             ]);
 
@@ -562,6 +572,7 @@ class Ebay2ApiService
                 (string) ($authToken ?? ''),
                 $itemId,
                 $title,
+                $sku,
             );
         } catch (\Throwable $e) {
             Log::error('eBay2 updateTitle exception', [

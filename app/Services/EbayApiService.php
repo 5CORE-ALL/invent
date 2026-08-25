@@ -229,10 +229,11 @@ class EbayApiService
      * @param string $title New title (will be truncated to 80 chars)
      * @return array{success: bool, message?: string}
      */
-    public function updateTitle($itemId, $title)
+    public function updateTitle($itemId, $title, $sku = null)
     {
         $itemId = trim((string) $itemId);
         $title = mb_substr(trim((string) $title), 0, 80);
+        $sku = trim((string) ($sku ?? ''));
 
         if ($itemId === '') {
             return ['success' => false, 'message' => 'Item ID is required.'];
@@ -241,6 +242,14 @@ class EbayApiService
             Log::warning('eBay updateTitle: empty title', ['itemId' => $itemId]);
 
             return ['success' => false, 'message' => 'Title cannot be empty.'];
+        }
+
+        if ($sku === '' && Schema::hasTable('ebay_metrics')) {
+            try {
+                $sku = trim((string) (DB::table('ebay_metrics')->where('item_id', $itemId)->value('sku') ?? ''));
+            } catch (\Throwable) {
+                $sku = '';
+            }
         }
 
         try {
@@ -256,6 +265,7 @@ class EbayApiService
                 (string) ($authToken ?? ''),
                 $itemId,
                 $title,
+                $sku,
             );
         } catch (\Throwable $e) {
             Log::error('eBay updateTitle exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);

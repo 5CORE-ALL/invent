@@ -1638,9 +1638,11 @@ final class EbayTradingReviseItem
         string $authToken,
         string $itemId,
         string $title,
+        string $sku = '',
     ): array {
         $itemId = trim($itemId);
         $title = mb_substr(trim($title), 0, 80);
+        $sku = trim($sku);
         if ($itemId === '' || $title === '') {
             return ['success' => false, 'message' => 'Item ID and title are required.'];
         }
@@ -1656,7 +1658,25 @@ final class EbayTradingReviseItem
             $itemId,
             $title,
             'ReviseFixedPriceItem',
+            $sku,
         );
+
+        // Seller Hub / Inventory listings can Ack Success on Trading while the
+        // visible title stays on the inventory item. Inventory is source of truth when it exists.
+        if ($sku !== '' && $authToken !== '') {
+            $inventory = self::updateSellInventoryTitle($authToken, $sku, $title);
+            if ($inventory['exists'] ?? false) {
+                if ($inventory['success'] ?? false) {
+                    return ['success' => true, 'message' => 'Title updated successfully.'];
+                }
+
+                return [
+                    'success' => false,
+                    'message' => (string) ($inventory['message'] ?? 'eBay Inventory title update failed.'),
+                ];
+            }
+        }
+
         if ($fixed['success']) {
             return $fixed;
         }
@@ -1678,6 +1698,7 @@ final class EbayTradingReviseItem
             $itemId,
             $title,
             'ReviseItem',
+            $sku,
         );
         if ($reviseItem['success']) {
             return $reviseItem;
@@ -1694,6 +1715,92 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Seller Hub listings store the visible title on the Sell Inventory item.
+     *
+     * @return array{success: bool, exists: bool, message: string}
+     */
+    public static function updateSellInventoryTitle(string $bearerToken, string $sku, string $title): array
+    {
+        $sku = trim($sku);
+        $title = mb_substr(trim($title), 0, 80);
+        if ($sku === '' || $bearerToken === '' || $title === '') {
+            return ['success' => false, 'exists' => false, 'message' => 'SKU and title are required.'];
+        }
+
+        $url = 'https://api.ebay.com/sell/inventory/v1/inventory_item/'.rawurlencode($sku);
+        $headers = [
+            'Authorization' => 'Bearer '.$bearerToken,
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+            'Content-Language' => 'en-US',
+        ];
+
+        try {
+            $get = Http::withoutVerifying()
+                ->withHeaders($headers)
+                ->timeout(30)
+                ->get($url);
+
+            if ($get->status() === 404) {
+                return ['success' => false, 'exists' => false, 'message' => 'No eBay Inventory item for this SKU.'];
+            }
+            if (! $get->successful()) {
+                Log::warning('eBay Inventory GET failed', [
+                    'sku' => $sku,
+                    'status' => $get->status(),
+                    'body' => mb_substr($get->body(), 0, 500),
+                ]);
+
+                return [
+                    'success' => false,
+                    'exists' => false,
+                    'message' => 'eBay Inventory lookup failed (HTTP '.$get->status().').',
+                ];
+            }
+
+            $item = $get->json();
+            if (! is_array($item)) {
+                return ['success' => false, 'exists' => true, 'message' => 'eBay Inventory item response was invalid.'];
+            }
+
+            unset($item['sku'], $item['locale']);
+            if (! isset($item['product']) || ! is_array($item['product'])) {
+                $item['product'] = [];
+            }
+            $item['product']['title'] = $title;
+
+            $put = Http::withoutVerifying()
+                ->withHeaders($headers)
+                ->timeout(45)
+                ->withBody((string) json_encode($item, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'application/json')
+                ->put($url);
+
+            if ($put->successful() || $put->status() === 204) {
+                Log::info('eBay Inventory title updated', ['sku' => $sku]);
+
+                return ['success' => true, 'exists' => true, 'message' => 'Inventory title updated.'];
+            }
+
+            $msg = mb_substr($put->body(), 0, 400);
+            Log::warning('eBay Inventory title PUT failed', [
+                'sku' => $sku,
+                'status' => $put->status(),
+                'body' => $msg,
+            ]);
+
+            return [
+                'success' => false,
+                'exists' => true,
+                'message' => 'eBay Inventory title update failed: '.$msg,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('eBay Inventory title update exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'exists' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     private static function postTitleReviseCall(
@@ -1707,6 +1814,7 @@ final class EbayTradingReviseItem
         string $itemId,
         string $title,
         string $callName,
+        string $sku = '',
     ): array {
         $root = $callName === 'ReviseFixedPriceItem' ? 'ReviseFixedPriceItemRequest' : 'ReviseItemRequest';
         $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');

@@ -241,10 +241,11 @@ class EbayThreeApiService
      * Update listing title via ReviseItem (eBay title max 80 chars).
      * Fetches item details first and includes required fields (SKU, ListingType, Country, Currency, ConditionID).
      */
-    public function updateTitle($itemId, $title)
+    public function updateTitle($itemId, $title, $sku = null)
     {
         $itemId = trim((string) $itemId);
         $title = mb_substr(trim((string) $title), 0, 80);
+        $sku = trim((string) ($sku ?? ''));
 
         if ($itemId === '') {
             Log::warning('eBay3 updateTitle: empty item ID');
@@ -257,10 +258,19 @@ class EbayThreeApiService
             return ['success' => false, 'message' => 'Title cannot be empty.'];
         }
 
+        if ($sku === '') {
+            try {
+                $sku = trim((string) (Ebay3Metric::query()->where('item_id', $itemId)->value('sku') ?? ''));
+            } catch (\Throwable) {
+                $sku = '';
+            }
+        }
+
         try {
             $authToken = $this->generateBearerToken();
-            Log::info('eBay3 updateTitle: ReviseFixedPriceItem', [
+            Log::info('eBay3 updateTitle: ReviseFixedPriceItem + Inventory', [
                 'itemId' => $itemId,
+                'sku' => $sku,
                 'title' => $title,
             ]);
 
@@ -274,6 +284,7 @@ class EbayThreeApiService
                 (string) ($authToken ?? ''),
                 $itemId,
                 $title,
+                $sku,
             );
         } catch (\Throwable $e) {
             Log::error('eBay3 updateTitle exception', [

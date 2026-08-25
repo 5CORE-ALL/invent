@@ -494,7 +494,7 @@ class ListingManagerProductPublisher
                 return ['success' => false, 'message' => 'eBay title update is not available.'];
             }
 
-            return $this->normalizeResult($service->updateTitle($itemId, $title), 'Title updated.');
+            return $this->normalizeResult($service->updateTitle($itemId, $title, $sku), 'Title updated.');
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
