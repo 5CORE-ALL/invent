@@ -13,26 +13,26 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * eBay 2 mirror of {@see EbayCampaignAdsController}
- * — own View VS SBID slabs (`ebay2_sbid_slabs`) + DIL, driven off eBay-2 data:
+ * — same Sbid Rule slabs as eBay 1 (`ebay1_sbid_slabs`) + DIL, driven off eBay-2 data:
  *   - Campaign data: `ebay2_campaign_ads`
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
- *   - Rule keys:     `ebay2_sbid_slabs` (For L7 Views → S Bid; EL30=0 → ES Bid)
- *                    and `ebay2_dil` (DIL colour bands) in `ebay_sbid_rules`
+ *   - Rule keys:     `ebay1_sbid_slabs` (shared For L7 Views / CVR → S Bid) and
+ *                    `ebay2_dil` (DIL colour bands) in `ebay_sbid_rules`
  *                    (`ebay2` SCVR bands kept only for legacy getRule/saveRule;
  *                     `ebay2_sbid_views` kept for /ebay2-tabulator-view)
- *   - Token / push:  Ebay2ApiService (Autopush on slab / 0-sold ES Bid change)
- *   - Tabulator is Parents Only: parent-row L7 Views / EL30 drive S Bid; push
+ *   - Token / push:  Ebay2ApiService
+ *   - Tabulator is Parents Only: parent-row L7 Views / CVR drive S Bid; push
  *     applies that family bid to every listing under the parent.
  */
 class Ebay2CampaignAdsController extends Controller
 {
     use ProvidesEbayCampaignAdsBadgeSummary;
 
-    public const SBID_SLABS_KEY = 'ebay2_sbid_slabs';
+    public const SBID_SLABS_KEY = 'ebay1_sbid_slabs';
 
     /**
      * Sbid (Views) settings — kept for /ebay2-tabulator-view.
-     * Campaign-ads S Bid uses eBay-2-only slab rule (`ebay2_sbid_slabs`).
+     * Campaign-ads S Bid uses the shared Ebay 1 slab rule (`ebay1_sbid_slabs`).
      */
     public function getSbidViewsRule()
     {
@@ -40,16 +40,13 @@ class Ebay2CampaignAdsController extends Controller
     }
 
     /**
-     * eBay 2 View VS SBID slabs (For L7 Views → S Bid; EL30=0 → ES Bid).
-     * Stored under `ebay2_sbid_slabs` — not shared with eBay 1.
+     * Shared Ebay 1 Sbid Rule slabs (For L7 Views / CVR → S Bid).
+     * Same source as /ebay/campaign-ads and /ebay3/campaign-ads.
      */
     public function getSbidSlabRule()
     {
-        $state = $this->sbidSlabState();
-
         return response()->json([
-            'rules' => $state['rules'],
-            'es_bid' => $state['es_bid'],
+            'rules' => $this->sbidSlabs(),
         ]);
     }
 
@@ -68,6 +65,8 @@ class Ebay2CampaignAdsController extends Controller
             }
             $clean[] = [
                 'label' => isset($r['label']) ? (string) $r['label'] : '',
+                'cvr_min' => $this->numOrNull($r['cvr_min'] ?? null),
+                'cvr_max' => $this->numOrNull($r['cvr_max'] ?? null),
                 'l7_views_min' => $this->numOrNull($r['l7_views_min'] ?? null),
                 'l7_views_max' => $this->numOrNull($r['l7_views_max'] ?? null),
                 'sbid' => $this->numOrNull($r['sbid'] ?? null) ?? 0,
@@ -75,7 +74,7 @@ class Ebay2CampaignAdsController extends Controller
         }
 
         if ($clean === []) {
-            $clean = $this->defaultSbidSlabRules();
+            $clean = $this->sbidSlabs();
         }
 
         $rule = [
@@ -89,43 +88,6 @@ class Ebay2CampaignAdsController extends Controller
         );
 
         return response()->json(['success' => true, 'rule' => $rule]);
-    }
-
-    /**
-     * Default View VS SBID slabs: 0–100, 101–200, … 901–1000, then >1000.
-     * Same steps as eBay 1 — eBay 2 stores its own copy.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    private function defaultSbidSlabRules(): array
-    {
-        $rules = [];
-        $bid = 15;
-        for ($i = 0; $i < 10; $i++) {
-            $min = $i === 0 ? 0 : ($i * 100) + 1;
-            $max = ($i + 1) * 100;
-            $rules[] = [
-                'label' => $min . '–' . $max,
-                'l7_views_min' => $min,
-                'l7_views_max' => $max,
-                'sbid' => $bid,
-            ];
-            $bid--;
-        }
-        $rules[] = [
-            'label' => '>1000',
-            'l7_views_min' => 1001,
-            'l7_views_max' => null,
-            'sbid' => $bid,
-        ];
-
-        return $rules;
-    }
-
-    /** Only seed defaults when nothing is stored. Never overwrite a saved rule. */
-    private function sbidSlabsNeedViewStepMigrate(array $rules): bool
-    {
-        return $rules === [];
     }
 
     private function numOrNull($v): ?float
@@ -250,11 +212,10 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        $state = $this->sbidSlabState();
-        $slabs = $state['rules'];
-        $esBidOverride = $state['es_bid'];
+        $slabs = $this->sbidSlabs();
 
         $metrics = Ebay2Metric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
+        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
 
         $ads = DB::table('ebay2_campaign_ads')
             ->whereIn('listing_id', $listingIds)
@@ -286,12 +247,17 @@ class Ebay2CampaignAdsController extends Controller
             }
 
             $metric   = $metrics->get($lid);
-            $el30     = (float) ($metric?->ebay_l30 ?? 0);
+            $soldL30  = (float) ($metric?->ebay_l30 ?? 0);
+            $views    = (float) ($metric?->views ?? 0);
             $l7Views  = (float) ($metric?->l7_views ?? 0);
-            $esFallback = (float) ($ad->suggested_bid ?? 0);
-            $newBid   = $this->resolveRowBid($el30, $l7Views, $esFallback, $slabs, $esBidOverride);
+            $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+            $shopify  = $shopifyMap[$this->normSku($metric?->sku ?? '')] ?? null;
+            $inv      = (float) ($shopify->inv ?? 0);
+            $qty      = (float) ($shopify->quantity ?? 0);
+            $dil      = $inv > 0 ? ($qty / $inv) * 100 : 0;
+            $newBid   = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
             if ($newBid <= 0) {
-                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => $el30 <= 0 ? 'EL30=0 and no ES Bid' : 'No matching Sbid Rule slab'];
+                $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab'];
                 $skipped++;
                 continue;
             }
@@ -340,9 +306,9 @@ class Ebay2CampaignAdsController extends Controller
     }
 
     /**
-     * Apply eBay 2 View VS SBID slabs and push each computed S Bid
+     * Apply the shared Ebay 1 Sbid Rule slabs and push each computed S Bid
      * to its eBay 2 campaign. PARENT SKUs (tabulator Parents Only) use
-     * family-aggregated L7 Views / EL30 and push that bid to every listing
+     * family-aggregated L7 Views / CVR and push that bid to every listing
      * under the parent.
      */
     public function pushSbidSlabsBySku(Request $request)
@@ -352,9 +318,7 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'No SKUs provided'], 422);
         }
 
-        $state = $this->sbidSlabState();
-        $slabs = $state['rules'];
-        $esBidOverride = $state['es_bid'];
+        $slabs = $this->sbidSlabs();
 
         $lookupSkus = [];
         foreach ($skus as $sku) {
@@ -370,6 +334,7 @@ class Ebay2CampaignAdsController extends Controller
 
         $metrics = Ebay2Metric::whereIn('sku', $lookupSkus)->get()
             ->keyBy(fn ($m) => $this->normSku($m->sku));
+        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
 
         $itemIds = $metrics->pluck('item_id')->filter()->unique()->values()->all();
         $ads = DB::table('ebay2_campaign_ads')
@@ -398,8 +363,8 @@ class Ebay2CampaignAdsController extends Controller
                     $familySkus = [$sku];
                 }
                 $el30 = 0.0;
+                $views = 0.0;
                 $l7Views = 0.0;
-                $esFallback = 0.0;
                 $listingEntries = [];
                 foreach ($familySkus as $fs) {
                     $metric = $metrics->get($this->normSku($fs));
@@ -407,6 +372,7 @@ class Ebay2CampaignAdsController extends Controller
                         continue;
                     }
                     $el30 += (float) ($metric->ebay_l30 ?? 0);
+                    $views += (float) ($metric->views ?? 0);
                     $l7Views += (float) ($metric->l7_views ?? 0);
                     $lid = (string) ($metric->item_id ?? '');
                     if ($lid === '' || isset($listingEntries[$lid])) {
@@ -416,20 +382,18 @@ class Ebay2CampaignAdsController extends Controller
                     if (! $ad || ! $ad->campaign_id) {
                         continue;
                     }
-                    if ($esFallback <= 0) {
-                        $esFallback = (float) ($ad->suggested_bid ?? 0);
-                    }
                     $listingEntries[$lid] = [
                         'listingId' => $lid,
                         'campaign_id' => $ad->campaign_id,
                         'sku' => $fs,
                     ];
                 }
-                $bid = $this->resolveRowBid($el30, $l7Views, $esFallback, $slabs, $esBidOverride);
+                $scvr = $views > 0 ? ($el30 / $views) * 100 : 0;
+                $bid = $this->resolveSlabBid($scvr, 0.0, $el30, $views, $l7Views, $slabs);
                 if ($bid <= 0 || $listingEntries === []) {
                     $why = $listingEntries === []
                         ? 'No eBay listing in a COST_PER_SALE campaign'
-                        : ($el30 <= 0 ? 'EL30=0 and no ES Bid' : 'No matching Sbid Rule slab');
+                        : 'No matching Sbid Rule slab';
                     $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => $why];
                     $skipped++;
                     continue;
@@ -459,12 +423,17 @@ class Ebay2CampaignAdsController extends Controller
                 continue;
             }
 
-            $el30 = (float) ($metric->ebay_l30 ?? 0);
+            $soldL30 = (float) ($metric->ebay_l30 ?? 0);
+            $views   = (float) ($metric->views ?? 0);
             $l7Views = (float) ($metric->l7_views ?? 0);
-            $esFallback = (float) ($ad->suggested_bid ?? 0);
-            $bid = $this->resolveRowBid($el30, $l7Views, $esFallback, $slabs, $esBidOverride);
+            $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+            $shopify = $shopifyMap[$norm] ?? null;
+            $inv     = (float) ($shopify->inv ?? 0);
+            $qty     = (float) ($shopify->quantity ?? 0);
+            $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
+            $bid     = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
             if ($bid <= 0) {
-                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => $el30 <= 0 ? 'EL30=0 and no ES Bid' : 'No matching Sbid Rule slab'];
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab'];
                 $skipped++;
                 continue;
             }
@@ -536,9 +505,7 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'listing_ids and campaign_id required'], 422);
         }
 
-        $state = $this->sbidSlabState();
-        $slabs = $state['rules'];
-        $esBidOverride = $state['es_bid'];
+        $slabs = $this->sbidSlabs();
 
         $ads = DB::table('ebay2_campaign_ads')
             ->whereIn('listing_id', $listingIds)
@@ -547,6 +514,7 @@ class Ebay2CampaignAdsController extends Controller
 
         $metrics = Ebay2Metric::whereIn('item_id', $listingIds)
             ->get()->keyBy('item_id');
+        $shopifyMap = $this->shopifyByNormSku($metrics->pluck('sku')->filter()->unique()->values()->all());
 
         try {
             $service = new \App\Services\Ebay2ApiService();
@@ -563,11 +531,20 @@ class Ebay2CampaignAdsController extends Controller
         foreach ($listingIds as $lid) {
             $lid    = (string)$lid;
             $metric = $metrics->get($lid);
-            $el30 = (float) ($metric?->ebay_l30 ?? 0);
+            $soldL30 = (float) ($metric?->ebay_l30 ?? 0);
+            $views   = (float) ($metric?->views ?? 0);
             $l7Views = (float) ($metric?->l7_views ?? 0);
-            $adRow = $ads->get($lid);
-            $esFallback = (float) ($adRow?->suggested_bid ?? 0);
-            $bid = $this->resolveRowBid($el30, $l7Views, $esFallback, $slabs, $esBidOverride);
+            $scvr    = $views > 0 ? ($soldL30 / $views) * 100 : 0;
+            $shopify = $shopifyMap[$this->normSku($metric?->sku ?? '')] ?? null;
+            $inv     = (float) ($shopify->inv ?? 0);
+            $qty     = (float) ($shopify->quantity ?? 0);
+            $dil     = $inv > 0 ? ($qty / $inv) * 100 : 0;
+            $bid     = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $slabs);
+
+            if ($bid <= 0) {
+                $adRow = $ads->get($lid);
+                $bid = (float) ($adRow?->suggested_bid ?? 0);
+            }
 
             if ($bid <= 0) {
                 $results[] = ['listing_id' => $lid, 'sku' => $metric?->sku, 'status' => 'skipped', 'reason' => 'No matching Sbid Rule slab and no ES Bid'];
@@ -619,57 +596,28 @@ class Ebay2CampaignAdsController extends Controller
         ]);
     }
 
-    /**
-     * eBay 2–only View VS SBID slabs (For L7 Views → S Bid; EL30=0 → ES Bid).
-     *
-     * @return array{rules: array<int, array<string, mixed>>, es_bid: float|null}
-     */
-    private function sbidSlabState(): array
-    {
-        $row = DB::table('ebay_sbid_rules')->where('key', self::SBID_SLABS_KEY)->first();
-        $decoded = $row ? json_decode($row->rule, true) : null;
-        $rules = is_array($decoded['rules'] ?? null) ? $decoded['rules'] : [];
-        $esBid = $this->numOrNull($decoded['es_bid'] ?? null);
-
-        if ($this->sbidSlabsNeedViewStepMigrate($rules)) {
-            $rules = $this->defaultSbidSlabRules();
-            DB::table('ebay_sbid_rules')->updateOrInsert(
-                ['key' => self::SBID_SLABS_KEY],
-                ['rule' => json_encode(['rules' => $rules, 'es_bid' => $esBid]), 'updated_at' => now()]
-            );
-        }
-
-        return ['rules' => $rules, 'es_bid' => $esBid];
-    }
-
-    /** @return array<int, array<string, mixed>> */
+    /** Shared Ebay 1 Sbid Rule slabs (For L7 Views / CVR → S Bid). */
     private function sbidSlabs(): array
     {
-        return $this->sbidSlabState()['rules'];
-    }
-
-    /**
-     * EL30 = 0 → ES Bid override (or listing suggested_bid).
-     * Otherwise first matching For L7 Views slab.
-     */
-    private function resolveRowBid(float $el30, float $l7Views, float $esBidFallback, array $slabs, ?float $esBidOverride): float
-    {
-        if ($el30 <= 0) {
-            if ($esBidOverride !== null && $esBidOverride > 0) {
-                return $esBidOverride;
-            }
-
-            return $esBidFallback > 0 ? $esBidFallback : 0.0;
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', self::SBID_SLABS_KEY)->first();
+        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
+        if (!is_array($slabs) || $slabs === []) {
+            return [
+                ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
+                ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
+                ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
+            ];
         }
 
-        return $this->resolveSlabBid($l7Views, $slabs);
+        return $slabs;
     }
 
-    /** Resolve S Bid from View VS SBID slabs (For L7 Views only). */
-    private function resolveSlabBid(float $l7Views, array $slabs): float
+    /** Resolve S Bid from slab rules (first matching slab wins); 0 = no match. */
+    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
     {
         foreach ($slabs as $s) {
-            if ($this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
+            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
+                && $this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
                 return (float) ($s['sbid'] ?? 0);
             }
         }
