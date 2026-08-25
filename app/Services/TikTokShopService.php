@@ -1532,6 +1532,53 @@ class TikTokShopService
         }
     }
 
+    public function updateTitle(string $sku, string $title): array
+    {
+        $productId = $this->findTikTokProductIdBySku($sku);
+        if ($productId === null || $productId === '') {
+            return ['success' => false, 'message' => 'TikTok product ID not found for this SKU. Sync TikTok listings first.'];
+        }
+
+        return $this->updateProductTitle($productId, $title);
+    }
+
+    private function findTikTokProductIdBySku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $isTwo = ($this->configKey ?? 'tiktok') === 'tiktok2';
+        $viewClass = $isTwo ? \App\Models\TiktokTwoShopDataView::class : \App\Models\TiktokShopDataView::class;
+        if (class_exists($viewClass)) {
+            $row = $viewClass::query()
+                ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+                ->first();
+            $value = is_array($row?->value ?? null) ? $row->value : [];
+            if ($value === [] && is_string($row?->value ?? null)) {
+                $decoded = json_decode((string) $row->value, true);
+                $value = is_array($decoded) ? $decoded : [];
+            }
+            $id = trim((string) ($value['product_id'] ?? $value['productId'] ?? $value['id'] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        $productClass = $isTwo ? \App\Models\TikTokProductTwo::class : \App\Models\TikTokProduct::class;
+        if (class_exists($productClass)) {
+            $id = trim((string) ($productClass::query()
+                ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+                ->value('product_id') ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return $this->resolveTikTokProductIdForIdentifier($sku);
+    }
+
     /**
      * Update product title on TikTok Shop (Title Master).
      *

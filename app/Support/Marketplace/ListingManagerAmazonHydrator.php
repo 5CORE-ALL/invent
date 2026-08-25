@@ -170,12 +170,6 @@ class ListingManagerAmazonHydrator
         $quantity = $shopifyQty !== null ? $shopifyQty : ($qtyRaw !== '' ? (int) $qtyRaw : null);
 
         $images = self::collectImages($listing, $raw, $pm, $sku);
-        foreach (($mainStore['images'] ?? []) as $u) {
-            $u = trim((string) $u);
-            if ($u !== '' && ! in_array($u, $images, true)) {
-                $images[] = $u;
-            }
-        }
         $images = ListingManagerImageStore::applyToList($images);
         $dims = self::dimensions($listing?->item_dimensions, $pm);
 
@@ -255,8 +249,11 @@ class ListingManagerAmazonHydrator
         $brand = trim((string) ($existingDetails['brand'] ?? '')) ?: $defaultBrand;
         $manufacturer = trim((string) ($existingDetails['manufacturer'] ?? ($hydrated['manufacturer'] ?? ''))) ?: $defaultManufacturer;
         $mpn = trim((string) ($existingDetails['mpn'] ?? '')) ?: $sku;
-        $upc = trim((string) ($existingDetails['upc'] ?? '')) ?: trim((string) ($hydrated['upc'] ?? ''));
-        if ($upc === '' && $sku !== '') {
+        $upc = trim((string) ($existingDetails['upc'] ?? ''));
+        if ($upc === '' || self::looksLikeAsin($upc)) {
+            $upc = trim((string) ($hydrated['upc'] ?? ''));
+        }
+        if (($upc === '' || self::looksLikeAsin($upc)) && $sku !== '') {
             $upc = self::upcFromCpMaster($sku);
         }
 
@@ -306,11 +303,78 @@ class ListingManagerAmazonHydrator
             'duration' => $existingDetails['duration'] ?? 'GTC',
         ]);
 
+        if (ListingManagerEditorProfile::family($key) === 'reverb') {
+            $merged = self::applyReverbListingFields($merged, self::productMaster($sku), $hydrated);
+        }
+
         return ListingManagerPublishStatus::normalizeDetails($merged);
     }
 
     /**
-     * UPC / barcode from CP Master (product_master).
+     * Prefill Reverb make/model/finish/year/condition/shipping from Reverb Listing Master.
+     *
+     * @param  array<string, mixed>  $merged
+     * @param  array<string, mixed>  $pm
+     * @param  array<string, mixed>  $hydrated
+     * @return array<string, mixed>
+     */
+    private static function applyReverbListingFields(array $merged, array $pm, array $hydrated): array
+    {
+        $brand = trim((string) ($merged['brand'] ?? ''));
+        $sku = trim((string) ($hydrated['sku'] ?? $merged['mpn'] ?? ''));
+        $merged['make'] = trim((string) ($merged['make'] ?? ''))
+            ?: trim((string) ($pm['reverb_make'] ?? ''))
+            ?: $brand;
+        $merged['model'] = trim((string) ($merged['model'] ?? ''))
+            ?: trim((string) ($pm['reverb_model'] ?? ''))
+            ?: $sku;
+        $merged['finish'] = trim((string) ($merged['finish'] ?? ''))
+            ?: trim((string) ($pm['reverb_finish'] ?? ''));
+        $merged['year'] = trim((string) ($merged['year'] ?? ''))
+            ?: trim((string) ($pm['reverb_year'] ?? ''));
+
+        $conditionName = trim((string) ($merged['condition_name'] ?? ''))
+            ?: trim((string) ($pm['reverb_condition'] ?? ''));
+        if ($conditionName !== '') {
+            $merged['condition_name'] = $conditionName;
+            $merged['condition'] = $conditionName;
+        }
+        $merged['condition_uuid'] = trim((string) ($merged['condition_uuid'] ?? ''));
+
+        $merged['shipping_profile_id'] = trim((string) ($merged['shipping_profile_id'] ?? ''))
+            ?: trim((string) ($pm['reverb_shipping_profile_id'] ?? ''));
+        $merged['price_currency'] = trim((string) ($merged['price_currency'] ?? '')) ?: 'USD';
+        if (! array_key_exists('offers_enabled', $merged)) {
+            $merged['offers_enabled'] = true;
+        }
+        if (! array_key_exists('has_inventory', $merged)) {
+            $merged['has_inventory'] = true;
+        }
+
+        $merged['category_uuid'] = trim((string) ($merged['category_uuid'] ?? $merged['primary_category_id'] ?? ''));
+        $merged['category_name'] = trim((string) ($merged['category_name'] ?? $merged['primary_category_path'] ?? ''));
+        if ($merged['category_uuid'] !== '') {
+            $merged['primary_category_id'] = $merged['category_uuid'];
+        }
+        if ($merged['category_name'] !== '') {
+            $merged['primary_category_path'] = $merged['category_name'];
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Amazon ASINs (typically B0 + 8 alphanumerics) must never be shown as UPC.
+     */
+    public static function looksLikeAsin(string $code): bool
+    {
+        $code = strtoupper((string) preg_replace('/\s+/', '', $code));
+
+        return $code !== '' && (bool) preg_match('/^B0[A-Z0-9]{8}$/', $code);
+    }
+
+    /**
+     * UPC / barcode from CP Master (product_master). Never returns an ASIN.
      *
      * @param  array<string, mixed>  $pm
      * @param  array<string, mixed>  $raw
@@ -326,42 +390,78 @@ class ListingManagerAmazonHydrator
 
         $candidates = [];
         $push = function ($v) use (&$candidates) {
-            $code = preg_replace('/\s+/', '', trim((string) ($v ?? ''))) ?? '';
-            if ($code === '' || $code === '-' || in_array($code, $candidates, true)) {
+            $code = self::normalizeUpcCandidate($v);
+            if ($code === '' || self::looksLikeAsin($code) || in_array($code, $candidates, true)) {
                 return;
             }
             $candidates[] = $code;
         };
 
-        $push($pm['barcode'] ?? null);
-        if (Schema::hasTable('product_master') && Schema::hasColumn('product_master', 'upc')) {
-            $push($pm['upc'] ?? null);
-        }
-
-        $values = $pm['Values'] ?? null;
-        if (is_string($values)) {
-            $decoded = json_decode($values, true);
-            $values = is_array($decoded) ? $decoded : [];
-        }
-        if (is_array($values)) {
-            foreach (['upc', 'UPC', 'gtin', 'GTIN', 'ean', 'EAN', 'barcode', 'Barcode'] as $key) {
-                $push($values[$key] ?? null);
+        $collectFromPm = function (array $row) use ($push): void {
+            $push($row['barcode'] ?? null);
+            $push($row['upc'] ?? null);
+            $values = $row['Values'] ?? $row['values'] ?? null;
+            if (is_string($values)) {
+                $decoded = json_decode($values, true);
+                $values = is_array($decoded) ? $decoded : [];
             }
+            if (is_array($values)) {
+                foreach (['upc', 'UPC', 'gtin', 'GTIN', 'ean', 'EAN', 'barcode', 'Barcode'] as $key) {
+                    $push($values[$key] ?? null);
+                }
+            }
+        };
+
+        $collectFromPm($pm);
+        $parent = trim((string) ($pm['parent'] ?? $pm['parent_sku'] ?? ''));
+        if ($parent !== '' && strcasecmp($parent, $sku) !== 0) {
+            $collectFromPm(self::productMaster($parent));
         }
 
-        // Fallbacks only if CP Master empty
-        $push($listing?->external_product_id);
-        $push(self::rawGet($raw, 'product-id', 'product_id', 'upc'));
+        $idType = strtolower(trim((string) self::rawGet($raw, 'product-id-type', 'product_id_type', 'external_product_id_type')));
+        $amazonIdIsUpc = $idType === '' || in_array($idType, ['3', '4', '5', 'upc', 'ean', 'gtin', 'isbn'], true);
+        if ($amazonIdIsUpc) {
+            $push($listing?->external_product_id);
+            $push(self::rawGet($raw, 'upc', 'product-id', 'product_id'));
+        }
 
+        $asin = strtoupper(trim((string) ($listing?->asin1 ?? self::rawGet($raw, 'asin1', 'asin') ?? '')));
         foreach ($candidates as $code) {
-            // Prefer numeric UPC/EAN/GTIN lengths
+            if ($asin !== '' && strcasecmp($code, $asin) === 0) {
+                continue;
+            }
             $digits = preg_replace('/\D/', '', $code) ?? '';
-            if (in_array(strlen($digits), [8, 12, 13, 14], true)) {
+            if (in_array(strlen($digits), [8, 11, 12, 13, 14], true)) {
                 return $digits;
             }
         }
 
-        return $candidates[0] ?? '';
+        foreach ($candidates as $code) {
+            if ($asin !== '' && strcasecmp($code, $asin) === 0) {
+                continue;
+            }
+            if (! self::looksLikeAsin($code)) {
+                return $code;
+            }
+        }
+
+        return '';
+    }
+
+    private static function normalizeUpcCandidate(mixed $v): string
+    {
+        if (is_int($v) || is_float($v)) {
+            $v = sprintf('%.0f', $v);
+        }
+        $code = trim((string) ($v ?? ''));
+        if ($code === '' || $code === '-') {
+            return '';
+        }
+        if (is_numeric($code) && stripos($code, 'e') !== false) {
+            $code = sprintf('%.0f', (float) $code);
+        }
+
+        return (string) (preg_replace('/\s+/', '', $code) ?? '');
     }
 
     /**
@@ -514,7 +614,6 @@ class ListingManagerAmazonHydrator
      */
     private static function collectImages(?AmazonListingRaw $listing, array $raw, array $pm, string $sku): array
     {
-        $cached = ListingManagerImageStore::cachedForSku($sku);
         $images = [];
         $push = function ($url) use (&$images) {
             $url = self::publicImageUrl($url);
@@ -525,10 +624,6 @@ class ListingManagerAmazonHydrator
                 $images[] = $url;
             }
         };
-
-        foreach ($cached as $url) {
-            $push($url);
-        }
 
         foreach (self::productImageTableUrls($sku) as $url) {
             $push($url);
@@ -556,42 +651,41 @@ class ListingManagerAmazonHydrator
             $push($url);
         }
 
-        foreach (self::shopifyCatalogImageUrls($sku) as $url) {
-            $push($url);
-        }
-
-        if (Schema::hasTable('shopify_skus') && Schema::hasColumn('shopify_skus', 'image_src')) {
-            $push(DB::table('shopify_skus')->where('sku', $sku)->value('image_src'));
-        }
-
         $parentSku = trim((string) ($pm['parent'] ?? $pm['parent_sku'] ?? ''));
         if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
             foreach (self::productImageTableUrls($parentSku) as $url) {
                 $push($url);
             }
-        }
-
-        $push($listing?->thumbnail_image);
-        $push(self::rawGet($raw, 'image-url', 'image_url', 'main_image'));
-
-        if (Schema::hasTable('amazon_metrics') && Schema::hasColumn('amazon_metrics', 'image_urls')) {
-            $row = DB::table('amazon_metrics')->where('sku', $sku)->value('image_urls');
-            $decoded = is_string($row) ? json_decode($row, true) : $row;
-            if (is_array($decoded)) {
-                foreach ($decoded as $u) {
-                    if (is_array($u)) {
-                        $push($u['url'] ?? $u['link'] ?? null);
-                    } else {
-                        $push($u);
-                    }
-                }
+            $parentPm = self::productMaster($parentSku);
+            foreach (['main_image', 'image_url'] as $k) {
+                $push($parentPm[$k] ?? null);
+            }
+            for ($i = 1; $i <= 20; $i++) {
+                $push($parentPm['image'.$i] ?? null);
+            }
+            foreach (self::imageMasterFromMetrics($parentSku) as $url) {
+                $push($url);
             }
         }
 
-        // Do not invent /images/P/{ASIN} placeholders — those often render blank.
-        // Live Amazon media is fetched via ListingManagerController::loadDraftImages.
+        // Listing Manager images come from Image Master only (not Shopify/Amazon).
 
         return $images;
+    }
+
+    /**
+     * Ordered Image Master URLs for a SKU (product_images, Product Master slots, metrics JSON).
+     *
+     * @return list<string>
+     */
+    public static function imageMasterUrls(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        return self::collectImages(null, [], self::productMaster($sku), $sku);
     }
 
     /**
@@ -853,6 +947,70 @@ class ListingManagerAmazonHydrator
             '1', 'Used' => 'Used',
             default => $raw !== '' ? $raw : 'New',
         };
+    }
+
+    public static function descriptionMaster(string $sku): string
+    {
+        return self::descriptionMasterFromMetrics($sku);
+    }
+
+    /**
+     * Live Shopify product description (cached description_html only as fallback).
+     */
+    public static function shopifyDescription(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return '';
+        }
+
+        try {
+            $res = app(ShopifyApiService::class)->fetchProductDescriptionHtml($sku);
+            if (($res['success'] ?? false) && trim((string) ($res['html'] ?? '')) !== '') {
+                $html = trim((string) $res['html']);
+                if (Schema::hasTable('product_master') && Schema::hasColumn('product_master', 'description_html')) {
+                    DB::table('product_master')->where('sku', $sku)->update(['description_html' => $html]);
+                }
+
+                return $html;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager Shopify description fetch failed: '.$e->getMessage(), [
+                'sku' => $sku,
+            ]);
+        }
+
+        $pm = self::productMaster($sku);
+
+        return trim((string) ($pm['description_html'] ?? ''));
+    }
+
+    /**
+     * Amazon listing / A+ description for this SKU (not Shopify, not Description Master).
+     */
+    public static function amazonDescription(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return '';
+        }
+        $listing = AmazonListingRaw::query()->where('seller_sku', $sku)->first();
+        $raw = is_array($listing?->raw_data) ? $listing->raw_data : [];
+        $pm = self::productMaster($sku);
+        $html = self::firstNonEmpty([
+            $listing?->product_description,
+            self::rawGet($raw, 'item-description', 'item_description', 'description'),
+            $pm['amazon_aplus_content'] ?? null,
+        ]);
+        if ($html !== '') {
+            return $html;
+        }
+        $bullets = self::bullets($listing?->bullet_point);
+        if ($bullets !== []) {
+            return '<ul><li>'.implode('</li><li>', array_map('e', $bullets)).'</li></ul>';
+        }
+
+        return '';
     }
 
     private static function descriptionMasterFromMetrics(string $sku): string

@@ -789,11 +789,15 @@ class AmazonSpApiService
                     'title_length' => strlen($title),
                 ]);
 
-                $response = Http::withHeaders([
+                $request = Http::withHeaders([
                     'x-amz-access-token' => $accessToken,
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
-                ])->timeout(30)->patch($endpoint, $body);
+                ])->timeout(30);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                $response = $request->patch($endpoint, $body);
 
                 $responseData = $response->json();
 
@@ -838,6 +842,22 @@ class AmazonSpApiService
         }
 
         return $lastError ?: ['errors' => [['code' => 'UpdateFailed', 'message' => 'Failed to update title.']]];
+    }
+
+    public function updateTitle(string $sku, string $title): array
+    {
+        $result = $this->updateAmazonTitle($sku, $title);
+        if (is_array($result) && ! empty($result['success'])) {
+            return ['success' => true, 'message' => 'Amazon title updated.'];
+        }
+        $msg = 'Amazon title update failed.';
+        if (is_array($result) && ! empty($result['errors'][0]['message'])) {
+            $msg = (string) $result['errors'][0]['message'];
+        } elseif (is_array($result) && ! empty($result['message'])) {
+            $msg = (string) $result['message'];
+        }
+
+        return ['success' => false, 'message' => $msg];
     }
 
     /**

@@ -3542,4 +3542,223 @@ class ReverbApiService
             return false;
         }
     }
+
+    /**
+     * Search the Reverb category tree for Listing Manager (uuid + full path).
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string}>, conditions: list<array{id: string, name: string}>, message?: string}
+     */
+    public function searchListingCategories(string $query, string $title = ''): array
+    {
+        $flat = $this->flattenedListingCategories();
+        if ($flat === []) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'conditions' => $this->listingConditions(),
+                'message' => 'Could not load Reverb categories. Check Reverb API credentials.',
+            ];
+        }
+
+        $q = trim($query);
+        if ($q === '') {
+            $q = trim($title);
+        }
+
+        $matched = [];
+        if ($q === '') {
+            foreach ($flat as $row) {
+                if (substr_count((string) ($row['path'] ?? ''), '>') === 0) {
+                    $matched[] = $row;
+                }
+            }
+            if ($matched === []) {
+                $matched = array_slice($flat, 0, 40);
+            }
+        } else {
+            $needle = mb_strtolower($q);
+            $looksUuid = (bool) preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $q);
+            foreach ($flat as $row) {
+                $id = (string) ($row['id'] ?? '');
+                $path = (string) ($row['path'] ?? '');
+                if ($looksUuid && strcasecmp($id, $q) === 0) {
+                    array_unshift($matched, $row);
+
+                    continue;
+                }
+                if (str_contains(mb_strtolower($path), $needle) || str_contains(mb_strtolower($id), $needle)) {
+                    $matched[] = $row;
+                }
+            }
+        }
+
+        $seen = [];
+        $out = [];
+        foreach ($matched as $row) {
+            $id = (string) ($row['id'] ?? '');
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $out[] = $row;
+            if (count($out) >= 60) {
+                break;
+            }
+        }
+
+        return [
+            'success' => true,
+            'categories' => $out,
+            'conditions' => $this->listingConditions(),
+            'message' => $out === [] ? 'No Reverb categories matched that search.' : null,
+        ];
+    }
+
+    /**
+     * @return list<array{id: string, name: string}>
+     */
+    public function listingConditions(): array
+    {
+        $cached = Cache::get('reverb_listing_conditions_v1');
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $json = $this->reverbApiGet('/listing_conditions');
+        $rows = is_array($json['conditions'] ?? null) ? $json['conditions'] : [];
+        if ($rows === [] && is_array($json['listing_conditions'] ?? null)) {
+            $rows = $json['listing_conditions'];
+        }
+        if ($rows === [] && is_array($json['_embedded']['conditions'] ?? null)) {
+            $rows = $json['_embedded']['conditions'];
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['uuid'] ?? $row['id'] ?? ''));
+            $name = trim((string) ($row['display_name'] ?? $row['name'] ?? $row['slug'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $out[] = ['id' => $id !== '' ? $id : $name, 'name' => $name];
+        }
+
+        if ($out === []) {
+            foreach (['Brand New', 'Mint', 'Excellent', 'Very Good', 'Good', 'Fair', 'Poor', 'Non Functioning', 'B-Stock'] as $name) {
+                $out[] = ['id' => $name, 'name' => $name];
+            }
+
+            return $out;
+        }
+
+        Cache::put('reverb_listing_conditions_v1', $out, now()->addHours(12));
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{id: string, path: string}>
+     */
+    private function flattenedListingCategories(): array
+    {
+        $cached = Cache::get('reverb_listing_categories_flat_v1');
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $json = $this->reverbApiGet('/categories');
+        $roots = is_array($json['categories'] ?? null) ? $json['categories'] : [];
+        if ($roots === [] && is_array($json['_embedded']['categories'] ?? null)) {
+            $roots = $json['_embedded']['categories'];
+        }
+        if ($roots === []) {
+            $flatJson = $this->reverbApiGet('/categories/flat');
+            $roots = is_array($flatJson['categories'] ?? null) ? $flatJson['categories'] : [];
+            if ($roots === [] && is_array($flatJson['_embedded']['categories'] ?? null)) {
+                $roots = $flatJson['_embedded']['categories'];
+            }
+        }
+
+        $out = [];
+        $this->flattenReverbCategoryNodes($roots, $out, '');
+        if ($out !== []) {
+            Cache::put('reverb_listing_categories_flat_v1', $out, now()->addHours(12));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<mixed>  $nodes
+     * @param  list<array{id: string, path: string}>  $out
+     */
+    private function flattenReverbCategoryNodes(array $nodes, array &$out, string $parentPath): void
+    {
+        foreach ($nodes as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            $uuid = trim((string) ($node['uuid'] ?? $node['id'] ?? ''));
+            $name = trim((string) ($node['name'] ?? ''));
+            $path = trim((string) ($node['full_name'] ?? ''));
+            if ($path === '') {
+                $path = $parentPath !== '' && $name !== '' ? $parentPath.' > '.$name : $name;
+            }
+            if ($uuid !== '' && $path !== '') {
+                $out[] = ['id' => $uuid, 'path' => $path];
+            }
+            $subs = $node['subcategories'] ?? $node['categories'] ?? null;
+            if (! is_array($subs) && is_array($node['_embedded']['subcategories'] ?? null)) {
+                $subs = $node['_embedded']['subcategories'];
+            }
+            if (is_array($subs) && $subs !== []) {
+                $this->flattenReverbCategoryNodes($subs, $out, $path !== '' ? $path : $parentPath);
+            }
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reverbApiGet(string $path): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [];
+        }
+
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $url = $apiBase.'/'.ltrim($path, '/');
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders([
+                    'Authorization' => 'Bearer '.$token,
+                    'Accept' => 'application/hal+json',
+                    'Accept-Version' => '3.0',
+                ])
+                ->get($url);
+
+            if ($response->failed()) {
+                Log::warning('Reverb API GET failed', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                    'body' => substr((string) $response->body(), 0, 400),
+                ]);
+
+                return [];
+            }
+
+            $json = $response->json();
+
+            return is_array($json) ? $json : [];
+        } catch (\Throwable $e) {
+            Log::warning('Reverb API GET exception', ['url' => $url, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
 }

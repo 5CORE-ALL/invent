@@ -2,11 +2,13 @@
 
 namespace App\Support\Marketplace;
 
+use App\Models\AmazonListingRaw;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\Temu2Metric;
 use App\Models\TemuMetric;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -24,6 +26,11 @@ class ListingManagerPublishStatus
         $key = ListingChannelCounts::normalize($channelName);
         if ($sku === '' || $key === '') {
             return ['listed' => false, 'listing_id' => null, 'source' => 'none'];
+        }
+
+        if (in_array($key, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true)) {
+            $asin = self::amazonAsinForSku($sku);
+            return ['listed' => $asin !== null, 'listing_id' => $asin, 'source' => 'amazon_listings'];
         }
 
         if (in_array($key, ['ebay2', 'ebaytwo'], true) && Schema::hasTable('ebay_2_metrics')) {
@@ -78,12 +85,46 @@ class ListingManagerPublishStatus
         return ['listed' => false, 'listing_id' => null, 'source' => 'none'];
     }
 
+    public static function amazonAsinForSku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        if (Schema::hasTable('amazon_listings_raw')) {
+            $row = AmazonListingRaw::query()
+                ->whereRaw('LOWER(TRIM(seller_sku)) = ?', [mb_strtolower($sku)])
+                ->orderByDesc('id')
+                ->first(['asin1']);
+            $asin = trim((string) ($row->asin1 ?? ''));
+            if ($asin !== '') {
+                return $asin;
+            }
+        }
+
+        if (Schema::hasTable('amazon_metrics') && Schema::hasColumn('amazon_metrics', 'asin')) {
+            $asin = trim((string) (DB::table('amazon_metrics')
+                ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+                ->orderByDesc('id')
+                ->value('asin') ?? ''));
+            if ($asin !== '') {
+                return $asin;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @param  class-string  $model
      */
     private static function idFromColumn(string $model, string $sku, string $column, bool $rejectSku): ?string
     {
-        $row = $model::query()->where('sku', $sku)->orderByDesc('id')->first([$column, 'sku']);
+        $row = $model::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+            ->orderByDesc('id')
+            ->first([$column, 'sku']);
         if (! $row) {
             return null;
         }
@@ -172,6 +213,7 @@ class ListingManagerPublishStatus
         $isEbay = $family === 'ebay';
         $isTiktok = $family === 'tiktok';
         $isTemu = $family === 'temu';
+        $isReverb = $family === 'reverb';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -213,6 +255,31 @@ class ListingManagerPublishStatus
             }
         }
 
+        if ($isReverb) {
+            $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_uuid'] ?? ''));
+            if ($categoryId === '') {
+                $tabErrors['category'][] = 'Reverb category is required. Search and select a Reverb category.';
+            }
+            if (trim((string) ($details['make'] ?? '')) === '') {
+                $tabErrors['category'][] = 'Make is required.';
+            }
+            if (trim((string) ($details['model'] ?? '')) === '') {
+                $tabErrors['category'][] = 'Model is required.';
+            }
+            $conditionOk = trim((string) ($details['condition_name'] ?? '')) !== ''
+                || trim((string) ($details['condition_uuid'] ?? '')) !== '';
+            if (! $conditionOk) {
+                $tabErrors['category'][] = 'Condition is required.';
+            }
+            $shippingProfile = trim((string) ($details['shipping_profile_id'] ?? ''));
+            $localPickup = filter_var($details['local_pickup_only'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $rates = $details['shipping_rates'] ?? [];
+            $hasRates = is_array($rates) && $rates !== [];
+            if ($shippingProfile === '' && ! $localPickup && ! $hasRates) {
+                $tabErrors['logistics'][] = 'Set a shipping profile, shipping rates, or local pickup.';
+            }
+        }
+
         $missing = [];
         $banners = [];
         foreach ($tabErrors as $tab => $errors) {
@@ -223,10 +290,10 @@ class ListingManagerPublishStatus
             $label = match ($tab) {
                 'title_description' => 'Title & Description',
                 'pricing' => ($isEbay ? 'Pricing' : 'Price & Stock'),
-                'category' => $isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : 'Category'),
-                'business_policies' => $family === 'ebay' ? 'Business Policies' : 'Warehouse & Package',
+                'category' => $isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isReverb ? 'Reverb Details' : 'Category')),
+                'business_policies' => $family === 'ebay' ? 'Business Policies' : ($isReverb ? 'Shipping & Package' : 'Warehouse & Package'),
                 'auto_relist' => 'Auto Relist',
-                'logistics' => ($isTiktok ? 'Warehouse & Package' : 'Package'),
+                'logistics' => $isTiktok ? 'Warehouse & Package' : ($isReverb ? 'Shipping & Package' : 'Package'),
                 default => ucfirst(str_replace('_', ' ', $tab)),
             };
             $banners[] = "{$label} tab is missing required information. Please fill in those required fields.";
@@ -332,6 +399,23 @@ class ListingManagerPublishStatus
             'package_weight_lb' => '',
             'package_weight_oz' => '',
             'warehouse_id' => '',
+            'make' => '',
+            'model' => '',
+            'finish' => '',
+            'year' => '',
+            'condition_name' => '',
+            'condition_uuid' => '',
+            'category_uuid' => '',
+            'category_name' => '',
+            'upc_does_not_apply' => false,
+            'handmade' => false,
+            'offers_enabled' => true,
+            'has_inventory' => true,
+            'local_pickup_only' => false,
+            'shipping_profile_id' => '',
+            'shipping_rates' => [],
+            'videos' => [],
+            'price_currency' => 'USD',
             'vat_percent' => '',
             'gallery_plus' => false,
             'best_offer' => false,
@@ -359,6 +443,27 @@ class ListingManagerPublishStatus
             if (trim((string) ($merged[$field] ?? '')) === '' && trim((string) ($defaults[$cfgKey] ?? '')) !== '') {
                 $merged[$field] = $defaults[$cfgKey];
             }
+        }
+
+        $merged['category_uuid'] = trim((string) ($merged['category_uuid'] ?? ''))
+            ?: trim((string) ($merged['primary_category_id'] ?? ''));
+        $merged['category_name'] = trim((string) ($merged['category_name'] ?? ''))
+            ?: trim((string) ($merged['primary_category_path'] ?? ''));
+        if ($merged['category_uuid'] !== '' && trim((string) ($merged['primary_category_id'] ?? '')) === '') {
+            $merged['primary_category_id'] = $merged['category_uuid'];
+        }
+        if ($merged['category_name'] !== '' && trim((string) ($merged['primary_category_path'] ?? '')) === '') {
+            $merged['primary_category_path'] = $merged['category_name'];
+        }
+        if (! is_array($merged['shipping_rates'] ?? null)) {
+            $decoded = json_decode((string) ($merged['shipping_rates'] ?? ''), true);
+            $merged['shipping_rates'] = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($merged['videos'] ?? null)) {
+            $videos = $merged['videos'] ?? [];
+            $merged['videos'] = is_string($videos)
+                ? array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $videos) ?: [])))
+                : [];
         }
 
         return $merged;

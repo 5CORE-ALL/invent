@@ -264,7 +264,7 @@
         .lm-product-modal .modal-content { height: calc(100vh - 1.2rem); display: flex; flex-direction: column; border-radius: 16px; box-shadow: 0 18px 50px rgba(28,42,58,.12); }
         .lm-product-modal .modal-header { flex-shrink: 0; border-bottom: 1px solid var(--lc-border); gap: .75rem; }
         .lm-product-modal .modal-title { font-size: 1rem; font-weight: 700; max-width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .lm-product-modal .modal-body { flex: 1; overflow: auto; padding: 0; }
+        .lm-product-modal .modal-body { flex: 1; overflow: auto; padding: 0; position: relative; }
         .lm-prod-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--lc-border); padding: 0 .75rem; overflow-x: auto; position: sticky; top: 0; background: #fff; z-index: 2; }
         .lm-prod-tab {
             border: none; background: transparent; padding: .85rem .85rem; font-weight: 600; font-size: .84rem; color: #4b5563;
@@ -276,6 +276,39 @@
         .lm-prod-grid { display: grid; grid-template-columns: 180px 1fr; gap: .55rem 1rem; font-size: .875rem; }
         .lm-prod-grid .k { color: #6b7280; font-weight: 600; }
         .lm-prod-grid .v { color: #111827; word-break: break-word; }
+        .lm-prod-edit-grid { display: grid; grid-template-columns: 180px 1fr; gap: .55rem 1rem; align-items: start; font-size: .875rem; }
+        .lm-prod-edit-grid label { color: #6b7280; font-weight: 600; padding-top: .4rem; }
+        .lm-prod-edit-grid .form-control { font-size: .86rem; }
+        .lm-push-results { max-height: 260px; overflow: auto; font-size: .82rem; }
+        .lm-push-results .ok { color: #166534; }
+        .lm-push-results .fail { color: #b91c1c; }
+        .lm-push-panel {
+            border: 1px solid #bfdbfe; background: #f8fbff; border-radius: 12px;
+            padding: 1rem 1.1rem; margin-bottom: 1rem;
+        }
+        .lm-push-badge {
+            margin-left: auto; font-size: .7rem; font-weight: 700; border-radius: 999px;
+            padding: .12rem .5rem; background: #f3f4f6; color: #4b5563; white-space: nowrap;
+        }
+        .lm-push-badge.listed { background: #dcfce7; color: #166534; }
+        .lm-push-badge.draft { background: #dbeafe; color: #1d4ed8; }
+        .lm-push-status-row {
+            display: flex; align-items: flex-start; gap: .55rem; padding: .45rem .2rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .lm-push-status-row:last-child { border-bottom: 0; }
+        .lm-push-status-row .ico { width: 1.1rem; text-align: center; margin-top: .1rem; }
+        .lm-push-overlay {
+            position: absolute; inset: 0; background: rgba(255,255,255,.72);
+            display: flex; align-items: center; justify-content: center; z-index: 8;
+        }
+        .lm-push-overlay-card {
+            background: #fff; border: 1px solid var(--lc-border); border-radius: 12px;
+            box-shadow: 0 12px 30px rgba(28,42,58,.12); padding: 1.15rem 1.4rem;
+            text-align: center; min-width: 260px;
+        }
+        .lm-push-overlay-card .spin { font-size: 1.4rem; color: var(--lc-blue); margin-bottom: .45rem; }
+        .lm-product-modal .modal-content { position: relative; }
         .lm-status-active { display: inline-block; background: #dcfce7; color: #166534; font-size: .72rem; font-weight: 700; padding: .15rem .5rem; border-radius: 999px; }
         .lm-prod-desc { border: 1px solid var(--lc-border); border-radius: 8px; padding: 1rem; max-height: 420px; overflow: auto; background: #fff; }
         .lm-prod-desc img { max-width: 100%; height: auto; }
@@ -448,7 +481,12 @@
                 </div>
 
                 <div class="lc-pane active" data-pane="identifiers">
-                    <div class="lc-section-title">Product Identifiers</div>
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <div class="lc-section-title mb-0">Product Identifiers</div>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="identifiers">
+                            <i class="fas fa-database me-1"></i>Load from Product Master
+                        </button>
+                    </div>
                     <p class="lc-help" id="lc-identifier-help">Product identifiers from Product Master.</p>
                     <div class="row g-3">
                         <div class="col-md-6" data-id-field="sku"><label class="form-label">SKU</label><input id="lc-sku" class="form-control" readonly></div>
@@ -485,17 +523,28 @@
                     </div>
                     <p class="lc-help mb-1 lc-ebay-only">Use template to quickly populate fields in this section.</p>
                     <select class="form-select mb-3 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
-                    <label class="form-label">Title <span class="lc-req">*</span></label>
-                    <input id="lc-title" class="form-control">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <label class="form-label mb-0">Title <span class="lc-req">*</span></label>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="title">
+                            <i class="fas fa-heading me-1"></i>Load Title from Title Master
+                        </button>
+                    </div>
+                    <input id="lc-title" class="form-control mt-1">
                     <div id="lc-title-count" class="lc-char-ok mt-1">Characters: 0/80</div>
                     <div class="lc-desc-toolbar mt-3">
                         <div>
                             <label class="form-label mb-0">Description <span class="lc-req">*</span></label>
-                            <div class="lc-help mb-0">Fetched from main store (Shopify). Enter plain text or HTML to edit.</div>
+                            <div class="lc-help mb-0">Load description from Amazon, Description Master, or Shopify.</div>
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lc-load-desc-store-btn">
-                                <i class="fas fa-cloud-download-alt me-1"></i>Load from Main Store
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-desc-btn" data-desc-source="amazon">
+                                <i class="fab fa-amazon me-1"></i>Load from Amazon
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-desc-btn" data-desc-source="description_master">
+                                <i class="fas fa-book me-1"></i>Load from Description Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-desc-btn" data-desc-source="shopify">
+                                <i class="fab fa-shopify me-1"></i>Load from Shopify
                             </button>
                             <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-optimize-desc-btn">
                                 <i class="fas fa-magic me-1"></i><span id="lc-optimize-desc-label">Optimize Description</span>
@@ -514,7 +563,7 @@
                     <div class="lc-desc-wrap" id="lc-desc-wrap">
                         <div class="lc-desc-code-row" id="lc-desc-code-row">
                             <div class="lc-desc-gutter" id="lc-desc-gutter">1</div>
-                            <textarea id="lc-description" class="form-control" rows="14" spellcheck="false" placeholder="Add a marketplace description, or load it from the main store."></textarea>
+                            <textarea id="lc-description" class="form-control" rows="14" spellcheck="false" placeholder="Add a marketplace description, or load it from Amazon, Description Master, or Shopify."></textarea>
                         </div>
                         <div id="lc-description-preview"></div>
                         <div id="lc-description-rich" contenteditable="true"></div>
@@ -522,12 +571,24 @@
                     <div class="lc-desc-side">
                         <div id="lc-desc-count" class="lc-char-ok">Characters: 0/500000</div>
                     </div>
+                    <div class="mt-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+                            <label class="form-label mb-0">Highlighted features / bullets</label>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="bullets">
+                                <i class="fas fa-list me-1"></i>Load from Bullet Points
+                            </button>
+                        </div>
+                        <textarea id="lc-bullets" class="form-control" rows="4" placeholder="One bullet per line. Loaded from /bullet-points."></textarea>
+                    </div>
                 </div>
 
                 <div class="lc-pane" data-pane="images">
                     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                         <div class="d-flex gap-2 flex-wrap">
-                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-load-images-btn">Load Images From Main Store</button>
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lc-load-images-btn">Load Images From Image Master</button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="videos">
+                                <i class="fas fa-video me-1"></i>Load Videos from Video Master
+                            </button>
                             <label class="btn-lc btn-lc-ghost btn-sm mb-0" style="cursor:pointer">
                                 <i class="fas fa-upload me-1"></i>Upload Image
                                 <input type="file" id="lc-upload-image" accept="image/*" hidden>
@@ -541,12 +602,21 @@
                     <p class="lc-help" id="lc-images-help">Drag images to reorder. First image is Primary.</p>
                     <input type="hidden" id="lc-images">
                     <div class="lc-image-grid" id="lc-image-preview"></div>
+                    <div class="lc-reverb-only d-none mt-3">
+                        <label class="form-label">Videos <span class="text-muted fw-normal">(Reverb, one URL per line)</span></label>
+                        <textarea id="lc-reverb-videos" class="form-control" rows="3" placeholder="https://www.youtube.com/watch?v=…"></textarea>
+                    </div>
                 </div>
 
                 <div class="lc-pane" data-pane="pricing">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                         <div class="lc-section-title mb-0" id="lc-pricing-heading">Pricing</div>
-                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-ebay-only" disabled>+ New Template</button>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="pricing">
+                                <i class="fas fa-database me-1"></i>Load from Product Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-ebay-only" disabled>+ New Template</button>
+                        </div>
                     </div>
                     <select class="form-select mb-2 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
                     <p class="lc-help lc-ebay-only">When a template is applied, fields below use template values. Select “Do not use template” to edit directly.</p>
@@ -559,10 +629,20 @@
                             <label class="form-label">Quantity <span class="lc-req">*</span> <span class="text-muted fw-normal">(Shopify)</span></label>
                             <input type="number" min="0" id="lc-qty" class="form-control">
                         </div>
+                        <div class="col-md-4 lc-reverb-only d-none">
+                            <label class="form-label">Currency</label>
+                            <input type="text" id="lc-price-currency" class="form-control" value="USD" maxlength="8">
+                        </div>
                         <div class="col-md-4 d-flex align-items-end lc-ebay-only">
                             <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" id="lc-best-offer">
                                 <label class="form-check-label" for="lc-best-offer">Best Offer</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end lc-reverb-only d-none">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="lc-has-inventory" checked>
+                                <label class="form-check-label" for="lc-has-inventory">Has inventory</label>
                             </div>
                         </div>
                     </div>
@@ -654,6 +734,54 @@
                         </div>
                     </div>
 
+                    <div class="lc-reverb-only d-none">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <div class="lc-section-title mb-0">Reverb listing details</div>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="reverb">
+                                <i class="fas fa-database me-1"></i>Load from Reverb Listing Master
+                            </button>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Make <span class="lc-req">*</span></label>
+                                <input type="text" id="lc-reverb-make" class="form-control" placeholder="e.g. 5 Core">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Model <span class="lc-req">*</span></label>
+                                <input type="text" id="lc-reverb-model" class="form-control" placeholder="SKU or model name">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Finish</label>
+                                <input type="text" id="lc-reverb-finish" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Year</label>
+                                <input type="text" id="lc-reverb-year" class="form-control" placeholder="e.g. 2024">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Condition <span class="lc-req">*</span></label>
+                                <select id="lc-reverb-condition" class="form-select">
+                                    <option value="">Please select</option>
+                                </select>
+                                <div class="lc-field-warn d-none" id="lc-reverb-condition-warn">Required</div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-3 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="lc-upc-does-not-apply">
+                                <label class="form-check-label" for="lc-upc-does-not-apply">UPC does not apply</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="lc-reverb-handmade">
+                                <label class="form-check-label" for="lc-reverb-handmade">Handmade</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="lc-reverb-offers" checked>
+                                <label class="form-check-label" for="lc-reverb-offers">Offers enabled</label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="lc-section-title lc-ebay-only">Required Item Specifics</div>
                     <div class="lc-specific-row lc-ebay-only"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core Inc"></div>
                     <div class="lc-specific-row lc-ebay-only"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc"></div>
@@ -672,12 +800,37 @@
                     </div>
                     <select class="form-select mb-2 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
                     <p class="lc-help" id="lc-policies-help"></p>
+                    <div class="mb-3">
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="package">
+                            <i class="fas fa-box me-1"></i>Load Package from Product Master
+                        </button>
+                    </div>
                     <p class="lc-italic-note lc-ebay-only">If a listing includes Business Policies information, the Shipping and Payment &amp; Returns sections will be disabled.</p>
 
                     <div class="lc-tiktok-only d-none mb-3">
                         <label class="form-label">Warehouse ID</label>
                         <input id="lc-warehouse-id" class="form-control" placeholder="TikTok warehouse ID (optional)">
                         <p class="lc-help mb-0">Inventory publishes to this TikTok warehouse when set.</p>
+                    </div>
+
+                    <div class="lc-reverb-only d-none mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label">Shipping profile ID</label>
+                                <input type="text" id="lc-reverb-shipping-profile" class="form-control" placeholder="From Reverb Listing Master">
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end pb-1">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="lc-reverb-local-pickup">
+                                    <label class="form-check-label" for="lc-reverb-local-pickup">Local pickup only</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Shipping rates (JSON)</label>
+                                <textarea id="lc-reverb-shipping-rates" class="form-control font-monospace" rows="4" placeholder='[{"region_code":"US_CON","amount":"10.00","currency":"USD"}]'></textarea>
+                                <p class="lc-help mb-0">Provide a profile ID and/or rates, or enable local pickup only.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="lc-location-row mb-3 lc-ebay-only">
@@ -811,7 +964,17 @@
             <div class="modal-header">
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 <h5 class="modal-title flex-grow-1" id="lm-prod-title">Product</h5>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-edit-btn">
+                        <i class="fas fa-pen me-1"></i>Edit
+                    </button>
+                    <button type="button" class="btn-lc btn-lc-ghost btn-sm d-none" id="lm-prod-cancel-edit-btn">Cancel</button>
+                    <button type="button" class="btn-lc btn-lc-ghost btn-sm d-none" id="lm-prod-save-btn">
+                        <i class="fas fa-save me-1"></i>Save Changes
+                    </button>
+                    <button type="button" class="btn-lc btn-lc-primary btn-sm d-none" id="lm-prod-push-btn">
+                        <i class="fas fa-cloud-upload-alt me-1"></i>Update on All Platforms
+                    </button>
                     <button type="button" class="btn-lc btn-lc-primary btn-sm" id="lm-prod-update-btn">
                         <i class="fas fa-sync-alt me-1"></i>Update from Store
                     </button>
@@ -827,14 +990,109 @@
                     <button type="button" class="lm-prod-tab" data-pane="orders">Orders</button>
                     <button type="button" class="lm-prod-tab" data-pane="changelog">Change Log</button>
                 </div>
+                <div id="lm-prod-push-overlay" class="lm-push-overlay d-none">
+                    <div class="lm-push-overlay-card">
+                        <div class="spin"><i class="fas fa-spinner fa-spin"></i></div>
+                        <div class="fw-semibold" id="lm-prod-push-overlay-title">Updating marketplaces…</div>
+                        <div class="text-muted small mt-1" id="lm-prod-push-overlay-sub">Please wait. This can take a minute.</div>
+                    </div>
+                </div>
                 <div id="lm-prod-loading" class="p-4 text-muted">Loading product…</div>
                 <div id="lm-prod-content" class="d-none">
                     <div class="lm-prod-pane active" data-pane="info">
-                        <div class="lm-prod-grid" id="lm-prod-info-grid"></div>
-                        <div class="mt-3 fw-semibold mb-2">Description</div>
-                        <div class="lm-prod-desc" id="lm-prod-description"></div>
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-prod-master-btn" data-master-source="title">
+                                <i class="fas fa-heading me-1"></i>Fetch from Title Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-prod-master-btn" data-master-source="description">
+                                <i class="fas fa-book me-1"></i>Fetch from Description Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-prod-master-btn" data-master-source="identifiers">
+                                <i class="fas fa-database me-1"></i>Fetch from Product Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lm-prod-master-btn" data-master-source="pricing">
+                                <i class="fas fa-tag me-1"></i>Fetch Price from Product Master
+                            </button>
+                        </div>
+                        <div id="lm-prod-view-wrap">
+                            <div class="lm-prod-grid" id="lm-prod-info-grid"></div>
+                            <div class="mt-3 fw-semibold mb-2">Description</div>
+                            <div class="lm-prod-desc" id="lm-prod-description"></div>
+                        </div>
+                        <form id="lm-prod-edit-form" class="d-none" autocomplete="off" onsubmit="return false;">
+                            <p class="lc-help">Edit the fields below, then Save Changes or Update on All Platforms.</p>
+                            <div id="lm-prod-push-panel" class="lm-push-panel d-none">
+                                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                                    <div>
+                                        <div class="lc-section-title mb-0">Choose marketplaces</div>
+                                        <p class="lc-help mb-0">Listed channels update the live marketplace listing. Channels that are not live yet are saved as a draft in this app only.</p>
+                                    </div>
+                                    <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lm-prod-push-hide-btn">Hide</button>
+                                </div>
+                                <div class="d-flex flex-wrap gap-3 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="lm-push-part-title" checked>
+                                        <label class="form-check-label" for="lm-push-part-title">Title</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="lm-push-part-description" checked>
+                                        <label class="form-check-label" for="lm-push-part-description">Description</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="lm-push-part-price" checked>
+                                        <label class="form-check-label" for="lm-push-part-price">Price</label>
+                                    </div>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="lm-push-select-all">
+                                    <label class="form-check-label fw-semibold" for="lm-push-select-all">Select All</label>
+                                </div>
+                                <div class="lm-channel-list" id="lm-prod-push-channels"></div>
+                                <div class="lm-push-results mt-3 d-none" id="lm-push-results"></div>
+                                <div class="d-flex justify-content-end gap-2 mt-3">
+                                    <button type="button" class="btn-lc btn-lc-primary" id="lm-push-now-btn">
+                                        <i class="fas fa-cloud-upload-alt me-1"></i>Push Updates
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="lm-prod-edit-grid mb-3">
+                                <label>Product Name</label>
+                                <input type="text" class="form-control" id="lm-edit-title" maxlength="500">
+                                <label>SKU</label>
+                                <input type="text" class="form-control" id="lm-edit-sku" readonly>
+                                <label>UPC</label>
+                                <input type="text" class="form-control" id="lm-edit-upc">
+                                <label>Vendor / Brand</label>
+                                <input type="text" class="form-control" id="lm-edit-vendor">
+                                <label>Manufacturer</label>
+                                <input type="text" class="form-control" id="lm-edit-manufacturer">
+                                <label>Product Type</label>
+                                <input type="text" class="form-control" id="lm-edit-type">
+                                <label>Tags</label>
+                                <input type="text" class="form-control" id="lm-edit-tags">
+                                <label>Price</label>
+                                <input type="number" step="0.01" min="0" class="form-control" id="lm-edit-price">
+                                <label>Sale Price</label>
+                                <input type="number" step="0.01" min="0" class="form-control" id="lm-edit-sale-price">
+                                <label>Condition</label>
+                                <input type="text" class="form-control" id="lm-edit-condition">
+                                <label>Short Description</label>
+                                <textarea class="form-control" id="lm-edit-short-desc" rows="2"></textarea>
+                                <label>Meta Title</label>
+                                <input type="text" class="form-control" id="lm-edit-meta-title">
+                                <label>SEO Description</label>
+                                <textarea class="form-control" id="lm-edit-seo" rows="2"></textarea>
+                                <label>Description</label>
+                                <textarea class="form-control font-monospace" id="lm-edit-description" rows="10" placeholder="HTML or plain text"></textarea>
+                            </div>
+                        </form>
                     </div>
                     <div class="lm-prod-pane" data-pane="images">
+                        <div class="mb-3">
+                            <button type="button" class="btn-lc btn-lc-primary btn-sm lm-prod-master-btn" data-master-source="images">
+                                <i class="fas fa-images me-1"></i>Fetch from Image Master
+                            </button>
+                        </div>
                         <div class="lm-prod-images">
                             <div class="lm-prod-main-img"><img id="lm-prod-main-image" src="" alt=""></div>
                             <div class="lm-prod-thumbs" id="lm-prod-thumbs"></div>
@@ -1081,6 +1339,7 @@
 
     let currentProductSku = '';
     let currentProduct = null;
+    let productEditMode = false;
 
     function setProductPane(pane) {
         $('#lm-prod-tabs .lm-prod-tab').removeClass('active');
@@ -1128,6 +1387,60 @@
         ];
         $('#lm-prod-info-grid').html(rows.map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join(''));
         $('#lm-prod-description').html(p.description || '<span class="text-muted">No description</span>');
+    }
+
+    function fillProductEditForm(p) {
+        $('#lm-edit-title').val(p.title || '');
+        $('#lm-edit-sku').val(p.sku || '');
+        $('#lm-edit-upc').val(p.upc || '');
+        $('#lm-edit-vendor').val(p.vendor || '');
+        $('#lm-edit-manufacturer').val(p.manufacturer || '');
+        $('#lm-edit-type').val(p.product_type || '');
+        $('#lm-edit-tags').val(p.tags || '');
+        $('#lm-edit-price').val(p.price != null ? p.price : '');
+        $('#lm-edit-sale-price').val(p.sale_price != null ? p.sale_price : '');
+        $('#lm-edit-condition').val(p.condition || '');
+        $('#lm-edit-short-desc').val(p.short_description || '');
+        $('#lm-edit-meta-title').val(p.meta_title || '');
+        $('#lm-edit-seo').val(p.seo_description || '');
+        $('#lm-edit-description').val(p.description || '');
+    }
+
+    function collectProductEditFields() {
+        return {
+            sku: currentProductSku,
+            title: $('#lm-edit-title').val() || '',
+            upc: $('#lm-edit-upc').val() || '',
+            vendor: $('#lm-edit-vendor').val() || '',
+            manufacturer: $('#lm-edit-manufacturer').val() || '',
+            product_type: $('#lm-edit-type').val() || '',
+            tags: $('#lm-edit-tags').val() || '',
+            price: $('#lm-edit-price').val() || '',
+            sale_price: $('#lm-edit-sale-price').val() || '',
+            condition: $('#lm-edit-condition').val() || '',
+            short_description: $('#lm-edit-short-desc').val() || '',
+            meta_title: $('#lm-edit-meta-title').val() || '',
+            seo_description: $('#lm-edit-seo').val() || '',
+            description: $('#lm-edit-description').val() || '',
+        };
+    }
+
+    function setProductEditMode(on) {
+        productEditMode = !!on;
+        $('#lm-prod-view-wrap').toggleClass('d-none', productEditMode);
+        $('#lm-prod-edit-form').toggleClass('d-none', !productEditMode);
+        $('#lm-prod-edit-btn').toggleClass('d-none', productEditMode);
+        $('#lm-prod-cancel-edit-btn').toggleClass('d-none', !productEditMode);
+        $('#lm-prod-save-btn').toggleClass('d-none', !productEditMode);
+        $('#lm-prod-push-btn').toggleClass('d-none', !productEditMode);
+        if (!productEditMode) {
+            $('#lm-prod-push-panel').addClass('d-none');
+            $('#lm-prod-push-overlay').addClass('d-none');
+        }
+        if (productEditMode && currentProduct) {
+            fillProductEditForm(currentProduct);
+            setProductPane('info');
+        }
     }
 
     function renderProductImages(images) {
@@ -1215,6 +1528,7 @@
     function fillProductModal(p) {
         currentProduct = p;
         currentProductSku = p.sku || '';
+        setProductEditMode(false);
         $('#lm-prod-title').text(p.title || p.sku || 'Product');
         renderProductInfo(p);
         const images = p.images || p.amazon_images || [];
@@ -1329,7 +1643,7 @@
         syncImagesHidden();
         const $grid = $('#lc-image-preview');
         if (!editorImages.length) {
-            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Main Store</strong> or Upload.</div>');
+            $grid.html('<div class="text-muted small">No images yet — click <strong>Load Images From Image Master</strong> or Upload.</div>');
             return;
         }
         $grid.html(editorImages.map((url, i) => `
@@ -1411,7 +1725,82 @@
             auto_relist: $('#lc-auto-relist').is(':checked'),
             private_listing: $('#lc-private-listing').is(':checked'),
             warehouse_id: $('#lc-warehouse-id').val() || '',
+            make: $('#lc-reverb-make').val() || '',
+            model: $('#lc-reverb-model').val() || '',
+            finish: $('#lc-reverb-finish').val() || '',
+            year: $('#lc-reverb-year').val() || '',
+            condition_name: $('#lc-reverb-condition').val()
+                ? String($('#lc-reverb-condition option:selected').data('name') || $('#lc-reverb-condition option:selected').text() || '').trim()
+                : '',
+            condition_uuid: $('#lc-reverb-condition').val() || '',
+            category_uuid: $('#lc-category-id').val() || '',
+            category_name: $('#lc-category-path-input').val() || '',
+            upc_does_not_apply: $('#lc-upc-does-not-apply').is(':checked'),
+            handmade: $('#lc-reverb-handmade').is(':checked'),
+            offers_enabled: $('#lc-reverb-offers').is(':checked'),
+            has_inventory: $('#lc-has-inventory').is(':checked'),
+            local_pickup_only: $('#lc-reverb-local-pickup').is(':checked'),
+            shipping_profile_id: $('#lc-reverb-shipping-profile').val() || '',
+            shipping_rates: parseReverbShippingRates($('#lc-reverb-shipping-rates').val()),
+            videos: parseReverbVideoList($('#lc-reverb-videos').val()),
+            price_currency: $('#lc-price-currency').val() || 'USD',
+            bullet_1: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '',
+            bullet_2: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[1] || '',
+            bullet_3: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[2] || '',
+            bullet_4: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[3] || '',
+            bullet_5: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[4] || '',
         };
+    }
+
+    function applyMasterPayload(res) {
+        if (res.draft) currentDraft = res.draft;
+        if (res.title) $('#lc-title').val(res.title);
+        if (res.description) {
+            setDescriptionValue(res.description);
+            setDescMode('preview');
+        }
+        if (Array.isArray(res.images) && res.images.length) {
+            editorImages = sanitizeEditorImages(res.images);
+        }
+        if (Array.isArray(res.videos) && res.videos.length) {
+            $('#lc-reverb-videos').val(res.videos.join('\n'));
+        }
+        if (Array.isArray(res.bullets) && res.bullets.length) {
+            $('#lc-bullets').val(res.bullets.join('\n'));
+        }
+        if (res.upc) $('#lc-upc, #lc-upc-specific').val(res.upc);
+        if (res.brand) $('#lc-brand, #lc-brand-id').val(res.brand);
+        if (res.manufacturer) $('#lc-manufacturer, #lc-manufacturer-specific').val(res.manufacturer);
+        if (res.price != null && res.price !== '') $('#lc-price').val(res.price);
+        if (res.quantity != null && res.quantity !== '') $('#lc-qty').val(res.quantity);
+        if (res.make) $('#lc-reverb-make').val(res.make);
+        if (res.model) $('#lc-reverb-model').val(res.model);
+        if (res.finish) $('#lc-reverb-finish').val(res.finish);
+        if (res.year) $('#lc-reverb-year').val(res.year);
+        if (res.condition_name) fillReverbConditions([], res.condition_name);
+        if (res.shipping_profile_id) $('#lc-reverb-shipping-profile').val(res.shipping_profile_id);
+        if (res.package_length != null) $('#lc-pkg-l').val(res.package_length);
+        if (res.package_width != null) $('#lc-pkg-w').val(res.package_width);
+        if (res.package_height != null) $('#lc-pkg-h').val(res.package_height);
+        if (res.package_weight_lb != null) $('#lc-pkg-lb').val(res.package_weight_lb);
+        if (res.package_weight_oz != null) $('#lc-pkg-oz').val(res.package_weight_oz);
+        dirty = true;
+        refreshEditorUi(currentDraft);
+    }
+
+    function parseReverbVideoList(raw) {
+        return String(raw || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    }
+
+    function parseReverbShippingRates(raw) {
+        const text = String(raw || '').trim();
+        if (!text) return [];
+        try {
+            const parsed = JSON.parse(text);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
     }
 
     function clientReady() {
@@ -1441,6 +1830,17 @@
         }
         const isTiktok = /tiktok/.test(channel);
         const isTemu = /temu/.test(channel);
+        const isReverb = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'reverb') || /reverb/.test(channel);
+        if (isReverb) {
+            if (!d.primary_category_id) errors.category.push('Category');
+            if (!String(d.make || '').trim()) errors.category.push('Make');
+            if (!String(d.model || '').trim()) errors.category.push('Model');
+            if (!String(d.condition_name || '').trim() && !String(d.condition_uuid || '').trim()) errors.category.push('Condition');
+            const hasShip = String(d.shipping_profile_id || '').trim()
+                || (Array.isArray(d.shipping_rates) && d.shipping_rates.length)
+                || !!d.local_pickup_only;
+            if (!hasShip) errors.policies.push('Shipping');
+        }
         if (isTiktok || isTemu) {
             if (!d.primary_category_id) errors.category.push('Category');
             else if (isTiktok && !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
@@ -1471,7 +1871,7 @@
         const path = $('#lc-category-path-input').val() || '';
         const catId = String($('#lc-category-id').val() || '').trim();
         $('#lc-category-path').text(path || (catId ? catId : 'Select a category'));
-        $('#lc-category-id-chip').text(catId && /^\d+$/.test(catId) ? ('ID '+catId) : '');
+        $('#lc-category-id-chip').text(catId ? ((/^\d+$/.test(catId) ? ('ID '+catId) : catId)) : '');
         $('#lc-category-suggested').toggle(!!path);
 
         const err = clientReady();
@@ -1485,10 +1885,11 @@
 
         const family = (serverDraft && serverDraft.editor && serverDraft.editor.family) || '';
         const banners = [];
-        if (err.category.length) banners.push(['danger', (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : 'Category')) + ' tab is missing required information. Please fill in those required fields.']);
+        if (err.category.length) banners.push(['danger', (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : (family === 'reverb' ? 'Reverb Details' : 'Category'))) + ' tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'ebay') banners.push(['danger', 'Business Policies tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'tiktok') banners.push(['danger', 'Warehouse & Package tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'temu') banners.push(['danger', 'Package tab is missing required information. Please fill in those required fields.']);
+        if (err.policies.length && family === 'reverb') banners.push(['danger', 'Shipping & Package tab is missing required information. Please fill in those required fields.']);
         if (err.title.length) banners.push(['danger', 'Title & Description tab is missing required information. Please fill in those required fields.']);
         if (err.images.length) banners.push(['danger', 'Images tab is missing required information. Please fill in those required fields.']);
         if (err.pricing.length) banners.push(['danger', 'Price & Stock tab is missing required information. Please fill in those required fields.']);
@@ -1502,7 +1903,8 @@
         $('#lc-banners').html(banners.map(([t, m]) => `<div class="lc-banner lc-banner-${t}">${escapeHtml(m)}</div>`).join(''));
 
         const catOk = catId !== '' && (family !== 'tiktok' || /^\d+$/.test(catId));
-        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu'].includes(family) || catOk);
+        $('#lc-category-id-warn').toggleClass('d-none', !['ebay', 'tiktok', 'temu', 'reverb'].includes(family) || catOk);
+        $('#lc-reverb-condition-warn').toggleClass('d-none', family !== 'reverb' || !!$('#lc-reverb-condition').val());
         $('#lc-condition-warn').toggleClass('d-none', family !== 'ebay' || !!$('#lc-condition').val());
         $('#lc-shipping-warn').toggle(family === 'ebay' && !$('#lc-shipping-policy').val());
         $('#lc-payment-warn').toggle(family === 'ebay' && !$('#lc-payment-policy').val());
@@ -1549,12 +1951,40 @@
         });
     }
 
+    function fillReverbConditions(rows, selected) {
+        const $el = $('#lc-reverb-condition');
+        if (!$el.length) return;
+        const current = selected
+            || $el.val()
+            || (currentDraft && currentDraft.listing_details && (currentDraft.listing_details.condition_uuid || currentDraft.listing_details.condition_name))
+            || '';
+        if (Array.isArray(rows) && rows.length) {
+            const opts = ['<option value="">Please select</option>'];
+            rows.forEach(function (r) {
+                const id = String(r.id || r.name || '');
+                const name = String(r.name || id);
+                opts.push('<option value="' + escapeHtml(id) + '" data-name="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>');
+            });
+            $el.html(opts.join(''));
+        }
+        if (!current) return;
+        const match = $el.find('option').filter(function () {
+            const name = String($(this).data('name') || $(this).text() || '').toLowerCase();
+            return this.value === String(current) || name === String(current).toLowerCase();
+        }).first();
+        if (match.length) {
+            $el.val(match.val());
+        } else if (!$el.find('option[value="' + String(current).replace(/"/g, '') + '"]').length) {
+            $el.append('<option value="' + escapeHtml(String(current)) + '" data-name="' + escapeHtml(String(current)) + '" selected>' + escapeHtml(String(current)) + '</option>');
+        }
+    }
+
     function searchCategories(q) {
         const $box = $('#lc-category-results');
         const family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
         const channel = (currentDraft && currentDraft.channel) || '';
         const title = String($('#lc-title').val() || (currentDraft && currentDraft.title) || '').trim();
-        if (family !== 'tiktok' && (!q || q.length < 2)) {
+        if (family !== 'tiktok' && family !== 'reverb' && (!q || q.length < 2)) {
             $box.html('<div class="text-muted small p-3">Type a keyword to search marketplace categories.</div>');
             return;
         }
@@ -1562,7 +1992,10 @@
             $box.html('<div class="text-muted small p-3">Type a keyword such as speaker, or keep the product title to load TikTok suggestions.</div>');
             return;
         }
-        $box.html('<div class="text-muted small p-3">' + (family === 'tiktok' ? 'Searching TikTok Shop categories…' : 'Searching…') + '</div>');
+        const searchingLabel = family === 'tiktok'
+            ? 'Searching TikTok Shop categories…'
+            : (family === 'reverb' ? 'Searching Reverb categories…' : 'Searching…');
+        $box.html('<div class="text-muted small p-3">' + searchingLabel + '</div>');
         const desc = String(getDescriptionValue() || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
         if (window._lcCatXhr && window._lcCatXhr.abort) {
             window._lcCatXhr.abort();
@@ -1574,6 +2007,9 @@
             dataType: 'json',
             timeout: 25000,
             success: function (res) {
+                if (family === 'reverb' && Array.isArray(res.conditions)) {
+                    fillReverbConditions(res.conditions);
+                }
                 const rows = res.categories || [];
                 if (!rows.length) {
                     $box.html(`<div class="text-muted small p-3">${escapeHtml(res.message || 'No categories found.')}</div>`);
@@ -1617,22 +2053,23 @@
         $('.lc-ebay-only').toggleClass('d-none', !ed.ebay);
         $('.lc-tiktok-only').toggleClass('d-none', !ed.tiktok);
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
+        $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
         $('.lc-mp-category-manual').toggleClass('d-none', !ed.temu);
-        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok));
-        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu));
+        $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb));
+        $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb));
         $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
-        $('#lc-category-heading').text(ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.category_placeholder ? 'Category' : 'Primary Category')));
+        $('#lc-category-heading').text(ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.reverb ? 'Reverb Category' : 'Category')));
         $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(
-            ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu ? 'Package' : 'Shipping'))
+            ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu ? 'Package' : (ed.reverb ? 'Shipping & Package' : 'Shipping')))
         );
         $('#lc-pricing-heading').text(ed.pricing_title || 'Pricing');
         $('#lc-title-heading').text(ed.title_heading || 'Title & Description');
         $('#lc-identifier-help').text(ed.identifier_help || '').toggle(!!ed.identifier_help);
-        $('#lc-images-help').text(ed.images_help || 'Drag images to reorder. First image is Primary.');
+        $('#lc-images-help').text(ed.images_help || 'Drag images to reorder. First image is Primary. Use Load Images From Image Master.');
         $('#lc-category-help').text(ed.category_help || '').toggle(!!ed.category_help);
         $('#lc-policies-help').text(ed.policies_help || '').toggle(!!ed.policies_help);
         const chLabel = (draft && draft.channel) || ed.label || '';
@@ -1669,6 +2106,9 @@
         $('#lc-epid').val(d.epid || '');
         $('#lc-title').val(draft.title || snap.item_name || snap.title || '');
         setDescriptionValue(d.description || snap.product_description || '');
+        const loadedBullets = [d.bullet_1, d.bullet_2, d.bullet_3, d.bullet_4, d.bullet_5]
+            .map(b => String(b || '').trim()).filter(Boolean);
+        $('#lc-bullets').val(loadedBullets.join('\n'));
         setDescMode('code');
         const snapImages = Array.isArray(snap.images) ? snap.images : [];
         editorImages = sanitizeEditorImages(
@@ -1684,8 +2124,8 @@
         $('#lc-price').val(draft.price != null ? draft.price : '');
         $('#lc-qty').val(draft.quantity != null ? draft.quantity : '');
         $('#lc-best-offer').prop('checked', !!d.best_offer);
-        $('#lc-category-id').val(d.primary_category_id || '');
-        $('#lc-category-path-input').val(d.primary_category_path || d.category || '');
+        $('#lc-category-id').val(d.primary_category_id || d.category_uuid || '');
+        $('#lc-category-path-input').val(d.primary_category_path || d.category_name || d.category || '');
         $('#lc-secondary-category-id').val(d.secondary_category_id || '');
         $('#lc-condition').val(d.condition || 'New');
         $('#lc-condition-desc').val(d.condition_description || '');
@@ -1722,29 +2162,40 @@
         $('#lc-vat').val(d.vat_percent || '');
         $('#lc-auto-relist').prop('checked', !!d.auto_relist);
         $('#lc-warehouse-id').val(d.warehouse_id || '');
-        $('#lc-category-id-visible').val(d.primary_category_id || '');
-        $('#lc-category-path-visible').val(d.primary_category_path || d.category || '');
+        $('#lc-category-id-visible').val(d.primary_category_id || d.category_uuid || '');
+        $('#lc-category-path-visible').val(d.primary_category_path || d.category_name || d.category || '');
+        if (d.category_uuid && !$('#lc-category-id').val()) {
+            $('#lc-category-id').val(d.category_uuid);
+        }
+        $('#lc-reverb-make').val(d.make || '');
+        $('#lc-reverb-model').val(d.model || '');
+        $('#lc-reverb-finish').val(d.finish || '');
+        $('#lc-reverb-year').val(d.year || '');
+        $('#lc-upc-does-not-apply').prop('checked', !!d.upc_does_not_apply);
+        $('#lc-reverb-handmade').prop('checked', !!d.handmade);
+        $('#lc-reverb-offers').prop('checked', d.offers_enabled !== false);
+        $('#lc-has-inventory').prop('checked', d.has_inventory !== false);
+        $('#lc-reverb-local-pickup').prop('checked', !!d.local_pickup_only);
+        $('#lc-reverb-shipping-profile').val(d.shipping_profile_id || '');
+        $('#lc-price-currency').val(d.price_currency || 'USD');
+        $('#lc-reverb-videos').val(Array.isArray(d.videos) ? d.videos.join('\n') : '');
+        $('#lc-reverb-shipping-rates').val(Array.isArray(d.shipping_rates) && d.shipping_rates.length
+            ? JSON.stringify(d.shipping_rates, null, 2)
+            : (typeof d.shipping_rates === 'string' ? d.shipping_rates : ''));
+        if (d.condition_uuid || d.condition_name) {
+            fillReverbConditions([], d.condition_uuid || d.condition_name);
+        }
         const finish = function () {
             $('#lc-editor-loading').hide();
             $('#lc-editor-body').show();
             refreshEditorUi(draft);
             const family = (draft.editor && draft.editor.family) || '';
-            if (family === 'tiktok' && !String($('#lc-category-id').val() || '').trim()) {
-                searchCategories('');
+            if ((family === 'tiktok' || family === 'reverb') && !String($('#lc-category-id').val() || '').trim()) {
+                searchCategories(family === 'reverb' ? String($('#lc-title').val() || '').trim() : '');
+            } else if (family === 'reverb') {
+                searchCategories(String($('#lc-category-search').val() || $('#lc-title').val() || '').trim());
             }
-            if (family === 'tiktok' && editorImages.length < 2 && draft.id) {
-                $.ajax({
-                    url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-images',
-                    method: 'POST',
-                    timeout: 35000,
-                }).done(function (res) {
-                    const imgs = sanitizeEditorImages(res.images || []);
-                    if (imgs.length < 2) return;
-                    editorImages = imgs;
-                    if (res.draft) currentDraft = res.draft;
-                    refreshEditorUi(currentDraft);
-                });
-            } else if (!editorImages.length && draft.id) {
+            if (!editorImages.length && draft.id) {
                 $.ajax({
                     url: "{{ url('/listing-manager/drafts') }}/" + draft.id + '/load-images',
                     method: 'POST',
@@ -2144,6 +2595,265 @@
             openProductModal(currentProductSku);
             setTimeout(() => $btn.prop('disabled', false), 800);
         });
+        $('#lm-prod-edit-btn').on('click', function () {
+            if (!currentProduct) { toast('Load a product first.', 'error'); return; }
+            setProductEditMode(true);
+        });
+        $('#lm-prod-cancel-edit-btn').on('click', function () {
+            setProductEditMode(false);
+        });
+        $('#lm-prod-save-btn').on('click', function () {
+            if (!currentProductSku) return;
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+            $.ajax({
+                url: "{{ route('listing.manager.product.save') }}",
+                method: 'POST',
+                data: collectProductEditFields(),
+                success: function (res) {
+                    toast(res.message || 'Saved.', 'success');
+                    if (currentProduct) {
+                        currentProduct = Object.assign({}, currentProduct, collectProductEditFields());
+                        $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
+                    }
+                    loadTable();
+                },
+                error: xhr => toast(xhr.responseJSON?.message || 'Could not save product.', 'error'),
+                complete: function () {
+                    $btn.data('loading', false).prop('disabled', false).html('<i class="fas fa-save me-1"></i>Save Changes');
+                }
+            });
+        });
+        function productChannelFlags(p) {
+            const listed = new Set();
+            const drafted = new Set();
+            const listedIds = new Set();
+            const draftedIds = new Set();
+            (p && p.listed_on ? p.listed_on : []).forEach(function (r) {
+                listed.add(String(r.channel || '').toLowerCase());
+                if (r.channel_id) listedIds.add(Number(r.channel_id));
+            });
+            (p && p.drafts ? p.drafts : []).forEach(function (r) {
+                const name = String(r.channel || '').toLowerCase();
+                const id = Number(r.channel_id || 0);
+                if (String(r.status || '') === 'listed') {
+                    listed.add(name);
+                    if (id) listedIds.add(id);
+                } else {
+                    drafted.add(name);
+                    if (id) draftedIds.add(id);
+                }
+            });
+            return { listed, drafted, listedIds, draftedIds };
+        }
+
+        function renderPushChannelRows(channels, prechecked, flags) {
+            const checked = new Set((prechecked || []).map(Number));
+            const listed = flags && flags.listed ? flags.listed : new Set();
+            const drafted = flags && flags.drafted ? flags.drafted : new Set();
+            $('#lm-prod-push-channels').html(channels.map(function (c) {
+                const on = checked.has(Number(c.id));
+                const src = logoSrc(c.logo);
+                const name = String(c.channel || '').toLowerCase();
+                const listedIds = flags && flags.listedIds ? flags.listedIds : new Set();
+                const draftedIds = flags && flags.draftedIds ? flags.draftedIds : new Set();
+                let badge = '<span class="lm-push-badge">Not listed</span>';
+                if (listed.has(name) || listedIds.has(Number(c.id))) badge = '<span class="lm-push-badge listed">Listed</span>';
+                else if (drafted.has(name) || draftedIds.has(Number(c.id))) badge = '<span class="lm-push-badge draft">Draft</span>';
+                return `<label class="lm-channel-row ${on ? 'is-checked' : ''}">
+                    <input type="checkbox" class="form-check-input lm-channel-cb" value="${c.id}" ${on ? 'checked' : ''}>
+                    ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
+                    <span class="fw-semibold">${escapeHtml(c.channel)}</span>
+                    ${badge}
+                </label>`;
+            }).join('') || '<div class="text-muted small">No marketplaces enabled. Use Add Marketplaces first.</div>');
+            $('#lm-prod-push-channels').off('change', '.lm-channel-cb').on('change', '.lm-channel-cb', function () {
+                $(this).closest('.lm-channel-row').toggleClass('is-checked', this.checked);
+                const boxes = $('#lm-prod-push-channels .lm-channel-cb');
+                $('#lm-push-select-all').prop('checked', boxes.length > 0 && boxes.filter(':checked').length === boxes.length);
+            });
+        }
+
+        function renderPushPending(channelIds) {
+            const rows = channelIds.map(function (id) {
+                const ch = allChannels.find(c => Number(c.id) === Number(id));
+                const name = ch ? ch.channel : ('Channel ' + id);
+                return `<div class="lm-push-status-row" data-channel-id="${id}">
+                    <span class="ico text-muted"><i class="fas fa-clock"></i></span>
+                    <div><strong>${escapeHtml(name)}</strong><div class="text-muted">Waiting…</div></div>
+                </div>`;
+            });
+            $('#lm-push-results').removeClass('d-none').html(rows.join(''));
+        }
+
+        function setPushRowStatus(id, state, message, mode) {
+            const ch = allChannels.find(c => Number(c.id) === Number(id));
+            const name = ch ? ch.channel : ('Channel ' + id);
+            const $row = $('#lm-push-results .lm-push-status-row[data-channel-id="' + id + '"]');
+            let ico = '<i class="fas fa-clock"></i>';
+            let cls = '';
+            let badge = '';
+            if (state === 'updating') {
+                ico = '<i class="fas fa-spinner fa-spin"></i>';
+            } else if (state === 'ok') {
+                ico = '<i class="fas fa-check-circle"></i>';
+                cls = 'ok';
+                badge = mode === 'draft'
+                    ? '<span class="lm-push-badge draft">Draft only</span>'
+                    : '<span class="lm-push-badge listed">Live</span>';
+            } else if (state === 'fail') {
+                ico = '<i class="fas fa-times-circle"></i>';
+                cls = 'fail';
+            }
+            const html = `<span class="ico">${ico}</span>
+                <div><strong>${escapeHtml(name)}</strong> ${badge}
+                <div class="${cls || 'text-muted'}">${escapeHtml(message || '')}</div></div>`;
+            if ($row.length) {
+                $row.attr('class', 'lm-push-status-row ' + cls).html(html);
+            } else {
+                $('#lm-push-results').append('<div class="lm-push-status-row ' + cls + '" data-channel-id="' + id + '">' + html + '</div>');
+            }
+        }
+
+        function renderPushResults(rows, fallback) {
+            if (!rows.length) {
+                $('#lm-push-results').removeClass('d-none').html('<div class="fail">' + escapeHtml(fallback || 'No marketplace results returned.') + '</div>');
+                return;
+            }
+            $('#lm-push-results').removeClass('d-none').html(rows.map(function (r) {
+                const ok = !!r.success;
+                const mode = String(r.mode || '');
+                const badge = mode === 'live'
+                    ? '<span class="lm-push-badge listed">Live</span>'
+                    : (mode === 'draft' ? '<span class="lm-push-badge draft">Draft only</span>' : '');
+                return `<div class="lm-push-status-row ${ok ? 'ok' : 'fail'}">
+                    <span class="ico">${ok ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>'}</span>
+                    <div><strong>${escapeHtml(r.channel || r.marketplace || 'Channel')}</strong> ${badge}
+                    <div>${escapeHtml(r.message || (ok ? 'Updated.' : 'Failed.'))}</div></div>
+                </div>`;
+            }).join(''));
+        }
+
+        function openProductPushPanel() {
+            if (!currentProductSku) { toast('Open a product first.', 'error'); return; }
+            const $openBtn = $('#lm-prod-push-btn');
+            if ($openBtn.data('loading')) return;
+            const openIdle = $openBtn.html();
+            $openBtn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
+            setProductPane('info');
+            $('#lm-push-results').addClass('d-none').empty();
+            $('#lm-push-part-title, #lm-push-part-description, #lm-push-part-price').prop('checked', true);
+            $('#lm-prod-push-panel').removeClass('d-none');
+            $('#lm-prod-push-channels').html('<div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i>Loading marketplaces…</div>');
+            const flags = productChannelFlags(currentProduct);
+            loadChannels().then(function () {
+                const enabled = allChannels.filter(c => c.enabled);
+                const extra = allChannels.filter(c => {
+                    const name = String(c.channel || '').toLowerCase();
+                    return !c.enabled && (flags.listed.has(name) || flags.listedIds.has(Number(c.id)));
+                });
+                const list = enabled.concat(extra);
+                const pre = list.filter(c => {
+                    const name = String(c.channel || '').toLowerCase();
+                    return flags.listed.has(name) || flags.drafted.has(name)
+                        || flags.listedIds.has(Number(c.id)) || flags.draftedIds.has(Number(c.id));
+                }).map(c => c.id);
+                renderPushChannelRows(list, pre, flags);
+                $('#lm-push-select-all').prop('checked', pre.length > 0 && pre.length === list.length);
+                const panel = document.getElementById('lm-prod-push-panel');
+                if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }).fail(function () {
+                toast('Could not load marketplaces.', 'error');
+            }).always(function () {
+                $openBtn.data('loading', false).prop('disabled', false).html(openIdle);
+            });
+        }
+
+        $('#lm-prod-push-btn').on('click', function () {
+            openProductPushPanel();
+        });
+        $('#lm-prod-push-hide-btn').on('click', function () {
+            $('#lm-prod-push-panel').addClass('d-none');
+        });
+        $('#lm-push-select-all').on('change', function () {
+            const on = this.checked;
+            $('#lm-prod-push-channels .lm-channel-cb').prop('checked', on).each(function () {
+                $(this).closest('.lm-channel-row').toggleClass('is-checked', on);
+            });
+        });
+        $('#lm-push-now-btn').on('click', async function () {
+            const channelIds = $('#lm-prod-push-channels .lm-channel-cb:checked').map(function () {
+                return parseInt(this.value, 10);
+            }).get().filter(n => n > 0);
+            if (!channelIds.length) { toast('Select at least one marketplace.', 'error'); return; }
+            const parts = [];
+            if ($('#lm-push-part-title').is(':checked')) parts.push('title');
+            if ($('#lm-push-part-description').is(':checked')) parts.push('description');
+            if ($('#lm-push-part-price').is(':checked')) parts.push('price');
+            if (!parts.length) { toast('Choose Title, Description, and/or Price to push.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Updating…');
+            $('#lm-prod-push-btn').prop('disabled', true);
+            $('#lm-prod-push-overlay').addClass('d-none');
+            renderPushPending(channelIds);
+            const fields = collectProductEditFields();
+            let ok = 0;
+            let fail = 0;
+            try {
+                await $.ajax({
+                    url: "{{ route('listing.manager.product.save') }}",
+                    method: 'POST',
+                    data: fields,
+                    timeout: 30000,
+                });
+            } catch (xhr) {
+                const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Could not save product before pushing.';
+                toast(msg, 'error');
+                $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                $('#lm-prod-push-btn').prop('disabled', false);
+                return;
+            }
+            for (let i = 0; i < channelIds.length; i++) {
+                const id = channelIds[i];
+                const ch = allChannels.find(c => Number(c.id) === Number(id));
+                const name = ch ? ch.channel : ('Channel ' + id);
+                $btn.html('<i class="fas fa-spinner fa-spin me-1"></i>' + (i + 1) + '/' + channelIds.length);
+                setPushRowStatus(id, 'updating', 'Updating ' + name + '…');
+                try {
+                    const res = await $.ajax({
+                        url: "{{ route('listing.manager.product.push') }}",
+                        method: 'POST',
+                        data: Object.assign({}, fields, { channel_ids: [id], parts, skip_save: 1 }),
+                        timeout: 120000,
+                    });
+                    const row = (res.results && res.results[0]) ? res.results[0] : null;
+                    if (row && row.success) {
+                        ok++;
+                        setPushRowStatus(id, 'ok', row.message || 'Updated.', row.mode);
+                    } else {
+                        fail++;
+                        setPushRowStatus(id, 'fail', (row && row.message) || res.message || 'Update failed.', row && row.mode);
+                    }
+                } catch (xhr) {
+                    fail++;
+                    const msg = (xhr && xhr.responseJSON && xhr.responseJSON.message)
+                        || (xhr && xhr.statusText)
+                        || 'Could not update this marketplace.';
+                    setPushRowStatus(id, 'fail', msg);
+                }
+            }
+            toast('Updated ' + ok + ' marketplace(s)' + (fail ? (', ' + fail + ' failed.') : '.'), fail === 0 ? 'success' : 'error');
+            if (currentProduct) {
+                currentProduct = Object.assign({}, currentProduct, fields);
+                $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
+            }
+            loadTable();
+            $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+            $('#lm-prod-push-btn').prop('disabled', false);
+        });
         $('#lm-prod-content').on('click', '.lm-create-listing-btn', function () {
             const sku = String($(this).data('sku') || currentProductSku || '').trim();
             const channelId = parseInt($(this).data('channel-id'), 10);
@@ -2207,7 +2917,7 @@
             $(this).addClass('active');
             $('#lmListingEditorModal .lc-pane').removeClass('active');
             $(`#lmListingEditorModal .lc-pane[data-pane="${pane}"]`).addClass('active');
-            if (pane === 'category' && currentDraft && currentDraft.editor && currentDraft.editor.tiktok) {
+            if (pane === 'category' && currentDraft && currentDraft.editor && (currentDraft.editor.tiktok || currentDraft.editor.reverb)) {
                 const q = String($('#lc-category-search').val() || '').trim();
                 searchCategories(q);
             }
@@ -2262,6 +2972,70 @@
                 complete: () => { $('#lc-upload-image').val(''); },
             });
         });
+        $(document).on('click', '.lc-load-master-btn', function () {
+            const id = $('#lc-draft-id').val();
+            if (!id) { toast('Open a draft first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const source = String($btn.attr('data-master-source') || '');
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
+            $.ajax({
+                url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-master',
+                method: 'POST',
+                data: { source },
+                timeout: 35000,
+                success: function (res) {
+                    if (!res.success) {
+                        toast(res.message || 'Load failed.', 'error');
+                        return;
+                    }
+                    applyMasterPayload(res);
+                    toast(res.message || 'Loaded from master.', 'success');
+                },
+                error: xhr => toast(xhr.responseJSON?.message || 'Could not load from master.', 'error'),
+                complete: function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                }
+            });
+        });
+        $(document).on('click', '.lm-prod-master-btn', function () {
+            const sku = currentProductSku;
+            if (!sku) { toast('Open a product first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const source = String($btn.attr('data-master-source') || '');
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
+            $.getJSON("{{ route('listing.manager.product.from-master') }}", { sku, source })
+                .done(function (res) {
+                    if (!res.success) {
+                        toast(res.message || 'Load failed.', 'error');
+                        return;
+                    }
+                    if (!currentProduct) currentProduct = { sku };
+                    if (res.title) currentProduct.title = res.title;
+                    if (res.description) currentProduct.description = res.description;
+                    if (res.upc) currentProduct.upc = res.upc;
+                    if (res.brand) currentProduct.vendor = res.brand;
+                    if (res.manufacturer) currentProduct.manufacturer = res.manufacturer;
+                    if (res.price != null) currentProduct.price = res.price;
+                    if (res.quantity != null) currentProduct.quantity = res.quantity;
+                    if (Array.isArray(res.images) && res.images.length) currentProduct.images = res.images;
+                    if (productEditMode) {
+                        fillProductEditForm(currentProduct);
+                    } else {
+                        renderProductInfo(currentProduct);
+                        if (res.images) renderProductImages(currentProduct.images);
+                    }
+                    if (res.title) $('#lm-prod-title').text(res.title);
+                    toast(res.message || 'Loaded from master.', 'success');
+                })
+                .fail(xhr => toast(xhr.responseJSON?.message || 'Could not load from master.', 'error'))
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
+        });
         $('#lc-load-images-btn').on('click', function () {
             const id = $('#lc-draft-id').val();
             if (!id) { toast('Open a draft first.', 'error'); return; }
@@ -2291,10 +3065,10 @@
                     toast(res.message || ('Loaded ' + imgs.length + ' image(s).'), 'success');
                 },
                 error: function (xhr) {
-                    toast(xhr.responseJSON?.message || 'Could not load images from Amz.', 'error');
+                    toast(xhr.responseJSON?.message || 'Could not load images from Image Master.', 'error');
                 },
                 complete: function () {
-                    $btn.data('loading', false).prop('disabled', false).html('Load Images From Main Store');
+                    $btn.data('loading', false).prop('disabled', false).html('Load Images From Image Master');
                 }
             });
         });
@@ -2316,15 +3090,19 @@
                 complete: () => $btn.prop('disabled', false).text('Reload from Main Store'),
             });
         });
-        $('#lc-load-desc-store-btn').on('click', function () {
+        $(document).on('click', '.lc-load-desc-btn', function () {
             const id = $('#lc-draft-id').val();
             if (!id) return;
             const $btn = $(this);
             if ($btn.data('loading')) return;
+            const source = String($btn.attr('data-desc-source') || 'shopify');
+            const idleHtml = $btn.html();
             $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
             $.ajax({
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/load-description',
                 method: 'POST',
+                data: { source },
+                timeout: 35000,
                 success: function (res) {
                     if (!res.success) {
                         toast(res.message || 'Load failed.', 'error');
@@ -2332,18 +3110,14 @@
                     }
                     if (res.draft) currentDraft = res.draft;
                     setDescriptionValue(res.description || '');
-                    if (Array.isArray(res.images) && res.images.length) {
-                        editorImages = sanitizeEditorImages(res.images);
-                    }
                     dirty = true;
                     setDescMode('preview');
                     refreshEditorUi(currentDraft);
-                    toast(res.message || 'Description loaded from main store.', 'success');
+                    toast(res.message || 'Description loaded.', 'success');
                 },
-                error: xhr => toast(xhr.responseJSON?.message || 'Could not load main store description.', 'error'),
+                error: xhr => toast(xhr.responseJSON?.message || 'Could not load description.', 'error'),
                 complete: function () {
-                    $btn.data('loading', false).prop('disabled', false)
-                        .html('<i class="fas fa-cloud-download-alt me-1"></i>Load from Main Store');
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
                 }
             });
         });

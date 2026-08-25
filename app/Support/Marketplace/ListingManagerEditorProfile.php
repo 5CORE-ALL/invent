@@ -18,6 +18,7 @@ class ListingManagerEditorProfile
      *   tiktok: bool,
      *   temu: bool,
      *   faire: bool,
+     *   reverb: bool,
      *   category_placeholder: string,
      *   optimize_label: string,
      *   header_quick: string,
@@ -51,7 +52,7 @@ class ListingManagerEditorProfile
                 'pricing_title' => 'Pricing',
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'eBay identifiers including UPC, EAN, ISBN, and ePID.',
-                'images_help' => 'Drag images to reorder. First image is Primary. Gallery Plus is optional.',
+                'images_help' => 'Load photos from Image Master. First image is Primary.',
                 'category_help' => 'Search and select an eBay leaf category, then set condition and item specifics.',
                 'policies_help' => 'Shipping, payment, and return policies must exist on the linked eBay account.',
             ],
@@ -73,7 +74,7 @@ class ListingManagerEditorProfile
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'TikTok Shop uses SKU, brand, manufacturer, and UPC. eBay fields such as ePID are not used.',
-                'images_help' => 'TikTok Shop needs at least one product image. First image is the main photo.',
+                'images_help' => 'TikTok Shop needs at least one Image Master photo. First image is the main photo.',
                 'category_help' => 'Search TikTok categories by keyword (same as Seller Center). Pick a leaf path such as Phones & Electronics - Audio & Video - Speakers.',
                 'policies_help' => 'Package weight is required. Warehouse ID is optional when your shop already has a default warehouse.',
             ],
@@ -95,9 +96,31 @@ class ListingManagerEditorProfile
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Temu uses SKU, brand, manufacturer, and UPC. eBay business policies are not used.',
-                'images_help' => 'Temu needs at least one product image. First image is the main photo.',
+                'images_help' => 'Temu needs at least one Image Master photo. First image is the main photo.',
                 'category_help' => 'Enter the Temu leaf category ID. Required before publish.',
                 'policies_help' => 'Package weight and dimensions come from Product Master and are required for Temu.',
+            ],
+            'reverb' => [
+                'tabs' => [
+                    ['id' => 'identifiers', 'label' => 'Product Identifiers'],
+                    ['id' => 'variations', 'label' => 'Variations'],
+                    ['id' => 'title', 'label' => 'Title & Description'],
+                    ['id' => 'images', 'label' => 'Photos & Videos'],
+                    ['id' => 'pricing', 'label' => 'Price & Stock'],
+                    ['id' => 'category', 'label' => 'Reverb Details'],
+                    ['id' => 'policies', 'label' => 'Shipping & Package'],
+                ],
+                'identifier_fields' => ['sku', 'brand', 'manufacturer', 'upc'],
+                'category_placeholder' => 'Search Reverb categories (e.g. microphone)',
+                'optimize_label' => 'Optimize Description for Reverb',
+                'header_quick' => 'Quick/Auto List to Reverb',
+                'header_import' => 'Import from Reverb',
+                'pricing_title' => 'Price & Stock',
+                'title_heading' => 'Title & Description',
+                'identifier_help' => 'Reverb uses SKU, brand, and UPC. Set make, model, and category on the Reverb Details tab.',
+                'images_help' => 'Load photos from Image Master. Reverb recommends at least 11 photos. First image is Primary.',
+                'category_help' => 'Search Reverb categories and select a leaf path. Also set make, model, finish, year, and condition.',
+                'policies_help' => 'Set a Reverb shipping profile, shipping rates, or local pickup. Package size and weight come from Product Master.',
             ],
             'faire' => [
                 'tabs' => [
@@ -115,7 +138,7 @@ class ListingManagerEditorProfile
                 'pricing_title' => 'Wholesale Price',
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Faire listings use SKU, brand, and UPC from Product Master.',
-                'images_help' => 'Drag images to reorder. First image is Primary.',
+                'images_help' => 'Load photos from Image Master. First image is Primary.',
                 'category_help' => '',
                 'policies_help' => '',
             ],
@@ -136,7 +159,7 @@ class ListingManagerEditorProfile
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
                 'identifier_help' => 'Product identifiers from Product Master.',
-                'images_help' => 'Drag images to reorder. First image is Primary.',
+                'images_help' => 'Load photos from Image Master. First image is Primary.',
                 'category_help' => 'Enter the marketplace category ID or name.',
                 'policies_help' => '',
             ],
@@ -154,6 +177,7 @@ class ListingManagerEditorProfile
             'tiktok' => $family === 'tiktok',
             'temu' => $family === 'temu',
             'faire' => $family === 'faire',
+            'reverb' => $family === 'reverb',
             'category_placeholder' => $base['category_placeholder'],
             'optimize_label' => $base['optimize_label'],
             'header_quick' => $base['header_quick'],
@@ -162,7 +186,7 @@ class ListingManagerEditorProfile
             'pricing_title' => $base['pricing_title'] ?? 'Pricing',
             'title_heading' => $base['title_heading'] ?? 'Title & Description',
             'identifier_help' => $base['identifier_help'] ?? '',
-            'images_help' => $base['images_help'] ?? 'Drag images to reorder. First image is Primary.',
+            'images_help' => $base['images_help'] ?? 'Load photos from Image Master. First image is Primary.',
             'category_help' => $base['category_help'] ?? '',
             'policies_help' => $base['policies_help'] ?? '',
         ];
@@ -181,6 +205,9 @@ class ListingManagerEditorProfile
         }
         if ($normalizedKey === 'faire') {
             return 'faire';
+        }
+        if (in_array($normalizedKey, ['reverb', 'reverbcom'], true)) {
+            return 'reverb';
         }
 
         return 'default';

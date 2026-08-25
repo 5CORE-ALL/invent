@@ -160,6 +160,15 @@ class EbayApiService
         return $accessToken;
     }
 
+    private function postTradingXml(array $headers, string $xmlBody)
+    {
+        $request = Http::withHeaders($headers)->withBody($xmlBody, 'text/xml');
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        return $request->post($this->endpoint);
+    }
 
     /**
      * Get item details from eBay
@@ -188,9 +197,7 @@ class EbayApiService
                 'Content-Type'                   => 'text/xml',
             ];
             
-            $response = Http::withHeaders($headers)
-                ->withBody($xmlBody, 'text/xml')
-                ->post($this->endpoint);
+            $response = $this->postTradingXml($headers, $xmlBody);
             
             $body = $response->body();
             libxml_use_internal_errors(true);
@@ -256,9 +263,7 @@ class EbayApiService
                 'Content-Type'                   => 'text/xml',
             ];
 
-            $response = Http::withHeaders($headers)
-                ->withBody($xmlBody, 'text/xml')
-                ->post($this->endpoint);
+            $response = $this->postTradingXml($headers, $xmlBody);
 
             $body = $response->body();
             libxml_use_internal_errors(true);
@@ -426,9 +431,7 @@ class EbayApiService
         ];
 
         // Send API request
-        $response = Http::withHeaders($headers)
-            ->withBody($xmlBody, 'text/xml')
-            ->post($this->endpoint);
+        $response = $this->postTradingXml($headers, $xmlBody);
 
         $body = $response->body();
 
@@ -724,9 +727,7 @@ class EbayApiService
                 'Content-Type'                   => 'text/xml',
             ];
             
-            $response = Http::withHeaders($headers)
-                ->withBody($xmlBody, 'text/xml')
-                ->post($this->endpoint);
+            $response = $this->postTradingXml($headers, $xmlBody);
             
             $body = $response->body();
             libxml_use_internal_errors(true);
@@ -818,9 +819,7 @@ class EbayApiService
                 'Content-Type'                   => 'text/xml',
             ];
             
-            $response = Http::withHeaders($headers)
-                ->withBody($xmlBody, 'text/xml')
-                ->post($this->endpoint);
+            $response = $this->postTradingXml($headers, $xmlBody);
             
             $body = $response->body();
             libxml_use_internal_errors(true);
