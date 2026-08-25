@@ -14,6 +14,7 @@ use App\Services\Ebay2ApiService;
 use App\Services\ReverbApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\ShopifyApiService;
+use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
 use App\Support\Marketplace\ListingChannelCounts;
@@ -312,7 +313,11 @@ class ListingManagerController extends Controller
             ];
         }
         foreach ($drafts as $d) {
-            $live = ListingManagerPublishStatus::check((string) ($d['channel'] ?? ''), $sku);
+            $channelName = (string) ($d['channel'] ?? '');
+            if ($channelName !== '' && ! $this->channelHasConnectedListingApi($channelName)) {
+                continue;
+            }
+            $live = ListingManagerPublishStatus::check($channelName, $sku);
             if (($d['status'] ?? '') === 'listed' || ($live['listed'] ?? false)) {
                 $listedOn[] = [
                     'channel' => $d['channel'] ?? '',
@@ -772,6 +777,16 @@ class ListingManagerController extends Controller
         return array_values($out);
     }
 
+    private function channelHasConnectedListingApi(string $channelName): bool
+    {
+        $channelName = trim($channelName);
+        if ($channelName === '') {
+            return false;
+        }
+
+        return app(MarketplaceApiConfigService::class)->isConfigured($channelName);
+    }
+
     private function findChannelDraft(int $channelId, string $sku): ?ListingManagerChannelDraft
     {
         $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? trim($sku);
@@ -887,7 +902,16 @@ class ListingManagerController extends Controller
             ->whereNotNull('channel')
             ->where('channel', '!=', '')
             ->orderBy('channel')
-            ->get(['id', 'channel', 'logo']);
+            ->get(['id', 'channel', 'logo'])
+            ->filter(function ($c) {
+                $key = ListingChannelCounts::normalize((string) $c->channel);
+                if (in_array($key, ['amazon', 'amazonfba'], true)) {
+                    return false;
+                }
+
+                return $this->channelHasConnectedListingApi((string) $c->channel);
+            })
+            ->values();
 
         $enabledIds = Schema::hasTable('listing_manager_enabled_channels')
             ? ListingManagerEnabledChannel::query()
@@ -897,16 +921,12 @@ class ListingManagerController extends Controller
                 ->all()
             : [];
 
-        // Default: every active marketplace except Amazon (origin catalog).
-        if ($enabledIds === []) {
-            $enabledIds = $allActive
-                ->filter(function ($c) {
-                    $key = ListingChannelCounts::normalize((string) $c->channel);
+        $availableIds = $allActive->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $enabledIds = array_values(array_intersect(array_map('intval', $enabledIds), $availableIds));
 
-                    return ! in_array($key, ['amazon', 'amazonfba'], true);
-                })
-                ->pluck('id')
-                ->all();
+        // Default: every connected listing API (Amazon is the origin catalog, not a push target).
+        if ($enabledIds === []) {
+            $enabledIds = $availableIds;
         }
 
         $enabledSet = array_fill_keys(array_map('intval', $enabledIds), true);

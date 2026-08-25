@@ -264,6 +264,86 @@ class Temu2ApiService extends TemuApiService
         return $this->findTemuSkuIdBySkuViaApi($sku);
     }
 
+    /**
+     * Title-only update. Do not send empty skuList images/dims — Temu 2 rejects
+     * those with "Some SKU specifications are empty".
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateTitle(string $sku, string $title): array
+    {
+        $sku = trim($sku);
+        $title = trim($title);
+        if ($sku === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
+        }
+
+        $goodsId = $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return [
+                'success' => false,
+                'message' => 'Temu 2 goodsId not found for this SKU. Sync Temu 2 listings first.',
+            ];
+        }
+
+        $goodsBasicField = config('services.temu2.goods_basic_field', config('services.temu.goods_basic_field', 'goodsBasic'));
+        $skuListField = config('services.temu2.update_sku_list_field', config('services.temu.update_sku_list_field', 'skuList'));
+        $skuIdField = config('services.temu2.sku_id_field', config('services.temu.sku_id_field', 'skuId'));
+        $skuCodeField = config('services.temu2.sku_code_field', config('services.temu.sku_code_field', 'outSkuSn'));
+        $apiType = config('services.temu2.goods_update_type', config('services.temu.goods_update_type', 'bg.local.goods.partial.update'));
+
+        $attempts = [];
+        $attempts[] = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => ['goodsName' => $title],
+        ];
+
+        $skuId = $this->getSkuIdBySku($sku);
+        if ($skuId !== null && $skuId !== '') {
+            $attempts[] = [
+                'type' => $apiType,
+                'goodsId' => (int) $goodsId,
+                $goodsBasicField => ['goodsName' => $title],
+                $skuListField => [[
+                    $skuIdField => (int) $skuId,
+                    $skuCodeField => $sku,
+                ]],
+            ];
+        }
+
+        $lastError = 'Temu 2 title update failed.';
+        foreach ($attempts as $i => $requestBody) {
+            try {
+                $data = $this->postTemuRequest($requestBody);
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('Temu2 updateTitle request failed', [
+                    'sku' => $sku,
+                    'attempt' => $i + 1,
+                    'error' => $lastError,
+                ]);
+                continue;
+            }
+
+            if ($data['success'] ?? false) {
+                Log::info('Temu2 title updated', ['sku' => $sku, 'goodsId' => $goodsId, 'attempt' => $i + 1]);
+
+                return ['success' => true, 'message' => 'Title updated successfully.'];
+            }
+
+            $lastError = (string) ($data['errorMsg'] ?? $data['message'] ?? json_encode($data) ?: 'Temu 2 title update failed.');
+            Log::warning('Temu2 updateTitle rejected', [
+                'sku' => $sku,
+                'goodsId' => $goodsId,
+                'attempt' => $i + 1,
+                'error' => $lastError,
+            ]);
+        }
+
+        return ['success' => false, 'message' => $lastError];
+    }
+
     protected function persistTemuMapping(string $sku, ?string $goodsId, ?string $skuId): void
     {
         $sku = trim($sku);

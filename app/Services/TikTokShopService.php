@@ -1597,55 +1597,35 @@ class TikTokShopService
             return ['success' => false, 'message' => 'TikTok access token not configured.'];
         }
 
-        $baseUrl = 'https://open-api.tiktokglobalshop.com';
-        $headers = [
-            'Authorization' => 'Bearer '.$this->accessToken,
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
+        $paths = [
+            "/product/202309/products/{$productId}/partial_edit",
+            "/product/202312/products/{$productId}/partial_edit",
         ];
-        $payload = ['title' => $title];
-
-        $endpoints = [
-            "/product/202309/products/{$productId}",
-            "/api/products/{$productId}",
-        ];
-
-        $lastStatus = 0;
-        $lastBody = '';
-
-        foreach ($endpoints as $endpoint) {
+        $lastError = '';
+        foreach ($paths as $path) {
             try {
-                $response = Http::withoutVerifying()
-                    ->withHeaders($headers)
-                    ->timeout(45)
-                    ->patch($baseUrl.$endpoint, $payload);
+                $this->tiktokOpenApi('POST', $path, [], ['title' => $title]);
 
-                $lastStatus = $response->status();
-                $lastBody = $response->body();
-
-                if ($response->successful()) {
-                    $data = $response->json();
-                    if (is_array($data) && (isset($data['data']) || ($data['success'] ?? false))) {
-                        return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
-                    }
-                }
-
-                if ($lastStatus === 404) {
-                    continue;
-                }
+                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
             } catch (\Throwable $e) {
-                return $this->handleMarketplaceThrowable('TikTok updateProductTitle', $productId, $e);
+                $lastError = $e->getMessage();
+                Log::warning('TikTok updateProductTitle signed path failed', [
+                    'product_id' => $productId,
+                    'path' => $path,
+                    'error' => $lastError,
+                ]);
             }
         }
 
-        return $this->marketplaceApiFailure(
-            'TikTok updateProductTitle',
-            $productId,
-            $lastStatus === 401 || $lastStatus === 403
-                ? "Authentication failed (HTTP {$lastStatus}). Check TikTok API credentials."
-                : ($lastBody !== '' ? mb_substr($lastBody, 0, 500) : "TikTok title update failed (HTTP {$lastStatus})."),
-            ['status' => $lastStatus]
-        );
+        $viaSdk = $this->updateTikTokProductFields($productId, ['title' => $title]);
+        if ($viaSdk['success'] ?? false) {
+            return $viaSdk;
+        }
+
+        $sdkMsg = trim((string) ($viaSdk['message'] ?? ''));
+        $message = $lastError !== '' ? $lastError : ($sdkMsg !== '' ? $sdkMsg : 'TikTok title update failed.');
+
+        return $this->marketplaceApiFailure('TikTok updateProductTitle', $productId, $message);
     }
 
     /**

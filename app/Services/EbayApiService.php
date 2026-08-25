@@ -231,9 +231,12 @@ class EbayApiService
      */
     public function updateTitle($itemId, $title)
     {
-        $title = trim((string) $title);
-        $title = mb_substr($title, 0, 80);
+        $itemId = trim((string) $itemId);
+        $title = mb_substr(trim((string) $title), 0, 80);
 
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'Item ID is required.'];
+        }
         if ($title === '') {
             Log::warning('eBay updateTitle: empty title', ['itemId' => $itemId]);
 
@@ -241,66 +244,21 @@ class EbayApiService
         }
 
         try {
-            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $credentials = $xml->addChild('RequesterCredentials');
             $authToken = $this->generateBearerToken();
-            $credentials->addChild('eBayAuthToken', $authToken ?? '');
-            $xml->addChild('ErrorLanguage', 'en_US');
-            $xml->addChild('WarningLevel', 'High');
 
-            $item = $xml->addChild('Item');
-            $item->addChild('ItemID', $itemId);
-            $item->addChild('Title', $title);
-
-            $xmlBody = $xml->asXML();
-            $headers = [
-                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
-                'X-EBAY-API-DEV-NAME'            => $this->devId,
-                'X-EBAY-API-APP-NAME'            => $this->appId,
-                'X-EBAY-API-CERT-NAME'           => $this->certId,
-                'X-EBAY-API-CALL-NAME'           => 'ReviseItem',
-                'X-EBAY-API-SITEID'              => $this->siteId,
-                'Content-Type'                   => 'text/xml',
-            ];
-
-            $response = $this->postTradingXml($headers, $xmlBody);
-
-            $body = $response->body();
-            libxml_use_internal_errors(true);
-            $xmlResp = simplexml_load_string($body);
-
-            if ($xmlResp === false) {
-                Log::error('eBay updateTitle: invalid XML response', ['itemId' => $itemId, 'body' => substr($body, 0, 500)]);
-
-                return ['success' => false, 'message' => 'Invalid API response.'];
-            }
-
-            $responseArray = json_decode(json_encode($xmlResp), true);
-            $ack = $responseArray['Ack'] ?? 'Failure';
-
-            if ($ack === 'Success' || $ack === 'Warning') {
-                Log::info('✅ eBay title updated', ['item_id' => $itemId, 'title_preview' => mb_substr($title, 0, 40)]);
-
-                return ['success' => true, 'message' => 'Title updated successfully.'];
-            }
-
-            $errors = $responseArray['Errors'] ?? [];
-            if (! is_array($errors)) {
-                $errors = [];
-            }
-            if (isset($errors['ErrorCode']) || isset($errors['ShortMessage']) || isset($errors['LongMessage'])) {
-                $errors = [$errors];
-            }
-            $firstErr = $errors[0] ?? [];
-            $msg = (string) ($firstErr['LongMessage'] ?? $firstErr['ShortMessage'] ?? $firstErr['ErrorCode'] ?? 'Unknown eBay error');
-            if (isset($firstErr['ErrorCode']) && ! str_contains($msg, (string) $firstErr['ErrorCode'])) {
-                $msg = '[eBay #'.$firstErr['ErrorCode'].'] '.$msg;
-            }
-            Log::error('❌ eBay updateTitle failed', ['itemId' => $itemId, 'error' => $msg]);
-
-            return ['success' => false, 'message' => $msg];
+            return EbayTradingReviseItem::reviseListingTitle(
+                (string) $this->endpoint,
+                (string) $this->compatLevel,
+                (string) $this->devId,
+                (string) $this->appId,
+                (string) $this->certId,
+                (string) $this->siteId,
+                (string) ($authToken ?? ''),
+                $itemId,
+                $title,
+            );
         } catch (\Throwable $e) {
-            Log::error('❌ eBay updateTitle exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+            Log::error('eBay updateTitle exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
         }

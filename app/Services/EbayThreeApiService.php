@@ -244,154 +244,43 @@ class EbayThreeApiService
     public function updateTitle($itemId, $title)
     {
         $itemId = trim((string) $itemId);
-        $title  = trim((string) $title);
-        $title  = mb_substr($title, 0, 80);
+        $title = mb_substr(trim((string) $title), 0, 80);
 
         if ($itemId === '') {
             Log::warning('eBay3 updateTitle: empty item ID');
+
             return ['success' => false, 'message' => 'Item ID is required.'];
         }
         if ($title === '') {
             Log::warning('eBay3 updateTitle: empty title', ['itemId' => $itemId]);
-            return ['success' => false, 'message' => 'Title cannot be empty.'];
-        }
 
-        $metric = Ebay3Metric::where('item_id', $itemId)->first();
-        if (!$metric) {
-            Log::warning('eBay3 updateTitle: item_id not found in Ebay3Metric', ['itemId' => $itemId]);
-            return [
-                'success' => false,
-                'message' => "Item ID {$itemId} not found in eBay 3 metrics. Ensure the listing exists and is synced.",
-            ];
+            return ['success' => false, 'message' => 'Title cannot be empty.'];
         }
 
         try {
             $authToken = $this->generateBearerToken();
-            Log::info('eBay3 updateTitle: token generated, fetching item details', ['itemId' => $itemId]);
-
-            $itemDetails = $this->getItem($itemId);
-            if (!$itemDetails || !isset($itemDetails['Item'])) {
-                Log::error('eBay3 updateTitle: GetItem failed or returned no item', [
-                    'itemId' => $itemId,
-                    'getItemResult' => $itemDetails ? 'partial' : 'null',
-                ]);
-                return [
-                    'success' => false,
-                    'message' => 'Could not fetch item details from eBay. The item may not exist or the token may lack Trading API access.',
-                ];
-            }
-
-            $existingItem = $itemDetails['Item'];
-            Log::info('eBay3 updateTitle: item details fetched', [
-                'itemId'      => $itemId,
-                'listingType' => $existingItem['ListingType'] ?? null,
-                'country'     => $existingItem['Country'] ?? null,
-                'currency'    => $existingItem['Currency'] ?? null,
-                'conditionId' => $existingItem['ConditionID'] ?? null,
-                'sku'         => isset($existingItem['SKU']) ? substr($existingItem['SKU'], 0, 20) . '...' : null,
+            Log::info('eBay3 updateTitle: ReviseFixedPriceItem', [
+                'itemId' => $itemId,
+                'title' => $title,
             ]);
 
-            $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $credentials = $xml->addChild('RequesterCredentials');
-            $credentials->addChild('eBayAuthToken', $authToken ?? '');
-            $xml->addChild('ErrorLanguage', 'en_US');
-            $xml->addChild('WarningLevel', 'High');
-            $xml->addChild('DetailLevel', 'ReturnAll');
-
-            $item = $xml->addChild('Item');
-            $item->addChild('ItemID', $itemId);
-            $item->addChild('Title', $title);
-
-            if (isset($existingItem['SKU']) && $existingItem['SKU'] !== '' && $existingItem['SKU'] !== null) {
-                $item->addChild('SKU', (string) $existingItem['SKU']);
-            }
-            if (isset($existingItem['ListingType'])) {
-                $item->addChild('ListingType', (string) $existingItem['ListingType']);
-            }
-            if (isset($existingItem['Country'])) {
-                $item->addChild('Country', (string) $existingItem['Country']);
-            }
-            if (isset($existingItem['Currency'])) {
-                $item->addChild('Currency', (string) $existingItem['Currency']);
-            }
-            if (isset($existingItem['ConditionID'])) {
-                $item->addChild('ConditionID', (string) $existingItem['ConditionID']);
-            }
-
-            $xmlBody = $xml->asXML();
-            $headers = [
-                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
-                'X-EBAY-API-DEV-NAME'            => $this->devId,
-                'X-EBAY-API-APP-NAME'            => $this->appId,
-                'X-EBAY-API-CERT-NAME'           => $this->certId,
-                'X-EBAY-API-CALL-NAME'           => 'ReviseItem',
-                'X-EBAY-API-SITEID'              => $this->siteId,
-                'Content-Type'                   => 'text/xml',
-            ];
-
-            Log::info('eBay3 updateTitle: ReviseItem request', [
-                'itemId'  => $itemId,
-                'title'   => substr($title, 0, 80),
-                'xml'     => $xmlBody,
-            ]);
-
-            $request = Http::withHeaders($headers)->withBody($xmlBody, 'text/xml');
-            if (config('filesystems.default') === 'local') {
-                $request = $request->withoutVerifying();
-            }
-            $response = $request->post($this->endpoint);
-            $body     = $response->body();
-            $rlogId   = $response->header('rlogid') ?? $response->header('X-EBAY-API-SERVER-LOG-ID') ?? null;
-
-            Log::info('eBay3 updateTitle: ReviseItem response', [
-                'itemId'       => $itemId,
-                'statusCode'   => $response->status(),
-                'rlogId'       => $rlogId,
-                'responseBody' => $body,
-            ]);
-
-            libxml_use_internal_errors(true);
-            $xmlResp = simplexml_load_string($body);
-            if ($xmlResp === false) {
-                Log::error('eBay3 updateTitle: invalid XML response', [
-                    'itemId' => $itemId,
-                    'body'   => substr($body, 0, 1000),
-                    'rlogId' => $rlogId,
-                ]);
-                return ['success' => false, 'message' => 'Invalid API response from eBay.'];
-            }
-
-            $responseArray = json_decode(json_encode($xmlResp), true);
-            $ack           = $responseArray['Ack'] ?? 'Failure';
-
-            if ($ack === 'Success' || $ack === 'Warning') {
-                Log::info('eBay3 title updated', ['item_id' => $itemId]);
-                return ['success' => true, 'message' => 'Title updated successfully.'];
-            }
-
-            $errors   = $responseArray['Errors'] ?? [];
-            $errors   = is_array($errors) ? $errors : [$errors];
-            $messages = [];
-            foreach ($errors as $err) {
-                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
-            }
-            $msg = implode('; ', $messages) ?: 'Unknown error';
-
-            Log::error('eBay3 updateTitle failed', [
-                'itemId'       => $itemId,
-                'ack'          => $ack,
-                'rlogId'       => $rlogId,
-                'errors'       => $errors,
-                'parsedMsg'    => $msg,
-            ]);
-
-            return ['success' => false, 'message' => $msg];
+            return EbayTradingReviseItem::reviseListingTitle(
+                (string) $this->endpoint,
+                (string) $this->compatLevel,
+                (string) $this->devId,
+                (string) $this->appId,
+                (string) $this->certId,
+                (string) $this->siteId,
+                (string) ($authToken ?? ''),
+                $itemId,
+                $title,
+            );
         } catch (\Throwable $e) {
             Log::error('eBay3 updateTitle exception', [
-                'itemId'   => $itemId,
-                'error'    => $e->getMessage(),
-                'trace'    => $e->getTraceAsString(),
+                'itemId' => $itemId,
+                'error' => $e->getMessage(),
             ]);
+
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
