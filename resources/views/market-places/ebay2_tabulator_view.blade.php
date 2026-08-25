@@ -664,7 +664,7 @@
                         <span class="badge bg-warning" id="avg-price-badge" style="color: black; font-weight: bold;">Prc: $0.00</span>
                         <span class="badge bg-danger" id="avg-cvr-badge"
                               style="color: white; font-weight: bold;"
-                              title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
+                              title="CVR = (Σ eBay L30 / Σ Views) × 100 for rows with E Stock > 0 — same formula as the CVR 30 column and the EbayTwo CVR cell on /all-marketplace-master.">CVR: 0%</span>
                         <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
@@ -1137,9 +1137,7 @@
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         /** L30 units sold from ebay2_orders (period='l30'). Same value rendered into the
-         *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. Used by
-         *  the CVR formula so the page CVR is computed against orders-API ground truth
-         *  instead of the laggier ebay_2_metrics.ebay_l30 sum. */
+         *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
         /** L30 Sales / GPFT% / GROI% from the same real orders /ebay2/daily-sales uses,
          *  so these badges agree with that page (fixed server values). */
@@ -4965,13 +4963,11 @@
                         l7Count++;
                     }
                 });
-                // CVR = (orders-API L30 units / Σ views) × 100. Numerator is the same
-                // fixed value the S Qty badge shows (Σ ebay2_order_items.quantity for
-                // period='l30') — orders-API ground truth, same source the master
-                // page's Qty cell uses. Previously this used the per-row eBay L30 sum
-                // from ebay_2_metrics, which lags the Orders API. Denominator stays
-                // the page sum of 'views' across rows with E Stock > 0.
-                const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
+                // Listing CVR = (Σ eBay L30 / Σ views) × 100 for E Stock > 0.
+                // Same formula as the CVR 30 column and /all-marketplace-master EbayTwo CVR.
+                // S Qty (orders-API units) stays on the Qty badge — mixing that numerator
+                // with listing views understated CVR (~1% vs ~5%).
+                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
                 const avgL7Views = l7Count > 0 ? (totalL7Views / l7Count) : 0;
                 const prevAvgL7Views = avgL7ViewsGlobal;
                 avgL7ViewsGlobal = avgL7Views;

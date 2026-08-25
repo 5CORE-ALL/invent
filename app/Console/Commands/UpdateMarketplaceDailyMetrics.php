@@ -565,16 +565,11 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate ad spend for eBay 2
-        // Sum daily reports instead of L30 aggregate — closer to eBay dashboard values
-        $startDate2 = Carbon::now()->subDays(31)->format('Y-m-d');
-        $endDate2 = Carbon::now()->format('Y-m-d');
-
-        // KW from ebay_2_priority_reports (CPC ads) - fetch all metrics using daily sum
+        // eBay 2 ads: L30 campaign reports (daily date rows are clicks-only / gapped).
+        // TCOS uses ads sales as denom when L30 spend exceeds store sales — same as
+        // /ebay2/campaign-ads and /all-marketplace-master.
         $kwRow = DB::table('ebay_2_priority_reports')
-            ->where('report_range', '>=', $startDate2)
-            ->where('report_range', '<=', $endDate2)
-            ->where('report_range', 'NOT LIKE', 'L%')
+            ->whereRaw("UPPER(TRIM(report_range)) = 'L30'")
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(cpc_clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
@@ -585,11 +580,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $kwSales = (float) ($kwRow->sales ?? 0);
         $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT from ebay_2_general_reports (Promoted Listings) - fetch all metrics using daily sum
         $pmtRow = DB::table('ebay_2_general_reports')
-            ->where('report_range', '>=', $startDate2)
-            ->where('report_range', '<=', $endDate2)
-            ->where('report_range', 'NOT LIKE', 'L%')
+            ->whereRaw("UPPER(TRIM(report_range)) = 'L30'")
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
@@ -600,12 +592,16 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pmtSales = (float) ($pmtRow->sales ?? 0);
         $pmtSold = (int) ($pmtRow->sold ?? 0);
 
-        $tacosPercentage = $orderSales > 0 ? (($kwSpent + $pmtSpent) / $orderSales) * 100 : 0;
-        $nPft = $pftPercentage - $tacosPercentage;
-        
-        // N ROI = (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
         $totalAdSpend = $kwSpent + $pmtSpent;
-        $netProfit = $totalPft - $totalAdSpend;
+        $adSales = $kwSales + $pmtSales;
+        $tacosPercentage = \App\Http\Controllers\Campaigns\Ebay2CampaignAdsController::tcosPercent(
+            $totalAdSpend,
+            (float) $orderSales,
+            (float) $adSales
+        );
+        $nPft = $pftPercentage - $tacosPercentage;
+        $impliedSpend = ((float) $orderSales) * ($tacosPercentage / 100);
+        $netProfit = $totalPft - $impliedSpend;
         $nRoi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
 
         return [

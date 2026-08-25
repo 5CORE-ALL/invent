@@ -125,6 +125,13 @@ class CalculateChannelMasterData extends Command
                                 $this->info("  - Listing CVR: " . (isset($channelData['CVR']) ? $channelData['CVR'] . '%' : 'N/A'));
                             }
 
+                            if (in_array($channelName, ['EbayTwo', 'Ebay 2', 'eBay 2', 'eBay Two'], true)) {
+                                $this->newLine();
+                                $this->info("Processing {$channelName} listing CVR (/ebay2-tabulator-view):");
+                                $this->info("  - Total Views: " . ($channelData['Total Views'] ?? 'N/A'));
+                                $this->info("  - Listing CVR: " . (isset($channelData['CVR']) ? $channelData['CVR'] . '%' : 'N/A'));
+                            }
+
                             if ($channelName === 'PLS') {
                                 $plsPercentage = \App\Models\MarketplacePercentage::where('marketplace', 'LIKE', '%PLS%')->value('percentage') ?? 100;
                                 $this->newLine();

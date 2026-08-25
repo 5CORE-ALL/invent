@@ -895,6 +895,9 @@ class Ebay2CampaignAdsController extends Controller
     }
 
     /**
+     * L30 rollup for /ebay2/campaign-ads badges and /advertisement-master.
+     * Daily date rows are often clicks-only / missing days; L30 has spend + sold + ads sales.
+     *
      * @return array{spend: float, clicks: int, sold: int, sales: float}
      */
     private function advertisementMasterReportMetrics(string $table, string $type): array
@@ -905,24 +908,17 @@ class Ebay2CampaignAdsController extends Controller
             return $empty;
         }
 
-        $startDate = now()->subDays(31)->format('Y-m-d');
-        $endDate = now()->format('Y-m-d');
+        $query = DB::table($table)->whereRaw("UPPER(TRIM(report_range)) = 'L30'");
 
         if ($type === 'kw') {
-            $row = DB::table($table)
-                ->where('report_range', '>=', $startDate)
-                ->where('report_range', '<=', $endDate)
-                ->where('report_range', 'NOT LIKE', 'L%')
+            $row = $query
                 ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as clicks')
                 ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales')
                 ->selectRaw('COALESCE(SUM(cpc_attributed_sales), 0) as sold')
                 ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend')
                 ->first();
         } else {
-            $row = DB::table($table)
-                ->where('report_range', '>=', $startDate)
-                ->where('report_range', '<=', $endDate)
-                ->where('report_range', 'NOT LIKE', 'L%')
+            $row = $query
                 ->selectRaw('COALESCE(SUM(clicks), 0) as clicks')
                 ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales')
                 ->selectRaw('COALESCE(SUM(sales), 0) as sold')

@@ -381,6 +381,14 @@
         function saveDotColorsToStorage() {
             try { localStorage.setItem('l7ChannelDotColors', JSON.stringify(lastDotColorByKey)); } catch (e) {}
         }
+        (function hydrateL7DotColors() {
+            try {
+                var raw = localStorage.getItem('l7ChannelDotColors');
+                if (!raw) return;
+                var parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') lastDotColorByKey = parsed;
+            } catch (e) {}
+        })();
         function channelKeyFromRow(row) {
             if (row && row.snapshot_key) return String(row.snapshot_key).trim();
             return snapshotChannelKey((row && (row['Channel '] || row.channel)) || '');

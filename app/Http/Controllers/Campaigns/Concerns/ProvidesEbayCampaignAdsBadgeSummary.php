@@ -35,9 +35,7 @@ trait ProvidesEbayCampaignAdsBadgeSummary
             ? round(($spend / $sales) * 100, 0)
             : ($spend > 0 ? 100 : 0);
         $netSales = static::advertisementMasterNetSales();
-        $tcos = $netSales > 0
-            ? round(($spend / $netSales) * 100, 0)
-            : ($spend > 0 ? 100 : 0);
+        $tcos = self::tcosPercent($spend, $netSales, $sales);
 
         return response()->json([
             'spend' => $spend,
@@ -49,5 +47,24 @@ trait ProvidesEbayCampaignAdsBadgeSummary
             'tcos' => $tcos,
             'net_sales' => $netSales,
         ]);
+    }
+
+    /**
+     * TCOS = spend / store S SALES — same as /ebay/campaign-ads.
+     * When L30 campaign spend is larger than store S SALES (eBay 2 listing
+     * reports vs daily-sales orders), use ads sales as the denominator so TCOS
+     * stays on the same basis as ACOS instead of 100%+.
+     */
+    public static function tcosPercent(float $spend, float $netSales, float $adsSales): int
+    {
+        $denom = $netSales;
+        if ($spend > 0 && $denom > 0 && $spend > $denom && $adsSales > $denom) {
+            $denom = $adsSales;
+        }
+        if ($denom > 0) {
+            return (int) round(($spend / $denom) * 100);
+        }
+
+        return $spend > 0 ? 100 : 0;
     }
 }

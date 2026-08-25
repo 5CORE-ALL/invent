@@ -91,6 +91,7 @@ return [
     ['value' => 'ebay_listing_variation_verify', 'text' => 'Ebay Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'amz_zero_view', 'text' => 'Amazon 0 View', 'group' => 'Marketplace'],
+    ['value' => 'amz_zero_views_diagnostic', 'text' => 'Amazon 0 Views Diagnostic', 'group' => 'Marketplace'],
 
     ['value' => 'amazon_low_visibility', 'text' => 'Amazon Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'amazon_fba_analysis', 'text' => 'Amazon FBA Analysis', 'group' => 'Marketplace'],

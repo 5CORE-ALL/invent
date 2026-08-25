@@ -194,6 +194,7 @@ use App\Http\Controllers\MarketPlace\AmzBuyboxController;
 use App\Http\Controllers\MarketPlace\AmzReviewsController;
 use App\Http\Controllers\MarketPlace\AmzCvrIssuesController;
 use App\Http\Controllers\MarketPlace\AmzTitlesController;
+use App\Http\Controllers\MarketPlace\AmzZeroViewsDiagnosticController;
 use App\Http\Controllers\MarketPlace\EbayListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay3ListingVariationVerifyController;
@@ -4341,6 +4342,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amz-cvr-issues/issue-types', [AmzCvrIssuesController::class, 'storeIssueType'])->name('amz.cvr.issues.types.store');
     Route::delete('/amz-cvr-issues/issue-types/{id}', [AmzCvrIssuesController::class, 'destroyIssueType'])->name('amz.cvr.issues.types.destroy');
     Route::post('/amz-cvr-issues/audit-history', [AmzCvrIssuesController::class, 'storeAuditHistory'])->name('amz.cvr.issues.history.store');
+
+    Route::get('/amz-zero-views-diagnostic', [AmzZeroViewsDiagnosticController::class, 'index'])->name('amz.zero.views.diagnostic');
+    Route::get('/amz-zero-views-diagnostic/data', [AmzZeroViewsDiagnosticController::class, 'data'])->name('amz.zero.views.diagnostic.data');
+    Route::get('/amz-zero-views-diagnostic/export', [AmzZeroViewsDiagnosticController::class, 'export'])->name('amz.zero.views.diagnostic.export');
+    Route::get('/amz-zero-views-diagnostic/filter-options', [AmzZeroViewsDiagnosticController::class, 'filterOptions'])->name('amz.zero.views.diagnostic.filter.options');
+    Route::get('/amz-zero-views-diagnostic/run-status', [AmzZeroViewsDiagnosticController::class, 'runStatus'])->name('amz.zero.views.diagnostic.run.status');
+    Route::get('/amz-zero-views-diagnostic/detail', [AmzZeroViewsDiagnosticController::class, 'detail'])->name('amz.zero.views.diagnostic.detail');
+    Route::post('/amz-zero-views-diagnostic/run', [AmzZeroViewsDiagnosticController::class, 'startRun'])->name('amz.zero.views.diagnostic.run');
+    Route::post('/amz-zero-views-diagnostic/run-selected', [AmzZeroViewsDiagnosticController::class, 'startRun'])->name('amz.zero.views.diagnostic.run.selected');
+    Route::post('/amz-zero-views-diagnostic/run/{asin}', [AmzZeroViewsDiagnosticController::class, 'startRun'])->name('amz.zero.views.diagnostic.run.asin');
+    Route::get('/amz-zero-views-diagnostic/{asin}', [AmzZeroViewsDiagnosticController::class, 'detail'])->name('amz.zero.views.diagnostic.show');
 
     Route::get('/amz-titles', [AmzTitlesController::class, 'index'])->name('amz.titles');
     Route::get('/amz-titles/data', [AmzTitlesController::class, 'data'])->name('amz.titles.data');

@@ -5148,6 +5148,22 @@
                     },
 
                     {
+                        title: "View L7",
+                        field: "Sess7",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 55,
+                        formatter: function(cell) {
+                            const num = Math.round(cell.getValue() || 0);
+                            const formatted = num.toLocaleString('en-US');
+                            if (num < 70) {
+                                return `<span style="color: #a00211; font-weight: 600;">${formatted}</span>`;
+                            }
+                            return formatted;
+                        }
+                    },
+
+                    {
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
@@ -7079,7 +7095,7 @@
 
                 // Basic — identity, CVR, inventory, listing links, dil/views
                 if (
-                    /^(row_select|parent|image_path|\(child\) sku|cvr_l60|cvr_l45|cvr_l30|nr|nrp|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30)$/i.test(f) ||
+                    /^(row_select|parent|image_path|\(child\) sku|cvr_l60|cvr_l45|cvr_l30|nr|nrp|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30|sess7)$/i.test(f) ||
                     /\b(parent|image|sku|cvr|nr\/?rl|nrp|miss|reviews?|buyer|seller|inv|fba|ov\s*l30|dil|a\s*l30|nrl|view)\b/i.test(t)
                 ) {
                     return 'basic';
@@ -7363,7 +7379,19 @@
                     valid.push(f);
                 });
                 existing.forEach(function(f) {
-                    if (!seen[f]) valid.push(f);
+                    if (seen[f]) return;
+                    seen[f] = true;
+                    let inserted = false;
+                    const existingIdx = existing.indexOf(f);
+                    for (let j = existingIdx - 1; j >= 0; j--) {
+                        const prevIdx = valid.indexOf(existing[j]);
+                        if (prevIdx !== -1) {
+                            valid.splice(prevIdx + 1, 0, f);
+                            inserted = true;
+                            break;
+                        }
+                    }
+                    if (!inserted) valid.unshift(f);
                 });
 
                 amazonApplyingColumnOrder = true;

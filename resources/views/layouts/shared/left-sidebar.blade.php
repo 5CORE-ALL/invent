@@ -1248,6 +1248,9 @@
                                         </a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('amz.zero.views.diagnostic') }}">Amazon 0 Views Diagnostic</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('amz.variation.verify') }}">Amz Ads Variation Verification</a>
                                     </li>
                                     <li>

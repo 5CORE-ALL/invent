@@ -1228,6 +1228,93 @@
         }
 
         $(document).ready(function() {
+            var lastDotColorByKey = {};
+            var lastDotPairByKey = {};
+            var invertedDotMetrics = ['acos', 'ads_pct'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var dotTrendsPrefetch = null;
+
+            function getMetricDotColor(channelName, metricKey) {
+                var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
+                return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
+            }
+            function saveDotColorsToStorage() {
+                try {
+                    localStorage.setItem('channelMasterDotColors', JSON.stringify(lastDotColorByKey));
+                } catch (e) { /* ignore */ }
+            }
+            function hydrateDotColorsFromStorage() {
+                try {
+                    var raw = localStorage.getItem('channelMasterDotColors');
+                    if (!raw) return;
+                    var parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        lastDotColorByKey = parsed;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            function applyDotTrendsMap(channels) {
+                if (!channels) return;
+                Object.keys(channels).forEach(function(channel) {
+                    var metrics = channels[channel] || {};
+                    Object.keys(metrics).forEach(function(metric) {
+                        var pair = metrics[metric];
+                        var v1 = pair && pair[0] != null ? parseFloat(pair[0]) : null;
+                        var v2 = pair && pair[1] != null ? parseFloat(pair[1]) : null;
+                        lastDotPairByKey[channel + '_' + metric] = [v1, v2];
+                        if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) {
+                            lastDotColorByKey[channel + '_' + metric] = DEFAULT_DOT_GRAY;
+                            return;
+                        }
+                        var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
+                        lastDotColorByKey[channel + '_' + metric] = v1 === v2 ? DEFAULT_DOT_GRAY
+                            : isInverted ? (v2 < v1 ? '#28a745' : '#dc3545')
+                            : (v2 > v1 ? '#28a745' : '#dc3545');
+                    });
+                });
+                saveDotColorsToStorage();
+            }
+            function channelKeysFromTableData(tableData) {
+                var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
+                var channelKeys = [];
+                for (var i = 0; i < data.length; i++) {
+                    var ch = snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '');
+                    if (ch) channelKeys.push(ch);
+                }
+                return channelKeys;
+            }
+            function paintMetricDots(channelKeys) {
+                document.querySelectorAll('.metric-chart-icon, .ad-chart-icon').forEach(function(el) {
+                    var ch = el.getAttribute('data-channel');
+                    var metric = el.getAttribute('data-metric') || 'ad_spend';
+                    var color = getMetricDotColor(ch, metric);
+                    el.style.color = color;
+                    var prev = el.previousElementSibling;
+                    if (prev && prev.tagName === 'SPAN' && prev.style && String(prev.style.fontWeight) === '600') {
+                        prev.style.color = color;
+                    }
+                });
+                if (typeof colorSummaryBadgeDots === 'function') {
+                    colorSummaryBadgeDots(channelKeys || []);
+                }
+            }
+
+            // Last-visit colors first so the table never paints a full gray row, then
+            // refresh from /channel-metric-dot-trends in parallel with the table AJAX.
+            hydrateDotColorsFromStorage();
+            dotTrendsPrefetch = $.ajax({
+                url: channelMetricDotTrendsUrl || '/channel-metric-dot-trends',
+                type: 'GET',
+                dataType: 'json'
+            }).done(function(response) {
+                if (response && response.success && response.channels) {
+                    applyDotTrendsMap(response.channels);
+                    if (table) {
+                        paintMetricDots(Object.keys(response.channels));
+                    }
+                }
+            });
+
             // Initialize Tabulator
             function marketplaceTableHeight() {
                 const wrap = document.getElementById('marketplace-table-wrapper');
@@ -1309,6 +1396,9 @@
                                 tatBadge.setAttribute('data-exact-value', String(tatRounded));
                                 tatBadge.title = 'TAT = inv ÷ L30 Sales (months of stock): ' + tatRounded.toFixed(2);
                             }
+                        }
+                        if (response.dot_trends) {
+                            applyDotTrendsMap(response.dot_trends);
                         }
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
@@ -3504,71 +3594,32 @@
                 if (table && typeof table.redraw === 'function') table.redraw(true);
             });
 
-            // Initial load only: set column dot color from last different snapshot (same walk-back as chart).
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             function loadMetricDotTrends(tableData) {
-                if (typeof lastDotColorByKey === 'undefined') return;
-                var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
-                var channelKeys = [];
-                for (var i = 0; i < data.length; i++) {
-                    var ch = snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '');
-                    if (ch) channelKeys.push(ch);
-                }
+                var channelKeys = channelKeysFromTableData(tableData);
                 if (channelKeys.length === 0) return;
-                var params = { channels: channelKeys.join(',') };
-                $.ajax({
-                    url: channelMetricDotTrendsUrl || '/channel-metric-dot-trends',
-                    type: 'GET',
-                    data: params,
-                    dataType: 'json'
-                }).done(function(response) {
-                    var invertedMetrics = ['acos', 'ads_pct'];
-                    if (response.success && response.channels) {
-                        Object.keys(response.channels).forEach(function(channel) {
-                            var metrics = response.channels[channel];
-                            Object.keys(metrics).forEach(function(metric) {
-                                var pair = metrics[metric];
-                                var v1 = pair[0] != null ? parseFloat(pair[0]) : null;
-                                var v2 = pair[1] != null ? parseFloat(pair[1]) : null;
-                                lastDotPairByKey[channel + '_' + metric] = [v1, v2];
-                                if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) {
-                                    lastDotColorByKey[channel + '_' + metric] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
-                                    return;
-                                }
-                                var isInverted = invertedMetrics.indexOf(metric) >= 0;
-                                var gray = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
-                                var color = v1 === v2 ? gray : isInverted
-                                    ? (v2 < v1 ? '#28a745' : '#dc3545')
-                                    : (v2 > v1 ? '#28a745' : '#dc3545');
-                                lastDotColorByKey[channel + '_' + metric] = color;
-                            });
-                        });
-                    }
+
+                function finish(channels) {
+                    if (channels) applyDotTrendsMap(channels);
                     for (var c = 0; c < channelKeys.length; c++) {
                         for (var m = 0; m < metricDotMetricKeys.length; m++) {
                             var key = channelKeys[c] + '_' + metricDotMetricKeys[m];
-                            if (lastDotColorByKey[key] === undefined) lastDotColorByKey[key] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
+                            if (lastDotColorByKey[key] === undefined) lastDotColorByKey[key] = DEFAULT_DOT_GRAY;
                         }
                     }
                     saveDotColorsToStorage();
-                    function redrawDots() {
-                        if (typeof table !== 'undefined' && table.redraw) table.redraw(true);
-                        colorSummaryBadgeDots(channelKeys);
-                    }
-                    redrawDots();
-                    setTimeout(redrawDots, 100);
-                    setTimeout(redrawDots, 500);
-                    setTimeout(redrawDots, 1200);
-                }).fail(function() {
-                    for (var c = 0; c < channelKeys.length; c++) {
-                        for (var m = 0; m < metricDotMetricKeys.length; m++) {
-                            lastDotColorByKey[channelKeys[c] + '_' + metricDotMetricKeys[m]] = (typeof DEFAULT_DOT_GRAY !== 'undefined' ? DEFAULT_DOT_GRAY : '#6c757d');
-                        }
-                    }
-                    saveDotColorsToStorage();
-                    if (typeof table !== 'undefined' && table.redraw) table.redraw(true);
-                    colorSummaryBadgeDots(channelKeys);
-                });
+                    paintMetricDots(channelKeys);
+                }
+
+                if (dotTrendsPrefetch && typeof dotTrendsPrefetch.then === 'function') {
+                    dotTrendsPrefetch.done(function(response) {
+                        finish(response && response.success ? response.channels : null);
+                    }).fail(function() {
+                        finish(null);
+                    });
+                    return;
+                }
+
+                finish(null);
             }
 
             function colorSummaryBadgeDots(channelKeys) {
@@ -4415,19 +4466,6 @@
             let adChartAjax = null; // track in-flight request
             let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
             let currentMetricKey = ''; // metric key for channel metric mode
-
-            // Dot colors: same as chart's last-data-point logic (red/green/gray). Set on page load only.
-            var lastDotColorByKey = {};
-            var lastDotPairByKey = {};
-            function getMetricDotColor(channelName, metricKey) {
-                var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
-                return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
-            }
-            function saveDotColorsToStorage() {
-                try {
-                    localStorage.setItem('channelMasterDotColors', JSON.stringify(lastDotColorByKey));
-                } catch (e) { /* ignore */ }
-            }
 
             // Channels that have daily data
             const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'temu2', 'topdawg', 'walmart'];

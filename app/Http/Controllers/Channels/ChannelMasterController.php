@@ -40,6 +40,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
+use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
@@ -1131,6 +1132,210 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * eBay 2 Ads% / TACOS / spend on /all-marketplace-master.
+     * Same L30 campaign totals + TCOS rule as /ebay2/campaign-ads.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveEbayTwoAdsOnChannelRows(array $rows): array
+    {
+        $adMetrics = null;
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->ebayWhichFromChannelName($name) !== 2) {
+                continue;
+            }
+
+            $adMetrics ??= $this->fetchAdMetricsFromTables('ebaytwo');
+            $spend = (float) ($adMetrics['Total Ad Spend'] ?? 0);
+            $adSales = (float) ($adMetrics['ad_sales'] ?? 0);
+            $l30Sales = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+            $gpft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+            $totalPft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+            $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+            $adsPct = Ebay2CampaignAdsController::tcosPercent($spend, $l30Sales, $adSales);
+            $impliedSpend = $l30Sales * ($adsPct / 100);
+            $nPft = $gpft - $adsPct;
+            $nRoi = $cogs > 0 ? (($totalPft - $impliedSpend) / $cogs) * 100 : 0.0;
+
+            $row['KW Spent'] = (float) ($adMetrics['KW Spent'] ?? 0);
+            $row['PMT Spent'] = (float) ($adMetrics['PMT Spent'] ?? 0);
+            $row['Total Ad Spend'] = $spend;
+            $row['Ads%'] = $adsPct.'%';
+            $row['TACOS'] = $adsPct.'%';
+            $row['TACOS %'] = $adsPct.'%';
+            $row['N PFT'] = round($nPft, 2).'%';
+            $row['N ROI'] = round($nRoi, 2);
+            $row['clicks'] = (int) ($adMetrics['clicks'] ?? 0);
+            $row['Clicks'] = (int) ($adMetrics['clicks'] ?? 0);
+            $row['Ad Sales'] = $adSales;
+            $row['ad_sold'] = (int) ($adMetrics['ad_sold'] ?? 0);
+            $row['Ad Sold'] = (int) ($adMetrics['ad_sold'] ?? 0);
+            $row['PMT Clicks'] = (int) ($adMetrics['PMT Clicks'] ?? 0);
+            $row['PMT Sales'] = (float) ($adMetrics['PMT Sales'] ?? 0);
+            $row['PMT Sold'] = (int) ($adMetrics['PMT Sold'] ?? 0);
+            $row['PMT ACOS'] = (float) ($adMetrics['PMT ACOS'] ?? 0);
+            $row['ACOS'] = (float) ($adMetrics['PMT ACOS'] ?? 0);
+            $row['Ads CVR'] = (float) ($adMetrics['PMT CVR'] ?? 0);
+            break;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * eBay 2 listing CVR + views on /all-marketplace-master.
+     * Same formula as /ebay2-tabulator-view CVR 30 / Views badges:
+     *   Σ(eBay L30) ÷ Σ(views) for rows with E Stock > 0 (exclude parent summaries).
+     * Fast path reads the latest amazon_channel_summary_data snapshot so we do
+     * not rescan the full tabulator on every page load.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveEbayTwoListingCvrOnChannelRows(array $rows): array
+    {
+        $snap = null;
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->ebayWhichFromChannelName($name) !== 2) {
+                continue;
+            }
+
+            $snap ??= $this->getEbayTwoListingCvrFromTabulatorSnapshot();
+            if ($snap === null) {
+                break;
+            }
+
+            $row['Total Views'] = $snap['total_views'];
+            $row['CVR'] = $snap['cvr_pct'];
+            $this->syncLiveMapMissViewsToChannelHistory('ebaytwo', $name, [
+                'map' => (int) ($row['Map'] ?? 0),
+                'miss' => (int) ($row['Miss'] ?? 0),
+                'nmap' => (int) ($row['NMap'] ?? 0),
+                'total_views' => $snap['total_views'],
+                'cvr_pct' => $snap['cvr_pct'],
+            ]);
+            $this->backfillEbayTwoListingCvrHistory();
+            break;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Latest /ebay2-tabulator-view daily snapshot (amazon_channel_summary_data).
+     *
+     * @return array{total_views: float, cvr_pct: float}|null
+     */
+    private function getEbayTwoListingCvrFromTabulatorSnapshot(): ?array
+    {
+        $row = AmazonChannelSummary::query()
+            ->where('channel', 'ebay2')
+            ->latest('snapshot_date')
+            ->first();
+        if (! $row) {
+            return null;
+        }
+
+        $sd = is_array($row->summary_data) ? $row->summary_data : [];
+        $views = (float) ($sd['total_views'] ?? 0);
+        $ebayL30 = (float) ($sd['total_ebay_l30'] ?? 0);
+        $cvr = array_key_exists('cvr_percent', $sd) && $sd['cvr_percent'] !== null && $sd['cvr_percent'] !== ''
+            ? round((float) $sd['cvr_percent'], 2)
+            : ($views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0);
+
+        return [
+            'total_views' => ChannelMasterViewsGuard::stabilize('ebaytwo', $views),
+            'cvr_pct' => $cvr,
+        ];
+    }
+
+    /**
+     * Rewrite EbayTwo chart history so listing_cvr matches /ebay2-tabulator-view
+     * (ACS cvr_percent = eBay L30 ÷ views). Master used to recompute Qty ÷ views
+     * against a frozen then exploding views series, which crashed CVR after Aug 7.
+     */
+    private function backfillEbayTwoListingCvrHistory(): void
+    {
+        try {
+            $cached = \Cache::get('ebaytwo_listing_cvr_backfill_v1');
+            if ($cached) {
+                return;
+            }
+
+            $acsRows = AmazonChannelSummary::query()
+                ->where('channel', 'ebay2')
+                ->whereDate('snapshot_date', '>=', now('America/Los_Angeles')->subDays(90)->toDateString())
+                ->orderBy('snapshot_date')
+                ->get();
+
+            $acsByDate = [];
+            $carryCvr = null;
+            $carryViews = null;
+            $carryQty = null;
+            foreach ($acsRows as $acs) {
+                $date = Carbon::parse($acs->snapshot_date)->toDateString();
+                $sd = is_array($acs->summary_data) ? $acs->summary_data : [];
+                $views = (float) ($sd['total_views'] ?? 0);
+                $qty = (float) ($sd['total_ebay_l30'] ?? 0);
+                $cvr = array_key_exists('cvr_percent', $sd) && $sd['cvr_percent'] !== null && $sd['cvr_percent'] !== ''
+                    ? round((float) $sd['cvr_percent'], 2)
+                    : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
+
+                if ($carryViews !== null && ChannelMasterViewsGuard::isCollapsed($views, $carryViews, $qty, $carryQty ?? 0.0)) {
+                    $cvr = $carryCvr;
+                } elseif ($views > 0) {
+                    $carryViews = $views;
+                    $carryQty = $qty;
+                    $carryCvr = $cvr;
+                }
+
+                if ($cvr !== null) {
+                    $acsByDate[$date] = $cvr;
+                }
+            }
+
+            if ($acsByDate === []) {
+                \Cache::put('ebaytwo_listing_cvr_backfill_v1', 1, 3600);
+
+                return;
+            }
+
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->where('channel', 'ebaytwo')
+                ->whereDate('snapshot_date', '>=', now('America/Los_Angeles')->subDays(90)->toDateString())
+                ->orderBy('snapshot_date')
+                ->get();
+
+            $lastCvr = null;
+            foreach ($rows as $row) {
+                $date = Carbon::parse($row->snapshot_date)->toDateString();
+                $cvr = $acsByDate[$date] ?? $lastCvr;
+                if ($cvr === null) {
+                    continue;
+                }
+                $lastCvr = $cvr;
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                $existing = $sd['listing_cvr'] ?? null;
+                if ($existing !== null && $existing !== '' && abs((float) $existing - (float) $cvr) < 0.005) {
+                    continue;
+                }
+                $sd['listing_cvr'] = round((float) $cvr, 2);
+                $row->summary_data = $sd;
+                $row->save();
+            }
+
+            \Cache::put('ebaytwo_listing_cvr_backfill_v1', 1, 86400);
+        } catch (\Throwable $e) {
+            Log::warning('backfillEbayTwoListingCvrHistory failed: '.$e->getMessage());
+        }
+    }
+
+    /**
      * Fast-path Amazon Y Sales = Pacific yesterday from amazon_orders
      * (same window as the Y Sales chart's last point). Without this, the
      * table keeps channel_master_calculated_data.yesterday_sales (e.g. $2,648
@@ -1238,6 +1443,8 @@ class ChannelMasterController extends Controller
             'amazon_l30' => fn (array $r) => $this->overlayLiveAmazonL30SalesOnChannelRows($r),
             'amazon_y' => fn (array $r) => $this->overlayLiveAmazonYSalesOnChannelRows($r),
             'ebay_l30' => fn (array $r) => $this->overlayLiveEbayMetricsOnChannelRows($r),
+            'ebay2_ads' => fn (array $r) => $this->overlayLiveEbayTwoAdsOnChannelRows($r),
+            'ebay2_cvr' => fn (array $r) => $this->overlayLiveEbayTwoListingCvrOnChannelRows($r),
             'ebay_y' => fn (array $r) => $this->overlayLiveEbayYSalesOnChannelRows($r),
             'shopify_l30' => fn (array $r) => $this->overlayLiveShopifyDirectMetricsOnChannelRows($r),
             'shopify_y' => fn (array $r) => $this->overlayLiveShopifyYSalesOnChannelRows($r),
@@ -4460,6 +4667,43 @@ class ChannelMasterController extends Controller
      * @param string $channel ebay, ebaytwo, or ebaythree
      * @return array{kw: float, pmt: float}
      */
+    /**
+     * @return object{c: float|int, s: float, u: float|int, sp: float}|null
+     */
+    private function sumEbayCampaignReportMetrics(string $table, string $type, bool $l30): ?object
+    {
+        if (! Schema::hasTable($table)) {
+            return (object) ['c' => 0, 's' => 0.0, 'u' => 0, 'sp' => 0.0];
+        }
+
+        $query = DB::table($table);
+        if ($l30) {
+            $query->whereRaw("UPPER(TRIM(report_range)) = 'L30'");
+        } else {
+            $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+            $endDate = Carbon::now()->format('Y-m-d');
+            $query->where('report_range', '>=', $startDate)
+                ->where('report_range', '<=', $endDate)
+                ->where('report_range', 'NOT LIKE', 'L%');
+        }
+
+        if ($type === 'kw') {
+            return $query
+                ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as c')
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as s')
+                ->selectRaw('COALESCE(SUM(cpc_attributed_sales), 0) as u')
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as sp')
+                ->first();
+        }
+
+        return $query
+            ->selectRaw('COALESCE(SUM(clicks), 0) as c')
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as s')
+            ->selectRaw('COALESCE(SUM(sales), 0) as u')
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as sp')
+            ->first();
+    }
+
     private function fetchEbayAdSpendBreakdownFromTables(string $channel): array
     {
         $channel = strtolower(trim($channel));
@@ -4482,6 +4726,17 @@ class ChannelMasterController extends Controller
 
         if (!$kwTable || !$pmtTable) {
             return ['kw' => 0.0, 'pmt' => 0.0];
+        }
+
+        // eBay 2 daily date rows are clicks-only / missing days. L30 has spend.
+        if ($channel === 'ebaytwo') {
+            $kw = $this->sumEbayCampaignReportMetrics($kwTable, 'kw', true);
+            $pmt = $this->sumEbayCampaignReportMetrics($pmtTable, 'pmt', true);
+
+            return [
+                'kw' => round((float) ($kw->sp ?? 0), 2),
+                'pmt' => round((float) ($pmt->sp ?? 0), 2),
+            ];
         }
 
         // Sum daily reports (individual date report_ranges) instead of L30 aggregate
@@ -4675,10 +4930,8 @@ class ChannelMasterController extends Controller
                 case 'ebay':
                 case 'ebaytwo':
                 case 'ebaythree': {
-                    // Use daily data sum (individual date report_ranges) instead of L30 aggregate
-                    // Daily data is closer to eBay Seller Hub dashboard values
-                    $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
-                    $endDate = Carbon::now()->format('Y-m-d');
+                    // eBay 1/3: daily date rows (closer to Seller Hub).
+                    // eBay 2: L30 — daily rows are clicks-only / missing most of the month.
                     $kwTable = match ($channel) {
                         'ebay' => 'ebay_priority_reports',
                         'ebaytwo' => 'ebay_2_priority_reports',
@@ -4693,18 +4946,10 @@ class ChannelMasterController extends Controller
                     };
                     if (!$kwTable || !$pmtTable) return $defaults;
 
-                    $kw = DB::table($kwTable)
-                        ->where('report_range', '>=', $startDate)
-                        ->where('report_range', '<=', $endDate)
-                        ->where('report_range', 'NOT LIKE', 'L%')
-                        ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(cpc_attributed_sales), 0) as u, COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as sp')
-                        ->first();
-                    $pmt = DB::table($pmtTable)
-                        ->where('report_range', '>=', $startDate)
-                        ->where('report_range', '<=', $endDate)
-                        ->where('report_range', 'NOT LIKE', 'L%')
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(sales), 0) as u, COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as sp')
-                        ->first();
+                    $useL30 = $channel === 'ebaytwo';
+                    $empty = (object) ['c' => 0, 's' => 0, 'u' => 0, 'sp' => 0];
+                    $kw = $this->sumEbayCampaignReportMetrics($kwTable, 'kw', $useL30) ?? $empty;
+                    $pmt = $this->sumEbayCampaignReportMetrics($pmtTable, 'pmt', $useL30) ?? $empty;
 
                     $kwC = (int) ($kw->c ?? 0); $kwS = (float) ($kw->s ?? 0); $kwU = (int) ($kw->u ?? 0); $kwSp = (float) ($kw->sp ?? 0);
                     $pmtC = (int) ($pmt->c ?? 0); $pmtS = (float) ($pmt->s ?? 0); $pmtU = (int) ($pmt->u ?? 0); $pmtSp = (float) ($pmt->sp ?? 0);
@@ -5256,10 +5501,11 @@ class ChannelMasterController extends Controller
     {
         $metrics = $this->fetchAdMetricsFromTables('ebaytwo');
         $totalAdSpend = (float) ($metrics['Total Ad Spend'] ?? 0);
+        $adSales = (float) ($metrics['ad_sales'] ?? 0);
         $m = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
         $l30SalesVal = (float) ($m->total_sales ?? 0);
 
-        return $l30SalesVal > 0 ? round(($totalAdSpend / $l30SalesVal) * 100, 2) : 0.0;
+        return (float) Ebay2CampaignAdsController::tcosPercent($totalAdSpend, $l30SalesVal, $adSales);
     }
 
     /**
@@ -5413,7 +5659,7 @@ class ChannelMasterController extends Controller
                 $cachedPayload['data'] = $this->overlayLiveReviewsOnChannelRows($cachedPayload['data'] ?? []);
                 $cachedPayload = $this->ensureInventoryExtrasOnPayload($cachedPayload);
 
-                return response()->json($cachedPayload);
+                return response()->json($this->attachCachedDotTrends($cachedPayload));
             }
 
             // Only Active channel_master rows (same as live getViewChannelData).
@@ -5643,7 +5889,7 @@ class ChannelMasterController extends Controller
                 // ignore cache write failures
             }
 
-            return response()->json($payload);
+            return response()->json($this->attachCachedDotTrends($payload));
             
         } catch (\Throwable $e) {
             \Log::error('Error fetching fast channel data: '.$e->getMessage(), [
@@ -8206,19 +8452,21 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics?->total_cogs ?? 0;
         $gProfitPct = $metrics?->pft_percentage ?? 0;
         $gRoi = $metrics?->roi_percentage ?? 0;
-        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
-        $nPft = $metrics?->n_pft ?? 0;
-        $nRoi = $metrics?->n_roi ?? 0;
 
         // Same removal as eBay 1 — see getEbayChannelData() comment. Keeping
         // $l30Orders as marketplace_daily_metrics.total_orders so the master
         // page's "L30 Orders" column shows real order counts, not units.
 
-        // KW/PMT Spend: fetch directly from tables (same logic as Ebay 2 KW Ads & PMT Ads pages)
-        $ebay2Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaytwo');
-        $kwSpent = $ebay2Breakdown['kw'];
-        $pmtSpent = $ebay2Breakdown['pmt'];
-        $totalAdSpend = $kwSpent + $pmtSpent;
+        // KW/PMT + TCOS: same L30 campaign-ads source as /ebay2/campaign-ads.
+        $adMetrics = $this->fetchAdMetricsFromTables('ebaytwo');
+        $kwSpent = (float) ($adMetrics['KW Spent'] ?? 0);
+        $pmtSpent = (float) ($adMetrics['PMT Spent'] ?? 0);
+        $totalAdSpend = (float) ($adMetrics['Total Ad Spend'] ?? ($kwSpent + $pmtSpent));
+        $adSales = (float) ($adMetrics['ad_sales'] ?? 0);
+        $adsPercentage = Ebay2CampaignAdsController::tcosPercent($totalAdSpend, (float) $l30Sales, $adSales);
+        $impliedSpend = ((float) $l30Sales) * ($adsPercentage / 100);
+        $nPft = $gProfitPct - $adsPercentage;
+        $nRoi = $totalCogs > 0 ? (($totalProfit - $impliedSpend) / $totalCogs) * 100 : 0;
 
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
@@ -8226,9 +8474,6 @@ class ChannelMasterController extends Controller
         // L60 profit percentage
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayTwo')->first();
@@ -8258,6 +8503,12 @@ class ChannelMasterController extends Controller
             'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
+            'TACOS'      => round($adsPercentage, 2) . '%',
+            'TACOS %'    => round($adsPercentage, 2) . '%',
+            'clicks'     => (int) ($adMetrics['clicks'] ?? 0),
+            'Clicks'     => (int) ($adMetrics['clicks'] ?? 0),
+            'Ad Sales'   => $adSales,
+            'Ad Sold'    => (int) ($adMetrics['ad_sold'] ?? 0),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -8267,6 +8518,8 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            // Listing CVR = eBay L30 ÷ views (same as /ebay2-tabulator-view CVR 30).
+            'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -8289,7 +8542,7 @@ class ChannelMasterController extends Controller
      * EbayTwo Map/Miss/NMap for Active Channel.
      * Missing L from /listing-ebaytwo; Map / N Map / views from ebay2-tabulator rows.
      *
-     * @return array{map: int, miss: int, nmap: int, total_views: int|float}
+     * @return array{map: int, miss: int, nmap: int, total_views: int|float, cvr_pct?: float}
      */
     private function getEbayTwoLiveMapMissCountsFromListingSource(): array
     {
@@ -8601,6 +8854,7 @@ class ChannelMasterController extends Controller
             $map = 0;
             $nmap = 0;
             $views = 0;
+            $ebayL30 = 0.0;
 
             foreach ($rows as $row) {
                 if (is_object($row)) {
@@ -8625,9 +8879,11 @@ class ChannelMasterController extends Controller
                 $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? '')));
                 $isReq = ($nrReq === 'REQ');
 
-                // Views: traffic to live listings (E Stock > 0, REQ) — unchanged scope.
-                if ($eStock > 0 && $isReq) {
+                // Views + listing CVR: same scope as /ebay2-tabulator-view Views / CVR 30
+                // (E Stock > 0). Do not require REQ — the tabulator badges do not.
+                if ($eStock > 0) {
                     $views += (float) ($row['views'] ?? 0);
+                    $ebayL30 += (float) ($row['eBay L30'] ?? $row['ebay_l30'] ?? 0);
                 }
 
                 // Both Missing L and Missing M are REQ only (nr_req can also be NRL / LATER / NR) and INV > 0.
@@ -8659,12 +8915,18 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            $stableViews = ChannelMasterViewsGuard::stabilize('ebaytwo', (float) $views);
+            $cvrPct = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0.0;
+            $this->backfillEbayTwoListingCvrHistory();
+
             return [
                 'map' => $map,
                 // Missing L from /listing-ebaytwo (DataView NRL + ebay_2_metrics.item_id)
                 'miss' => EbayTwoListingCounts::missingL(),
                 'nmap' => $nmap,
-                'total_views' => ChannelMasterViewsGuard::stabilize('ebaytwo', (float) $views),
+                'total_views' => $stableViews,
+                // Same numerator/denominator as /ebay2-tabulator-view CVR 30 (eBay L30 ÷ views).
+                'cvr_pct' => $cvrPct,
             ];
         } catch (\Throwable $e) {
             Log::warning('eBay 2 live map/miss fallback: ' . $e->getMessage());
@@ -15542,11 +15804,102 @@ class ChannelMasterController extends Controller
                 return $this->allMarketplaceSnapshotKey($c);
             }, explode(',', $channelsParam)))));
 
+            $requestedWindow = intval($request->input('window', 0));
+            $all = $this->rememberChannelMetricDotTrends($requestedWindow);
+            $filtered = $this->filterCachedDotTrends($all, $channelKeys);
+
+            return response()->json(['success' => true, 'channels' => $filtered === [] ? (object) [] : $filtered]);
+        } catch (\Exception $e) {
+            \Log::error('getChannelMetricDotTrends error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error fetching dot trends'], 500);
+        }
+    }
+
+    private function channelMetricDotTrendsCacheKey(int $window): string
+    {
+        return 'amm_dot_trends_w'.$window;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function activeMarketplaceSnapshotKeys(): array
+    {
+        return ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->pluck('channel')
+            ->map(fn ($c) => $this->allMarketplaceSnapshotKey((string) $c))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $all
+     * @param  list<string>  $channelKeys
+     * @return array<string, array<string, array{0: mixed, 1: mixed}>>
+     */
+    private function filterCachedDotTrends(array $all, array $channelKeys): array
+    {
+        if ($channelKeys === []) {
+            return $all;
+        }
+
+        $filtered = [];
+        foreach ($channelKeys as $key) {
+            if (isset($all[$key])) {
+                $filtered[$key] = $all[$key];
+            }
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * @return array<string, array<string, array{0: mixed, 1: mixed}>>
+     */
+    private function rememberChannelMetricDotTrends(int $window = 0, bool $computeIfMissing = true): array
+    {
+        $cacheKey = $this->channelMetricDotTrendsCacheKey($window);
+        $cached = \Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+        if (! $computeIfMissing) {
+            return [];
+        }
+
+        $out = $this->computeChannelMetricDotTrends($this->activeMarketplaceSnapshotKeys(), $window);
+        \Cache::put($cacheKey, $out, 180);
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function attachCachedDotTrends(array $payload, int $window = 0): array
+    {
+        $cached = $this->rememberChannelMetricDotTrends($window, false);
+        if ($cached !== []) {
+            $payload['dot_trends'] = $cached;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  list<string>  $channelKeys
+     * @return array<string, array<string, array{0: mixed, 1: mixed}>>
+     */
+    private function computeChannelMetricDotTrends(array $channelKeys, int $requestedWindow): array
+    {
             if (empty($channelKeys)) {
-                return response()->json(['success' => true, 'channels' => (object)[]]);
+                return [];
             }
 
-            $requestedWindow = intval($request->input('window', 0));
             $useDailyWindow = $requestedWindow === 1;
             $useL7Window = $requestedWindow >= 7;
 
@@ -15569,7 +15922,7 @@ class ChannelMasterController extends Controller
                     }
                 }
 
-                return response()->json(['success' => true, 'channels' => $out]);
+                return $out;
             }
 
             // Same metricMap as getChannelMetricChartData so value extraction matches chart exactly
@@ -15596,9 +15949,6 @@ class ChannelMasterController extends Controller
                 'tat' => 'tat',
             ];
             $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
-            $requestedWindow = intval($request->input('window', 0));
-            $useDailyWindow = $requestedWindow === 1;
-            $useL7Window = $requestedWindow >= 7;
             $out = [];
 
             // Today's snapshot is included in the comparison: saveChannelDailySummaries
@@ -15728,11 +16078,7 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            return response()->json(['success' => true, 'channels' => $out]);
-        } catch (\Exception $e) {
-            \Log::error('getChannelMetricDotTrends error: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Error fetching dot trends'], 500);
-        }
+            return $out;
     }
 
     /**
@@ -15801,7 +16147,7 @@ class ChannelMasterController extends Controller
             ? strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)))
             : '';
 
-        return in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'reverb'], true);
+        return in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'reverb', 'ebaytwo', 'ebay2'], true);
     }
 
     /**
@@ -17027,6 +17373,10 @@ class ChannelMasterController extends Controller
             
             foreach (['ebay', 'ebaytwo', 'ebaythree'] as $repairChannel) {
                 ChannelMasterViewsGuard::repairChannel($repairChannel);
+            }
+
+            foreach ([0, 1, 7] as $dotWindow) {
+                \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
             }
 
             Log::info("Channel Master daily summaries saved for {$today}", [

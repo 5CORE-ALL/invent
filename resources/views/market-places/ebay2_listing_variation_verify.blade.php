@@ -1,13 +1,13 @@
-@extends('layouts.vertical', ['title' => 'Ebay 2 Listing Variation Verify'])
+@extends('layouts.vertical', ['title' => 'Ebay 2 Listing Variation Verify', 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         #ebay2-lvv-wrap .tabulator {
             border: 1px solid #dee2e6; border-radius: 8px; font-size: 13px;
+            height: 100% !important;
         }
         #ebay2-lvv-wrap .tabulator .tabulator-header {
             background: #f8f9fa; border-bottom: 1px solid #dee2e6;
@@ -53,7 +53,17 @@
             opacity: 0.4 !important; cursor: not-allowed !important;
         }
         #ebay2-lvv-wrap .tabulator .tabulator-footer .tabulator-page-counter { margin: 0 0.5rem; font-size: 12px; color: #334155; }
-        #ebay2-lvv-wrap { overflow-x: auto; overflow-y: visible; }
+        #ebay2-lvv-wrap {
+            display: flex;
+            flex-direction: column;
+            min-height: 280px;
+            overflow: hidden;
+        }
+        #ebay2-listing-variation-verify-table {
+            flex: 1 1 auto;
+            min-height: 0;
+            width: 100%;
+        }
 
         #ebay2-lvv-wrap .tabulator-row.ebay2-lvv-parent-row,
         #ebay2-lvv-wrap .tabulator-row.ebay2-lvv-parent-row .tabulator-cell {
@@ -133,13 +143,13 @@
                         <span id="ebay2-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="ebay2-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
                         <button type="button" id="ebay2-lvv-refresh-btn" class="btn btn-sm btn-outline-primary ebay2-raw-icon-btn" title="Refresh" aria-label="Refresh">
-                            <i class="fa fa-refresh"></i>
+                            <i class="ri-refresh-line"></i>
                         </button>
                         <button type="button" id="ebay2-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull eBay listings (inventory report)">
-                            <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
+                            <i class="ri-download-cloud-2-line me-1"></i> Pull Listings
                         </button>
                         <button type="button" id="ebay2-lvv-export-btn" class="btn btn-sm btn-success" title="Export filtered rows to Excel">
-                            <i class="fas fa-file-excel me-1"></i> Export Excel
+                            <i class="ri-file-excel-2-line me-1"></i> Export Excel
                         </button>
                         <span class="text-muted small" id="ebay2-lvv-status-line"></span>
                     </div>
@@ -161,7 +171,7 @@
                             </div>
                             <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small">
                                 <span class="ebay2-lvv-sku-chip ebay2-lvv-sku-chip--missing">Missing</span>
-                                <span class="text-muted">in CP Master, not listed on eBay 2</span>
+                                <span class="text-muted">in CP Master, not listed on eBay 2, INV &gt; 0</span>
                                 <span class="ebay2-lvv-sku-chip ebay2-lvv-sku-chip--extra">Excess</span>
                                 <span class="text-muted">listed on eBay 2, not in CP Master</span>
                             </div>
@@ -182,11 +192,34 @@
 @endsection
 
 @section('script')
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         let ebay2LvvTable = null;
         let ebay2LvvAllData = [];
+        const ebay2LvvDataUrl = '{{ route("ebay2.listing.variation.verify.data") }}';
+        const ebay2LvvXlsxUrl = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+
+        function ebay2LvvLoadXlsx() {
+            return new Promise(function (resolve, reject) {
+                if (typeof XLSX !== 'undefined') {
+                    resolve();
+                    return;
+                }
+                const existing = document.querySelector('script[data-ebay2-lvv-xlsx]');
+                if (existing) {
+                    existing.addEventListener('load', function () { resolve(); });
+                    existing.addEventListener('error', function () { reject(new Error('xlsx')); });
+                    return;
+                }
+                const s = document.createElement('script');
+                s.src = ebay2LvvXlsxUrl;
+                s.async = true;
+                s.setAttribute('data-ebay2-lvv-xlsx', '1');
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('xlsx')); };
+                document.head.appendChild(s);
+            });
+        }
 
         function ebay2LvvEscapeHtml(str) {
             return String(str ?? '')
@@ -324,7 +357,20 @@
         }
 
         function ebay2LvvExportExcel() {
-            if (!ebay2LvvTable || typeof XLSX === 'undefined') {
+            if (!ebay2LvvTable) {
+                alert('Table is not ready yet.');
+                return;
+            }
+
+            ebay2LvvLoadXlsx().then(function () {
+                ebay2LvvExportExcelBody();
+            }).catch(function () {
+                alert('Export library not loaded. Please refresh and try again.');
+            });
+        }
+
+        function ebay2LvvExportExcelBody() {
+            if (typeof XLSX === 'undefined') {
                 alert('Export library not loaded. Please refresh and try again.');
                 return;
             }
@@ -370,17 +416,36 @@
             XLSX.writeFile(wb, 'ebay2_listing_variation_verify_' + stamp + '.xlsx');
         }
 
+        function ebay2LvvFitHeight() {
+            const wrap = document.getElementById('ebay2-lvv-wrap');
+            if (!wrap) return;
+            const top = wrap.getBoundingClientRect().top;
+            const gap = 12;
+            const h = Math.max(280, Math.floor(window.innerHeight - top - gap));
+            wrap.style.height = h + 'px';
+            if (ebay2LvvTable) {
+                ebay2LvvTable.setHeight('100%');
+            }
+        }
+
         $(document).ready(function () {
+            ebay2LvvFitHeight();
+            $(window).on('resize', function () {
+                clearTimeout(window._ebay2LvvResizeTimer);
+                window._ebay2LvvResizeTimer = setTimeout(ebay2LvvFitHeight, 100);
+            });
+
             ebay2LvvTable = new Tabulator('#ebay2-listing-variation-verify-table', {
-                ajaxURL: '{{ route("ebay2.listing.variation.verify.data") }}',
+                ajaxURL: ebay2LvvDataUrl,
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     ebay2LvvAllData = rows;
                     if (window.ParentExpand) ParentExpand.captureDataset(rows);
                     if (response && response.meta) ebay2LvvUpdateMeta(response.meta);
+                    setTimeout(ebay2LvvFitHeight, 0);
                     return rows;
                 },
-                height: '650px',
+                height: '100%',
                 layout: 'fitColumns',
                 layoutColumnsOnNewData: true,
                 pagination: true,
@@ -520,7 +585,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
                 $btn.prop('disabled', true);
-                ebay2LvvTable.setData('{{ route("ebay2.listing.variation.verify.data") }}')
+                ebay2LvvTable.setData(ebay2LvvDataUrl + '?refresh=1')
                     .finally(function () { $btn.prop('disabled', false); });
             });
 
@@ -548,7 +613,7 @@
                     success: function (res) {
                         if (res.status === 200) {
                             $('#ebay2-lvv-status-line').text(res.message || 'Pull completed.');
-                            ebay2LvvTable.setData('{{ route("ebay2.listing.variation.verify.data") }}');
+                            ebay2LvvTable.setData(ebay2LvvDataUrl + '?refresh=1');
                         } else {
                             alert(res.message || 'Pull failed.');
                         }
@@ -561,7 +626,7 @@
                     },
                     complete: function () {
                         $btn.prop('disabled', false)
-                            .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Listings');
+                            .html('<i class="ri-download-cloud-2-line me-1"></i> Pull Listings');
                     }
                 });
             });

@@ -269,9 +269,11 @@ class AdvertisementMasterController extends Controller
             $marketplace = (string) ($row['marketplace'] ?? 'amazon');
             $netSales = (float) ($netSalesByMarketplace[$marketplace] ?? 0);
             $spend = (float) ($row['spend'] ?? 0);
-            $row['tcos'] = $netSales > 0
-                ? round(($spend / $netSales) * 100, 0)
-                : ($spend > 0 ? 100 : 0);
+            $row['tcos'] = Ebay2CampaignAdsController::tcosPercent(
+                $spend,
+                $netSales,
+                (float) ($row['sales'] ?? 0)
+            );
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
                 $this->applyTcosToRows($row['_children'], $netSalesByMarketplace);

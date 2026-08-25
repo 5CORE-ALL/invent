@@ -364,6 +364,7 @@
                             'Marketplace' => [
                                 ['value' => 'amazon_analytics', 'text' => 'Amz Analytics'],
                                 ['value' => 'amz_zero_view', 'text' => 'Amz 0 View'],
+                                ['value' => 'amz_zero_views_diagnostic', 'text' => 'Amazon 0 Views Diagnostic'],
                                 ['value' => 'amazon_low_visibility', 'text' => 'Amz Low Visibility'],
                                 ['value' => 'amazon_fba_analysis', 'text' => 'Amz FBA Analysis'],
                                 ['value' => 'fba_inv_age', 'text' => 'FBA INV AGE'],
