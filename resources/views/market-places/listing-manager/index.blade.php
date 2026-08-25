@@ -2608,7 +2608,7 @@
             if ($btn.data('loading')) return;
             $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
             $.ajax({
-                url: "{{ route('listing.manager.product.save') }}",
+                url: "{{ url('/listing-manager/product/save') }}",
                 method: 'POST',
                 data: collectProductEditFields(),
                 success: function (res) {
@@ -2804,7 +2804,7 @@
             let fail = 0;
             try {
                 await $.ajax({
-                    url: "{{ route('listing.manager.product.save') }}",
+                    url: "{{ url('/listing-manager/product/save') }}",
                     method: 'POST',
                     data: fields,
                     timeout: 30000,
@@ -2824,7 +2824,7 @@
                 setPushRowStatus(id, 'updating', 'Updating ' + name + '…');
                 try {
                     const res = await $.ajax({
-                        url: "{{ route('listing.manager.product.push') }}",
+                        url: "{{ url('/listing-manager/product/push') }}",
                         method: 'POST',
                         data: Object.assign({}, fields, { channel_ids: [id], parts, skip_save: 1 }),
                         timeout: 120000,
@@ -3007,7 +3007,7 @@
             const source = String($btn.attr('data-master-source') || '');
             const idleHtml = $btn.html();
             $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
-            $.getJSON("{{ route('listing.manager.product.from-master') }}", { sku, source })
+            $.getJSON("{{ url('/listing-manager/product/from-master') }}", { sku, source })
                 .done(function (res) {
                     if (!res.success) {
                         toast(res.message || 'Load failed.', 'error');
