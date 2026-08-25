@@ -7,7 +7,6 @@ use App\Models\AliexpressOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\AliExpressApiService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -370,16 +369,18 @@ class AliexpressOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('aliexpress');
         $queue = MarketplaceManagerRegistry::queueFor('aliexpress');
-        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
-            AliexpressOrderMetric::query()
-                ->where('import_status', 'queued')
-                ->whereNull('shopify_order_id')
-                ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
-                ->update(['import_status' => 'ready']);
-        }
+        MarketplaceShopifyImportQueue::releaseStuckQueued(
+            AliexpressOrderMetric::class,
+            $queue,
+            function ($q) {
+                $q->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00');
+            }
+        );
 
         $orders = AliexpressOrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
             ->where(function ($q) {
                 $q->whereNull('import_status')
@@ -423,10 +424,15 @@ class AliexpressOrderSyncService
                 continue;
             }
 
-            ImportAliexpressOrderToShopify::dispatch((int) $order->id);
+            MarketplaceShopifyImportQueue::push(
+                new ImportAliexpressOrderToShopify((int) $order->id),
+                $queue
+            );
             AliexpressOrderMetric::query()
                 ->where('order_id', $orderId)
-                ->whereNull('shopify_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
                 ->update(['import_status' => 'queued']);
             $dispatched++;
             if ($dispatched >= 200) {

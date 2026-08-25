@@ -7,7 +7,6 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\TopDawgOrderMetric;
 use App\Services\TopDawgApiService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -104,15 +103,12 @@ class TopDawgOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('topdawg');
         $queue = MarketplaceManagerRegistry::queueFor('topdawg');
-        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
-            TopDawgOrderMetric::query()
-                ->where('import_status', 'queued')
-                ->whereNull('shopify_order_id')
-                ->update(['import_status' => 'ready']);
-        }
+        MarketplaceShopifyImportQueue::releaseStuckQueued(TopDawgOrderMetric::class, $queue);
 
         $orders = TopDawgOrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
@@ -156,7 +152,10 @@ class TopDawgOrderSyncService
             }
 
             $row->update(['import_status' => 'queued']);
-            ImportTopDawgOrderToShopify::dispatch((int) $row->id);
+            MarketplaceShopifyImportQueue::push(
+                new ImportTopDawgOrderToShopify((int) $row->id),
+                $queue
+            );
             $dispatched++;
             if ($dispatched >= 200) {
                 break;

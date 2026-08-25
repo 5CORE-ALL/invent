@@ -83,14 +83,15 @@ class ImportAmazonOrderToShopify implements ShouldQueue, ShouldBeUnique
         }
 
         $status = $pushService->lastApiStatus ?? null;
-        if ($status === 429 || ($status !== null && $status >= 500)) {
+        $reason = $pushService->lastFailureReason ?? null;
+        if (\App\Services\MarketplaceManager\MarketplaceShopifyImportQueue::isRetryableShopifyFailure($status, $reason)) {
             Log::warning('ImportAmazonOrderToShopify: temporary Shopify error, will retry', [
                 'amazon_order_id' => $order->amazon_order_id,
                 'status' => $status,
-                'reason' => $pushService->lastFailureReason ?? null,
+                'reason' => $reason,
             ]);
 
-            throw new RuntimeException($pushService->lastFailureReason ?: "Shopify HTTP {$status}");
+            throw new RuntimeException($reason ?: "Shopify HTTP {$status}");
         }
 
         $order->update(['import_status' => 'import_failed']);

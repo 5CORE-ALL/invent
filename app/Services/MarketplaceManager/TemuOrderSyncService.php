@@ -279,7 +279,9 @@ class TemuOrderSyncService
         });
 
         $query = TemuOrder::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->whereNotNull('parent_order_time')
             ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'))
             ->where(function ($q) {
@@ -295,7 +297,7 @@ class TemuOrderSyncService
 
         $dispatched = 0;
         $seenParents = [];
-        $maxDispatch = 40;
+        $maxDispatch = 120;
         foreach ($query->get() as $row) {
             if ($dispatched >= $maxDispatch) {
                 break;

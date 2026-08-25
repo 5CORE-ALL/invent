@@ -42,7 +42,7 @@ class MarketplaceShopifyImportQueue
             $constrain($query);
         }
 
-        $ids = $query->pluck('id')
+        $ids = $query->limit(4000)->pluck('id')
             ->map(static fn ($id) => (int) $id)
             ->filter(static fn ($id) => $id > 0)
             ->values()
@@ -52,27 +52,38 @@ class MarketplaceShopifyImportQueue
             return 0;
         }
 
-        $blob = DB::table('jobs')->where('queue', $queue)->pluck('payload')->implode("\n");
+        $payloads = DB::table('jobs')->where('queue', $queue)->pluck('payload');
 
         $stuck = [];
         foreach ($ids as $id) {
-            if (self::payloadReferencesId($blob, $id)) {
-                continue;
+            $referenced = false;
+            foreach ($payloads as $payload) {
+                if (self::payloadReferencesId((string) $payload, $id)) {
+                    $referenced = true;
+                    break;
+                }
             }
-            $stuck[] = $id;
+            if (! $referenced) {
+                $stuck[] = $id;
+            }
         }
 
         if ($stuck === []) {
             return 0;
         }
 
-        return (int) $modelClass::query()
-            ->whereIn('id', $stuck)
-            ->where('import_status', 'queued')
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->update(['import_status' => 'ready']);
+        $updated = 0;
+        foreach (array_chunk($stuck, 500) as $chunk) {
+            $updated += (int) $modelClass::query()
+                ->whereIn('id', $chunk)
+                ->where('import_status', 'queued')
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
+                ->update(['import_status' => 'ready']);
+        }
+
+        return $updated;
     }
 
     public static function push(object $job, string $queue): void
@@ -86,6 +97,27 @@ class MarketplaceShopifyImportQueue
         }
 
         Queue::connection('database')->pushOn($queue, $job);
+    }
+
+    /**
+     * Network / Shopify 5xx / rate-limit failures should retry instead of
+     * permanently marking import_failed (fail-closed duplicate check included).
+     */
+    public static function isRetryableShopifyFailure(?int $status, ?string $reason): bool
+    {
+        if ($status === 429 || ($status !== null && $status >= 500)) {
+            return true;
+        }
+
+        $reason = (string) $reason;
+        if ($reason === '') {
+            return false;
+        }
+
+        return stripos($reason, 'cURL error') !== false
+            || stripos($reason, 'timed out') !== false
+            || stripos($reason, 'Connection refused') !== false
+            || stripos($reason, 'SSL certificate') !== false;
     }
 
     /**

@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Log;
 class DispatchUnpushedMarketplaceShopifyImports extends Command
 {
     protected $signature = 'mm:dispatch-unpushed-shopify
-        {--marketplace= : Only this MM slug (tiktok, amazon, …)}';
+        {--marketplace= : Only this MM slug (tiktok, amazon, …)}
+        {--passes=3 : Repeat dispatch per channel so stuck queued rows drain}';
 
     protected $description = 'Dispatch Shopify import jobs for unpushed Marketplace Manager orders';
 
@@ -33,10 +34,19 @@ class DispatchUnpushedMarketplaceShopifyImports extends Command
             $map = [$only => $map[$only]];
         }
 
+        $passes = max(1, min(8, (int) $this->option('passes')));
         $total = 0;
         foreach ($map as $slug => $class) {
             try {
-                $n = (int) app($class)->dispatchImportsForNewOrders();
+                $n = 0;
+                $channelPasses = $slug === 'tiktok' ? 1 : $passes;
+                for ($i = 0; $i < $channelPasses; $i++) {
+                    $batch = (int) app($class)->dispatchImportsForNewOrders();
+                    $n += $batch;
+                    if ($batch === 0) {
+                        break;
+                    }
+                }
                 $total += $n;
                 if ($n > 0) {
                     $this->info("{$slug}: queued {$n} import job(s).");

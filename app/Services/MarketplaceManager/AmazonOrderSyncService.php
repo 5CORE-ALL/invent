@@ -162,7 +162,7 @@ class AmazonOrderSyncService
             })
             ->where('order_date', '>=', $cutoff)
             ->orderBy('id')
-            ->limit(250)
+            ->limit(500)
             ->get([
                 'id',
                 'amazon_order_id',

@@ -6,7 +6,6 @@ use App\Models\ReverbOrderMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Services\ReverbManagerApiService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -424,16 +423,18 @@ class ReverbOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('reverb');
         $queue = MarketplaceManagerRegistry::queueFor('reverb');
-        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
-            ReverbOrderMetric::query()
-                ->where('import_status', 'queued')
-                ->whereNull('shopify_order_id')
-                ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
-                ->update(['import_status' => 'ready']);
-        }
+        MarketplaceShopifyImportQueue::releaseStuckQueued(
+            ReverbOrderMetric::class,
+            $queue,
+            function ($q) {
+                $q->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00');
+            }
+        );
 
         $orders = ReverbOrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where('order_date', '>=', self::MIN_ORDER_DATE.' 00:00:00')
             ->where(function ($q) {
                 $q->whereNull('import_status')
@@ -483,12 +484,17 @@ class ReverbOrderSyncService
                 continue;
             }
 
-            \App\Jobs\ImportReverbManagerOrderToShopify::dispatch((int) $order->id);
+            MarketplaceShopifyImportQueue::push(
+                new \App\Jobs\ImportReverbManagerOrderToShopify((int) $order->id),
+                $queue
+            );
             ReverbOrderMetric::query()
                 ->where(function ($q) use ($orderRef) {
                     $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
                 })
-                ->whereNull('shopify_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
                 ->update(['import_status' => 'queued']);
             $dispatched++;
             if ($dispatched >= 200) {

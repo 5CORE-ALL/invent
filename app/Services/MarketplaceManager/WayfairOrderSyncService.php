@@ -114,7 +114,9 @@ class WayfairOrderSyncService
         $queue = MarketplaceManagerRegistry::queueFor('wayfair');
         MarketplaceShopifyImportQueue::releaseStuckQueued(WayfairDailyData::class, $queue);
         $query = WayfairDailyData::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
@@ -123,7 +125,7 @@ class WayfairOrderSyncService
                 $q->where('po_date', '>=', now()->subDays(14)->toDateString());
             })
             ->orderByDesc('id')
-            ->limit(50);
+            ->limit(200);
 
         $dispatched = 0;
         foreach ($query->get() as $row) {

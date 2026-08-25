@@ -115,7 +115,9 @@ class MacyOrderSyncService
         $queue = MarketplaceManagerRegistry::queueFor('macy');
         MarketplaceShopifyImportQueue::releaseStuckQueued(MacyOrderMetric::class, $queue);
         $query = MacyOrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
@@ -124,7 +126,7 @@ class MacyOrderSyncService
                 $q->where('order_created_at', '>=', now()->subDays(14));
             })
             ->orderByDesc('id')
-            ->limit(50);
+            ->limit(200);
 
         $dispatched = 0;
         foreach ($query->get() as $row) {

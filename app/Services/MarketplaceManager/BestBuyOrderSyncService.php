@@ -115,7 +115,9 @@ class BestBuyOrderSyncService
         $queue = MarketplaceManagerRegistry::queueFor('bestbuy');
         MarketplaceShopifyImportQueue::releaseStuckQueued(BestBuyOrderMetric::class, $queue);
         $query = BestBuyOrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
@@ -124,7 +126,7 @@ class BestBuyOrderSyncService
                 $q->where('order_created_at', '>=', now()->subDays(14));
             })
             ->orderByDesc('id')
-            ->limit(50);
+            ->limit(200);
 
         $dispatched = 0;
         foreach ($query->get() as $row) {
