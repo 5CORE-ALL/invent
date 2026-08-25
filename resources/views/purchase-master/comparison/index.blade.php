@@ -4621,6 +4621,35 @@ document.addEventListener('DOMContentLoaded', function () {
         return formats;
     }
 
+    function syncDimWtValuesToDom(cells) {
+        const specCol = detectSpecColumnIndex(cells || currentSheetCells);
+        const fiveCoreCol = Math.max(0, specCol - 1);
+        const labels = [];
+        INNER_PKG_SECTION.rows.forEach(function (row) { labels.push(row.label); });
+        CTN_PKG_SECTION.rows.forEach(function (row) { labels.push(row.label); });
+        labels.forEach(function (label) {
+            const rowIndex = findExactSpecRowIndex(cells || currentSheetCells, label, specCol);
+            if (rowIndex === null) {
+                return;
+            }
+            const value = String(((cells || currentSheetCells)[rowIndex] || [])[fiveCoreCol] ?? '');
+            if (!value) {
+                return;
+            }
+            const cell = document.querySelector(
+                '#comparison-cd-sheet-body .cd-sheet-cell[data-row="' + rowIndex + '"][data-col="' + fiveCoreCol + '"]'
+            );
+            if (!cell || cell.getAttribute('contenteditable') !== 'true') {
+                return;
+            }
+            if (String(cell.textContent || '').trim() !== '') {
+                return;
+            }
+            cell.textContent = value;
+            cell.dataset.value = value;
+        });
+    }
+
     function updateQcIssuesBadge(qcIssues) {
         const btn = document.getElementById('comparison-cd-qc-issues-btn');
         const dot = document.getElementById('comparison-cd-qc-issues-dot');
@@ -8124,10 +8153,11 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!sheetEditorHydrating) {
                 readCellsFromEditor({ expandImages: false });
             }
-            // Memory-only: fill empty 5 Core dim/wt cells. Never splice rows or
-            // renderSheetEditor here — that is what made freshly typed cells vanish.
+            // Memory + in-place DOM only. Never splice rows or renderSheetEditor
+            // here — that is what made freshly typed cells vanish.
             currentSheetCells = applyDimWtDataToSheet(currentSheetCells, currentDimWtData, { migrate: false });
             currentSheetFormats = applyDimWtSectionFormats(currentSheetCells, currentSheetFormats);
+            syncDimWtValuesToDom(currentSheetCells);
         }, 250);
     }
 

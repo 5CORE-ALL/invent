@@ -1572,7 +1572,9 @@ class ComparisonSheetService
         while (count($cells[$priceRow]) <= $fiveCoreCol) {
             $cells[$priceRow][] = '';
         }
-        $cells[$priceRow][$fiveCoreCol] = $cpText;
+        if (trim((string) ($cells[$priceRow][$fiveCoreCol] ?? '')) === '') {
+            $cells[$priceRow][$fiveCoreCol] = $cpText;
+        }
 
         // Keep Supplier Name aligned with the 5 Core column when blank.
         $supplierNameRow = null;

@@ -441,8 +441,24 @@ class ComparisonController extends Controller
 
         $this->linkedSkuGroupService->reset();
         $skuGroup = $this->normalizeSkuGroup($sku, $linkedSkus);
-        $sharedSheet = $this->resolveSharedSheetSku($skuGroup);
-        $sheetSku = (string) ($sharedSheet['sheet_sku'] ?? $sku);
+
+        // Prefer this SKU's own stored sheet. Falling back to a sibling while
+        // the user was typing on a blank grid made their edits vanish on reload.
+        $ownFilePayload = $this->sheetStorage->load($sku);
+        $ownHasStoredSheet = (is_array($ownFilePayload) && ! empty($ownFilePayload['cells']))
+            || ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+                ->whereNotNull('sheet_data')
+                ->exists();
+        if ($ownHasStoredSheet) {
+            $sheetSku = $sku;
+            $sharedSheet = [
+                'sheet_sku' => $sku,
+                'has_sheet_data' => $this->skuHasSheetContent($sku),
+            ];
+        } else {
+            $sharedSheet = $this->resolveSharedSheetSku($skuGroup);
+            $sheetSku = (string) ($sharedSheet['sheet_sku'] ?? $sku);
+        }
 
         $sharedClink = $this->linkedSkuGroupService->resolveSharedClink($skuGroup);
         $clink = (string) ($sharedClink['clink'] ?? $this->clinkForSku($sku));
@@ -481,35 +497,41 @@ class ComparisonController extends Controller
         // Extract base64 / legacy placeholders into stable photo files + DB-safe tokens.
         // Persist in the stored column order — do not write the price-sorted grid back
         // on GET (that parked photos on the wrong supplier after the next save).
+        $hadStoredSheet = $fileCells !== null
+            || (is_array($record?->sheet_data['cells'] ?? null) && $record->sheet_data['cells'] !== []);
+        $cellsBeforePhotos = $cells;
         $cells = $this->sheetStorage->persistPhotosInCells($sheetSku, $cells);
         $browserCells = $this->sheetService->moveLowestPriceSupplierAfterSpec(
             $this->sheetStorage->cellsForBrowser($cells, $sheetSku)
         );
-        // Keep migrated photo tokens in file + DB (Google Sheet no longer required for photos).
-        $this->sheetStorage->save($sheetSku, array_merge(
-            is_array($filePayload) ? $filePayload : [],
-            [
-                'cells' => $cells,
-                'formats' => $formats,
-                'parent' => $record?->parent ?? ($filePayload['parent'] ?? null),
-                'google_sheet_url' => $record?->google_sheet_url
-                    ?? ($filePayload['google_sheet_url'] ?? null),
-                'google_sheet_tab' => $record?->google_sheet_tab
-                    ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'),
-            ]
-        ));
-        ComparisonData::updateOrCreate(
-            ['sku' => $sheetSku],
-            [
-                'parent' => $record?->parent ?? ($filePayload['parent'] ?? null),
-                'sheet_data' => $this->sheetStorage->sheetDataForDatabase($cells, $formats),
-                'google_sheet_url' => $record?->google_sheet_url
-                    ?? ($filePayload['google_sheet_url'] ?? null),
-                'google_sheet_tab' => $record?->google_sheet_tab
-                    ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'),
-                'updated_by' => $record?->updated_by ?? ($filePayload['updated_by'] ?? null),
-            ]
-        );
+        // GET must not write a default/blank template — that raced with autosave
+        // and wiped cells the user had just typed on an empty sheet.
+        if ($hadStoredSheet && $this->sheetCellsDiffer($cellsBeforePhotos, $cells)) {
+            $this->sheetStorage->save($sheetSku, array_merge(
+                is_array($filePayload) ? $filePayload : [],
+                [
+                    'cells' => $cells,
+                    'formats' => $formats,
+                    'parent' => $record?->parent ?? ($filePayload['parent'] ?? null),
+                    'google_sheet_url' => $record?->google_sheet_url
+                        ?? ($filePayload['google_sheet_url'] ?? null),
+                    'google_sheet_tab' => $record?->google_sheet_tab
+                        ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'),
+                ]
+            ));
+            ComparisonData::updateOrCreate(
+                ['sku' => $sheetSku],
+                [
+                    'parent' => $record?->parent ?? ($filePayload['parent'] ?? null),
+                    'sheet_data' => $this->sheetStorage->sheetDataForDatabase($cells, $formats),
+                    'google_sheet_url' => $record?->google_sheet_url
+                        ?? ($filePayload['google_sheet_url'] ?? null),
+                    'google_sheet_tab' => $record?->google_sheet_tab
+                        ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'),
+                    'updated_by' => $record?->updated_by ?? ($filePayload['updated_by'] ?? null),
+                ]
+            );
+        }
         $autoFormats = $this->sheetService->computeAutoFormats($browserCells);
         $sheetUrl = $record?->google_sheet_url
             ?: ($filePayload['google_sheet_url'] ?? null)
@@ -2914,7 +2936,16 @@ class ComparisonController extends Controller
         $dbCells = $record?->sheet_data['cells'] ?? [];
         $cells = $fileCells !== [] ? $fileCells : $dbCells;
 
-        return $this->sheetHasContent(is_array($cells) ? $cells : []) || $fileCells !== [];
+        return $this->sheetHasContent(is_array($cells) ? $cells : []);
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $left
+     * @param  array<int, array<int, string>>  $right
+     */
+    private function sheetCellsDiffer(array $left, array $right): bool
+    {
+        return json_encode($left) !== json_encode($right);
     }
 
     private function sheetTimestampForSku(string $sku): ?Carbon
