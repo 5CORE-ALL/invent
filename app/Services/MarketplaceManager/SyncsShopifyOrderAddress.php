@@ -197,9 +197,13 @@ trait SyncsShopifyOrderAddress
             $ship1 = trim((string) ($response->json('order.shipping_address.address1') ?? ''));
             $city = trim((string) ($response->json('order.shipping_address.city') ?? ''));
             $zip = trim((string) ($response->json('order.shipping_address.zip') ?? ''));
-            // Empty street OR missing city/zip counts as incomplete — retry sync.
-            // (Half Shein/Newegg addresses often land with only one of these filled.)
-            if ($ship1 === '' || $city === '' || $zip === '') {
+            $blank = static function (string $v): bool {
+                $t = trim($v);
+
+                return $t === '' || preg_match('/^\*+$/', $t) === 1;
+            };
+            // Empty street OR missing city/zip (or privacy-masked ***) counts as incomplete.
+            if ($blank($ship1) || $blank($city) || $blank($zip)) {
                 return true;
             }
 

@@ -43,6 +43,9 @@ class TikTokOrderPushService
             if ($localLinked) {
                 $this->linkTikTokOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $fresh = $order->fresh() ?? $order;
+                $fresh->shopify_order_id = (string) $localLinked;
+                $this->syncShippingAddressToShopify($fresh);
 
                 return (string) $localLinked;
             }
@@ -79,6 +82,9 @@ class TikTokOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $fresh = $order->fresh() ?? $order;
+            $fresh->shopify_order_id = (string) $existing['id'];
+            $this->syncShippingAddressToShopify($fresh);
 
             return (string) $existing['id'];
         }
@@ -111,6 +117,12 @@ class TikTokOrderPushService
                 'pushed_to_shopify_at' => now(),
                 'import_status' => 'imported',
             ]);
+
+        $shipping = is_array($plan['payload']['shipping_address'] ?? null) ? $plan['payload']['shipping_address'] : [];
+        $customer = is_array($plan['payload']['customer'] ?? null) ? $plan['payload']['customer'] : [];
+        if (! empty($shipping['address1'])) {
+            $this->syncShopifyCustomerFromAddress($config, $shopifyOrderId, $shipping, $customer);
+        }
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);
@@ -182,7 +194,9 @@ class TikTokOrderPushService
             ->where(function ($q) {
                 $q->where('raw_json', 'like', '%recipient_address%')
                     ->orWhere('raw_json', 'like', '%address_line%')
-                    ->orWhere('raw_json', 'like', '%address_detail%');
+                    ->orWhere('raw_json', 'like', '%address_detail%')
+                    ->orWhere('raw_json', 'like', '%district_info%')
+                    ->orWhere('raw_json', 'like', '%full_address%');
             })
             ->orderByDesc('id')
             ->limit($limit * 25)
@@ -365,10 +379,11 @@ class TikTokOrderPushService
             $payload['billing_address'] = $shipping;
         }
 
-        $buyerEmail = trim((string) ($rawJson['buyer_email'] ?? ''));
-        if ($buyerEmail !== '') {
-            $payload['email'] = $buyerEmail;
-            $payload['customer'] = ['email' => $buyerEmail];
+        [$buyerEmail, $customer, $emailIsPlaceholder] = $this->tikTokShopifyCustomerAndEmail($orderId, $rawJson, $shipping, 'tiktok');
+        $payload['email'] = $buyerEmail;
+        $payload['customer'] = $customer;
+        if ($emailIsPlaceholder) {
+            $payload['note_attributes'][] = ['name' => 'tiktok_email_is_placeholder', 'value' => 'true'];
         }
 
         if (! empty($settings['order']['keep_order_number_from_channel'])) {
@@ -513,7 +528,7 @@ class TikTokOrderPushService
         $address = $this->tikTokAddressFromRaw($rawJson);
         $shipping = $address !== [] ? $this->mapTikTokAddressToShopify($address) : [];
 
-        if ($enrich && empty($shipping['address1'])) {
+        if ($enrich && ! $this->tikTokShopifyAddressIsComplete($shipping)) {
             $this->enrichOrderRawJsonFromDetail($order);
             $order->refresh();
             $rawJson = $this->normalizeTikTokRawJson($order->raw_json);
@@ -538,10 +553,22 @@ class TikTokOrderPushService
                 return;
             }
 
+            $existingRaw = $this->normalizeTikTokRawJson($order->raw_json);
+            $merged = $this->mergePreservedTikTokRecipientAddress(
+                array_replace_recursive($existingRaw !== [] ? $existingRaw : [], $detail),
+                $existingRaw
+            );
+            if (is_array($detail['recipient_address'] ?? null) && $detail['recipient_address'] !== []) {
+                $incomingMapped = $this->mapTikTokAddressToShopify($detail['recipient_address']);
+                if ($this->tikTokShopifyAddressIsComplete($incomingMapped)) {
+                    $merged['recipient_address'] = $detail['recipient_address'];
+                }
+            }
+
             TiktokOrder::query()
                 ->where('order_id', $orderId)
                 ->update([
-                    'raw_json' => $detail,
+                    'raw_json' => $merged,
                     'fetched_at' => now(),
                 ]);
         } catch (\Throwable $e) {

@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 class TikTokOrderSyncService
 {
     use PreservesMarketplaceImportStatus;
+    use ResolvesTikTokOrderRawJson;
 
     /** Auto-import only recent orders so historical queued lines are not pushed as duplicates. */
     public const AUTO_IMPORT_MAX_AGE_DAYS = 7;
@@ -87,6 +88,7 @@ class TikTokOrderSyncService
         $createTimeLt = now()->timestamp;
 
         $orders = $this->tiktokApi->getAllOrders($createTimeGe, $createTimeLt);
+        $orders = $this->enrichOrdersWithDetails($orders);
 
         $upserted = 0;
         foreach ($orders as $order) {
@@ -252,6 +254,7 @@ class TikTokOrderSyncService
                 ->where('order_id', $orderId)
                 ->where('line_item_id', '__order__')
                 ->first();
+            $existingRaw = $this->normalizeTikTokRawJson($existing->raw_json ?? null);
             TiktokOrder::updateOrCreate(
                 ['order_id' => $orderId, 'line_item_id' => '__order__'],
                 array_merge([
@@ -263,7 +266,7 @@ class TikTokOrderSyncService
                     'shipping_provider' => $shippingProvider,
                     'order_created_at' => $orderCreatedAt,
                     'order_updated_at' => $orderUpdatedAt,
-                    'raw_json' => $order,
+                    'raw_json' => $this->mergePreservedTikTokRecipientAddress($order, $existingRaw),
                     'fetched_at' => now(),
                 ], $this->importStatusForUpsert($existing))
             );
@@ -295,6 +298,7 @@ class TikTokOrderSyncService
                 ->where('order_id', $orderId)
                 ->where('line_item_id', $lineItemKey)
                 ->first();
+            $existingRaw = $this->normalizeTikTokRawJson($existing->raw_json ?? null);
             TiktokOrder::updateOrCreate(
                 ['order_id' => $orderId, 'line_item_id' => $lineItemKey],
                 array_merge([
@@ -316,7 +320,7 @@ class TikTokOrderSyncService
                     'buyer_nickname' => $buyerNickname,
                     'order_created_at' => $orderCreatedAt,
                     'order_updated_at' => $orderUpdatedAt,
-                    'raw_json' => $order,
+                    'raw_json' => $this->mergePreservedTikTokRecipientAddress($order, $existingRaw),
                     'fetched_at' => now(),
                 ], $this->importStatusForUpsert($existing))
             );
@@ -324,5 +328,71 @@ class TikTokOrderSyncService
         }
 
         return $count;
+    }
+
+    /**
+     * Get Order List often masks recipient_address. Batch Get Order Detail so
+     * Shopify imports have a real ship-to / customer address.
+     *
+     * @param  list<array<string, mixed>>  $orders
+     * @return list<array<string, mixed>>
+     */
+    protected function enrichOrdersWithDetails(array $orders): array
+    {
+        $needIds = [];
+        foreach ($orders as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $id = trim((string) ($order['id'] ?? $order['order_id'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+            $mapped = $this->mapTikTokAddressToShopify($this->tikTokAddressFromRaw($order));
+            if (! $this->tikTokShopifyAddressIsComplete($mapped)) {
+                $needIds[] = $id;
+            }
+        }
+        $needIds = array_values(array_unique($needIds));
+        if ($needIds === []) {
+            return $orders;
+        }
+
+        $byId = [];
+        foreach (array_chunk($needIds, 50) as $chunk) {
+            $response = $this->tiktokApi->getOrderDetails($chunk);
+            $details = $response['orders'] ?? $response['data']['orders'] ?? [];
+            if (! is_array($details)) {
+                $details = [];
+            }
+            foreach ($details as $detail) {
+                if (! is_array($detail)) {
+                    continue;
+                }
+                $id = trim((string) ($detail['id'] ?? $detail['order_id'] ?? ''));
+                if ($id !== '') {
+                    $byId[$id] = $detail;
+                }
+            }
+            usleep(150000);
+        }
+
+        foreach ($orders as $i => $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $id = trim((string) ($order['id'] ?? $order['order_id'] ?? ''));
+            if ($id === '' || ! isset($byId[$id])) {
+                continue;
+            }
+            $detail = $byId[$id];
+            $merged = array_replace_recursive($order, $detail);
+            if (is_array($detail['recipient_address'] ?? null) && $detail['recipient_address'] !== []) {
+                $merged['recipient_address'] = $detail['recipient_address'];
+            }
+            $orders[$i] = $merged;
+        }
+
+        return $orders;
     }
 }
