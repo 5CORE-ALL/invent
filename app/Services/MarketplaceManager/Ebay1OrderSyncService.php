@@ -150,13 +150,15 @@ class Ebay1OrderSyncService
         MarketplaceShopifyImportQueue::releaseStuckQueued(Ebay1OrderMetric::class, $queue);
 
         $orders = Ebay1OrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->orderBy('id')
-            ->limit(50)
+            ->limit(200)
             ->get();
 
         $dispatched = 0;

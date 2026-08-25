@@ -7,7 +7,6 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggOrderMetric;
 use App\Services\NeweggApiService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -130,15 +129,12 @@ class NeweggOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('newegg');
         $queue = MarketplaceManagerRegistry::queueFor('newegg');
-        if ((int) DB::table('jobs')->where('queue', $queue)->count() === 0) {
-            NeweggOrderMetric::query()
-                ->where('import_status', 'queued')
-                ->whereNull('shopify_order_id')
-                ->update(['import_status' => 'ready']);
-        }
+        MarketplaceShopifyImportQueue::releaseStuckQueued(NeweggOrderMetric::class, $queue);
 
         $orders = NeweggOrderMetric::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
@@ -182,10 +178,15 @@ class NeweggOrderSyncService
             }
 
             try {
-                ImportNeweggOrderToShopify::dispatch((int) $order->id);
+                MarketplaceShopifyImportQueue::push(
+                    new ImportNeweggOrderToShopify((int) $order->id),
+                    $queue
+                );
                 NeweggOrderMetric::query()
                     ->where('order_id', $orderId)
-                    ->whereNull('shopify_order_id')
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
                     ->update(['import_status' => 'queued']);
                 $dispatched++;
             } catch (\Throwable $e) {

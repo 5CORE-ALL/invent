@@ -116,7 +116,9 @@ class PurchasingPowerOrderSyncService
         $queue = MarketplaceManagerRegistry::queueFor('purchasingpower');
         MarketplaceShopifyImportQueue::releaseStuckQueued(PurchasingPowerSale::class, $queue);
         $query = PurchasingPowerSale::query()
-            ->whereNull('shopify_order_id')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
@@ -125,7 +127,7 @@ class PurchasingPowerOrderSyncService
                 $q->where('date_created', '>=', now()->subDays(14));
             })
             ->orderByDesc('id')
-            ->limit(50);
+            ->limit(200);
 
         $dispatched = 0;
         foreach ($query->get() as $row) {

@@ -139,11 +139,11 @@ class TikTokOrderSyncService
             ->where('order_created_at', '>=', $cutoff)
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'queued', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
             })
             ->orderByDesc('order_created_at')
             ->orderByDesc('id')
-            ->limit(80)
+            ->limit(200)
             ->get();
 
         $seenOrderIds = [];
@@ -212,13 +212,13 @@ class TikTokOrderSyncService
 
     protected function releaseStuckQueuedImports(): void
     {
-        TiktokOrder::query()
-            ->where('import_status', 'queued')
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where('order_created_at', '>=', $this->autoImportFromDate())
-            ->update(['import_status' => 'ready']);
+        MarketplaceShopifyImportQueue::releaseStuckQueued(
+            TiktokOrder::class,
+            MarketplaceManagerRegistry::queueFor('tiktok'),
+            function ($q) {
+                $q->where('order_created_at', '>=', $this->autoImportFromDate());
+            }
+        );
     }
 
     protected function upsertOrder(array $order): int
