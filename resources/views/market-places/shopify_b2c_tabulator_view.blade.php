@@ -75,6 +75,55 @@
             font-size: 14px;
             color: #64748b;
         }
+        .task-magnify-icon {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
+            display: inline-block;
+            vertical-align: middle;
+            pointer-events: none;
+        }
+        .sku-link-lmp-open-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.55rem;
+            height: 1.55rem;
+            padding: 0;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.15s ease, transform 0.15s ease;
+        }
+        .sku-link-lmp-open-btn:hover {
+            background: rgba(15, 23, 42, 0.08);
+            transform: scale(1.1);
+        }
+        .sku-link-lmp-existing-list {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            gap: 6px;
+            min-height: 36px;
+        }
+        .sku-link-lmp-existing-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .sku-link-lmp-existing-item .sku-link-lmp-edit-input {
+            width: 140px;
+            height: 28px;
+            font-size: 12px;
+        }
+        .sku-link-lmp-existing-item .linked-sku-badge-wrap {
+            cursor: pointer;
+        }
+        .sku-link-lmp-existing-item .linked-sku-badge-wrap:hover .linked-sku-badge {
+            background-color: #cffafe;
+        }
 
         /* Custom pagination label */
         .tabulator-paginator label {
@@ -230,6 +279,41 @@
             padding: 0.35rem 0.55rem !important;
             white-space: nowrap;
         }
+        .shopify-b2c-page #summary-stats .summary-trend-dot {
+            display: inline-block;
+            width: 6px !important;
+            height: 6px !important;
+            margin-left: 0 !important;
+            margin-right: 0.22rem !important;
+            border-radius: 50%;
+            flex-shrink: 0;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.85);
+            vertical-align: 0.08em;
+        }
+        .shopify-b2c-page #summary-stats .summary-trend-dot:hover {
+            transform: scale(1.35);
+        }
+        .shopify-b2c-page #summary-stats .summary-trend-dot.up { background: #22c55e; }
+        .shopify-b2c-page #summary-stats .summary-trend-dot.down { background: #ef4444; }
+        .shopify-b2c-page #summary-stats .summary-trend-dot.flat,
+        .shopify-b2c-page #summary-stats .summary-trend-dot.none { background: #9ca3af; }
+        #shopifyB2cMetricChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #shopifyB2cMetricChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #shopifyB2cMetricChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
         .shopify-b2c-page #discount-input-container {
             display: flex !important;
             flex-wrap: wrap;
@@ -346,6 +430,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2c'])
     </style>
+    @include('partials.lazy-chart-js')
 @endsection
 
 @section('script')
@@ -362,19 +447,23 @@
 
     {{-- Sku Link LMP Modal (shared sku.link.lmp.* routes — same as Amazon) --}}
     <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will show each other's LMP.</p>
-                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
+                    <p class="text-muted small mb-2">Linked SKUs for <strong id="sku-link-lmp-source"></strong>. All linked SKUs share LMP. Click a badge to edit, X to delete.</p>
+                    <div id="sku-link-lmp-existing-wrap" class="mb-3">
+                        <div class="small fw-semibold mb-1">Linked SKUs</div>
+                        <div id="sku-link-lmp-existing-list" class="sku-link-lmp-existing-list"></div>
+                    </div>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Add SKU</label>
                     <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
                     <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
                     <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
-                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div class="small text-muted mb-1">Selected to add (<span id="sku-link-lmp-selected-count">0</span>):</div>
                         <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
                     </div>
                 </div>
@@ -616,53 +705,54 @@
                 <!-- Summary Stats (order:-1 → shown above filters, same as Amz) -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2 summary-badges-row">
-                        <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;">PFT: $0</span>
+                        <span class="badge bg-success fs-6 p-2 d-none shopifyb2c-badge-chart" id="total-pft-amt-badge" data-metric="total_pft" data-format="money" data-live-value="{{ (float) ($shopifyDirectTotalPft ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="Click for rolling history."><span class="summary-trend-dot none" data-metric="total_pft" title="Rolling history"></span>PFT: $0</span>
                         {{-- Sales is the L30 net-sales total from the actual /shopify page
                              (shopify_raw_orders with marketplace exclusions). Server-rendered so it
                              always matches /shopify and the eBay row pattern on /all-marketplace-master.
                              Page filters do not narrow this number — it's the page-level reference. --}}
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
-                              style="color: black; font-weight: bold;"
-                              title="L30 Net Sales from shopify_raw_orders (matches /shopify Net Sales card and the Shopify row on /all-marketplace-master). Page-level total — unaffected by table filters.">Sales: ${{ number_format((float) ($shopifyDirectL30Sales ?? 0), 0) }}</span>
-                        {{-- Orders: distinct order_id count from the same source. New badge requested
-                             so this page agrees with /shopify and /all-marketplace-master Shopify row. --}}
-                        <span class="badge bg-secondary fs-6 p-2" id="total-orders-badge"
-                              style="color: white; font-weight: bold;"
-                              title="L30 distinct orders from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Orders: {{ number_format((int) ($shopifyDirectL30Orders ?? 0)) }}</span>
-                        {{-- Qty: Σ ebay_order_items.quantity-equivalent from shopify_raw_orders for the
-                             same L30 window. Same value /shopify reports as "Total Qty" and
-                             /all-marketplace-master shows in the Shopify row's "Qty items" cell. --}}
-                        <span class="badge fs-6 p-2" id="total-qty-badge"
-                              style="background-color: #6f42c1; color: white; font-weight: bold;"
-                              title="L30 units sold from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Qty: {{ number_format((int) ($shopifyDirectL30Qty ?? 0)) }}</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0</span>
-                        <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">L30: 0</span>
-                        <span class="badge fs-6 p-2" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of L30 product page views (sessions)">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Qty ÷ Views">CVR: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="shopifyb2c-blue-triangle-badge"
+                        <span class="badge bg-primary fs-6 p-2 shopifyb2c-badge-chart" id="total-sales-amt-badge"
+                              data-metric="total_sales" data-format="money" data-live-value="{{ (float) ($shopifyDirectL30Sales ?? 0) }}"
+                              style="color: black; font-weight: bold; cursor:pointer;"
+                              title="L30 Net Sales from shopify_raw_orders (matches /shopify and /all-marketplace-master). Click for rolling history."><span class="summary-trend-dot none" data-metric="total_sales" title="Rolling history"></span>Sales: ${{ number_format((float) ($shopifyDirectL30Sales ?? 0), 0) }}</span>
+                        <span class="badge bg-secondary fs-6 p-2 shopifyb2c-badge-chart" id="total-orders-badge"
+                              data-metric="total_orders" data-format="number" data-live-value="{{ (int) ($shopifyDirectL30Orders ?? 0) }}"
+                              style="color: white; font-weight: bold; cursor:pointer;"
+                              title="L30 distinct orders from shopify_raw_orders. Click for rolling history."><span class="summary-trend-dot none" data-metric="total_orders" title="Rolling history"></span>Orders: {{ number_format((int) ($shopifyDirectL30Orders ?? 0)) }}</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="total-qty-badge"
+                              data-metric="total_qty" data-format="number" data-live-value="{{ (int) ($shopifyDirectL30Qty ?? 0) }}"
+                              style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;"
+                              title="L30 units sold from shopify_raw_orders. Click for rolling history."><span class="summary-trend-dot none" data-metric="total_qty" title="Rolling history"></span>Qty: {{ number_format((int) ($shopifyDirectL30Qty ?? 0)) }}</span>
+                        <span class="badge bg-info fs-6 p-2 shopifyb2c-badge-chart" id="avg-gpft-badge" data-metric="gpft_percent" data-format="pct" data-live-value="{{ (float) ($shopifyDirectGpftPct ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="GPFT%. Click for rolling history."><span class="summary-trend-dot none" data-metric="gpft_percent" title="Rolling history"></span>GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none shopifyb2c-badge-chart" id="avg-price-badge" data-metric="avg_price" data-format="money" data-live-value="0" style="color: black; font-weight: bold; cursor:pointer;"><span class="summary-trend-dot none" data-metric="avg_price" title="Rolling history"></span>Price: $0</span>
+                        <span class="badge bg-primary fs-6 p-2 d-none shopifyb2c-badge-chart" id="total-inv-badge" data-metric="total_inv" data-format="number" data-live-value="0" style="color: black; font-weight: bold; cursor:pointer;"><span class="summary-trend-dot none" data-metric="total_inv" title="Rolling history"></span>INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2 shopifyb2c-badge-chart" id="total-l30-badge" data-metric="total_l30" data-format="number" data-live-value="0" style="color: black; font-weight: bold; cursor:pointer;" title="OV L30. Click for rolling history."><span class="summary-trend-dot none" data-metric="total_l30" title="Rolling history"></span>L30: 0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="total-views-badge" data-metric="total_views" data-format="number" data-live-value="0" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of L30 product page views (sessions). Click for rolling history."><span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Views: 0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="avg-cvr-badge" data-metric="cvr_percent" data-format="pct" data-live-value="0" style="background-color: #20c997; color: #000; font-weight: bold; cursor:pointer;" title="Overall CVR = Qty ÷ Views. Click for rolling history."><span class="summary-trend-dot none" data-metric="cvr_percent" title="Rolling history"></span>CVR: 0.0%</span>
+                        <span class="badge bg-info fs-6 p-2 shopifyb2c-badge-chart" id="total-b2b-l30-badge" data-metric="total_b2b_l30" data-format="number" data-live-value="0" style="color: black; font-weight: bold; cursor:pointer;" title="B2C L30 units. Click for rolling history."><span class="summary-trend-dot none" data-metric="total_b2b_l30" title="Rolling history"></span>B2B: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="zero-sold-count-badge" data-metric="zero_sold_count" data-invert="1" data-format="number" data-live-value="0" style="color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter B2B L30 = 0. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span>0 Sold: 0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-blue-triangle-badge"
+                            data-metric="blue_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
+                            title="Blue triangle: S PRC ≠ Price. Click badge to filter. Click dot for rolling history.">
+                            <span class="summary-trend-dot none" data-metric="blue_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
+                            data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Purple triangle: S PRC &lt; A Price. Click badge to filter. Click dot for rolling history.">
+                            <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2c-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2c', 'pltPriceField' => 'Price'])
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt;0 Sold: 0</span>
-                        <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;" title="GROI% = Σ PFT ÷ Σ COGS × 100 — same as Amz/eBay badges and /shopify snapshot">GROI: 0%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
-                        <span class="badge fs-6 p-2" id="sprice-lt-amz-badge"
-                            style="background-color:#6f42c1;color:#fff;font-weight:bold;cursor:pointer;"
-                            title="S PRC after PRMT% + CVR Disc% is below Amz price. Click to filter those SKUs.">S PRC &lt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Miss: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Spend: $0</span>
-                        <span class="badge fs-6 p-2" id="avg-npft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="more-sold-count-badge" data-metric="sold_count" data-format="number" data-live-value="0" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter B2B L30 &gt; 0. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span>&gt;0 Sold: 0</span>
+                        <span class="badge bg-info fs-6 p-2 d-none shopifyb2c-badge-chart" id="total-cogs-badge" data-metric="total_cogs" data-format="money" data-live-value="{{ (float) ($shopifyDirectTotalCogs ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;"><span class="summary-trend-dot none" data-metric="total_cogs" title="Rolling history"></span>COGS: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2 shopifyb2c-badge-chart" id="roi-percent-badge" data-metric="groi_percent" data-format="pct" data-live-value="{{ (float) ($shopifyDirectGroiPct ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="GROI% = Σ PFT ÷ Σ COGS × 100. Click for rolling history."><span class="summary-trend-dot none" data-metric="groi_percent" title="Rolling history"></span>GROI: 0%</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="nroi-percent-badge" data-metric="nroi_percent" data-format="pct" data-live-value="{{ (float) ($shopifyDirectNroiPct ?? 0) }}" style="background-color: #e83e8c; color: white; font-weight: bold; cursor:pointer;" title="NROI%. Click for rolling history."><span class="summary-trend-dot none" data-metric="nroi_percent" title="Rolling history"></span>NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="less-amz-badge" data-metric="less_amz_count" data-invert="1" data-format="number" data-live-value="0" style="color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter prices less than Amz. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="less_amz_count" title="Rolling history"></span>&lt; Amz: 0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="more-amz-badge" data-metric="more_amz_count" data-format="number" data-live-value="0" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter prices greater than Amz. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="more_amz_count" title="Rolling history"></span>&gt; Amz: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="missing-count-badge" data-metric="missing_count" data-invert="1" data-format="number" data-live-value="0" style="color: white; font-weight: bold; cursor: pointer;" title="Click badge to filter missing SKUs. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="missing_count" title="Rolling history"></span>Miss: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 shopifyb2c-badge-chart" id="total-tcos-badge" data-metric="tcos_percent" data-format="pct" data-invert="1" data-live-value="{{ (float) ($shopifyDirectTcosPct ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="Ads%. Lower is better. Click for rolling history."><span class="summary-trend-dot none" data-metric="tcos_percent" title="Rolling history"></span>Ads: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 shopifyb2c-badge-chart" id="total-spend-badge" data-metric="total_spend" data-format="money" data-live-value="{{ (float) ($shopifyDirectTotalSpend ?? 0) }}" style="color: black; font-weight: bold; cursor:pointer;" title="Ad spend. Click for rolling history."><span class="summary-trend-dot none" data-metric="total_spend" title="Rolling history"></span>Spend: $0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart" id="avg-npft-badge" data-metric="npft_percent" data-format="pct" data-live-value="{{ (float) ($shopifyDirectNpftPct ?? 0) }}" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="NPFT%. Click for rolling history."><span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span>NPFT: 0%</span>
                     </div>
                 </div>
 
@@ -701,6 +791,58 @@
     </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2c'])
+
+    <div class="modal fade p-0" id="shopifyB2cMetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="shopifyB2cChartModalTitle">Shopify B2C — Metric trend</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="shopifyB2cChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="shopifyB2cChartContainer" style="height: 38vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="shopifyB2cMetricChart"></canvas>
+                        </div>
+                        <div id="shopifyB2cChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="shopifyB2cChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="shopifyB2cChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="shopifyB2cChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="shopifyB2cChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="shopifyB2cChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0" id="shopifyB2cChartNoDataMsg">No daily snapshots yet. History builds automatically from this page and the daily cron.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -736,6 +878,377 @@
         return parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
     }
 
+    const shopifyB2cBadgeMetricLabels = {
+        total_sales: 'Sales', total_orders: 'Orders', total_qty: 'Qty', total_pft: 'PFT',
+        total_cogs: 'COGS', total_spend: 'Spend', gpft_percent: 'GPFT%', groi_percent: 'GROI%',
+        nroi_percent: 'NROI%', npft_percent: 'NPFT%', tcos_percent: 'Ads%',
+        total_l30: 'L30', total_views: 'Views', cvr_percent: 'CVR%', total_b2b_l30: 'B2C L30',
+        zero_sold_count: '0 Sold', sold_count: '> 0 Sold', missing_count: 'Miss',
+        less_amz_count: '< Amz', more_amz_count: '> Amz',
+        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC < A Price',
+        lmp_missing_count: 'LMP M.', prc_gt_lmp_count: 'Price > LMP', price_lt80_lmp_count: 'Price < 80% LMP',
+        avg_price: 'Price', total_inv: 'INV'
+    };
+    const shopifyB2cBadgeInvertMetrics = {
+        tcos_percent: true, zero_sold_count: true, missing_count: true, less_amz_count: true,
+        blue_triangle_count: true, purple_triangle_count: true, lmp_missing_count: true,
+        prc_gt_lmp_count: true, price_lt80_lmp_count: true
+    };
+    const shopifyB2cFilterBadgeIds = {
+        'zero-sold-count-badge': 1, 'more-sold-count-badge': 1,
+        'shopifyb2c-blue-triangle-badge': 1, 'shopifyb2c-purple-triangle-badge': 1,
+        'shopifyb2c-lmp-missing-badge': 1, 'shopifyb2c-price-gt-lmp-badge': 1,
+        'shopifyb2c-price-lt80-lmp-badge': 1, 'less-amz-badge': 1, 'more-amz-badge': 1,
+        'missing-count-badge': 1
+    };
+    let shopifyB2cChartInstance = null;
+    let shopifyB2cChartAjax = null;
+    let shopifyB2cChartDays = 30;
+    let shopifyB2cChartMetricKey = '';
+    let shopifyB2cBadgePrevDay = null;
+    let shopifyB2cBadgePrevDayLoaded = false;
+    const shopifyB2cChartCache = {};
+
+    function shopifyB2cMetricFormat(metricKey) {
+        const $b = $('#summary-stats [data-metric="' + metricKey + '"]').not('.summary-trend-dot').first();
+        return ($b.data('format') || 'number').toString();
+    }
+    function shopifyB2cFmtChartVal(v, metricKey) {
+        const n = Number(v);
+        if (!isFinite(n)) return '—';
+        const key = (metricKey || '').toString();
+        const fmt = key ? shopifyB2cMetricFormat(key) : 'number';
+        const isPct = fmt === 'pct' || /percent|cvr|pct/i.test(key);
+        if (fmt === 'money') return '$' + Math.round(n).toLocaleString('en-US');
+        if (isPct) return (/tcos|gpft|npft|groi|nroi/i.test(key) ? n.toFixed(1) : n.toFixed(1)) + '%';
+        return Math.round(n).toLocaleString('en-US');
+    }
+    function shopifyB2cTodayPtDate() {
+        try {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+        } catch (e) {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+    }
+    function shopifyB2cYmd(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function shopifyB2cChartDateLabel(ymd) {
+        const d = new Date((ymd || shopifyB2cTodayPtDate()) + 'T12:00:00');
+        return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' });
+    }
+    function shopifyB2cFillEveryDate(rows, daysOverride) {
+        const days = daysOverride != null ? (parseInt(daysOverride, 10) || 0) : (parseInt(shopifyB2cChartDays, 10) || 0);
+        const src = Array.isArray(rows) ? rows.slice() : [];
+        const byDate = {};
+        src.forEach(function(r) {
+            const key = r.full_date || '';
+            if (key && /^\d{4}-\d{2}-\d{2}$/.test(key) && r.value != null && isFinite(Number(r.value))) {
+                byDate[key] = r;
+            }
+        });
+        let keys = Object.keys(byDate).sort();
+        if (!keys.length) return src;
+        if (days > 0) {
+            const end = shopifyB2cTodayPtDate();
+            const startD = new Date(end + 'T12:00:00');
+            startD.setDate(startD.getDate() - (days - 1));
+            const startKey = shopifyB2cYmd(startD);
+            const inWindow = keys.filter(function(k) { return k >= startKey && k <= end; });
+            keys = inWindow.length ? inWindow : keys;
+        }
+        return keys.map(function(k) {
+            return { date: shopifyB2cChartDateLabel(k), full_date: k, value: Number(byDate[k].value) };
+        });
+    }
+    function shopifyB2cOverlayLiveBadgeValue(mapped, metricKey) {
+        const rows = Array.isArray(mapped) ? mapped.slice() : [];
+        const $b = $('#summary-stats [data-metric="' + metricKey + '"]').not('.summary-trend-dot').first();
+        let live = parseFloat($b.attr('data-live-value'));
+        if (!isFinite(live)) live = parseFloat($b.data('live-value'));
+        if (!isFinite(live)) return shopifyB2cFillEveryDate(rows);
+        const asOf = shopifyB2cTodayPtDate();
+        const last = rows.length ? rows[rows.length - 1] : null;
+        if (last && last.full_date === asOf) {
+            last.value = live;
+        } else {
+            rows.push({ date: shopifyB2cChartDateLabel(asOf), full_date: asOf, value: live });
+        }
+        return shopifyB2cFillEveryDate(rows);
+    }
+    function shopifyB2cTrendClass(curr, prev, invert) {
+        if (!isFinite(curr) || !isFinite(prev)) return 'none';
+        const diff = curr - prev;
+        let cls = 'flat';
+        if (diff > 0.05) cls = 'up';
+        else if (diff < -0.05) cls = 'down';
+        if (invert && cls === 'up') cls = 'down';
+        else if (invert && cls === 'down') cls = 'up';
+        return cls;
+    }
+    function applyShopifyB2cSummaryTrendDot(metricKey, currentVal) {
+        const $dot = $('#summary-stats .summary-trend-dot[data-metric="' + metricKey + '"]');
+        if (!$dot.length) return;
+        const prev = shopifyB2cBadgePrevDay && shopifyB2cBadgePrevDay[metricKey];
+        const invert = !!shopifyB2cBadgeInvertMetrics[metricKey];
+        if (!isFinite(currentVal) || prev == null || !isFinite(prev)) {
+            $dot.attr('class', 'summary-trend-dot none')
+                .attr('title', 'Click for rolling history (no prior day yet)');
+            return;
+        }
+        const cls = shopifyB2cTrendClass(currentVal, prev, invert);
+        const tip = (cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : 'Same'))
+            + ' vs prior day (' + shopifyB2cFmtChartVal(prev, metricKey)
+            + ' → ' + shopifyB2cFmtChartVal(currentVal, metricKey) + '). Click for rolling history.';
+        $dot.attr('class', 'summary-trend-dot ' + cls).attr('title', tip);
+    }
+    function syncShopifyB2cSummaryTrendDots() {
+        $('#summary-stats [data-metric]').each(function() {
+            if ($(this).hasClass('summary-trend-dot')) return;
+            const metric = $(this).data('metric');
+            if (!metric) return;
+            let live = parseFloat($(this).attr('data-live-value'));
+            if (!isFinite(live)) live = parseFloat($(this).data('live-value'));
+            applyShopifyB2cSummaryTrendDot(metric, live);
+        });
+    }
+    function loadShopifyB2cBadgePrevDay(done) {
+        if (shopifyB2cBadgePrevDayLoaded) {
+            syncShopifyB2cSummaryTrendDots();
+            if (typeof done === 'function') done();
+            return;
+        }
+        $.ajax({
+            url: '/shopify-b2c-badge-prev-day',
+            method: 'GET',
+            success: function(resp) {
+                shopifyB2cBadgePrevDayLoaded = true;
+                shopifyB2cBadgePrevDay = (resp && resp.success && resp.metrics) ? resp.metrics : null;
+                syncShopifyB2cSummaryTrendDots();
+                if (typeof done === 'function') done();
+            },
+            error: function() {
+                shopifyB2cBadgePrevDayLoaded = true;
+                shopifyB2cBadgePrevDay = null;
+                syncShopifyB2cSummaryTrendDots();
+                if (typeof done === 'function') done();
+            }
+        });
+    }
+    function setShopifyB2cSummaryBadge($el, label, liveVal, asHtml) {
+        if (!$el || !$el.length) return;
+        const $dot = $el.find('.summary-trend-dot').first().detach();
+        if (asHtml) $el.html(label);
+        else $el.text(label);
+        if ($dot.length) $el.prepend($dot);
+        else {
+            const metric = $el.attr('data-metric') || '';
+            const $new = $('<span class="summary-trend-dot none" title="Rolling history"></span>');
+            if (metric) $new.attr('data-metric', metric);
+            $el.prepend($new);
+        }
+        if (liveVal != null && isFinite(liveVal)) {
+            $el.attr('data-live-value', liveVal);
+        }
+    }
+    function saveShopifyB2cBadgeStatsOnce() {
+        if (window._shopifyB2cBadgeStatsSaved) return;
+        const payload = { _token: $('meta[name="csrf-token"]').attr('content') };
+        let n = 0;
+        $('#summary-stats [data-metric]').each(function() {
+            if ($(this).hasClass('summary-trend-dot')) return;
+            const k = $(this).attr('data-metric');
+            let v = parseFloat($(this).attr('data-live-value'));
+            if (k && isFinite(v)) {
+                payload[k] = v;
+                n++;
+            }
+        });
+        if (!n) return;
+        window._shopifyB2cBadgeStatsSaved = true;
+        $.post('/shopify-b2c-badge-stats-save', payload);
+    }
+    function openShopifyB2cChartModal() {
+        const modalEl = document.getElementById('shopifyB2cMetricChartModal');
+        if (!modalEl) return;
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } else {
+            $(modalEl).modal('show');
+        }
+    }
+    function shopifyB2cPaintChartSeries(rows) {
+        const series = shopifyB2cOverlayLiveBadgeValue(rows || [], shopifyB2cChartMetricKey);
+        if (!series.length) {
+            $('#shopifyB2cChartContainer').hide();
+            $('#shopifyB2cChartNoData').show();
+            return;
+        }
+        $('#shopifyB2cChartNoData').hide();
+        $('#shopifyB2cChartLoading').hide();
+        $('#shopifyB2cChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+        renderShopifyB2cMetricChart(series);
+    }
+    function showShopifyB2cMetricChart(metricKey) {
+        shopifyB2cChartMetricKey = metricKey;
+        shopifyB2cChartDays = 30;
+        $('#shopifyB2cChartRangeSelect').val('30');
+        const label = shopifyB2cBadgeMetricLabels[metricKey] || metricKey;
+        $('#shopifyB2cChartModalTitle').text('Shopify B2C — ' + label + ' Rolling History');
+        $('#shopifyB2cChartNoData').hide();
+        $('#shopifyB2cChartLoading').show();
+        if (typeof loadChartJs === 'function') loadChartJs();
+        openShopifyB2cChartModal();
+        const liveOnly = shopifyB2cOverlayLiveBadgeValue([], metricKey);
+        if (liveOnly.length) {
+            $('#shopifyB2cChartLoading').hide();
+            $('#shopifyB2cChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+            renderShopifyB2cMetricChart(liveOnly);
+        }
+        loadShopifyB2cMetricChart();
+    }
+    function loadShopifyB2cMetricChart() {
+        const cacheKey = shopifyB2cChartMetricKey + ':' + shopifyB2cChartDays;
+        if (shopifyB2cChartCache[cacheKey]) {
+            shopifyB2cPaintChartSeries(shopifyB2cChartCache[cacheKey]);
+            return;
+        }
+        if (shopifyB2cChartAjax) shopifyB2cChartAjax.abort();
+        if (!$('#shopifyB2cChartContainer').is(':visible')) {
+            $('#shopifyB2cChartNoData').hide();
+            $('#shopifyB2cChartLoading').show();
+        }
+        shopifyB2cChartAjax = $.ajax({
+            url: '/shopify-b2c-badge-chart-data',
+            method: 'GET',
+            data: { metric: shopifyB2cChartMetricKey, days: shopifyB2cChartDays },
+            success: function(resp) {
+                shopifyB2cChartAjax = null;
+                const rows = (resp && resp.success && resp.data) ? resp.data : [];
+                shopifyB2cChartCache[cacheKey] = rows;
+                shopifyB2cPaintChartSeries(rows);
+            },
+            error: function(xhr, status) {
+                shopifyB2cChartAjax = null;
+                if (status === 'abort') return;
+                if ($('#shopifyB2cChartContainer').is(':visible')) return;
+                $('#shopifyB2cChartLoading').hide();
+                $('#shopifyB2cChartNoData').show();
+            }
+        });
+    }
+    function renderShopifyB2cMetricChart(data) {
+        if (typeof Chart === 'undefined') {
+            if (typeof loadChartJs === 'function') {
+                loadChartJs().then(function() { renderShopifyB2cMetricChart(data); });
+            }
+            return;
+        }
+        const ctxEl = document.getElementById('shopifyB2cMetricChart');
+        if (!ctxEl) return;
+        const ctx = ctxEl.getContext('2d');
+        if (shopifyB2cChartInstance) shopifyB2cChartInstance.destroy();
+        const seenDates = {};
+        data = (data || []).filter(function(d) {
+            const k = d.full_date || d.date || '';
+            if (!k || seenDates[k]) return false;
+            seenDates[k] = true;
+            return true;
+        });
+        const labels = data.map(function(d) { return d.date; });
+        const values = data.map(function(d) { return d.value; });
+        const dataMin = Math.min.apply(null, values);
+        const dataMax = Math.max.apply(null, values);
+        const sorted = values.slice().sort(function(a, b) { return a - b; });
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const range = dataMax - dataMin;
+        let yMin, yMax;
+        if (range < 1e-9) {
+            const pad = Math.max(Math.abs(dataMax) * 0.2, 0.5);
+            yMin = Math.max(0, dataMin - pad);
+            yMax = dataMax + pad;
+        } else {
+            const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+            yMin = Math.max(0, dataMin - range * 0.12);
+            yMax = dataMax + yPad;
+        }
+        $('#shopifyB2cChartHighest').text(shopifyB2cFmtChartVal(dataMax, shopifyB2cChartMetricKey));
+        $('#shopifyB2cChartMedian').text(shopifyB2cFmtChartVal(median, shopifyB2cChartMetricKey));
+        $('#shopifyB2cChartLowest').text(shopifyB2cFmtChartVal(dataMin, shopifyB2cChartMetricKey));
+        const invert = !!shopifyB2cBadgeInvertMetrics[shopifyB2cChartMetricKey];
+        const dotColors = values.map(function(v, i) {
+            if (i === 0) return '#6c757d';
+            const cls = shopifyB2cTrendClass(v, values[i - 1], invert);
+            return cls === 'up' ? '#28a745' : (cls === 'down' ? '#dc3545' : '#6c757d');
+        });
+        shopifyB2cChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: 'rgba(32, 201, 151, 0.08)',
+                    borderColor: '#20c997',
+                    borderWidth: 1.5,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: dotColors,
+                    pointBorderColor: dotColors,
+                    pointBorderWidth: 1.5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                clip: false,
+                layout: { padding: { top: 44, left: 8, right: 22, bottom: 28 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Value: ' + shopifyB2cFmtChartVal(context.raw, shopifyB2cChartMetricKey);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: yMin,
+                        max: yMax,
+                        ticks: { callback: function(v) { return shopifyB2cFmtChartVal(v, shopifyB2cChartMetricKey); } }
+                    },
+                    x: {
+                        offset: true,
+                        ticks: { maxRotation: 90, minRotation: 90, autoSkip: false, font: { size: labels.length > 45 ? 9 : 10, weight: '600' } }
+                    }
+                }
+            }
+        });
+    }
+    function bindShopifyB2cBadgeHistory() {
+        $(document).on('click', '#summary-stats .summary-trend-dot', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const m = $(this).data('metric') || $(this).closest('[data-metric]').data('metric');
+            if (m) showShopifyB2cMetricChart(m);
+        });
+        $(document).on('click', '#summary-stats .shopifyb2c-badge-chart', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
+            if (shopifyB2cFilterBadgeIds[this.id]) return;
+            const m = $(this).data('metric');
+            if (m) showShopifyB2cMetricChart(m);
+        });
+        $('#shopifyB2cChartRangeSelect').on('change', function() {
+            shopifyB2cChartDays = parseInt($(this).val(), 10) || 0;
+            loadShopifyB2cMetricChart();
+        });
+    }
+
     /** Amazon-style parent summary row (SKU like "PARENT 10 FR"). */
     function isShopifyB2cParentRow(row) {
         if (!row) return false;
@@ -764,63 +1277,49 @@
         return stored;
     }
 
-    function shopifyB2cRowSpriceForAlert(data) {
-        return shopifyB2cDisplayedSprice(data);
+    /** Cell / push value: displayed S PRC after LMP cap (same as the S PRC formatter). */
+    function shopifyB2cShownSprice(data) {
+        if (!data || isShopifyB2cParentRow(data)) return 0;
+        let value = shopifyB2cDisplayedSprice(data);
+        if (!(value > 0)) return 0;
+        if (!shopifyB2cIsAmzSuggApplied(data) && window.SpriceLmpCap) {
+            const cap = SpriceLmpCap.apply(data, value);
+            if (cap && cap.shown > 0) value = cap.shown;
+        }
+        return Math.round(value * 100) / 100;
+    }
+
+    function shopifyB2cAmzPrice(data) {
+        return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
 
     function shopifyB2cHasBlueTriangle(data) {
         if (isShopifyB2cParentRow(data)) return false;
-        const sprice = shopifyB2cRowSpriceForAlert(data);
+        const sprice = shopifyB2cShownSprice(data);
         const price = parseFloat(data && data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
 
-    /** S PRC after PRMT% + CVR Disc% slabs (ignores the Amz-floor skip). */
-    function shopifyB2cPromoSpriceAfterPrmtCvr(data) {
-        if (!data || isShopifyB2cParentRow(data)) return 0;
-        const stdFn = window.chPromoStdBase;
-        const std = typeof stdFn === 'function'
-            ? stdFn(data)
-            : (parseFloat(data.STANDARD_PRICE || data.standard_price) || 0);
-        if (!(std > 0)) return 0;
-        let prmt = 0;
-        let cpn = 0;
-        if (typeof window.chPromoEbaySlabPrmt === 'function') {
-            const slab = window.chPromoEbaySlabPrmt(data);
-            if (slab != null) prmt = Number(slab) || 0;
-        } else {
-            prmt = Number(data.prmt_pct != null && data.prmt_pct !== ''
-                ? data.prmt_pct : data._prmt_pct_applied) || 0;
-        }
-        if (typeof window.chPromoCvrDiscForRow === 'function') {
-            cpn = Number(window.chPromoCvrDiscForRow(data)) || 0;
-        } else {
-            cpn = Number(data.cpn_pct != null && data.cpn_pct !== ''
-                ? data.cpn_pct : data._cpn_pct_applied) || 0;
-        }
-        const t = Math.min(99.99, Math.max(0, prmt + cpn));
-        const price = t > 0 ? std * (1 - t / 100) : std;
-        return Math.round(price * 100) / 100;
-    }
-
-    function shopifyB2cSpriceLtAmzAfterPromo(data) {
+    /** Purple triangle: shown S PRC is below current A Price (still pushed). */
+    function shopifyB2cHasPurpleTriangle(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
-        const amz = parseFloat(data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price)) || 0;
-        if (!(amz > 0)) return false;
-        if (typeof window.chPromoShopifyPromoBlockedByAmz === 'function'
-            && window.chPromoShopifyPromoBlockedByAmz(data)) {
-            return true;
-        }
-        const promo = shopifyB2cPromoSpriceAfterPrmtCvr(data);
-        if (promo > 0 && promo < amz) return true;
-        const shown = shopifyB2cDisplayedSprice(data);
-        return shown > 0 && shown < amz;
+        const sprice = shopifyB2cShownSprice(data);
+        const amz = shopifyB2cAmzPrice(data);
+        return sprice > 0 && amz > 0 && sprice < amz;
     }
 
-    function syncShopifyB2cSpriceLtAmzBadgeState() {
-        $('#sprice-lt-amz-badge').css({
-            outline: spriceLtAmzFilterActive ? '3px solid #ffc107' : '',
-            outlineOffset: spriceLtAmzFilterActive ? '2px' : ''
+    function shopifyB2cPurpleTriangleHtml(sprice, amz) {
+        const s = parseFloat(sprice) || 0;
+        const a = parseFloat(amz) || 0;
+        if (!(s > 0 && a > 0 && s < a)) return '';
+        return '<i class="fas fa-exclamation-triangle" style="color:#6f42c1;font-size:10px;margin-left:3px;" title="S PRC $'
+            + s.toFixed(2) + ' &lt; A Price $' + a.toFixed(2) + ' — capped to S PRC, still pushed"></i>';
+    }
+
+    function syncShopifyB2cPurpleTriangleBadgeState() {
+        $('#shopifyb2c-purple-triangle-badge').css({
+            outline: purpleTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: purpleTriangleFilterActive ? '2px' : ''
         });
     }
 
@@ -829,6 +1328,7 @@
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
         });
+        syncShopifyB2cPurpleTriangleBadgeState();
     }
 
     /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
@@ -922,7 +1422,7 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
-    let spriceLtAmzFilterActive = false;
+    let purpleTriangleFilterActive = false;
     let decreaseModeActive = true;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -968,6 +1468,7 @@
     const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
     const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
     const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
+    const skuLinkLmpMagnifySrc = @json(asset('assets/images/task-magnify-icon.png'));
     const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
 
     let linkedSkuModal = null;
@@ -1008,7 +1509,10 @@
             const removeBtn = isSelf ? '' : `<button type="button" class="btn-close sku-link-lmp-remove" data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove"></button>`;
             return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
         }).join('') : '<span class="text-muted fst-italic">No SKUs</span>';
-        return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+        const openBtn = rowSku
+            ? `<button type="button" class="sku-link-lmp-open-btn" title="Open Sku Link LMP" data-sku="${escapeHtmlAttr(rowSku)}"><img src="${skuLinkLmpMagnifySrc}" alt="" class="task-magnify-icon" aria-hidden="true"></button>`
+            : '';
+        return `<div class="d-flex flex-wrap align-items-start py-1 gap-1" style="line-height:1.6;">${openBtn}${badges}</div>`;
     }
 
     function linkedLmpSkuAddFormatter(cell) {
@@ -1017,11 +1521,74 @@
         const rowSku = rowSkuForLinkLmp(row);
         if (!rowSku) return '';
         return `<div class="d-flex align-items-center justify-content-center py-1">
-            <button type="button" class="btn btn-sm btn-outline-primary sku-link-lmp-add-btn" title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}"><i class="fas fa-plus"></i></button>
+            <button type="button" class="sku-link-lmp-open-btn" title="Open Sku Link LMP" data-sku="${escapeHtmlAttr(rowSku)}"><img src="${skuLinkLmpMagnifySrc}" alt="" class="task-magnify-icon" aria-hidden="true"></button>
         </div>`;
     }
 
-    function applyAffectedLinkedSkuRows() {
+    function normalizeLinkedLmpSkus(rowData) {
+        const rowSku = rowSkuForLinkLmp(rowData);
+        let skus = rowData && rowData.linked_lmp_skus ? rowData.linked_lmp_skus : [];
+        if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
+        if (!Array.isArray(skus)) skus = [];
+        if (!skus.length && rowSku) skus = [rowSku];
+        const seen = new Set();
+        return skus.filter(function (sku) {
+            const norm = String(sku || '').trim().toUpperCase();
+            if (!norm || seen.has(norm)) return false;
+            seen.add(norm);
+            return true;
+        }).map(function (sku) { return String(sku || '').trim(); });
+    }
+
+    function renderLinkedSkuModalExisting() {
+        const listEl = document.getElementById('sku-link-lmp-existing-list');
+        if (!listEl) return;
+        const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
+        const skus = normalizeLinkedLmpSkus(linkedSkuModalRow);
+        if (!skus.length) {
+            listEl.innerHTML = '<span class="text-muted fst-italic">No linked SKUs</span>';
+            return;
+        }
+        listEl.innerHTML = skus.map(function (sku) {
+            const isSelf = sku.toUpperCase() === sourceSku.toUpperCase();
+            if (isSelf) {
+                return `<div class="sku-link-lmp-existing-item">
+                    <span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border" title="This SKU">${escapeHtml(sku)}</span>
+                </div>`;
+            }
+            return `<div class="sku-link-lmp-existing-item" data-linked-sku="${escapeHtmlAttr(sku)}">
+                <span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border sku-link-lmp-existing-label" title="Click to edit">
+                    <span class="linked-sku-badge">${escapeHtml(sku)}</span>
+                    <button type="button" class="btn-close sku-link-lmp-remove sku-link-lmp-delete-btn" data-linked-sku="${escapeHtmlAttr(sku)}" aria-label="Remove" title="Delete"></button>
+                </span>
+                <input type="text" class="form-control form-control-sm sku-link-lmp-edit-input d-none" value="${escapeHtmlAttr(sku)}" autocomplete="off">
+                <button type="button" class="btn btn-sm btn-outline-success sku-link-lmp-edit-save-btn d-none" title="Save"><i class="fas fa-check"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary sku-link-lmp-edit-cancel-btn d-none" title="Cancel"><i class="fas fa-times"></i></button>
+            </div>`;
+        }).join('');
+    }
+
+    function applyAffectedLinkedSkuRows(affected) {
+        if (table && Array.isArray(affected) && affected.length) {
+            const bySku = {};
+            affected.forEach(function (item) {
+                if (item && item.sku) bySku[String(item.sku).trim().toUpperCase()] = item.linked_lmp_skus || [];
+            });
+            table.getRows().forEach(function (row) {
+                const data = row.getData();
+                const sku = rowSkuForLinkLmp(data).toUpperCase();
+                if (!Object.prototype.hasOwnProperty.call(bySku, sku)) return;
+                row.update({ linked_lmp_skus: bySku[sku] });
+            });
+            if (linkedSkuModalRow) {
+                const src = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+                if (Object.prototype.hasOwnProperty.call(bySku, src)) {
+                    linkedSkuModalRow.linked_lmp_skus = bySku[src];
+                    renderLinkedSkuModalExisting();
+                }
+            }
+            return;
+        }
         if (table) table.replaceData();
     }
 
@@ -1036,8 +1603,34 @@
             body: JSON.stringify({ sku: sku, linked_sku: target }),
         }).then(r => r.json()).then(function (response) {
             if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
-            applyAffectedLinkedSkuRows();
+            applyAffectedLinkedSkuRows(response.affected);
         }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
+    }
+
+    function replaceLinkedSkuOnRow(rowData, oldSku, newSku) {
+        const sourceSku = rowSkuForLinkLmp(rowData);
+        const from = String(oldSku || '').trim();
+        const to = String(newSku || '').trim();
+        if (!sourceSku || !from || !to) return Promise.reject(new Error('Enter a SKU to save.'));
+        if (from.toUpperCase() === to.toUpperCase()) return Promise.resolve();
+        if (to.toUpperCase() === sourceSku.toUpperCase()) {
+            return Promise.reject(new Error('A SKU cannot be linked to itself.'));
+        }
+        return fetch(linkedSkuAddUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            body: JSON.stringify({ sku: sourceSku, linked_sku: to }),
+        }).then(r => r.json()).then(function (addRes) {
+            if (!addRes.success) throw new Error(addRes.message || 'Could not link SKU.');
+            return fetch(linkedSkuRemoveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: sourceSku, linked_sku: from }),
+            }).then(r => r.json()).then(function (delRes) {
+                if (!delRes.success) throw new Error(delRes.message || 'Linked the new SKU, but could not remove the old one.');
+                applyAffectedLinkedSkuRows(delRes.affected || addRes.affected);
+            });
+        });
     }
 
     function updateLinkedSkuSelectedSummary() {
@@ -1099,6 +1692,7 @@
         document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
         const input = document.getElementById('sku-link-lmp-input');
         input.value = '';
+        renderLinkedSkuModalExisting();
         renderLinkedSkuSuggestions('');
         updateLinkedSkuSelectedSummary();
         linkedSkuModal.show();
@@ -1124,8 +1718,11 @@
         fetchPromise.then(r => r.json()).then(function (response) {
             if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
             linkedSkuModalSelectedSkus = new Set();
-            linkedSkuModal?.hide();
-            applyAffectedLinkedSkuRows();
+            const addInput = document.getElementById('sku-link-lmp-input');
+            if (addInput) addInput.value = '';
+            renderLinkedSkuSuggestions('');
+            updateLinkedSkuSelectedSummary();
+            applyAffectedLinkedSkuRows(response.affected);
         }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
         .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
     }
@@ -1154,10 +1751,54 @@
             updateLinkedSkuSelectedSummary();
         });
         document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
+        document.getElementById('sku-link-lmp-existing-list')?.addEventListener('click', function (e) {
+            const item = e.target.closest('.sku-link-lmp-existing-item');
+            if (!item || !linkedSkuModalRow) return;
+            const linkedSku = String(item.dataset.linkedSku || '').trim();
+            if (e.target.closest('.sku-link-lmp-delete-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                removeLinkedSkuFromRow(linkedSkuModalRow, linkedSku);
+                return;
+            }
+            if (e.target.closest('.sku-link-lmp-edit-cancel-btn')) {
+                renderLinkedSkuModalExisting();
+                return;
+            }
+            if (e.target.closest('.sku-link-lmp-edit-save-btn')) {
+                const input = item.querySelector('.sku-link-lmp-edit-input');
+                const next = String(input && input.value || '').trim();
+                const btn = e.target.closest('.sku-link-lmp-edit-save-btn');
+                if (btn) btn.disabled = true;
+                replaceLinkedSkuOnRow(linkedSkuModalRow, linkedSku, next)
+                    .catch(function (err) { alert(err.message || 'Could not update linked SKU.'); })
+                    .finally(function () { if (btn) btn.disabled = false; });
+                return;
+            }
+            if (linkedSku && e.target.closest('.sku-link-lmp-existing-label')) {
+                item.querySelector('.sku-link-lmp-existing-label')?.classList.add('d-none');
+                item.querySelector('.sku-link-lmp-edit-input')?.classList.remove('d-none');
+                item.querySelector('.sku-link-lmp-edit-save-btn')?.classList.remove('d-none');
+                item.querySelector('.sku-link-lmp-edit-cancel-btn')?.classList.remove('d-none');
+                item.querySelector('.sku-link-lmp-edit-input')?.focus();
+                item.querySelector('.sku-link-lmp-edit-input')?.select();
+            }
+        });
+        document.getElementById('sku-link-lmp-existing-list')?.addEventListener('keydown', function (e) {
+            if (!e.target.classList.contains('sku-link-lmp-edit-input')) return;
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.target.closest('.sku-link-lmp-existing-item')?.querySelector('.sku-link-lmp-edit-save-btn')?.click();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                renderLinkedSkuModalExisting();
+            }
+        });
     }
 
     $(document).ready(function() {
         initSkuLinkLmpModal();
+        bindShopifyB2cBadgeHistory();
 
         // Show the discount-type dropdown only for % / $ modes; hide it for Same Price.
         function syncDiscountInputUi() {
@@ -1516,7 +2157,7 @@
                 if (isShopifyB2cParentRow(d)) return;
                 const sku = d['(Child) sku'];
                 if (!selectedSkus.has(sku)) return;
-                const price = shopifyB2cDisplayedSprice(d);
+                const price = shopifyB2cShownSprice(d);
                 if (price > 0) {
                     toPush.push({ sku: sku, price: price, row: row });
                 }
@@ -1589,12 +2230,14 @@
         // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
         // single source of truth for the Sold filter (mirrors Amazon tabulator behavior).
         // Clicking the same badge twice clears the filter (toggle semantics preserved).
-        $('#zero-sold-count-badge').on('click', function() {
+        $('#zero-sold-count-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
             const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
             $('#sold-filter').val(next);
             applyFilters();
         });
-        $('#more-sold-count-badge').on('click', function() {
+        $('#more-sold-count-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
             const next = $('#sold-filter').val() === 'sold' ? 'all' : 'sold';
             $('#sold-filter').val(next);
             applyFilters();
@@ -1602,34 +2245,28 @@
 
         // < Amz badge click handler - filter prices less than Amazon
         let lessAmzFilterActive = false;
-        $('#less-amz-badge').on('click', function() {
+        $('#less-amz-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
             lessAmzFilterActive = !lessAmzFilterActive;
             moreAmzFilterActive = false; // Deactivate the other filter
-            if (lessAmzFilterActive) spriceLtAmzFilterActive = false;
+            if (lessAmzFilterActive) purpleTriangleFilterActive = false;
             applyFilters();
         });
 
         // > Amz badge click handler - filter prices greater than Amazon
         let moreAmzFilterActive = false;
-        $('#more-amz-badge').on('click', function() {
+        $('#more-amz-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
             moreAmzFilterActive = !moreAmzFilterActive;
             lessAmzFilterActive = false; // Deactivate the other filter
-            if (moreAmzFilterActive) spriceLtAmzFilterActive = false;
-            applyFilters();
-        });
-
-        $('#sprice-lt-amz-badge').on('click', function() {
-            spriceLtAmzFilterActive = !spriceLtAmzFilterActive;
-            if (spriceLtAmzFilterActive) {
-                lessAmzFilterActive = false;
-                moreAmzFilterActive = false;
-            }
+            if (moreAmzFilterActive) purpleTriangleFilterActive = false;
             applyFilters();
         });
 
         // Missing badge click handler - filter SKUs missing in Shopify B2C
         let missingFilterActive = false;
-        $('#missing-count-badge').on('click', function() {
+        $('#missing-count-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
             missingFilterActive = !missingFilterActive;
             applyFilters();
         });
@@ -2025,7 +2662,8 @@
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/shopify-b2c-data-json",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitData",
+            layoutColumnsOnNewData: true,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -2077,15 +2715,19 @@
                 {
                     title: "Image",
                     field: "image_path",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 50,
+                    minWidth: 50,
+                    maxWidth: 50,
+                    resizable: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
                             return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
                         }
                         return '';
-                    },
-                    headerSort: false,
-                    width: 80
+                    }
                 },
                 {
                     title: "SKU",
@@ -2111,41 +2753,6 @@
                         
                         return html;
                     }
-                },
-                {
-                    title: "Links",
-                    field: "links_column",
-                    frozen: true,
-                    width: 55,
-                    hozAlign: "center",
-                    visible: true,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const buyerLink = rowData['B Link'] || '';
-                        const sellerLink = rowData['S Link'] || '';
-                        
-                        let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-                        
-                        if (sellerLink) {
-                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> S
-                            </a>`;
-                        }
-                        
-                        if (buyerLink) {
-                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                <i class="fa fa-link"></i> B
-                            </a>`;
-                        }
-                        
-                        if (!sellerLink && !buyerLink) {
-                            html += '<span class="text-muted" style="font-size: 12px;">-</span>';
-                        }
-                        
-                        html += '</div>';
-                        return html;
-                    },
-                    headerSort: false
                 },
                 {
                     title: "INV",
@@ -2358,42 +2965,33 @@
                         if (isShopifyB2cParentRow(rowData)) return '';
 
                         const sku = String(rowData['(Child) sku'] || '');
-                        const skuEnc = encodeURIComponent(sku);
                         const lmpPrice = parseFloat(cell.getValue());
                         const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
                         const ourPrice = parseFloat(rowData.Price) || 0;
                         const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                         const linkedSkusAttr = escLmpAttr(JSON.stringify(linkedSkus));
                         const skuAttr = escLmpAttr(sku);
+                        const countHtml = totalCompetitors > 0
+                            ? ' <a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                + ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"'
+                                + ' style="color:#007bff;text-decoration:none;cursor:pointer;font-weight:600;">('
+                                + totalCompetitors + ')</a>'
+                            : '';
 
-                        if ((!lmpPrice || lmpPrice <= 0) && totalCompetitors === 0) {
-                            const url = '/repricer/google-search' + (skuEnc ? '?sku=' + skuEnc : '');
-                            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
-                                '<a href="' + url + '" target="_blank" rel="noopener" title="No Google LMP — open Google Search">' +
-                                '<i class="fas fa-circle" style="color:#ff9c00;font-size:10px;"></i></a>' +
-                                '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                                ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
-                                '<i class="fa fa-plus"></i> Add</a></div>';
-                        }
-
-                        let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">';
                         if (lmpPrice > 0) {
-                            const color = (ourPrice > 0 && lmpPrice < ourPrice) ? '#dc3545' : '#28a745';
-                            html += '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                                ' style="color:' + color + ';font-weight:600;text-decoration:none;cursor:pointer;">$' +
-                                lmpPrice.toFixed(2) + '</a>';
+                            const priceColor = (ourPrice > 0 && lmpPrice < ourPrice) ? '#dc3545' : '#28a745';
+                            return '<span style="white-space:nowrap;"><span style="color:' + priceColor + ';font-weight:600;">$'
+                                + lmpPrice.toFixed(2) + '</span>' + countHtml + '</span>';
                         }
+
                         if (totalCompetitors > 0) {
-                            html += '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                                ' style="color:#007bff;text-decoration:none;cursor:pointer;font-size:11px;">' +
-                                '<i class="fa fa-eye"></i> View ' + totalCompetitors + '</a>';
-                        } else {
-                            html += '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"' +
-                                ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
-                                '<i class="fa fa-plus"></i> Add</a>';
+                            return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
+                                + ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"'
+                                + ' style="color:#007bff;text-decoration:none;cursor:pointer;font-weight:600;">('
+                                + totalCompetitors + ')</a>';
                         }
-                        html += '</div>';
-                        return html;
+
+                        return '<span style="color:#999;">N/A</span>';
                     }
                 },
                 {
@@ -2443,7 +3041,11 @@
                                 cell.getRow().getData(),
                                 e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
                             );
+                            return;
                         }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openLinkedSkuModal(cell.getRow().getData());
                     },
                 },
                 {
@@ -2451,16 +3053,14 @@
                     field: "linked_lmp_sku_add",
                     hozAlign: "center",
                     headerHozAlign: "center",
-                    width: 52,
+                    width: 40,
                     headerSort: false,
                     cssClass: "linked-sku-add-col",
                     formatter: linkedLmpSkuAddFormatter,
                     cellClick: function(e, cell) {
-                        if (e.target.closest('.sku-link-lmp-add-btn')) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openLinkedSkuModal(cell.getRow().getData());
-                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openLinkedSkuModal(cell.getRow().getData());
                     },
                 },
                 {
@@ -2646,7 +3246,7 @@
                         step: 0.01
                     },
                     sorter: "number",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CVR Disc%)/100). Sugg Amz Prc sets S PRC to A Price (not LMP-capped). If promo S PRC would be below Amz price, PRMT% and CVR Disc are skipped. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CVR Disc%)/100). Sugg Amz Prc sets S PRC to A Price (not LMP-capped). If S PRC < A Price, price is capped to S PRC and still pushed (purple triangle). Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -2689,10 +3289,10 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
+                        const purpleTri = shopifyB2cPurpleTriangleHtml(value, shopifyB2cAmzPrice(rowData));
                         
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
-                    },
-                    width: 92
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${purpleTri}</span>`;
+                    }
                 },
                 {
                     title: "Push",
@@ -2704,7 +3304,7 @@
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'] || '';
-                        const sprice = shopifyB2cDisplayedSprice(rowData);
+                        const sprice = shopifyB2cShownSprice(rowData);
                         const status = rowData.SPRICE_STATUS || '';
                         if (!sprice || sprice <= 0) {
                             return '<span style="color:#999;" title="Set S PRC first">N/A</span>';
@@ -2734,7 +3334,7 @@
                         const $btn = $target.hasClass('push-shopify-btn') ? $target : $target.closest('.push-shopify-btn');
                         const rowData = cell.getRow().getData();
                         const sku = rowData['(Child) sku'];
-                        const price = shopifyB2cDisplayedSprice(rowData);
+                        const price = shopifyB2cShownSprice(rowData);
                         pushShopifyB2cPrice(sku, price, $btn, cell.getRow());
                     }
                 },
@@ -2828,6 +3428,40 @@
                         return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
                     },
                     width: 50
+                },
+                {
+                    title: "Links",
+                    field: "links_column",
+                    width: 55,
+                    hozAlign: "center",
+                    visible: true,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const buyerLink = rowData['B Link'] || '';
+                        const sellerLink = rowData['S Link'] || '';
+
+                        let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
+
+                        if (sellerLink) {
+                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
+                                <i class="fa fa-link"></i> S
+                            </a>`;
+                        }
+
+                        if (buyerLink) {
+                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
+                                <i class="fa fa-link"></i> B
+                            </a>`;
+                        }
+
+                        if (!sellerLink && !buyerLink) {
+                            html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                        }
+
+                        html += '</div>';
+                        return html;
+                    }
                 }
             ]
         });
@@ -3087,10 +3721,10 @@
                 });
             }
 
-            // S PRC after PRMT% + CVR Disc% is below Amz price
-            if (spriceLtAmzFilterActive) {
+            // Purple triangle: shown S PRC < A Price
+            if (purpleTriangleFilterActive) {
                 table.addFilter(function(data) {
-                    return shopifyB2cSpriceLtAmzAfterPromo(data);
+                    return shopifyB2cHasPurpleTriangle(data);
                 });
             }
 
@@ -3140,7 +3774,10 @@
                 getActive: function() { return lmpMissingFilterActive; },
                 onToggle: function(on) {
                     lmpMissingFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        purpleTriangleFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -3151,7 +3788,10 @@
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        purpleTriangleFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -3162,17 +3802,37 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        purpleTriangleFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
         }
-        $('#shopifyb2c-blue-triangle-badge').on('click', function() {
+        $('#shopifyb2c-blue-triangle-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
             blueTriangleFilterActive = !blueTriangleFilterActive;
             if (blueTriangleFilterActive) {
                 lmpMissingFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                purpleTriangleFilterActive = false;
+                lessAmzFilterActive = false;
+                moreAmzFilterActive = false;
+            }
+            applyFilters();
+        });
+        $('#shopifyb2c-purple-triangle-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
+            purpleTriangleFilterActive = !purpleTriangleFilterActive;
+            if (purpleTriangleFilterActive) {
+                lmpMissingFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
+                lessAmzFilterActive = false;
+                moreAmzFilterActive = false;
             }
             applyFilters();
         });
@@ -3208,7 +3868,7 @@
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, totalViews = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0;
-            let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0, spriceLtAmzCount = 0;
+            let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
             let missingCount = 0;
 
             data.forEach(row => {
@@ -3258,10 +3918,6 @@
                     moreAmzCount++;
                 }
 
-                if (shopifyB2cSpriceLtAmzAfterPromo(row)) {
-                    spriceLtAmzCount++;
-                }
-                
                 // Count Missing
                 if (row['Missing'] === 'M') {
                     missingCount++;
@@ -3278,19 +3934,19 @@
             // All page-level financials below come from the same /shopify L30 snapshot
             // the Shopify row on /all-marketplace-master uses (single source of truth:
             // ChannelMasterController::getShopifyDirectL30Snapshot).
-            $('#total-pft-amt-badge').text(`PFT: $${Math.round(SHOPIFY_DIRECT_TOTAL_PFT).toLocaleString()}`);
-            $('#total-sales-amt-badge').text(`Sales: $${Math.round(SHOPIFY_DIRECT_L30_SALES).toLocaleString()}`);
-            $('#total-orders-badge').text(`Orders: ${SHOPIFY_DIRECT_L30_ORDERS.toLocaleString()}`);
-            $('#total-qty-badge').text(`Qty: ${SHOPIFY_DIRECT_L30_QTY.toLocaleString()}`);
-            $('#avg-gpft-badge').text(`GPFT: ${SHOPIFY_DIRECT_GPFT_PCT.toFixed(1)}%`);
-            $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
-            $('#total-inv-badge').text(`INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
+            setShopifyB2cSummaryBadge($('#total-pft-amt-badge'), `PFT: $${Math.round(SHOPIFY_DIRECT_TOTAL_PFT).toLocaleString()}`, SHOPIFY_DIRECT_TOTAL_PFT);
+            setShopifyB2cSummaryBadge($('#total-sales-amt-badge'), `Sales: $${Math.round(SHOPIFY_DIRECT_L30_SALES).toLocaleString()}`, SHOPIFY_DIRECT_L30_SALES);
+            setShopifyB2cSummaryBadge($('#total-orders-badge'), `Orders: ${SHOPIFY_DIRECT_L30_ORDERS.toLocaleString()}`, SHOPIFY_DIRECT_L30_ORDERS);
+            setShopifyB2cSummaryBadge($('#total-qty-badge'), `Qty: ${SHOPIFY_DIRECT_L30_QTY.toLocaleString()}`, SHOPIFY_DIRECT_L30_QTY);
+            setShopifyB2cSummaryBadge($('#avg-gpft-badge'), `GPFT: ${SHOPIFY_DIRECT_GPFT_PCT.toFixed(1)}%`, SHOPIFY_DIRECT_GPFT_PCT);
+            setShopifyB2cSummaryBadge($('#avg-price-badge'), `Price: $${avgPrice.toFixed(2)}`, avgPrice);
+            setShopifyB2cSummaryBadge($('#total-inv-badge'), `INV: ${totalInv.toLocaleString()}`, totalInv);
+            setShopifyB2cSummaryBadge($('#total-l30-badge'), `L30: ${totalL30.toLocaleString()}`, totalL30);
             const overallCvr = totalViews > 0 ? (SHOPIFY_DIRECT_L30_QTY / totalViews) * 100 : 0;
-            $('#total-views-badge').text(`Views: ${totalViews.toLocaleString()}`);
-            $('#avg-cvr-badge').text(`CVR: ${Math.round(overallCvr)}%`);
-            $('#total-b2b-l30-badge').text(`B2B: ${totalB2BL30.toLocaleString()}`);
-            $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
+            setShopifyB2cSummaryBadge($('#total-views-badge'), `Views: ${totalViews.toLocaleString()}`, totalViews);
+            setShopifyB2cSummaryBadge($('#avg-cvr-badge'), `CVR: ${overallCvr.toFixed(1)}%`, overallCvr);
+            setShopifyB2cSummaryBadge($('#total-b2b-l30-badge'), `B2B: ${totalB2BL30.toLocaleString()}`, totalB2BL30);
+            setShopifyB2cSummaryBadge($('#zero-sold-count-badge'), `0 Sold: ${zeroSoldCount}`, zeroSoldCount);
             if (window.LmpMissingBadge) {
                 LmpMissingBadge.update('#shopifyb2c-lmp-missing-badge', allData, 'shopifyb2c');
             }
@@ -3301,30 +3957,41 @@
                 PriceLt80LmpBadge.update('#shopifyb2c-price-lt80-lmp-badge', allData, 'shopifyb2c', 'Price');
             }
             let blueTriangleCount = 0;
+            let purpleTriangleCount = 0;
             allData.forEach(function(row) {
                 if (shopifyB2cHasBlueTriangle(row)) blueTriangleCount++;
+                if (shopifyB2cHasPurpleTriangle(row)) purpleTriangleCount++;
             });
-            $('#shopifyb2c-blue-triangle-badge').html(
-                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            setShopifyB2cSummaryBadge(
+                $('#shopifyb2c-blue-triangle-badge'),
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString(),
+                blueTriangleCount,
+                true
+            );
+            setShopifyB2cSummaryBadge(
+                $('#shopifyb2c-purple-triangle-badge'),
+                '<i class="fas fa-exclamation-triangle"></i> ' + purpleTriangleCount.toLocaleString(),
+                purpleTriangleCount,
+                true
             );
             syncShopifyB2cTriangleBadgeState();
-            $('#more-sold-count-badge').text(`>0 Sold: ${moreSoldCount}`);
-            $('#total-cogs-badge').text(`COGS: $${Math.round(SHOPIFY_DIRECT_TOTAL_COGS || totalCogs).toLocaleString()}`);
+            setShopifyB2cSummaryBadge($('#more-sold-count-badge'), `>0 Sold: ${moreSoldCount}`, moreSoldCount);
+            setShopifyB2cSummaryBadge($('#total-cogs-badge'), `COGS: $${Math.round(SHOPIFY_DIRECT_TOTAL_COGS || totalCogs).toLocaleString()}`, SHOPIFY_DIRECT_TOTAL_COGS || totalCogs);
             const groiBadge = (typeof SHOPIFY_DIRECT_GROI_PCT === 'number' && !isNaN(SHOPIFY_DIRECT_GROI_PCT))
                 ? SHOPIFY_DIRECT_GROI_PCT
                 : groiFromRows;
-            $('#roi-percent-badge').text(`GROI: ${groiBadge.toFixed(1)}%`);
-            $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
-            $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
-            $('#sprice-lt-amz-badge').text(`S PRC < Amz: ${spriceLtAmzCount}`);
-            syncShopifyB2cSpriceLtAmzBadgeState();
-            $('#missing-count-badge').text(`Miss: ${missingCount}`);
+            setShopifyB2cSummaryBadge($('#roi-percent-badge'), `GROI: ${groiBadge.toFixed(1)}%`, groiBadge);
+            setShopifyB2cSummaryBadge($('#less-amz-badge'), `< Amz: ${lessAmzCount}`, lessAmzCount);
+            setShopifyB2cSummaryBadge($('#more-amz-badge'), `> Amz: ${moreAmzCount}`, moreAmzCount);
+            setShopifyB2cSummaryBadge($('#missing-count-badge'), `Miss: ${missingCount}`, missingCount);
             
             // Spend / TCOS / NPFT / NROI all read the page-level snapshot now.
-            $('#total-tcos-badge').text(`Ads: ${Math.round(SHOPIFY_DIRECT_TCOS_PCT)}%`);
-            $('#total-spend-badge').text(`Spend: $${Math.round(SHOPIFY_DIRECT_TOTAL_SPEND).toLocaleString()}`);
-            $('#avg-npft-badge').text(`NPFT: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`);
-            $('#nroi-percent-badge').text(`NROI: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`);
+            setShopifyB2cSummaryBadge($('#total-tcos-badge'), `Ads: ${Math.round(SHOPIFY_DIRECT_TCOS_PCT)}%`, SHOPIFY_DIRECT_TCOS_PCT);
+            setShopifyB2cSummaryBadge($('#total-spend-badge'), `Spend: $${Math.round(SHOPIFY_DIRECT_TOTAL_SPEND).toLocaleString()}`, SHOPIFY_DIRECT_TOTAL_SPEND);
+            setShopifyB2cSummaryBadge($('#avg-npft-badge'), `NPFT: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`, SHOPIFY_DIRECT_NPFT_PCT);
+            setShopifyB2cSummaryBadge($('#nroi-percent-badge'), `NROI: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`, SHOPIFY_DIRECT_NROI_PCT);
+            if (typeof syncShopifyB2cSummaryTrendDots === 'function') syncShopifyB2cSummaryTrendDots();
+            if (typeof saveShopifyB2cBadgeStatsOnce === 'function') saveShopifyB2cBadgeStatsOnce();
         }
 
         /*
@@ -3433,12 +4100,20 @@
         // Wait for table to be built
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
+            if (typeof window.chPromoBindTableAutofit === 'function') {
+                window.chPromoBindTableAutofit(table);
+            }
         });
 
         table.on('dataLoaded', function() {
             setTimeout(function() {
                 applyFilters();
                 updateSummary();
+                if (typeof window.chPromoAutofitColumns === 'function') {
+                    window.chPromoAutofitColumns(table);
+                }
+                if (typeof loadShopifyB2cBadgePrevDay === 'function') loadShopifyB2cBadgePrevDay();
+                if (typeof loadChartJs === 'function') loadChartJs();
             }, 100);
         });
 

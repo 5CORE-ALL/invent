@@ -2697,13 +2697,13 @@ class OverallAmazonController extends Controller
     /**
      * Default CVR% slabs → Disc% for Amazon tabulator CVR Disc. column.
      * Separate store from PEF / Cpn% (pef_cvr_vs_cpn).
+     * No 0% CVR slab — CVR ≤ 0 maps to 0 Disc%.
      *
      * @return list<array{key:string,label:string,disc:float|int}>
      */
     private function amazonDefaultCvrDiscRules(): array
     {
         return [
-            ['key' => 'eq-0', 'label' => '0%', 'disc' => 10],
             ['key' => '0.01-1', 'label' => '0.01–1%', 'disc' => 9],
             ['key' => '1-1.5', 'label' => '1–1.5%', 'disc' => 8],
             ['key' => '1.5-2', 'label' => '1.5–2%', 'disc' => 7],

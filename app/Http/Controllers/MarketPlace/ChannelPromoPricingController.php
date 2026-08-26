@@ -1268,22 +1268,22 @@ class ChannelPromoPricingController extends Controller
 
     public function zeroSoldPrcRules(Request $request, string $channel): JsonResponse
     {
-        $channel = strtolower(trim($channel));
-        if (! $this->promo->isSupported($channel)) {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
         return $this->loadRules(
             $channel.'_zero_sold_prc',
-            $this->defaultZeroSoldPrcRules($channel),
+            self::sharedZeroSoldPrcDefaults(),
             'groi'
         );
     }
 
     public function saveZeroSoldPrcRules(Request $request, string $channel): JsonResponse
     {
-        $channel = strtolower(trim($channel));
-        if (! $this->promo->isSupported($channel)) {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
@@ -1294,7 +1294,7 @@ class ChannelPromoPricingController extends Controller
 
         $rules = $this->persistRules(
             $channel.'_zero_sold_prc',
-            $this->defaultZeroSoldPrcRules($channel),
+            self::sharedZeroSoldPrcDefaults(),
             $incoming,
             'groi'
         );
@@ -1598,35 +1598,34 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * 0 Sold Dil → Target ROI% for suggested SPRICE.
-     * AliExpress uses 3 Dil color slabs (Red / Green / Pink).
-     * eBay 2 Open Box / Reverb use 10% Dil steps.
+     * 0 Sold Dil color → Target GROI% (per-page store `{channel}_zero_sold_prc`).
+     * First-time: Red → 50, Green → 60, Pink → 70.
      *
      * @return list<array{key:string,label:string,groi:float|int}>
      */
-    private function defaultZeroSoldPrcRules(string $channel = ''): array
+    public static function sharedZeroSoldPrcDefaults(): array
     {
-        if (in_array($channel, ['aliexpress'], true)) {
-            return [
-                ['key' => 'red', 'label' => 'Red Dil (<25%)', 'groi' => 40],
-                ['key' => 'green', 'label' => 'Green Dil (25–50%)', 'groi' => 25],
-                ['key' => 'pink', 'label' => 'Pink Dil (50%+)', 'groi' => 10],
-            ];
+        return [
+            ['key' => 'red', 'label' => 'Red Dil (<25%)', 'groi' => 50],
+            ['key' => 'green', 'label' => 'Green Dil (25–50%)', 'groi' => 60],
+            ['key' => 'pink', 'label' => 'Pink Dil (50%+)', 'groi' => 70],
+        ];
+    }
+
+    private function normalizeRulesChannel(string $channel): ?string
+    {
+        $channel = strtolower(trim($channel));
+        if (preg_match('/^[a-z0-9_]{2,40}$/', $channel) !== 1) {
+            return null;
+        }
+        if ($this->promo->isSupported($channel)) {
+            return $channel;
+        }
+        if (in_array($channel, ['amazon', 'pef', 'vinted', 'depop', 'macy'], true)) {
+            return $channel;
         }
 
-        return [
-            ['key' => '0-10', 'label' => '0–10%', 'groi' => 40],
-            ['key' => '10-20', 'label' => '10–20%', 'groi' => 35],
-            ['key' => '20-30', 'label' => '20–30%', 'groi' => 30],
-            ['key' => '30-40', 'label' => '30–40%', 'groi' => 25],
-            ['key' => '40-50', 'label' => '40–50%', 'groi' => 20],
-            ['key' => '50-60', 'label' => '50–60%', 'groi' => 15],
-            ['key' => '60-70', 'label' => '60–70%', 'groi' => 12],
-            ['key' => '70-80', 'label' => '70–80%', 'groi' => 10],
-            ['key' => '80-90', 'label' => '80–90%', 'groi' => 8],
-            ['key' => '90-100', 'label' => '90–100%', 'groi' => 5],
-            ['key' => 'gt-100', 'label' => '> 100%', 'groi' => 0],
-        ];
+        return null;
     }
 
     /**
@@ -1645,15 +1644,13 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Same slabs as PEF_CVR_CPN_DEFAULTS / pefDefaultCvrCpnRules.
-     * eBay 2 Open Box omits the 0% slab (Apply is only for SKUs with eBay sale > 0).
-     * eBay 2 / eBay 3 include the same 0% → 10 CPN% slab as eBay 1.
+     * No 0% CVR slab — CVR ≤ 0 maps to 0 CPN/Disc on every channel.
      *
      * @return list<array{key:string,label:string,cpn:float|int}>
      */
     private function defaultCvrCpnRules(string $channel = ''): array
     {
-        $rules = [
-            ['key' => 'eq-0', 'label' => '0%', 'cpn' => 10],
+        return [
             ['key' => '0.01-1', 'label' => '0.01–1%', 'cpn' => 9],
             ['key' => '1-1.5', 'label' => '1–1.5%', 'cpn' => 8],
             ['key' => '1.5-2', 'label' => '1.5–2%', 'cpn' => 7],
@@ -1665,11 +1662,6 @@ class ChannelPromoPricingController extends Controller
             ['key' => '6.5-7', 'label' => '6.5–7%', 'cpn' => 1],
             ['key' => 'gt-7', 'label' => '> 7%', 'cpn' => 0],
         ];
-        if (in_array($channel, ['ebay2op'], true)) {
-            return array_values(array_filter($rules, static fn (array $r) => ($r['key'] ?? '') !== 'eq-0'));
-        }
-
-        return $rules;
     }
 
     /**

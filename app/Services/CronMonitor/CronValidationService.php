@@ -25,8 +25,14 @@ class CronValidationService
 
         $allowZero = (bool) ($rules['allow_zero_when_expected_zero'] ?? true);
         $intentionallyEmpty = $allowZero && $ctx->expectedRecords === 0;
+        $localOnly = ! empty($ctx->meta['local_only']) || ((int) $ctx->apiCalls === 0 && ! empty($ctx->meta['fresh_run']));
+        $alreadyComplete = ! empty($ctx->meta['already_complete']);
 
-        if (($rules['require_api_data'] ?? true) && ! $ctx->apiConnected && ! $intentionallyEmpty) {
+        if ($alreadyComplete) {
+            return ['passed' => true, 'messages' => ['Already complete — leftover checkpoint had no remaining rows.']];
+        }
+
+        if (($rules['require_api_data'] ?? true) && ! $ctx->apiConnected && ! $intentionallyEmpty && ! $localOnly) {
             $messages[] = 'API did not connect or return a successful response.';
         }
 

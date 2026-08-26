@@ -74,6 +74,23 @@
             border-color: #1aa179;
             color: #fff;
         }
+        #amz-zero-sold-btn {
+            background: #e83e8c;
+            border-color: #e83e8c;
+            color: #fff;
+        }
+        #amz-zero-sold-btn:hover,
+        #amz-zero-sold-btn:focus {
+            background: #d63384;
+            border-color: #d63384;
+            color: #fff;
+        }
+        #amz-zero-sold-table .amz-zero-sold-roi-input {
+            max-width: 90px;
+            margin-left: auto;
+            text-align: right;
+            font-weight: 600;
+        }
         #amz-sprice-recalc-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -284,6 +301,10 @@
                             </li>
                         </ul>
                     </div>
+                    <button type="button" class="btn btn-sm" id="amz-zero-sold-btn"
+                        title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. Amazon has its own rule table. Apply sets S PRC so SGROI equals the target when A L30 = 0.">
+                        0 Sold
+                    </button>
                     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => 'amazon'])
                     <div id="amz-push-prc-progress" aria-live="polite" title="Push Prc background job — survives refresh; you can queue more SKUs anytime">
                         <div class="amz-push-prc-progress-meta">
@@ -311,8 +332,9 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Map CVR% slabs to <strong>CVR Disc.</strong> %.
+                        Map CVR% slabs to <strong>CVR Disc.</strong> % (no 0% slab).
                         Used by the CVR Disc. column and Push Prc Sale discount.
+                        <strong>CVR = 0%</strong> maps to <strong>0</strong> Disc%.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-disc-table">
@@ -330,6 +352,54 @@
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="amz-cvr-disc-apply-btn"
                         title="Save CVR Disc rules and refresh the CVR Disc. column">
+                        Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amzZeroSoldModal" tabindex="-1" aria-labelledby="amzZeroSoldModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="amzZeroSoldModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> 0 Sold
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map <strong>Dil color</strong> to <strong>Target GROI%</strong>
+                        (<strong style="color:#a00211;">Red &lt;25% → 50</strong>,
+                        <strong style="color:#28a745;">Green 25–50% → 60</strong>,
+                        <strong style="color:#e83e8c;">Pink 50%+ → 70</strong> first time).
+                        Amazon has its own rule table.
+                        The <strong>0 Sold</strong> column shows the target when <strong>A L30 = 0</strong>.
+                        <strong>Apply</strong> sets <strong>S PRC</strong> so
+                        <strong>SGROI = Target GROI%</strong>
+                        (<code>S PRC = (LP × (1 + GROI%/100) + Ship) / 0.80</code>).
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-zero-sold-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Dil Color</th>
+                                    <th style="width:45%;" class="text-end">Target GROI%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="amz-zero-sold-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="amz-zero-sold-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="amz-zero-sold-save-btn"
+                        title="Save Dil color → Target GROI% for Amazon only">
+                        <i class="fas fa-save me-1"></i> Save Rule
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amz-zero-sold-apply-btn"
+                        title="Save rules, then set S PRC so SGROI = Target on A L30 = 0 SKUs">
                         Apply
                     </button>
                 </div>
@@ -396,7 +466,6 @@
             return rules;
         })();
         const AMZ_CVR_DISC_DEFAULTS = [
-            { key: 'eq-0', label: '0%', disc: 10 },
             { key: '0.01-1', label: '0.01–1%', disc: 9 },
             { key: '1-1.5', label: '1–1.5%', disc: 8 },
             { key: '1.5-2', label: '1.5–2%', disc: 7 },
@@ -411,6 +480,12 @@
 
         let pefDilPrmtRules = PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzCvrDiscRules = AMZ_CVR_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        const AMZ_ZERO_SOLD_DEFAULTS = [
+            { key: 'red', label: 'Red Dil (<25%)', groi: 50 },
+            { key: 'green', label: 'Green Dil (25–50%)', groi: 60 },
+            { key: 'pink', label: 'Pink Dil (50%+)', groi: 70 },
+        ];
+        let amzZeroSoldRules = AMZ_ZERO_SOLD_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? true);
 
         function amzPefCsrf() {
@@ -623,6 +698,132 @@
             return '<span class="amz-cvr-discount-badge" title="CVR Disc rule → ' + n + '%">'
                 + n + '%</span>';
         }
+        function amzDilColorBand(dil) {
+            const n = Number(dil);
+            if (!isFinite(n) || n < 25) return 'red';
+            if (n < 50) return 'green';
+            return 'pink';
+        }
+        function amzDilColorHex(band) {
+            if (band === 'red') return '#a00211';
+            if (band === 'green') return '#28a745';
+            if (band === 'pink') return '#e83e8c';
+            return '#6c757d';
+        }
+        function amzIsZeroSoldRow(d) {
+            if (!amzPefIsChildRow(d)) return false;
+            if (amzPefInv(d) <= 0) return false;
+            const sold = Number(d['A_L30'] != null ? d['A_L30'] : d.A_L30) || 0;
+            return !(sold > 0);
+        }
+        function amzZeroSoldGroiForRow(d) {
+            if (!amzIsZeroSoldRow(d)) return null;
+            const key = amzDilColorBand(amzPefDil(d));
+            const rule = amzZeroSoldRules.find(function(r) { return r.key === key; });
+            const n = rule ? Number(rule.groi) : 0;
+            return isFinite(n) ? n : 0;
+        }
+        function amzSpriceFromTargetGroi(d, roiPct) {
+            const lp = parseFloat(d.LP_productmaster) || 0;
+            if (!(lp > 0)) return 0;
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+            const price = (lp * (1 + roi / 100) + ship) / 0.80;
+            return (isFinite(price) && price > 0) ? amzPefRound2(price) : 0;
+        }
+        function renderAmzZeroSoldModalTable() {
+            const $tb = $('#amz-zero-sold-tbody').empty();
+            amzZeroSoldRules.forEach(function(r, idx) {
+                const groi = isFinite(Number(r.groi)) ? Number(r.groi) : 0;
+                const hex = amzDilColorHex(r.key);
+                $tb.append(
+                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                    + '<td><span style="color:' + hex + ';font-weight:700;">'
+                    + '<i class="fas fa-circle me-1" style="font-size:0.65em;"></i>'
+                    + String(r.label || r.key) + '</span></td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm amz-zero-sold-roi-input" '
+                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '">'
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readAmzZeroSoldRulesFromModal() {
+            $('#amz-zero-sold-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                const val = parseFloat($(this).find('.amz-zero-sold-roi-input').val());
+                const rule = amzZeroSoldRules.find(function(r) { return r.key === key; });
+                if (!rule) return;
+                rule.groi = isFinite(val) ? val : 0;
+            });
+            return amzZeroSoldRules.map(function(r) {
+                return { key: r.key, label: r.label, groi: Number(r.groi) || 0 };
+            });
+        }
+        async function loadAmzZeroSoldRules() {
+            $('#amz-zero-sold-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: '/channel-promo-pricing/amazon/zero-sold-prc',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    amzZeroSoldRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                renderAmzZeroSoldModalTable();
+                $('#amz-zero-sold-status').text(res && res.is_default
+                    ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Save Rule to keep Amazon’s table.'
+                    : 'Loaded saved 0 Sold rules for Amazon.');
+            } catch (e) {
+                renderAmzZeroSoldModalTable();
+                $('#amz-zero-sold-status').text('Could not load saved rules — using defaults.');
+            }
+        }
+        function saveAmzZeroSoldRules() {
+            const rules = readAmzZeroSoldRulesFromModal();
+            return $.ajax({
+                url: '/channel-promo-pricing/amazon/zero-sold-prc',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { rules: rules, _token: amzPefCsrf() },
+            }).then(function(res) {
+                if (res && Array.isArray(res.rules)) {
+                    amzZeroSoldRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    renderAmzZeroSoldModalTable();
+                }
+                $('#amz-zero-sold-status').text('Saved.');
+                return res;
+            });
+        }
+        async function applyAmzZeroSoldToTargets(targets, label) {
+            readAmzZeroSoldRulesFromModal();
+            if (!targets.length) {
+                amzPefToast('error', 'No 0 Sold rows (A L30 = 0, INV > 0, LP > 0) to price');
+                return;
+            }
+            let ok = 0;
+            let skipped = 0;
+            for (let i = 0; i < targets.length; i++) {
+                const item = targets[i];
+                const d = item.row.getData();
+                if (!amzIsZeroSoldRow(d)) { skipped++; continue; }
+                const roi = amzZeroSoldGroiForRow(d);
+                const sprice = amzSpriceFromTargetGroi(d, roi);
+                if (!(sprice > 0)) { skipped++; continue; }
+                item.row.update({ SPRICE: sprice, ZERO_SOLD_PRC_GROI: roi });
+                saveAmzSpriceFromPromo(item.row, sprice, true);
+                ok++;
+            }
+            if (table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+            amzPefToast(
+                ok ? 'success' : 'error',
+                '0 Sold (' + label + '): S PRC from Target GROI% → ' + ok + ' row(s)'
+                    + (skipped ? ('; skipped ' + skipped) : '') + '.'
+            );
+        }
 
         function renderAmzCvrDiscModalTable() {
             const $tb = $('#amz-cvr-disc-tbody').empty();
@@ -659,7 +860,8 @@
                     dataType: 'json',
                 });
                 if (res && Array.isArray(res.rules) && res.rules.length) {
-                    amzCvrDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    amzCvrDiscRules = res.rules.map(function(r) { return Object.assign({}, r); })
+                        .filter(function(r) { return r.key !== 'eq-0'; });
                 }
                 renderAmzCvrDiscModalTable();
                 $('#amz-cvr-disc-status').text(res && res.is_default
@@ -679,7 +881,8 @@
                 data: { rules: rules, _token: amzPefCsrf() },
             }).then(function(res) {
                 if (res && Array.isArray(res.rules)) {
-                    amzCvrDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    amzCvrDiscRules = res.rules.map(function(r) { return Object.assign({}, r); })
+                        .filter(function(r) { return r.key !== 'eq-0'; });
                     renderAmzCvrDiscModalTable();
                 }
                 return res;
@@ -1035,6 +1238,41 @@
                             + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + fmtAmzCvrDiscountBadge(pct) + '</span>';
+                    },
+                },
+                {
+                    title: '0 Sold',
+                    field: 'zero_sold',
+                    width: 100,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: '0 Sold target price from Dil color → GROI% (Red 50 / Green 60 / Pink 70). Format: $price (GROI). N/A when A L30 > 0 or no LP.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const ad = aRow.getData() || {};
+                        const bd = bRow.getData() || {};
+                        const av = amzSpriceFromTargetGroi(ad, amzZeroSoldGroiForRow(ad));
+                        const bv = amzSpriceFromTargetGroi(bd, amzZeroSoldGroiForRow(bd));
+                        return (av || 0) - (bv || 0);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || !amzPefIsChildRow(d)) return '';
+                        const roi = amzZeroSoldGroiForRow(d);
+                        const lp = parseFloat(d.LP_productmaster) || 0;
+                        const price = amzSpriceFromTargetGroi(d, roi);
+                        if (!amzIsZeroSoldRow(d) || !(lp > 0) || roi == null || !(price > 0)) {
+                            return '<span style="color:#999;">N/A</span>';
+                        }
+                        const band = amzDilColorBand(amzPefDil(d));
+                        const hex = amzDilColorHex(band);
+                        const label = band === 'red' ? 'Red' : (band === 'green' ? 'Green' : 'Pink');
+                        return '<div class="d-flex flex-column align-items-center justify-content-center" '
+                            + 'style="gap:1px;line-height:1.1;" title="0 Sold · '
+                            + label + ' Dil → $' + price.toFixed(2) + ' at ' + roi + '% GROI">'
+                            + '<span style="color:' + hex + ';font-weight:600;font-size:14px;">$' + price.toFixed(2) + '</span>'
+                            + '<span style="color:#007bff;font-weight:600;">(' + Math.round(roi) + ')</span>'
+                            + '</div>';
                     },
                 },
                 ...(typeof cvrUpDnColumn === 'function' ? [cvrUpDnColumn()] : []),
@@ -1732,6 +1970,13 @@
                     }
                 }).catch(function() { /* defaults still work */ });
             }
+            if (typeof loadAmzZeroSoldRules === 'function') {
+                Promise.resolve(loadAmzZeroSoldRules()).then(function() {
+                    if (table) {
+                        try { table.getColumn('zero_sold') && table.redraw(true); } catch (e) { /* ignore */ }
+                    }
+                }).catch(function() { /* defaults */ });
+            }
 
             // Resume background Push Prc progress after refresh
             $('#amz-push-prc-cancel-btn').off('click.amzpef').on('click.amzpef', function(e) {
@@ -1832,6 +2077,65 @@
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
             $('#amz-cvr-disc-apply-btn').off('click.amzpef').on('click.amzpef', saveAndApplyAmzCvrDisc);
+
+            $('#amz-zero-sold-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                const modalEl = document.getElementById('amzZeroSoldModal');
+                if (!modalEl) return;
+                renderAmzZeroSoldModalTable();
+                loadAmzZeroSoldRules();
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+            $('#amz-zero-sold-save-btn').off('click.amzpef').on('click.amzpef', async function(e) {
+                e.preventDefault();
+                const $btn = $(this);
+                const html = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+                try {
+                    await saveAmzZeroSoldRules();
+                    if (table) {
+                        try { table.redraw(true); } catch (err) { /* ignore */ }
+                    }
+                    amzPefToast('success', '0 Sold rules saved for Amazon.');
+                } catch (xhr) {
+                    amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                } finally {
+                    $btn.prop('disabled', false).html(html);
+                }
+            });
+            $('#amz-zero-sold-apply-btn').off('click.amzpef').on('click.amzpef', async function(e) {
+                e.preventDefault();
+                let targets = collectAmzPefSelectedRows();
+                let label = 'selected';
+                if (!targets.length) {
+                    targets = collectAmzPefVisibleRows();
+                    label = 'all visible';
+                }
+                targets = targets.filter(function(t) {
+                    const d = t.d || t.row.getData();
+                    return amzIsZeroSoldRow(d) && (parseFloat(d.LP_productmaster) || 0) > 0;
+                });
+                if (!targets.length) {
+                    amzPefToast('error', 'No 0 Sold rows (A L30 = 0, INV > 0, LP > 0) to price');
+                    return;
+                }
+                if (label === 'all visible' && !confirm(
+                    'No rows selected — apply 0 Sold Target GROI% to ' + targets.length + ' visible 0 Sold row(s)?'
+                )) {
+                    return;
+                }
+                const $btn = $(this);
+                const html = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+                try {
+                    await saveAmzZeroSoldRules();
+                    await applyAmzZeroSoldToTargets(targets, label);
+                } catch (xhr) {
+                    amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                } finally {
+                    $btn.prop('disabled', false).html(html);
+                }
+            });
 
             $(document).off('change.amzpef', '.amz-pef-appr-cb').on('change.amzpef', '.amz-pef-appr-cb', function() {
                 if (!table) return;

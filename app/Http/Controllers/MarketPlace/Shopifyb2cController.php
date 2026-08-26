@@ -16,6 +16,7 @@ use App\Models\AmazonDataView;
 use App\Models\GoogleSkuCompetitor;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,19 @@ use App\Models\AmazonChannelSummary;
 
 class Shopifyb2cController extends Controller
 {
+    public const BADGE_CHANNEL = 'shopify_b2c';
+
+    /** Keys stored in amazon_channel_summary_data.summary_data for /shopify-b2c-pricing badges. */
+    public const BADGE_METRICS = [
+        'total_sales', 'total_orders', 'total_qty', 'total_pft', 'total_cogs', 'total_spend',
+        'gpft_percent', 'groi_percent', 'nroi_percent', 'npft_percent', 'tcos_percent',
+        'total_l30', 'total_views', 'cvr_percent', 'total_b2b_l30',
+        'zero_sold_count', 'sold_count', 'missing_count', 'less_amz_count', 'more_amz_count',
+        'blue_triangle_count', 'purple_triangle_count',
+        'lmp_missing_count', 'prc_gt_lmp_count', 'price_lt80_lmp_count',
+        'avg_price', 'total_inv',
+    ];
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -775,20 +789,32 @@ class Shopifyb2cController extends Controller
     public function shopifyB2cDataJson()
     {
         $data = $this->getViewShopifyB2cTabularData();
-        
-        // Auto-save daily summary in background (non-blocking)
-        $this->saveDailySummaryIfNeeded($data ?? []);
-        
-        // Calculate campaign totals from google_ads_campaigns (like Amazon does)
+
+        // Save snapshot after JSON is sent so the table is not blocked (same as eBay).
+        $rows = is_array($data) ? $data : [];
+        dispatch(function () use ($rows) {
+            $level = ob_get_level();
+            ob_start();
+            try {
+                app(self::class)->snapshotDailyBadgeSummary($rows);
+            } catch (\Throwable $e) {
+                Log::error('Error saving daily Shopify B2C summary: ' . $e->getMessage());
+            } finally {
+                while (ob_get_level() > $level) {
+                    ob_end_clean();
+                }
+            }
+        })->afterResponse();
+
         $yesterday = \Carbon\Carbon::yesterday();
         $startDate = $yesterday->copy()->subDays(29);
-        
+
         $totalGoogleSpend = DB::table('google_ads_campaigns')
             ->whereDate('date', '>=', $startDate->format('Y-m-d'))
             ->whereDate('date', '<=', $yesterday->format('Y-m-d'))
             ->where('advertising_channel_type', 'SHOPPING')
             ->sum('metrics_cost_micros') / 1000000;
-        
+
         return response()->json([
             'data' => $data,
             'campaign_totals' => [
@@ -1327,45 +1353,63 @@ class Shopifyb2cController extends Controller
     }
 
     /**
-     * Auto-save daily Shopify B2C summary snapshot (channel-wise)
-     * Matches JavaScript updateSummary() logic exactly
+     * Auto-save daily Shopify B2C summary snapshot when the pricing page loads.
      */
     private function saveDailySummaryIfNeeded($products)
     {
+        $this->snapshotDailyBadgeSummary(is_array($products) ? $products : []);
+    }
+
+    /**
+     * Store today's /shopify-b2c-pricing badge values in amazon_channel_summary_data
+     * (same store as eBay / Amazon tabulator pages and the Active Channel history).
+     *
+     * @param  array<int, array<string, mixed>>|null  $products
+     * @param  array<string, float|int>  $overlay  Live badge values from the page (triangles / LMP).
+     * @return array<string, mixed>
+     */
+    public function snapshotDailyBadgeSummary(?array $products = null, array $overlay = []): array
+    {
         try {
-            $today = now()->toDateString();
-            
-            // No cache - always update when page loads
-            
-            // Filter: INV > 0 && nr_req === 'REQ' && not parent summary (EXACT JS updateSummary)
-            $filteredData = collect($products)->filter(function ($p) {
-                if (!empty($p['is_parent_summary'])) {
+            $loadDirectSnapshot = $products === null || $overlay !== [];
+            if ($products === null) {
+                $products = $this->getViewShopifyB2cTabularData() ?? [];
+            }
+
+            $today = now('America/Los_Angeles')->toDateString();
+            $direct = [];
+            // Page-load / afterResponse already has row data. Skip the expensive
+            // /shopify L30 snapshot here — cron + the live badge POST fill those.
+            if ($loadDirectSnapshot) {
+                try {
+                    $direct = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                        ->getShopifyDirectL30Snapshot();
+                } catch (\Throwable $e) {
+                    Log::warning('Shopify B2C badge snapshot: direct L30 failed: ' . $e->getMessage());
+                }
+            }
+
+            $children = collect($products)->filter(function ($p) {
+                if (! empty($p['is_parent_summary'])) {
                     return false;
                 }
                 $sku = strtoupper(trim((string) ($p['(Child) sku'] ?? '')));
-                if ($sku !== '' && str_contains($sku, 'PARENT')) {
-                    return false;
-                }
 
-                $invCheck = floatval($p['INV'] ?? 0) > 0;
-                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
-
-                return $invCheck && $reqCheck;
+                return $sku === '' || ! str_contains($sku, 'PARENT');
             });
-            
-            if ($filteredData->isEmpty()) {
-                return; // No valid products
-            }
-            
-            // Initialize counters (EXACT JavaScript variable names)
+
+            $filteredData = $children->filter(function ($p) {
+                return floatval($p['INV'] ?? 0) > 0 && ($p['nr_req'] ?? '') === 'REQ';
+            });
+
             $totalSkuCount = $filteredData->count();
             $totalPft = 0;
             $totalSales = 0;
-            $totalGpft = 0;
             $totalPrice = 0;
             $priceCount = 0;
             $totalInv = 0;
             $totalL30 = 0;
+            $totalViews = 0;
             $totalB2BL30 = 0;
             $zeroSoldCount = 0;
             $moreSoldCount = 0;
@@ -1377,48 +1421,44 @@ class Shopifyb2cController extends Controller
             $lessAmzCount = 0;
             $moreAmzCount = 0;
             $missingCount = 0;
-            
-            // Loop through each row (EXACT JavaScript forEach logic)
+
             foreach ($filteredData as $row) {
                 $totalPft += floatval($row['Profit'] ?? 0);
                 $totalSales += floatval($row['Sales L30'] ?? 0);
-                // Don't sum GPFT% - we'll calculate it from totals
-                
+
                 $price = floatval($row['Price'] ?? 0);
                 if ($price > 0) {
                     $totalPrice += $price;
                     $priceCount++;
                 }
-                
+
                 $totalInv += floatval($row['INV'] ?? 0);
                 $totalL30 += floatval($row['L30'] ?? 0);
+                $totalViews += floatval($row['Views'] ?? 0);
                 $totalB2BL30 += floatval($row['B2B L30'] ?? 0);
-                
-                // Count based on B2B L30 (not OV L30)
+
                 $b2bL30 = floatval($row['B2B L30'] ?? 0);
                 if ($b2bL30 == 0) {
                     $zeroSoldCount++;
                 } else {
                     $moreSoldCount++;
                 }
-                
+
                 $dil = floatval($row['DIL%'] ?? 0);
                 if ($dil > 0) {
                     $totalDil += $dil;
                     $dilCount++;
                 }
-                
-                // COGS = LP × B2B L30
+
                 $lp = floatval($row['LP_productmaster'] ?? 0);
                 $totalCogs += $lp * $b2bL30;
-                
+
                 $roi = floatval($row['ROI%'] ?? 0);
                 if ($roi != 0) {
                     $totalRoi += $roi;
                     $roiCount++;
                 }
-                
-                // Compare Price with Amazon Price
+
                 $amzPrice = floatval($row['A Price'] ?? 0);
                 if ($amzPrice > 0 && $price > 0) {
                     if ($price < $amzPrice) {
@@ -1427,76 +1467,286 @@ class Shopifyb2cController extends Controller
                         $moreAmzCount++;
                     }
                 }
-                
-                // Count Missing (check 'Missing' field === 'M')
+
                 if (($row['Missing'] ?? '') === 'M') {
                     $missingCount++;
                 }
             }
-            
-            // Calculate averages and percentages (EXACT JavaScript logic)
+
+            $lmpMissing = 0;
+            $prcGtLmp = 0;
+            $priceLt80 = 0;
+            $blueTriangle = 0;
+            $purpleTriangle = 0;
+            foreach ($children as $row) {
+                $price = floatval($row['Price'] ?? 0);
+                $lmp = floatval($row['lmp_price'] ?? ($row['LMP'] ?? 0));
+                if ($lmp <= 0) {
+                    $lmpMissing++;
+                } elseif ($price > 0) {
+                    if ($price > $lmp) {
+                        $prcGtLmp++;
+                    } elseif ($price < ($lmp * 0.8)) {
+                        $priceLt80++;
+                    }
+                }
+
+                $sprice = floatval($row['SPRICE'] ?? 0);
+                $amz = floatval($row['A Price'] ?? 0);
+                if ($sprice > 0 && $price > 0 && round($sprice, 2) !== round($price, 2)) {
+                    $blueTriangle++;
+                }
+                if ($sprice > 0 && $amz > 0 && $sprice < $amz) {
+                    $purpleTriangle++;
+                }
+            }
+
             $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
-            $avgGpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0; // Calculate from totals, not average
-            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0; // This will be multiplied by 100 in display
+            $avgGpftFromRows = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
             $avgRoi = $roiCount > 0 ? $totalRoi / $roiCount : 0;
-            
-            // Store ALL metrics in JSON (flexible!)
+            $directQty = (int) ($direct['qty'] ?? 0);
+            $cvr = $totalViews > 0 && $directQty > 0
+                ? ($directQty / $totalViews) * 100
+                : 0;
+
             $summaryData = [
-                // Counts
                 'total_sku_count' => $totalSkuCount,
                 'sold_count' => $moreSoldCount,
                 'zero_sold_count' => $zeroSoldCount,
                 'missing_count' => $missingCount,
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
-                
-                // Financial Totals
-                'total_pft' => round($totalPft, 2),
-                'total_sales' => round($totalSales, 2),
-                'total_cogs' => round($totalCogs, 2),
-                
-                // Inventory
+                'blue_triangle_count' => $blueTriangle,
+                'purple_triangle_count' => $purpleTriangle,
+                'lmp_missing_count' => $lmpMissing,
+                'prc_gt_lmp_count' => $prcGtLmp,
+                'price_lt80_lmp_count' => $priceLt80,
+
+                'total_pft' => round((float) ($direct['total_pft'] ?? $totalPft), 2),
+                'total_sales' => round((float) ($direct['l30_sales'] ?? $totalSales), 2),
+                'total_orders' => (int) ($direct['l30_orders'] ?? 0),
+                'total_qty' => $directQty,
+                'total_cogs' => round((float) ($direct['total_cogs'] ?? $totalCogs), 2),
+                'total_spend' => round((float) ($direct['total_ad_spend'] ?? 0), 2),
+
                 'total_inv' => round($totalInv, 2),
                 'total_l30' => round($totalL30, 2),
                 'total_b2b_l30' => round($totalB2BL30, 2),
-                
-                // Calculated Percentages & Averages
-                'avg_gpft' => round($avgGpft, 2),
+                'total_views' => (int) round($totalViews),
+                'cvr_percent' => round($cvr, 2),
+
+                'gpft_percent' => round((float) ($direct['gpft_pct'] ?? $avgGpftFromRows), 2),
+                'groi_percent' => round((float) ($direct['groi_pct'] ?? ($totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : $avgRoi)), 2),
+                'nroi_percent' => round((float) ($direct['nroi_pct'] ?? 0), 2),
+                'npft_percent' => round((float) ($direct['npft_pct'] ?? 0), 2),
+                'tcos_percent' => round((float) ($direct['tcos_pct'] ?? 0), 2),
+                'avg_gpft' => round((float) ($direct['gpft_pct'] ?? $avgGpftFromRows), 2),
                 'avg_dil' => round($avgDil, 2),
-                'avg_roi' => round($avgRoi, 2),
+                'avg_roi' => round((float) ($direct['groi_pct'] ?? $avgRoi), 2),
                 'avg_price' => round($avgPrice, 2),
-                
-                // Metadata
+
                 'total_products_count' => count($products),
                 'calculated_at' => now()->toDateTimeString(),
-                
-                // Active Filters
                 'filters_applied' => [
-                    'inventory' => 'more',  // INV > 0
-                    'nrl' => 'REQ',        // REQ only
+                    'inventory' => 'more',
+                    'nrl' => 'REQ',
                 ],
             ];
-            
-            // Save or update as JSON (channel-wise)
+
+            foreach ($overlay as $key => $value) {
+                if (in_array($key, self::BADGE_METRICS, true) && is_numeric($value)) {
+                    $summaryData[$key] = is_int($value) || ctype_digit((string) $value)
+                        ? (int) $value
+                        : round((float) $value, 2);
+                }
+            }
+
             AmazonChannelSummary::updateOrCreate(
                 [
-                    'channel' => 'shopify_b2c',
-                    'snapshot_date' => $today
+                    'channel' => self::BADGE_CHANNEL,
+                    'snapshot_date' => $today,
                 ],
                 [
                     'summary_data' => $summaryData,
-                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                    'notes' => 'Daily badge snapshot (INV > 0, REQ) — /shopify-b2c-pricing',
                 ]
             );
-            
+
             Log::info("Daily Shopify B2C summary snapshot saved for {$today}", [
                 'sku_count' => $totalSkuCount,
                 'sold_count' => $moreSoldCount,
             ]);
-            
+
+            return $summaryData;
         } catch (\Exception $e) {
-            // Don't break the main response if summary save fails
             Log::error('Error saving daily Shopify B2C summary: ' . $e->getMessage());
+
+            return [];
         }
+    }
+
+    /**
+     * Merge live badge values from the pricing page into today's snapshot.
+     */
+    public function saveShopifyB2cBadgeStats(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $overlay = [];
+            foreach (self::BADGE_METRICS as $key) {
+                if ($request->has($key) && is_numeric($request->input($key))) {
+                    $overlay[$key] = (float) $request->input($key);
+                }
+            }
+
+            $existing = AmazonChannelSummary::where('channel', self::BADGE_CHANNEL)
+                ->where('snapshot_date', $today)
+                ->first();
+            $summary = ($existing && is_array($existing->summary_data))
+                ? $existing->summary_data
+                : [];
+            $summary = array_merge($summary, $overlay);
+            $summary['calculated_at'] = now()->toDateTimeString();
+
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => self::BADGE_CHANNEL,
+                    'snapshot_date' => $today,
+                ],
+                [
+                    'summary_data' => $summary,
+                    'notes' => 'Daily badge snapshot (live page)',
+                ]
+            );
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            Log::error('saveShopifyB2cBadgeStats error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error saving badge stats'], 500);
+        }
+    }
+
+    /**
+     * Daily snapshot series for Shopify B2C summary badges.
+     */
+    public function getShopifyB2cBadgeChartData(Request $request)
+    {
+        try {
+            $metric = (string) $request->input('metric', 'total_sales');
+            $days = intval($request->input('days', 30));
+
+            if (! in_array($metric, self::BADGE_METRICS, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $cacheKey = 'shopify_b2c_badge_chart:' . $metric . ':' . $days;
+            $chartData = Cache::remember($cacheKey, 60, function () use ($metric, $days) {
+                $tz = 'America/Los_Angeles';
+                $query = AmazonChannelSummary::where('channel', self::BADGE_CHANNEL)
+                    ->orderBy('snapshot_date', 'asc');
+                if ($days > 0) {
+                    $query->where('snapshot_date', '>=', now($tz)->subDays(max(0, $days - 1))->toDateString());
+                }
+
+                $out = [];
+                foreach ($query->get(['snapshot_date', 'summary_data']) as $row) {
+                    $summary = is_array($row->summary_data)
+                        ? $row->summary_data
+                        : (json_decode($row->summary_data ?? '{}', true) ?: []);
+                    $raw = $this->shopifyB2cMetricFromSummary($summary, $metric);
+                    if ($raw === null) {
+                        continue;
+                    }
+                    $d = Carbon::parse($row->snapshot_date)->toDateString();
+                    $out[] = [
+                        'date' => Carbon::parse($d)->format('M d'),
+                        'full_date' => $d,
+                        'value' => floatval($raw),
+                    ];
+                }
+
+                return $out;
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $chartData,
+                'metric' => $metric,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getShopifyB2cBadgeChartData error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
+     * Previous-day Shopify B2C badge metrics for 3-color trend dots.
+     */
+    public function getShopifyB2cBadgePrevDay(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $payload = Cache::remember('shopify_b2c_badge_prev_day:' . $today, 60, function () use ($today) {
+                $row = AmazonChannelSummary::where('channel', self::BADGE_CHANNEL)
+                    ->where('snapshot_date', '<', $today)
+                    ->orderBy('snapshot_date', 'desc')
+                    ->first();
+
+                if (! $row) {
+                    return ['date' => null, 'metrics' => null];
+                }
+
+                $s = is_array($row->summary_data)
+                    ? $row->summary_data
+                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
+
+                $metrics = [];
+                foreach (self::BADGE_METRICS as $key) {
+                    $raw = $this->shopifyB2cMetricFromSummary($s, $key);
+                    $metrics[$key] = $raw === null ? null : floatval($raw);
+                }
+
+                return [
+                    'date' => Carbon::parse($row->snapshot_date)->toDateString(),
+                    'metrics' => $metrics,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'date' => $payload['date'] ?? null,
+                'metrics' => $payload['metrics'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getShopifyB2cBadgePrevDay error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching previous day'], 500);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private function shopifyB2cMetricFromSummary(array $summary, string $metric): ?float
+    {
+        $aliases = [
+            'gpft_percent' => ['gpft_percent', 'avg_gpft'],
+            'groi_percent' => ['groi_percent', 'avg_roi'],
+            'total_sales' => ['total_sales', 'total_sales_amt'],
+            'total_qty' => ['total_qty'],
+            'total_orders' => ['total_orders'],
+            'tcos_percent' => ['tcos_percent'],
+        ];
+        $keys = $aliases[$metric] ?? [$metric];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $summary) && $summary[$key] !== null && $summary[$key] !== '') {
+                return floatval($summary[$key]);
+            }
+        }
+
+        return null;
     }
 }

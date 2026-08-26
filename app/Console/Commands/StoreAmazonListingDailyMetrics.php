@@ -38,6 +38,7 @@ class StoreAmazonListingDailyMetrics extends Command
 
     protected function executeStore(CronExecutionContext $monitor): int
     {
+        $monitor->startFresh()->markLocalOnly();
         $date = $this->option('date') ? Carbon::parse($this->option('date')) : Carbon::today();
         $chunkSize = $this->monitoredChunkSize();
 
@@ -89,7 +90,7 @@ class StoreAmazonListingDailyMetrics extends Command
 
             $missingInvCombinedCount = 0;
             $monitor->setFetched($productMasters->count());
-            $monitor->setExpected($productMasters->count());
+            $monitor->setExpected(1);
 
             foreach ($productMasters->chunk($chunkSize) as $pmChunk) {
                 foreach ($pmChunk as $item) {

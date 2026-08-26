@@ -426,6 +426,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('app:snapshot-shopify-b2c-badges')
+            ->twiceDaily(11, 19)
+            ->name('shopify-b2c-badge-snapshot')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | WAYFAIR

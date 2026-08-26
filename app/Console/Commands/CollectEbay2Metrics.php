@@ -37,6 +37,7 @@ class CollectEbay2Metrics extends Command
     protected function executeCollect(CronExecutionContext $monitor): int
     {
         $this->info('Starting eBay 2 metrics collection...');
+        $monitor->startFresh()->markLocalOnly();
         // California calendar day — matches /ebay2-tabulator-view SKU chart (PT).
         $today = Carbon::now('America/Los_Angeles')->toDateString();
         $yesterday = Carbon::now('America/Los_Angeles')->subDay()->toDateString();

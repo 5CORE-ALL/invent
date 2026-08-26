@@ -34,6 +34,7 @@ class CollectReverbMetrics extends Command
     protected function executeCollect(CronExecutionContext $monitor): int
     {
         $this->info('Starting Reverb metrics collection...');
+        $monitor->startFresh()->markLocalOnly();
         $today = Carbon::now('America/Los_Angeles')->toDateString();
         $chunkSize = $this->monitoredChunkSize();
 

@@ -140,7 +140,10 @@
         if (!el || el.dataset.pglBound === '1') return;
         el.dataset.pglBound = '1';
         el.style.cursor = 'pointer';
-        el.addEventListener('click', function () {
+        el.addEventListener('click', function (e) {
+            if (e.target && e.target.closest && e.target.closest('.summary-trend-dot, .kpi-status-dot')) {
+                return;
+            }
             var next = !opts.getActive();
             if (typeof opts.onToggle === 'function') opts.onToggle(next);
             setOutline(el, next);

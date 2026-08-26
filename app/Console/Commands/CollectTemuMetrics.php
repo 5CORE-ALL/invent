@@ -39,6 +39,7 @@ class CollectTemuMetrics extends Command
     protected function executeCollect(CronExecutionContext $monitor): int
     {
         $this->info('Starting Temu metrics collection...');
+        $monitor->startFresh()->markLocalOnly();
 
         $today = Carbon::today('America/Los_Angeles');
         $chunkSize = $this->monitoredChunkSize();
@@ -203,7 +204,7 @@ class CollectTemuMetrics extends Command
             },
             $chunkSize,
             null,
-            ['transaction' => true]
+            ['transaction' => true, 'fresh' => true]
         );
 
         $this->info("✓ Collection complete!");

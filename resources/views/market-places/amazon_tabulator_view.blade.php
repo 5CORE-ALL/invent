@@ -7112,7 +7112,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cvr_discount|zero_sold|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';

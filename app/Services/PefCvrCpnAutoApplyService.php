@@ -14,7 +14,6 @@ class PefCvrCpnAutoApplyService
 {
     /** @var list<array{key:string,label:string,cpn:float|int}> */
     public const DEFAULT_RULES = [
-        ['key' => 'eq-0', 'label' => '0%', 'cpn' => 10],
         ['key' => '0.01-1', 'label' => '0.01–1%', 'cpn' => 9],
         ['key' => '1-1.5', 'label' => '1–1.5%', 'cpn' => 8],
         ['key' => '1.5-2', 'label' => '1.5–2%', 'cpn' => 7],
@@ -82,6 +81,7 @@ class PefCvrCpnAutoApplyService
 
     public function cvrSlabKey(float $cvr): string
     {
+        // No 0% slab in the model — unmatched key so cpnForCvr() returns 0.
         if (! is_finite($cvr) || $cvr <= 0) {
             return 'eq-0';
         }

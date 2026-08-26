@@ -76,6 +76,7 @@ use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterControl
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
+use App\Http\Controllers\Channels\SalesLossOrderController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\ChannelPromotionMasterController;
 use App\Http\Controllers\Channels\ChannelwiseController;
@@ -576,6 +577,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/sales-order-fulfillment/gofo/refresh-statuses', [SalesOrderFulfillmentController::class, 'gofoRefreshStatuses'])->name('sales.order.fulfillment.gofo.refresh');
     Route::get('/sales-order-fulfillment/history/dot-trends', [SalesOrderFulfillmentController::class, 'historyDotTrends'])->name('sales.order.fulfillment.history.dot.trends');
     Route::get('/sales-order-fulfillment/history/chart-data', [SalesOrderFulfillmentController::class, 'historyChartData'])->name('sales.order.fulfillment.history.chart.data');
+    Route::get('/sales-loss-order', [SalesLossOrderController::class, 'index'])->name('sales.loss.order');
+    Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)
@@ -3864,6 +3867,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/shopify-b2c-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cTabulatorView'])->name('shopify.b2c.pricing');
     Route::get('/shopify-b2c-data-json', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cDataJson'])->name('shopify.b2c.data.json');
+    Route::get('/shopify-b2c-badge-chart-data', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getShopifyB2cBadgeChartData'])->name('shopify.b2c.badge.chart.data');
+    Route::get('/shopify-b2c-badge-prev-day', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getShopifyB2cBadgePrevDay'])->name('shopify.b2c.badge.prev.day');
+    Route::post('/shopify-b2c-badge-stats-save', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'saveShopifyB2cBadgeStats'])->name('shopify.b2c.badge.stats.save');
     Route::post('/shopify-b2c-update-listed-live', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'updateShopifyB2cListedLive'])->name('shopify.b2c.update.listed.live');
     Route::get('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getColumnVisibility'])->name('shopify.b2c.pricing.column.get');
     Route::post('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'setColumnVisibility'])->name('shopify.b2c.pricing.column.set');

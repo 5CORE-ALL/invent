@@ -11,8 +11,8 @@
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2op', 'aliexpress'], true);
-    $channelPromoZeroSoldDilColorSlabs = in_array($channelPromoChannel, ['aliexpress'], true);
+    $channelPromoShowZeroSoldDilRule = true;
+    $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['ebay1', 'temu', 'temu2'], true);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'shopify_b2c'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
@@ -34,6 +34,7 @@
         .tabulator-row .tabulator-cell[tabulator-field="sale_event"],
         .tabulator-row .tabulator-cell[tabulator-field="push_prmt"],
         .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
+        .tabulator-row .tabulator-cell[tabulator-field="zero_sold"],
         .tabulator-row .tabulator-cell[tabulator-field="push_cpn"],
         .tabulator-row .tabulator-cell[tabulator-field="push_std_prc"],
         .tabulator-row .tabulator-cell[tabulator-field="dsc"],
@@ -154,6 +155,30 @@
             background: #1aa179;
             border-color: #1aa179;
             color: #fff;
+        }
+        #ch-promo-zero-sold-vs-dil-btn {
+            background: #e83e8c;
+            border-color: #e83e8c;
+            color: #fff;
+        }
+        #ch-promo-zero-sold-vs-dil-btn:hover,
+        #ch-promo-zero-sold-vs-dil-btn:focus {
+            background: #d63384;
+            border-color: #d63384;
+            color: #fff;
+        }
+        .ch-zero-sold-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .ch-zero-sold-badge.is-empty {
+            color: #adb5bd;
+            font-weight: 600;
         }
         #ch-promo-sprice-recalc-btn {
             background: #0d6efd;
@@ -516,6 +541,10 @@
                     @if(!empty($channelPromoShowCvrUpDn))
                     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => $channelPromoChannel])
                     @endif
+                    <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
+                        title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. This page has its own rule table. Apply sets S PRC so GROI equals the target on 0-sold SKUs only.">
+                        0 Sold
+                    </button>
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3']))
                     @unless(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3'], true))
@@ -530,20 +559,8 @@
                     </button>
                     </div>
                     @endunless
-                    @if($channelPromoShowZeroSoldDilRule)
-                    <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
-                        title="0 Sold vs Dil: map Dil% slabs to Target ROI%, then set S PRC so GROI equals that target. Only SKUs with E L30 = 0. Selected if checked; otherwise all visible. No marketplace push.">
-                        0 sold Vs Dil Rule
-                    </button>
-                    @endif
                     @endif
                     @endunless
-                    @if($channelPromoShowZeroSoldDilRule && $channelPromoChannel === 'aliexpress')
-                    <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
-                        title="0 Sold vs ROI: Dil color → Target ROI%. Autopopulate writes PRMT% and cvr% (S PRC = Std − PRMT% − cvr%) when no saved promo exists (AL30 = 0, INV &gt; 0). Pause stops mid-run. No marketplace push.">
-                        0 sold vs ROI
-                    </button>
-                    @endif
                     <div id="ch-promo-push-prc-progress" aria-live="polite" title="Push progress">
                         <div class="ch-promo-push-prc-progress-head">
                             <i class="fas fa-spinner fa-spin" id="ch-promo-push-prc-progress-spin"></i>
@@ -577,26 +594,20 @@
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
                         @if($channelPromoUsesAmazonCvrDisc)
                             Same CVR Disc map as <strong>/amazon-tabulator-view</strong>:
-                            <strong>0% → 10</strong> down to <strong>&gt; 7% → 0</strong>.
+                            <strong>0.01–1% → 9</strong> down to <strong>&gt; 7% → 0</strong> (no 0% slab).
                             Map CVR% slabs to <strong>CVR Disc.</strong> %.
-                            <strong>INV = 0</strong> forces Disc% to <strong>0</strong>.
+                            <strong>INV = 0</strong> or <strong>CVR = 0%</strong> forces Disc% to <strong>0</strong>.
                             <strong>Apply</strong> saves rules and refreshes the CVR Disc. column
                             (all SKUs — no sold filter).
-                            If discounted S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.
-                        @elseif($channelPromoChannel === 'ebay2op')
+                            If discounted S PRC is <strong>below Amz price</strong>, S PRC is still applied and <strong>pushed</strong> (purple triangle).
+                        @elseif(in_array($channelPromoChannel, ['ebay1', 'ebay2op', 'ebay2', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
                             Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
                             <strong>Save Rule</strong> stores the slabs.
                             <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
                             (database only — no eBay coupon).
-                        @elseif(in_array($channelPromoChannel, ['ebay2', 'ebay3'], true))
-                            Map CVR% slabs to <strong>CPN %</strong>.
-                            Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
-                            <strong>Save Rule</strong> stores the slabs.
-                            <strong>Apply</strong> writes CPN% only on SKUs with <strong>eBay sale (E L30) &gt; 0</strong>
-                            (database only — no eBay coupon).
                         @else
-                            Map CVR% slabs to <strong>CPN %</strong>.
+                            Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
                             Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
                             <strong>Save Rule</strong> stores the slabs.
                             Apply then writes CPN% to the database only (no eBay coupon).
@@ -653,7 +664,7 @@
                         Changing any slab fills <strong>PRMT %</strong>.
                         If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
                         @if($channelPromoChannel === 'shopify_b2c')
-                        If discounted S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.
+                        If discounted S PRC is <strong>below Amz price</strong>, S PRC is still applied and <strong>pushed</strong> (purple triangle).
                         @endif
                     </p>
                     <div class="table-responsive">
@@ -695,54 +706,32 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoZeroSoldVsDilModalLabel">
-                        @if($channelPromoZeroSoldDilColorSlabs)
-                        <i class="fas fa-sliders-h me-1"></i> 0 sold vs ROI
-                        @else
-                        <i class="fas fa-sliders-h me-1"></i> 0 sold Vs Dil Rule
-                        @endif
+                        <i class="fas fa-sliders-h me-1"></i> 0 Sold
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
-                    @if($channelPromoZeroSoldDilColorSlabs)
                     <p class="small text-muted mb-2" id="ch-promo-zero-sold-dil-help">
-                        Map <strong>Dil color</strong> to <strong>Target ROI%</strong>
-                        (<strong style="color:#a00211;">Red &lt;25%</strong>,
-                        <strong style="color:#28a745;">Green 25–50%</strong>,
-                        <strong style="color:#e83e8c;">Pink 50%+</strong>).
-                        Dil = <strong>OV L30 ÷ INV</strong>.
-                        <strong>This rule applies only when AL30 = 0</strong>
-                        (sold SKUs use <strong>Dil vs PRMT</strong> instead).
-                        <strong>Save Rule</strong> and <strong>Autopopulate</strong> write
-                        <strong>PRMT%</strong>, <strong>cvr%</strong>, and <strong>S PRC</strong>
+                        Map <strong>Dil color</strong> to <strong>Target GROI%</strong>
+                        (<strong style="color:#a00211;">Red &lt;25% → 50</strong>,
+                        <strong style="color:#28a745;">Green 25–50% → 60</strong>,
+                        <strong style="color:#e83e8c;">Pink 50%+ → 70</strong> first time).
+                        This page has its own rule table.
+                        The <strong>0 Sold</strong> column shows the target on 0-sold SKUs.
+                        <strong>Save Rule</strong> stores the slabs.
+                        <strong>Apply</strong> writes <strong>S PRC</strong> so
+                        <strong>GROI = Target GROI%</strong>
+                        (<code>S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>)
                         on selected or visible SKUs with
-                        <strong>AL30 = 0</strong>, <strong>INV &gt; 0</strong>, <strong>LP &gt; 0</strong>
-                        so <strong>SROI = Target ROI%</strong> on <strong>Std Prc</strong>
-                        (not live <strong>Price</strong>):
-                        <code>S PRC = Std × (1 − (PRMT% + cvr%)/100)</code>.
-                        Target ROI% picks the discount off Std
-                        (<code>need S PRC = (LP × (1 + ROI%/100) + Ship) / margin</code>).
-                        Discount off Std is split: <strong>PRMT%</strong> from Dil vs PRMT (if it fits),
-                        remainder on <strong>cvr%</strong>.
-                        Use <strong>Pause</strong> to stop mid-run. No marketplace push.
-                    </p>
-                    @else
-                    <p class="small text-muted mb-2" id="ch-promo-zero-sold-dil-help">
-                        Map Dil% slabs (<strong>0–10%</strong> … <strong>&gt; 100%</strong>) to
-                        <strong>Target ROI%</strong>. Dil is <strong>OV L30 ÷ INV</strong> (same Dil column).
-                        <strong>Apply</strong> writes <strong>S PRC</strong> only on selected or visible SKUs with
-                        <strong>eBay sale (E L30) = 0</strong>, <strong>INV &gt; 0</strong>, and <strong>LP &gt; 0</strong>
-                        so <strong>GROI = Target ROI%</strong>
-                        (<code>S PRC = (LP × (1 + ROI%/100) + Ship) / margin</code>).
+                        <strong>0 sold</strong>, <strong>INV &gt; 0</strong>, and <strong>LP &gt; 0</strong>.
                         No marketplace push.
                     </p>
-                    @endif
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-zero-sold-dil-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:55%;">{{ $channelPromoZeroSoldDilColorSlabs ? 'Dil Color' : 'Dil%' }}</th>
-                                    <th style="width:45%;" class="text-end">Target ROI%</th>
+                                    <th style="width:55%;">Dil Color</th>
+                                    <th style="width:45%;" class="text-end">Target GROI%</th>
                                 </tr>
                             </thead>
                             <tbody id="ch-promo-zero-sold-dil-tbody"></tbody>
@@ -752,23 +741,18 @@
                     <div class="small fw-semibold mt-1" id="ch-promo-zero-sold-dil-progress" style="display:none;"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
-                    @if($channelPromoZeroSoldDilColorSlabs)
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="ch-promo-zero-sold-dil-save-btn"
-                        title="Save Dil color → Target ROI% rules, then set PRMT%, cvr%, S PRC, and SROI on AL30 = 0 SKUs only">
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-save-btn"
+                        title="Save Dil color → Target GROI% for this page only">
                         <i class="fas fa-save me-1"></i> Save Rule
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-apply-btn"
-                        title="Save rules, then autopopulate S PRC on 0 Sold (AL30 = 0) SKUs from Dil→Target ROI%">
-                        <i class="fas fa-magic me-1"></i> Autopopulate
+                        title="Save rules, then set S PRC so GROI = Target on 0 Sold SKUs">
+                        Apply
                     </button>
+                    @if($channelPromoChannel === 'aliexpress')
                     <button type="button" class="btn btn-sm btn-warning" id="ch-promo-zero-sold-dil-pause-btn"
                         title="Pause Autopopulate" disabled>
                         <i class="fas fa-pause me-1"></i> Pause
-                    </button>
-                    @else
-                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-apply-btn"
-                        title="Save Dil→Target GROI% rules, then set S PRC so GROI = Target on 0 Sold (E L30 = 0) SKUs">
-                        Apply
                     </button>
                     @endif
                 </div>
@@ -2514,11 +2498,16 @@
         }
         /** PRMT% used in S PRC (Dil vs PRMT slab on eBay / AliExpress / Shein). */
         function chPromoEbayPrmtUsed(d) {
-            if (typeof chPromoShopifyPromoBlockedByAmz === 'function' && chPromoShopifyPromoBlockedByAmz(d)) {
-                return 0;
-            }
             let prmt = Math.max(0, Number(d && (d.prmt_pct != null && d.prmt_pct !== ''
                 ? d.prmt_pct : d._prmt_pct_applied)) || 0);
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                && typeof chPromoIsZeroSoldRow === 'function'
+                && chPromoIsZeroSoldRow(d)) {
+                if (typeof chPromoKeepZeroSoldPrcSprice === 'function' && chPromoKeepZeroSoldPrcSprice(d)) {
+                    return chPromoRound2(prmt);
+                }
+                return 0;
+            }
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress'
                 && typeof chPromoHasSaleQty === 'function'
                 && !chPromoHasSaleQty(d)) {
@@ -2538,7 +2527,13 @@
         }
         /** cvr % / CPN% / CVR Disc used in S PRC. */
         function chPromoEbayCpnUsed(d) {
-            if (typeof chPromoShopifyPromoBlockedByAmz === 'function' && chPromoShopifyPromoBlockedByAmz(d)) {
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                && typeof chPromoIsZeroSoldRow === 'function'
+                && chPromoIsZeroSoldRow(d)) {
+                if (typeof chPromoKeepZeroSoldPrcSprice === 'function' && chPromoKeepZeroSoldPrcSprice(d)) {
+                    return chPromoRound2(Number(d && (d.cpn_pct != null && d.cpn_pct !== ''
+                        ? d.cpn_pct : d._cpn_pct_applied)) || 0);
+                }
                 return 0;
             }
             if (chPromoUsesAmazonCvrDisc()) {
@@ -2823,7 +2818,6 @@
             ? CH_PEF_DIL_PRMT_DEFAULTS_REVERB
             : (CH_PEF_USES_EBAY_FINE_DIL ? CH_PEF_DIL_PRMT_DEFAULTS_EBAY : CH_PEF_DIL_PRMT_DEFAULTS_FULL);
         const CH_PEF_CVR_CPN_DEFAULTS_ALL = [
-            { key: 'eq-0', label: '0%', cpn: 10 },
             { key: '0.01-1', label: '0.01–1%', cpn: 9 },
             { key: '1-1.5', label: '1–1.5%', cpn: 8 },
             { key: '1.5-2', label: '1.5–2%', cpn: 7 },
@@ -2835,32 +2829,16 @@
             { key: '6.5-7', label: '6.5–7%', cpn: 1 },
             { key: 'gt-7', label: '> 7%', cpn: 0 },
         ];
-        const CH_PEF_CVR_CPN_SKIP_ZERO = CHANNEL_PROMO_CHANNEL === 'ebay2op';
-        const CH_PEF_CVR_CPN_DEFAULTS = CH_PEF_CVR_CPN_SKIP_ZERO
-            ? CH_PEF_CVR_CPN_DEFAULTS_ALL.filter(function(r) { return r.key !== 'eq-0'; })
-            : CH_PEF_CVR_CPN_DEFAULTS_ALL;
+        const CH_PEF_CVR_CPN_SKIP_ZERO = true;
+        const CH_PEF_CVR_CPN_DEFAULTS = CH_PEF_CVR_CPN_DEFAULTS_ALL;
 
         let chPromoDilPrmtRules = CH_PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chPromoCvrCpnRules = CH_PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); });
-        const CH_PEF_ZERO_SOLD_DIL_DEFAULTS = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS
-            ? [
-                { key: 'red', label: 'Red Dil (<25%)', groi: 40 },
-                { key: 'green', label: 'Green Dil (25–50%)', groi: 25 },
-                { key: 'pink', label: 'Pink Dil (50%+)', groi: 10 },
-            ]
-            : [
-                { key: '0-10', label: '0–10%', groi: 40 },
-                { key: '10-20', label: '10–20%', groi: 35 },
-                { key: '20-30', label: '20–30%', groi: 30 },
-                { key: '30-40', label: '30–40%', groi: 25 },
-                { key: '40-50', label: '40–50%', groi: 20 },
-                { key: '50-60', label: '50–60%', groi: 15 },
-                { key: '60-70', label: '60–70%', groi: 12 },
-                { key: '70-80', label: '70–80%', groi: 10 },
-                { key: '80-90', label: '80–90%', groi: 8 },
-                { key: '90-100', label: '90–100%', groi: 5 },
-                { key: 'gt-100', label: '> 100%', groi: 0 },
-            ];
+        const CH_PEF_ZERO_SOLD_DIL_DEFAULTS = [
+            { key: 'red', label: 'Red Dil (<25%)', groi: 50 },
+            { key: 'green', label: 'Green Dil (25–50%)', groi: 60 },
+            { key: 'pink', label: 'Pink Dil (50%+)', groi: 70 },
+        ];
         let chPromoZeroSoldDilRules = CH_PEF_ZERO_SOLD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chPromoZeroSoldDilRun = {
             active: false,
@@ -3933,12 +3911,14 @@
             return 0;
         }
         function chPromoRoiForZeroSoldDil(dil) {
-            const key = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS
-                ? chPromoDilColorBand(dil)
-                : chPromoDilSlabKey(dil);
+            const key = chPromoDilColorBand(dil);
             const rule = chPromoZeroSoldDilRules.find(function(r) { return r.key === key; });
             const n = rule ? Number(rule.groi) : 0;
             return isFinite(n) ? n : 0;
+        }
+        function chPromoZeroSoldGroiForRow(d) {
+            if (!chPromoIsZeroSoldRow(d)) return null;
+            return chPromoRoiForZeroSoldDil(chPromoDil(d));
         }
         /** GROI back-solve: (sprice×margin − ship − lp) / lp × 100 = Target. */
         function chPromoSpriceFromTargetRoi(d, roiPct) {
@@ -4027,7 +4007,19 @@
             return Number(d && (d['RV L30'] != null ? d['RV L30'] : d.RV_L30)) || 0;
         }
         function chPromoIsZeroSoldRow(d) {
-            return !!CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES && chPromoReverbSoldQty(d) <= 0;
+            if (!d || d.is_parent_summary || !chPromoIsChildRow(d) || d.is_parent) return false;
+            if (!(chPromoInv(d) > 0)) return false;
+            if (chPromoIsEbayChannel()
+                || CHANNEL_PROMO_CHANNEL === 'aliexpress'
+                || CHANNEL_PROMO_CHANNEL === 'shein'
+                || (chPromoCfg && chPromoCfg.soldField)) {
+                return !chPromoHasSaleQty(d);
+            }
+            if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
+                return chPromoReverbSoldQty(d) <= 0;
+            }
+            const q = Number(d && (d.L30 != null ? d.L30 : (d.l30 != null ? d.l30 : d.sold))) || 0;
+            return !(q > 0);
         }
         function chPromoZeroSoldUsesAmazonPrice() {
             return CHANNEL_PROMO_CHANNEL === 'macys' || CHANNEL_PROMO_CHANNEL === 'macy';
@@ -4175,8 +4167,8 @@
             return isFinite(n) && n >= 0 ? n : 0;
         }
         /**
-         * Shopify B2C: do not apply PRMT% + CVR Disc when
-         * S PRC = Std × (1 − (PRMT+CVR Disc)/100) would be below Amz (A Price).
+         * Shopify B2C: promo S PRC = Std × (1 − (PRMT+CVR Disc)/100) is below Amz (A Price).
+         * S PRC is still applied and pushed (purple triangle).
          */
         function chPromoShopifyPromoBlockedByAmz(d) {
             if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return false;
@@ -4456,8 +4448,8 @@
                 renderChPromoCvrCpnModalTable();
                 $('#ch-promo-cvr-cpn-status').text(res && res.is_default
                     ? (chPromoUsesAmazonCvrDisc()
-                        ? 'Using Amazon CVR Disc defaults (0% → 10 … > 7% → 0). Apply to save.'
-                        : 'Using first-time defaults (0–10). Apply to save & apply.')
+                        ? 'Using Amazon CVR Disc defaults (0.01–1% → 9 … > 7% → 0, no 0% slab). Apply to save.'
+                        : 'Using first-time defaults (0.01–1% → 9 … > 7% → 0, no 0% slab). Apply to save & apply.')
                     : (chPromoUsesAmazonCvrDisc()
                         ? 'Loaded saved CVR Disc rules (same slabs as /amazon-tabulator-view).'
                         : 'Loaded saved CVR vs CPN rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.'));
@@ -4487,6 +4479,9 @@
                         const cpn = r.cpn != null ? r.cpn : r.disc;
                         return Object.assign({}, r, { cpn: Number(cpn) || 0 });
                     });
+                    if (CH_PEF_CVR_CPN_SKIP_ZERO) {
+                        chPromoCvrCpnRules = chPromoCvrCpnRules.filter(function(r) { return r.key !== 'eq-0'; });
+                    }
                     renderChPromoCvrCpnModalTable();
                 }
                 $('#ch-promo-cvr-cpn-status').text('Saved.');
@@ -5004,18 +4999,16 @@
             chPromoZeroSoldDilRules.forEach(function(r, idx) {
                 const groi = isFinite(Number(r.groi)) ? Number(r.groi) : 0;
                 let labelHtml = String(r.label || r.key);
-                if (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS) {
-                    const hex = chPromoDilColorHex(r.key);
-                    labelHtml = '<span style="color:' + hex + ';font-weight:700;">'
-                        + '<i class="fas fa-circle me-1" style="font-size:0.65em;"></i>'
-                        + String(r.label || r.key) + '</span>';
-                }
+                const hex = chPromoDilColorHex(r.key);
+                labelHtml = '<span style="color:' + hex + ';font-weight:700;">'
+                    + '<i class="fas fa-circle me-1" style="font-size:0.65em;"></i>'
+                    + String(r.label || r.key) + '</span>';
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                     + '<td>' + labelHtml + '</td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm ch-promo-zero-sold-dil-roi-input" '
-                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target ROI% for this Dil slab">'
+                    + 'step="0.1" value="' + groi + '" data-idx="' + idx + '" title="Target GROI% for this Dil color">'
                     + '</td></tr>'
                 );
             });
@@ -5045,11 +5038,8 @@
                 }
                 renderChPromoZeroSoldDilModalTable();
                 $('#ch-promo-zero-sold-dil-status').text(res && res.is_default
-                    ? (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS
-                        ? 'Using first-time Dil color defaults. Autopopulate to save & set S PRC on 0 Sold (AL30 = 0).'
-                        : 'Using first-time defaults. Apply to save & set S PRC on 0 Sold rows.')
-                    : 'Loaded saved 0 Sold vs ' + (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS ? 'ROI' : 'Dil')
-                        + ' rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
+                    ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Save Rule to keep this page’s table.'
+                    : 'Loaded saved 0 Sold rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
             } catch (e) {
                 renderChPromoZeroSoldDilModalTable();
                 $('#ch-promo-zero-sold-dil-status').text('Could not load saved rules — showing defaults.');
@@ -5143,10 +5133,8 @@
             }
             const ready = targets.filter(function(t) {
                 const d = (t.d || (t.row && t.row.getData())) || {};
-                if (!chPromoIsChildRow(d)
-                    || d.is_parent
-                    || chPromoHasSaleQty(d)
-                    || !(chPromoInv(d) > 0)
+                if (!chPromoIsZeroSoldRow(d)
+                    || (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d))
                     || !(chPromoLp(d) > 0)
                     || (CHANNEL_PROMO_CHANNEL === 'aliexpress' && !(chPromoStdBase(d) > 0))) {
                     return false;
@@ -5167,7 +5155,6 @@
         function chPromoZeroSoldDilSetRunUi(state) {
             const $apply = $('#ch-promo-zero-sold-dil-apply-btn');
             const $pause = $('#ch-promo-zero-sold-dil-pause-btn');
-            const colorMode = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS;
             if (state === 'running') {
                 $apply.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Running…');
                 $pause.prop('disabled', false).html('<i class="fas fa-pause me-1"></i> Pause');
@@ -5177,11 +5164,7 @@
                 $pause.prop('disabled', true).html('<i class="fas fa-pause me-1"></i> Paused');
                 $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', false);
             } else {
-                $apply.prop('disabled', false).html(
-                    colorMode
-                        ? '<i class="fas fa-magic me-1"></i> Autopopulate'
-                        : 'Apply'
-                );
+                $apply.prop('disabled', false).html('Apply');
                 $pause.prop('disabled', true).html('<i class="fas fa-pause me-1"></i> Pause');
                 $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', false);
             }
@@ -5202,10 +5185,10 @@
                 chPromoZeroSoldDilSetRunUi('idle');
                 if (typeof table !== 'undefined' && table) table.redraw(true);
                 chPromoZeroSoldDilSetProgress('', false);
-                const title = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS ? '0 sold vs ROI' : '0 sold Vs Dil Rule';
+                const title = '0 Sold';
                 chPromoToast(
                     run.fail && !run.ok ? 'error' : 'success',
-                    title + ' (' + run.label + '): PRMT% + cvr% from Target ROI% → ' + run.ok + ' row(s)'
+                    title + ' (' + run.label + '): S PRC from Target GROI% → ' + run.ok + ' row(s)'
                         + (run.fail ? (', ' + run.fail + ' failed') : '')
                         + (run.skipped ? (', ' + run.skipped + ' skipped') : '') + '.'
                 );
@@ -5254,7 +5237,8 @@
                 for (let i = 0; i < targets.length; i++) {
                     const item = targets[i];
                     const d = item.row.getData();
-                    if (!chPromoIsChildRow(d) || d.is_parent || chPromoHasSaleQty(d)) {
+                    if (!chPromoIsZeroSoldRow(d)
+                        || (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d))) {
                         skipped++;
                         continue;
                     }
@@ -5313,8 +5297,8 @@
                 return;
             }
 
-            // Color-slab channels: sequential Autopopulate with Pause/Resume
-            if (CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS) {
+            // AliExpress: sequential apply with Pause/Resume
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress') {
                 chPromoZeroSoldDilRun = {
                     active: true,
                     paused: false,
@@ -5353,7 +5337,7 @@
             if (typeof table !== 'undefined' && table) table.redraw(true);
             chPromoToast(
                 fail && !ok ? 'error' : 'success',
-                '0 sold Vs Dil Rule (' + label + '): S PRC from Dil→Target ROI% → ' + ok + ' row(s)'
+                '0 Sold (' + label + '): S PRC from Dil→Target GROI% → ' + ok + ' row(s)'
                     + (fail ? (', ' + fail + ' failed') : '')
                     + (skipped ? (', ' + skipped + ' skipped') : '') + '.'
             );
@@ -5380,7 +5364,7 @@
                 return;
             }
             if (label === 'all visible') {
-                const action = CHANNEL_PROMO_ZERO_SOLD_DIL_COLOR_SLABS ? 'autopopulate S PRC' : 'set S PRC';
+                const action = 'set S PRC';
                 if (!confirm(
                     'No rows selected — save rules and ' + action + ' from Dil→Target ROI% on '
                     + targets.length + ' visible 0 Sold row(s) (' + chPromoZeroSoldGateLabel() + ')?'
@@ -5466,10 +5450,18 @@
                 } else {
                     applyTargets = applyTargets.filter(function(item) {
                         const d = (item.d || (item.row && item.row.getData())) || {};
-                        return chPromoIsChildRow(d);
+                        if (!chPromoIsChildRow(d)) return false;
+                        if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                            && typeof chPromoIsZeroSoldRow === 'function'
+                            && chPromoIsZeroSoldRow(d)) {
+                            return false;
+                        }
+                        return true;
                     });
                     if (!applyTargets.length) {
-                        chPromoToast('error', 'No SKUs to apply Dil vs PRMT');
+                        chPromoToast('error', CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                            ? 'No >0 Sold SKUs to apply Dil vs PRMT (0 Sold uses the 0 Sold rules)'
+                            : 'No SKUs to apply Dil vs PRMT');
                         return;
                     }
                 }
@@ -6712,6 +6704,17 @@
          * (Std is Amazon's shared list price — do not overwrite AE Price when no promo/coupon exists).
          */
         function chPromoSpriceFromStdTPromo(d) {
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                && typeof chPromoKeepZeroSoldPrcSprice === 'function'
+                && chPromoKeepZeroSoldPrcSprice(d)) {
+                const stored = chPromoGetSprice(d);
+                if (stored > 0) return chPromoCapSpriceToLmp(d, stored);
+                if (typeof chPromoZeroSoldGroiForRow === 'function'
+                    && typeof chPromoSpriceFromTargetRoi === 'function') {
+                    const target = chPromoSpriceFromTargetRoi(d, chPromoZeroSoldGroiForRow(d));
+                    if (target > 0) return chPromoCapSpriceToLmp(d, target);
+                }
+            }
             // AliExpress 0-sold: discount Std (not live Price) so SROI ≈ Target ROI%.
             let price = 0;
             if (typeof chPromoAeZeroSoldStdSprice === 'function') {
@@ -7545,6 +7548,52 @@
                 },
             };
         }
+        function chPromoZeroSoldTargetPrice(d) {
+            const roi = chPromoZeroSoldGroiForRow(d);
+            if (roi == null) return 0;
+            return chPromoSpriceFromTargetRoi(d, roi);
+        }
+        function chPromoZeroSoldCellHtml(d) {
+            if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) {
+                return '';
+            }
+            if (!chPromoIsZeroSoldRow(d) || !(chPromoLp(d) > 0)) {
+                return '<span style="color:#999;">N/A</span>';
+            }
+            const roi = chPromoZeroSoldGroiForRow(d);
+            const price = chPromoSpriceFromTargetRoi(d, roi);
+            if (!(price > 0) || roi == null) {
+                return '<span style="color:#999;">N/A</span>';
+            }
+            const band = chPromoDilColorBand(chPromoDil(d));
+            const hex = chPromoDilColorHex(band);
+            const label = band === 'red' ? 'Red' : (band === 'green' ? 'Green' : 'Pink');
+            return '<div class="d-flex flex-column align-items-center justify-content-center" '
+                + 'style="gap:1px;line-height:1.1;" title="0 Sold · '
+                + label + ' Dil → $' + price.toFixed(2) + ' at ' + roi + '% GROI">'
+                + '<span style="color:' + hex + ';font-weight:600;font-size:14px;">$' + price.toFixed(2) + '</span>'
+                + '<span style="color:#007bff;font-weight:600;">(' + Math.round(roi) + ')</span>'
+                + '</div>';
+        }
+        function channelPromoZeroSoldColumn() {
+            return {
+                title: '0 Sold',
+                field: 'zero_sold',
+                width: 100,
+                hozAlign: 'center',
+                vertAlign: 'middle',
+                headerSort: true,
+                headerTooltip: '0 Sold target price from Dil color → GROI% (Red 50 / Green 60 / Pink 70). Format: $price (GROI). N/A when sold > 0 or no LP.',
+                sorter: function(a, b, aRow, bRow) {
+                    const av = chPromoZeroSoldTargetPrice(aRow.getData() || {});
+                    const bv = chPromoZeroSoldTargetPrice(bRow.getData() || {});
+                    return (av || 0) - (bv || 0);
+                },
+                formatter: function(cell) {
+                    return chPromoZeroSoldCellHtml(cell.getRow().getData() || {});
+                },
+            };
+        }
         function channelPromoPricingColumns() {
             return [
                 ...(CHANNEL_PROMO_CHANNEL === 'shopify_b2b' ? [channelPromoB2bDiscountColumn()] : []),
@@ -7579,7 +7628,7 @@
                     editor: 'input',
                     headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
                         + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                            ? ' Column still shows the Dil slab; not applied to S PRC when that would be below Amz price.'
+                            ? ' Applied to S PRC even when below Amz price (purple triangle; still pushed).'
                             : ' Same table on every marketplace page.')
                         + ' Dot = PDT daily history.',
                     formatter: function(cell) {
@@ -7607,7 +7656,7 @@
                                     + '% → ' + key + ' slab → PRMT ' + slab;
                                 if (typeof chPromoShopifyPromoBlockedByAmz === 'function'
                                     && chPromoShopifyPromoBlockedByAmz(d)) {
-                                    tip += ' (not applied to S PRC — would be below Amz price)';
+                                    tip += ' (S PRC below Amz — purple triangle; still pushed)';
                                 }
                             }
                         }
@@ -7747,7 +7796,7 @@
                     headerTooltip: chPromoUsesAmazonCvrDisc()
                         ? ('CVR Disc. — same rules as /amazon-tabulator-view. INV=0 → 0%. Read-only.'
                             + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                                ? ' Column still shows the CVR slab; not applied to S PRC when that would be below Amz price.'
+                                ? ' Applied to S PRC even when below Amz price (purple triangle; still pushed).'
                                 : ''))
                         : '% less on S PRC. Also filled by CVR vs CPN. Dot = PDT daily history.',
                     formatter: function(cell) {
@@ -7766,7 +7815,7 @@
                                 + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
                             if (typeof chPromoShopifyPromoBlockedByAmz === 'function'
                                 && chPromoShopifyPromoBlockedByAmz(d)) {
-                                tip += ' (not applied to S PRC — would be below Amz price)';
+                                tip += ' (S PRC below Amz — purple triangle; still pushed)';
                             }
                             return '<span title="' + chPromoEscAttr(tip) + '">'
                                 + fmtChPromoCvrDiscBadge(pct) + '</span>';
@@ -7792,6 +7841,7 @@
                         applyChPromoFromCell(cell, 'cpn');
                     },
                 }]),
+                channelPromoZeroSoldColumn(),
                 ...(chPromoCvrUpDnEnabled() && typeof cvrUpDnColumn === 'function' ? [cvrUpDnColumn()] : []),
                 ...(chPromoCvrUpDnEnabled() && typeof tDiscountsColumn === 'function'
                     ? [tDiscountsColumn(function(d) { return chPromoTPromoPct(d); })]
@@ -8057,7 +8107,7 @@
                             + '<strong>Save and Apply</strong> writes PRMT% on selected rows, or all visible SKUs. '
                             + 'If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.'
                             + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                                ? ' If discounted S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.'
+                                ? ' If discounted S PRC is <strong>below Amz price</strong>, S PRC is still applied and <strong>pushed</strong> (purple triangle).'
                                 : '');
                     }
                 } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
@@ -8299,14 +8349,14 @@
                     const help = document.getElementById('ch-promo-cvr-cpn-help');
                     if (help) {
                         help.innerHTML = 'Same CVR Disc map as <strong>/amazon-tabulator-view</strong>: '
-                            + '<strong>0% → 10</strong>, <strong>0.01–1% → 9</strong> … '
-                            + '<strong>6.5–7% → 1</strong>, <strong>&gt; 7% → 0</strong>. '
-                            + '<strong>INV = 0</strong> → Disc% is <strong>0</strong>. '
+                            + '<strong>0.01–1% → 9</strong> … '
+                            + '<strong>6.5–7% → 1</strong>, <strong>&gt; 7% → 0</strong> (no 0% slab). '
+                            + '<strong>INV = 0</strong> or <strong>CVR = 0%</strong> → Disc% is <strong>0</strong>. '
                             + '<strong>Apply</strong> saves rules and refreshes the <strong>CVR Disc.</strong> column '
                             + '(all SKUs — no sold filter). '
                             + 'S PRC = Std × (1 − (PRMT% + CVR Disc%)/100).'
                             + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                                ? ' If that S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.'
+                                ? ' If that S PRC is <strong>below Amz price</strong>, it is still applied and <strong>pushed</strong> (purple triangle).'
                                 : '');
                     }
                 }
@@ -8456,15 +8506,9 @@
                     try {
                         await saveChPromoZeroSoldDilRules();
                         if (typeof table !== 'undefined' && table) {
-                            try { table.redraw(true); } catch (e) { /* ignore */ }
+                            try { table.redraw(true); } catch (err) { /* ignore */ }
                         }
-                        const collected = collectChPromoZeroSoldDilTargets();
-                        if (collected.targets.length) {
-                            $btn.prop('disabled', false).html(html);
-                            await applyChPromoZeroSoldDilToTargets(collected.targets, collected.label);
-                            return;
-                        }
-                        chPromoToast('success', '0 sold vs ROI rules saved.');
+                        chPromoToast('success', '0 Sold rules saved for this page.');
                     } catch (xhr) {
                         chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
                     } finally {
@@ -8481,7 +8525,7 @@
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
                     (CHANNEL_PROMO_CHANNEL === 'shopify_b2c')
-                        ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CVR Disc%)/100) — same as /amazon-tabulator-view. If that S PRC would be below Amz price, PRMT% and CVR Disc are skipped. Auto-pushes when it differs from live Price. Skips INV = 0.'
+                        ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CVR Disc%)/100) — same as /amazon-tabulator-view. If that S PRC is below Amz price, it is still applied and pushed (purple triangle). Auto-pushes when it differs from live Price. Skips INV = 0.'
                         : (CHANNEL_PROMO_CHANNEL === 'reverb'
                             ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + cvr%)/100). Auto-pushes when it differs from live Price. Skips INV = 0.'
                             : 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.')
@@ -8543,6 +8587,8 @@
         window.chPromoStdBase = chPromoStdBase;
         window.chPromoSyncEbayPrmtColumnFromSlabs = chPromoSyncEbayPrmtColumnFromSlabs;
         window.chPromoDilColorBand = chPromoDilColorBand;
+        window.chPromoZeroSoldGroiForRow = chPromoZeroSoldGroiForRow;
+        window.chPromoIsZeroSoldRow = chPromoIsZeroSoldRow;
         window.chPromoListingDil = chPromoListingDil;
         window.chPromoInvalidateListingDilCache = chPromoInvalidateListingDilCache;
         window.saveAndApplyChPromoZeroSoldAmazon = saveAndApplyChPromoZeroSoldAmazon;

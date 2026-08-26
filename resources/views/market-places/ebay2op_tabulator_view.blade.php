@@ -221,6 +221,7 @@
             opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2op'])
     </style>
 @endsection
 
@@ -539,6 +540,7 @@
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary pricing-filter-item">
                         <i class="fa fa-eye"></i> Show All
                     </button>
+                    @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2op'])
 
                     <button id="ebay2op-price-mode-btn" type="button" class="btn btn-sm btn-secondary pricing-filter-item"
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
@@ -982,12 +984,14 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2op'])
 @endsection
 
     @section('script-bottom')
     @include('partials.sprice-lmp-cap-script')
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
+        @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2op'])
         @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => 'ebay2op'])
         const COLUMN_VIS_KEY = "ebay2op_tabulator_column_visibility";
         let skuMetricsChart = null;
@@ -2768,6 +2772,7 @@
                     //     width: 130
                     // },
                    
+                    ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -4213,7 +4218,7 @@
                 'image_path', 'E Stock', 'nr_req', 'CVR_60', 'CVR_45', 'SCVR',
                 'GPFT%', 'AD%', 'PFT %', 'ROI%',
                 'lmp_price', 'STANDARD_PRICE',
-                'prmt_pct', 'push_prmt', 'cpn_pct', 'push_cpn', 'dsc', 'appr', 'push_prc',
+                'prmt_pct', 'push_prmt', 'cpn_pct', 'zero_sold', 'push_cpn', 'dsc', 'appr', 'push_prc',
                 'SPRICE', 'SGPFT', 'SPFT', 'SROI',
                 'AD_Spend_L30'
             ];

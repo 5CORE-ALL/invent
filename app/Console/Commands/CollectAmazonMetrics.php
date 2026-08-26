@@ -6,7 +6,6 @@ use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\AmazonSkuDailyData;
 use App\Models\AmazonDataView;
-use App\Models\ProductMaster;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\MarketplacePercentage;
@@ -38,6 +37,7 @@ class CollectAmazonMetrics extends Command
     protected function executeCollect(CronExecutionContext $monitor): int
     {
         $this->info('Starting Amazon metrics collection...');
+        $monitor->startFresh()->markLocalOnly();
         $today = Carbon::today();
         $chunkSize = $this->monitoredChunkSize();
 
@@ -78,15 +78,6 @@ class CollectAmazonMetrics extends Command
             ->chunkById($chunkSize, function ($rows) use (&$amazonSpCampaignReportsPtL30) {
                 foreach ($rows as $row) {
                     $amazonSpCampaignReportsPtL30->push($row);
-                }
-            });
-
-        $productData = collect();
-        ProductMaster::whereNull('deleted_at')
-            ->orderBy('id')
-            ->chunkById($chunkSize, function ($rows) use (&$productData) {
-                foreach ($rows as $p) {
-                    $productData[strtoupper(trim($p->sku))] = $p;
                 }
             });
 
@@ -209,8 +200,8 @@ class CollectAmazonMetrics extends Command
                 ];
             },
             $chunkSize,
-            null,
-            ['transaction' => true]
+            0,
+            ['transaction' => true, 'fresh' => true]
         );
 
         $this->info("Metrics collection completed!");

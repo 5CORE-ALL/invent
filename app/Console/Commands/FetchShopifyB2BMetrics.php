@@ -61,15 +61,24 @@ class FetchShopifyB2BMetrics extends Command
             return 1;
         }
 
-        $this->useBasicAuth = !empty($this->shopifyApiKey);
-        if ($this->useBasicAuth) {
-            // Legacy private app: Basic auth uses API key + Admin API password (often shpss_… / shpat_…)
-            $this->shopifyBasicSecret = trim((string) ($password ?: $this->shopifyAccessToken));
-            if ($this->shopifyBasicSecret === '') {
-                $this->error('With BUSINESS_5CORE_SHOPIFY_API_KEY set, provide BUSINESS_5CORE_SHOPIFY_PASSWORD (or ACCESS_TOKEN as the Admin API secret).');
-                return 1;
-            }
-        } elseif (trim((string) $this->shopifyAccessToken) === '') {
+        $token = trim((string) $this->shopifyAccessToken);
+        $apiKey = trim((string) $this->shopifyApiKey);
+        $password = trim((string) $password);
+        $tokenLooksModern = $token !== '' && (str_starts_with($token, 'shpat_') || str_starts_with($token, 'shpua_') || str_starts_with($token, 'shpca_'));
+
+        // Custom apps authenticate with X-Shopify-Access-Token. A leftover API_KEY
+        // in .env used to force Basic auth and return 401 Invalid API key.
+        if ($tokenLooksModern || ($token !== '' && $password === '')) {
+            $this->useBasicAuth = false;
+        } elseif ($apiKey !== '' && $password !== '') {
+            $this->useBasicAuth = true;
+            $this->shopifyBasicSecret = $password;
+        } elseif ($token !== '') {
+            $this->useBasicAuth = false;
+        } elseif ($apiKey !== '') {
+            $this->error('With BUSINESS_5CORE_SHOPIFY_API_KEY set, provide BUSINESS_5CORE_SHOPIFY_PASSWORD (or ACCESS_TOKEN as the Admin API secret).');
+            return 1;
+        } else {
             $this->error('Missing BUSINESS_5CORE_SHOPIFY_ACCESS_TOKEN in .env (or unset API key and use X-Shopify-Access-Token only).');
             $this->line('Optional for Basic auth: BUSINESS_5CORE_SHOPIFY_API_KEY + BUSINESS_5CORE_SHOPIFY_PASSWORD');
             return 1;
@@ -168,12 +177,30 @@ class FetchShopifyB2BMetrics extends Command
             if ($response->successful()) {
                 $this->info("✅ Shopify API Connection Successful!");
                 return true;
-            } else {
+            }
+
+            $token = trim((string) $this->shopifyAccessToken);
+            if ($this->useBasicAuth && $response->status() === 401 && $token !== '') {
+                $this->warn('Basic auth returned 401 — retrying with X-Shopify-Access-Token.');
+                $this->useBasicAuth = false;
+                $retry = $this->newShopifyRequest()->get(
+                    "https://{$this->shopifyStoreUrl}/admin/api/2024-10/orders.json",
+                    ['limit' => 1, 'status' => 'any']
+                );
+                if ($retry->successful()) {
+                    $this->info("✅ Shopify API Connection Successful (access token)!");
+                    return true;
+                }
                 $this->error("❌ Shopify API Connection Failed!");
-                $this->error("Status: " . $response->status());
-                $this->error("Response: " . $response->body());
+                $this->error("Status: " . $retry->status());
+                $this->error("Response: " . $retry->body());
                 return false;
             }
+
+            $this->error("❌ Shopify API Connection Failed!");
+            $this->error("Status: " . $response->status());
+            $this->error("Response: " . $response->body());
+            return false;
         } catch (\Exception $e) {
             $this->error("Connection test failed: " . $e->getMessage());
             return false;

@@ -38,6 +38,7 @@ class CollectEbayMetrics extends Command
     protected function executeCollect(CronExecutionContext $monitor): int
     {
         $this->info('Starting eBay metrics collection...');
+        $monitor->startFresh()->markLocalOnly();
         // California calendar day — matches /all-marketplace-master and the SKU chart (PT).
         $today = Carbon::now('America/Los_Angeles')->toDateString();
         $chunkSize = $this->monitoredChunkSize();

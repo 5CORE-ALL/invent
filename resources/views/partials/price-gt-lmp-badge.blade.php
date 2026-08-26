@@ -7,12 +7,12 @@
     data-pgl-channel="{{ $pglChannelKey }}"
     data-pgl-price-field="{{ $pglPriceField }}"
     style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-    data-metric="prc_gt_lmp_count" data-invert="1" data-live-value="0"
-    title="price &gt; LMP (red triangle), INV &gt; 0 only. Green = 0. Click to show only those rows.">
+    data-metric="prc_gt_lmp_count" data-invert="1" data-live-value="0" data-format="number"
+    title="price &gt; LMP (red triangle), INV &gt; 0 only. Green = 0. Click badge to filter. Click dot for rolling history.">
     <span class="summary-trend-dot none" data-metric="prc_gt_lmp_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0
 </span>
 @once
-<script src="{{ asset('js/price-gt-lmp-badge.js') }}?v=3"></script>
+<script src="{{ asset('js/price-gt-lmp-badge.js') }}?v=4"></script>
 @include('partials.sprice-lmp-cap-script')
 <script>
     window.PRICE_GT_LMP_REPORT_URL = @json(route('price.gt.lmp.report'));

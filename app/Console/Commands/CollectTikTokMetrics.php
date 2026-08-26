@@ -43,6 +43,7 @@ class CollectTikTokMetrics extends Command
             default => ['tiktok', 'tiktok2'],
         };
 
+        $monitor->startFresh()->markLocalOnly();
         $today = Carbon::now('America/Los_Angeles')->toDateString();
         $chunkSize = $this->monitoredChunkSize();
         $collected = 0;

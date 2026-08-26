@@ -5380,7 +5380,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc)\b/i.test(tl)
             ) {
                 return 'pricing';

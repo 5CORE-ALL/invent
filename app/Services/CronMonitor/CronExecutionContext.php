@@ -83,6 +83,34 @@ class CronExecutionContext
         return $this;
     }
 
+    /**
+     * Daily snapshot jobs must rewrite every SKU. A leftover checkpoint from an
+     * earlier run (especially one that failed health-check after finishing) would
+     * resume past the last id and update 0 rows.
+     */
+    public function startFresh(): self
+    {
+        $this->resumeFrom = null;
+        $this->checkpointCursor = null;
+        $this->mergeMeta(['fresh_run' => true]);
+        if ($this->jobName !== '') {
+            app(CheckpointService::class)->clear($this->jobName);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Local DB-only jobs (no marketplace HTTP). Skips require_api_data validation.
+     */
+    public function markLocalOnly(): self
+    {
+        $this->mergeMeta(['local_only' => true]);
+        $this->apiConnected = true;
+
+        return $this;
+    }
+
     public function incrementApiCalls(int $by = 1): self
     {
         $this->apiCalls += $by;

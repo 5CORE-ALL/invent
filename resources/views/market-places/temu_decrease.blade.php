@@ -7205,7 +7205,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|r_pft|r_npft|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_diff_pct|lmp_match|linked_lmp_skus|linked_lmp_sku_add|sprice|s_r_pft|s_r_npft|s_recovery|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|sgroi_percent|lp|temu_ship|prmt_pct|cpn_pct|cvr_up_dn|t_discounts|push_cpn|dsc|appr|push_prc)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|r_pft|r_npft|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_diff_pct|lmp_match|linked_lmp_skus|linked_lmp_sku_add|sprice|s_r_pft|s_r_npft|s_recovery|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|sgroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|push_cpn|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|match|s\s*prc|sgprft|spft|sroi|lp|ship|push|recovery|prmt|cpn|dsc|appr|push\s*prc|push\s*cpn)\b/i.test(tl)
             ) {
                 return 'pricing';

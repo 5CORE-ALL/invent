@@ -219,15 +219,14 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Default CVR% slabs → CPN% (first-time): >7% = 0 … CVR 0% = 10.
-     * Rows: 0, 0.01–1, 1–2, … 6–7, > 7% (11 slots with fine early steps for 0→10).
+     * Default CVR% slabs → CPN% (first-time): >7% = 0 … 0.01–1% = 9.
+     * No 0% slab — CVR ≤ 0 maps to 0 CPN%.
      *
      * @return list<array{key:string,label:string,cpn:float|int}>
      */
     private function pefDefaultCvrCpnRules(): array
     {
         return [
-            ['key' => 'eq-0', 'label' => '0%', 'cpn' => 10],
             ['key' => '0.01-1', 'label' => '0.01–1%', 'cpn' => 9],
             ['key' => '1-1.5', 'label' => '1–1.5%', 'cpn' => 8],
             ['key' => '1.5-2', 'label' => '1.5–2%', 'cpn' => 7],

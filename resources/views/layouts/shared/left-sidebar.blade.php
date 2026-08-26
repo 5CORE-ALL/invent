@@ -136,9 +136,16 @@
             </li>
 
             <li class="side-nav-item">
-                <a href="{{ route('sales.order.fulfillment') }}" class="side-nav-link">
+                <a href="{{ route('sales.order.fulfillment') }}" class="side-nav-link {{ request()->routeIs('sales.order.fulfillment') || request()->routeIs('sales.order.fulfillment.*') ? 'active' : '' }}">
                     <i class="ri-truck-line"></i>
                     <span>Sales Order Fulfillment</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('sales.loss.order') }}" class="side-nav-link {{ request()->routeIs('sales.loss.order') || request()->routeIs('sales.loss.order.*') ? 'active' : '' }}">
+                    <i class="ri-close-circle-line"></i>
+                    <span>Sales Loss Order</span>
                 </a>
             </li>
 

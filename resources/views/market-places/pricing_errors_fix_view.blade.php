@@ -171,7 +171,8 @@
             cursor: help;
         }
         #pef-dil-prmt-table .pef-dil-prmt-input,
-        #pef-cvr-cpn-table .pef-cvr-cpn-input {
+        #pef-cvr-cpn-table .pef-cvr-cpn-input,
+        #pef-zero-sold-table .pef-zero-sold-roi-input {
             max-width: 90px;
             margin-left: auto;
             text-align: right;
@@ -620,6 +621,11 @@
                             title="CVR% slabs vs CPN% rules — edit and apply as CPN %">
                             <i class="fas fa-percentage"></i> CVR vs CPN
                         </button>
+                        <button type="button" class="btn btn-sm" id="pef-zero-sold-btn"
+                            style="background:#e83e8c;border-color:#e83e8c;color:#fff;"
+                            title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. PEF has its own rule table. Apply sets SPrice so GROI equals the target when L30 = 0.">
+                            0 Sold
+                        </button>
 
                         <div class="dropdown">
                             <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
@@ -804,8 +810,9 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Map CVR% slabs to CPN%. First-time defaults: <strong>&gt; 7% → 0</strong> up to
-                        <strong>CVR 0% → 10</strong>. Save stores rules; Apply fills <strong>CPN %</strong> from each row’s CVR%.
+                        Map CVR% slabs to CPN% (no 0% slab). First-time defaults: <strong>&gt; 7% → 0</strong> up to
+                        <strong>0.01–1% → 9</strong>. Save stores rules; Apply fills <strong>CPN %</strong> from each row’s CVR%.
+                        <strong>CVR = 0%</strong> maps to <strong>0</strong> CPN%.
                         If <strong>INV = 0</strong>, CPN% is forced to <strong>0</strong>.
                         Auto-applies to <strong>eBay1</strong> coupons every night at <strong>00:30 IST</strong>
                         (after Dil/PRMT @ midnight — whether or not CVR changed).
@@ -825,7 +832,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-cvr-cpn-reset-btn"
-                        title="Reset CPN% to first-time defaults (0–10)">
+                        title="Reset CPN% to first-time defaults (0.01–1% → 9 … > 7% → 0)">
                         Reset defaults
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="pef-cvr-cpn-save-btn">
@@ -837,6 +844,56 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="pef-cvr-cpn-apply-visible-btn"
                         title="Apply CPN% from CVR slabs on all visible rows">
+                        Apply to visible
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="pefZeroSoldModal" tabindex="-1" aria-labelledby="pefZeroSoldModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="pefZeroSoldModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> 0 Sold
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map <strong>Dil color</strong> to <strong>Target GROI%</strong>
+                        (<strong style="color:#a00211;">Red &lt;25% → 50</strong>,
+                        <strong style="color:#28a745;">Green 25–50% → 60</strong>,
+                        <strong style="color:#e83e8c;">Pink 50%+ → 70</strong> first time).
+                        Pricing Errors Fix has its own rule table.
+                        The <strong>0 Sold</strong> column shows the target when <strong>L30 = 0</strong>.
+                        <strong>Apply</strong> writes <strong>SPrice</strong> so
+                        <strong>GROI = Target GROI%</strong>
+                        (<code>SPrice = (LP × (1 + GROI%/100) + Ship) / margin</code>).
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-zero-sold-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Dil Color</th>
+                                    <th style="width:45%;" class="text-end">Target GROI%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pef-zero-sold-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="pef-zero-sold-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="pef-zero-sold-save-btn">
+                        <i class="fas fa-save"></i> Save Rule
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="pef-zero-sold-apply-selected-btn">
+                        Apply to selected
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="pef-zero-sold-apply-visible-btn">
                         Apply to visible
                     </button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -3098,6 +3155,39 @@
                     },
                 },
                 {
+                    title: '0 Sold',
+                    field: 'zero_sold',
+                    width: 100,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: '0 Sold target price from Dil color → GROI% (Red 50 / Green 60 / Pink 70). Format: $price (GROI). N/A when L30 > 0 or no LP.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const ad = aRow.getData() || {};
+                        const bd = bRow.getData() || {};
+                        const av = pefSpriceFromTargetGroi(ad, pefZeroSoldGroiForRow(ad));
+                        const bv = pefSpriceFromTargetGroi(bd, pefZeroSoldGroiForRow(bd));
+                        return (av || 0) - (bv || 0);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const roi = pefZeroSoldGroiForRow(d);
+                        const price = pefSpriceFromTargetGroi(d, roi);
+                        if (!pefIsZeroSoldRow(d) || roi == null || !(price > 0)) {
+                            return '<span style="color:#999;">N/A</span>';
+                        }
+                        const band = dilColorBand(d.dil);
+                        const hex = band === 'red' ? '#a00211' : (band === 'green' ? '#28a745' : '#e83e8c');
+                        const label = band === 'red' ? 'Red' : (band === 'green' ? 'Green' : 'Pink');
+                        return '<div class="d-flex flex-column align-items-center justify-content-center" '
+                            + 'style="gap:1px;line-height:1.1;" title="0 Sold · '
+                            + label + ' Dil → $' + price.toFixed(2) + ' at ' + roi + '% GROI">'
+                            + '<span style="color:' + hex + ';font-weight:600;font-size:14px;">$' + price.toFixed(2) + '</span>'
+                            + '<span style="color:#007bff;font-weight:600;">(' + Math.round(roi) + ')</span>'
+                            + '</div>';
+                    },
+                },
+                {
                     title: 'Appr',
                     field: 'appr',
                     width: 48,
@@ -4553,8 +4643,8 @@
     // ==================== CVR vs CPN modal ====================
     let pefCvrCpnRules = Array.isArray(PEF_CVR_CPN_DEFAULTS) && PEF_CVR_CPN_DEFAULTS.length
         ? PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); })
+            .filter(function(r) { return r.key !== 'eq-0'; })
         : [
-            { key: 'eq-0', label: '0%', cpn: 10 },
             { key: '0.01-1', label: '0.01–1%', cpn: 9 },
             { key: '1-1.5', label: '1–1.5%', cpn: 8 },
             { key: '1.5-2', label: '1.5–2%', cpn: 7 },
@@ -4628,11 +4718,12 @@
                 dataType: 'json',
             });
             if (res && Array.isArray(res.rules) && res.rules.length) {
-                pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); })
+                    .filter(function(r) { return r.key !== 'eq-0'; });
             }
             renderCvrCpnModalTable();
             $('#pef-cvr-cpn-status').text(res && res.is_default
-                ? 'Using first-time defaults (0–10). Save to keep your edits.'
+                ? 'Using first-time defaults (0.01–1% → 9 … > 7% → 0, no 0% slab). Save to keep your edits.'
                 : 'Loaded saved CVR vs CPN rules.');
         } catch (e) {
             renderCvrCpnModalTable();
@@ -4652,7 +4743,8 @@
             data: { rules: rules, _token: csrf },
         }).done(function(res) {
             if (res && Array.isArray(res.rules)) {
-                pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); })
+                    .filter(function(r) { return r.key !== 'eq-0'; });
                 renderCvrCpnModalTable();
             }
             toast('CVR vs CPN rules saved', 'success');
@@ -4757,7 +4849,7 @@
     });
     $('#pef-cvr-cpn-reset-btn').on('click', function() {
         pefCvrCpnRules = [
-            ['eq-0', '0%', 10], ['0.01-1', '0.01–1%', 9], ['1-1.5', '1–1.5%', 8],
+            ['0.01-1', '0.01–1%', 9], ['1-1.5', '1–1.5%', 8],
             ['1.5-2', '1.5–2%', 7], ['2-3', '2–3%', 6], ['3-4', '3–4%', 5],
             ['4-5', '4–5%', 4], ['5-6', '5–6%', 3], ['6-6.5', '6–6.5%', 2],
             ['6.5-7', '6.5–7%', 1], ['gt-7', '> 7%', 0],
@@ -4765,7 +4857,7 @@
             return { key: t[0], label: t[1], cpn: t[2] };
         });
         renderCvrCpnModalTable();
-        $('#pef-cvr-cpn-status').text('Reset to first-time defaults (0–10). Save to persist.');
+        $('#pef-cvr-cpn-status').text('Reset to first-time defaults (no 0% slab). Save to persist.');
     });
     $('#pef-cvr-cpn-save-btn').on('click', saveCvrCpnRules);
     $('#pef-cvr-cpn-apply-selected-btn').on('click', function() {
@@ -4782,6 +4874,170 @@
         if (!confirm('Apply CVR→CPN % to ' + targets.length + ' visible row(s)?')) return;
         applyCvrCpnToTargets(targets, 'visible');
     });
+
+    let pefZeroSoldRules = [
+        { key: 'red', label: 'Red Dil (<25%)', groi: 50 },
+        { key: 'green', label: 'Green Dil (25–50%)', groi: 60 },
+        { key: 'pink', label: 'Pink Dil (50%+)', groi: 70 },
+    ];
+    function pefIsZeroSoldRow(d) {
+        if (!d) return false;
+        const inv = Number(d.inv || 0);
+        const l30 = Number(d.l30 || 0);
+        return inv > 0 && !(l30 > 0);
+    }
+    function pefZeroSoldGroiForRow(d) {
+        if (!pefIsZeroSoldRow(d)) return null;
+        const band = dilColorBand(d.dil) || 'red';
+        const rule = pefZeroSoldRules.find(function(r) { return r.key === band; });
+        const n = rule ? Number(rule.groi) : 0;
+        return isFinite(n) ? n : 0;
+    }
+    function pefSpriceFromTargetGroi(d, roiPct) {
+        const lp = Number(d && d.lp || 0);
+        if (!(lp > 0)) return 0;
+        const ship = Number(d && d.ship || 0);
+        const margin = rowMargin(d);
+        if (!(margin > 0)) return 0;
+        const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+        const price = (lp * (1 + roi / 100) + ship) / margin;
+        return (isFinite(price) && price > 0) ? round2(price) : 0;
+    }
+    function renderPefZeroSoldModalTable() {
+        const $tb = $('#pef-zero-sold-tbody').empty();
+        pefZeroSoldRules.forEach(function(r, idx) {
+            const groi = isFinite(Number(r.groi)) ? Number(r.groi) : 0;
+            const hex = r.key === 'red' ? '#a00211' : (r.key === 'green' ? '#28a745' : '#e83e8c');
+            $tb.append(
+                '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                + '<td><span style="color:' + hex + ';font-weight:700;">'
+                + '<i class="fas fa-circle me-1" style="font-size:0.65em;"></i>'
+                + String(r.label || r.key) + '</span></td>'
+                + '<td class="text-end">'
+                + '<input type="number" class="form-control form-control-sm pef-zero-sold-roi-input" '
+                + 'step="0.1" value="' + groi + '" data-idx="' + idx + '">'
+                + '</td></tr>'
+            );
+        });
+    }
+    function readPefZeroSoldRulesFromModal() {
+        $('#pef-zero-sold-tbody tr').each(function() {
+            const key = String($(this).attr('data-key') || '');
+            const val = parseFloat($(this).find('.pef-zero-sold-roi-input').val());
+            const rule = pefZeroSoldRules.find(function(r) { return r.key === key; });
+            if (!rule) return;
+            rule.groi = isFinite(val) ? val : 0;
+        });
+        return pefZeroSoldRules.map(function(r) {
+            return { key: r.key, label: r.label, groi: Number(r.groi) || 0 };
+        });
+    }
+    async function loadPefZeroSoldRules() {
+        $('#pef-zero-sold-status').text('Loading…');
+        try {
+            const res = await $.ajax({
+                url: '/channel-promo-pricing/pef/zero-sold-prc',
+                method: 'GET',
+                dataType: 'json',
+            });
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                pefZeroSoldRules = res.rules.map(function(r) { return Object.assign({}, r); });
+            }
+            renderPefZeroSoldModalTable();
+            $('#pef-zero-sold-status').text(res && res.is_default
+                ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Save Rule to keep PEF’s table.'
+                : 'Loaded saved 0 Sold rules for Pricing Errors Fix.');
+        } catch (e) {
+            renderPefZeroSoldModalTable();
+            $('#pef-zero-sold-status').text('Could not load saved rules — using defaults.');
+        }
+    }
+    function savePefZeroSoldRules() {
+        const rules = readPefZeroSoldRulesFromModal();
+        return $.ajax({
+            url: '/channel-promo-pricing/pef/zero-sold-prc',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            data: { rules: rules, _token: csrf },
+        }).then(function(res) {
+            if (res && Array.isArray(res.rules)) {
+                pefZeroSoldRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                renderPefZeroSoldModalTable();
+            }
+            $('#pef-zero-sold-status').text('Saved.');
+            return res;
+        });
+    }
+    function applyPefZeroSoldToTargets(targets, label) {
+        readPefZeroSoldRulesFromModal();
+        const ready = targets.filter(function(item) {
+            const d = item.d || item.row.getData();
+            return pefIsZeroSoldRow(d) && Number(d.lp || 0) > 0;
+        });
+        if (!ready.length) {
+            toast('No 0 Sold rows (L30 = 0, INV > 0, LP > 0) to price', 'error');
+            return;
+        }
+        const rowsToProcess = [];
+        ready.forEach(function(item) {
+            const d = item.d || item.row.getData();
+            const roi = pefZeroSoldGroiForRow(d);
+            const lp = Number(d.lp || 0);
+            const ship = Number(d.ship || 0);
+            const margin = rowMargin(d);
+            const sprice = round2((lp * (1 + roi / 100) + ship) / margin);
+            if (!(sprice > 0)) return;
+            item.row.update({ ZERO_SOLD_PRC_GROI: roi });
+            rowsToProcess.push({ row: item.row, d: d, sprice: sprice, margin: margin });
+        });
+        if (!rowsToProcess.length) {
+            toast('No 0 Sold rows could be priced', 'error');
+            return;
+        }
+        bulkSaveTargetSprice(rowsToProcess, '0 Sold GROI (' + label + ')', $('#pef-zero-sold-apply-selected-btn'));
+        if (table) table.redraw(true);
+    }
+
+    $('#pef-zero-sold-btn').on('click', function() {
+        const modalEl = document.getElementById('pefZeroSoldModal');
+        if (!modalEl) return;
+        renderPefZeroSoldModalTable();
+        loadPefZeroSoldRules();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+    $('#pef-zero-sold-save-btn').on('click', function() {
+        const $btn = $(this);
+        const html = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+        savePefZeroSoldRules()
+            .done(function() {
+                toast('0 Sold rules saved for Pricing Errors Fix', 'success');
+                if (table) table.redraw(true);
+            })
+            .fail(function(xhr) {
+                toast('Save failed: ' + (xhr.responseJSON?.message || 'error'), 'error');
+            })
+            .always(function() {
+                $btn.prop('disabled', false).html(html);
+            });
+    });
+    $('#pef-zero-sold-apply-selected-btn').on('click', async function() {
+        try { await savePefZeroSoldRules(); } catch (e) { /* still apply */ }
+        applyPefZeroSoldToTargets(collectSelectedRows(), 'selected');
+    });
+    $('#pef-zero-sold-apply-visible-btn').on('click', async function() {
+        if (!table) {
+            toast('Load data first', 'error');
+            return;
+        }
+        const targets = table.getRows('active').map(function(row) {
+            return { row: row, d: row.getData() };
+        });
+        if (!confirm('Apply 0 Sold Target GROI% to visible 0 Sold row(s)?')) return;
+        try { await savePefZeroSoldRules(); } catch (e) { /* still apply */ }
+        applyPefZeroSoldToTargets(targets, 'visible');
+    });
+    loadPefZeroSoldRules();
 
     $('#pef-bulk-push-btn').on('click', pushSelected);
     $('#pef-clear-sprice-btn').on('click', clearSelectedSprice);

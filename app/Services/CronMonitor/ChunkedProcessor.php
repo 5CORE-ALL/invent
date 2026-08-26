@@ -51,7 +51,8 @@ class ChunkedProcessor
         $chunkSize = $chunkSize ?? $this->defaultChunkSize();
         $useTx = (bool) ($options['transaction'] ?? false);
         $failedOnly = (bool) ($options['failed_chunks_only'] ?? false);
-        $resumeFrom = max(0, $resumeFrom ?? $monitor->resumeOffset());
+        $fresh = (bool) ($options['fresh'] ?? false);
+        $resumeFrom = $fresh ? 0 : max(0, $resumeFrom ?? $monitor->resumeOffset());
         $total = count($items);
         $allChunks = array_chunk(array_values($items), $chunkSize);
         $totalChunks = count($allChunks);
@@ -75,6 +76,11 @@ class ChunkedProcessor
                 $allChunks = array_chunk($items, $chunkSize);
                 $monitor->mergeMeta(['chunk_resumed_from' => $resumeFrom]);
             } elseif ($resumeFrom >= $total && $total > 0 && ! $failedOnly) {
+                $monitor->mergeMeta(['already_complete' => true]);
+                if ($monitor->processedRecords === 0) {
+                    $monitor->incrementProcessed($total);
+                }
+
                 return $this->emptyStats($total, $resumeFrom);
             }
 
@@ -315,8 +321,9 @@ class ChunkedProcessor
             ? (bool) $options['transaction']
             : $this->useDbTransaction();
 
+        $fresh = (bool) ($options['fresh'] ?? false);
         $cursor = is_array($monitor->checkpointCursor) ? $monitor->checkpointCursor : [];
-        $resumeLastId = $cursor['last_id'] ?? null;
+        $resumeLastId = $fresh ? null : ($cursor['last_id'] ?? null);
         if ($resumeLastId !== null) {
             $query = (clone $query)->where($column, '>', $resumeLastId);
             $monitor->mergeMeta(['chunk_resumed_last_id' => $resumeLastId]);
@@ -336,6 +343,26 @@ class ChunkedProcessor
             if ($monitor->fetchedRecords === 0) {
                 $monitor->setFetched($totalEstimate);
             }
+        }
+
+        if ($resumeLastId !== null && $totalEstimate === 0) {
+            $monitor->mergeMeta(['already_complete' => true]);
+            $done = $monitor->fetchedRecords > 0
+                ? $monitor->fetchedRecords
+                : (int) ($monitor->expectedRecords ?? 0);
+            if ($monitor->processedRecords === 0 && $done > 0) {
+                $monitor->incrementProcessed($done);
+            }
+
+            return [
+                'total' => $done,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'chunks' => 0,
+                'chunks_failed' => 0,
+                'last_id' => $resumeLastId,
+            ];
         }
 
         $stats = [
