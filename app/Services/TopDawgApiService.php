@@ -385,6 +385,48 @@ class TopDawgApiService
     }
 
     /**
+     * @return list<string>
+     */
+    protected function topDawgProductCodeCandidates(string $sku, ?string $resolved = null): array
+    {
+        $sku = trim($sku);
+        $resolved = trim((string) ($resolved ?: $this->resolveProductCode($sku) ?: $sku));
+        $out = [];
+        foreach ([
+            $resolved,
+            $sku,
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+            str_replace('-', ' ', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+            str_replace(' ', '', $sku),
+        ] as $code) {
+            $code = trim((string) $code);
+            if ($code !== '' && ! in_array($code, $out, true)) {
+                $out[] = $code;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array{success: bool, message: string}
+     */
+    protected function postTopDawgProductUpdate(string $path, array $body): array
+    {
+        $url = $this->baseUrl.$path;
+        try {
+            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+        $payload = $response->json();
+
+        return $this->topDawgUpdateAccepted($response->status(), is_array($payload) ? $payload : null, (string) $response->body());
+    }
+
+    /**
      * @param  array<string, mixed>  $fields
      * @return array{success: bool, message: string}
      */
@@ -397,13 +439,7 @@ class TopDawgApiService
         }
 
         $resolved = $this->resolveProductCode($sku);
-        $codes = [];
-        foreach ([$resolved, $sku, ShopifySku::normalizeSkuForShopifyLookup($sku), str_replace('-', ' ', $sku)] as $code) {
-            $code = trim((string) $code);
-            if ($code !== '' && ! in_array($code, $codes, true)) {
-                $codes[] = $code;
-            }
-        }
+        $codes = $this->topDawgProductCodeCandidates($sku, $resolved);
         if ($codes === []) {
             return [
                 'success' => false,
@@ -461,11 +497,31 @@ class TopDawgApiService
         $fieldSets = [
             ['product_name' => $title, 'subject' => $title],
             ['product_name' => $title],
+            ['productName' => $title],
             ['subject' => $title],
             ['item_name' => $title],
             ['title' => $title, 'product_title' => $title],
         ];
         $lastMessage = 'TopDawg title update failed.';
+        $resolved = $this->resolveProductCode($sku) ?: $sku;
+        foreach (['/SupplierProduct/updateTitle', '/SupplierProduct/updateName'] as $path) {
+            foreach ($this->topDawgProductCodeCandidates($sku, $resolved) as $productCode) {
+                $pushed = $this->postTopDawgProductUpdate($path, [
+                    'product_code' => $productCode,
+                    'product_name' => $title,
+                    'subject' => $title,
+                ]);
+                if (! ($pushed['success'] ?? false)) {
+                    $lastMessage = (string) ($pushed['message'] ?? $lastMessage);
+                    continue;
+                }
+                $after = $this->readLiveTitle($sku);
+                if ($after !== null && $this->topDawgTitlesMatch($after, $title)) {
+                    return $pushed;
+                }
+                $lastMessage = 'TopDawg accepted the update but listing title did not change.';
+            }
+        }
         foreach ($fieldSets as $fields) {
             $pushed = $this->pushSupplierProductFields($sku, $fields);
             if (! ($pushed['success'] ?? false)) {
@@ -520,13 +576,7 @@ class TopDawgApiService
         $this->assertConfigured();
         $sku = trim($sku);
         $resolved = $this->resolveProductCode($sku) ?: $sku;
-        $codes = [];
-        foreach ([$resolved, $sku, ShopifySku::normalizeSkuForShopifyLookup($sku), str_replace('-', ' ', $sku)] as $code) {
-            $code = trim((string) $code);
-            if ($code !== '' && ! in_array($code, $codes, true)) {
-                $codes[] = $code;
-            }
-        }
+        $codes = $this->topDawgProductCodeCandidates($sku, $resolved);
 
         $url = $this->baseUrl.'/SupplierProduct/list';
         $local = TopDawgProduct::query()
@@ -548,7 +598,7 @@ class TopDawgApiService
 
         $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
         if ($hintPage !== null) {
-            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 100, 'page' => $hintPage], $codes);
+            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $hintPage], $codes);
             if ($found !== null) {
                 return $found;
             }
@@ -556,9 +606,9 @@ class TopDawgApiService
 
         foreach ($codes as $code) {
             foreach ([
-                ['product_code' => $code, 'per_page' => 50, 'page' => 1],
-                ['sku' => $code, 'per_page' => 50, 'page' => 1],
-                ['search' => $code, 'per_page' => 50, 'page' => 1],
+                ['product_code' => $code, 'per_page' => 100, 'page' => 1],
+                ['sku' => $code, 'per_page' => 100, 'page' => 1],
+                ['search' => $code, 'per_page' => 100, 'page' => 1],
             ] as $body) {
                 $found = $this->firstMatchingTopDawgListRow($url, $body, $codes);
                 if ($found !== null) {
@@ -567,11 +617,11 @@ class TopDawgApiService
             }
         }
 
-        for ($page = 1; $page <= 8; $page++) {
+        for ($page = 1; $page <= 5; $page++) {
             if ($hintPage !== null && $page === $hintPage) {
                 continue;
             }
-            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 100, 'page' => $page], $codes);
+            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 1000, 'page' => $page], $codes);
             if ($found !== null) {
                 $this->liveListPageHint[strtoupper($resolved)] = $page;
                 $this->liveListPageHint[strtoupper($sku)] = $page;

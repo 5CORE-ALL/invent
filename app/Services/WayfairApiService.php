@@ -297,7 +297,12 @@ XML;
             foreach ($this->wayfairSkuCandidates($sku) as $candidate) {
                 $submitted = $this->submitTitleUpdate($token, $candidate, $title);
                 if (($submitted['request_id'] ?? null) !== null) {
-                    return $this->pollUpdateStatus($token, (string) $submitted['request_id'], $candidate);
+                    $polled = $this->pollUpdateStatus($token, (string) $submitted['request_id'], $candidate);
+                    if (! empty($polled['success'])) {
+                        return $polled;
+                    }
+                    $lastMessage = (string) ($polled['message'] ?? $lastMessage);
+                    continue;
                 }
                 if (trim((string) ($submitted['message'] ?? '')) !== '') {
                     $lastMessage = (string) $submitted['message'];
@@ -433,6 +438,21 @@ XML;
             $candidate = trim((string) $candidate);
             if ($candidate !== '' && ! in_array($candidate, $out, true)) {
                 $out[] = $candidate;
+            }
+        }
+
+        if (Schema::hasTable('wayfair_pricing_prices') && Schema::hasColumn('wayfair_pricing_prices', 'sku')) {
+            $pricing = DB::table('wayfair_pricing_prices')
+                ->where(function ($q) use ($out) {
+                    $q->whereIn('sku', $out);
+                    foreach ($out as $candidate) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($candidate)]);
+                    }
+                })
+                ->value('sku');
+            $fromPricing = trim((string) ($pricing ?? ''));
+            if ($fromPricing !== '' && ! in_array($fromPricing, $out, true)) {
+                array_unshift($out, $fromPricing);
             }
         }
 

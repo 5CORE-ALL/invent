@@ -177,17 +177,60 @@ class AliExpressApiService
             return ['success' => false, 'message' => 'AliExpress product ID and title are required. Sync AliExpress listings first.'];
         }
 
-        $base = $this->buildEditProductRequest($resolved, $title, $language);
-        $withPackage = array_merge($base, $this->aliexpressPackageSizeFields($resolved));
-        $first = $this->callProductEdit($withPackage);
-        if (! empty($first['success']) || ! $this->isAliExpressPackageSizeRequired($first['message'] ?? '')) {
-            return $first;
+        $last = ['success' => false, 'message' => 'AliExpress title update failed.'];
+
+        // Single-field subject edit avoids US Pop Choice package-weight schema checks.
+        foreach ([
+            'aliexpress.postproduct.redefining.editsinglefiled',
+            'aliexpress.postproduct.redefining.editSingleFiled',
+        ] as $method) {
+            foreach ([
+                ['product_id' => $resolved, 'fied_name' => 'subject', 'fiedvalue' => $title],
+                ['productId' => $resolved, 'fiedName' => 'subject', 'fiedValue' => $title],
+            ] as $params) {
+                $single = $this->callApiFlexible($method, [
+                    'rest' => $params,
+                    'sync' => $params,
+                ]);
+                if (! empty($single['success'])) {
+                    return $single;
+                }
+                $last = $single;
+            }
         }
 
-        return $this->callProductEdit(array_merge($withPackage, [
-            'usLogisticsWeight' => (string) ($withPackage['usLogisticsWeight'] ?? '0.5'),
-            'package_weight' => (string) ($withPackage['package_weight'] ?? '0.5'),
-        ]));
+        $pkg = $this->aliexpressPackageSizeFields($resolved);
+        $weight = (string) ($pkg['weight'] ?? '0.5');
+        $length = (string) ($pkg['package_length'] ?? '10');
+        $width = (string) ($pkg['package_width'] ?? '10');
+        $height = (string) ($pkg['package_height'] ?? '10');
+
+        $payloads = [
+            $this->buildEditProductRequest($resolved, $title, $language),
+            array_merge($this->buildEditProductRequest($resolved, $title, $language), [
+                'weight' => $weight,
+                'package_length' => $length,
+                'package_width' => $width,
+                'package_height' => $height,
+            ]),
+            array_merge($this->buildEditProductRequest($resolved, $title, $language), [
+                'weight' => $weight,
+                'usLogisticsWeight' => $weight,
+                'package_length' => $length,
+                'package_width' => $width,
+                'package_height' => $height,
+                'gross_weight' => $weight,
+            ]),
+        ];
+        foreach ($payloads as $payload) {
+            $res = $this->callProductEditKeepTrying($payload);
+            if (! empty($res['success'])) {
+                return $res;
+            }
+            $last = $res;
+        }
+
+        return $last;
     }
 
     /**
@@ -258,31 +301,13 @@ class AliExpressApiService
             $weight = 0.5;
         }
 
-        $size = $length.'x'.$width.'x'.$height;
-
         return [
             'package_length' => $length,
             'package_width' => $width,
             'package_height' => $height,
+            'weight' => $weight,
             'gross_weight' => $weight,
-            'package_weight' => $weight,
             'usLogisticsWeight' => $weight,
-            'us_logistics_weight' => $weight,
-            'package_size' => $size,
-            'logistics_size' => [
-                'package_size' => $size,
-                'package_length' => $length,
-                'package_width' => $width,
-                'package_height' => $height,
-                'gross_weight' => $weight,
-                'package_weight' => $weight,
-                'usLogisticsWeight' => $weight,
-            ],
-            'logisticsSize' => [
-                'packageSize' => $size,
-                'package_size' => $size,
-                'usLogisticsWeight' => $weight,
-            ],
         ];
     }
 
@@ -442,6 +467,39 @@ class AliExpressApiService
                 'param_keys' => array_keys($attempt['params']),
                 'error' => $last['message'] ?? null,
             ]);
+        }
+
+        return $last;
+    }
+
+    /**
+     * Keep trying gateway/param shapes even when a business validation error is returned.
+     *
+     * @param  array<string, mixed>  $editRequest
+     * @return array<string, mixed>
+     */
+    private function callProductEditKeepTrying(array $editRequest): array
+    {
+        $json = $this->encodeRequestPayload($editRequest);
+        $productId = (string) ($editRequest['product_id'] ?? '');
+        $subject = (string) ($editRequest['multi_language_subject_list'][0]['subject'] ?? '');
+
+        $attempts = [
+            ['gateway' => 'rest', 'params' => ['product_id' => $productId, 'subject' => $subject]],
+            ['gateway' => 'sync', 'params' => ['product_id' => $productId, 'subject' => $subject]],
+            ['gateway' => 'rest', 'params' => ['edit_product_request' => $json]],
+            ['gateway' => 'sync', 'params' => ['edit_product_request' => $json]],
+        ];
+
+        $last = ['success' => false, 'message' => 'AliExpress product edit failed.'];
+        foreach ($attempts as $attempt) {
+            $last = $attempt['gateway'] === 'rest'
+                ? $this->callRestGateway('aliexpress.solution.product.edit', $attempt['params'])
+                : $this->callSync('aliexpress.solution.product.edit', $attempt['params']);
+
+            if (! empty($last['success'])) {
+                return $last;
+            }
         }
 
         return $last;

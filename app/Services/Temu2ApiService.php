@@ -248,6 +248,15 @@ class Temu2ApiService extends TemuApiService
             return (string) $goodsId;
         }
 
+        $fromPricing = Temu2Pricing::query()
+            ->where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->value('goods_id');
+        if ($fromPricing !== null && $fromPricing !== '') {
+            return (string) $fromPricing;
+        }
+
         return $this->findTemuGoodsIdBySkuViaApi($sku);
     }
 
@@ -264,6 +273,15 @@ class Temu2ApiService extends TemuApiService
             ->value('sku_id');
         if ($skuId !== null && $skuId !== '') {
             return (string) $skuId;
+        }
+
+        $fromPricing = Temu2Pricing::query()
+            ->where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->value('sku_id');
+        if ($fromPricing !== null && $fromPricing !== '') {
+            return (string) $fromPricing;
         }
 
         return $this->findTemuSkuIdBySkuViaApi($sku);
@@ -298,26 +316,28 @@ class Temu2ApiService extends TemuApiService
         $apiType = config('services.temu2.goods_update_type', config('services.temu.goods_update_type', 'bg.local.goods.partial.update'));
 
         $skuId = $this->getSkuIdBySku($sku);
-        $images = $this->existingListingImageUrls($sku, (string) $goodsId, true);
-        $skuEntries = $this->skuEntriesWithIntegerUnits(
-            $this->skuEntriesForTitleUpdate($sku, $skuId, (string) $goodsId, $images, $skuIdField, $skuCodeField)
-        );
-        $skuEntriesPkg = $this->skuEntriesWithPackageInfoOnly($skuEntries);
+        $liveEntries = $this->skuEntriesFromLivePackage($sku, $skuId, (string) $goodsId, $skuIdField, $skuCodeField, 0);
+        $inchEntries = $this->skuEntriesFromLivePackage($sku, $skuId, (string) $goodsId, $skuIdField, $skuCodeField, 2);
 
-        // Temu 2 wants integer unit codes (1=cm/g, 2=inch/lb), not strings like "cm".
-        // Never send goodsBasic-only: Temu re-validates existing SKUs and rejects volumeUnit:null.
+        // Title-only first. If Temu re-validates package units, send live packageInfo
+        // with integer codes (1=cm/g, 2=inch/lb). Never send the string "cm".
         $attempts = [];
         $attempts[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
             $goodsBasicField => ['goodsName' => $title],
-            $skuListField => $skuEntries,
         ];
         $attempts[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
             $goodsBasicField => ['goodsName' => $title],
-            $skuListField => $skuEntriesPkg,
+            $skuListField => $liveEntries,
+        ];
+        $attempts[] = [
+            'type' => $apiType,
+            'goodsId' => (int) $goodsId,
+            $goodsBasicField => ['goodsName' => $title],
+            $skuListField => $inchEntries,
         ];
 
         $lastError = 'Temu 2 title update failed.';
@@ -353,20 +373,18 @@ class Temu2ApiService extends TemuApiService
     }
 
     /**
-     * Temu re-validates every SKU package field on partial update. Never send null units.
+     * Live SKU packageInfo only (no images/price). Units are Temu integer codes.
      *
-     * @param  list<string>  $images
      * @return list<array<string, mixed>>
      */
-    private function skuEntriesForTitleUpdate(
+    private function skuEntriesFromLivePackage(
         string $sku,
         ?string $skuId,
         string $goodsId,
-        array $images,
         string $skuIdField,
         string $skuCodeField,
+        int $forceVolumeUnit = 0,
     ): array {
-        $dims = $this->getProductDimensions($sku);
         $liveRows = $this->fetchTemu2SkuSpecRows($goodsId);
         if ($liveRows === []) {
             $liveRows = [[
@@ -375,10 +393,7 @@ class Temu2ApiService extends TemuApiService
             ]];
         }
 
-        $price = $this->getProductPrice($sku) ?? 1.00;
-        $currency = (string) config('services.temu2.currency', 'USD');
         $entries = [];
-
         foreach ($liveRows as $row) {
             if (! is_array($row)) {
                 continue;
@@ -390,90 +405,46 @@ class Temu2ApiService extends TemuApiService
                 || ($rowSn !== '' && strcasecmp($rowSn, $sku) === 0)
                 || count($liveRows) === 1;
 
-            $weight = $this->nonEmptySpec($row['weight'] ?? $pkg['weight'] ?? null, $dims['weight'] ?? null, '1');
-            $length = $this->nonEmptySpec($row['length'] ?? $pkg['length'] ?? null, $dims['length'] ?? null, '1');
-            $width = $this->nonEmptySpec($row['width'] ?? $pkg['width'] ?? null, $dims['width'] ?? null, '1');
-            $height = $this->nonEmptySpec($row['height'] ?? $pkg['height'] ?? null, $dims['height'] ?? null, '1');
-            $weightUnit = $this->temuWeightUnitCode(
-                $this->temuFirstNonNullUnit($row['weightUnit'] ?? null, $pkg['weightUnit'] ?? null, $dims['weightUnit'] ?? null, 'g')
-            );
-            $volumeUnit = $this->temuVolumeUnitCode(
-                $this->temuFirstNonNullUnit($row['volumeUnit'] ?? null, $pkg['volumeUnit'] ?? null, $row['lenUnit'] ?? null, $dims['volumeUnit'] ?? null, 'cm')
-            );
+            $volumeUnit = $forceVolumeUnit > 0
+                ? $forceVolumeUnit
+                : $this->temuVolumeUnitCode(
+                    $this->temuFirstNonNullUnit($pkg['volumeUnit'] ?? null, $row['volumeUnit'] ?? null, $row['lenUnit'] ?? null, 1)
+                );
+            $weightUnit = $forceVolumeUnit === 2
+                ? 2
+                : $this->temuWeightUnitCode(
+                    $this->temuFirstNonNullUnit($pkg['weightUnit'] ?? null, $row['weightUnit'] ?? null, 1)
+                );
 
             $entry = [
                 $skuCodeField => $rowSn !== '' ? $rowSn : $sku,
-                'weight' => $weight,
-                'length' => $length,
-                'width' => $width,
-                'height' => $height,
-                'weightUnit' => $weightUnit,
-                'volumeUnit' => $volumeUnit,
-                'listPrice' => ['amount' => (string) $price, 'currency' => $currency],
-                'listPriceType' => 0,
+                'packageInfo' => [
+                    'weight' => $this->nonEmptySpec($pkg['weight'] ?? $row['weight'] ?? null, null, '1'),
+                    'length' => $this->nonEmptySpec($pkg['length'] ?? $row['length'] ?? null, null, '1'),
+                    'width' => $this->nonEmptySpec($pkg['width'] ?? $row['width'] ?? null, null, '1'),
+                    'height' => $this->nonEmptySpec($pkg['height'] ?? $row['height'] ?? null, null, '1'),
+                    'weightUnit' => $weightUnit,
+                    'volumeUnit' => $volumeUnit,
+                ],
             ];
             $id = $rowSkuId !== '' ? $rowSkuId : ($isTarget ? $skuId : null);
             if ($id !== null && $id !== '') {
                 $entry[$skuIdField] = (int) $id;
-            }
-            if ($isTarget && $images !== []) {
-                $entry['images'] = $images;
-            } else {
-                $rowImages = $this->flattenTemuImageValues($row['images'] ?? $row['skuImageList'] ?? []);
-                if ($rowImages !== []) {
-                    $entry['images'] = $rowImages;
-                }
             }
             $entries[] = $entry;
         }
 
         return $entries !== [] ? $entries : [[
             $skuCodeField => $sku,
-            'weight' => '1',
-            'length' => '1',
-            'width' => '1',
-            'height' => '1',
-            'weightUnit' => 1,
-            'volumeUnit' => 1,
-            'listPrice' => ['amount' => (string) ($this->getProductPrice($sku) ?? 1.00), 'currency' => $currency],
-            'listPriceType' => 0,
+            'packageInfo' => [
+                'weight' => '1',
+                'length' => '1',
+                'width' => '1',
+                'height' => '1',
+                'weightUnit' => $forceVolumeUnit === 2 ? 2 : 1,
+                'volumeUnit' => $forceVolumeUnit > 0 ? $forceVolumeUnit : 1,
+            ],
         ]];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $entries
-     * @return list<array<string, mixed>>
-     */
-    private function skuEntriesWithIntegerUnits(array $entries): array
-    {
-        return array_map(function (array $entry): array {
-            $entry['volumeUnit'] = $this->temuVolumeUnitCode($entry['volumeUnit'] ?? 'cm');
-            $entry['weightUnit'] = $this->temuWeightUnitCode($entry['weightUnit'] ?? 'g');
-
-            return $entry;
-        }, $entries);
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $entries
-     * @return list<array<string, mixed>>
-     */
-    private function skuEntriesWithPackageInfoOnly(array $entries): array
-    {
-        return array_map(function (array $entry): array {
-            $pkg = [
-                'weight' => (string) ($entry['weight'] ?? '1'),
-                'length' => (string) ($entry['length'] ?? '1'),
-                'width' => (string) ($entry['width'] ?? '1'),
-                'height' => (string) ($entry['height'] ?? '1'),
-                'weightUnit' => $this->temuWeightUnitCode($entry['weightUnit'] ?? 1),
-                'volumeUnit' => $this->temuVolumeUnitCode($entry['volumeUnit'] ?? 1),
-            ];
-            unset($entry['weight'], $entry['length'], $entry['width'], $entry['height'], $entry['weightUnit'], $entry['volumeUnit']);
-            $entry['packageInfo'] = $pkg;
-
-            return $entry;
-        }, $entries);
     }
 
     private function nonEmptySpec(mixed $live, mixed $fallback, string $default): string
@@ -1261,7 +1232,7 @@ class Temu2ApiService extends TemuApiService
 
                 foreach (($data['result']['goodsList'] ?? []) as $good) {
                     $outGoodsSn = $good['outGoodsSn'] ?? null;
-                    if ($outGoodsSn !== null && trim((string) $outGoodsSn) === $sku) {
+                    if ($outGoodsSn !== null && strcasecmp(trim((string) $outGoodsSn), $sku) === 0) {
                         $goodsId = $good['goodsId'] ?? null;
                         if ($goodsId !== null && $goodsId !== '') {
                             $this->persistTemuMapping($sku, (string) $goodsId, null);
@@ -1272,7 +1243,7 @@ class Temu2ApiService extends TemuApiService
 
                     foreach (($good['skuInfoList'] ?? []) as $skuInfo) {
                         $skuSn = $skuInfo['skuSn'] ?? $skuInfo['outSkuSn'] ?? null;
-                        if ($skuSn !== null && trim((string) $skuSn) === $sku) {
+                        if ($skuSn !== null && strcasecmp(trim((string) $skuSn), $sku) === 0) {
                             $goodsId = $good['goodsId'] ?? null;
                             if ($goodsId !== null && $goodsId !== '') {
                                 $skuId = $skuInfo['skuId'] ?? null;
@@ -1314,7 +1285,7 @@ class Temu2ApiService extends TemuApiService
 
                 foreach (($data['result']['skuList'] ?? []) as $item) {
                     $outSkuSn = isset($item['outSkuSn']) ? trim((string) $item['outSkuSn']) : null;
-                    if ($outSkuSn === $sku) {
+                    if ($outSkuSn !== null && strcasecmp(trim((string) $outSkuSn), $sku) === 0) {
                         $skuId = $item['skuId'] ?? null;
                         if ($skuId !== null && $skuId !== '') {
                             $goodsId = $item['goodsId'] ?? null;
