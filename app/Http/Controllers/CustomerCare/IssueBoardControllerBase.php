@@ -550,6 +550,7 @@ abstract class IssueBoardControllerBase extends Controller
             'issue_date'           => ['issue_date', 'issue date', 'date'],
             'department'           => ['department', 'dept'],
             'order_number'         => ['order_number', 'order id', 'order_id', 'order #'],
+            'total_loss'           => ['total_loss', 'loss', 'loss $', 'loss$'],
         ];
         $map = array_merge($map, $this->csvImportColumnMap());
 
