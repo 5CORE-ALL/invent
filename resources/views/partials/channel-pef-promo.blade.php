@@ -418,6 +418,7 @@
 @endif
 
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
+                    @include('partials.sprice-lmp-cap-script')
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
@@ -503,7 +504,7 @@
                     @unless(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3'], true))
                     <div class="btn-group" role="group">
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-btn"
-                        title="Autofill S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN% + CVR Up/Dn. Selected SKUs if checked; otherwise all visible. Skips INV = 0. No marketplace push. S PRC &gt; LMP shows a red triangle.">
+                        title="Autofill S PRC = Std × (1 − T Promo/100). T Promo = PRMT% + CPN% + CVR Up/Dn. Selected SKUs if checked; otherwise all visible. Skips INV = 0. No marketplace push. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.">
                         Sprice vs T promo
                     </button>
                     <button type="button" class="btn btn-sm" id="ch-promo-sprice-vs-tpromo-del-btn"
@@ -1029,10 +1030,12 @@
                 saveSpriceUrl: '/temu-pricing/save-sprice',
                 pushPriceUrl: '/temu/push-price',
                 priceField: 'temu_price',
-                cvrField: 'cvr_percent',
+                cvrField: 'cvr_30',
                 dilField: 'dil_percent',
                 invField: 'inventory',
                 skuField: 'sku',
+                soldField: 'temu_l30',
+                soldFieldLabel: 'Temu L30',
                 saveSpriceMode: 'sku',
             },
             temu2: {
@@ -2947,6 +2950,20 @@
         function chPromoCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         }
+        function chPromoCapSpriceToLmp(d, sprice) {
+            if (window.SpriceLmpCap) return SpriceLmpCap.prepare(d, sprice);
+            const lmp = parseFloat(d && (d.lmp_price || d.lmp || d.LMP)) || 0;
+            let s = chPromoRound2(sprice);
+            if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
+            return s;
+        }
+        function chPromoRowDataFromExtra(extra) {
+            extra = extra || {};
+            if (extra.row && typeof extra.row.getData === 'function') return extra.row.getData();
+            if (extra.row && typeof extra.row === 'object' && !extra.row.getData) return extra.row;
+            if (extra.rowData) return extra.rowData;
+            return null;
+        }
         function chPromoRound2(n) {
             return Math.round((Number(n) || 0) * 100) / 100;
         }
@@ -3441,8 +3458,9 @@
         }
 
         function saveChannelSprice(sku, sprice, silent, extra) {
-            const val = chPromoRound2(sprice);
             extra = extra || {};
+            const rowData = chPromoRowDataFromExtra(extra);
+            const val = rowData ? chPromoCapSpriceToLmp(rowData, sprice) : chPromoRound2(sprice);
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();
             }
@@ -3480,7 +3498,7 @@
         function saveChannelSpriceAndPromo(row, sprice, silent, extra) {
             const d = row.getData();
             const sku = chPromoSku(d);
-            const val = chPromoRound2(sprice);
+            const val = chPromoCapSpriceToLmp(d, sprice);
             extra = extra || {};
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);
@@ -6610,27 +6628,32 @@
          */
         function chPromoSpriceFromStdTPromo(d) {
             // AliExpress 0-sold: discount Std (not live Price) so SROI ≈ Target ROI%.
+            let price = 0;
             if (typeof chPromoAeZeroSoldStdSprice === 'function') {
                 const fromStd = chPromoAeZeroSoldStdSprice(d);
-                if (fromStd > 0) return fromStd;
+                if (fromStd > 0) price = fromStd;
             }
-            const t = Math.min(99.99, Math.max(0, chPromoTPromoPct(d)));
-            if (t > 0) {
-                const std = chPromoStdBase(d);
-                if (!(std > 0)) return 0;
-                const price = chPromoRound2(std * (1 - t / 100));
-                return price >= 0.01 ? price : 0;
+            if (!(price > 0)) {
+                const t = Math.min(99.99, Math.max(0, chPromoTPromoPct(d)));
+                if (t > 0) {
+                    const std = chPromoStdBase(d);
+                    if (!(std > 0)) return 0;
+                    price = chPromoRound2(std * (1 - t / 100));
+                } else if (chPromoKeepLivePriceWhenNoPromo()) {
+                    const live = chPromoPrice(d);
+                    if (live > 0) price = chPromoRound2(live);
+                    else {
+                        const existing = chPromoGetSprice(d);
+                        price = existing > 0 ? chPromoRound2(existing) : 0;
+                    }
+                } else {
+                    const std = chPromoStdBase(d);
+                    if (!(std > 0)) return 0;
+                    price = chPromoRound2(std);
+                }
             }
-            if (chPromoKeepLivePriceWhenNoPromo()) {
-                const live = chPromoPrice(d);
-                if (live > 0) return chPromoRound2(live);
-                const existing = chPromoGetSprice(d);
-                return existing > 0 ? chPromoRound2(existing) : 0;
-            }
-            const std = chPromoStdBase(d);
-            if (!(std > 0)) return 0;
-            const price = chPromoRound2(std);
-            return price >= 0.01 ? price : 0;
+            if (!(price >= 0.01)) return 0;
+            return chPromoCapSpriceToLmp(d, price);
         }
 
         /** Recalc S PRC from current Std / PRMT% / cvr%. AliExpress with no promo keeps live Price. */

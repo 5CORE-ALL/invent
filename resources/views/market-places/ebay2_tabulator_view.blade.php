@@ -1583,8 +1583,9 @@
         function ebay2HasRedTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
             const sprice = ebay2RowSpriceForAlert(data);
+            if (window.SpriceLmpCap) return SpriceLmpCap.hasAlert(data, sprice);
             const lmp = parseFloat(data.lmp_price) || 0;
-            return sprice > 0 && lmp > 0 && sprice > lmp;
+            return sprice > 0 && lmp > 0 && sprice + 0.0001 >= lmp;
         }
         function syncEbay2TriangleBadgeState() {
             $('#ebay2-blue-triangle-badge').css({
@@ -4055,22 +4056,24 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. Never stored. Blue triangle = S PRC ≠ Price. Red triangle / red text = S PRC > LMP.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const sprice = (typeof chPromoLiveSprice === 'function')
+                            let sprice = (typeof chPromoLiveSprice === 'function')
                                 ? chPromoLiveSprice(rowData)
                                 : 0;
                             if (!(sprice > 0)) {
                                 return '';
                             }
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
+                            if (cap && cap.shown > 0) sprice = cap.shown;
 
                             const formattedValue = '$' + Number(sprice).toFixed(2);
-                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const differsFromPrice = ebayPrice > 0
                                 && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
-                            const overLmp = lmp > 0 && sprice > lmp;
+                            const overLmp = cap ? cap.alert : (lmp > 0 && sprice + 0.0001 >= lmp);
                             const ended = ebay2IsEndedListing(rowData);
                             const yellowTri = ended
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
@@ -4080,8 +4083,8 @@
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
                             const redTri = overLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + Number(sprice).toFixed(2) + ' &gt; LMP $' + lmp.toFixed(2) + '"></i>'
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                    + Number(lmp).toFixed(2) + '"></i>')
                                 : '';
 
                             let priceHtml = formattedValue;

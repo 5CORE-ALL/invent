@@ -4789,18 +4789,20 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. Never stored. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP. Dot = vs last recorded S PRC.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const sprice = (typeof chPromoLiveSprice === 'function')
+                            let sprice = (typeof chPromoLiveSprice === 'function')
                                 ? chPromoLiveSprice(rowData)
                                 : 0;
                             if (!(sprice > 0)) {
                                 return '';
                             }
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
+                            if (cap && cap.shown > 0) sprice = cap.shown;
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
 
@@ -4840,12 +4842,16 @@
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
 
+                            const atOrAboveLmp = cap ? cap.alert : (lmp > 0 && sprice + 0.0001 >= lmp);
                             let priceHtml = formattedValue;
-                            if (lmp > 0 && sprice > lmp) {
+                            if (atOrAboveLmp) {
                                 priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
                             }
+                            const redTri = atOrAboveLmp
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + Number(lmp).toFixed(2) + '"></i>')
+                                : '';
 
-                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${blueTri}${dotBtn}</span>`;
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${redTri}${blueTri}${dotBtn}</span>`;
                         },
                         cellClick: function(e) {
                             const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
@@ -5560,14 +5566,17 @@
                     });
                 }
 
-                // Sprice/LMP: "Red" keeps only rows where SPRICE is shown in red (SPRICE > LMP).
+                // Sprice/LMP: "Red" keeps only rows where S PRC ≥ LMP (capped, red triangle).
                 if (spriceLmpFilter === 'red') {
                     table.addFilter(function(data) {
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
                             return true;
-                        const sprice = parseFloat(data.SPRICE) || 0;
+                        const sprice = (typeof ebay1RowSpriceForAlert === 'function')
+                            ? ebay1RowSpriceForAlert(data)
+                            : (parseFloat(data.SPRICE) || 0);
+                        if (window.SpriceLmpCap) return SpriceLmpCap.hasAlert(data, sprice);
                         const lmp = parseFloat(data.lmp_price) || 0;
-                        return sprice > 0 && lmp > 0 && sprice > lmp;
+                        return sprice > 0 && lmp > 0 && sprice + 0.0001 >= lmp;
                     });
                 }
 

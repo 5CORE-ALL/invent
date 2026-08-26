@@ -360,9 +360,10 @@
                 chPushSpriceTimer = setTimeout(flushChannelPushSprice, opts.immediate ? 0 : 180);
             }
             function enqueueChannelPushSpriceAfterSave(sku, price, row) {
-                const p = chPushSpriceRound2(price);
+                const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
+                let p = chPushSpriceRound2(price);
+                if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
                 if (!sku || !(p > 0)) return;
-                const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
                 const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
                 if (live > 0 && chPushSpriceNearlyEqual(p, live)) return;
                 if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;

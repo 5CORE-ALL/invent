@@ -975,17 +975,20 @@
                         else if (d.SPRICE_STATUS === 'applied') bg = 'background-color:#d4edda;';
                         else if (d.has_custom_sprice) bg = 'background-color:#e7f1ff;';
                         const live = parseFloat(d['V Price']) || 0;
-                        const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                        const formatted = '$' + display.toFixed(2);
-                        const overLmp = lmp > 0 && display > lmp;
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, display) : null;
+                        const shown = (cap && cap.shown > 0) ? cap.shown : display;
+                        const lmp = cap ? cap.lmp : (parseFloat(d.lmp_price || d.lmp || d.LMP) || 0);
+                        const formatted = '$' + shown.toFixed(2);
+                        const overLmp = cap ? cap.alert : (lmp > 0 && shown + 0.0001 >= lmp);
+                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const priceHtml = overLmp
                             ? '<span style="color:#dc3545;font-weight:600;' + bg + 'padding:2px 6px;border-radius:3px;">' + formatted + '</span>'
                             : '<span style="font-weight:600;' + bg + 'padding:2px 6px;border-radius:3px;">' + formatted + '</span>';
-                        const blueTri = (live > 0 && Math.round(display * 100) !== Math.round(live * 100))
+                        const blueTri = (live > 0 && Math.round(shown * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + display.toFixed(2) + ' ≠ V Price $' + live.toFixed(2) + '"></i>'
+                                + shown.toFixed(2) + ' ≠ V Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + redTri + blueTri + '</span>';
                     }
                 },
                 {

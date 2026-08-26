@@ -3917,7 +3917,7 @@
                             step: 0.01
                         },
                         sorter: "number",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
@@ -3926,10 +3926,12 @@
                                 const calc = chPromoSpriceFromStdTPromo(rowData);
                                 if (calc > 0) value = calc;
                             }
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                            if (cap && cap.shown > 0) value = cap.shown;
                             const hasCustom = rowData.has_custom_sprice;
                             const status = rowData.SPRICE_STATUS;
                             const live = ttLivePrice(rowData);
-                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
 
                             let bgColor = '';
                             if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
@@ -3939,15 +3941,16 @@
 
                             if (!(value > 0)) return '';
                             const formatted = '$' + value.toFixed(2);
-                            const overLmp = lmp > 0 && value > lmp;
+                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                             const priceHtml = overLmp
                                 ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                                 : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                         },
                         width: 92
                     },
@@ -3963,7 +3966,9 @@
                             if (isParent) return '<span style="color:#6c757d;">-</span>';
 
                             const sku = rowData['(Child) sku'];
-                            const sprice = parseFloat(rowData.SPRICE || 0);
+                            const sprice = window.SpriceLmpCap
+                                ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.SPRICE || 0))
+                                : (parseFloat(rowData.SPRICE || 0));
                             const status = rowData.SPRICE_STATUS || null;
                             const pushedValue = rowData.SPRICE_PUSHED_VALUE;
                             const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
@@ -4305,7 +4310,9 @@
                     const sku = rowData['(Child) sku'];
                     // Always store SPRICE to exactly 2 decimals (UI input may allow more digits).
                     const rawSprice = parseFloat(cell.getValue()) || 0;
-                    const newSprice = Math.round(rawSprice * 100) / 100;
+                    const newSprice = window.SpriceLmpCap
+                        ? SpriceLmpCap.prepare(rowData, Math.round(rawSprice * 100) / 100)
+                        : (Math.round(rawSprice * 100) / 100);
 
                     const percentage = getRowMarginFactor(rowData);
                     const lp = rowData['LP_productmaster'] || 0;

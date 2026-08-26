@@ -3236,15 +3236,17 @@
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. Never stored. Blue triangle = S PRC ≠ Price. Red triangle / red text = S PRC > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sprice = (typeof chPromoLiveSprice === 'function')
+                        let sprice = (typeof chPromoLiveSprice === 'function')
                             ? chPromoLiveSprice(rowData)
                             : 0;
                         if (!(sprice > 0)) return '';
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
+                        if (cap && cap.shown > 0) sprice = cap.shown;
                         const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                        const lmp = parseFloat(rowData.lmp_price) || 0;
+                        const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
                         const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                         const differsFromPrice = ebayPrice > 0
                             && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
@@ -3252,10 +3254,12 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                             : '';
-                        if (lmp > 0 && sprice > lmp) {
+                        const atOrAboveLmp = cap ? cap.alert : (lmp > 0 && sprice + 0.0001 >= lmp);
+                        if (atOrAboveLmp) {
+                            const redTri = cap ? cap.triangleHtml
+                                : ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;" title="S PRC capped at LMP"></i>';
                             return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;">'
-                                + formattedValue
-                                + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;" title="S PRC &gt; LMP"></i></span>'
+                                + formattedValue + redTri + '</span>'
                                 + blueTri;
                         }
                         return '<span style="white-space:nowrap;">' + formattedValue + blueTri + '</span>';

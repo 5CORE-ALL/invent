@@ -1082,8 +1082,11 @@
                         if (!(value > 0)) {
                             return '<span class="text-muted" style="cursor:text;" title="Click to set SPRICE">-</span>';
                         }
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        if (cap && cap.shown > 0) value = cap.shown;
+                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = lmp > 0 && value > lmp;
                         const priceHtml = overLmp
                             ? `<strong${tip} style="cursor:text;color:#dc3545;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`
                             : `<strong${tip} style="cursor:text;${bg}padding:2px 6px;border-radius:3px;">${formatted}</strong>`;
@@ -1091,7 +1094,7 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
