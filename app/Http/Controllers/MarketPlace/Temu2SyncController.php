@@ -18,7 +18,9 @@ use App\Services\MarketplaceManager\Temu2OrderPushService;
 use App\Services\MarketplaceManager\Temu2OrderSyncService;
 use App\Services\MarketplaceManager\Temu2TrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
+use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
+use App\Services\MarketplaceManager\MarketplaceShopifyImportQueue;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\ShopifyApiService;
@@ -960,13 +962,11 @@ class Temu2SyncController extends Controller
         $apiError = null;
 
         if (Schema::hasTable('temu2_orders')) {
-            // Temu 2 schedule fetches without auto-import (same as Reverb manual-push flow).
-            // Unstick failed/orphan "queued" rows so Shopify column shows Pending, not Queued.
             if (Schema::hasColumn('temu2_orders', 'import_status')) {
-                Temu2Order::query()
-                    ->whereNull('shopify_order_id')
-                    ->where('import_status', 'queued')
-                    ->update(['import_status' => null]);
+                MarketplaceShopifyImportQueue::releaseStuckQueued(
+                    Temu2Order::class,
+                    MarketplaceManagerRegistry::queueFor('temu2')
+                );
             }
 
             $cutoff = Temu2OrderSyncService::MIN_ORDER_DATE.' 00:00:00';
@@ -1112,17 +1112,9 @@ class Temu2SyncController extends Controller
             $result = $sync->fetchAndStore($days);
         }
 
-        // Only auto-queue Shopify imports when explicitly requested.
-        // Prefer from_date fetches without import when older orders already exist on Shopify.
-        if ($request->boolean('import')) {
+        if ($request->boolean('import') || MarketplaceSyncSettings::canAutoImportToShopify('temu2')) {
             $dispatched = $sync->dispatchImportsForNewOrders();
             $result['message'] .= " Dispatched {$dispatched} import job(s).";
-        } elseif (Schema::hasTable('temu2_orders') && Schema::hasColumn('temu2_orders', 'import_status')) {
-            // Fetch without import must leave rows Pending (same as Reverb), not stuck Queued.
-            Temu2Order::query()
-                ->whereNull('shopify_order_id')
-                ->where('import_status', 'queued')
-                ->update(['import_status' => null]);
         }
 
         return response()->json([

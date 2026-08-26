@@ -96,7 +96,7 @@ class Ebay3OrderSyncService
             ];
         }
 
-        if ($import) {
+        if ($import || MarketplaceShopifyImportQueue::shouldDispatchImports('ebay3')) {
             $this->dispatchImportsForNewOrders();
         }
 
@@ -147,7 +147,7 @@ class Ebay3OrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('ebay3', $settings);
         $queue = MarketplaceManagerRegistry::queueFor('ebay3');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(Ebay3OrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(Ebay3OrderMetric::class, $queue);
 
         $orders = Ebay3OrderMetric::query()
             ->where(function ($q) {
@@ -155,7 +155,7 @@ class Ebay3OrderSyncService
             })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->orderBy('id')
             ->limit(200)

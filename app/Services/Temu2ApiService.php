@@ -294,27 +294,19 @@ class Temu2ApiService extends TemuApiService
 
         $skuId = $this->getSkuIdBySku($sku);
         $images = $this->existingListingImageUrls($sku, (string) $goodsId, true);
-        $skuEntries = $this->skuEntriesForTitleUpdate($sku, $skuId, (string) $goodsId, $images, $skuIdField, $skuCodeField);
-        $skuEntriesInt = $this->skuEntriesWithIntegerUnits($skuEntries);
+        $skuEntries = $this->skuEntriesWithIntegerUnits(
+            $this->skuEntriesForTitleUpdate($sku, $skuId, (string) $goodsId, $images, $skuIdField, $skuCodeField)
+        );
         $skuEntriesPkg = $this->skuEntriesWithPackageInfoOnly($skuEntries);
 
+        // Temu 2 wants integer unit codes (1=cm/g, 2=inch/lb), not strings like "cm".
+        // Never send goodsBasic-only: Temu re-validates existing SKUs and rejects volumeUnit:null.
         $attempts = [];
         $attempts[] = [
             'type' => $apiType,
             'goodsId' => (int) $goodsId,
             $goodsBasicField => ['goodsName' => $title],
-        ];
-        $attempts[] = [
-            'type' => $apiType,
-            'goodsId' => (int) $goodsId,
-            $goodsBasicField => ['goodsName' => $title],
             $skuListField => $skuEntries,
-        ];
-        $attempts[] = [
-            'type' => $apiType,
-            'goodsId' => (int) $goodsId,
-            $goodsBasicField => ['goodsName' => $title],
-            $skuListField => $skuEntriesInt,
         ];
         $attempts[] = [
             'type' => $apiType,
@@ -397,8 +389,12 @@ class Temu2ApiService extends TemuApiService
             $length = $this->nonEmptySpec($row['length'] ?? $pkg['length'] ?? null, $dims['length'] ?? null, '1');
             $width = $this->nonEmptySpec($row['width'] ?? $pkg['width'] ?? null, $dims['width'] ?? null, '1');
             $height = $this->nonEmptySpec($row['height'] ?? $pkg['height'] ?? null, $dims['height'] ?? null, '1');
-            $weightUnit = $this->normalizeTemuWeightUnit($row['weightUnit'] ?? $pkg['weightUnit'] ?? $dims['weightUnit'] ?? 'g');
-            $volumeUnit = $this->normalizeTemuVolumeUnit($row['volumeUnit'] ?? $pkg['volumeUnit'] ?? $row['lenUnit'] ?? $dims['volumeUnit'] ?? 'cm');
+            $weightUnit = $this->temuWeightUnitCode(
+                $this->temuFirstNonNullUnit($row['weightUnit'] ?? null, $pkg['weightUnit'] ?? null, $dims['weightUnit'] ?? null, 'g')
+            );
+            $volumeUnit = $this->temuVolumeUnitCode(
+                $this->temuFirstNonNullUnit($row['volumeUnit'] ?? null, $pkg['volumeUnit'] ?? null, $row['lenUnit'] ?? null, $dims['volumeUnit'] ?? null, 'cm')
+            );
 
             $entry = [
                 $skuCodeField => $rowSn !== '' ? $rowSn : $sku,
@@ -432,8 +428,8 @@ class Temu2ApiService extends TemuApiService
             'length' => '1',
             'width' => '1',
             'height' => '1',
-            'weightUnit' => 'g',
-            'volumeUnit' => 'cm',
+            'weightUnit' => 1,
+            'volumeUnit' => 1,
             'listPrice' => ['amount' => (string) ($this->getProductPrice($sku) ?? 1.00), 'currency' => $currency],
             'listPriceType' => 0,
         ]];
@@ -465,8 +461,8 @@ class Temu2ApiService extends TemuApiService
                 'length' => (string) ($entry['length'] ?? '1'),
                 'width' => (string) ($entry['width'] ?? '1'),
                 'height' => (string) ($entry['height'] ?? '1'),
-                'weightUnit' => $this->normalizeTemuWeightUnit($entry['weightUnit'] ?? 'g'),
-                'volumeUnit' => $this->normalizeTemuVolumeUnit($entry['volumeUnit'] ?? 'cm'),
+                'weightUnit' => $this->temuWeightUnitCode($entry['weightUnit'] ?? 1),
+                'volumeUnit' => $this->temuVolumeUnitCode($entry['volumeUnit'] ?? 1),
             ];
             unset($entry['weight'], $entry['length'], $entry['width'], $entry['height'], $entry['weightUnit'], $entry['volumeUnit']);
             $entry['packageInfo'] = $pkg;
@@ -485,6 +481,21 @@ class Temu2ApiService extends TemuApiService
         }
 
         return $default;
+    }
+
+    private function temuFirstNonNullUnit(mixed ...$values): string
+    {
+        foreach ($values as $value) {
+            if ($value === null || $value === false) {
+                continue;
+            }
+            $text = trim((string) $value);
+            if ($text !== '' && strtolower($text) !== 'null') {
+                return $text;
+            }
+        }
+
+        return '';
     }
 
     private function normalizeTemuVolumeUnit(mixed $value): string

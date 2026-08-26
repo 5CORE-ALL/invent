@@ -12,6 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class ImportTemu2OrderToShopify implements ShouldQueue
 {
@@ -58,7 +59,7 @@ class ImportTemu2OrderToShopify implements ShouldQueue
 
         $parent = trim((string) $order->parent_order_sn);
 
-        // Hard stop for delivered / shipped / old backlog even if a job was already queued.
+        // Hard stop for cancelled / delivered / closed even if a job was already queued.
         $sync = app(Temu2OrderSyncService::class);
         if (! $sync->isEligibleForAutoImport($order)) {
             if ($parent !== '') {
@@ -102,6 +103,12 @@ class ImportTemu2OrderToShopify implements ShouldQueue
         $shopifyOrderId = $pushService->importToShopify($order);
         if ($shopifyOrderId) {
             return;
+        }
+
+        $status = $pushService->lastApiStatus ?? null;
+        $reason = $pushService->lastFailureReason ?? null;
+        if (\App\Services\MarketplaceManager\MarketplaceShopifyImportQueue::isRetryableShopifyFailure($status, $reason)) {
+            throw new RuntimeException($reason ?: "Shopify HTTP {$status}");
         }
 
         Temu2Order::query()

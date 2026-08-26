@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * Same duplicate-avoidance pattern as Reverb:
  * - Hard cutoff (MIN_ORDER_DATE) — older orders were already entered on Shopify manually
- * - Manual / scheduled fetch does NOT auto-push unless import is explicitly requested
- *   and Settings → auto_import_to_shopify is ON
+ * - Auto-import when Settings → auto_import_to_shopify is ON
+ * - Shopify create is skipped when a copy already exists (name / tag / note)
  */
 class TemuOrderSyncService
 {
@@ -27,19 +27,16 @@ class TemuOrderSyncService
     public const MIN_ORDER_DATE = '2026-07-07';
 
     /**
-     * Auto-import to Shopify only for recent open orders (not the full July+ backlog).
-     */
-    public const AUTO_IMPORT_MAX_AGE_DAYS = 3;
-
-    /**
-     * Only these open statuses may auto-import. Prefer allowlist over skip-list so unknown
-     * / null / shipped-like statuses never flood Shopify.
+     * Open and in-progress orders auto-import. Cancelled / delivered / closed do not.
+     * SHIPPED is included so tracking can attach without a manual Push click.
      *
      * @var list<string>
      */
     public const AUTO_IMPORT_ALLOWED_STATUSES = [
         'UN_SHIPPING',
         'PENDING',
+        'SHIPPED',
+        'PARTIALLY_SHIPPED',
     ];
 
     /** @var list<string> */
@@ -49,8 +46,6 @@ class TemuOrderSyncService
         'CANCELLED',
         'CANCELED',
         'CLOSED',
-        'SHIPPED',
-        'PARTIALLY_SHIPPED',
     ];
 
     /**
@@ -63,12 +58,7 @@ class TemuOrderSyncService
 
     public function autoImportFromDate(): Carbon
     {
-        $importFrom = Carbon::now('America/Los_Angeles')
-            ->subDays(max(1, self::AUTO_IMPORT_MAX_AGE_DAYS))
-            ->startOfDay();
-        $min = $this->minOrderDate();
-
-        return $importFrom->lt($min) ? $min->copy() : $importFrom;
+        return $this->minOrderDate();
     }
 
     public static function resolveOrderStatus(?object $row): string
@@ -87,7 +77,7 @@ class TemuOrderSyncService
 
     /**
      * Final safety check used by the queue job (and dispatch) so already-queued jobs
-     * cannot create Shopify orders for delivered / old backlog.
+     * cannot create Shopify orders for cancelled / delivered / closed rows.
      */
     public function isEligibleForAutoImport(TemuOrder $order): bool
     {
@@ -268,12 +258,12 @@ class TemuOrderSyncService
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('temu');
         $this->markClosedOrdersSkippedForImport();
 
-        // Only NEW open orders (last N days + allowlisted statuses).
+        // Unpushed orders since July 7. Push service links an existing Shopify copy instead of creating a second one.
         $importFrom = $this->autoImportFromDate();
         $allowedStatuses = self::AUTO_IMPORT_ALLOWED_STATUSES;
         $placeholders = implode(', ', array_fill(0, count($allowedStatuses), '?'));
         $queue = MarketplaceManagerRegistry::queueFor('temu');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(TemuOrder::class, $queue, function ($q) use ($importFrom) {
+        MarketplaceShopifyImportQueue::prepareForDispatch(TemuOrder::class, $queue, function ($q) use ($importFrom) {
             $q->whereNotNull('parent_order_time')
                 ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'));
         });
@@ -286,7 +276,7 @@ class TemuOrderSyncService
             ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'))
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->whereRaw(
                 "UPPER(TRIM(COALESCE(NULLIF(parent_order_status_text, ''), order_status_text, ''))) IN ({$placeholders})",
@@ -297,7 +287,7 @@ class TemuOrderSyncService
 
         $dispatched = 0;
         $seenParents = [];
-        $maxDispatch = 120;
+        $maxDispatch = 300;
         foreach ($query->get() as $row) {
             if ($dispatched >= $maxDispatch) {
                 break;
@@ -349,7 +339,7 @@ class TemuOrderSyncService
                         ->orWhereNotIn('import_status', ['imported', 'skipped_pre_july7', 'skipped_closed']);
                 });
 
-            // Closed / shipped / delivered / unknown statuses.
+            // Cancelled / delivered / closed / unknown statuses.
             (clone $base)
                 ->whereRaw(
                     "UPPER(TRIM(COALESCE(NULLIF(parent_order_status_text, ''), order_status_text, ''))) NOT IN ({$allowedPlaceholders})",
@@ -357,7 +347,7 @@ class TemuOrderSyncService
                 )
                 ->update(['import_status' => 'skipped_closed']);
 
-            // Older than auto-import window (even if still UN_SHIPPING).
+            // Older than July 7 cutoff.
             (clone $base)
                 ->where(function ($q) use ($importFrom) {
                     $q->whereNull('parent_order_time')

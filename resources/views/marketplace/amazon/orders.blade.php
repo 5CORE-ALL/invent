@@ -214,7 +214,7 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     var confirmMsg = '';
     var importNote = body.import
         ? '\n\nEligible FBM orders will be queued to Shopify (FBA skipped; already-synced orders are linked, not duplicated).'
-        : '\n\nThis will NOT auto-push to Shopify. Turn on auto-import in Settings, or use Push to Shopify per order.';
+        : '\n\nIf auto-import is Off, nothing is queued. Turn it On in Settings, or use Push for a one-off retry.';
 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);

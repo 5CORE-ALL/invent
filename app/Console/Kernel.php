@@ -527,7 +527,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(28)
             ->appendOutputTo($log);
 
-        // Fetch + import NEW open Temu 2 orders only (service skips shipped/delivered backlog; last 3 days).
+        // Fetch + auto-import Temu 2 to Shopify (duplicate check links existing copies; no second order).
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '', true, 2))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
@@ -1850,7 +1850,7 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('marketplace-fetch-shopify-tracking')
-            ->withoutOverlapping(4)
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncAmazonAddressJob(true, 40))

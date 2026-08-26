@@ -93,7 +93,7 @@ class SheinOrderSyncService
             }
         }
 
-        if ($import) {
+        if ($import || MarketplaceShopifyImportQueue::shouldDispatchImports('shein')) {
             $this->dispatchImportsForNewOrders();
         }
 
@@ -138,7 +138,7 @@ class SheinOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('shein', $settings);
         $queue = MarketplaceManagerRegistry::queueFor('shein');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(SheinOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(SheinOrderMetric::class, $queue);
 
         $orders = SheinOrderMetric::query()
             ->where(function ($q) {
@@ -146,7 +146,7 @@ class SheinOrderSyncService
             })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->orderBy('id')
             ->limit(200)

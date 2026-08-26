@@ -5,7 +5,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'bestbuy') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Best Buy Manager</a>
         @include('marketplace._page-heading', ['slug' => 'bestbuy', 'heading' => 'Best Buy Orders'])
-        <p class="text-muted mb-3">Orders stored locally from Best Buy API. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'bestbuy') }}">Settings</a>.</p>
+        <p class="text-muted mb-3">Orders stored locally from Best Buy API. They auto-push to Shopify when auto-import is On in <a href="{{ route('marketplace.settings', 'bestbuy') }}">Settings</a>. If the order already exists in Shopify, it is linked — a second copy is not created.</p>
 
         @include('marketplace.bestbuy._nav', ['active' => 'orders'])
 
@@ -127,13 +127,13 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);
         body.from_date = fromDate;
-        confirmMsg = 'Fetch Best Buy orders from ' + fromDate + ' onward?\n\nThis will NOT auto-push to Shopify (avoids duplicates for orders already entered).';
+        confirmMsg = 'Fetch Best Buy orders from ' + fromDate + ' onward?\n\nUnpushed orders will be queued to Shopify when auto-import is On. Existing Shopify copies are linked, not duplicated.';
     } else {
         var days = parseInt(selected, 10);
         body.days = days;
         confirmMsg = days === 0
-            ? 'Fetch all Best Buy orders (up to 2 years)? This may take several minutes.\n\nThis will NOT auto-push to Shopify.'
-            : 'Fetch orders from the last ' + days + ' days?\n\nThis will NOT auto-push to Shopify.';
+            ? 'Fetch all Best Buy orders (up to 2 years)? This may take several minutes.\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).'
+            : 'Fetch orders from the last ' + days + ' days?\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).';
     }
 
     if (!confirm(confirmMsg)) {

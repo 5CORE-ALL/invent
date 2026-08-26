@@ -71,7 +71,8 @@ class ImportEbay1OrderToShopify implements ShouldQueue
         }
 
         $status = $pushService->lastApiStatus ?? null;
-        if ($status === 429 || ($status !== null && $status >= 500)) {
+        $reason = $pushService->lastFailureReason ?? null;
+        if (\App\Services\MarketplaceManager\MarketplaceShopifyImportQueue::isRetryableShopifyFailure($status, $reason)) {
             Log::warning('ImportEbay1OrderToShopify: temporary Shopify error, will retry', [
                 'order_id' => $order->order_id,
                 'status' => $status,

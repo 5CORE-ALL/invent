@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class ImportPurchasingPowerOrderToShopify implements ShouldQueue
 {
@@ -59,6 +60,12 @@ class ImportPurchasingPowerOrderToShopify implements ShouldQueue
             ]);
 
             return;
+        }
+
+        $status = $pushService->lastApiStatus ?? null;
+        $reason = $pushService->lastFailureReason ?? null;
+        if (\App\Services\MarketplaceManager\MarketplaceShopifyImportQueue::isRetryableShopifyFailure($status, $reason)) {
+            throw new RuntimeException($reason ?: "Shopify HTTP {$status}");
         }
 
         $order->update(['import_status' => 'import_failed']);

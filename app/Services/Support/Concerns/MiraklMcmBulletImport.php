@@ -479,6 +479,8 @@ trait MiraklMcmBulletImport
             return ['success' => false, 'message' => 'Title is required for MCM P41.'];
         }
 
+        $sku = $this->resolveMiraklMcmLiveShopSku($sku);
+
         $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
 
         $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
@@ -1613,6 +1615,56 @@ trait MiraklMcmBulletImport
         }
 
         return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function miraklMcmSkuCandidates(string $sku): array
+    {
+        $sku = trim($sku);
+        $out = [];
+        foreach ([
+            $sku,
+            str_replace(' ', '', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+            strtoupper($sku),
+            strtoupper(str_replace(' ', '', $sku)),
+        ] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '' && ! in_array($candidate, $out, true)) {
+                $out[] = $candidate;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Prefer the live MCM shop_sku (DFP05 vs "DFP 05") so P41 does not 404 / miss the offer.
+     */
+    protected function resolveMiraklMcmLiveShopSku(string $sku): string
+    {
+        $original = trim($sku);
+        if ($original === '') {
+            return $original;
+        }
+
+        foreach ($this->miraklMcmSkuCandidates($original) as $candidate) {
+            $offer = $this->fetchMiraklMcmOfferBySku($candidate);
+            $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
+            if ($shopSku !== '') {
+                return $shopSku;
+            }
+
+            $product = $this->fetchMiraklMcmProductBySku($candidate);
+            $productSku = trim((string) ($product['shop_sku'] ?? $product['product_sku'] ?? ''));
+            if ($productSku !== '') {
+                return $productSku;
+            }
+        }
+
+        return $original;
     }
 
     protected function fetchMiraklMcmProductCategoryByReference(string $referenceType, string $reference): ?string

@@ -5,7 +5,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'tiktok2') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> TikTok 2 Manager</a>
         @include('marketplace._page-heading', ['slug' => 'tiktok2', 'heading' => 'TikTok 2 Orders', 'mb' => 'mb-3'])
-        <p class="text-muted mb-3">Order lines from <code>tiktok2_orders</code>. Orders are auto-imported to Shopify when enabled in Settings.</p>
+        <p class="text-muted mb-3">Order lines from <code>tiktok2_orders</code>. They auto-push to Shopify when auto-import is On in Settings. If the order already exists in Shopify, it is linked — a second copy is not created.</p>
 
         @include('marketplace.tiktok2._nav', ['active' => 'orders'])
 

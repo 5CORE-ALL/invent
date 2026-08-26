@@ -131,7 +131,7 @@ class BestBuyApiService
      */
     public function updateTitle(string $sku, string $title): array
     {
-        $sku = trim($sku);
+        $sku = $this->resolveMiraklMcmLiveShopSku(trim($sku));
         $title = mb_substr(trim($title), 0, 150);
         if ($sku === '' || $title === '') {
             return ['success' => false, 'message' => 'SKU and title are required.'];

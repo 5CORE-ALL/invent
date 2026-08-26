@@ -24,7 +24,7 @@ echo implode("\n", array_values(array_unique($names)));
 
 while IFS= read -r QUEUE; do
   [ -z "$QUEUE" ] && continue
-  PATTERN="artisan queue:work.*--queue=${QUEUE}"
+  PATTERN="artisan queue:work.*--queue=${QUEUE}( |$)"
   LOG="${LOG_DIR}/mm-worker-${QUEUE}.log"
   if pgrep -f "$PATTERN" >/dev/null 2>&1; then
     continue

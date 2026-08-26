@@ -5,7 +5,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'temu') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Temu Manager</a>
         @include('marketplace._page-heading', ['slug' => 'temu', 'heading' => 'Temu Orders'])
-        <p class="text-muted mb-3">Orders from <strong>July 7, 2026</strong> onward (same cutoff as AliExpress). Older historical Temu rows stay in the database but are hidden here. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'temu') }}">Settings</a>.</p>
+        <p class="text-muted mb-3">Orders from <strong>July 7, 2026</strong> onward. New orders are queued to Shopify automatically when auto-import is On in <a href="{{ route('marketplace.settings', 'temu') }}">Settings</a>. If the order already exists in Shopify, it is linked — a second copy is not created. Use Push only for a one-off retry.</p>
 
         @include('marketplace._queue-status', ['slug' => 'temu'])
 
@@ -83,6 +83,8 @@
                                             <span class="badge bg-info">Queued</span>
                                         @elseif(($o->import_status ?? '') === 'import_failed')
                                             <span class="badge bg-danger">Failed</span>
+                                        @elseif(in_array(($o->import_status ?? ''), ['skipped_closed', 'skipped_pre_july7'], true))
+                                            <span class="badge bg-secondary">Skipped</span>
                                         @else
                                             <span class="badge bg-light text-muted">Pending</span>
                                         @endif
@@ -136,13 +138,13 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);
         body.from_date = fromDate;
-        confirmMsg = 'Fetch Temu orders from ' + fromDate + ' onward?\n\nThis will NOT auto-push to Shopify (avoids duplicates for orders already entered).';
+        confirmMsg = 'Fetch Temu orders from ' + fromDate + ' onward?\n\nUnpushed orders will be queued to Shopify when auto-import is On. Existing Shopify copies are linked, not duplicated.';
     } else {
         var days = parseInt(selected, 10);
         body.days = days;
         confirmMsg = days === 0
-            ? 'Fetch all Temu orders (up to 2 years)? This may take several minutes.\n\nThis will NOT auto-push to Shopify.'
-            : 'Fetch orders from the last ' + days + ' days?\n\nThis will NOT auto-push to Shopify.';
+            ? 'Fetch all Temu orders (up to 2 years)? This may take several minutes.\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).'
+            : 'Fetch orders from the last ' + days + ' days?\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).';
     }
 
     if (!confirm(confirmMsg)) {

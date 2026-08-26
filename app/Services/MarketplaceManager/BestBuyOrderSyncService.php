@@ -113,17 +113,17 @@ class BestBuyOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('bestbuy');
         $queue = MarketplaceManagerRegistry::queueFor('bestbuy');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(BestBuyOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(BestBuyOrderMetric::class, $queue);
         $query = BestBuyOrderMetric::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
             })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->when(Schema::hasColumn('mirakl_daily_data', 'order_created_at'), function ($q) {
-                $q->where('order_created_at', '>=', now()->subDays(14));
+                $q->where('order_created_at', '>=', MarketplaceShopifyImportQueue::defaultImportCutoff());
             })
             ->orderByDesc('id')
             ->limit(200);

@@ -14,6 +14,27 @@ use Illuminate\Support\Facades\Schema;
  */
 class MarketplaceShopifyImportQueue
 {
+    /** Shared floor for auto-import when a channel has no older dedicated cutoff. */
+    public const DEFAULT_IMPORT_CUTOFF_DATE = '2026-07-07';
+
+    /**
+     * Rows the dispatcher may queue. skipped_closed is included so widening
+     * eligibility (e.g. SHIPPED) can pick up rows skipped under the old rules.
+     *
+     * @var list<string>
+     */
+    public const DISPATCHABLE_IMPORT_STATUSES = ['ready', 'import_failed', 'failed', 'skipped_closed'];
+
+    public static function defaultImportCutoff(): \Carbon\Carbon
+    {
+        return \Carbon\Carbon::parse(self::DEFAULT_IMPORT_CUTOFF_DATE, 'America/Los_Angeles')->startOfDay();
+    }
+
+    public static function shouldDispatchImports(string $slug, bool $requested = false): bool
+    {
+        return $requested || \App\Models\MarketplaceSyncSettings::canAutoImportToShopify($slug);
+    }
+
     /**
      * Unique locks / crashed workers can leave import_status=queued with no jobs
      * row and no shopify_order_id. Reset those rows when this order's import job
@@ -100,8 +121,8 @@ class MarketplaceShopifyImportQueue
     }
 
     /**
-     * Network / Shopify 5xx / rate-limit failures should retry instead of
-     * permanently marking import_failed (fail-closed duplicate check included).
+     * Network / Shopify 5xx / rate-limit / duplicate-check API failures should
+     * retry instead of permanently marking import_failed.
      */
     public static function isRetryableShopifyFailure(?int $status, ?string $reason): bool
     {
@@ -117,7 +138,48 @@ class MarketplaceShopifyImportQueue
         return stripos($reason, 'cURL error') !== false
             || stripos($reason, 'timed out') !== false
             || stripos($reason, 'Connection refused') !== false
-            || stripos($reason, 'SSL certificate') !== false;
+            || stripos($reason, 'SSL certificate') !== false
+            || stripos($reason, 'duplicate check') !== false
+            || stripos($reason, 'Push blocked to avoid duplicates') !== false;
+    }
+
+    /**
+     * Rows already linked to Shopify should show imported, not ready/queued/failed.
+     *
+     * @param  class-string  $modelClass
+     * @param  callable(\Illuminate\Database\Eloquent\Builder):void|null  $constrain
+     */
+    public static function markLinkedAsImported(string $modelClass, ?callable $constrain = null): int
+    {
+        $table = (new $modelClass)->getTable();
+        if (! Schema::hasColumn($table, 'shopify_order_id') || ! Schema::hasColumn($table, 'import_status')) {
+            return 0;
+        }
+
+        $query = $modelClass::query()
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->where(function ($q) {
+                $q->whereNull('import_status')
+                    ->orWhereNotIn('import_status', ['imported']);
+            });
+
+        if ($constrain) {
+            $constrain($query);
+        }
+
+        return (int) $query->limit(4000)->update(['import_status' => 'imported']);
+    }
+
+    /**
+     * @param  class-string  $modelClass
+     * @param  callable(\Illuminate\Database\Eloquent\Builder):void|null  $constrain
+     */
+    public static function prepareForDispatch(string $modelClass, string $queue, ?callable $constrain = null): int
+    {
+        self::markLinkedAsImported($modelClass, $constrain);
+
+        return self::releaseStuckQueued($modelClass, $queue, $constrain);
     }
 
     /**

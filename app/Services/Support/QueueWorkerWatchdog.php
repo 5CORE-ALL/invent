@@ -180,7 +180,7 @@ class QueueWorkerWatchdog
             return self::isRunningOnWindows($queue) ? [0] : [];
         }
 
-        $pattern = sprintf('artisan queue:work.*--queue=%s', preg_quote($queue, '/'));
+        $pattern = sprintf('artisan queue:work.*--queue=%s( |$)', preg_quote($queue, '/'));
         $command = sprintf('pgrep -f %s', escapeshellarg($pattern));
 
         exec($command, $output, $exitCode);

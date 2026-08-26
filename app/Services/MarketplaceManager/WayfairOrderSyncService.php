@@ -112,17 +112,17 @@ class WayfairOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('wayfair');
         $queue = MarketplaceManagerRegistry::queueFor('wayfair');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(WayfairDailyData::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(WayfairDailyData::class, $queue);
         $query = WayfairDailyData::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
             })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->when(Schema::hasColumn('wayfair_daily_data', 'po_date'), function ($q) {
-                $q->where('po_date', '>=', now()->subDays(14)->toDateString());
+                $q->where('po_date', '>=', MarketplaceShopifyImportQueue::DEFAULT_IMPORT_CUTOFF_DATE);
             })
             ->orderByDesc('id')
             ->limit(200);

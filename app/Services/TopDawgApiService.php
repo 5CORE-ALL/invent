@@ -18,6 +18,9 @@ class TopDawgApiService
 
     protected string $token;
 
+    /** @var array<string, int> */
+    protected array $liveListPageHint = [];
+
     public function __construct()
     {
         // config(key, default) only returns the default when the key is *missing*.
@@ -413,6 +416,8 @@ class TopDawgApiService
         foreach ($codes as $productCode) {
             $attempts = [
                 array_merge(['product_code' => $productCode], $fields),
+                ['products' => [array_merge(['product_code' => $productCode], $fields)]],
+                ['product' => array_merge(['product_code' => $productCode], $fields)],
                 array_merge(['sku' => $productCode], $fields),
             ];
             foreach ($attempts as $body) {
@@ -451,21 +456,198 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'Title is required.'];
         }
 
-        // SupplierProduct/list exposes product_name / subject; title/product_title are ignored.
+        // HTTP 200 "submitted for review" is returned for unknown fields too, so
+        // only treat a push as success when SupplierProduct/list title actually changes.
         $fieldSets = [
             ['product_name' => $title, 'subject' => $title],
             ['product_name' => $title],
+            ['subject' => $title],
+            ['item_name' => $title],
             ['title' => $title, 'product_title' => $title],
         ];
-        $last = ['success' => false, 'message' => 'TopDawg title update failed.'];
+        $lastMessage = 'TopDawg title update failed.';
         foreach ($fieldSets as $fields) {
-            $last = $this->pushSupplierProductFields($sku, $fields);
-            if ($last['success'] ?? false) {
-                return $last;
+            $pushed = $this->pushSupplierProductFields($sku, $fields);
+            if (! ($pushed['success'] ?? false)) {
+                $lastMessage = (string) ($pushed['message'] ?? $lastMessage);
+                continue;
+            }
+
+            $after = $this->readLiveTitle($sku);
+            if ($after !== null && $this->topDawgTitlesMatch($after, $title)) {
+                return [
+                    'success' => true,
+                    'message' => trim((string) ($pushed['message'] ?? '')) !== ''
+                        ? (string) $pushed['message']
+                        : 'TopDawg title updated.',
+                ];
+            }
+
+            $lastMessage = 'TopDawg accepted the update but listing title did not change.';
+            if ($after !== null && $after !== '') {
+                $lastMessage .= ' Live title remains: '.mb_substr($after, 0, 80);
             }
         }
 
-        return $last;
+        return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * Live listing title from SupplierProduct/list (not the local cache).
+     */
+    protected function readLiveTitle(string $sku): ?string
+    {
+        $row = $this->fetchLiveProductRow($sku);
+        if ($row === null) {
+            return null;
+        }
+
+        foreach (['product_name', 'subject', 'title', 'product_title', 'item_name', 'listing_title', 'name'] as $key) {
+            $text = trim((string) ($row[$key] ?? ''));
+            if ($text !== '') {
+                return $text;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function fetchLiveProductRow(string $sku): ?array
+    {
+        $this->assertConfigured();
+        $sku = trim($sku);
+        $resolved = $this->resolveProductCode($sku) ?: $sku;
+        $codes = [];
+        foreach ([$resolved, $sku, ShopifySku::normalizeSkuForShopifyLookup($sku), str_replace('-', ' ', $sku)] as $code) {
+            $code = trim((string) $code);
+            if ($code !== '' && ! in_array($code, $codes, true)) {
+                $codes[] = $code;
+            }
+        }
+
+        $url = $this->baseUrl.'/SupplierProduct/list';
+        $local = TopDawgProduct::query()
+            ->where(function ($q) use ($sku, $resolved) {
+                $q->where('sku', $sku)
+                    ->orWhere('sku', $resolved)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->orderByDesc('updated_at')
+            ->first();
+        if ($local) {
+            foreach ([$local->sku, $local->tdid, $local->topdawg_listing_id] as $extra) {
+                $extra = trim((string) $extra);
+                if ($extra !== '' && ! in_array($extra, $codes, true)) {
+                    $codes[] = $extra;
+                }
+            }
+        }
+
+        $hintPage = $this->liveListPageHint[strtoupper($resolved)] ?? $this->liveListPageHint[strtoupper($sku)] ?? null;
+        if ($hintPage !== null) {
+            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 100, 'page' => $hintPage], $codes);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        foreach ($codes as $code) {
+            foreach ([
+                ['product_code' => $code, 'per_page' => 50, 'page' => 1],
+                ['sku' => $code, 'per_page' => 50, 'page' => 1],
+                ['search' => $code, 'per_page' => 50, 'page' => 1],
+            ] as $body) {
+                $found = $this->firstMatchingTopDawgListRow($url, $body, $codes);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        for ($page = 1; $page <= 8; $page++) {
+            if ($hintPage !== null && $page === $hintPage) {
+                continue;
+            }
+            $found = $this->firstMatchingTopDawgListRow($url, ['per_page' => 100, 'page' => $page], $codes);
+            if ($found !== null) {
+                $this->liveListPageHint[strtoupper($resolved)] = $page;
+                $this->liveListPageHint[strtoupper($sku)] = $page;
+
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  list<string>  $codes
+     * @return array<string, mixed>|null
+     */
+    protected function firstMatchingTopDawgListRow(string $url, array $body, array $codes): ?array
+    {
+        try {
+            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (! $response->successful()) {
+            return null;
+        }
+        $payload = $response->json();
+        $items = is_array($payload) ? ($payload['results'] ?? []) : [];
+        if (! is_array($items)) {
+            return null;
+        }
+        foreach ($items as $item) {
+            if (is_array($item) && $this->topDawgRowMatchesCodes($item, $codes)) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  list<string>  $codes
+     */
+    protected function topDawgRowMatchesCodes(array $item, array $codes): bool
+    {
+        $upperCodes = array_map('strtoupper', $codes);
+        foreach (['product_code', 'sku', 'seller_sku', 'tdid'] as $key) {
+            $value = trim((string) ($item[$key] ?? ''));
+            if ($value !== '' && in_array(strtoupper($value), $upperCodes, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function topDawgTitlesMatch(string $live, string $wanted): bool
+    {
+        $norm = static function (string $value): string {
+            $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+
+            return mb_strtolower($value);
+        };
+        $a = $norm($live);
+        $b = $norm($wanted);
+        if ($a === $b) {
+            return true;
+        }
+        if ($a === '' || $b === '') {
+            return false;
+        }
+
+        return (str_starts_with($a, $b) || str_starts_with($b, $a))
+            && mb_strlen($a) >= 8
+            && mb_strlen($b) >= 8;
     }
 
     /**
