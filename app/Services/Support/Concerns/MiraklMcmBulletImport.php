@@ -479,16 +479,7 @@ trait MiraklMcmBulletImport
             return ['success' => false, 'message' => 'Title is required for MCM P41.'];
         }
 
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
         $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
-        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            $label = $this->miraklMcmMarketplaceLabel();
-
-            return [
-                'success' => false,
-                'message' => "{$label} MCM P41 title skipped: categoryCode could not be resolved for [{$sku}].",
-            ];
-        }
 
         $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
         $bulletLines = $this->resolveMiraklMcmBulletLinesForP41Row($sku, $fbCodes);
@@ -561,6 +552,51 @@ trait MiraklMcmBulletImport
     }
 
     /**
+     * Mirakl Connect HTTP success only updates the Connect catalog. Live Macy's / Best Buy /
+     * Purchasing Power seller-portal titles require MCM P41 productName.
+     *
+     * @param  array{success?: bool, message?: string}  $connect
+     * @return array{success: bool, message: string}
+     */
+    protected function completeMiraklTitlePushWithMcm(string $sku, string $title, array $connect): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        $envKey = $this->miraklMcmApiKeyEnvName();
+
+        if ($this->miraklMcmApiKey() === null) {
+            return [
+                'success' => false,
+                'message' => "{$envKey} is required for {$label} title push (MCM P41 productName). "
+                    .'Mirakl Connect catalog acceptance does not update the live listing title.',
+            ];
+        }
+
+        if (! filter_var($this->miraklMcmConfig('mcm_title_push', true), FILTER_VALIDATE_BOOL)) {
+            return [
+                'success' => false,
+                'message' => "{$label} MCM P41 title push is disabled.",
+            ];
+        }
+
+        $mcm = $this->pushTitleViaMiraklMcm($sku, $title);
+        if ($mcm['success'] ?? false) {
+            if ($connect['success'] ?? false) {
+                $mcm['message'] = trim(($mcm['message'] ?? '').' Mirakl Connect upsert also accepted.');
+            }
+
+            return $mcm;
+        }
+
+        $connectNote = ($connect['success'] ?? false)
+            ? ' Connect catalog accepted the change, but that does not update the live listing title.'
+            : ' Connect: '.($connect['message'] ?? 'failed');
+        $mcm['success'] = false;
+        $mcm['message'] = trim(($mcm['message'] ?? "{$label} MCM P41 title failed.").$connectNote);
+
+        return $mcm;
+    }
+
+    /**
      * @param  list<string>  $bulletLines
      * @param  list<string>  $attributeCodes
      */
@@ -573,6 +609,12 @@ trait MiraklMcmBulletImport
     ): string {
         $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
         $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
+        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
+            Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 title using title-only row (no categoryCode)', [
+                'sku' => $sku,
+            ]);
+            $useEnriched = false;
+        }
 
         $rowValues = $useEnriched
             ? $this->resolveMiraklMcmP41RowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen, $title)

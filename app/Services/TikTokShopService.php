@@ -2562,7 +2562,159 @@ class TikTokShopService
             $lastMessage = (string) ($retry['message'] ?? $lastMessage);
         }
 
+        $openApi = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
+        if (! empty($openApi['success'])) {
+            return $openApi;
+        }
+        $lastMessage = (string) ($openApi['message'] ?? $lastMessage);
+
+        if ($this->isProductStatusRestrictionError($lastMessage)
+            && $this->activateProductForInventory($productId)) {
+            $afterActivate = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
+            if (! empty($afterActivate['success'])) {
+                return $afterActivate;
+            }
+            $lastMessage = (string) ($afterActivate['message'] ?? $lastMessage);
+        }
+
         return ['success' => false, 'message' => $lastMessage !== '' ? $lastMessage : 'TikTok inventory update failed.'];
+    }
+
+    /**
+     * Signed Open API inventory/partial_edit — same path Title Master uses for TikTok 2.
+     * SDK 202309 Update Inventory rejects LIVE listings with "valid product status".
+     *
+     * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
+     * @return array{success: bool, message: string}
+     */
+    protected function postInventoryUpdateViaOpenApi(string $productId, string $skuId, array $rows): array
+    {
+        $rows = $this->ensureWarehouseOnInventoryRows($rows);
+        $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
+        $inventoryParams = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+
+        $tries = [
+            ['path' => "/product/202509/products/{$productId}/partial_edit", 'body' => $partialParams],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'body' => $partialParams],
+            ['path' => "/product/202309/products/{$productId}/inventory/update", 'body' => $inventoryParams],
+            ['path' => "/product/202509/products/{$productId}/inventory/update", 'body' => $inventoryParams],
+        ];
+
+        $lastError = 'TikTok inventory update failed.';
+        foreach ($hosts as $base) {
+            foreach ($tries as $try) {
+                try {
+                    $this->tiktokOpenApi('POST', $try['path'], [], $try['body'], 45, false, $base);
+                    $this->workingInventoryPath = $try['path'];
+                    Log::info('TikTok inventory updated via Open API', [
+                        'product_id' => $productId,
+                        'sku_id' => $skuId,
+                        'path' => $try['path'],
+                        'base' => $base,
+                    ]);
+
+                    return ['success' => true, 'message' => 'Inventory updated.'];
+                } catch (\Throwable $e) {
+                    $lastError = $e->getMessage();
+                    $this->rememberIpAllowList($lastError);
+                    if ($this->ipAllowListBlocked) {
+                        return ['success' => false, 'message' => $lastError];
+                    }
+                    Log::info('TikTok Open API inventory attempt failed', [
+                        'product_id' => $productId,
+                        'sku_id' => $skuId,
+                        'path' => $try['path'],
+                        'base' => $base,
+                        'error' => $lastError,
+                    ]);
+                }
+            }
+        }
+
+        return ['success' => false, 'message' => $lastError];
+    }
+
+    /**
+     * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
+     * @return list<array{warehouse_id?: string, quantity: int}>
+     */
+    protected function ensureWarehouseOnInventoryRows(array $rows): array
+    {
+        $needsWarehouse = false;
+        foreach ($rows as $row) {
+            if (trim((string) ($row['warehouse_id'] ?? '')) === '') {
+                $needsWarehouse = true;
+                break;
+            }
+        }
+        if (! $needsWarehouse) {
+            return $rows;
+        }
+
+        $wid = trim((string) ($this->resolveDefaultWarehouseId() ?? ''));
+        if ($wid === '') {
+            return $rows;
+        }
+
+        foreach ($rows as $i => $row) {
+            if (trim((string) ($row['warehouse_id'] ?? '')) === '') {
+                $rows[$i]['warehouse_id'] = $wid;
+            }
+        }
+
+        return $rows;
+    }
+
+    protected function activateProductForInventory(string $productId): bool
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return false;
+        }
+
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+        $paths = [
+            '/product/202309/products/activate',
+            '/product/202509/products/activate',
+        ];
+        $body = ['product_ids' => [$productId]];
+
+        foreach ($hosts as $base) {
+            foreach ($paths as $path) {
+                try {
+                    $this->tiktokOpenApi('POST', $path, [], $body, 45, false, $base);
+                    usleep(250000);
+                    Log::info('TikTok product activated for inventory update', [
+                        'product_id' => $productId,
+                        'path' => $path,
+                    ]);
+
+                    return true;
+                } catch (\Throwable $e) {
+                    $msg = strtolower($e->getMessage());
+                    if (str_contains($msg, 'already')) {
+                        return true;
+                    }
+                    Log::info('TikTok activate-for-inventory failed', [
+                        'product_id' => $productId,
+                        'path' => $path,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

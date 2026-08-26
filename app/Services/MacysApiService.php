@@ -151,46 +151,11 @@ class MacysApiService
                 $this->macyLocalizedConnectRows($title)
             );
 
-            if ($this->miraklMcmApiKey() === null) {
-                if ($connect['success'] ?? false) {
-                    $connect['message'] = trim(($connect['message'] ?? '')
-                        .' Macy MCM (productName) skipped — set MACY_MCM_API_KEY for seller portal sync.');
-                }
-
-                return $connect;
+            if ($this->miraklMcmApiKey() !== null) {
+                $this->waitForMacyUpsertRateLimitBeforeMcm($sku);
             }
 
-            if (! filter_var($this->miraklMcmConfig('mcm_title_push', true), FILTER_VALIDATE_BOOL)) {
-                if ($connect['success'] ?? false) {
-                    $connect['message'] = trim(($connect['message'] ?? '')
-                        .' MCM P41 title disabled (MACY_MCM_TITLE_PUSH=false). Connect catalog only.');
-                }
-
-                return $connect;
-            }
-
-            $this->waitForMacyUpsertRateLimitBeforeMcm($sku);
-
-            $mcm = $this->pushTitleViaMiraklMcm($sku, $title);
-            if ($mcm['success'] ?? false) {
-                if ($connect['success'] ?? false) {
-                    $mcm['message'] = trim(($mcm['message'] ?? '').' Mirakl Connect upsert also accepted.');
-                }
-
-                return $mcm;
-            }
-
-            if ($connect['success'] ?? false) {
-                $suffix = ($mcm['mcm_integration_pending'] ?? false)
-                    ? ' Connect OK. MCM P41 title queued (SENT) — seller portal may not update until integration completes.'
-                    : ' Connect OK. MCM P41 title issue: '.($mcm['message'] ?? 'unknown error');
-                $connect['message'] = trim(($connect['message'] ?? '').$suffix);
-                $connect['mcm_integration_pending'] = $mcm['mcm_integration_pending'] ?? false;
-
-                return $connect;
-            }
-
-            return $mcm;
+            return $this->completeMiraklTitlePushWithMcm($sku, $title, is_array($connect) ? $connect : []);
         } catch (\Throwable $e) {
             Log::error('Macy title update failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 

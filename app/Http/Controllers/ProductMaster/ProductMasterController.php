@@ -3408,7 +3408,7 @@ PROMPT;
     }
 
     /**
-     * Push Title 150 to all Title-150 marketplaces for a single SKU.
+     * Push each Title Master channel that has an API, using the title tier for that marketplace.
      * Logs each attempt to marketplace_push_logs and returns per-marketplace results.
      */
     public function pushTitleToAllMarketplaces(Request $request)
@@ -3419,22 +3419,49 @@ PROMPT;
         ]);
 
         $sku = trim($request->input('sku'));
-        $title = trim($request->input('title'));
+        $title170 = trim($request->input('title'));
         $userId = auth()->id();
         $registry = app(AllMarketplaceChannelRegistry::class);
-        $pushKeys = $registry->titlePushKeysForType('150');
+        $product = ProductMaster::query()
+            ->where('SKU', $sku)
+            ->orWhere('sku', $sku)
+            ->first();
+
+        $pushKeys = [];
+        foreach ($registry->titleMeta() as $meta) {
+            $pushKey = $registry->normalizeTitlePushKey($meta['push']);
+            if (! in_array($pushKey, $pushKeys, true)) {
+                $pushKeys[] = $pushKey;
+            }
+        }
 
         Log::info('Multi-Marketplace Push - Started', [
             'sku' => $sku,
-            'title_preview' => mb_substr($title, 0, 50),
+            'title_preview' => mb_substr($title170, 0, 50),
             'marketplaces' => $pushKeys,
             'user_id' => $userId,
             'timestamp' => now()->toDateTimeString(),
         ]);
 
         $results = [];
-        foreach ($pushKeys as $pushKey) {
-            $truncated = MarketplaceCharacterLimits::truncateTitle($title, $pushKey, '150');
+        foreach ($registry->titleMeta() as $meta) {
+            $pushKey = $registry->normalizeTitlePushKey($meta['push']);
+            if (isset($results[$pushKey])) {
+                continue;
+            }
+
+            $titleType = (string) $meta['type'];
+            $title = $this->resolveTitleMasterTitleForType($product, $titleType, $title170);
+            if ($title === '') {
+                $results[$pushKey] = [
+                    'status' => 'skipped',
+                    'message' => "No Title {$titleType} available for SKU {$sku}.",
+                ];
+
+                continue;
+            }
+
+            $truncated = MarketplaceCharacterLimits::truncateTitle($title, $pushKey, $titleType);
 
             if ($blocked = $this->marketplaceApiNotConfiguredResult($pushKey)) {
                 $results[$pushKey] = ['status' => 'failed', 'message' => $blocked['message']];
@@ -3445,7 +3472,7 @@ PROMPT;
 
             try {
                 $pushResult = $this->invokeMarketplacePushWithRetries(
-                    fn () => $this->titlePushService()->push($pushKey, $sku, $truncated, '150'),
+                    fn () => $this->titlePushService()->push($pushKey, $sku, $truncated, $titleType),
                     'Title push',
                     $pushKey,
                     $sku
@@ -3473,7 +3500,7 @@ PROMPT;
             'success' => true,
             'sku' => $sku,
             'results' => $results,
-            'message' => 'Push completed for all Title 150 marketplaces.',
+            'message' => 'Push completed for all Title Master marketplaces with a configured API.',
         ]);
     }
 
@@ -3690,13 +3717,19 @@ PROMPT;
                 $res = $this->pushTitleToAllMarketplaces($req);
                 $data = $res->getData(true);
                 $results = $data['results'] ?? [];
-                $type150Keys = app(AllMarketplaceChannelRegistry::class)->titlePushKeysForType('150');
                 $allOk = true;
-                foreach ($type150Keys as $mp) {
-                    if (($results[$mp]['status'] ?? '') !== 'success') {
-                        $allOk = false;
-                        break;
+                $anySuccess = false;
+                foreach ($results as $mpResult) {
+                    $st = $mpResult['status'] ?? '';
+                    if ($st === 'success') {
+                        $anySuccess = true;
                     }
+                    if ($st === 'failed') {
+                        $allOk = false;
+                    }
+                }
+                if (! $anySuccess) {
+                    $allOk = false;
                 }
                 if ($allOk) {
                     $successCount++;
@@ -7046,6 +7079,41 @@ Return ONLY the dramatically improved title without quotes.";
 
             return response()->json(['success' => false, 'message' => 'Failed to update title'], 500);
         }
+    }
+
+    /**
+     * Title 170 from the UI for Amazon (75) and Title-150 channels; other tiers from product_master.
+     */
+    private function resolveTitleMasterTitleForType(?ProductMaster $product, string $titleType, string $title170): string
+    {
+        if ($titleType === '75' || $titleType === '150') {
+            if (trim($title170) !== '') {
+                return trim($title170);
+            }
+            if ($product) {
+                $fromDb = trim((string) ($product->title150 ?? ''));
+                if ($fromDb !== '') {
+                    return $fromDb;
+                }
+                $amazon = trim((string) ($product->amazon_title ?? ''));
+                if ($amazon !== '') {
+                    return $amazon;
+                }
+            }
+
+            return '';
+        }
+
+        if (! $product) {
+            return '';
+        }
+
+        return match ($titleType) {
+            '100' => trim((string) ($product->title100 ?? '')),
+            '80' => trim((string) ($product->title80 ?? '')),
+            '60' => trim((string) ($product->title60 ?? '')),
+            default => '',
+        };
     }
 
     private function titlePushService(): MarketplaceTitlePushService

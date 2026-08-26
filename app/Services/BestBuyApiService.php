@@ -125,24 +125,24 @@ class BestBuyApiService
     }
 
     /**
-     * Mirakl Connect product update for Best Buy channel bullet points only.
+     * Live Best Buy / Purchasing Power listing titles live on MCM P41, not Connect catalog.
      *
-     * @return array{success: bool, message: string, status_code?: int|null}
-     */
-  /**
      * @return array{success: bool, message: string}
      */
     public function updateTitle(string $sku, string $title): array
     {
-        $title = trim($title);
-        if ($title === '') {
-            return ['success' => false, 'message' => 'Title is required.'];
+        $sku = trim($sku);
+        $title = mb_substr(trim($title), 0, 150);
+        if ($sku === '' || $title === '') {
+            return ['success' => false, 'message' => 'SKU and title are required.'];
         }
 
-        return $this->miraklUpsertAttributes($sku, [
+        $connect = $this->miraklUpsertAttributes($sku, [
             'productName' => $title,
             'title' => $title,
         ]);
+
+        return $this->completeMiraklTitlePushWithMcm($sku, $title, is_array($connect) ? $connect : []);
     }
 
     public function updateBulletPoints(string $sku, string $bulletPoints): array

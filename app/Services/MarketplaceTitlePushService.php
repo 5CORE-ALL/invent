@@ -6,10 +6,8 @@ use App\Models\AliexpressMetric;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
-use App\Models\TiktokShopDataView;
 use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
 use App\Services\Support\MarketplaceCharacterLimits;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Centralized Title Master API push (Shopify reference: credential guard, logging, structured result).
@@ -118,7 +116,14 @@ class MarketplaceTitlePushService
                     'SheinApiService::updateTitle'
                 ),
                 'aliexpress' => $this->pushAliexpress($sku, $title),
-                'tiktok', 'tiktok2' => $this->pushTiktok($sku, $title),
+                'tiktok' => $this->wrapArray(
+                    app(TikTokShopService::class)->updateTitle($sku, $title),
+                    'TikTokShopService::updateTitle'
+                ),
+                'tiktok2' => $this->wrapArray(
+                    app(TikTok2ShopService::class)->updateTitle($sku, $title),
+                    'TikTok2ShopService::updateTitle'
+                ),
                 default => ['success' => false, 'message' => "Title API push not supported for marketplace: {$marketplace}", 'endpoint' => null],
             };
         } catch (\Throwable $e) {
@@ -270,49 +275,5 @@ class MarketplaceTitlePushService
             app(AlibabaApiService::class)->updateTitle($productId, $title),
             $endpoint
         );
-    }
-
-    /**
-     * @return array{success: bool, message: string, endpoint: string}
-     */
-    private function pushTiktok(string $sku, string $title): array
-    {
-        $endpoint = 'TikTokShopService::updateProductTitle';
-        $row = TiktokShopDataView::query()
-            ->where('sku', $sku)
-            ->orWhere('sku', strtoupper($sku))
-            ->orWhere('sku', strtolower($sku))
-            ->first();
-
-        $productId = null;
-        if ($row && $row->value) {
-            $value = is_array($row->value) ? $row->value : json_decode($row->value, true);
-            if (is_array($value)) {
-                $productId = $value['product_id'] ?? $value['productId'] ?? $value['id'] ?? null;
-            }
-        }
-
-        if (! $productId) {
-            return [
-                'success' => false,
-                'message' => 'TikTok product_id not found for SKU. Sync TiktokShopDataView first.',
-                'endpoint' => $endpoint,
-            ];
-        }
-
-        $service = app(TikTokShopService::class);
-        if (! method_exists($service, 'updateProductTitle')) {
-            Log::warning('TikTok title push: updateProductTitle not implemented on TikTokShopService', ['sku' => $sku]);
-
-            return [
-                'success' => false,
-                'message' => 'TikTok title API not implemented in TikTokShopService.',
-                'endpoint' => $endpoint,
-            ];
-        }
-
-        $res = $service->updateProductTitle((string) $productId, $title);
-
-        return $this->wrapArray($res, $endpoint);
     }
 }

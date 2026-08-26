@@ -417,13 +417,21 @@ class TopDawgApiService
             ];
             foreach ($attempts as $body) {
                 $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
-                if ($response->successful()) {
-                    return ['success' => true, 'message' => 'TopDawg product update submitted for review.'];
-                }
                 $payload = $response->json();
-                $lastMessage = is_array($payload)
-                    ? (string) ($payload['message'] ?? json_encode($payload))
-                    : (string) $response->body();
+                $accepted = $this->topDawgUpdateAccepted($response->status(), is_array($payload) ? $payload : null, (string) $response->body());
+                if ($accepted['success']) {
+                    return [
+                        'success' => true,
+                        'message' => $accepted['message'] !== ''
+                            ? $accepted['message']
+                            : 'TopDawg product update submitted for review.',
+                    ];
+                }
+                $lastMessage = $accepted['message'] !== ''
+                    ? $accepted['message']
+                    : (is_array($payload)
+                        ? (string) ($payload['message'] ?? json_encode($payload))
+                        : (string) $response->body());
                 Log::warning('TopDawgApiService: product update attempt failed', [
                     'sku' => $sku,
                     'product_code' => $productCode,
@@ -438,7 +446,63 @@ class TopDawgApiService
 
     public function updateTitle(string $sku, string $title): array
     {
-        return $this->pushSupplierProductFields($sku, ['title' => $title, 'product_title' => $title]);
+        $title = trim($title);
+        if ($title === '') {
+            return ['success' => false, 'message' => 'Title is required.'];
+        }
+
+        // SupplierProduct/list exposes product_name / subject; title/product_title are ignored.
+        $fieldSets = [
+            ['product_name' => $title, 'subject' => $title],
+            ['product_name' => $title],
+            ['title' => $title, 'product_title' => $title],
+        ];
+        $last = ['success' => false, 'message' => 'TopDawg title update failed.'];
+        foreach ($fieldSets as $fields) {
+            $last = $this->pushSupplierProductFields($sku, $fields);
+            if ($last['success'] ?? false) {
+                return $last;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $payload
+     * @return array{success: bool, message: string}
+     */
+    protected function topDawgUpdateAccepted(int $status, ?array $payload, string $rawBody): array
+    {
+        $message = is_array($payload)
+            ? trim((string) ($payload['message'] ?? $payload['error'] ?? ''))
+            : trim($rawBody);
+        $code = is_array($payload) ? (int) ($payload['code'] ?? $status) : $status;
+
+        if ($status < 200 || $status >= 300) {
+            return ['success' => false, 'message' => $message !== '' ? $message : 'TopDawg product update failed (HTTP '.$status.').'];
+        }
+
+        if (is_array($payload) && (
+            (($payload['success'] ?? null) === false)
+            || (($payload['ok'] ?? null) === false)
+            || ($code >= 400)
+        )) {
+            return ['success' => false, 'message' => $message !== '' ? $message : 'TopDawg product update rejected.'];
+        }
+
+        $lower = mb_strtolower($message);
+        if ($lower !== '' && (
+            str_contains($lower, 'required')
+            || str_contains($lower, 'invalid')
+            || str_contains($lower, 'not found')
+            || str_contains($lower, 'fail')
+            || str_contains($lower, 'error')
+        ) && ! str_contains($lower, 'success') && ! str_contains($lower, 'submitted')) {
+            return ['success' => false, 'message' => $message];
+        }
+
+        return ['success' => true, 'message' => $message];
     }
 
     public function updateBulletPoints(string $identifier, string $bulletPoints): array

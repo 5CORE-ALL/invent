@@ -316,6 +316,8 @@ return [
         'features_benefits_max_length' => (int) env('BESTBUY_BULLET_MAX_LENGTH', 500),
         'features_benefits_verify_attempts' => (int) env('BESTBUY_BULLET_VERIFY_ATTEMPTS', 4),
         'features_benefits_verify_delay_seconds' => (int) env('BESTBUY_BULLET_VERIFY_DELAY_SECONDS', 2),
+        'mcm_title_push' => filter_var(env('BESTBUY_MCM_TITLE_PUSH', true), FILTER_VALIDATE_BOOL),
+        'mcm_p41_enriched_row' => filter_var(env('BESTBUY_MCM_P41_ENRICHED_ROW', true), FILTER_VALIDATE_BOOL),
     ],
 
     'purchasingpower' => [
@@ -332,6 +334,8 @@ return [
         'features_benefits_max_length' => (int) env('PURCHASING_POWER_BULLET_MAX_LENGTH', 500),
         'features_benefits_verify_attempts' => (int) env('PURCHASING_POWER_BULLET_VERIFY_ATTEMPTS', 4),
         'features_benefits_verify_delay_seconds' => (int) env('PURCHASING_POWER_BULLET_VERIFY_DELAY_SECONDS', 2),
+        'mcm_title_push' => filter_var(env('PURCHASING_POWER_MCM_TITLE_PUSH', true), FILTER_VALIDATE_BOOL),
+        'mcm_p41_enriched_row' => filter_var(env('PURCHASING_POWER_MCM_P41_ENRICHED_ROW', false), FILTER_VALIDATE_BOOL),
     ],
 
     /*
