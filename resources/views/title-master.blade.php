@@ -4287,6 +4287,9 @@
             btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
             const row = btn.closest('tr');
             if (row) {
+                row.querySelectorAll('.tm-mp-push-btn .bp-mp-dot').forEach(function (dot) {
+                    dot.classList.remove('pushed', 'failed');
+                });
                 const cell = row.querySelector('.marketplaces-150-cell');
                 const wrap = cell ? cell.querySelector('.marketplaces-dots-wrapper') : null;
                 if (wrap) {
@@ -4309,8 +4312,7 @@
             .then(data => {
                 if (data.success && data.results) {
                     const r = data.results;
-                    const keys150 = tmTitlePushKeysForType('150');
-                    keys150.forEach(function (mpKey) {
+                    Object.keys(r).forEach(function (mpKey) {
                         if (r[mpKey] && r[mpKey].status === 'success') {
                             tmRememberTitlePushStatus(sku, mpKey, 'success');
                         } else if (r[mpKey] && r[mpKey].status === 'failed') {
@@ -4318,8 +4320,8 @@
                         }
                     });
                     patchTitleMasterGridRowTitlesFromTableData(sku);
-                    const ok = keys150.filter(function (mp) { return r[mp] && r[mp].status === 'success'; }).length;
-                    const fail = keys150.filter(function (mp) { return r[mp] && r[mp].status === 'failed'; }).length;
+                    const ok = Object.keys(r).filter(function (mp) { return r[mp] && r[mp].status === 'success'; }).length;
+                    const fail = Object.keys(r).filter(function (mp) { return r[mp] && r[mp].status === 'failed'; }).length;
                     showToast(fail ? 'warning' : 'success', 'Distribute completed for ' + sku + ': ' + ok + ' succeeded, ' + fail + ' failed.');
                 } else {
                     showToast('error', 'Failed: ' + (data.message || 'Unknown error'));
@@ -4343,7 +4345,7 @@
             const progressBar = document.getElementById('pushProgressBar');
             const progressText = document.getElementById('pushProgressText');
             progressModal.show();
-            progressText.textContent = 'Distributing Title 150 to all marketplaces...';
+            progressText.textContent = 'Distributing titles to all connected marketplaces...';
 
             function updateProgress(done) {
                 const pct = total ? Math.round((done / total) * 100) : 0;
@@ -4360,7 +4362,7 @@
             function doNext(start) {
                 if (start >= total) {
                     progressModal.hide();
-                    alert(successCount + ' successful, ' + failedCount + ' failed (Amz, Temu, Reverb)');
+                    alert(successCount + ' successful, ' + failedCount + ' failed');
                     document.querySelectorAll('.row-checkbox:checked').forEach(function(cb) { cb.checked = false; });
                     document.getElementById('selectAll').checked = false;
                     updateSelectedCount();
