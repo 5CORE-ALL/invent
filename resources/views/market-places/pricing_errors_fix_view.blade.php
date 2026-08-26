@@ -845,7 +845,7 @@
         </div>
     </div>
 
-    {{-- Dil vs PRMT: 11 Dil% slabs with editable PRMT% --}}
+    {{-- Dil vs PRMT: 9 Dil% slabs with editable PRMT% --}}
     <div class="modal fade" id="pefDilVsPrmtModal" tabindex="-1" aria-labelledby="pefDilVsPrmtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
             <div class="modal-content">
@@ -4321,34 +4321,30 @@
     // ==================== Dil vs PRMT modal ====================
     let pefDilPrmtRules = Array.isArray(PEF_DIL_PRMT_DEFAULTS) && PEF_DIL_PRMT_DEFAULTS.length
         ? PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); })
-        : [
-            { key: '0-10', label: '0–10%', prmt: 10 },
-            { key: '10-20', label: '10–20%', prmt: 9 },
-            { key: '20-30', label: '20–30%', prmt: 8 },
-            { key: '30-40', label: '30–40%', prmt: 7 },
-            { key: '40-50', label: '40–50%', prmt: 6 },
-            { key: '50-60', label: '50–60%', prmt: 5 },
-            { key: '60-70', label: '60–70%', prmt: 4 },
-            { key: '70-80', label: '70–80%', prmt: 3 },
-            { key: '80-90', label: '80–90%', prmt: 2 },
-            { key: '90-100', label: '90–100%', prmt: 1 },
-            { key: 'gt-100', label: '> 100%', prmt: 0 },
-        ];
+        : (function() {
+            const rules = [];
+            let prmt = 12;
+            for (let min = 0; min < 24; min += 3) {
+                const max = min + 3;
+                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: prmt });
+                prmt -= 1;
+            }
+            rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
+            return rules;
+        })();
 
     function pefDilSlabKey(dil) {
         const n = Number(dil);
-        if (!isFinite(n) || n < 0) return '0-10';
-        if (n > 100) return 'gt-100';
-        if (n >= 90) return '90-100';
-        if (n >= 80) return '80-90';
-        if (n >= 70) return '70-80';
-        if (n >= 60) return '60-70';
-        if (n >= 50) return '50-60';
-        if (n >= 40) return '40-50';
-        if (n >= 30) return '30-40';
-        if (n >= 20) return '20-30';
-        if (n >= 10) return '10-20';
-        return '0-10';
+        if (!isFinite(n) || n < 0) return '0-3';
+        if (n > 24) return '24-25';
+        if (n > 21) return '21-24';
+        if (n > 18) return '18-21';
+        if (n > 15) return '15-18';
+        if (n > 12) return '12-15';
+        if (n > 9) return '9-12';
+        if (n > 6) return '6-9';
+        if (n > 3) return '3-6';
+        return '0-3';
     }
 
     function pefPrmtForDil(dil) {
@@ -4525,18 +4521,18 @@
             ? PEF_DIL_PRMT_DEFAULTS
             : pefDilPrmtRules
         ).map(function(r) { return Object.assign({}, r); });
-        // Force first-time figure 0→10 if embedded defaults missing keys
-        const forced = [
-            ['0-10', '0–10%', 10], ['10-20', '10–20%', 9], ['20-30', '20–30%', 8],
-            ['30-40', '30–40%', 7], ['40-50', '40–50%', 6], ['50-60', '50–60%', 5],
-            ['60-70', '60–70%', 4], ['70-80', '70–80%', 3], ['80-90', '80–90%', 2],
-            ['90-100', '90–100%', 1], ['gt-100', '> 100%', 0],
-        ];
+        const forced = [];
+        let prmt = 12;
+        for (let min = 0; min < 24; min += 3) {
+            forced.push([min + '-' + (min + 3), min + '–' + (min + 3) + '%', prmt]);
+            prmt -= 1;
+        }
+        forced.push(['24-25', '24–25%', 1]);
         pefDilPrmtRules = forced.map(function(t) {
             return { key: t[0], label: t[1], prmt: t[2] };
         });
         renderDilPrmtModalTable();
-        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0–10). Save to persist.');
+        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0–3 … 24–25). Save to persist.');
     });
     $('#pef-dil-prmt-save-btn').on('click', saveDilPrmtRules);
     $('#pef-dil-prmt-apply-selected-btn').on('click', function() {

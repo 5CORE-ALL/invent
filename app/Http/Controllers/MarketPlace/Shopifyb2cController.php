@@ -386,7 +386,9 @@ class Shopifyb2cController extends Controller
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
-        $result = $this->calculateAndSaveSprice($sku, $sprice);
+        $result = $this->calculateAndSaveSprice($sku, $sprice, [
+            'amz_sugg' => $request->boolean('amz_sugg'),
+        ]);
         
         if ($result['success']) {
             return response()->json([
@@ -417,7 +419,9 @@ class Shopifyb2cController extends Controller
                 continue;
             }
 
-            $result = $this->calculateAndSaveSprice($sku, $sprice);
+            $result = $this->calculateAndSaveSprice($sku, $sprice, [
+                'amz_sugg' => !empty($update['amz_sugg']),
+            ]);
             
             if ($result['success']) {
                 $successCount++;
@@ -439,7 +443,7 @@ class Shopifyb2cController extends Controller
         ]);
     }
 
-    private function calculateAndSaveSprice($sku, $sprice)
+    private function calculateAndSaveSprice($sku, $sprice, array $extra = [])
     {
         // Get product master data for LP and Ship
         $productMaster = ProductMaster::where('sku', $sku)->first();
@@ -513,6 +517,7 @@ class Shopifyb2cController extends Controller
             'SNPFT' => $snpft,
             'SROI' => $sroi,
             'SNROI' => $snroi,
+            'AMZ_SUGG_APPLIED' => !empty($extra['amz_sugg']),
         ]);
 
         $shopifyDataView->value = $merged;
@@ -1045,6 +1050,8 @@ class Shopifyb2cController extends Controller
             $processedItem["SROI"] = 0;
             $processedItem["SNROI"] = 0;
             $processedItem["SPRICE_STATUS"] = null;
+            $processedItem["has_custom_sprice"] = false;
+            $processedItem["AMZ_SUGG_APPLIED"] = false;
 
             if (isset($shopifyB2cViewData[$sku])) {
                 $viewData = $shopifyB2cViewData[$sku];
@@ -1053,6 +1060,8 @@ class Shopifyb2cController extends Controller
                     : (json_decode($viewData->value, true) ?: []);
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
+                $processedItem["has_custom_sprice"] = $processedItem["SPRICE"] > 0;
+                $processedItem["AMZ_SUGG_APPLIED"] = !empty($valuesArr["AMZ_SUGG_APPLIED"]);
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SNPFT"] = isset($valuesArr["SNPFT"]) ? floatval($valuesArr["SNPFT"]) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval($valuesArr["SROI"]) : 0;

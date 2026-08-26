@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
 use App\Models\ChannelTabulatorColumnSetting;
 use Illuminate\Support\Facades\Log;
 
@@ -12,21 +13,6 @@ use Illuminate\Support\Facades\Log;
  */
 class PefDilPrmtAutoApplyService
 {
-    /** @var list<array{key:string,label:string,prmt:float|int}> */
-    public const DEFAULT_RULES = [
-        ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
-        ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
-        ['key' => '20-30', 'label' => '20–30%', 'prmt' => 8],
-        ['key' => '30-40', 'label' => '30–40%', 'prmt' => 7],
-        ['key' => '40-50', 'label' => '40–50%', 'prmt' => 6],
-        ['key' => '50-60', 'label' => '50–60%', 'prmt' => 5],
-        ['key' => '60-70', 'label' => '60–70%', 'prmt' => 4],
-        ['key' => '70-80', 'label' => '70–80%', 'prmt' => 3],
-        ['key' => '80-90', 'label' => '80–90%', 'prmt' => 2],
-        ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
-        ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
-    ];
-
     public function __construct(
         private readonly PricingErrorsFixCvrCacheBuilder $pefBuilder,
         private readonly Ebay1PromotionService $promotion
@@ -37,9 +23,9 @@ class PefDilPrmtAutoApplyService
      */
     public function loadRules(): array
     {
-        $defaults = self::DEFAULT_RULES;
+        $defaults = ChannelPromoPricingController::sharedDilPrmtDefaults();
         $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'pef_dil_vs_prmt')
+            ->where('channel_name', ChannelPromoPricingController::DIL_PRMT_SHARED_STORE)
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($saved) || $saved === []) {
@@ -82,41 +68,7 @@ class PefDilPrmtAutoApplyService
 
     public function dilSlabKey(float $dil): string
     {
-        if (! is_finite($dil) || $dil < 0) {
-            return '0-10';
-        }
-        if ($dil > 100) {
-            return 'gt-100';
-        }
-        if ($dil >= 90) {
-            return '90-100';
-        }
-        if ($dil >= 80) {
-            return '80-90';
-        }
-        if ($dil >= 70) {
-            return '70-80';
-        }
-        if ($dil >= 60) {
-            return '60-70';
-        }
-        if ($dil >= 50) {
-            return '50-60';
-        }
-        if ($dil >= 40) {
-            return '40-50';
-        }
-        if ($dil >= 30) {
-            return '30-40';
-        }
-        if ($dil >= 20) {
-            return '20-30';
-        }
-        if ($dil >= 10) {
-            return '10-20';
-        }
-
-        return '0-10';
+        return ChannelPromoPricingController::sharedDilPrmtSlabKey($dil);
     }
 
     /**

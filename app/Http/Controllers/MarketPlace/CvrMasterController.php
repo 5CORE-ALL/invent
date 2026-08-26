@@ -215,19 +215,7 @@ class CvrMasterController extends Controller
      */
     private function pefDefaultDilPrmtRules(): array
     {
-        return [
-            ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
-            ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
-            ['key' => '20-30', 'label' => '20–30%', 'prmt' => 8],
-            ['key' => '30-40', 'label' => '30–40%', 'prmt' => 7],
-            ['key' => '40-50', 'label' => '40–50%', 'prmt' => 6],
-            ['key' => '50-60', 'label' => '50–60%', 'prmt' => 5],
-            ['key' => '60-70', 'label' => '60–70%', 'prmt' => 4],
-            ['key' => '70-80', 'label' => '70–80%', 'prmt' => 3],
-            ['key' => '80-90', 'label' => '80–90%', 'prmt' => 2],
-            ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
-            ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
-        ];
+        return ChannelPromoPricingController::sharedDilPrmtDefaults();
     }
 
     /**
@@ -260,7 +248,7 @@ class CvrMasterController extends Controller
     {
         $defaults = $this->pefDefaultDilPrmtRules();
         $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'pef_dil_vs_prmt')
+            ->where('channel_name', ChannelPromoPricingController::DIL_PRMT_SHARED_STORE)
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($saved) || $saved === []) {
@@ -344,7 +332,7 @@ class CvrMasterController extends Controller
         }
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => 'pef_dil_vs_prmt'],
+            ['channel_name' => ChannelPromoPricingController::DIL_PRMT_SHARED_STORE],
             ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
         );
 

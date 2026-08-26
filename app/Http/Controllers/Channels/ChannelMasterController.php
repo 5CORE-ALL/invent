@@ -15765,7 +15765,14 @@ class ChannelMasterController extends Controller
                     $tableRef = (float) $badgeValue;
                     $lastIdx = array_key_last($chartData);
                     if ($lastIdx !== null && abs((float) $chartData[$lastIdx]['value'] - $tableRef) > 0.01) {
-                        $chartData[$lastIdx]['value'] = round($tableRef, 2);
+                        $prevIdx = is_int($lastIdx) && $lastIdx > 0 ? $lastIdx - 1 : null;
+                        $oldLast = (float) $chartData[$lastIdx]['value'];
+                        $prev = $prevIdx !== null ? (float) $chartData[$prevIdx]['value'] : null;
+                        $wouldFlip = $prev !== null
+                            && (($oldLast > $prev && $tableRef < $prev) || ($oldLast < $prev && $tableRef > $prev));
+                        if (! $wouldFlip) {
+                            $chartData[$lastIdx]['value'] = round($tableRef, 2);
+                        }
                     }
                 }
             }
@@ -15817,7 +15824,9 @@ class ChannelMasterController extends Controller
 
     private function channelMetricDotTrendsCacheKey(int $window): string
     {
-        return 'amm_dot_trends_w'.$window;
+        // v2: adjacent-day pairs (no last-different walk-back) + blended `all` key
+        // so summary badge dots match the last All-chart point.
+        return 'amm_dot_trends_v2_w'.$window;
     }
 
     /**
@@ -15909,17 +15918,31 @@ class ChannelMasterController extends Controller
                 $d1 = now('America/Los_Angeles')->subDays(2)->toDateString();
                 $dailyMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
                 $out = [];
+                $allM1 = [];
+                $allM2 = [];
                 foreach ($channelKeys as $channel) {
                     foreach ($dailyMetrics as $metric) {
                         $out[$channel][$metric] = [null, null];
                     }
                     $m1 = $svc->metricsForPacificDate($channel, $d1);
                     $m2 = $svc->metricsForPacificDate($channel, $d2);
+                    if ($m1) {
+                        $allM1[] = $m1;
+                    }
+                    if ($m2) {
+                        $allM2[] = $m2;
+                    }
                     foreach ($dailyMetrics as $metric) {
                         $v1 = $m1 ? $this->aggregateDailyMetricRows($metric, [$m1]) : null;
                         $v2 = $m2 ? $this->aggregateDailyMetricRows($metric, [$m2]) : null;
                         $out[$channel][$metric] = [$v1, $v2];
                     }
+                }
+                foreach ($dailyMetrics as $metric) {
+                    $out['all'][$metric] = [
+                        $this->aggregateDailyMetricRows($metric, $allM1),
+                        $this->aggregateDailyMetricRows($metric, $allM2),
+                    ];
                 }
 
                 return $out;
@@ -15948,28 +15971,22 @@ class ChannelMasterController extends Controller
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
             $out = [];
+            $processedByChannel = [];
 
             // Today's snapshot is included in the comparison: saveChannelDailySummaries
             // overwrites today's row on every page load, so it always reflects the
             // freshest values (including post-upload metrics like total_ad_spend that
-            // come from a single L30/L7 file). The previous behaviour excluded today
-            // to avoid "today partial vs yesterday complete" red herrings, but that
-            // also meant the dot wouldn't move at all after an upload until *tomorrow's*
-            // snapshot replaced today as the latest.
+            // come from a single L30/L7 file).
             //
-            // For the "older" baseline, walk back the snapshot history per metric until
-            // we find a value that is meaningfully different from today's value, instead
-            // of blindly using yesterday's snapshot. This is required for channels
-            // (e.g. eBay 1, eBay 2) whose L30 sales / qty / profit come from a once-a-day
-            // marketplace_daily_metrics cron — between cron runs the source value is
-            // frozen, so today's saved snapshot can equal yesterday's, which used to make
-            // the trend dot grey for the entire afternoon/evening even though the metric
-            // is genuinely trending vs the last day it actually changed. We pull a
-            // 30-snapshot window (a month is plenty: any longer flat run is itself a
-            // meaningful "no trend") and pick the most-recent prior snapshot whose value
-            // differs from today's.
+            // Baseline is the immediately previous snapshot that has a value (skip
+            // nulls only). Walking back to the last *different* value made table and
+            // badge dots disagree with the chart's last point (chart is always
+            // "vs Yesterday"). A frozen eBay L30 (today == yesterday) is grey on
+            // both the dot and the last graph point — that match is intentional.
+            // We still pull a 30-snapshot window so a missing yesterday can fall
+            // through to the next populated day.
             $snapshotWindow = $useL7Window ? 36 : 30;
             $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
             if ($useDailyWindow) {
@@ -16043,26 +16060,22 @@ class ChannelMasterController extends Controller
                     return $this->getMetricValueFromSummaryData($channel, $metric, $sd, $metricMap, true);
                 };
 
+                $processedByChannel[$channel] = $cmsRows;
+
                 if ($cmsRows->count() >= 2) {
                     foreach ($metrics as $metric) {
-                        // Dot trends: allow legacy qty÷views fallback for CVR so Shopify/Temu/Reverb
-                        // don't stay permanently gray while only today has listing_cvr persisted.
+                        // Same adjacent-day rule as the chart last point (tooltip
+                        // "vs Yesterday"). Skip nulls only — do not walk back to the
+                        // last *different* value, or the table/badge dot can be green
+                        // while the graph's last point is red (or vice-versa).
                         $v2 = $metricValue($metric, $cmsRows->get(0));
-                        if ($v2 === null) continue;
-
-                        // Walk back until we find a snapshot whose metric value differs
-                        // from $v2 (within rounding tolerance). If every prior snapshot
-                        // matches exactly, fall back to the immediate prior value so we
-                        // still emit a [v, v] pair (which renders as a grey "no change"
-                        // dot — same as before for genuinely-flat metrics).
-                        $v1 = $metricValue($metric, $cmsRows->get(1));
+                        if ($v2 === null) {
+                            continue;
+                        }
+                        $v1 = null;
                         for ($i = 1; $i < $cmsRows->count(); $i++) {
                             $candidate = $metricValue($metric, $cmsRows->get($i));
-                            if ($candidate === null) continue;
-                            // Use the same equality check the frontend uses (===) but with
-                            // a tiny epsilon to ignore float-rounding noise from snapshot
-                            // round-trips (e.g. 7.51 → "7.51" → 7.51).
-                            if (abs((float)$candidate - (float)$v2) > 0.0001) {
+                            if ($candidate !== null) {
                                 $v1 = $candidate;
                                 break;
                             }
@@ -16078,7 +16091,199 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            $out['all'] = $this->computeAllChannelsLastTwoDayPairs($processedByChannel, $metrics, $metricMap);
+
             return $out;
+    }
+
+    /**
+     * Last two calendar snapshot days, blended across channels the same way
+     * getChannelMetricChartData builds the All series. Summary badge dots use
+     * this pair so they match the last All-chart point instead of a majority
+     * vote of per-channel colors.
+     *
+     * @param  array<string, \Illuminate\Support\Collection<int, mixed>>  $processedByChannel
+     * @param  list<string>  $metrics
+     * @param  array<string, string|null>  $metricMap
+     * @return array<string, array{0: ?float, 1: ?float}>
+     */
+    private function computeAllChannelsLastTwoDayPairs(array $processedByChannel, array $metrics, array $metricMap): array
+    {
+        $empty = [];
+        foreach ($metrics as $metric) {
+            $empty[$metric] = [null, null];
+        }
+
+        $byDate = [];
+        foreach ($processedByChannel as $channel => $cmsRows) {
+            foreach ($cmsRows as $row) {
+                $date = (string) ($row->snapshot_date ?? '');
+                if ($date === '') {
+                    continue;
+                }
+                $byDate[$date][$channel] = $row;
+            }
+        }
+        if ($byDate === []) {
+            return $empty;
+        }
+        krsort($byDate);
+        $picked = [];
+        foreach (array_keys($byDate) as $date) {
+            $picked[] = $date;
+            if (count($picked) >= 2) {
+                break;
+            }
+        }
+        if (count($picked) < 2) {
+            return $empty;
+        }
+
+        $summariesFor = function (string $date) use ($byDate): array {
+            $rows = collect(array_values($byDate[$date] ?? []));
+            $stabilized = ChannelMasterViewsGuard::stabilizeRowSummaries($rows);
+            $decoded = [];
+            $rowByCh = [];
+            foreach ($byDate[$date] ?? [] as $ch => $row) {
+                $decoded[$ch] = $stabilized[$row->id] ?? \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                $rowByCh[$ch] = $row;
+            }
+
+            return [$decoded, $rowByCh];
+        };
+
+        [$sd2, $rows2] = $summariesFor($picked[0]);
+        [$sd1, $rows1] = $summariesFor($picked[1]);
+
+        $out = [];
+        foreach ($metrics as $metric) {
+            $out[$metric] = [
+                $this->aggregateAllChannelsMetricFromSummaries($metric, $sd1, $rows1, $metricMap),
+                $this->aggregateAllChannelsMetricFromSummaries($metric, $sd2, $rows2, $metricMap),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Blend one calendar day's per-channel snapshots into the All-chart value.
+     *
+     * @param  array<string, array<string, mixed>>  $decodedByChannel
+     * @param  array<string, mixed>  $rowByChannel
+     * @param  array<string, string|null>  $metricMap
+     */
+    private function aggregateAllChannelsMetricFromSummaries(string $metric, array $decodedByChannel, array $rowByChannel, array $metricMap): ?float
+    {
+        if ($decodedByChannel === []) {
+            return null;
+        }
+
+        $totalVal = 0.0;
+        $totalSpend = 0.0;
+        $totalSales = 0.0;
+        $totalAdSales = 0.0;
+        $totalAdSold = 0.0;
+        $totalClicks = 0.0;
+        $totalCogs = 0.0;
+        $totalPft = 0.0;
+        $totalInvAmazon = 0.0;
+        $totalQtyCvr = 0.0;
+        $totalViewsCvr = 0.0;
+        $hasMetric = false;
+
+        foreach ($decodedByChannel as $channel => $sd) {
+            if (! is_array($sd)) {
+                continue;
+            }
+            $row = $rowByChannel[$channel] ?? null;
+
+            if ($metric === 'y_sales' && $row) {
+                $v = $this->ySalesValueForDotRow((string) $channel, $row, $sd);
+                if ($v !== null) {
+                    $totalVal += $v;
+                    $hasMetric = true;
+                }
+                continue;
+            }
+
+            $sales = (float) ($sd['l30_sales'] ?? 0);
+            $spend = (float) ($sd['total_ad_spend'] ?? 0);
+            $gprofit = (float) ($sd['gprofit_percent'] ?? 0);
+            $cogs = (float) ($sd['cogs'] ?? 0);
+            $pft = ($gprofit / 100) * $sales;
+
+            if (in_array($metric, ['gprofit', 'npft', 'pft'], true)) {
+                $totalPft += $pft;
+                $totalSales += $sales;
+                $totalSpend += $spend;
+                $hasMetric = true;
+            } elseif (in_array($metric, ['groi', 'nroi'], true)) {
+                $totalPft += $pft;
+                $totalCogs += $cogs;
+                $totalSpend += $spend;
+                $totalSales += $sales;
+                $hasMetric = true;
+            } elseif ($metric === 'ads_pct') {
+                $totalSpend += $spend;
+                $totalSales += $sales;
+                $hasMetric = true;
+            } elseif ($metric === 'cvr') {
+                $views = (float) ($sd['total_views'] ?? 0);
+                if (array_key_exists('listing_cvr', $sd) && $sd['listing_cvr'] !== null && $sd['listing_cvr'] !== '' && $views > 0) {
+                    $totalQtyCvr += ((float) $sd['listing_cvr'] / 100.0) * $views;
+                    $totalViewsCvr += $views;
+                    $hasMetric = true;
+                } elseif (! $this->channelRequiresPersistedListingCvr((string) $channel)) {
+                    $qty = (float) ($sd['total_quantity'] ?? 0);
+                    if ($qty <= 0) {
+                        $qty = (float) ($sd['l30_orders'] ?? 0);
+                    }
+                    $totalQtyCvr += $qty;
+                    $totalViewsCvr += $views;
+                    $hasMetric = true;
+                }
+            } elseif ($metric === 'acos' || $metric === 'ad_sales') {
+                $totalSpend += $spend;
+                $adSales = (float) ($sd['ad_sales'] ?? 0);
+                $totalAdSales += $adSales > 0 ? $adSales : ($sales * 0.5);
+                $hasMetric = true;
+            } elseif ($metric === 'ads_cvr' || $metric === 'ad_sold') {
+                $totalAdSold += (float) ($sd['ad_sold'] ?? 0);
+                $totalClicks += (float) ($sd['clicks'] ?? 0);
+                $hasMetric = true;
+            } elseif ($metric === 'tat') {
+                $totalInvAmazon += (float) ($sd['inventory_value_amazon'] ?? 0);
+                $totalSales += $sales;
+                $hasMetric = true;
+            } else {
+                $v = $this->getMetricValueFromSummaryData((string) $channel, $metric, $sd, $metricMap, true);
+                if ($v !== null) {
+                    $totalVal += $v;
+                    $hasMetric = true;
+                }
+            }
+        }
+
+        if (! $hasMetric) {
+            return null;
+        }
+
+        return match ($metric) {
+            'tat' => $totalSales > 0 ? round($totalInvAmazon / $totalSales, 2) : 0.0,
+            'acos' => $totalAdSales > 0 ? round(($totalSpend / $totalAdSales) * 100, 1) : 0.0,
+            'ad_sales' => round($totalAdSales, 2),
+            'ads_cvr' => $totalClicks > 0 ? round(($totalAdSold / $totalClicks) * 100, 1) : 0.0,
+            'cvr' => $totalViewsCvr > 0 ? round(($totalQtyCvr / $totalViewsCvr) * 100, 2) : 0.0,
+            'ad_sold' => (float) round($totalAdSold),
+            'gprofit' => $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 1) : 0.0,
+            'pft' => round($totalPft - $totalSpend, 2),
+            'npft' => $totalSales > 0 ? round((($totalPft / $totalSales) * 100) - (($totalSpend / $totalSales) * 100), 1) : 0.0,
+            'groi' => $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0.0,
+            'nroi' => $totalCogs > 0 ? round((($totalPft - $totalSpend) / $totalCogs) * 100, 1) : 0.0,
+            'ads_pct' => $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0.0,
+            default => round($totalVal, 2),
+        };
     }
 
     /**
@@ -16208,6 +16413,13 @@ class ChannelMasterController extends Controller
             $groi = floatval($summaryData['groi_percent'] ?? 0);
             $tcos = floatval($summaryData['tcos_percent'] ?? 0);
             return round($groi - $tcos, 1);
+        }
+        if ($metric === 'pft') {
+            $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
+            $sales = floatval($summaryData['l30_sales'] ?? 0);
+            $adSpend = floatval($summaryData['total_ad_spend'] ?? 0);
+
+            return round(($gprofitPercent / 100) * $sales - $adSpend, 2);
         }
 
         return array_key_exists($metricKey, $summaryData) ? floatval($summaryData[$metricKey]) : null;

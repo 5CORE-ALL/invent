@@ -12,7 +12,7 @@ use Throwable;
 
 /**
  * Dil vs PRMT → discount SPRICE → push Amazon Listings our_price.
- * Uses the same Dil→PRMT rules store as /pricing-errors-fix (pef_dil_vs_prmt).
+ * Uses the shared Dil→PRMT rules store (dil_vs_prmt_shared) as every marketplace page.
  * Skips SKUs whose target price is unchanged vs last push / live listing.
  */
 class AmazonDilPrmtAutoPushService

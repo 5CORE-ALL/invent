@@ -47,7 +47,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Amazon Dil vs PRMT Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: daily 04:00 America/New_York (EST/EDT)');
-        $this->info('Rules: pef_dil_vs_prmt (shared with pricing-errors-fix)');
+        $this->info('Rules: dil_vs_prmt_shared (all marketplaces)');
         $this->info('Push: Amazon Listings our_price — only when price changed');
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

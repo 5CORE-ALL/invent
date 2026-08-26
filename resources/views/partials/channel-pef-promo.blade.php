@@ -14,6 +14,8 @@
     $channelPromoShowZeroSoldDilRule = in_array($channelPromoChannel, ['ebay2op', 'aliexpress'], true);
     $channelPromoZeroSoldDilColorSlabs = in_array($channelPromoChannel, ['aliexpress'], true);
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['ebay1', 'temu', 'temu2'], true);
+    $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'shopify_b2c'], true);
+    $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
 @endphp
 
@@ -122,6 +124,21 @@
         }
         #ch-promo-gt-sold-prc-table .ch-promo-gt-sold-dir-select {
             min-width: 108px;
+        }
+        .ch-cvr-discount-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            color: #20c997;
+            font-weight: 700;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .ch-cvr-discount-badge.is-zero {
+            color: #adb5bd;
+            font-weight: 600;
         }
         #ch-promo-cpn-menu-btn,
         #ch-promo-cvr-vs-cpn-btn {
@@ -422,7 +439,7 @@
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
-                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: map Dil% slabs (0–0 → 12 … 22%+ → 0). Auto-fills B2B disc; Apply writes PRMT%.' : 'Map Dil% slabs to PRMT%. Changing any number fills the PRMT% column. Does not create a sale event.' }}">
+                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: shared Dil vs PRMT (0–3 → 12 … 24–25 → 1). Auto-fills B2B disc; Apply writes PRMT%.' : 'Shared Dil vs PRMT (0–3 … 21–24, 24–25). Save on any page updates all marketplaces.' }}">
                             <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : ($channelPromoChannel === 'aliexpress' ? 'PRMT%' : 'Prmt%') }}
                         </button>
                         @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
@@ -478,8 +495,8 @@
                     @unless($channelPromoHideCvrCpn)
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-cvr-vs-cpn-btn"
-                            title="Map CVR% slabs to CPN%. Apply writes CPN% only (no coupon push).">
-                            CVR%
+                            title="{{ $channelPromoUsesAmazonCvrDisc ? 'CVR Disc. column rules — same slabs as /amazon-tabulator-view' : 'Map CVR% slabs to CPN%. Apply writes CPN% only (no coupon push).' }}">
+                            {{ $channelPromoUsesAmazonCvrDisc ? 'CVR Disc' : 'CVR%' }}
                         </button>
                         @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
                         <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-cpn-menu-btn"
@@ -552,13 +569,21 @@
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoCvrVsCpnModalLabel">
-                        CVR%
+                        {{ $channelPromoUsesAmazonCvrDisc ? 'CVR Disc rules' : 'CVR%' }}
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="ch-promo-cvr-cpn-help">
-                        @if($channelPromoChannel === 'ebay2op')
+                        @if($channelPromoUsesAmazonCvrDisc)
+                            Same CVR Disc map as <strong>/amazon-tabulator-view</strong>:
+                            <strong>0% → 10</strong> down to <strong>&gt; 7% → 0</strong>.
+                            Map CVR% slabs to <strong>CVR Disc.</strong> %.
+                            <strong>INV = 0</strong> forces Disc% to <strong>0</strong>.
+                            <strong>Apply</strong> saves rules and refreshes the CVR Disc. column
+                            (all SKUs — no sold filter).
+                            If discounted S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.
+                        @elseif($channelPromoChannel === 'ebay2op')
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
                             Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
                             <strong>Save Rule</strong> stores the slabs.
@@ -582,7 +607,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th style="width:55%;">CVR%</th>
-                                    <th style="width:45%;" class="text-end">CPN %</th>
+                                    <th style="width:45%;" class="text-end">{{ $channelPromoUsesAmazonCvrDisc ? 'Disc %' : 'CPN %' }}</th>
                                 </tr>
                             </thead>
                             <tbody id="ch-promo-cvr-cpn-tbody"></tbody>
@@ -591,12 +616,14 @@
                     <div class="small text-muted mt-2" id="ch-promo-cvr-cpn-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
+                    @unless($channelPromoUsesAmazonCvrDisc)
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-cvr-cpn-save-btn"
                         title="Save CVR→CPN slab values only (does not write SKU CPN%).">
                         <i class="fas fa-save me-1"></i>Save Rule
                     </button>
+                    @endunless
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-cvr-cpn-apply-btn"
-                        title="{{ in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true) ? 'Save CVR→CPN rules, then write CPN% only on SKUs with E L30 > 0 (database only — no eBay coupon)' : 'Save CVR→CPN rules and CPN% to the database only — does not create eBay coupons' }}">
+                        title="{{ $channelPromoUsesAmazonCvrDisc ? 'Save CVR Disc rules and refresh the CVR Disc. column (INV = 0 → 0%). Same slabs as /amazon-tabulator-view.' : (in_array($channelPromoChannel, ['ebay2', 'ebay2op', 'ebay3'], true) ? 'Save CVR→CPN rules, then write CPN% only on SKUs with E L30 > 0 (database only — no eBay coupon)' : 'Save CVR→CPN rules and CPN% to the database only — does not create eBay coupons') }}">
                         Apply
                     </button>
                 </div>
@@ -620,17 +647,13 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="ch-promo-dil-prmt-help">
-                        @if(in_array($channelPromoChannel, ['tiktok', 'tiktok2'], true))
-                        Same Dil vs PRMT map as Amazon: <strong>0–10% → 10</strong> down to
-                        <strong>&gt; 100% → 0</strong>. Dil% = <strong>OV L30 ÷ INV</strong>.
+                        Shared Dil vs PRMT for <strong>all marketplaces</strong>:
+                        <strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
+                        (no 0–0 slab). Save on any page updates every page.
                         Changing any slab fills <strong>PRMT %</strong>.
-                        <strong>Save and Apply</strong> writes PRMT% (selected, or all visible).
                         If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
-                        @else
-                        Map Dil% slabs to PRMT%. Changing <strong>any</strong> slab number immediately
-                        fills the <strong>PRMT %</strong> column. <strong>Save and Apply</strong> saves rules
-                        and writes PRMT% for this channel. Does <strong>not</strong> create an eBay sale event.
-                        If <strong>INV = 0</strong>, PRMT% is forced to <strong>0</strong>.
+                        @if($channelPromoChannel === 'shopify_b2c')
+                        If discounted S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.
                         @endif
                     </p>
                     <div class="table-responsive">
@@ -654,8 +677,8 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-prmt-apply-btn"
-                        @if(in_array($channelPromoChannel, ['tiktok', 'tiktok2'], true))
-                        title="Save Amazon Dil→PRMT rules, then write PRMT% — selected rows if checked, otherwise all visible. INV = 0 → PRMT% = 0."
+                        @if($channelPromoUsesAmazonDilPrmt)
+                        title="Save shared Dil→PRMT rules (all marketplaces), then write PRMT% — selected rows if checked, otherwise all visible. INV = 0 → PRMT% = 0."
                         @else
                         title="Save Dil→PRMT rules, then write PRMT% — selected rows if checked, otherwise all visible. Only SKUs with sold &gt; 0 (eBay E L30, AliExpress AL30). 0-sold SKUs are skipped. Does not create a sale event."
                         @endif>
@@ -887,6 +910,7 @@
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
+        const CHANNEL_PROMO_USES_AMAZON_CVR_DISC = @json($channelPromoUsesAmazonCvrDisc ?? false);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES = @json($channelPromoShowZeroSoldRules);
         const CHANNEL_PROMO_SHOW_GT_SOLD_RULES = @json($channelPromoShowGtSoldRules);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE = @json($channelPromoShowZeroSoldDilRule);
@@ -2490,6 +2514,9 @@
         }
         /** PRMT% used in S PRC (Dil vs PRMT slab on eBay / AliExpress / Shein). */
         function chPromoEbayPrmtUsed(d) {
+            if (typeof chPromoShopifyPromoBlockedByAmz === 'function' && chPromoShopifyPromoBlockedByAmz(d)) {
+                return 0;
+            }
             let prmt = Math.max(0, Number(d && (d.prmt_pct != null && d.prmt_pct !== ''
                 ? d.prmt_pct : d._prmt_pct_applied)) || 0);
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress'
@@ -2509,8 +2536,14 @@
             }
             return chPromoRound2(prmt);
         }
-        /** cvr % / CPN% used in S PRC. */
+        /** cvr % / CPN% / CVR Disc used in S PRC. */
         function chPromoEbayCpnUsed(d) {
+            if (typeof chPromoShopifyPromoBlockedByAmz === 'function' && chPromoShopifyPromoBlockedByAmz(d)) {
+                return 0;
+            }
+            if (chPromoUsesAmazonCvrDisc()) {
+                return chPromoRound2(chPromoCvrDiscForRow(d) || 0);
+            }
             let cpn = Math.max(0, Number(d && (d.cpn_pct != null && d.cpn_pct !== ''
                 ? d.cpn_pct : d._cpn_pct_applied)) || 0);
             if (chPromoIsEbayChannel() && !(cpn > 0) && typeof chPromoCpnForCvr === 'function') {
@@ -2752,40 +2785,23 @@
             if ($status.length) $status.text(text);
         }
 
-        const CH_PEF_DIL_PRMT_DEFAULTS_FULL = [
-            { key: '0-10', label: '0–10%', prmt: 10 },
-            { key: '10-20', label: '10–20%', prmt: 9 },
-            { key: '20-30', label: '20–30%', prmt: 8 },
-            { key: '30-40', label: '30–40%', prmt: 7 },
-            { key: '40-50', label: '40–50%', prmt: 6 },
-            { key: '50-60', label: '50–60%', prmt: 5 },
-            { key: '60-70', label: '60–70%', prmt: 4 },
-            { key: '70-80', label: '70–80%', prmt: 3 },
-            { key: '80-90', label: '80–90%', prmt: 2 },
-            { key: '90-100', label: '90–100%', prmt: 1 },
-            { key: 'gt-100', label: '> 100%', prmt: 0 },
-        ];
-        const CH_PEF_SKIP_DIL_EQ_ZERO = CHANNEL_PROMO_CHANNEL === 'aliexpress';
+        const CH_PEF_SKIP_DIL_EQ_ZERO = false;
         const CH_PEF_DIL_PRMT_DEFAULTS_EBAY = (function() {
             const rules = [];
-            if (!CH_PEF_SKIP_DIL_EQ_ZERO) {
-                rules.push({ key: 'eq-0', label: '0–0%', prmt: 12 });
-            }
-            rules.push({
-                key: '0.1-2',
-                label: CH_PEF_SKIP_DIL_EQ_ZERO ? '0–2%' : '0.1–2%',
-                prmt: 11,
-            });
-            let prmt = 10;
-            for (let max = 4; max <= 26; max += 2) {
-                const min = max - 2;
-                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: Math.max(0, prmt) });
+            let prmt = 12;
+            for (let min = 0; min < 24; min += 3) {
+                const max = min + 3;
+                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: prmt });
                 prmt -= 1;
             }
+            rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
             return rules;
         })();
-        const CH_PEF_USES_AMAZON_DIL_SLABS = CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2';
-        const CH_PEF_USES_EBAY_FINE_DIL = !CH_PEF_USES_AMAZON_DIL_SLABS;
+        const CH_PEF_DIL_PRMT_DEFAULTS_FULL = CH_PEF_DIL_PRMT_DEFAULTS_EBAY;
+        const CH_PEF_USES_AMAZON_DIL_SLABS = CHANNEL_PROMO_CHANNEL === 'tiktok'
+            || CHANNEL_PROMO_CHANNEL === 'tiktok2'
+            || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
+        const CH_PEF_USES_EBAY_FINE_DIL = true;
         const CH_PEF_DIL_PRMT_DEFAULTS_ZERO_SOLD = [
             { key: '0-sold-red', label: '0 Sold · Red (<25%)', prmt: 10 },
             { key: '0-sold-green', label: '0 Sold · Green (25–50%)', prmt: 8 },
@@ -2968,10 +2984,22 @@
             return Math.round((Number(n) || 0) * 100) / 100;
         }
         function chPromoToast(type, msg) {
+            const kinds = ['success', 'error', 'info', 'warning', 'danger'];
+            const kind = kinds.indexOf(String(type)) !== -1 ? String(type) : 'info';
+            const text = (msg == null || msg === '') ? String(type || '') : String(msg);
             if (typeof showToast === 'function') {
-                try { showToast(type, msg); } catch (e) { showToast(msg, type); }
-            } else if (typeof toast === 'function') toast(msg, type);
-            else console.log(type, msg);
+                let src = '';
+                try { src = Function.prototype.toString.call(showToast); } catch (e) { src = ''; }
+                const dual = src.indexOf('String(a)') !== -1;
+                const messageFirst = !dual && /showToast\s*\(\s*(message|msg)\b/.test(src);
+                try {
+                    if (messageFirst) showToast(text, kind);
+                    else showToast(kind, text);
+                } catch (e) {
+                    try { showToast(text, kind); } catch (e2) { /* ignore */ }
+                }
+            } else if (typeof toast === 'function') toast(text, kind);
+            else console.log(kind, text);
         }
         function chPromoSku(d) {
             const f = chPromoCfg.skuField || '(Child) sku';
@@ -3099,6 +3127,7 @@
             const patch = { SPRICE: val, sprice: val };
             // Keep S PRC visible even when it equals listing price (ebay formatter hides matches)
             if (isFinite(n) && n > 0) patch.has_custom_sprice = true;
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') patch.AMZ_SUGG_APPLIED = false;
             return patch;
         }
         function chPromoStdBase(d) {
@@ -3214,6 +3243,9 @@
         }
         function chPromoUsesAmazonDilPrmtSlabs() {
             return !!CH_PEF_USES_AMAZON_DIL_SLABS;
+        }
+        function chPromoUsesAmazonCvrDisc() {
+            return !!CHANNEL_PROMO_USES_AMAZON_CVR_DISC;
         }
         /** Live PRMT% from Dil slabs (eBay / AE / Shein / TikTok Amazon map). */
         function chPromoUsesLiveDilPrmtSlabs() {
@@ -3736,38 +3768,16 @@
                 if (CHANNEL_PROMO_CHANNEL === 'reverb' && n < 0.1) return 'lt-0.1';
                 return '0-20';
             }
-            if (CH_PEF_USES_EBAY_FINE_DIL) {
-                if (typeof CH_PEF_SKIP_DIL_EQ_ZERO !== 'undefined' && CH_PEF_SKIP_DIL_EQ_ZERO) {
-                    if (!isFinite(n) || n <= 2) return '0.1-2';
-                } else if (!isFinite(n) || n <= 0) {
-                    return 'eq-0';
-                }
-                if (n <= 2) return '0.1-2';
-                if (n <= 4) return '2-4';
-                if (n <= 6) return '4-6';
-                if (n <= 8) return '6-8';
-                if (n <= 10) return '8-10';
-                if (n <= 12) return '10-12';
-                if (n <= 14) return '12-14';
-                if (n <= 16) return '14-16';
-                if (n <= 18) return '16-18';
-                if (n <= 20) return '18-20';
-                if (n <= 22) return '20-22';
-                if (n <= 24) return '22-24';
-                return '24-26';
-            }
-            if (!isFinite(n) || n < 0) return '0-10';
-            if (n > 100) return 'gt-100';
-            if (n >= 90) return '90-100';
-            if (n >= 80) return '80-90';
-            if (n >= 70) return '70-80';
-            if (n >= 60) return '60-70';
-            if (n >= 50) return '50-60';
-            if (n >= 40) return '40-50';
-            if (n >= 30) return '30-40';
-            if (n >= 20) return '20-30';
-            if (n >= 10) return '10-20';
-            return '0-10';
+            if (!isFinite(n) || n < 0) return '0-3';
+            if (n > 24) return '24-25';
+            if (n > 21) return '21-24';
+            if (n > 18) return '18-21';
+            if (n > 15) return '15-18';
+            if (n > 12) return '12-15';
+            if (n > 9) return '9-12';
+            if (n > 6) return '6-9';
+            if (n > 3) return '3-6';
+            return '0-3';
         }
         function chPromoPrmtForRuleKey(key) {
             const rule = chPromoDilPrmtRules.find(function(r) { return r.key === key; });
@@ -3778,7 +3788,7 @@
         function chPromoPrmtForDil(dil) {
             return chPromoPrmtForRuleKey(chPromoDilSlabKey(dil));
         }
-        /** Canonical B2B discount from Dil% (0–0 → 12, 0.1–2 → 11, … 22%+ → 0). Independent of saved PRMT. */
+        /** Canonical B2B discount from Dil% (0–3 → 12, then −1 each 3% slab, 24–25 → 1). */
         function chPromoB2bDiscDefaultForKey(key) {
             const def = CH_PEF_DIL_PRMT_DEFAULTS_EBAY.find(function(r) { return r.key === key; });
             return def ? Math.max(0, Number(def.prmt) || 0) : 0;
@@ -4161,8 +4171,63 @@
             const key = chPromoCvrSlabKey(cvr);
             const rule = chPromoCvrCpnRules.find(function(r) { return r.key === key; });
             if (!rule) return 0;
-            const n = Number(rule.cpn);
+            const n = Number(rule.cpn != null ? rule.cpn : rule.disc);
             return isFinite(n) && n >= 0 ? n : 0;
+        }
+        /**
+         * Shopify B2C: do not apply PRMT% + CVR Disc when
+         * S PRC = Std × (1 − (PRMT+CVR Disc)/100) would be below Amz (A Price).
+         */
+        function chPromoShopifyPromoBlockedByAmz(d) {
+            if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return false;
+            if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) return false;
+            const amz = chPromoAmazonPrice(d);
+            if (!(amz > 0)) return false;
+            const std = typeof chPromoStdBase === 'function' ? chPromoStdBase(d) : 0;
+            if (!(std > 0)) return false;
+            const prmt = chPromoInv(d) === 0 ? 0 : chPromoPrmtForDil(chPromoDil(d));
+            const cpn = chPromoInv(d) === 0 ? 0 : chPromoCpnForCvr(chPromoCvr(d));
+            const t = Math.min(99.99, Math.max(0, (Number(prmt) || 0) + (Number(cpn) || 0)));
+            if (!(t > 0)) return false;
+            const sprice = chPromoRound2(std * (1 - t / 100));
+            return sprice > 0 && sprice < amz;
+        }
+        /** Live CVR Disc. % (same as /amazon-tabulator-view). INV=0 → 0. */
+        function chPromoCvrDiscForRow(d) {
+            if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) return null;
+            if (chPromoInv(d) === 0) return 0;
+            return chPromoCpnForCvr(chPromoCvr(d));
+        }
+        function fmtChPromoCvrDiscBadge(pct) {
+            const n = Number(pct);
+            if (!isFinite(n) || n <= 0) {
+                return '<span class="ch-cvr-discount-badge is-zero" title="No CVR Disc">—</span>';
+            }
+            return '<span class="ch-cvr-discount-badge" title="CVR Disc rule → ' + n + '%">'
+                + n + '%</span>';
+        }
+        function chPromoSyncCvrDiscColumnFromSlabs() {
+            if (!chPromoUsesAmazonCvrDisc()) return;
+            if (typeof table === 'undefined' || !table) return;
+            const blocked = typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                chPromoEachTableRow(function(row, d) {
+                    if (!chPromoIsChildRow(d)) return;
+                    const disc = chPromoCvrDiscForRow(d);
+                    if (disc == null) return;
+                    const current = Number(d.cpn_pct != null && d.cpn_pct !== ''
+                        ? d.cpn_pct : d._cpn_pct_applied);
+                    if (isFinite(current) && current === disc) return;
+                    row.update({
+                        cpn_pct: String(disc),
+                        _cpn_pct_applied: disc,
+                    });
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            try { table.redraw(true); } catch (e) { /* ignore */ }
         }
 
         function cascadeChPromoDilPrmtFromFirst() {
@@ -4205,7 +4270,7 @@
                         ? ('<td class="text-end">'
                             + '<input type="number" class="form-control form-control-sm ch-promo-b2b-disc-input" '
                             + 'readonly tabindex="-1" value="' + b2bDisc + '" '
-                            + 'title="Auto from Dil% rule: 0–0% → 12, then −1 each 2% slab (min 0)">'
+                            + 'title="Auto from Dil% rule: 0–3% → 12, then −1 each 3% slab (min 0)">'
                             + '</td>')
                         : '')
                     + '<td class="text-end">'
@@ -4282,18 +4347,10 @@
                 }
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
-                const defaultMsg = CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES
-                    ? 'Using first-time defaults. Apply to save & apply.'
-                    : (CH_PEF_USES_EBAY_FINE_DIL
-                        ? (typeof CH_PEF_SKIP_DIL_EQ_ZERO !== 'undefined' && CH_PEF_SKIP_DIL_EQ_ZERO
-                            ? 'Using first-time defaults (0–2, 2–4, … 24–26). Apply to save & apply.'
-                            : 'Using first-time defaults (0–0, 0.1–2, … 24–26). Apply to save & apply.')
-                        : (CHANNEL_PROMO_CHANNEL === 'reverb'
-                            ? 'Using first-time defaults (0.1–20). Apply to save & apply.'
-                            : 'Using first-time defaults (0–10). Apply to save & apply.'));
+                const defaultMsg = 'Using first-time defaults (0–3 … 21–24, 24–25). Save applies to all marketplaces.';
                 $('#ch-promo-dil-prmt-status').text(res && res.is_default
                     ? defaultMsg
-                    : 'Loaded saved Dil vs PRMT rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
+                    : 'Loaded shared Dil vs PRMT rules (all marketplaces).');
                 $('#ch-promo-zero-sold-prmt-status').text(res && res.is_default
                     ? 'Using first-time defaults (0 Sold Red / Green / Pink). Apply to save & apply.'
                     : 'Loaded saved 0 Sold Dil color rules.');
@@ -4301,6 +4358,7 @@
                 if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
                     chPromoMarkEbaySpriceRuleReady('dil');
                 }
+                if (typeof updateSummary === 'function') updateSummary();
             } catch (e) {
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
@@ -4310,6 +4368,7 @@
                 if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
                     chPromoMarkEbaySpriceRuleReady('dil');
                 }
+                if (typeof updateSummary === 'function') updateSummary();
             }
         }
         function saveChPromoDilPrmtRules() {
@@ -4386,18 +4445,27 @@
                     dataType: 'json',
                 });
                 if (res && Array.isArray(res.rules) && res.rules.length) {
-                    chPromoCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    chPromoCvrCpnRules = res.rules.map(function(r) {
+                        const cpn = r.cpn != null ? r.cpn : r.disc;
+                        return Object.assign({}, r, { cpn: Number(cpn) || 0 });
+                    });
                     if (CH_PEF_CVR_CPN_SKIP_ZERO) {
                         chPromoCvrCpnRules = chPromoCvrCpnRules.filter(function(r) { return r.key !== 'eq-0'; });
                     }
                 }
                 renderChPromoCvrCpnModalTable();
                 $('#ch-promo-cvr-cpn-status').text(res && res.is_default
-                    ? 'Using first-time defaults (0–10). Apply to save & apply.'
-                    : 'Loaded saved CVR vs CPN rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
+                    ? (chPromoUsesAmazonCvrDisc()
+                        ? 'Using Amazon CVR Disc defaults (0% → 10 … > 7% → 0). Apply to save.'
+                        : 'Using first-time defaults (0–10). Apply to save & apply.')
+                    : (chPromoUsesAmazonCvrDisc()
+                        ? 'Loaded saved CVR Disc rules (same slabs as /amazon-tabulator-view).'
+                        : 'Loaded saved CVR vs CPN rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.'));
+                if (chPromoUsesAmazonCvrDisc()) chPromoSyncCvrDiscColumnFromSlabs();
                 if (typeof chPromoMarkEbaySpriceRuleReady === 'function') {
                     chPromoMarkEbaySpriceRuleReady('cvr');
                 }
+                if (typeof updateSummary === 'function') updateSummary();
             } catch (e) {
                 renderChPromoCvrCpnModalTable();
                 $('#ch-promo-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
@@ -4415,7 +4483,10 @@
                 data: { rules: rules, _token: chPromoCsrf() },
             }).then(function(res) {
                 if (res && Array.isArray(res.rules)) {
-                    chPromoCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    chPromoCvrCpnRules = res.rules.map(function(r) {
+                        const cpn = r.cpn != null ? r.cpn : r.disc;
+                        return Object.assign({}, r, { cpn: Number(cpn) || 0 });
+                    });
                     renderChPromoCvrCpnModalTable();
                 }
                 $('#ch-promo-cvr-cpn-status').text('Saved.');
@@ -4879,11 +4950,23 @@
                 targets = collectChPromoVisibleRows();
                 label = 'all visible';
             }
-            if (chPromoSaleGatedApply()) {
+            if (chPromoSaleGatedApply() && !chPromoUsesAmazonCvrDisc()) {
                 targets = targets.filter(function(t) {
                     const d = (t.d || (t.row && t.row.getData())) || {};
                     return chPromoHasSaleQty(d);
                 });
+            }
+            if (chPromoUsesAmazonCvrDisc()) {
+                chPromoSyncCvrDiscColumnFromSlabs();
+                $('#ch-promo-cvr-cpn-status').text('Saved. CVR Disc. column updated.');
+                chPromoToast('success', 'CVR Disc rules saved');
+                if (typeof table !== 'undefined' && table) {
+                    try { table.getColumn('cpn_pct') && table.redraw(true); } catch (e) { /* ignore */ }
+                }
+                const modalEl = document.getElementById('chPromoCvrVsCpnModal');
+                if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                $btn.prop('disabled', false).html(html);
+                return;
             }
             if (!targets.length) {
                 $btn.prop('disabled', false).html(html);
@@ -5391,7 +5474,8 @@
                     }
                 }
                 prmtForRow = function(d) {
-                    return chPromoInv(d) === 0 ? 0 : chPromoPrmtForDil(chPromoDil(d));
+                    if (chPromoInv(d) === 0) return 0;
+                    return chPromoPrmtForDil(chPromoDil(d));
                 };
             }
             if (ebayParentDil) {
@@ -5575,7 +5659,7 @@
                 chPromoToast('error', 'No rows to apply');
                 return;
             }
-            if (chPromoSaleGatedApply()) {
+            if (chPromoSaleGatedApply() && !chPromoUsesAmazonCvrDisc()) {
                 targets = targets.filter(function(item) {
                     const d = (item.d || (item.row && item.row.getData())) || {};
                     return chPromoIsChildRow(d) && chPromoHasSaleQty(d);
@@ -6909,6 +6993,9 @@
             if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {
                 chPromoSyncEbayPrmtColumnFromSlabs();
             }
+            if (typeof chPromoSyncCvrDiscColumnFromSlabs === 'function') {
+                chPromoSyncCvrDiscColumnFromSlabs();
+            }
             // Autopush is after-save on the edited row only. Do not persist/push the whole catalog.
         }
         function bindEbaySpriceAutofill() {
@@ -7443,7 +7530,7 @@
                 hozAlign: 'center',
                 vertAlign: 'middle',
                 headerSort: true,
-                headerTooltip: 'Auto from Dil% (0–0% → 12, 0.1–2% → 11, … 22%+ → 0). INV = 0 → 0. Same rule as the B2B discount modal.',
+                headerTooltip: 'Auto from Dil% (0–3% → 12, then −1 each 3% slab, 24–25% → 1). INV = 0 → 0. Same shared Dil vs PRMT table as all marketplaces.',
                 formatter: function(cell) {
                     const d = cell.getRow().getData() || {};
                     if (d.is_parent_summary || !chPromoIsChildRow(d)) return '';
@@ -7490,9 +7577,11 @@
                         return chPromoIsChildRow(cell.getRow().getData());
                     },
                     editor: 'input',
-                    headerTooltip: chPromoUsesAmazonDilPrmtSlabs()
-                        ? '% less on S PRC. Amazon Dil vs PRMT: 0–10% → 10 … > 100% → 0. INV=0 → 0. Dot = PDT daily history.'
-                        : '% less on S PRC. eBay: listing Dil slab from Dil vs PRMT (same as the modal). Dot = PDT daily history.',
+                    headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
+                        + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                            ? ' Column still shows the Dil slab; not applied to S PRC when that would be below Amz price.'
+                            : ' Same table on every marketplace page.')
+                        + ' Dot = PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
@@ -7516,6 +7605,10 @@
                                 const key = chPromoDilSlabKey(dil);
                                 tip = 'Dil ' + (isFinite(dil) ? (Math.round(dil * 10) / 10) : 0)
                                     + '% → ' + key + ' slab → PRMT ' + slab;
+                                if (typeof chPromoShopifyPromoBlockedByAmz === 'function'
+                                    && chPromoShopifyPromoBlockedByAmz(d)) {
+                                    tip += ' (not applied to S PRC — would be below Amz price)';
+                                }
                             }
                         }
                         const dot = chPromoHistoryDotHtml(sku, 'prmt', val);
@@ -7633,21 +7726,51 @@
                     ? [channelPromoPushPrmtColumn()]
                     : []),
                 ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{
-                    title: 'cvr %',
+                    title: chPromoUsesAmazonCvrDisc() ? 'CVR Disc.' : 'cvr %',
                     field: 'cpn_pct',
-                    width: 70,
+                    width: chPromoUsesAmazonCvrDisc() ? 64 : 70,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    sorter: 'number',
+                    sorter: chPromoUsesAmazonCvrDisc()
+                        ? function(a, b, aRow, bRow) {
+                            const av = chPromoCvrDiscForRow(aRow.getData()) || 0;
+                            const bv = chPromoCvrDiscForRow(bRow.getData()) || 0;
+                            return av - bv;
+                        }
+                        : 'number',
                     editable: function(cell) {
+                        if (chPromoUsesAmazonCvrDisc()) return false;
                         return chPromoIsChildRow(cell.getRow().getData());
                     },
-                    editor: 'input',
-                    headerTooltip: '% less on S PRC. Also filled by CVR vs CPN. Dot = PDT daily history.',
+                    editor: chPromoUsesAmazonCvrDisc() ? undefined : 'input',
+                    headerTooltip: chPromoUsesAmazonCvrDisc()
+                        ? ('CVR Disc. — same rules as /amazon-tabulator-view. INV=0 → 0%. Read-only.'
+                            + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                                ? ' Column still shows the CVR slab; not applied to S PRC when that would be below Amz price.'
+                                : ''))
+                        : '% less on S PRC. Also filled by CVR vs CPN. Dot = PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
+                        if (chPromoUsesAmazonCvrDisc()) {
+                            if (!chPromoIsChildRow(d)) return '';
+                            const pct = chPromoCvrDiscForRow(d);
+                            const cvr = chPromoCvr(d);
+                            const base = Number(d.STANDARD_PRICE) > 0
+                                ? Number(d.STANDARD_PRICE)
+                                : (Number(d.Price) || Number(d.price) || 0);
+                            const dollars = (pct > 0 && base > 0) ? chPromoRound2(base * (pct / 100)) : 0;
+                            let tip = 'CVR ' + (isFinite(cvr) ? Number(cvr).toFixed(1) : '0') + '%'
+                                + ' → discount ' + (pct || 0) + '%'
+                                + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
+                            if (typeof chPromoShopifyPromoBlockedByAmz === 'function'
+                                && chPromoShopifyPromoBlockedByAmz(d)) {
+                                tip += ' (not applied to S PRC — would be below Amz price)';
+                            }
+                            return '<span title="' + chPromoEscAttr(tip) + '">'
+                                + fmtChPromoCvrDiscBadge(pct) + '</span>';
+                        }
                         const sku = chPromoSku(d);
                         const val = cell.getValue();
                         const dot = chPromoHistoryDotHtml(sku, 'cpn', val);
@@ -7665,6 +7788,7 @@
                         return false;
                     },
                     cellEdited: function(cell) {
+                        if (chPromoUsesAmazonCvrDisc()) return;
                         applyChPromoFromCell(cell, 'cpn');
                     },
                 }]),
@@ -7915,24 +8039,26 @@
                 if (chPromoIsEbayChannel()) {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Map Dil% slabs to PRMT% (<strong>0–0</strong>, <strong>0.1–2</strong>, '
-                            + '<strong>2–4</strong> … <strong>24–26</strong>). On eBay, Dil is <strong>listing-wise</strong> '
+                        help.innerHTML = 'Shared Dil vs PRMT (<strong>all marketplaces</strong>): '
+                            + '<strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong> '
+                            + '(no 0–0 slab). Save on this page updates every marketplace. '
+                            + 'On eBay, Dil is <strong>listing-wise</strong> '
                             + '(Σ OV L30 ÷ Σ INV by variation item id). Changing <strong>any</strong> slab number '
-                            + 'immediately fills the <strong>PRMT %</strong> column. <strong>Apply</strong> saves rules '
-                            + 'and writes PRMT% on selected or visible SKUs with <strong>eBay sale (E L30) &gt; 0</strong>. '
-                            + 'Does <strong>not</strong> create an eBay sale event. '
+                            + 'immediately fills the <strong>PRMT %</strong> column. <strong>Apply</strong> writes PRMT% '
+                            + 'on selected or visible SKUs with <strong>eBay sale (E L30) &gt; 0</strong>. '
                             + 'If the listing’s total INV is 0, SKU PRMT% is <strong>0</strong>.';
                     }
                 } else if (chPromoUsesAmazonDilPrmtSlabs()) {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Same Dil vs PRMT map as <strong>Amazon</strong>: '
-                            + '<strong>0–10% → 10</strong>, <strong>10–20% → 9</strong> … '
-                            + '<strong>90–100% → 1</strong>, <strong>&gt; 100% → 0</strong>. '
-                            + 'Dil is <strong>SKU-wise</strong> (OV L30 ÷ INV). '
-                            + 'Changing any slab fills the <strong>PRMT %</strong> column. '
+                        help.innerHTML = 'Shared Dil vs PRMT (<strong>all marketplaces</strong>): '
+                            + '<strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>. '
+                            + 'Save on this page updates every marketplace. Dil is <strong>SKU-wise</strong> (OV L30 ÷ INV). '
                             + '<strong>Save and Apply</strong> writes PRMT% on selected rows, or all visible SKUs. '
-                            + 'If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.';
+                            + 'If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.'
+                            + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                                ? ' If discounted S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.'
+                                : '');
                     }
                 } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
@@ -7971,29 +8097,17 @@
                 } else if (CHANNEL_PROMO_CHANNEL === 'reverb') {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Map Dil% slabs to PRMT% (<strong>0–0</strong>, <strong>0.1–2</strong>, '
-                            + '<strong>2–4</strong> … <strong>24–26</strong>) — same rules as /ebay-tabulator-view. '
+                        help.innerHTML = 'Shared Dil vs PRMT (<strong>0–3%</strong> … <strong>24–25%</strong>) — same table as /ebay-tabulator-view. '
                             + 'Dil is SKU-wise (OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
                             + 'only on selected or visible SKUs with <strong>RV L30 &gt; 0</strong>. '
-                            + 'S PRC = Std × (1 − (PRMT% + cvr%)/100), then auto-pushes when it differs from Price. '
-                            + 'If INV is 0, PRMT% is <strong>0</strong>.';
-                    }
-                } else if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
-                    const help = document.getElementById('ch-promo-dil-prmt-help');
-                    if (help) {
-                        help.innerHTML = 'Map Dil% slabs to PRMT% (<strong>0–0</strong>, <strong>0.1–2</strong>, '
-                            + '<strong>2–4</strong> … <strong>24–26</strong>) — same rules as /ebay-tabulator-view. '
-                            + 'Dil is SKU-wise (OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
-                            + 'only on selected or visible SKUs with <strong>B2C L30 &gt; 0</strong>. '
                             + 'S PRC = Std × (1 − (PRMT% + cvr%)/100), then auto-pushes when it differs from Price. '
                             + 'If INV is 0, PRMT% is <strong>0</strong>.';
                     }
                 } else if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = '<strong>B2B disc</strong> auto-fills from Dil% '
-                            + '(<strong>0–0% → 12</strong>, <strong>0.1–2% → 11</strong>, then −1 each 2% slab, '
-                            + '<strong>22%+ → 0</strong>). <strong>Save Rule</strong> stores PRMT% for this channel. '
+                        help.innerHTML = '<strong>B2B disc</strong> auto-fills from the shared Dil vs PRMT table '
+                            + '(<strong>0–3% → 12</strong>, then −1 each 3% slab, <strong>24–25% → 1</strong>). <strong>Save Rule</strong> stores PRMT% for all marketplaces. '
                             + '<strong>Apply</strong> fills <strong>PRMT %</strong> from each row’s Dil% / discounts S PRC. '
                             + 'If <strong>INV = 0</strong>, B2B disc and PRMT% are forced to <strong>0</strong>.';
                     }
@@ -8181,13 +8295,19 @@
                             + '<strong>Apply</strong> writes CPN% only on selected or visible SKUs with '
                             + '<strong>eBay sale (E L30) &gt; 0</strong> (database only — no eBay coupon).';
                     }
-                } else if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                } else if (chPromoUsesAmazonCvrDisc()) {
                     const help = document.getElementById('ch-promo-cvr-cpn-help');
                     if (help) {
-                        help.innerHTML = 'Map CVR% slabs to <strong>cvr %</strong> (same as /ebay-tabulator-view). '
-                            + '<strong>Apply</strong> writes cvr% only on selected or visible SKUs with '
-                            + '<strong>B2C L30 &gt; 0</strong>. '
-                            + 'S PRC = Std × (1 − (PRMT% + cvr%)/100), then auto-pushes when it differs from Price.';
+                        help.innerHTML = 'Same CVR Disc map as <strong>/amazon-tabulator-view</strong>: '
+                            + '<strong>0% → 10</strong>, <strong>0.01–1% → 9</strong> … '
+                            + '<strong>6.5–7% → 1</strong>, <strong>&gt; 7% → 0</strong>. '
+                            + '<strong>INV = 0</strong> → Disc% is <strong>0</strong>. '
+                            + '<strong>Apply</strong> saves rules and refreshes the <strong>CVR Disc.</strong> column '
+                            + '(all SKUs — no sold filter). '
+                            + 'S PRC = Std × (1 − (PRMT% + CVR Disc%)/100).'
+                            + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                                ? ' If that S PRC would be <strong>below Amz price</strong>, the columns still show the slabs, but they are <strong>not applied to S PRC</strong>.'
+                                : '');
                     }
                 }
                 renderChPromoCvrCpnModalTable();
@@ -8247,10 +8367,12 @@
             if (!CHANNEL_PROMO_HIDE_CVR_CPN) {
                 $('#ch-promo-cvr-cpn-save-btn').off('click.chpromo').on('click.chpromo', saveChPromoCvrCpnRulesOnly);
                 $('#ch-promo-cvr-cpn-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoCvrCpn);
-                $(document).off('input.chPromoCvrCascade change.chPromoCvrCascade', '#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input')
-                    .on('input.chPromoCvrCascade change.chPromoCvrCascade', '#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input', function() {
+                $(document).off('input.chPromoCvrCascade change.chPromoCvrCascade', '#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input');
+                if (!chPromoUsesAmazonCvrDisc()) {
+                    $(document).on('input.chPromoCvrCascade change.chPromoCvrCascade', '#ch-promo-cvr-cpn-tbody .ch-promo-cvr-cpn-input', function() {
                         cascadeChPromoCvrCpnFromInput(this);
                     });
+                }
             }
 
             $(document).off('change.chpromo', '.ch-pef-appr-cb').on('change.chpromo', '.ch-pef-appr-cb', function() {
@@ -8358,9 +8480,11 @@
             if (chPromoPrmtCpnComboEnabled() || chPromoEbayStdMinusPrmtCpnEnabled()) {
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
-                    (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'reverb')
-                        ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + cvr%)/100). Auto-pushes when it differs from live Price. Skips INV = 0.'
-                        : 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.'
+                    (CHANNEL_PROMO_CHANNEL === 'shopify_b2c')
+                        ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CVR Disc%)/100) — same as /amazon-tabulator-view. If that S PRC would be below Amz price, PRMT% and CVR Disc are skipped. Auto-pushes when it differs from live Price. Skips INV = 0.'
+                        : (CHANNEL_PROMO_CHANNEL === 'reverb'
+                            ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + cvr%)/100). Auto-pushes when it differs from live Price. Skips INV = 0.'
+                            : 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.')
                 );
             } else if (chPromoReverbComboEnabled()) {
                 $('#ch-promo-sprice-recalc-btn').attr(
@@ -8414,6 +8538,9 @@
         window.computeChannelPushPrcPlan = computeChannelPushPrcPlan;
         window.chPromoPrmtForRow = chPromoPrmtForRow;
         window.chPromoEbaySlabPrmt = chPromoEbaySlabPrmt;
+        window.chPromoCvrDiscForRow = chPromoCvrDiscForRow;
+        window.chPromoShopifyPromoBlockedByAmz = chPromoShopifyPromoBlockedByAmz;
+        window.chPromoStdBase = chPromoStdBase;
         window.chPromoSyncEbayPrmtColumnFromSlabs = chPromoSyncEbayPrmtColumnFromSlabs;
         window.chPromoDilColorBand = chPromoDilColorBand;
         window.chPromoListingDil = chPromoListingDil;

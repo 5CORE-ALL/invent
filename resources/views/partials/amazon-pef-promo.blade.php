@@ -1,6 +1,6 @@
 {{--
   Dil vs PRMT + PRMT% / CVR Disc. / Push Prc for Amazon tabulator.
-  Dil vs PRMT rules store is shared with /pricing-errors-fix (pef_dil_vs_prmt).
+  Dil vs PRMT rules store is shared across all marketplaces (dil_vs_prmt_shared).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
 @php
@@ -351,9 +351,9 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
-                        Map Dil% slabs to PRMT%. First-time defaults: <strong>&gt; 100% → 0</strong> up to
-                        <strong>0–10% → 10</strong>. <strong>Apply</strong> saves rules (shared with pricing-errors-fix)
-                        and fills <strong>PRMT %</strong> from each row’s Dil% / discounts <strong>S PRC</strong>.
+                        Shared Dil vs PRMT for <strong>all marketplaces</strong>:
+                        <strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
+                        (no 0–0 slab). Save here updates eBay, Shopify, and every other Dil vs PRMT page.
                         If <strong>INV = 0</strong>, PRMT% is forced to <strong>0</strong>.
                     </p>
                     <div class="table-responsive">
@@ -384,19 +384,17 @@
         @include('partials.tabulator-column-autofit')
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         // ==================== Dil vs PRMT / CVR Disc (same Dil store as /pricing-errors-fix) ====================
-        const PEF_DIL_PRMT_DEFAULTS = [
-            { key: '0-10', label: '0–10%', prmt: 10 },
-            { key: '10-20', label: '10–20%', prmt: 9 },
-            { key: '20-30', label: '20–30%', prmt: 8 },
-            { key: '30-40', label: '30–40%', prmt: 7 },
-            { key: '40-50', label: '40–50%', prmt: 6 },
-            { key: '50-60', label: '50–60%', prmt: 5 },
-            { key: '60-70', label: '60–70%', prmt: 4 },
-            { key: '70-80', label: '70–80%', prmt: 3 },
-            { key: '80-90', label: '80–90%', prmt: 2 },
-            { key: '90-100', label: '90–100%', prmt: 1 },
-            { key: 'gt-100', label: '> 100%', prmt: 0 },
-        ];
+        const PEF_DIL_PRMT_DEFAULTS = (function() {
+            const rules = [];
+            let prmt = 12;
+            for (let min = 0; min < 24; min += 3) {
+                const max = min + 3;
+                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: prmt });
+                prmt -= 1;
+            }
+            rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
+            return rules;
+        })();
         const AMZ_CVR_DISC_DEFAULTS = [
             { key: 'eq-0', label: '0%', disc: 10 },
             { key: '0.01-1', label: '0.01–1%', disc: 9 },
@@ -571,18 +569,16 @@
 
         function pefDilSlabKey(dil) {
             const n = Number(dil);
-            if (!isFinite(n) || n < 0) return '0-10';
-            if (n > 100) return 'gt-100';
-            if (n >= 90) return '90-100';
-            if (n >= 80) return '80-90';
-            if (n >= 70) return '70-80';
-            if (n >= 60) return '60-70';
-            if (n >= 50) return '50-60';
-            if (n >= 40) return '40-50';
-            if (n >= 30) return '30-40';
-            if (n >= 20) return '20-30';
-            if (n >= 10) return '10-20';
-            return '0-10';
+            if (!isFinite(n) || n < 0) return '0-3';
+            if (n > 24) return '24-25';
+            if (n > 21) return '21-24';
+            if (n > 18) return '18-21';
+            if (n > 15) return '15-18';
+            if (n > 12) return '12-15';
+            if (n > 9) return '9-12';
+            if (n > 6) return '6-9';
+            if (n > 3) return '3-6';
+            return '0-3';
         }
         function pefPrmtForDil(dil) {
             const key = pefDilSlabKey(dil);
@@ -749,8 +745,8 @@
                 }
                 renderDilPrmtModalTable();
                 $('#pef-dil-prmt-status').text(res && res.is_default
-                    ? 'Using first-time defaults (0–10). Apply to save & apply.'
-                    : 'Loaded saved Dil vs PRMT rules (shared with pricing-errors-fix).');
+                    ? 'Using first-time defaults (0–3 … 21–24, 24–25). Save applies to all marketplaces.'
+                    : 'Loaded shared Dil vs PRMT rules (all marketplaces).');
             } catch (e) {
                 renderDilPrmtModalTable();
                 $('#pef-dil-prmt-status').text('Could not load saved rules — showing defaults.');
@@ -768,7 +764,7 @@
                     pefDilPrmtRules = res.rules.map(function(r) { return Object.assign({}, r); });
                     renderDilPrmtModalTable();
                 }
-                $('#pef-dil-prmt-status').text('Saved (shared with pricing-errors-fix).');
+                $('#pef-dil-prmt-status').text('Saved — shared Dil vs PRMT for all marketplaces.');
                 return res;
             });
         }

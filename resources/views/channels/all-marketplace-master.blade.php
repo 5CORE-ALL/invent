@@ -1013,8 +1013,8 @@
             return aliases[k] || k;
         }
 
-        // Chart dots follow the previous day (tooltip "vs Yesterday"), not a 7-day
-        // or last-different walk-back. ACOS & TAcos % invert (lower is better).
+        // Chart dots AND outer badge/table dots follow the previous day
+        // (tooltip "vs Yesterday"). ACOS & TAcos % invert (lower is better).
         function metricChartDotColors(values, isInverted) {
             var gray = '#6c757d';
             var green = '#28a745';
@@ -3623,26 +3623,61 @@
             }
 
             function colorSummaryBadgeDots(channelKeys) {
+                var inverted = invertedDotMetrics;
+                var sumMetrics = {
+                    l30_sales: 1, y_sales: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
+                    clicks: 1, ad_sales: 1, ad_sold: 1, total_views: 1, inv_at_lp: 1,
+                    inv_at_sp: 1, inventory: 1, missing_l: 1, map: 1, nmap: 1,
+                    reviews: 1, l60_sales: 1, l60_orders: 1
+                };
+                var weightBy = {
+                    gprofit: 'l30_sales', npft: 'l30_sales', ads_pct: 'l30_sales',
+                    groi: 'l30_sales', nroi: 'l30_sales',
+                    cvr: 'total_views', ads_cvr: 'clicks', acos: 'ad_sales'
+                };
+                function pairClass(v1, v2, metric) {
+                    if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
+                    if (v2 === v1) return 'flat';
+                    var isInv = inverted.indexOf(metric) >= 0;
+                    if (isInv) return v2 < v1 ? 'up' : 'down';
+                    return v2 > v1 ? 'up' : 'down';
+                }
                 $('#summary-stats .summary-trend-dot[data-metric]').each(function() {
                     var metric = $(this).attr('data-metric');
                     if (!metric) return;
-                    // Y Sales badge is a sum — color from Σ yesterday vs Σ prior day,
-                    // not a majority of per-channel dots (most NYS channels stay gray).
-                    if (metric === 'y_sales') {
-                        var s1 = 0, s2 = 0, n = 0;
+                    // Prefer the blended All pair (same last two days as the All chart)
+                    // so the outer badge cannot be green while the last graph point is red.
+                    var allColor = lastDotColorByKey['all_' + metric];
+                    if (allColor) {
+                        var allCls = allColor === '#28a745' ? 'up'
+                            : allColor === '#dc3545' ? 'down' : 'flat';
+                        $(this).removeClass('up down flat none').addClass(allCls);
+                        return;
+                    }
+                    var s1 = 0, s2 = 0, w1 = 0, w2 = 0, n = 0;
+                    var weightKey = weightBy[metric] || (sumMetrics[metric] ? metric : null);
+                    if (weightKey) {
                         (channelKeys || []).forEach(function(ch) {
                             var p = lastDotPairByKey[ch + '_' + metric];
                             if (!p || p[0] == null || p[1] == null || isNaN(p[0]) || isNaN(p[1])) return;
-                            s1 += p[0];
-                            s2 += p[1];
+                            var wt = lastDotPairByKey[ch + '_' + weightKey];
+                            var a = 1, b = 1;
+                            if (weightKey !== metric && wt) {
+                                a = (wt[0] != null && !isNaN(wt[0])) ? wt[0] : 0;
+                                b = (wt[1] != null && !isNaN(wt[1])) ? wt[1] : 0;
+                            }
+                            s1 += p[0] * a;
+                            s2 += p[1] * b;
+                            w1 += a;
+                            w2 += b;
                             n++;
                         });
-                        var yCls = 'none';
                         if (n > 0) {
-                            yCls = s2 === s1 ? 'flat' : (s2 > s1 ? 'up' : 'down');
+                            var v1 = weightKey !== metric ? (w1 > 0 ? s1 / w1 : null) : s1;
+                            var v2 = weightKey !== metric ? (w2 > 0 ? s2 / w2 : null) : s2;
+                            $(this).removeClass('up down flat none').addClass(pairClass(v1, v2, metric));
+                            return;
                         }
-                        $(this).removeClass('up down flat none').addClass(yCls);
-                        return;
                     }
                     var up = 0, down = 0;
                     (channelKeys || []).forEach(function(ch) {
@@ -4791,27 +4826,33 @@
                     return Math.round(v).toLocaleString('en-US');
                 };
 
-                // --- Populate right-side reference panel (positive values in red) ---
-                const refRed = '#dc3545';
-                const refGray = '#6c757d';
-                const refGreen = '#198754';
-                const highestEl = document.getElementById('adChartHighest');
-                const medianEl = document.getElementById('adChartMedian');
-                const lowestEl = document.getElementById('adChartLowest');
-                highestEl.textContent = fmtVal(dataMax);
-                highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
-                medianEl.textContent = fmtVal(median);
-                medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
-                lowestEl.textContent = fmtVal(dataMin);
-                lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
-
                 // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
                 const invertedMetrics = ['acos', 'ads_pct'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted);
 
-                // --- Value label colors: positive = red, zero = green ---
-                const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
+                // Labels + High/Low use the same trend color as the dots.
+                // Never paint every positive value red (that made "outer" red while
+                // the graph dot was green).
+                const labelColors = dotColors.slice();
+                const refGray = '#6c757d';
+                let maxIdx = 0, minIdx = 0;
+                values.forEach((v, i) => {
+                    if (v >= values[maxIdx]) maxIdx = i;
+                    if (v <= values[minIdx]) minIdx = i;
+                });
+                const highestEl = document.getElementById('adChartHighest');
+                const medianEl = document.getElementById('adChartMedian');
+                const lowestEl = document.getElementById('adChartLowest');
+                highestEl.textContent = fmtVal(dataMax);
+                highestEl.style.color = dotColors[maxIdx] || refGray;
+                if (highestEl.previousElementSibling) highestEl.previousElementSibling.style.color = highestEl.style.color;
+                medianEl.textContent = fmtVal(median);
+                medianEl.style.color = refGray;
+                if (medianEl.previousElementSibling) medianEl.previousElementSibling.style.color = refGray;
+                lowestEl.textContent = fmtVal(dataMin);
+                lowestEl.style.color = dotColors[minIdx] || refGray;
+                if (lowestEl.previousElementSibling) lowestEl.previousElementSibling.style.color = lowestEl.style.color;
 
                 // --- Median line plugin ---
                 const medianLinePlugin = {

@@ -51,6 +51,9 @@ class ChannelPromoPricingController extends Controller
     /** Channels that support background Push CPN % coded-coupon queue (chunked). */
     private const PUSH_CPN_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3', 'temu'];
 
+    /** One Dil vs PRMT table shared by every marketplace page. */
+    public const DIL_PRMT_SHARED_STORE = 'dil_vs_prmt_shared';
+
     public function __construct(
         private readonly ChannelPromoPricingService $promo
     ) {}
@@ -1199,8 +1202,8 @@ class ChannelPromoPricingController extends Controller
         }
 
         return $this->loadRules(
-            $channel.'_dil_vs_prmt',
-            $this->defaultDilPrmtRules($channel),
+            self::DIL_PRMT_SHARED_STORE,
+            self::sharedDilPrmtDefaults(),
             'prmt'
         );
     }
@@ -1218,13 +1221,13 @@ class ChannelPromoPricingController extends Controller
         }
 
         $rules = $this->persistRules(
-            $channel.'_dil_vs_prmt',
-            $this->defaultDilPrmtRules($channel),
+            self::DIL_PRMT_SHARED_STORE,
+            self::sharedDilPrmtDefaults(),
             $incoming,
             'prmt'
         );
 
-        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+        return response()->json(['success' => true, 'channel' => $channel, 'shared' => true, 'rules' => $rules]);
     }
 
     public function dilBumpRules(Request $request, string $channel): JsonResponse
@@ -1493,72 +1496,68 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Same slabs as PEF_DIL_PRMT_DEFAULTS / pefDefaultDilPrmtRules.
-     * TikTok / TikTok 2 use Amazon’s 10-point Dil vs PRMT map.
+     * Shared Dil vs PRMT slabs for every marketplace page:
+     * 0–3, 3–6, … 21–24, 24–25 (last slab also applies above 25%). First slab is 0–3 (no 0–0).
      *
+     * @return list<array{key:string,label:string,prmt:float|int}>
+     */
+    public static function sharedDilPrmtDefaults(): array
+    {
+        $rules = [];
+        $prmt = 12;
+        for ($min = 0; $min < 24; $min += 3) {
+            $max = $min + 3;
+            $rules[] = [
+                'key' => $min.'-'.$max,
+                'label' => $min.'–'.$max.'%',
+                'prmt' => $prmt,
+            ];
+            $prmt--;
+        }
+        $rules[] = ['key' => '24-25', 'label' => '24–25%', 'prmt' => 1];
+
+        return $rules;
+    }
+
+    public static function sharedDilPrmtSlabKey(float $dil): string
+    {
+        if (! is_finite($dil) || $dil < 0) {
+            return '0-3';
+        }
+        if ($dil > 24) {
+            return '24-25';
+        }
+        if ($dil > 21) {
+            return '21-24';
+        }
+        if ($dil > 18) {
+            return '18-21';
+        }
+        if ($dil > 15) {
+            return '15-18';
+        }
+        if ($dil > 12) {
+            return '12-15';
+        }
+        if ($dil > 9) {
+            return '9-12';
+        }
+        if ($dil > 6) {
+            return '6-9';
+        }
+        if ($dil > 3) {
+            return '3-6';
+        }
+
+        return '0-3';
+    }
+
+    /**
      * @return list<array{key:string,label:string,prmt:float|int}>
      */
     private function defaultDilPrmtRules(string $channel = ''): array
     {
-        if (in_array($channel, ['tiktok', 'tiktok2'], true)) {
-            return $this->defaultAmazonDilPrmtRules();
-        }
-
-        return $this->defaultEbayDilPrmtRules($channel);
-    }
-
-    /**
-     * Amazon /tiktok-pricing Dil vs PRMT: 0–10 → 10 … > 100 → 0. INV = 0 forces 0.
-     *
-     * @return list<array{key:string,label:string,prmt:float|int}>
-     */
-    private function defaultAmazonDilPrmtRules(): array
-    {
-        return [
-            ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
-            ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
-            ['key' => '20-30', 'label' => '20–30%', 'prmt' => 8],
-            ['key' => '30-40', 'label' => '30–40%', 'prmt' => 7],
-            ['key' => '40-50', 'label' => '40–50%', 'prmt' => 6],
-            ['key' => '50-60', 'label' => '50–60%', 'prmt' => 5],
-            ['key' => '60-70', 'label' => '60–70%', 'prmt' => 4],
-            ['key' => '70-80', 'label' => '70–80%', 'prmt' => 3],
-            ['key' => '80-90', 'label' => '80–90%', 'prmt' => 2],
-            ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
-            ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
-        ];
-    }
-
-    /**
-     * eBay 1 / 2 / 3 Dil vs PRMT: 0–0, 0.1–2, then 2-point slabs through 24–26.
-     * AliExpress omits the 0–0% slab; Dil 0% uses 0–2%.
-     *
-     * @return list<array{key:string,label:string,prmt:float|int}>
-     */
-    private function defaultEbayDilPrmtRules(string $channel = ''): array
-    {
-        $skipEqZero = in_array($channel, ['aliexpress'], true);
-        $rules = [];
-        if (! $skipEqZero) {
-            $rules[] = ['key' => 'eq-0', 'label' => '0–0%', 'prmt' => 12];
-        }
-        $rules[] = [
-            'key' => '0.1-2',
-            'label' => $skipEqZero ? '0–2%' : '0.1–2%',
-            'prmt' => 11,
-        ];
-        $prmt = 10;
-        for ($max = 4; $max <= 26; $max += 2) {
-            $min = $max - 2;
-            $rules[] = [
-                'key' => $min.'-'.$max,
-                'label' => $min.'–'.$max.'%',
-                'prmt' => max(0, $prmt),
-            ];
-            $prmt--;
-        }
-
-        return $rules;
+        return self::sharedDilPrmtDefaults();
     }
 
     /**

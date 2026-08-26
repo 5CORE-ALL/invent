@@ -230,7 +230,15 @@
             padding: 0.35rem 0.55rem !important;
             white-space: nowrap;
         }
-        .shopify-b2c-page #discount-input-container { padding: 8px 12px !important; }
+        .shopify-b2c-page #discount-input-container {
+            display: flex !important;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 0 !important;
+            background: transparent !important;
+            border: 0 !important;
+        }
 
         /* Parent summary rows (Amazon-style) */
         #reverb-table .tabulator-row.parent-row,
@@ -567,21 +575,8 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Dil vs PRMT / CVR vs CPN — same as /ebay-tabulator-view --}}
+                    {{-- Dil vs PRMT / CVR Disc — same slabs + apply as /amazon-tabulator-view --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
-
-                    <div class="btn-group">
-                        <button type="button" id="price-mode-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Price Mode">
-                            <i class="fas fa-percent"></i> Prc M
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end" id="price-mode-dropdown">
-                            <li><a class="dropdown-item" href="#" data-mode="decrease"><i class="fas fa-arrow-down text-warning"></i> Decrease</a></li>
-                            <li><a class="dropdown-item" href="#" data-mode="increase"><i class="fas fa-arrow-up text-success"></i> Increase</a></li>
-                            <li><a class="dropdown-item" href="#" data-mode="same"><i class="fas fa-equals text-info"></i> Same Price</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
-                        </ul>
-                    </div>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.95 for Shopify B2C) --}}
@@ -661,40 +656,42 @@
                         <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
+                        <span class="badge fs-6 p-2" id="sprice-lt-amz-badge"
+                            style="background-color:#6f42c1;color:#fff;font-weight:bold;cursor:pointer;"
+                            title="S PRC after PRMT% + CVR Disc% is below Amz price. Click to filter those SKUs.">S PRC &lt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Miss: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Spend: $0</span>
                         <span class="badge fs-6 p-2" id="avg-npft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">NPFT: 0%</span>
                     </div>
                 </div>
+
+                {{-- Always visible (not hidden until selection) — same actions as the old overlay bar --}}
+                <div id="discount-input-container" class="d-flex align-items-center gap-2 flex-wrap">
+                    <span id="selected-skus-count" class="fw-bold">0 SKUs selected</span>
+                    <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
+                    <span id="discount-type-select-wrap">
+                    <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
+                        <option value="percentage">Percentage</option>
+                        <option value="value">Value ($)</option>
+                    </select>
+                    </span>
+                    <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
+                        placeholder="Enter %" step="0.01" style="width: 100px;">
+                    <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply Decrease</button>
+                    <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                        <i class="fas fa-copy"></i> Sugg Amz Prc
+                    </button>
+                    <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                        <i class="fas fa-eraser"></i> Clear SPRICE
+                    </button>
+                    <button type="button" id="push-selected-shopify-btn" class="btn btn-success btn-sm"
+                        title="Push SPRICE to Shopify for selected SKUs">
+                        <i class="fas fa-paper-plane"></i> Push
+                    </button>
+                </div>
             </div>
             <div class="card-body" style="padding: 0;">
-                <!-- Discount Input Box (shown when SKUs are selected) -->
-                <div id="discount-input-container" class="p-2 bg-light border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
-                        <span id="selected-skus-count" class="fw-bold"></span>
-                        <span id="discount-input-label" class="text-muted small d-none">Same Price ($):</span>
-                        <span id="discount-type-select-wrap">
-                        <select id="discount-type-select" class="form-select form-select-sm" style="width: 120px;">
-                            <option value="percentage">Percentage</option>
-                            <option value="value">Value ($)</option>
-                        </select>
-                        </span>
-                        <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
-                            placeholder="Enter %" step="0.01" style="width: 100px;">
-                        <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
-                            <i class="fas fa-copy"></i> Sugg Amz Prc
-                        </button>
-                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
-                            <i class="fas fa-eraser"></i> Clear SPRICE
-                        </button>
-                        <button type="button" id="push-selected-shopify-btn" class="btn btn-success btn-sm"
-                            title="Push SPRICE to Shopify for selected SKUs">
-                            <i class="fas fa-paper-plane"></i> Push
-                        </button>
-                    </div>
-                </div>
                 <div id="reverb-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div id="reverb-table" style="flex: 1;"></div>
                 </div>
@@ -747,13 +744,28 @@
         return sku.includes('PARENT');
     }
 
-    function shopifyB2cRowSpriceForAlert(data) {
-        let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isShopifyB2cParentRow(data)) {
-            const calc = chPromoSpriceFromStdTPromo(data);
-            if (calc > 0) sprice = calc;
+    function shopifyB2cIsAmzSuggApplied(data) {
+        if (!data) return false;
+        const f = data.AMZ_SUGG_APPLIED;
+        return f === true || f === 1 || f === '1' || f === 'true';
+    }
+
+    /** S PRC to show / push. Sugg Amz Prc keeps A Price (no promo formula, no LMP cap). */
+    function shopifyB2cDisplayedSprice(data) {
+        if (!data || isShopifyB2cParentRow(data)) return 0;
+        const stored = parseFloat(data.SPRICE) || 0;
+        if (shopifyB2cIsAmzSuggApplied(data) && stored > 0) {
+            return Math.round(stored * 100) / 100;
         }
-        return sprice;
+        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+            const calc = chPromoSpriceFromStdTPromo(data);
+            if (calc > 0) return calc;
+        }
+        return stored;
+    }
+
+    function shopifyB2cRowSpriceForAlert(data) {
+        return shopifyB2cDisplayedSprice(data);
     }
 
     function shopifyB2cHasBlueTriangle(data) {
@@ -761,6 +773,55 @@
         const sprice = shopifyB2cRowSpriceForAlert(data);
         const price = parseFloat(data && data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+    }
+
+    /** S PRC after PRMT% + CVR Disc% slabs (ignores the Amz-floor skip). */
+    function shopifyB2cPromoSpriceAfterPrmtCvr(data) {
+        if (!data || isShopifyB2cParentRow(data)) return 0;
+        const stdFn = window.chPromoStdBase;
+        const std = typeof stdFn === 'function'
+            ? stdFn(data)
+            : (parseFloat(data.STANDARD_PRICE || data.standard_price) || 0);
+        if (!(std > 0)) return 0;
+        let prmt = 0;
+        let cpn = 0;
+        if (typeof window.chPromoEbaySlabPrmt === 'function') {
+            const slab = window.chPromoEbaySlabPrmt(data);
+            if (slab != null) prmt = Number(slab) || 0;
+        } else {
+            prmt = Number(data.prmt_pct != null && data.prmt_pct !== ''
+                ? data.prmt_pct : data._prmt_pct_applied) || 0;
+        }
+        if (typeof window.chPromoCvrDiscForRow === 'function') {
+            cpn = Number(window.chPromoCvrDiscForRow(data)) || 0;
+        } else {
+            cpn = Number(data.cpn_pct != null && data.cpn_pct !== ''
+                ? data.cpn_pct : data._cpn_pct_applied) || 0;
+        }
+        const t = Math.min(99.99, Math.max(0, prmt + cpn));
+        const price = t > 0 ? std * (1 - t / 100) : std;
+        return Math.round(price * 100) / 100;
+    }
+
+    function shopifyB2cSpriceLtAmzAfterPromo(data) {
+        if (!data || isShopifyB2cParentRow(data)) return false;
+        const amz = parseFloat(data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price)) || 0;
+        if (!(amz > 0)) return false;
+        if (typeof window.chPromoShopifyPromoBlockedByAmz === 'function'
+            && window.chPromoShopifyPromoBlockedByAmz(data)) {
+            return true;
+        }
+        const promo = shopifyB2cPromoSpriceAfterPrmtCvr(data);
+        if (promo > 0 && promo < amz) return true;
+        const shown = shopifyB2cDisplayedSprice(data);
+        return shown > 0 && shown < amz;
+    }
+
+    function syncShopifyB2cSpriceLtAmzBadgeState() {
+        $('#sprice-lt-amz-badge').css({
+            outline: spriceLtAmzFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: spriceLtAmzFilterActive ? '2px' : ''
+        });
     }
 
     function syncShopifyB2cTriangleBadgeState() {
@@ -861,25 +922,33 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
-    let decreaseModeActive = false;
+    let spriceLtAmzFilterActive = false;
+    let decreaseModeActive = true;
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
     
-    // Toast notification function
-    function showToast(message, type = 'info') {
+    // Accepts showToast(message, type) or showToast(type, message) — Dil vs PRMT / CVR Disc
+    // call type-first (same as /amazon-tabulator-view).
+    function showToast(a, b) {
+        var type, message;
+        if (['success', 'error', 'info', 'warning', 'danger'].indexOf(String(a)) !== -1 && typeof b === 'string') {
+            type = a;
+            message = b;
+        } else {
+            message = a;
+            type = b || 'info';
+        }
         const toastContainer = document.querySelector('.toast-container');
         if (!toastContainer) return;
-        
+
+        const bg = (type === 'error' || type === 'danger') ? 'danger'
+            : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
         const toast = document.createElement('div');
-        toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} border-0`;
+        toast.className = 'toast align-items-center text-white bg-' + bg + ' border-0';
         toast.setAttribute('role', 'alert');
-        toast.innerHTML = `
-            <div class="d-flex">
-                <div class="toast-body">${message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        `;
+        toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + (message || '')
+            + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
         toastContainer.appendChild(toast);
         const bsToast = new bootstrap.Toast(toast);
         bsToast.show();
@@ -1258,9 +1327,10 @@
                     SNPFT: snpft,
                     SROI: sroi,
                     SNROI: snroi,
-                    has_custom_sprice: true
+                    has_custom_sprice: true,
+                    AMZ_SUGG_APPLIED: false
                 });
-                updates.push({ sku: sku, sprice: newSprice });
+                updates.push({ sku: sku, sprice: newSprice, amz_sugg: 0 });
                 updatedCount++;
             });
 
@@ -1340,9 +1410,10 @@
                     SNPFT: snpft,
                     SROI: sroi,
                     SNROI: snroi,
-                    has_custom_sprice: true
+                    has_custom_sprice: true,
+                    AMZ_SUGG_APPLIED: false
                 });
-                updates.push({ sku: sku, sprice: newSprice });
+                updates.push({ sku: sku, sprice: newSprice, amz_sugg: 0 });
                 updatedCount++;
             });
 
@@ -1445,7 +1516,7 @@
                 if (isShopifyB2cParentRow(d)) return;
                 const sku = d['(Child) sku'];
                 if (!selectedSkus.has(sku)) return;
-                const price = parseFloat(d.SPRICE) || 0;
+                const price = shopifyB2cDisplayedSprice(d);
                 if (price > 0) {
                     toPush.push({ sku: sku, price: price, row: row });
                 }
@@ -1534,6 +1605,7 @@
         $('#less-amz-badge').on('click', function() {
             lessAmzFilterActive = !lessAmzFilterActive;
             moreAmzFilterActive = false; // Deactivate the other filter
+            if (lessAmzFilterActive) spriceLtAmzFilterActive = false;
             applyFilters();
         });
 
@@ -1542,6 +1614,16 @@
         $('#more-amz-badge').on('click', function() {
             moreAmzFilterActive = !moreAmzFilterActive;
             lessAmzFilterActive = false; // Deactivate the other filter
+            if (moreAmzFilterActive) spriceLtAmzFilterActive = false;
+            applyFilters();
+        });
+
+        $('#sprice-lt-amz-badge').on('click', function() {
+            spriceLtAmzFilterActive = !spriceLtAmzFilterActive;
+            if (spriceLtAmzFilterActive) {
+                lessAmzFilterActive = false;
+                moreAmzFilterActive = false;
+            }
             applyFilters();
         });
 
@@ -1600,7 +1682,6 @@
         function updateSelectedCount() {
             const count = selectedSkus.size;
             $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            $('#discount-input-container').toggle(count > 0);
         }
 
         // Update select all checkbox state
@@ -1708,13 +1789,15 @@
                             SNPFT: snpft,
                             SROI: sroi,
                             SNROI: snroi,
-                            has_custom_sprice: true
+                            has_custom_sprice: true,
+                            AMZ_SUGG_APPLIED: false
                         });
 
                         // Store update for backend saving
                         updates.push({
                             sku: sku,
-                            sprice: newSprice
+                            sprice: newSprice,
+                            amz_sugg: 0
                         });
 
                         updatedCount++;
@@ -1765,20 +1848,23 @@
                         const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
                         const snroi = shopifyComputeSnroi(amazonPrice, lp, ship, ads);
                         
-                        // Update the row with SPRICE and calculated values
+                        // Keep A Price on S PRC — do not let live promo / LMP cap replace it
                         row.update({
                             SPRICE: amazonPrice,
                             SGPFT: sgpft,
                             SNPFT: snpft,
                             SROI: sroi,
                             SNROI: snroi,
-                            has_custom_sprice: true
+                            has_custom_sprice: true,
+                            AMZ_SUGG_APPLIED: true,
+                            SPRICE_STATUS: 'applied'
                         });
                         
                         // Store update for backend saving
                         updates.push({
                             sku: sku,
-                            sprice: amazonPrice
+                            sprice: amazonPrice,
+                            amz_sugg: 1
                         });
                         
                         updatedCount++;
@@ -1865,13 +1951,16 @@
                         SPRICE: 0,
                         SGPFT: 0,
                         SPFT: 0,
-                        SROI: 0
+                        SROI: 0,
+                        has_custom_sprice: false,
+                        AMZ_SUGG_APPLIED: false
                     });
                     
                     // Store update for backend saving
                     updates.push({
                         sku: sku,
-                        sprice: 0
+                        sprice: 0,
+                        amz_sugg: 0
                     });
                     
                     clearedCount++;
@@ -1896,6 +1985,7 @@
                 data: {
                     sku: sku,
                     sprice: sprice,
+                    amz_sugg: 0,
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(response) {
@@ -2556,17 +2646,14 @@
                         step: 0.01
                     },
                     sorter: "number",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CVR Disc%)/100). Sugg Amz Prc sets S PRC to A Price (not LMP-capped). If promo S PRC would be below Amz price, PRMT% and CVR Disc are skipped. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
                             return '';
                         }
-                        let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                            const calc = chPromoSpriceFromStdTPromo(rowData);
-                            if (calc > 0) value = calc;
-                        }
+                        const amzSugg = shopifyB2cIsAmzSuggApplied(rowData);
+                        let value = shopifyB2cDisplayedSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData.Price) || 0;
@@ -2582,11 +2669,18 @@
                             return '';
                         }
 
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
+                        let overLmp = lmp > 0 && value + 0.0001 >= lmp;
+                        let redTri = '';
+                        if (!amzSugg) {
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                            if (cap && cap.shown > 0) value = cap.shown;
+                            overLmp = cap ? cap.alert : overLmp;
+                            redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                        } else if (overLmp) {
+                            redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Amazon suggested price is at/above LMP $'
+                                + lmp.toFixed(2) + ' — not capped"></i>';
+                        }
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         let priceHtml = `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         if (overLmp) {
                             priceHtml = `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
@@ -2610,9 +2704,7 @@
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'] || '';
-                        const sprice = window.SpriceLmpCap
-                            ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.SPRICE) || 0)
-                            : (parseFloat(rowData.SPRICE) || 0);
+                        const sprice = shopifyB2cDisplayedSprice(rowData);
                         const status = rowData.SPRICE_STATUS || '';
                         if (!sprice || sprice <= 0) {
                             return '<span style="color:#999;" title="Set S PRC first">N/A</span>';
@@ -2642,7 +2734,7 @@
                         const $btn = $target.hasClass('push-shopify-btn') ? $target : $target.closest('.push-shopify-btn');
                         const rowData = cell.getRow().getData();
                         const sku = rowData['(Child) sku'];
-                        const price = parseFloat(rowData.SPRICE) || 0;
+                        const price = shopifyB2cDisplayedSprice(rowData);
                         pushShopifyB2cPrice(sku, price, $btn, cell.getRow());
                     }
                 },
@@ -2863,7 +2955,8 @@
                     SNPFT: snpft,
                     SROI: sroi,
                     SNROI: snroi,
-                    has_custom_sprice: true
+                    has_custom_sprice: true,
+                    AMZ_SUGG_APPLIED: false
                 });
                 
                 // Save to database
@@ -2994,6 +3087,13 @@
                 });
             }
 
+            // S PRC after PRMT% + CVR Disc% is below Amz price
+            if (spriceLtAmzFilterActive) {
+                table.addFilter(function(data) {
+                    return shopifyB2cSpriceLtAmzAfterPromo(data);
+                });
+            }
+
             // Missing filter - show SKUs missing in Shopify B2C
             if (missingFilterActive) {
                 table.addFilter("Missing", "=", "M");
@@ -3108,7 +3208,7 @@
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, totalViews = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0;
-            let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
+            let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0, spriceLtAmzCount = 0;
             let missingCount = 0;
 
             data.forEach(row => {
@@ -3156,6 +3256,10 @@
                 // Count for > Amz (reuse price variable from above)
                 if (amzPrice > 0 && price > 0 && price > amzPrice) {
                     moreAmzCount++;
+                }
+
+                if (shopifyB2cSpriceLtAmzAfterPromo(row)) {
+                    spriceLtAmzCount++;
                 }
                 
                 // Count Missing
@@ -3212,6 +3316,8 @@
             $('#roi-percent-badge').text(`GROI: ${groiBadge.toFixed(1)}%`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
+            $('#sprice-lt-amz-badge').text(`S PRC < Amz: ${spriceLtAmzCount}`);
+            syncShopifyB2cSpriceLtAmzBadgeState();
             $('#missing-count-badge').text(`Miss: ${missingCount}`);
             
             // Spend / TCOS / NPFT / NROI all read the page-level snapshot now.

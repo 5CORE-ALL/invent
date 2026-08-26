@@ -396,7 +396,7 @@
                         if (!(value > 0)) return '<span class="text-muted">-</span>';
                         const live = parseFloat(d.price) || 0;
                         const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
                         if (cap && cap.shown > 0) value = cap.shown;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
