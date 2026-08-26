@@ -1454,6 +1454,26 @@
         }
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
+
+        /** Parse JSON even if PHP notices / a second payload were appended after the first value. */
+        function ebayParseAjaxJson(text) {
+            const raw = String(text == null ? '' : text);
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                const msg = String((e && e.message) || '');
+                const m = msg.match(/position\s+(\d+)/i);
+                if (m) {
+                    const pos = Number(m[1]);
+                    if (pos > 0) {
+                        try {
+                            return JSON.parse(raw.slice(0, pos));
+                        } catch (e2) { /* fall through */ }
+                    }
+                }
+                throw e;
+            }
+        }
         let skuMetricsChart = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
         let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views' | 'prmt' | 'cpn' | 'push_prc'
@@ -3849,6 +3869,24 @@
             // Event delegation for eye button clicks (add to SKU column formatter)
             table = new Tabulator("#ebay-table", {
                 ajaxURL: EBAY_DATA_JSON_URL,
+                ajaxRequestFunc: function(url, config, params) {
+                    const qs = params ? new URLSearchParams(params).toString() : '';
+                    const href = qs ? (url + (String(url).indexOf('?') >= 0 ? '&' : '?') + qs) : url;
+                    return fetch(href, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    }).then(function(res) {
+                        return res.text().then(function(text) {
+                            if (!res.ok) {
+                                throw new Error('Data load failed (' + res.status + ')');
+                            }
+                            return ebayParseAjaxJson(text);
+                        });
+                    });
+                },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 rowHeight: 36,

@@ -510,7 +510,20 @@ class EbayController extends Controller
     public function ebayDataJson(Request $request)
     {
         try {
+            $obLevel = ob_get_level();
+            ob_start();
             $response = $this->getViewEbayData($request);
+            $leaked = '';
+            while (ob_get_level() > $obLevel) {
+                $leaked .= (string) ob_get_clean();
+            }
+            if ($leaked !== '') {
+                Log::warning('ebayDataJson: discarded leaked output during data build', [
+                    'bytes' => strlen($leaked),
+                    'snippet' => substr($leaked, 0, 400),
+                ]);
+            }
+
             $data = json_decode($response->getContent(), true);
             if (!is_array($data)) {
                 Log::error('ebayDataJson: getViewEbayData returned non-JSON or invalid JSON', [
@@ -523,16 +536,41 @@ class EbayController extends Controller
                 $rows = [];
             }
 
+            array_walk_recursive($rows, static function (&$value) {
+                if (is_float($value) && !is_finite($value)) {
+                    $value = null;
+                }
+            });
+
             // Save snapshot after the JSON is sent so the table is not blocked.
+            // Buffer any notices/html so they cannot append after the JSON body.
             dispatch(function () use ($rows) {
+                $level = ob_get_level();
+                ob_start();
                 try {
                     app(self::class)->saveDailySummaryIfNeeded($rows);
                 } catch (\Throwable $e) {
                     Log::error('Error saving daily eBay summary: ' . $e->getMessage());
+                } finally {
+                    while (ob_get_level() > $level) {
+                        ob_end_clean();
+                    }
                 }
             })->afterResponse();
 
-            return response()->json($rows);
+            $json = json_encode(
+                $rows,
+                JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            if ($json === false) {
+                Log::error('ebayDataJson: json_encode failed', [
+                    'error' => json_last_error_msg(),
+                ]);
+                return response()->json(['error' => 'Failed to encode data'], 500);
+            }
+
+            return response($json, 200)
+                ->header('Content-Type', 'application/json; charset=UTF-8');
         } catch (\Throwable $e) {
             Log::error('Error fetching eBay data for Tabulator: ' . $e->getMessage(), [
                 'exception' => $e->getMessage(),
