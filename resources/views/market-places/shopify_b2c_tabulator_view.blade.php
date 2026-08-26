@@ -1,10 +1,8 @@
-@extends('layouts.vertical', ['title' => 'Shopify B2C - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Shopify B2C - Analytics', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
-    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
@@ -74,55 +72,6 @@
             line-height: 1;
             font-size: 14px;
             color: #64748b;
-        }
-        .task-magnify-icon {
-            width: 20px;
-            height: 20px;
-            object-fit: contain;
-            display: inline-block;
-            vertical-align: middle;
-            pointer-events: none;
-        }
-        .sku-link-lmp-open-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 1.55rem;
-            height: 1.55rem;
-            padding: 0;
-            border: none;
-            border-radius: 6px;
-            background: transparent;
-            cursor: pointer;
-            flex-shrink: 0;
-            transition: background 0.15s ease, transform 0.15s ease;
-        }
-        .sku-link-lmp-open-btn:hover {
-            background: rgba(15, 23, 42, 0.08);
-            transform: scale(1.1);
-        }
-        .sku-link-lmp-existing-list {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: flex-start;
-            gap: 6px;
-            min-height: 36px;
-        }
-        .sku-link-lmp-existing-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .sku-link-lmp-existing-item .sku-link-lmp-edit-input {
-            width: 140px;
-            height: 28px;
-            font-size: 12px;
-        }
-        .sku-link-lmp-existing-item .linked-sku-badge-wrap {
-            cursor: pointer;
-        }
-        .sku-link-lmp-existing-item .linked-sku-badge-wrap:hover .linked-sku-badge {
-            background-color: #cffafe;
         }
 
         /* Custom pagination label */
@@ -261,6 +210,44 @@
         }
         .shopify-b2c-page .card { border-radius: 10px; }
         .shopify-b2c-page .card-body { padding: 12px 14px; }
+        #lmpModal .lmp-modal-sp-box,
+        #lmpModal .lmp-sp-col-th,
+        #lmpModal .lmp-sp-cell {
+            display: none !important;
+        }
+        #lmpModal .lmp-add-one-line {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: flex-end;
+            gap: 8px;
+        }
+        #lmpModal .lmp-add-one-line .lmp-field {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        #lmpModal .lmp-add-one-line .lmp-field-sku { flex: 0 0 130px; }
+        #lmpModal .lmp-add-one-line .lmp-field-price { flex: 0 0 90px; }
+        #lmpModal .lmp-add-one-line .lmp-field-actions {
+            display: flex;
+            gap: 4px;
+            flex: 0 0 auto;
+        }
+        #lmpModal .lmp-add-one-line .form-label {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        #lmpModal .lmp-add-one-line .form-control {
+            height: 32px;
+            font-size: 12px;
+        }
+        #lmpModal .lmp-add-one-line .btn {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
         /* Badges above filters (Amazon order: -1) */
         .shopify-b2c-page #summary-stats {
             order: -1;
@@ -333,6 +320,74 @@
         #reverb-table .tabulator-row.parent-row:hover,
         #reverb-table .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: rgba(189, 224, 255, 0.8) !important;
+        }
+
+        /* Dense body rows — same 36px as /ebay-tabulator-view */
+        #reverb-table .tabulator-row {
+            height: 36px !important;
+            max-height: 36px !important;
+            min-height: 36px !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell {
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            height: 36px !important;
+            max-height: 36px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            vertical-align: middle !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell span,
+        #reverb-table .tabulator-row .tabulator-cell a,
+        #reverb-table .tabulator-row .tabulator-cell div,
+        #reverb-table .tabulator-row .tabulator-cell button,
+        #reverb-table .tabulator-row .tabulator-cell label,
+        #reverb-table .tabulator-row .tabulator-cell input:not([type="checkbox"]):not([type="radio"]),
+        #reverb-table .tabulator-row .tabulator-cell select,
+        #reverb-table .tabulator-row .tabulator-cell i {
+            font-size: 13px !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell img.hover-thumb {
+            width: 28px !important;
+            height: 28px !important;
+            max-width: 28px !important;
+            max-height: 28px !important;
+            object-fit: cover !important;
+            display: block !important;
+            flex-shrink: 0 !important;
+        }
+        #reverb-table .tabulator-row .tabulator-cell > div {
+            flex-wrap: nowrap !important;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        #reverb-table .tabulator-cell.linked-sku-col,
+        #reverb-table .tabulator-cell.linked-sku-col * {
+            white-space: nowrap !important;
+        }
+        #reverb-table .tabulator-cell.linked-sku-col {
+            overflow: hidden !important;
+        }
+        #reverb-table .tabulator-cell.linked-sku-col > div {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            height: 32px !important;
+            max-height: 32px !important;
+            overflow: hidden !important;
+        }
+        #reverb-table .tabulator-cell.linked-sku-col .badge,
+        #reverb-table .tabulator-cell.linked-sku-col .linked-sku-badge-wrap {
+            display: inline-flex !important;
+            flex-shrink: 0 !important;
+            margin: 0 4px 0 0 !important;
+            max-height: 22px !important;
+            line-height: 1 !important;
+            font-size: 11px !important;
         }
 
         /* Column visibility dropdown — 4 columns */
@@ -434,7 +489,6 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 @endsection
 
@@ -447,23 +501,19 @@
 
     {{-- Sku Link LMP Modal (shared sku.link.lmp.* routes — same as Amazon) --}}
     <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-2">Linked SKUs for <strong id="sku-link-lmp-source"></strong>. All linked SKUs share LMP. Click a badge to edit, X to delete.</p>
-                    <div id="sku-link-lmp-existing-wrap" class="mb-3">
-                        <div class="small fw-semibold mb-1">Linked SKUs</div>
-                        <div id="sku-link-lmp-existing-list" class="sku-link-lmp-existing-list"></div>
-                    </div>
-                    <label for="sku-link-lmp-input" class="form-label mb-1">Add SKU</label>
+                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will show each other's LMP.</p>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
                     <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
                     <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
                     <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
-                        <div class="small text-muted mb-1">Selected to add (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
                         <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
                     </div>
                 </div>
@@ -479,58 +529,52 @@
 
 
     {{-- Google LMP Competitors Modal (data from /repricer/google-search → google_sku_competitors) --}}
-    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true" data-skip-lmp-sp="1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">
                         <i class="fa fa-shopping-cart"></i> Google LMP Competitors for SKU: <span id="lmpSku"></span>
                     </h5>
+                    <a href="#" id="lmpOpenGoogleSearch" class="btn btn-sm btn-outline-light ms-auto me-2" target="_blank" rel="noopener">
+                        <i class="fa fa-search"></i> Open Google Search
+                    </a>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="d-flex flex-wrap gap-2 mb-3">
-                        <a href="#" id="lmpOpenGoogleSearch" class="btn btn-sm btn-outline-success" target="_blank" rel="noopener">
-                            <i class="fa fa-search"></i> Open Google Search
-                        </a>
-                    </div>
-
                     <div class="card mb-3 border-success">
-                        <div class="card-header bg-success text-white">
-                            <strong><i class="fa fa-plus-circle"></i> Add Competitor Manually</strong>
-                        </div>
-                        <div class="card-body">
-                            <form id="addGoogleLmpForm" class="row g-3">
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>SKU</strong></label>
-                                    <input type="text" class="form-control" id="addLmpSku" readonly>
+                        <div class="card-body py-2">
+                            <form id="addGoogleLmpForm" class="lmp-add-one-line">
+                                <div class="lmp-field lmp-field-sku">
+                                    <label class="form-label mb-0" for="addLmpSku">SKU</label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpSku" readonly>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" id="addLmpProductId" placeholder="Google product id" required>
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpProductId">Product ID <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpProductId" placeholder="Google product id" required>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Source</strong></label>
-                                    <input type="text" class="form-control" id="addLmpSource" placeholder="e.g. Walmart">
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpSource">Source</label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpSource" placeholder="e.g. Walmart">
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
-                                    <input type="number" class="form-control" id="addLmpPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                <div class="lmp-field lmp-field-price">
+                                    <label class="form-label mb-0" for="addLmpPrice">Price <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control form-control-sm" id="addLmpPrice" placeholder="29.99" step="0.01" min="0.01" required>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Title</strong></label>
-                                    <input type="text" class="form-control" id="addLmpTitle" placeholder="Product title">
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpTitle">Title</label>
+                                    <input type="text" class="form-control form-control-sm" id="addLmpTitle" placeholder="Product title">
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Link</strong></label>
-                                    <input type="url" class="form-control" id="addLmpLink" placeholder="https://...">
+                                <div class="lmp-field">
+                                    <label class="form-label mb-0" for="addLmpLink">Link</label>
+                                    <input type="url" class="form-control form-control-sm" id="addLmpLink" placeholder="https://...">
                                 </div>
-                                <div class="col-12">
-                                    <button type="submit" class="btn btn-success">
-                                        <i class="fa fa-plus"></i> Add Competitor
+                                <div class="lmp-field-actions">
+                                    <button type="submit" class="btn btn-success btn-sm" title="Add competitor">
+                                        <i class="fa fa-plus"></i>
                                     </button>
-                                    <button type="reset" class="btn btn-secondary">
-                                        <i class="fa fa-undo"></i> Clear
+                                    <button type="reset" class="btn btn-secondary btn-sm" title="Clear">
+                                        <i class="fa fa-undo"></i>
                                     </button>
                                 </div>
                             </form>
@@ -850,7 +894,17 @@
     const COLUMN_VIS_KEY = "shopify_b2c_tabulator_column_visibility";
     /** Stored in DB table channel_tabulator_column_settings (shared across all users — same as Amazon). */
     const TABULATOR_COLUMN_CHANNEL = 'shopify_b2c_tabulator';
-    const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+    const TABULATOR_COLUMN_VISIBILITY_URL = @json(route('tabulator.column.visibility.get'));
+    const SHOPIFY_B2C_DATA_URL = @json(route('shopify.b2c.data.json'));
+    const SHOPIFY_B2C_BADGE_PREV_URL = @json(route('shopify.b2c.badge.prev.day'));
+    const SHOPIFY_B2C_BADGE_CHART_URL = @json(route('shopify.b2c.badge.chart.data'));
+    const SHOPIFY_B2C_BADGE_SAVE_URL = @json(route('shopify.b2c.badge.stats.save'));
+    const SHOPIFY_B2C_LISTED_LIVE_URL = @json(route('shopify.b2c.update.listed.live'));
+    const GOOGLE_LMP_DATA_URL = @json(route('google.lmp.data'));
+    const GOOGLE_LMP_ADD_URL = @json(route('google.lmp.add'));
+    const GOOGLE_LMP_DELETE_URL = @json(route('google.lmp.delete'));
+    const GOOGLE_SEARCH_URL = @json(route('repricer.google-search.index'));
+    const PUSH_SHOPIFY_B2C_PRICE_URL = @json(route('push.shopify.b2c.price'));
     /** L30 sales + distinct order count from /shopify (shopify_raw_orders with
      *  marketplace exclusions). Page-level totals — used to drive the Total
      *  Sales and Orders badges so this page agrees with /shopify and the
@@ -920,7 +974,7 @@
         const fmt = key ? shopifyB2cMetricFormat(key) : 'number';
         const isPct = fmt === 'pct' || /percent|cvr|pct/i.test(key);
         if (fmt === 'money') return '$' + Math.round(n).toLocaleString('en-US');
-        if (isPct) return (/tcos|gpft|npft|groi|nroi/i.test(key) ? n.toFixed(1) : n.toFixed(1)) + '%';
+        if (isPct) return n.toFixed(1) + '%';
         return Math.round(n).toLocaleString('en-US');
     }
     function shopifyB2cTodayPtDate() {
@@ -1020,7 +1074,7 @@
             return;
         }
         $.ajax({
-            url: '/shopify-b2c-badge-prev-day',
+            url: SHOPIFY_B2C_BADGE_PREV_URL,
             method: 'GET',
             success: function(resp) {
                 shopifyB2cBadgePrevDayLoaded = true;
@@ -1067,7 +1121,7 @@
         });
         if (!n) return;
         window._shopifyB2cBadgeStatsSaved = true;
-        $.post('/shopify-b2c-badge-stats-save', payload);
+        $.post(SHOPIFY_B2C_BADGE_SAVE_URL, payload);
     }
     function openShopifyB2cChartModal() {
         const modalEl = document.getElementById('shopifyB2cMetricChartModal');
@@ -1120,7 +1174,7 @@
             $('#shopifyB2cChartLoading').show();
         }
         shopifyB2cChartAjax = $.ajax({
-            url: '/shopify-b2c-badge-chart-data',
+            url: SHOPIFY_B2C_BADGE_CHART_URL,
             method: 'GET',
             data: { metric: shopifyB2cChartMetricKey, days: shopifyB2cChartDays },
             success: function(resp) {
@@ -1455,20 +1509,11 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
-    function escLmpAttr(val) {
-        return String(val == null ? '' : val)
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
-
     // ── Sku Link LMP (shared sku.link.lmp.* routes — same as Amazon / Newegg) ──
     const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
     const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
     const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
     const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
-    const skuLinkLmpMagnifySrc = @json(asset('assets/images/task-magnify-icon.png'));
     const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
 
     let linkedSkuModal = null;
@@ -1486,7 +1531,15 @@
         return div.innerHTML;
     }
     function escapeHtmlAttr(text) {
-        return escapeHtml(text).replace(/"/g, '&quot;');
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+    function shopifyB2cConnectedLink(url) {
+        const u = String(url || '').trim();
+        return /^https?:\/\//i.test(u) ? u : '';
     }
 
     function linkedLmpSkuFormatter(cell) {
@@ -1503,69 +1556,18 @@
             if (!norm || seen.has(norm)) return false;
             seen.add(norm); return true;
         });
-        const badges = skus.length ? skus.map(function (sku) {
+        const shown = skus.slice(0, 1);
+        const extra = skus.length - shown.length;
+        const badges = shown.length ? shown.map(function (sku) {
             const skuText = String(sku || '').trim();
             const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
             const removeBtn = isSelf ? '' : `<button type="button" class="btn-close sku-link-lmp-remove" data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove"></button>`;
-            return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
+            return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border"><span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}</span>`;
         }).join('') : '<span class="text-muted fst-italic">No SKUs</span>';
-        const openBtn = rowSku
-            ? `<button type="button" class="sku-link-lmp-open-btn" title="Open Sku Link LMP" data-sku="${escapeHtmlAttr(rowSku)}"><img src="${skuLinkLmpMagnifySrc}" alt="" class="task-magnify-icon" aria-hidden="true"></button>`
+        const more = extra > 0
+            ? `<span class="badge bg-secondary-subtle text-dark border" title="${skus.length} linked SKUs">+${extra}</span>`
             : '';
-        return `<div class="d-flex flex-wrap align-items-start py-1 gap-1" style="line-height:1.6;">${openBtn}${badges}</div>`;
-    }
-
-    function linkedLmpSkuAddFormatter(cell) {
-        const row = cell.getRow().getData();
-        if (isShopifyB2cParentRow(row)) return '';
-        const rowSku = rowSkuForLinkLmp(row);
-        if (!rowSku) return '';
-        return `<div class="d-flex align-items-center justify-content-center py-1">
-            <button type="button" class="sku-link-lmp-open-btn" title="Open Sku Link LMP" data-sku="${escapeHtmlAttr(rowSku)}"><img src="${skuLinkLmpMagnifySrc}" alt="" class="task-magnify-icon" aria-hidden="true"></button>
-        </div>`;
-    }
-
-    function normalizeLinkedLmpSkus(rowData) {
-        const rowSku = rowSkuForLinkLmp(rowData);
-        let skus = rowData && rowData.linked_lmp_skus ? rowData.linked_lmp_skus : [];
-        if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
-        if (!Array.isArray(skus)) skus = [];
-        if (!skus.length && rowSku) skus = [rowSku];
-        const seen = new Set();
-        return skus.filter(function (sku) {
-            const norm = String(sku || '').trim().toUpperCase();
-            if (!norm || seen.has(norm)) return false;
-            seen.add(norm);
-            return true;
-        }).map(function (sku) { return String(sku || '').trim(); });
-    }
-
-    function renderLinkedSkuModalExisting() {
-        const listEl = document.getElementById('sku-link-lmp-existing-list');
-        if (!listEl) return;
-        const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
-        const skus = normalizeLinkedLmpSkus(linkedSkuModalRow);
-        if (!skus.length) {
-            listEl.innerHTML = '<span class="text-muted fst-italic">No linked SKUs</span>';
-            return;
-        }
-        listEl.innerHTML = skus.map(function (sku) {
-            const isSelf = sku.toUpperCase() === sourceSku.toUpperCase();
-            if (isSelf) {
-                return `<div class="sku-link-lmp-existing-item">
-                    <span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border" title="This SKU">${escapeHtml(sku)}</span>
-                </div>`;
-            }
-            return `<div class="sku-link-lmp-existing-item" data-linked-sku="${escapeHtmlAttr(sku)}">
-                <span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border sku-link-lmp-existing-label" title="Click to edit">
-                    <span class="linked-sku-badge">${escapeHtml(sku)}</span>
-                    <button type="button" class="btn-close sku-link-lmp-remove sku-link-lmp-delete-btn" data-linked-sku="${escapeHtmlAttr(sku)}" aria-label="Remove" title="Delete"></button>
-                </span>
-                <input type="text" class="form-control form-control-sm sku-link-lmp-edit-input d-none" value="${escapeHtmlAttr(sku)}" autocomplete="off">
-                <button type="button" class="btn btn-sm btn-outline-success sku-link-lmp-edit-save-btn d-none" title="Save"><i class="fas fa-check"></i></button>
-                <button type="button" class="btn btn-sm btn-outline-secondary sku-link-lmp-edit-cancel-btn d-none" title="Cancel"><i class="fas fa-times"></i></button>
-            </div>`;
-        }).join('');
+        return `<div class="linked-sku-one-line">${badges}${more}</div>`;
     }
 
     function applyAffectedLinkedSkuRows(affected) {
@@ -1580,13 +1582,6 @@
                 if (!Object.prototype.hasOwnProperty.call(bySku, sku)) return;
                 row.update({ linked_lmp_skus: bySku[sku] });
             });
-            if (linkedSkuModalRow) {
-                const src = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
-                if (Object.prototype.hasOwnProperty.call(bySku, src)) {
-                    linkedSkuModalRow.linked_lmp_skus = bySku[src];
-                    renderLinkedSkuModalExisting();
-                }
-            }
             return;
         }
         if (table) table.replaceData();
@@ -1605,32 +1600,6 @@
             if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
             applyAffectedLinkedSkuRows(response.affected);
         }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
-    }
-
-    function replaceLinkedSkuOnRow(rowData, oldSku, newSku) {
-        const sourceSku = rowSkuForLinkLmp(rowData);
-        const from = String(oldSku || '').trim();
-        const to = String(newSku || '').trim();
-        if (!sourceSku || !from || !to) return Promise.reject(new Error('Enter a SKU to save.'));
-        if (from.toUpperCase() === to.toUpperCase()) return Promise.resolve();
-        if (to.toUpperCase() === sourceSku.toUpperCase()) {
-            return Promise.reject(new Error('A SKU cannot be linked to itself.'));
-        }
-        return fetch(linkedSkuAddUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-            body: JSON.stringify({ sku: sourceSku, linked_sku: to }),
-        }).then(r => r.json()).then(function (addRes) {
-            if (!addRes.success) throw new Error(addRes.message || 'Could not link SKU.');
-            return fetch(linkedSkuRemoveUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': skuLinkLmpCsrfToken, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-                body: JSON.stringify({ sku: sourceSku, linked_sku: from }),
-            }).then(r => r.json()).then(function (delRes) {
-                if (!delRes.success) throw new Error(delRes.message || 'Linked the new SKU, but could not remove the old one.');
-                applyAffectedLinkedSkuRows(delRes.affected || addRes.affected);
-            });
-        });
     }
 
     function updateLinkedSkuSelectedSummary() {
@@ -1692,7 +1661,6 @@
         document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
         const input = document.getElementById('sku-link-lmp-input');
         input.value = '';
-        renderLinkedSkuModalExisting();
         renderLinkedSkuSuggestions('');
         updateLinkedSkuSelectedSummary();
         linkedSkuModal.show();
@@ -1718,10 +1686,7 @@
         fetchPromise.then(r => r.json()).then(function (response) {
             if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
             linkedSkuModalSelectedSkus = new Set();
-            const addInput = document.getElementById('sku-link-lmp-input');
-            if (addInput) addInput.value = '';
-            renderLinkedSkuSuggestions('');
-            updateLinkedSkuSelectedSummary();
+            linkedSkuModal?.hide();
             applyAffectedLinkedSkuRows(response.affected);
         }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
         .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
@@ -1751,49 +1716,6 @@
             updateLinkedSkuSelectedSummary();
         });
         document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () { saveLinkedSkuFromModal(); });
-        document.getElementById('sku-link-lmp-existing-list')?.addEventListener('click', function (e) {
-            const item = e.target.closest('.sku-link-lmp-existing-item');
-            if (!item || !linkedSkuModalRow) return;
-            const linkedSku = String(item.dataset.linkedSku || '').trim();
-            if (e.target.closest('.sku-link-lmp-delete-btn')) {
-                e.preventDefault();
-                e.stopPropagation();
-                removeLinkedSkuFromRow(linkedSkuModalRow, linkedSku);
-                return;
-            }
-            if (e.target.closest('.sku-link-lmp-edit-cancel-btn')) {
-                renderLinkedSkuModalExisting();
-                return;
-            }
-            if (e.target.closest('.sku-link-lmp-edit-save-btn')) {
-                const input = item.querySelector('.sku-link-lmp-edit-input');
-                const next = String(input && input.value || '').trim();
-                const btn = e.target.closest('.sku-link-lmp-edit-save-btn');
-                if (btn) btn.disabled = true;
-                replaceLinkedSkuOnRow(linkedSkuModalRow, linkedSku, next)
-                    .catch(function (err) { alert(err.message || 'Could not update linked SKU.'); })
-                    .finally(function () { if (btn) btn.disabled = false; });
-                return;
-            }
-            if (linkedSku && e.target.closest('.sku-link-lmp-existing-label')) {
-                item.querySelector('.sku-link-lmp-existing-label')?.classList.add('d-none');
-                item.querySelector('.sku-link-lmp-edit-input')?.classList.remove('d-none');
-                item.querySelector('.sku-link-lmp-edit-save-btn')?.classList.remove('d-none');
-                item.querySelector('.sku-link-lmp-edit-cancel-btn')?.classList.remove('d-none');
-                item.querySelector('.sku-link-lmp-edit-input')?.focus();
-                item.querySelector('.sku-link-lmp-edit-input')?.select();
-            }
-        });
-        document.getElementById('sku-link-lmp-existing-list')?.addEventListener('keydown', function (e) {
-            if (!e.target.classList.contains('sku-link-lmp-edit-input')) return;
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                e.target.closest('.sku-link-lmp-existing-item')?.querySelector('.sku-link-lmp-edit-save-btn')?.click();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                renderLinkedSkuModalExisting();
-            }
-        });
     }
 
     $(document).ready(function() {
@@ -2101,7 +2023,7 @@
             }
 
             $.ajax({
-                url: @json(route('push.shopify.b2c.price')),
+                url: PUSH_SHOPIFY_B2C_PRICE_URL,
                 method: 'POST',
                 timeout: 120000,
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
@@ -2191,7 +2113,7 @@
                 item.row.reformat();
 
                 $.ajax({
-                    url: @json(route('push.shopify.b2c.price')),
+                    url: PUSH_SHOPIFY_B2C_PRICE_URL,
                     method: 'POST',
                     timeout: 120000,
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
@@ -2660,15 +2582,15 @@
 
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
-            ajaxURL: "/shopify-b2c-data-json",
+            ajaxURL: SHOPIFY_B2C_DATA_URL,
             ajaxSorting: false,
             layout: "fitData",
-            layoutColumnsOnNewData: true,
+            rowHeight: 36,
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
-            columnCalcs: "both",
+            renderVertical: "virtual",
             langs: {
                 "default": {
                     "pagination": {
@@ -2717,14 +2639,14 @@
                     field: "image_path",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 50,
-                    minWidth: 50,
-                    maxWidth: 50,
+                    width: 36,
+                    minWidth: 36,
+                    maxWidth: 36,
                     resizable: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
-                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                            return `<img src="${escapeHtmlAttr(value)}" alt="" class="hover-thumb" loading="lazy" decoding="async" style="width: 28px; height: 28px; object-fit: cover;">`;
                         }
                         return '';
                     }
@@ -2969,8 +2891,8 @@
                         const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
                         const ourPrice = parseFloat(rowData.Price) || 0;
                         const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
-                        const linkedSkusAttr = escLmpAttr(JSON.stringify(linkedSkus));
-                        const skuAttr = escLmpAttr(sku);
+                        const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
+                        const skuAttr = escapeHtmlAttr(sku);
                         const countHtml = totalCompetitors > 0
                             ? ' <a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
                                 + ' title="View ' + totalCompetitors + ' competitor' + (totalCompetitors === 1 ? '' : 's') + '"'
@@ -2991,7 +2913,14 @@
                                 + totalCompetitors + ')</a>';
                         }
 
-                        return '<span style="color:#999;">N/A</span>';
+                        if (!sku) {
+                            return '<span style="color:#999;">N/A</span>';
+                        }
+
+                        return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" data-linked-skus="' + linkedSkusAttr + '"'
+                            + ' title="Add Google LMP competitor"'
+                            + ' style="color:#0d6efd;text-decoration:none;cursor:pointer;font-size:14px;line-height:1;">'
+                            + '<i class="fas fa-plus"></i></a>';
                     }
                 },
                 {
@@ -3029,8 +2958,10 @@
                     field: "linked_lmp_skus",
                     hozAlign: "left",
                     headerHozAlign: "center",
-                    width: 220,
+                    width: 180,
                     headerSort: false,
+                    visible: false,
+                    variableHeight: false,
                     cssClass: "linked-sku-col",
                     formatter: linkedLmpSkuFormatter,
                     cellClick: function(e, cell) {
@@ -3043,21 +2974,6 @@
                             );
                             return;
                         }
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openLinkedSkuModal(cell.getRow().getData());
-                    },
-                },
-                {
-                    title: "+",
-                    field: "linked_lmp_sku_add",
-                    hozAlign: "center",
-                    headerHozAlign: "center",
-                    width: 40,
-                    headerSort: false,
-                    cssClass: "linked-sku-add-col",
-                    formatter: linkedLmpSkuAddFormatter,
-                    cellClick: function(e, cell) {
                         e.preventDefault();
                         e.stopPropagation();
                         openLinkedSkuModal(cell.getRow().getData());
@@ -3438,19 +3354,19 @@
                     headerSort: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const buyerLink = rowData['B Link'] || '';
-                        const sellerLink = rowData['S Link'] || '';
+                        const sellerLink = shopifyB2cConnectedLink(rowData['S Link']);
+                        const buyerLink = shopifyB2cConnectedLink(rowData['B Link']);
 
                         let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
 
                         if (sellerLink) {
-                            html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
+                            html += `<a href="${escapeHtmlAttr(sellerLink)}" target="_blank" rel="noopener" class="text-info" style="font-size: 12px; text-decoration: none;">
                                 <i class="fa fa-link"></i> S
                             </a>`;
                         }
 
                         if (buyerLink) {
-                            html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
+                            html += `<a href="${escapeHtmlAttr(buyerLink)}" target="_blank" rel="noopener" class="text-success" style="font-size: 12px; text-decoration: none;">
                                 <i class="fa fa-link"></i> B
                             </a>`;
                         }
@@ -3474,7 +3390,6 @@
                 getDataset: () => allTableData,
                 onAfterExpand: () => {
                     if (typeof updateSummary === 'function') updateSummary();
-                    if (typeof updateCalcValues === 'function') updateCalcValues();
                 },
                 onCollapse: () => {
                     if (typeof applyFilters === 'function') applyFilters();
@@ -3501,7 +3416,7 @@
             const newValue = $(this).val();
             
             $.ajax({
-                url: '{{ url("/shopify-b2c-update-listed-live") }}',
+                url: SHOPIFY_B2C_LISTED_LIVE_URL,
                 method: 'POST',
                 data: {
                     sku: sku,
@@ -4077,9 +3992,14 @@
                 .then(res => res.json())
                 .then(savedVisibility => {
                     const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                    map.linked_lmp_skus = false;
                     if (Object.keys(map).length > 0) {
                         table.getColumns().forEach(col => {
                             const field = col.getDefinition().field;
+                            if (field === 'linked_lmp_skus') {
+                                col.hide();
+                                return;
+                            }
                             if (field && map.hasOwnProperty(field)) {
                                 if (map[field]) {
                                     col.show();
@@ -4222,17 +4142,12 @@
                 : (list.length
                     ? Math.min.apply(null, list.map(c => parseFloat(c.price) || 0).filter(p => p > 0))
                     : null);
-            const lowestLink = list.find(c => Math.abs((parseFloat(c.price) || 0) - (lowest || 0)) < 0.01) || list[0] || null;
 
             table.getRows().forEach(function(row) {
                 const d = row.getData();
                 if (String(d['(Child) sku'] || '') !== String(sku)) return;
                 row.update({
                     lmp_price: lowest && lowest > 0 ? Math.round(lowest * 100) / 100 : null,
-                    lmp_link: lowestLink ? (lowestLink.product_link || lowestLink.link || null) : null,
-                    lmp_source: lowestLink ? (lowestLink.source || null) : null,
-                    lmp_title: lowestLink ? (lowestLink.product_title || lowestLink.title || null) : null,
-                    lmp_entries: list,
                     lmp_entries_total: list.length,
                 });
             });
@@ -4244,7 +4159,7 @@
                 $('#lmpDataList').html(
                     '<div class="alert alert-info mb-0">' +
                     '<i class="fa fa-info-circle"></i> No Google competitors found yet. Add one manually above, or ' +
-                    '<a href="/repricer/google-search?sku=' + encodeURIComponent(sku) + '" target="_blank" rel="noopener">search on Google</a>.' +
+                    '<a href="' + GOOGLE_SEARCH_URL + '?sku=' + encodeURIComponent(sku) + '" target="_blank" rel="noopener">search on Google</a>.' +
                     '</div>'
                 );
                 return;
@@ -4267,14 +4182,14 @@
             list.forEach(function(item, index) {
                 const price = parseFloat(item.price) || 0;
                 const isLowest = price > 0 && lowest > 0 && Math.abs(price - lowest) < 0.01;
-                const link = item.product_link || item.link || '';
+                const link = shopifyB2cConnectedLink(item.product_link || item.link || '');
                 const title = item.product_title || item.title || '';
                 const titleShort = title.length > 50 ? title.substring(0, 50) + '...' : title;
                 const source = item.source || '—';
                 const productId = item.product_id || '—';
-                const image = item.image || '';
+                const image = shopifyB2cConnectedLink(item.image || '');
                 const imgHtml = image
-                    ? '<img src="' + escLmpAttr(image) + '" alt="" class="rounded me-1" style="height:40px;width:40px;object-fit:contain;" onerror="this.style.display=\'none\'">'
+                    ? '<img src="' + escapeHtmlAttr(image) + '" alt="" class="rounded me-1" style="height:40px;width:40px;object-fit:contain;" onerror="this.style.display=\'none\'">'
                     : '';
                 const rating = item.rating != null
                     ? '<span><i class="fa fa-star text-warning"></i> ' + parseFloat(item.rating).toFixed(1) + '</span>'
@@ -4286,18 +4201,18 @@
                     ? '<span class="badge bg-success">$' + price.toFixed(2) + ' <i class="fa fa-trophy"></i></span>'
                     : '<strong>$' + price.toFixed(2) + '</strong>';
                 const linkBtn = link
-                    ? '<a href="' + escLmpAttr(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="Open product"><i class="fa fa-external-link"></i></a>'
+                    ? '<a href="' + escapeHtmlAttr(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="Open product"><i class="fa fa-external-link"></i></a>'
                     : '<span class="text-muted">—</span>';
                 const delBtn = '<button type="button" class="btn btn-sm btn-danger delete-google-lmp-btn" data-id="' +
-                    escLmpAttr(item.id) + '" data-sku="' + escLmpAttr(sku) + '" data-price="' + price +
+                    escapeHtmlAttr(item.id) + '" data-sku="' + escapeHtmlAttr(sku) + '" data-price="' + price +
                     '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
 
                 html += '<tr class="' + (isLowest ? 'table-success' : '') + '">' +
                     '<td class="text-center"><strong>' + (index + 1) + '</strong></td>' +
                     '<td><div class="d-flex align-items-center">' + imgHtml + priceBadge + '</div></td>' +
-                    '<td style="font-size:11px;" title="' + escLmpAttr(source) + '">' + escLmpAttr(String(source).substring(0, 30)) + '</td>' +
-                    '<td style="font-size:11px;">' + escLmpAttr(productId) + '</td>' +
-                    '<td style="font-size:11px;" title="' + escLmpAttr(title) + '">' + escLmpAttr(titleShort || '—') + '</td>' +
+                    '<td style="font-size:11px;" title="' + escapeHtmlAttr(source) + '">' + escapeHtmlAttr(String(source).substring(0, 30)) + '</td>' +
+                    '<td style="font-size:11px;">' + escapeHtmlAttr(productId) + '</td>' +
+                    '<td style="font-size:11px;" title="' + escapeHtmlAttr(title) + '">' + escapeHtmlAttr(titleShort || '—') + '</td>' +
                     '<td class="text-center">' + rating + '</td>' +
                     '<td class="text-center">' + reviews + '</td>' +
                     '<td class="text-center">' + linkBtn + '</td>' +
@@ -4317,7 +4232,7 @@
             $('#addLmpPrice').val('');
             $('#addLmpTitle').val('');
             $('#addLmpLink').val('');
-            $('#lmpOpenGoogleSearch').attr('href', '/repricer/google-search?sku=' + encodeURIComponent(sku));
+            $('#lmpOpenGoogleSearch').attr('href', GOOGLE_SEARCH_URL + '?sku=' + encodeURIComponent(sku));
             $('#lmpModal').data('linked-lmp-skus', Array.isArray(linkedLmpSkus) ? linkedLmpSkus : []);
 
             const modalEl = document.getElementById('lmpModal');
@@ -4337,7 +4252,7 @@
             });
 
             $.ajax({
-                url: '/google-lmp-data',
+                url: GOOGLE_LMP_DATA_URL,
                 method: 'GET',
                 traditional: true,
                 data: ajaxData,
@@ -4348,7 +4263,7 @@
                     } else {
                         $('#lmpDataList').html(
                             '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> ' +
-                            escLmpAttr(response.error || 'No competitors found. Add one manually above.') +
+                            escapeHtmlAttr(response.error || 'No competitors found. Add one manually above.') +
                             '</div>'
                         );
                     }
@@ -4359,7 +4274,7 @@
                         : 'Failed to load Google LMP data';
                     $('#lmpDataList').html(
                         '<div class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> ' +
-                        escLmpAttr(msg) + '</div>'
+                        escapeHtmlAttr(msg) + '</div>'
                     );
                 }
             });
@@ -4374,6 +4289,13 @@
                 try { linkedSkus = JSON.parse(linkedSkus) || []; } catch (err) { linkedSkus = []; }
             }
             if (sku) loadGoogleLmpModal(String(sku), linkedSkus);
+        });
+
+        $('#addGoogleLmpForm').on('reset', function() {
+            const sku = ($('#addLmpSku').val() || '').trim();
+            setTimeout(function() {
+                $('#addLmpSku').val(sku);
+            }, 0);
         });
 
         $('#addGoogleLmpForm').on('submit', function(e) {
@@ -4401,10 +4323,10 @@
 
             const $submitBtn = $(this).find('button[type="submit"]');
             const originalHtml = $submitBtn.html();
-            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
 
             $.ajax({
-                url: '/google-lmp-add',
+                url: GOOGLE_LMP_ADD_URL,
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: {
@@ -4460,7 +4382,7 @@
             $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
 
             $.ajax({
-                url: '/google-lmp-delete',
+                url: GOOGLE_LMP_DELETE_URL,
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: { id: id },

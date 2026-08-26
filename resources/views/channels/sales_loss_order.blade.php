@@ -1341,7 +1341,7 @@
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'Channel GROI%. Red when under 50%.',
+                headerTooltip: 'SKU GROI% for this site: ((Price × margin − LP − Ship) / LP) × 100. Red when under 50%.',
                 formatter: function (cell) { return sloFormatPctCell(cell, 50); },
             },
             {
@@ -1351,7 +1351,7 @@
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'Channel GPFT%. Red when under 10%.',
+                headerTooltip: 'SKU GPFT% for this site: ((Price × margin − LP − Ship) / Price) × 100. Red when under 10%.',
                 formatter: function (cell) { return sloFormatPctCell(cell, 10); },
             },
             {
@@ -1361,7 +1361,7 @@
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'Channel NROI%. Red when under 50%.',
+                headerTooltip: 'SKU NROI% for this site (GROI minus ads). Red when under 50%.',
                 formatter: function (cell) { return sloFormatPctCell(cell, 50); },
             },
             {
@@ -1371,7 +1371,7 @@
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'Channel NPFT%. Red when under 10%.',
+                headerTooltip: 'SKU NPFT% for this site (GPFT minus ads). Red when under 10%.',
                 formatter: function (cell) { return sloFormatPctCell(cell, 10); },
             },
             {

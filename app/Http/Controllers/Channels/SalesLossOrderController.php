@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Channels;
 
 use App\Models\ChannelMasterCalculatedData;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
+use App\Services\TemuShopifySalesService;
 use App\Services\VeeqoApiService;
 use App\Support\ProductMasterTemuShip;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -55,12 +58,12 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
                 false,
                 true
             );
-            $rows = $this->attachNetProfitPctToRows($rows);
             try {
                 $rows = $this->attachCostShipDetailsToRows($rows);
             } catch (\Throwable) {
                 // Keep orders even if product-master cost lookup fails.
             }
+            $rows = $this->attachSkuSiteProfitPctToRows($rows);
 
             $amountTotal = 0.0;
             $channels = [];
@@ -216,19 +219,48 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
     }
 
     /**
-     * Add NROI% / NPFT% from channel_master_calculated_data (same source as GROI/GPFT).
+     * SKU × site GROI / GPFT / NROI / NPFT — same formulas as the channel tabulators.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
-    protected function attachNetProfitPctToRows(array $rows): array
+    protected function attachSkuSiteProfitPctToRows(array $rows): array
     {
-        $pct = $this->channelProfitPctBySlug();
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $ctxBySlug = $this->siteProfitContextBySlug();
+        $priceBySlugNorm = $this->listingPriceBySlugAndNorm($rows);
+
         foreach ($rows as &$row) {
             $slug = (string) ($row['mm_slug'] ?? '');
-            $m = $pct[$slug] ?? [];
-            $row['nroi_pct'] = $m['nroi_pct'] ?? null;
-            $row['npft_pct'] = $m['npft_pct'] ?? null;
+            $ctx = $ctxBySlug[$slug] ?? [
+                'margin' => 0.80,
+                'ads' => 0.0,
+                'ship_key' => 'ship',
+                'is_temu' => false,
+                'is_temu2' => false,
+                'no_ads' => false,
+            ];
+            $sku = $this->rowLookupSku($row);
+            $norm = $sku !== '' ? ShopifySku::normalizeSkuForShopifyLookup($sku) : '';
+            $listing = ($norm !== '' && isset($priceBySlugNorm[$slug][$norm]))
+                ? (float) $priceBySlugNorm[$slug][$norm]
+                : 0.0;
+            $qty = max(1, (int) ($row['quantity'] ?? 1));
+            $amount = is_numeric($row['amount'] ?? null) ? (float) $row['amount'] : 0.0;
+            $orderUnit = $amount > 0 ? round($amount / $qty, 2) : 0.0;
+            $price = $listing > 0 ? $listing : $orderUnit;
+
+            $lp = is_numeric($row['lp'] ?? null) ? (float) $row['lp'] : 0.0;
+            $ship = $this->shipForSiteRow($row, $ctx);
+
+            $metrics = $this->computeSkuSiteProfitPct($slug, $price, $lp, $ship, $ctx);
+            $row['groi_pct'] = $metrics['groi_pct'];
+            $row['gpft_pct'] = $metrics['gpft_pct'];
+            $row['nroi_pct'] = $metrics['nroi_pct'];
+            $row['npft_pct'] = $metrics['npft_pct'];
         }
         unset($row);
 
@@ -236,32 +268,48 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
     }
 
     /**
-     * @return array<string, array{groi_pct: ?float, gpft_pct: ?float, nroi_pct: ?float, npft_pct: ?float}>
+     * @return array<string, array{margin: float, ads: float, ship_key: string, is_temu: bool, is_temu2: bool, no_ads: bool}>
      */
-    protected function channelProfitPctBySlug(): array
+    protected function siteProfitContextBySlug(): array
     {
-        $out = [];
-        if (! Schema::hasTable('channel_master_calculated_data')) {
-            return $out;
-        }
-
-        $byChannel = [];
+        $pctByName = [];
         try {
-            foreach (ChannelMasterCalculatedData::query()->get(['channel', 'g_roi', 'gprofit_pct', 'n_roi', 'n_pft']) as $row) {
-                $key = strtolower(trim((string) ($row->channel ?? '')));
-                if ($key === '' || array_key_exists($key, $byChannel)) {
-                    continue;
+            if (Schema::hasTable('marketplace_percentages')) {
+                foreach (MarketplacePercentage::query()->get(['marketplace', 'percentage']) as $row) {
+                    $key = strtolower(trim((string) ($row->marketplace ?? '')));
+                    if ($key === '' || isset($pctByName[$key])) {
+                        continue;
+                    }
+                    $pct = (float) $row->percentage;
+                    $pctByName[$key] = $pct > 1 ? $pct / 100 : $pct;
                 }
-                $byChannel[$key] = [
-                    'groi_pct' => is_numeric($row->g_roi) ? round((float) $row->g_roi, 2) : null,
-                    'gpft_pct' => is_numeric($row->gprofit_pct) ? round((float) $row->gprofit_pct, 2) : null,
-                    'nroi_pct' => is_numeric($row->n_roi) ? round((float) $row->n_roi, 2) : null,
-                    'npft_pct' => is_numeric($row->n_pft) ? round((float) $row->n_pft, 2) : null,
-                ];
             }
         } catch (\Throwable) {
-            return $out;
+            $pctByName = [];
         }
+
+        $adsByName = [];
+        try {
+            if (Schema::hasTable('channel_master_calculated_data')) {
+                foreach (ChannelMasterCalculatedData::query()->get(['channel', 'ads_percentage', 'tacos_percentage']) as $row) {
+                    $key = strtolower(trim((string) ($row->channel ?? '')));
+                    if ($key === '' || isset($adsByName[$key])) {
+                        continue;
+                    }
+                    $ads = $row->ads_percentage;
+                    if ($ads === null || $ads === '') {
+                        $ads = $row->tacos_percentage;
+                    }
+                    $adsByName[$key] = is_numeric($ads) ? (float) $ads : 0.0;
+                }
+            }
+        } catch (\Throwable) {
+            $adsByName = [];
+        }
+
+        $noAds = ['doba', 'purchasingpower', 'topdawg', 'shein', 'faire', 'temu2', 'alibaba'];
+        $noShip = ['faire', 'topdawg', 'purchasingpower'];
+        $out = [];
 
         foreach (MarketplaceManagerRegistry::channels() as $channel) {
             if (! ($channel['enabled'] ?? false)) {
@@ -271,24 +319,223 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             if ($slug === '') {
                 continue;
             }
-
-            $metrics = [
-                'groi_pct' => null,
-                'gpft_pct' => null,
-                'nroi_pct' => null,
-                'npft_pct' => null,
-            ];
-            foreach (($channel['mp_channel_keys'] ?? []) as $candidate) {
-                $key = strtolower(trim((string) $candidate));
-                if ($key !== '' && array_key_exists($key, $byChannel)) {
-                    $metrics = $byChannel[$key];
+            $candidates = array_merge(
+                [$slug],
+                $channel['mp_channel_keys'] ?? [],
+                match ($slug) {
+                    'ebay1' => ['Ebay', 'eBay', 'ebay'],
+                    'ebay2' => ['EbayTwo', 'eBay 2'],
+                    'ebay3' => ['EbayThree', 'eBay 3'],
+                    'tiktok', 'tiktok2' => ['TiktokShop', 'TikTok Shop'],
+                    'purchasingpower' => ['Purchase'],
+                    'newegg' => ['Neweggb2c', 'Newegg'],
+                    default => [],
+                }
+            );
+            $margin = 0.80;
+            foreach ($candidates as $name) {
+                $key = strtolower(trim((string) $name));
+                if ($key !== '' && isset($pctByName[$key])) {
+                    $margin = (float) $pctByName[$key];
                     break;
                 }
             }
-            $out[$slug] = $metrics;
+            $ads = 0.0;
+            foreach ($candidates as $name) {
+                $key = strtolower(trim((string) $name));
+                if ($key !== '' && isset($adsByName[$key])) {
+                    $ads = (float) $adsByName[$key];
+                    break;
+                }
+            }
+            $out[$slug] = [
+                'margin' => $margin > 0 ? $margin : 0.80,
+                'ads' => in_array($slug, $noAds, true) ? 0.0 : $ads,
+                'ship_key' => match (true) {
+                    in_array($slug, $noShip, true) => 'none',
+                    in_array($slug, ['temu', 'temu2'], true) => 'ship_temu',
+                    $slug === 'bestbuy' => 'ship_bb',
+                    default => 'ship',
+                },
+                'is_temu' => $slug === 'temu',
+                'is_temu2' => $slug === 'temu2',
+                'no_ads' => in_array($slug, $noAds, true),
+            ];
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array{margin: float, ads: float, ship_key: string, is_temu: bool, is_temu2: bool, no_ads: bool}  $ctx
+     * @return array{groi_pct: ?float, gpft_pct: ?float, nroi_pct: ?float, npft_pct: ?float}
+     */
+    protected function computeSkuSiteProfitPct(string $slug, float $price, float $lp, float $ship, array $ctx): array
+    {
+        $empty = ['groi_pct' => null, 'gpft_pct' => null, 'nroi_pct' => null, 'npft_pct' => null];
+        if ($price <= 0) {
+            return $empty;
+        }
+
+        $margin = (float) ($ctx['margin'] ?? 0.80);
+        $ads = (float) ($ctx['ads'] ?? 0);
+        $isTemu = ! empty($ctx['is_temu']);
+        $isTemu2 = ! empty($ctx['is_temu2']);
+        $noAds = ! empty($ctx['no_ads']) || $isTemu2;
+
+        if ($isTemu || $isTemu2) {
+            $rPrice = TemuShopifySalesService::computeRPrice($price);
+            $full = TemuShopifySalesService::computeFullTemuPrice($price);
+            $gpft = $full > 0
+                ? round(TemuShopifySalesService::computeGpftPercent($full, $margin, $lp, $ship), 2)
+                : null;
+            $groi = $lp > 0 && $rPrice > 0
+                ? round(TemuShopifySalesService::computeGroiPercent($rPrice, $margin, $lp, $ship), 2)
+                : null;
+        } else {
+            $gross = ($price * $margin) - $lp - $ship;
+            $gpft = round(($gross / $price) * 100, 2);
+            $groi = $lp > 0 ? round(($gross / $lp) * 100, 2) : null;
+        }
+
+        if ($gpft === null && $groi === null) {
+            return $empty;
+        }
+
+        if ($noAds) {
+            return [
+                'groi_pct' => $groi,
+                'gpft_pct' => $gpft,
+                'nroi_pct' => $groi,
+                'npft_pct' => $gpft,
+            ];
+        }
+
+        $npft = $gpft !== null
+            ? ($ads == 100.0 ? $gpft : round($gpft - $ads, 2))
+            : null;
+        if ($isTemu) {
+            $nroi = $groi !== null
+                ? ($ads == 100.0 ? $groi : round($groi - $ads, 2))
+                : null;
+        } else {
+            $gross = ($price * $margin) - $lp - $ship;
+            $adsPerUnit = $price * ($ads / 100);
+            $nroi = $lp > 0 ? round((($gross - $adsPerUnit) / $lp) * 100, 2) : null;
+        }
+
+        return [
+            'groi_pct' => $groi,
+            'gpft_pct' => $gpft,
+            'nroi_pct' => $nroi,
+            'npft_pct' => $npft,
+        ];
+    }
+
+    /**
+     * @param  array{ship_key: string}  $ctx
+     */
+    protected function shipForSiteRow(array $row, array $ctx): float
+    {
+        $key = (string) ($ctx['ship_key'] ?? 'ship');
+        if ($key === 'none') {
+            return 0.0;
+        }
+        $v = $row[$key] ?? $row['ship'] ?? null;
+
+        return is_numeric($v) ? (float) $v : 0.0;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, array<string, float>>
+     */
+    protected function listingPriceBySlugAndNorm(array $rows): array
+    {
+        $skusBySlug = [];
+        foreach ($rows as $row) {
+            $slug = (string) ($row['mm_slug'] ?? '');
+            $sku = $this->rowLookupSku($row);
+            if ($slug === '' || $sku === '') {
+                continue;
+            }
+            $skusBySlug[$slug][$sku] = true;
+        }
+
+        $out = [];
+        foreach ($skusBySlug as $slug => $skuSet) {
+            $skus = array_keys($skuSet);
+            $map = [];
+            foreach ($this->listingPriceSourcesForSlug($slug) as $source) {
+                $map = $map + $this->priceMapFromTable($source[0], $source[1], $source[2], $skus);
+            }
+            $out[$slug] = $map;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{0: string, 1: string, 2: string}>
+     */
+    protected function listingPriceSourcesForSlug(string $slug): array
+    {
+        return match ($slug) {
+            'amazon' => [['amazon_datsheets', 'sku', 'price']],
+            'ebay1' => [['ebay_metrics', 'sku', 'ebay_price']],
+            'ebay2' => [['ebay_2_metrics', 'sku', 'ebay_price']],
+            'ebay3' => [['ebay_3_metrics', 'sku', 'ebay_price']],
+            'temu' => [['temu_metrics', 'sku', 'base_price'], ['temu_pricing', 'sku', 'base_price']],
+            'temu2' => [['temu2_pricing', 'sku', 'base_price']],
+            'reverb' => [['reverb_products', 'sku', 'price']],
+            'shein' => [['shein_pricing_prices', 'sku', 'special_offer_price'], ['shein_pricing_prices', 'sku', 'price']],
+            'faire' => [['faire_metric', 'sku', 'price']],
+            'doba' => [['doba_daily_data', 'sku', 'anticipated_income']],
+            'wayfair' => [['wayfair_daily_data', 'sku', 'unit_price']],
+            'aliexpress' => [['aliexpress_pricing_prices', 'sku', 'price']],
+            'topdawg' => [['topdawg_products', 'sku', 'price']],
+            'purchasingpower' => [['purchasing_power_products', 'sku', 'price']],
+            default => [],
+        };
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    protected function priceMapFromTable(string $table, string $skuCol, string $priceCol, array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable($table)) {
+            return [];
+        }
+        try {
+            if (! Schema::hasColumn($table, $skuCol) || ! Schema::hasColumn($table, $priceCol)) {
+                return [];
+            }
+            $map = [];
+            DB::table($table)
+                ->whereIn($skuCol, $skus)
+                ->get([$skuCol, $priceCol])
+                ->each(function ($r) use (&$map, $skuCol, $priceCol) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->{$skuCol} ?? ''));
+                    $p = (float) ($r->{$priceCol} ?? 0);
+                    if ($norm !== '' && $p > 0 && ! isset($map[$norm])) {
+                        $map[$norm] = $p;
+                    }
+                });
+
+            return $map;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    protected function rowLookupSku(array $row): string
+    {
+        $sku = trim((string) ($row['sku'] ?? ''));
+        $sku = preg_replace('/\s+\+\d+$/', '', $sku) ?? $sku;
+
+        return trim((string) $sku);
     }
 
     /**

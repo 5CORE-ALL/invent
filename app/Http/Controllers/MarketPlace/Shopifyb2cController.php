@@ -48,6 +48,15 @@ class Shopifyb2cController extends Controller
         $this->apiController = $apiController;
     }
 
+    /** Shared 90s cache so /shopify-b2c-pricing HTML is not blocked by live order/ads queries. */
+    private function shopifyDirectL30SnapshotCached(): array
+    {
+        return Cache::remember('shopify_direct_l30_snapshot_v1', 90, function () {
+            return app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                ->getShopifyDirectL30Snapshot();
+        });
+    }
+
     public function shopifyb2cView(Request $request)
     {
         $mode = $request->query('mode');
@@ -502,8 +511,7 @@ class Shopifyb2cController extends Controller
         // Channel Ads% (TCOS badge) — same as Amazon AMAZON_CHANNEL_ADS_PCT for PFT / SNROI
         $channelAdsPct = 0.0;
         try {
-            $snapshot = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
-                ->getShopifyDirectL30Snapshot();
+            $snapshot = $this->shopifyDirectL30SnapshotCached();
             $channelAdsPct = (float) ($snapshot['tcos_pct'] ?? 0);
         } catch (\Throwable $e) {
             $channelAdsPct = 0;
@@ -765,8 +773,7 @@ class Shopifyb2cController extends Controller
         // `/shopify` and the /all-marketplace-master Shopify row use
         // (shopify_raw_orders with the marketplace exclusions). Lets this page's
         // Total Sales / Orders / Qty badges agree with that page byte-for-byte.
-        $shopifySnapshot = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
-            ->getShopifyDirectL30Snapshot();
+        $shopifySnapshot = $this->shopifyDirectL30SnapshotCached();
 
         return view('market-places.shopify_b2c_tabulator_view', [
             'shopifyDirectL30Sales'    => (float) ($shopifySnapshot['l30_sales']      ?? 0),
@@ -806,20 +813,8 @@ class Shopifyb2cController extends Controller
             }
         })->afterResponse();
 
-        $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(29);
-
-        $totalGoogleSpend = DB::table('google_ads_campaigns')
-            ->whereDate('date', '>=', $startDate->format('Y-m-d'))
-            ->whereDate('date', '<=', $yesterday->format('Y-m-d'))
-            ->where('advertising_channel_type', 'SHOPPING')
-            ->sum('metrics_cost_micros') / 1000000;
-
         return response()->json([
             'data' => $data,
-            'campaign_totals' => [
-                'google_spend_L30' => $totalGoogleSpend
-            ]
         ]);
     }
 
@@ -829,12 +824,11 @@ class Shopifyb2cController extends Controller
         $percentage = 95;
         $percentageValue = 0.95;
 
-        // Fetch all product master records (excluding parent rows)
-        $productMasterRows = ProductMaster::all()
-            ->filter(function ($item) {
-                return stripos($item->sku, 'PARENT') === false;
-            })
-            ->keyBy("sku");
+        $productMasterRows = ProductMaster::query()
+            ->select(['id', 'sku', 'parent', 'Values'])
+            ->where('sku', 'not like', '%PARENT%')
+            ->get()
+            ->keyBy('sku');
 
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck("sku")->toArray();
@@ -927,8 +921,7 @@ class Shopifyb2cController extends Controller
         // Channel Ads% (TCOS badge) — used for SNROI when row ADS% is 0, same as NROI badge
         $channelAdsPct = 0.0;
         try {
-            $snapshot = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
-                ->getShopifyDirectL30Snapshot();
+            $snapshot = $this->shopifyDirectL30SnapshotCached();
             $channelAdsPct = (float) ($snapshot['tcos_pct'] ?? 0);
         } catch (\Throwable $e) {
             Log::warning('Shopify B2C SNROI channel ads fetch failed: ' . $e->getMessage());
@@ -1129,8 +1122,9 @@ class Shopifyb2cController extends Controller
             $processedItem['STANDARD_PRICE'] = $stdPrc;
             $processedItem = app(ChannelPromoPricingService::class)->applyToRow($processedItem, $promoMap, (string) $sku);
 
-            $mergedLmpEntries = collect();
             $seenLmp = [];
+            $lmpCount = 0;
+            $lowestLmpPrice = null;
             $skusForLmp = $linkedLmpSkus !== [] ? $linkedLmpSkus : [$sku];
             foreach ($skusForLmp as $linkedSku) {
                 $linkedKey = GoogleSkuCompetitor::normalizeSkuKey((string) $linkedSku);
@@ -1147,34 +1141,18 @@ class Shopifyb2cController extends Controller
                         continue;
                     }
                     $seenLmp[$dedupeKey] = true;
-                    $mergedLmpEntries->push($comp);
+                    $lmpCount++;
+                    if (is_numeric($comp->price ?? null)) {
+                        $price = (float) $comp->price;
+                        if ($price > 0 && ($lowestLmpPrice === null || $price < $lowestLmpPrice)) {
+                            $lowestLmpPrice = $price;
+                        }
+                    }
                 }
             }
-            $mergedLmpEntries = GoogleSkuCompetitor::sortCollectionByNumericPrice($mergedLmpEntries);
-            $lowestLmp = GoogleSkuCompetitor::lowestFromCollection($mergedLmpEntries);
 
-            $processedItem['lmp_price'] = ($lowestLmp && is_numeric($lowestLmp->price))
-                ? round((float) $lowestLmp->price, 2)
-                : null;
-            $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
-            $processedItem['lmp_source'] = $lowestLmp->source ?? null;
-            $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
-            $processedItem['lmp_entries'] = $mergedLmpEntries->map(static function ($comp) {
-                return [
-                    'id' => $comp->id,
-                    'product_id' => $comp->product_id,
-                    'source' => $comp->source,
-                    'price' => isset($comp->price) ? round((float) $comp->price, 2) : null,
-                    'link' => $comp->product_link,
-                    'product_link' => $comp->product_link,
-                    'title' => $comp->product_title,
-                    'product_title' => $comp->product_title,
-                    'image' => $comp->image,
-                    'rating' => $comp->rating !== null ? (float) $comp->rating : null,
-                    'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
-                ];
-            })->values()->all();
-            $processedItem['lmp_entries_total'] = $mergedLmpEntries->count();
+            $processedItem['lmp_price'] = $lowestLmpPrice !== null ? round($lowestLmpPrice, 2) : null;
+            $processedItem['lmp_entries_total'] = $lmpCount;
 
             $processedItem['is_parent_summary'] = false;
             $processedItems[] = $processedItem;
@@ -1252,10 +1230,6 @@ class Shopifyb2cController extends Controller
                 'SPRICE_STATUS' => null,
                 'linked_lmp_skus' => [],
                 'lmp_price' => null,
-                'lmp_link' => null,
-                'lmp_source' => null,
-                'lmp_title' => null,
-                'lmp_entries' => [],
                 'lmp_entries_total' => 0,
             ];
         }

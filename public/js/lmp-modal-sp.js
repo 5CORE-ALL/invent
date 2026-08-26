@@ -53,6 +53,7 @@
 
     function isLmpCompetitorModal(el) {
         if (!el || !el.id) return false;
+        if (el.getAttribute && el.getAttribute('data-skip-lmp-sp') === '1') return false;
         var id = String(el.id).toLowerCase();
         // Sku Link manager (link SKUs together) — not a competitor LMP modal
         if (id === 'skulinklmpmodal') return false;
@@ -485,6 +486,7 @@
     window.LmpModalSp = {
         refresh: function (modalEl) {
             if (!modalEl) return;
+            if (modalEl.getAttribute && modalEl.getAttribute('data-skip-lmp-sp') === '1') return;
             var input = ensureSpBox(modalEl);
             observeModalTables(modalEl);
             ensureSpColumns(modalEl);
