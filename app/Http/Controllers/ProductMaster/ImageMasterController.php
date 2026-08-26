@@ -19,6 +19,7 @@ use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
+use App\Services\ShopifyB5CApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
 use App\Services\Support\ImageMasterPushJobStore;
@@ -36,6 +37,7 @@ use App\Services\AliExpressApiService;
 use App\Services\AlibabaApiService;
 use App\Services\NeweggApiService;
 use App\Services\PurchasingPowerApiService;
+use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
 use App\Services\TopDawgApiService;
 use App\Services\TemuApiService;
@@ -351,7 +353,7 @@ class ImageMasterController extends Controller
             return ['success' => true, 'message' => 'No images to add; skipped.'];
         }
 
-        if ($images === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+        if ($images === [] && $mode === 'replace' && ! in_array($mp, ['shopify_main', 'shopify_pls', 'shopify_b5c'], true)) {
             return [
                 'success' => false,
                 'message' => 'Clear-all images is only supported for Shopify Main and Shopify PLS.',
@@ -384,9 +386,10 @@ class ImageMasterController extends Controller
             $addModeNote = ' Add mode is not supported for this marketplace; used replace instead.';
         }
 
-        $imagesForPush = in_array($mp, ['shopify_main', 'shopify_pls'], true)
-            ? $images
-            : $this->rewriteLocalStorageUrlsToPublic($images);
+        $imagesForPush = $this->preferCdnImageUrls($sku, $images);
+        if (! in_array($mp, ['shopify_main', 'shopify_pls', 'shopify_b5c'], true)) {
+            $imagesForPush = $this->rewriteLocalStorageUrlsToPublic($imagesForPush);
+        }
 
         if ($dryRun) {
             $remote = $this->dryRunPushToRemote($mp, $sku, $imagesForPush, $effectiveMode);
@@ -429,7 +432,7 @@ class ImageMasterController extends Controller
         $saved = false;
         if ($remoteOk) {
             $saved = $this->saveImageMetricsToTable($mp, $sku, $urlsForMetrics);
-            if (in_array($mp, ['shopify_main', 'shopify_pls'], true)) {
+            if (in_array($mp, ['shopify_main', 'shopify_pls', 'shopify_b5c'], true)) {
                 $saved = $this->saveShopifyCatalogImages($sku, $mp, $urlsForMetrics) || $saved;
             }
         }
@@ -463,7 +466,7 @@ class ImageMasterController extends Controller
      */
     private function dryRunPushToRemote(string $marketplace, string $sku, array $imageUrls, string $mode = 'replace'): array
     {
-        if ($imageUrls === [] && $mode === 'replace' && in_array($marketplace, ['shopify_main', 'shopify_pls'], true)) {
+        if ($imageUrls === [] && $mode === 'replace' && in_array($marketplace, ['shopify_main', 'shopify_pls', 'shopify_b5c'], true)) {
             return ['success' => true, 'message' => 'Dry run OK: would clear all Shopify images.'];
         }
 
@@ -879,7 +882,7 @@ class ImageMasterController extends Controller
                 case 'shopify_pls':
                     return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'shopify_b5c':
-                    return app(ShopifyPLSApiService::class)->updateImages($sku, $imageUrls, $mode);
+                    return app(ShopifyB5CApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'macy':
                     return app(MacysApiService::class)->updateImages($sku, $imageUrls);
                 case 'reverb':
@@ -903,8 +906,9 @@ class ImageMasterController extends Controller
                 case 'topdawg':
                     return app(TopDawgApiService::class)->updateImages($sku, $imageUrls, $mode);
                 case 'tiktok':
-                case 'tiktok2':
                     return app(TikTokShopService::class)->updateImages($sku, $imageUrls, $mode);
+                case 'tiktok2':
+                    return app(TikTok2ShopService::class)->updateImages($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,
@@ -994,7 +998,7 @@ class ImageMasterController extends Controller
      */
     private function marketplacesSupportingAddMode(): array
     {
-        return ['shopify_main', 'shopify_pls', 'reverb'];
+        return ['shopify_main', 'shopify_pls', 'shopify_b5c', 'reverb'];
     }
 
     private function marketplaceImageLimit(string $marketplace): int
@@ -1002,7 +1006,7 @@ class ImageMasterController extends Controller
         return match ($marketplace) {
             'amazon' => 9,
             'reverb' => 25,
-            'shopify_main', 'shopify_pls' => 20,
+            'shopify_main', 'shopify_pls', 'shopify_b5c' => 20,
             default => 12,
         };
     }
@@ -1252,6 +1256,76 @@ class ImageMasterController extends Controller
     }
 
     /**
+     * Prefer Shopify CDN URLs over local /storage/ links so marketplaces can fetch the files.
+     *
+     * @param  list<string>  $urls
+     * @return list<string>
+     */
+    private function preferCdnImageUrls(string $sku, array $urls): array
+    {
+        if ($urls === [] || ! Schema::hasTable('product_images')) {
+            return $urls;
+        }
+
+        try {
+            $rows = ProductImage::query()
+                ->where('sku', $sku)
+                ->whereNotNull('cdn_url')
+                ->where('cdn_url', '!=', '')
+                ->get(['image_path', 'cdn_url']);
+        } catch (\Throwable) {
+            return $urls;
+        }
+
+        if ($rows->isEmpty()) {
+            return $urls;
+        }
+
+        $byBasename = [];
+        $byRelPath = [];
+        foreach ($rows as $row) {
+            $cdn = trim((string) $row->cdn_url);
+            if ($cdn === '' || ! preg_match('#^https?://#i', $cdn)) {
+                continue;
+            }
+            $path = str_replace('\\', '/', trim((string) $row->image_path));
+            $base = strtolower(basename($path));
+            if ($base !== '' && $base !== '.' && $base !== '..') {
+                $byBasename[$base] = $cdn;
+            }
+            if ($path !== '') {
+                $byRelPath[strtolower(ltrim($path, '/'))] = $cdn;
+            }
+        }
+
+        if ($byBasename === [] && $byRelPath === []) {
+            return $urls;
+        }
+
+        return array_values(array_map(function (string $url) use ($byBasename, $byRelPath) {
+            $url = trim($url);
+            $path = (string) (parse_url($url, PHP_URL_PATH) ?: $url);
+            $path = str_replace('\\', '/', rawurldecode($path));
+            $base = strtolower(basename($path));
+            $isLocal = (bool) preg_match('#/(storage)/#i', $path)
+                || (bool) preg_match('#^https?://(localhost|127\.0\.0\.1)(:\d+)?/#i', $url);
+
+            if (preg_match('#/storage/(.+)$#i', $path, $m)) {
+                $rel = strtolower(ltrim(str_replace('\\', '/', $m[1]), '/'));
+                if (isset($byRelPath[$rel])) {
+                    return $byRelPath[$rel];
+                }
+            }
+
+            if ($isLocal && isset($byBasename[$base])) {
+                return $byBasename[$base];
+            }
+
+            return $url;
+        }, $urls));
+    }
+
+    /**
      * Convert localhost / 127.0.0.1 storage URLs to the publicly accessible URL so that
      * external marketplace APIs (eBay, Amazon, Temu, Macy's, Reverb, etc.) can download
      * the images. Shopify handles local files via base64, but all other APIs need a real URL.
@@ -1375,7 +1449,11 @@ class ImageMasterController extends Controller
                 return false;
             }
 
-            $store = $marketplace === 'shopify_pls' ? 'pls' : 'main';
+            $store = match ($marketplace) {
+                'shopify_pls' => 'pls',
+                'shopify_b5c' => 'b5c',
+                default => 'main',
+            };
 
             $productId = DB::table('shopify_catalog_variants')
                 ->where('store', $store)
@@ -2071,6 +2149,11 @@ class ImageMasterController extends Controller
     private function dispatchImageMasterPushJob(): void
     {
         RunImageMasterPushJob::dispatch();
+        // Run after the HTTP response so a missing queue worker cannot stall the push.
+        // ImageMasterPushRunner uses a file lock so this and the worker cannot double-push.
+        dispatch(function () {
+            app(\App\Services\Support\ImageMasterPushRunner::class)->run();
+        })->afterResponse();
     }
 
     private function shopifyPullAdminGet(string $url, string $token): \Illuminate\Http\Client\Response

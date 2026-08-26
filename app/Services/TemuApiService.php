@@ -2872,7 +2872,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);
         $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
-        $url = 'https://openapi-b-us.temu.com/openapi/router';
+        $url = $this->openApiRouterUrl();
         $skuListField = config('services.temu.update_sku_list_field', 'skuList');
         $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
         $imageField = config('services.temu.goods_image_urls_field', 'carouselImageUrlList');
@@ -2983,7 +2983,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     private function saveImageUrlsToTemuMetrics(string $sku, array $images): bool
     {
         try {
-            if (! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
+            if (! Schema::hasTable($this->imageMetricsTable()) || ! Schema::hasColumn($this->imageMetricsTable(), 'sku')) {
                 return false;
             }
             $payload = json_encode(array_values($images), JSON_UNESCAPED_SLASHES);
@@ -2991,23 +2991,24 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return false;
             }
 
+            $table = $this->imageMetricsTable();
             $update = [];
-            if (Schema::hasColumn('temu_metrics', 'image_urls')) {
+            if (Schema::hasColumn($table, 'image_urls')) {
                 $update['image_urls'] = $payload;
             }
-            if (Schema::hasColumn('temu_metrics', 'image_master_json')) {
+            if (Schema::hasColumn($table, 'image_master_json')) {
                 $update['image_master_json'] = $payload;
             }
             if ($update === []) {
                 return false;
             }
-            if (Schema::hasColumn('temu_metrics', 'updated_at')) {
+            if (Schema::hasColumn($table, 'updated_at')) {
                 $update['updated_at'] = now();
             }
 
-            DB::table('temu_metrics')->updateOrInsert(['sku' => $sku], $update);
-            if (Schema::hasColumn('temu_metrics', 'created_at')) {
-                DB::table('temu_metrics')->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
+            DB::table($table)->updateOrInsert(['sku' => $sku], $update);
+            if (Schema::hasColumn($table, 'created_at')) {
+                DB::table($table)->where('sku', $sku)->whereNull('created_at')->update(['created_at' => now()]);
             }
 
             return true;
@@ -3295,6 +3296,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     protected function openApiRouterUrl(): string
     {
         return rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+    }
+
+    protected function imageMetricsTable(): string
+    {
+        return 'temu_metrics';
     }
 
     /**

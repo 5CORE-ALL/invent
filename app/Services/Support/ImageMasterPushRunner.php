@@ -15,6 +15,30 @@ class ImageMasterPushRunner
     {
         @set_time_limit(0);
 
+        $lockPath = storage_path('app/image-master-push/runner.lock');
+        $lockDir = dirname($lockPath);
+        if (! is_dir($lockDir)) {
+            mkdir($lockDir, 0755, true);
+        }
+        $lock = fopen($lockPath, 'c');
+        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            if (is_resource($lock)) {
+                fclose($lock);
+            }
+
+            return 0;
+        }
+
+        try {
+            return $this->runLocked();
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    private function runLocked(): int
+    {
         while (true) {
             $state = $this->store->load();
             if (($state['status'] ?? 'idle') !== 'running') {
