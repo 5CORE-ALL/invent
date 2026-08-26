@@ -250,9 +250,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // FBA reports — shifted from 13:30 IST to 18:15 IST so it pulls data
-        // AFTER the Amazon SP/SB/SD report retries finalise at 18:10 IST. Previously
-        // it ran while PT day was still mid-afternoon → partial spend / clicks.
+       
         $ist($schedule->command('app:fetch-fba-reports')
             ->dailyAt('18:15')
             ->timezone('Asia/Kolkata')

@@ -721,7 +721,7 @@
                         <strong>Save Rule</strong> stores the slabs.
                         <strong>Apply</strong> writes <strong>S PRC</strong> so
                         <strong>GROI = Target GROI%</strong>
-                        (<code>S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>)
+                        (<code id="ch-promo-zero-sold-dil-formula">S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>)
                         on selected or visible SKUs with
                         <strong>0 sold</strong>, <strong>INV &gt; 0</strong>, and <strong>LP &gt; 0</strong>.
                         No marketplace push.
@@ -2944,7 +2944,9 @@
         function chPromoCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         }
-        function chPromoCapSpriceToLmp(d, sprice) {
+        function chPromoCapSpriceToLmp(d, sprice, extra) {
+            extra = extra || {};
+            if (extra.skip_lmp_cap) return chPromoRound2(sprice);
             if (window.SpriceLmpCap) return SpriceLmpCap.prepare(d, sprice);
             const lmp = parseFloat(d && (d.lmp_price || d.lmp || d.LMP)) || 0;
             let s = chPromoRound2(sprice);
@@ -3393,6 +3395,15 @@
             return !!(d && (d.ZERO_SOLD_PRC_APPLIED === true || d.ZERO_SOLD_PRC_APPLIED === 1
                 || d.ZERO_SOLD_PRC_APPLIED === '1' || d.ZERO_SOLD_PRC_APPLIED === 'true'));
         }
+        function chPromoIsTemuPromoChannel() {
+            return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+        }
+        /** Temu 0 Sold Dil→Target GROI% owns S PRC. Dil/PRMT/CPN must not overwrite it. */
+        function chPromoTemuZeroSoldOwnsSprice(d) {
+            return chPromoIsTemuPromoChannel()
+                && typeof chPromoIsZeroSoldRow === 'function'
+                && chPromoIsZeroSoldRow(d);
+        }
         function chPromoReverbSpriceFromStdBothPrmt(d, overrides) {
             const std = chPromoStdBase(d);
             if (!(std > 0)) return null;
@@ -3470,7 +3481,9 @@
         function saveChannelSprice(sku, sprice, silent, extra) {
             extra = extra || {};
             const rowData = chPromoRowDataFromExtra(extra);
-            const val = rowData ? chPromoCapSpriceToLmp(rowData, sprice) : chPromoRound2(sprice);
+            const val = extra.skip_lmp_cap
+                ? chPromoRound2(sprice)
+                : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();
             }
@@ -3507,10 +3520,10 @@
 
         /** Persist promo % first (so refresh keeps PRMT/CPN), then optional S PRC. Returns a Promise. */
         function saveChannelSpriceAndPromo(row, sprice, silent, extra) {
+            extra = extra || {};
             const d = row.getData();
             const sku = chPromoSku(d);
-            const val = chPromoCapSpriceToLmp(d, sprice);
-            extra = extra || {};
+            const val = extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra);
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);
             if (val > 0) {
@@ -3883,6 +3896,10 @@
             return (isFinite(lp) && lp > 0) ? lp : 0;
         }
         function chPromoShipCost(d) {
+            if (chPromoIsTemuPromoChannel()) {
+                const temuShip = Number(d && (d.temu_ship != null ? d.temu_ship : d.temuShip));
+                return isFinite(temuShip) && temuShip > 0 ? temuShip : 0;
+            }
             const raw = d && (
                 d.Ship_productmaster != null && d.Ship_productmaster !== ''
                     ? d.Ship_productmaster
@@ -3920,10 +3937,110 @@
             if (!chPromoIsZeroSoldRow(d)) return null;
             return chPromoRoiForZeroSoldDil(chPromoDil(d));
         }
-        /** GROI back-solve: (sprice×margin − ship − lp) / lp × 100 = Target. */
+        /**
+         * Temu SGROI% at a candidate S PRC — same as /temu-decrease:
+         *   SGROI = ((S R Price × 0.95) − temu_ship − LP) / LP × 100
+         */
+        function chPromoTemuSgroiAtSprice(d, sprice) {
+            if (typeof temuSpriceCalcParts === 'function') {
+                const p = temuSpriceCalcParts(d, sprice);
+                return p && p.sgroi != null && isFinite(p.sgroi) ? p.sgroi : null;
+            }
+            const lp = chPromoLp(d);
+            if (!(lp > 0)) return null;
+            if (typeof temu2SpftDollars === 'function') {
+                const spft = temu2SpftDollars(d, sprice);
+                return spft == null ? null : (spft / lp) * 100;
+            }
+            const ship = chPromoShipCost(d);
+            const s = Number(sprice);
+            if (!(s > 0)) return null;
+            let sR = 0;
+            if (typeof temuSRPriceFromRow === 'function') {
+                sR = Number(temuSRPriceFromRow(d, s)) || 0;
+            } else if (typeof temu2SRPriceFromRow === 'function') {
+                sR = Number(temu2SRPriceFromRow(d, s)) || 0;
+            } else {
+                const mult = 1.1364;
+                const candidates = [(s - 2.99) / mult, s / mult];
+                let best = 0;
+                let bestErr = Infinity;
+                candidates.forEach(function(base) {
+                    if (!(base > 0)) return;
+                    let full = base * mult;
+                    if (full <= 26.99) full += 2.99;
+                    const err = Math.abs(full - s);
+                    if (err < bestErr - 1e-6) {
+                        bestErr = err;
+                        best = base;
+                    } else if (Math.abs(err - bestErr) <= 1e-6 && base > best) {
+                        best = base;
+                    }
+                });
+                sR = best > 0 ? (best <= 26.99 ? best + 2.99 : best) : 0;
+            }
+            if (!(sR > 0)) return null;
+            return ((sR * 0.95 - ship - lp) / lp) * 100;
+        }
+        /** Back-solve S PRC so the on-page Temu SGROI% column equals Target GROI%. */
+        function chPromoTemuSpriceFromTargetGroi(d, roiPct) {
+            const lp = chPromoLp(d);
+            if (!(lp > 0)) return 0;
+            const ship = chPromoShipCost(d);
+            const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
+            const targetSR = (lp * (1 + roi / 100) + ship) / 0.95;
+            if (!(targetSR > 0) || !isFinite(targetSR)) return 0;
+            let seed = targetSR;
+            const base = targetSR > 29.98 ? targetSR : Math.max(0.01, targetSR - 2.99);
+            if (typeof temuFullPriceFromBase === 'function') {
+                const full = temuFullPriceFromBase(base);
+                if (full > 0) seed = full;
+            } else if (typeof temu2FullPriceFromBase === 'function') {
+                const full = temu2FullPriceFromBase(base);
+                if (full > 0) seed = full;
+            } else {
+                let full = base * 1.1364;
+                if (full <= 26.99) full += 2.99;
+                seed = full;
+            }
+            let lo = Math.max(0.01, seed * 0.35);
+            let hi = Math.max(seed * 2.8, seed + 20);
+            for (let expand = 0; expand < 10; expand++) {
+                const gLo = chPromoTemuSgroiAtSprice(d, lo);
+                const gHi = chPromoTemuSgroiAtSprice(d, hi);
+                if (gLo == null || gHi == null) break;
+                if (gLo <= roi && roi <= gHi) break;
+                if (roi < gLo) {
+                    hi = lo;
+                    lo = Math.max(0.01, lo * 0.5);
+                } else {
+                    lo = hi;
+                    hi = hi * 1.8;
+                }
+            }
+            let best = seed;
+            let bestErr = Infinity;
+            for (let i = 0; i < 40; i++) {
+                const mid = (lo + hi) / 2;
+                const g = chPromoTemuSgroiAtSprice(d, mid);
+                if (g == null) break;
+                const err = Math.abs(g - roi);
+                if (err < bestErr) {
+                    bestErr = err;
+                    best = mid;
+                }
+                if (g < roi) lo = mid;
+                else hi = mid;
+            }
+            return (isFinite(best) && best > 0) ? chPromoRound2(best) : 0;
+        }
+        /** GROI back-solve: (sprice×margin − ship − lp) / lp × 100 = Target. Temu uses S R Price × 0.95. */
         function chPromoSpriceFromTargetRoi(d, roiPct) {
             const lp = chPromoLp(d);
             if (!(lp > 0)) return 0;
+            if (chPromoIsTemuPromoChannel()) {
+                return chPromoTemuSpriceFromTargetGroi(d, roiPct);
+            }
             const margin = chPromoTakehomeMargin(d);
             if (!(margin > 0)) return 0;
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
@@ -5025,7 +5142,15 @@
                 return { key: r.key, label: r.label, groi: Number(r.groi) || 0 };
             });
         }
+        function chPromoSyncZeroSoldDilHelp() {
+            const $formula = $('#ch-promo-zero-sold-dil-formula');
+            if (!$formula.length) return;
+            if (chPromoIsTemuPromoChannel()) {
+                $formula.text('SGROI = (S R Price × 0.95 − Temu Ship − LP) / LP; Apply back-solves S PRC so SGROI = Target');
+            }
+        }
         async function loadChPromoZeroSoldDilRules() {
+            chPromoSyncZeroSoldDilHelp();
             $('#ch-promo-zero-sold-dil-status').text('Loading…');
             try {
                 const res = await $.ajax({
@@ -5208,6 +5333,7 @@
             try {
                 const extra = {
                     skip_push: true,
+                    skip_lmp_cap: true,
                     prmt_pct: job.prmt,
                     cpn_pct: job.cpn,
                 };
@@ -5266,6 +5392,13 @@
                     const sroi = chPromoLp(d) > 0
                         ? Math.round(((fill * chPromoTakehomeMargin(d) - chPromoLp(d) - chPromoShipCost(d)) / chPromoLp(d)) * 100)
                         : 0;
+                    const temuMetrics = (chPromoIsTemuPromoChannel()
+                        && typeof temuSpriceRelatedMetrics === 'function')
+                        ? (temuSpriceRelatedMetrics(d, fill) || {})
+                        : {};
+                    const sgroiVal = temuMetrics.sgroi_percent != null
+                        ? temuMetrics.sgroi_percent
+                        : (chPromoIsTemuPromoChannel() ? chPromoTemuSgroiAtSprice(d, fill) : roi);
                     item.row.update(Object.assign({
                         ZERO_SOLD_PRC_APPLIED: true,
                         ZERO_SOLD_PRC_GROI: roi,
@@ -5275,11 +5408,13 @@
                         cpn_pct: String(cpn),
                         _cpn_pct_applied: cpn,
                         PEF_CPN_PCT: cpn,
-                        sgpft: sgpft,
-                        SGPFT: sgpft,
-                        sroi: sroi,
-                        SROI: sroi,
-                    }, chPromoSpricePatch(fill)));
+                        sgpft: temuMetrics.sgprft_percent != null ? temuMetrics.sgprft_percent : sgpft,
+                        SGPFT: temuMetrics.sgprft_percent != null ? temuMetrics.sgprft_percent : sgpft,
+                        sroi: temuMetrics.sroi_percent != null ? temuMetrics.sroi_percent : sroi,
+                        SROI: temuMetrics.sroi_percent != null ? temuMetrics.sroi_percent : sroi,
+                        sgroi_percent: sgroiVal,
+                        SGROI: sgroiVal,
+                    }, chPromoSpricePatch(fill), temuMetrics));
                     jobs.push({
                         row: item.row,
                         sku: chPromoSku(d),
@@ -5321,6 +5456,7 @@
                 try {
                     const extra = {
                         skip_push: true,
+                        skip_lmp_cap: true,
                         prmt_pct: job.prmt,
                         cpn_pct: job.cpn,
                     };
@@ -5546,11 +5682,16 @@
                     }
 
                     if (chPromoPrmtCpnComboEnabled()) {
-                        // S PRC = Std × (1 − (PRMT% + CPN%)/100)
-                        newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { prmt: prmt });
-                        if (newPrice > 0) {
-                            Object.assign(patch, chPromoSpricePatch(newPrice));
-                            skipSprice = false;
+                        if (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d)) {
+                            // 0 Sold Target GROI% owns S PRC. PRMT% stays independent.
+                            skipSprice = true;
+                        } else {
+                            // S PRC = Std × (1 − (PRMT% + CPN%)/100)
+                            newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { prmt: prmt });
+                            if (newPrice > 0) {
+                                Object.assign(patch, chPromoSpricePatch(newPrice));
+                                skipSprice = false;
+                            }
                         }
                     } else if (ebay1PrmtOnly) {
                         if (chPromoInv(d) > 0) {
@@ -5673,16 +5814,21 @@
                 const sku = chPromoSku(d);
                 if (!(cpn > 0)) {
                     if (chPromoPrmtCpnComboEnabled()) {
-                        const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: 0 });
-                        if (newPrice > 0) {
-                            item.row.update(Object.assign({
-                                cpn_pct: String(cpn),
-                                _cpn_pct_applied: 0,
-                            }, chPromoSpricePatch(newPrice)));
-                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
-                        } else {
+                        if (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d)) {
                             item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
-                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
+                        } else {
+                            const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: 0 });
+                            if (newPrice > 0) {
+                                item.row.update(Object.assign({
+                                    cpn_pct: String(cpn),
+                                    _cpn_pct_applied: 0,
+                                }, chPromoSpricePatch(newPrice)));
+                                jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
+                            } else {
+                                item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                                jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                            }
                         }
                     } else if (ebay1) {
                         const newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
@@ -5704,16 +5850,21 @@
                     item.row.update(patch);
                     jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
                 } else if (chPromoPrmtCpnComboEnabled()) {
-                    const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: cpn });
-                    if (newPrice > 0) {
-                        item.row.update(Object.assign({
-                            cpn_pct: String(cpn),
-                            _cpn_pct_applied: cpn,
-                        }, chPromoSpricePatch(newPrice)));
-                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
-                    } else {
+                    if (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d)) {
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
-                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
+                    } else {
+                        const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: cpn });
+                        if (newPrice > 0) {
+                            item.row.update(Object.assign({
+                                cpn_pct: String(cpn),
+                                _cpn_pct_applied: cpn,
+                            }, chPromoSpricePatch(newPrice)));
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
+                        } else {
+                            item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                        }
                     }
                 } else {
                     const promo = { type: 'percent', value: cpn };
@@ -5897,7 +6048,8 @@
                         patch._appr_lmp = null;
                     }
                     // Cleared PRMT/CPN on Temu → S PRC = Std − remaining %
-                    if ((kind === 'prmt' || kind === 'cpn') && chPromoPrmtCpnComboEnabled()) {
+                    if ((kind === 'prmt' || kind === 'cpn') && chPromoPrmtCpnComboEnabled()
+                        && !chPromoTemuZeroSoldOwnsSprice(d) && !chPromoKeepZeroSoldPrcSprice(d)) {
                         const recalc = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     } else if (kind === 'prmt' && chPromoReverbComboEnabled() && !chPromoKeepZeroSoldPrcSprice(d)) {
@@ -5936,6 +6088,11 @@
                         d,
                         kind === 'prmt' ? { prmt: promo.value } : { cpn: promo.value }
                     );
+                } else if (chPromoPrmtCpnComboEnabled() && (kind === 'prmt' || kind === 'cpn')
+                    && (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d))) {
+                    // Keep Target-SGROI SPRICE; only store PRMT%/CPN%.
+                    base = 0;
+                    newPrice = null;
                 } else if (chPromoPrmtCpnComboEnabled() && (kind === 'prmt' || kind === 'cpn')) {
                     base = chPromoStdBase(d);
                     newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt'
@@ -6580,13 +6737,15 @@
                 const rowData = item.row.getData();
                 const plan = computeChannelPushPrcPlan(rowData);
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
-                const fill = chPromoPrmtCpnComboEnabled()
-                    ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
-                    : (chPromoReverbComboEnabled()
-                        ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
-                        : (chPromoEbayStdMinusPrmtCpnEnabled()
-                            ? (chPromoSpriceFromStdTPromo(rowData) || 0)
-                            : chPromoPlanSaleSprice(plan)));
+                const fill = (chPromoTemuZeroSoldOwnsSprice(rowData) || chPromoKeepZeroSoldPrcSprice(rowData))
+                    ? (chPromoZeroSoldTargetPrice(rowData) || chPromoGetSprice(rowData) || 0)
+                    : (chPromoPrmtCpnComboEnabled()
+                        ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
+                        : (chPromoReverbComboEnabled()
+                            ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
+                            : (chPromoEbayStdMinusPrmtCpnEnabled()
+                                ? (chPromoSpriceFromStdTPromo(rowData) || 0)
+                                : chPromoPlanSaleSprice(plan))));
                 if (!plan || !(fill > 0)) {
                     fail++;
                     next();

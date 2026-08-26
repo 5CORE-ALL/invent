@@ -27,7 +27,7 @@
     .summary-trend-dot.flat,
     .summary-trend-dot.none { background: #9ca3af; }
 </style>
-<script src="{{ asset('js/lmp-missing-badge.js') }}?v=3"></script>
+<script src="{{ asset('js/lmp-missing-badge.js') }}?v=4"></script>
 <script>
     window.LMP_MISSING_REPORT_URL = @json(route('lmp.missing.report'));
 </script>

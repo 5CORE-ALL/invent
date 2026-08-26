@@ -3326,6 +3326,7 @@
             $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#temu2-price-gt-lmp-badge', table.getData(), 'temu2', 'temu_price');
+                PriceGtLmpBadge.setOutline(document.getElementById('temu2-price-gt-lmp-badge'), priceGtLmpFilterActive);
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#temu2-price-lt80-lmp-badge', table.getData(), 'temu2', 'temu_price');
                 }
@@ -4536,7 +4537,10 @@
                 return;
             }
 
-            const parentFilter = $('#parent-filter').val() || 'parents';
+            let parentFilter = $('#parent-filter').val() || 'parents';
+            if (priceGtLmpFilterActive && parentFilter === 'parents') {
+                parentFilter = 'skus';
+            }
             const inventoryFilter = $('#inventory-filter').val();
             const tl30Filter = $('#tl30-filter').val();
             const growthSignFilter = $('#growth-sign-filter').val();
@@ -4830,17 +4834,56 @@
             } catch (e) {}
         }
 
+        function temu2ClearPriceGtLmpCompetingFilters() {
+            blueTriangleFilterActive = false;
+            priceLt80LmpFilterActive = false;
+            missingMFilterActive = false;
+            mapBadgeFilterActive = false;
+            notMapBadgeFilterActive = false;
+            $('#parent-filter').val('skus');
+            $('#nrl-filter').val('all');
+            $('#inventory-filter').val('more');
+            $('#tl30-filter').val('all');
+            $('#growth-sign-filter').val('all');
+            if ($('#gpft-filter').length) $('#gpft-filter').val('all');
+            if ($('#roi-filter').length) $('#roi-filter').val('all');
+            if ($('#cvr-filter').length) $('#cvr-filter').val('all');
+            $('#sku-search').val('');
+            $('#parent-search').val('');
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.setOutline(document.getElementById('temu2-price-lt80-lmp-badge'), false);
+            }
+            if (typeof syncTemu2TriangleBadgeState === 'function') syncTemu2TriangleBadgeState();
+        }
         if (window.PriceGtLmpBadge) {
             PriceGtLmpBadge.bind({
                 badge: '#temu2-price-gt-lmp-badge',
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) temu2ClearPriceGtLmpCompetingFilters();
+                    if (on && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
+                        stopPlayNavigation();
+                        return;
+                    }
                     applyFilters();
                 }
             });
         }
+        $('#temu2-price-gt-lmp-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot, .kpi-status-dot').length) return;
+            if (this.dataset.pglBound === '1') return;
+            priceGtLmpFilterActive = !priceGtLmpFilterActive;
+            if (priceGtLmpFilterActive) temu2ClearPriceGtLmpCompetingFilters();
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.setOutline(this, priceGtLmpFilterActive);
+            }
+            if (priceGtLmpFilterActive && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
+                stopPlayNavigation();
+                return;
+            }
+            applyFilters();
+        });
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.bind({
                 badge: '#temu2-price-lt80-lmp-badge',

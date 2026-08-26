@@ -12,7 +12,7 @@
     <span class="summary-trend-dot none" data-metric="price_lt80_lmp_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0
 </span>
 @once
-<script src="{{ asset('js/price-lt80-lmp-badge.js') }}?v=3"></script>
+<script src="{{ asset('js/price-lt80-lmp-badge.js') }}?v=4"></script>
 <script>
     window.PRICE_LT80_LMP_REPORT_URL = @json(route('price.lt80.lmp.report'));
 </script>

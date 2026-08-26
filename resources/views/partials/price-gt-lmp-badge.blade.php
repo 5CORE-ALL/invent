@@ -12,7 +12,7 @@
     <span class="summary-trend-dot none" data-metric="prc_gt_lmp_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0
 </span>
 @once
-<script src="{{ asset('js/price-gt-lmp-badge.js') }}?v=4"></script>
+<script src="{{ asset('js/price-gt-lmp-badge.js') }}?v=5"></script>
 @include('partials.sprice-lmp-cap-script')
 <script>
     window.PRICE_GT_LMP_REPORT_URL = @json(route('price.gt.lmp.report'));

@@ -3697,20 +3697,53 @@
                 }
             });
         }
+        function shopifyB2cClearPriceGtLmpCompetingFilters() {
+            blueTriangleFilterActive = false;
+            purpleTriangleFilterActive = false;
+            priceLt80LmpFilterActive = false;
+            lmpMissingFilterActive = false;
+            lessAmzFilterActive = false;
+            moreAmzFilterActive = false;
+            missingFilterActive = false;
+            $('#nrl-filter').val('all');
+            $('#sold-filter').val('all');
+            $('#gpft-filter').val('all');
+            $('#roi-filter').val('all');
+            $('#cvr-filter').val('all');
+            $('#inventory-filter').val('more');
+            $('#parent-filter').val('skus');
+            $('#sku-search').val('');
+            $('#parent-search').val('');
+            $('.column-filter[data-column="dil_percent"]').removeClass('active');
+            $('.column-filter[data-column="dil_percent"][data-color="all"]').addClass('active');
+            if (window.PriceLt80LmpBadge) {
+                PriceLt80LmpBadge.setOutline(document.getElementById('shopifyb2c-price-lt80-lmp-badge'), false);
+            }
+            if (window.LmpMissingBadge) {
+                LmpMissingBadge.setOutline(document.getElementById('shopifyb2c-lmp-missing-badge'), false);
+            }
+        }
         if (window.PriceGtLmpBadge) {
             PriceGtLmpBadge.bind({
                 badge: '#shopifyb2c-price-gt-lmp-badge',
                 getActive: function() { return priceGtLmpFilterActive; },
                 onToggle: function(on) {
                     priceGtLmpFilterActive = on;
-                    if (on) {
-                        blueTriangleFilterActive = false;
-                        purpleTriangleFilterActive = false;
-                    }
+                    if (on) shopifyB2cClearPriceGtLmpCompetingFilters();
                     applyFilters();
                 }
             });
         }
+        $('#shopifyb2c-price-gt-lmp-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot, .kpi-status-dot').length) return;
+            if (this.dataset.pglBound === '1') return;
+            priceGtLmpFilterActive = !priceGtLmpFilterActive;
+            if (priceGtLmpFilterActive) shopifyB2cClearPriceGtLmpCompetingFilters();
+            if (window.PriceGtLmpBadge) {
+                PriceGtLmpBadge.setOutline(this, priceGtLmpFilterActive);
+            }
+            applyFilters();
+        });
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.bind({
                 badge: '#shopifyb2c-price-lt80-lmp-badge',
@@ -3867,6 +3900,7 @@
             }
             if (window.PriceGtLmpBadge) {
                 PriceGtLmpBadge.update('#shopifyb2c-price-gt-lmp-badge', allData, 'shopifyb2c', 'Price');
+                PriceGtLmpBadge.setOutline(document.getElementById('shopifyb2c-price-gt-lmp-badge'), priceGtLmpFilterActive);
             }
             if (window.PriceLt80LmpBadge) {
                 PriceLt80LmpBadge.update('#shopifyb2c-price-lt80-lmp-badge', allData, 'shopifyb2c', 'Price');

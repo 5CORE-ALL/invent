@@ -5,8 +5,9 @@
         if (!row || typeof row !== 'object') return false;
         if (row.is_parent_summary || row.is_parent || row.is_parent_row) return true;
         if (Array.isArray(row._children) && row._children.length) return true;
-        var parent = String(row.Parent || row.parent || '').trim().toUpperCase();
-        return parent.indexOf('PARENT') === 0;
+        // Parent *name* is often "PARENT 10 FR" on child SKUs — that is not a parent row.
+        var sku = String(row['(Child) sku'] || row.sku || row.Sku || row.SKU || '').trim().toUpperCase();
+        return sku.indexOf('PARENT') !== -1;
     }
 
     function num(v) {
