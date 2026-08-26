@@ -543,7 +543,7 @@ class SalesOrderFulfillmentController extends Controller
                     'INV' => 0,
                     'label' => null,
                     'quantity' => (int) ($n['quantity'] ?? 1),
-                    'amount' => is_numeric($n['amount'] ?? null) ? (float) $n['amount'] : null,
+                    'amount' => $this->resolveNormalizedAmount($slug, $order, $n['amount'] ?? null),
                     'groi_pct' => $profitPctBySlug[$slug]['groi_pct'] ?? null,
                     'gpft_pct' => $profitPctBySlug[$slug]['gpft_pct'] ?? null,
                     'import_status' => (string) ($n['import_status'] ?? ''),
@@ -3585,7 +3585,10 @@ class SalesOrderFulfillmentController extends Controller
                 'sku' => (string) ($order->display_sku ?: $order->ext_code ?: $order->product_sku_id ?: ''),
                 'display_title' => (string) ($order->goods_name ?? ''),
                 'quantity' => (int) ($order->quantity ?? 1),
-                'amount' => $order->order_total_amount ?? $order->order_base_amount ?? null,
+                'amount' => $this->firstPositiveAmount(
+                    $order->order_base_amount ?? null,
+                    $order->order_total_amount ?? null
+                ),
                 // Prefer parent PO (matches Temu API / Sites order_id).
                 'order_id' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
                 'order_number' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
@@ -3698,6 +3701,156 @@ class SalesOrderFulfillmentController extends Controller
                 ];
             })(),
         };
+    }
+
+    /**
+     * Use the stored amount when it is &gt; 0; otherwise recover the original
+     * sale from line items / payload. Cancelled and refunded orders often store 0.
+     */
+    protected function resolveNormalizedAmount(string $slug, object $order, mixed $primary): ?float
+    {
+        $picked = $this->firstPositiveAmount($primary);
+        if ($picked !== null) {
+            return $picked;
+        }
+
+        return match ($slug) {
+            'amazon' => $this->amazonEffectiveAmount($order),
+            'temu', 'temu2' => $this->firstPositiveAmount(
+                $order->order_base_amount ?? null,
+                $order->order_total_amount ?? null,
+                $this->amountFromPayload($order->amount_raw_json ?? null),
+                $this->amountFromPayload($order->raw_json ?? null)
+            ),
+            'bestbuy', 'macy' => $this->firstPositiveAmount(
+                method_exists($order, 'lineAmount') ? $order->lineAmount() : null,
+                $order->unit_price ?? null,
+                isset($order->unit_price)
+                    ? ((float) $order->unit_price) * max(1, (int) ($order->quantity ?? 1))
+                    : null
+            ),
+            'wayfair' => $this->firstPositiveAmount(
+                $order->total_price ?? null,
+                isset($order->unit_price)
+                    ? ((float) $order->unit_price) * max(1, (int) ($order->quantity ?? 1))
+                    : null
+            ),
+            'doba' => $this->firstPositiveAmount(
+                $order->total_price ?? null,
+                $order->item_price ?? null,
+                isset($order->item_price)
+                    ? ((float) $order->item_price) * max(1, (int) ($order->quantity ?? 1))
+                    : null
+            ),
+            default => $this->firstPositiveAmount(
+                $order->amount ?? null,
+                $order->total_amount ?? null,
+                $order->total_price ?? null,
+                $order->order_total_amount ?? null,
+                $order->item_price ?? null,
+                $this->amountFromPayload($order->raw_payload ?? null)
+            ),
+        };
+    }
+
+    protected function amazonEffectiveAmount(object $order): ?float
+    {
+        $fromItems = 0.0;
+        if (method_exists($order, 'relationLoaded') && $order->relationLoaded('items')) {
+            foreach ($order->items as $item) {
+                $fromItems += (float) ($item->price ?? 0);
+            }
+        }
+
+        $raw = AmazonOrder::decodeRawPayload($order->raw_data ?? null);
+        $fromJson = $this->firstPositiveAmount(
+            data_get($raw, 'OrderTotal.Amount'),
+            data_get($raw, 'orderTotal.amount'),
+            data_get($raw, 'OrderTotal.amount')
+        );
+
+        return $this->firstPositiveAmount(
+            $order->total_amount ?? null,
+            $fromItems > 0 ? $fromItems : null,
+            $fromJson
+        );
+    }
+
+    protected function firstPositiveAmount(mixed ...$values): ?float
+    {
+        foreach ($values as $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (is_string($value)) {
+                $value = str_replace([',', '$', ' '], '', trim($value));
+            }
+            if (! is_numeric($value)) {
+                continue;
+            }
+            $n = round((float) $value, 2);
+            if ($n > 0) {
+                return $n;
+            }
+        }
+
+        return null;
+    }
+
+    protected function amountFromPayload(mixed $payload): ?float
+    {
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $direct = $this->firstPositiveAmount(
+            $payload['amount'] ?? null,
+            $payload['total'] ?? null,
+            $payload['total_amount'] ?? null,
+            $payload['order_total'] ?? null,
+            $payload['order_total_amount'] ?? null,
+            $payload['order_base_amount'] ?? null,
+            $payload['grand_total'] ?? null,
+            $payload['item_price'] ?? null,
+            $payload['itemPrice'] ?? null,
+            data_get($payload, 'OrderTotal.Amount'),
+            data_get($payload, 'orderTotal.amount'),
+            data_get($payload, 'pricingSummary.total'),
+            data_get($payload, 'pricingSummary.priceSubtotal'),
+            data_get($payload, 'paymentSummary.total'),
+            data_get($payload, 'lineItemCost.value'),
+            data_get($payload, 'totalFee.amount')
+        );
+        if ($direct !== null) {
+            return $direct;
+        }
+
+        $lines = $payload['lineItems'] ?? $payload['line_items'] ?? $payload['items'] ?? null;
+        if (! is_array($lines)) {
+            return null;
+        }
+        $sum = 0.0;
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $lineAmt = $this->firstPositiveAmount(
+                data_get($line, 'lineItemCost.value'),
+                $line['amount'] ?? null,
+                $line['total'] ?? null,
+                $line['item_price'] ?? null,
+                $line['price'] ?? null
+            );
+            if ($lineAmt !== null) {
+                $sum += $lineAmt;
+            }
+        }
+
+        return $sum > 0 ? round($sum, 2) : null;
     }
 
     /**

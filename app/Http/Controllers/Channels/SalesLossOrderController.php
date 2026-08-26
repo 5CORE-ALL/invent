@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
- * Sales Loss Order — cancelled / refunded / voided / lost marketplace orders.
+ * Sales Loss Order — all marketplace orders.
  * Same row shape as /sales-order-fulfillment All Order, without the 30-day default.
  */
 class SalesLossOrderController extends SalesOrderFulfillmentController
@@ -32,14 +32,18 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             ->values()
             ->all();
 
+        $tz = 'America/Los_Angeles';
+
         return view('channels.sales_loss_order', [
             'sloChannels' => $sloChannels,
+            'sloDateFrom' => now($tz)->subDays(30)->toDateString(),
+            'sloDateTo' => now($tz)->toDateString(),
         ]);
     }
 
     /**
-     * All sales-loss orders across enabled marketplaces.
-     * Date range is optional (date_from / date_to). Empty = all history.
+     * All marketplace orders (every status).
+     * Same 30-day default as /sales-order-fulfillment All Order.
      */
     public function data(): JsonResponse
     {
@@ -47,16 +51,16 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             @set_time_limit(120);
 
             $rows = $this->collectOrderRows(
-                function (string $slug) {
-                    $query = $this->lossOrdersQuery($slug);
-
-                    return $this->maybeScopeByRequestDates($query, $slug);
-                },
+                fn (string $slug) => $this->scopedToLast30Days($this->allOrdersQuery($slug), $slug),
                 false,
                 true
             );
             $rows = $this->attachNetProfitPctToRows($rows);
-            $rows = $this->attachCostShipDetailsToRows($rows);
+            try {
+                $rows = $this->attachCostShipDetailsToRows($rows);
+            } catch (\Throwable) {
+                // Keep orders even if product-master cost lookup fails.
+            }
 
             $amountTotal = 0.0;
             $channels = [];

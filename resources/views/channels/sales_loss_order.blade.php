@@ -531,16 +531,16 @@
                 <div class="card-body py-2">
                     <div id="slo-toolbar" class="mb-2">
                         <div id="slo-toolbar-row1" role="group" aria-label="Summary metrics">
-                            <span class="badge slo-summary-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Cancelled, refunded, voided, and lost orders">
-                                Loss Orders: <span id="slo-order-count">0</span>
+                            <span class="badge slo-summary-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="All marketplace orders">
+                                Orders: <span id="slo-order-count">0</span>
                             </span>
-                            <span class="badge bg-primary slo-summary-badge" style="color: white;" title="Channels with at least one loss order">
+                            <span class="badge bg-primary slo-summary-badge" style="color: white;" title="Channels with at least one order">
                                 Channels: <span id="slo-channel-count">0</span>
                             </span>
                             <span class="badge slo-summary-badge" style="background:#fff3cd; color:#856404; border:1px solid #ffe69c;" title="Sum of order amounts">
                                 Amount: <span id="slo-amount-total">0.00</span>
                             </span>
-                            <span class="badge slo-summary-badge is-active" id="slo-gpft-low-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Showing GPFT% under 10%. Click to show all.">
+                            <span class="badge slo-summary-badge" id="slo-gpft-low-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Click to filter GPFT% under 10%.">
                                 GPFT% &lt; 10: <span id="slo-gpft-low-count">0</span>
                             </span>
                             <span class="badge slo-summary-badge" id="slo-groi-low-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="Click to filter GROI% under 50%.">
@@ -553,14 +553,14 @@
                         <div id="slo-toolbar-row2">
                             <div class="slo-filter-field">
                                 <label class="visually-hidden" for="slo-date-from">From</label>
-                                <input type="date" id="slo-date-from" class="form-control form-control-sm" style="width:140px;" title="From date — leave blank for all">
+                                <input type="date" id="slo-date-from" class="form-control form-control-sm" style="width:140px;" title="From date" value="{{ $sloDateFrom ?? '' }}">
                             </div>
                             <div class="slo-filter-field">
                                 <label class="visually-hidden" for="slo-date-to">To</label>
-                                <input type="date" id="slo-date-to" class="form-control form-control-sm" style="width:140px;" title="To date — leave blank for all">
+                                <input type="date" id="slo-date-to" class="form-control form-control-sm" style="width:140px;" title="To date" value="{{ $sloDateTo ?? '' }}">
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="slo-apply-dates" title="Apply date filter">Apply</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="slo-clear-dates" title="Show all dates">All dates</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="slo-clear-dates" title="Reset to last 30 days">Last 30 days</button>
                             <div class="slo-filter-field">
                                 <label class="visually-hidden" for="slo-channel-filter">Channels</label>
                                 <div class="input-group input-group-sm" style="width:150px;">
@@ -595,7 +595,7 @@
                             <div id="slo-date-filter-hint">Dates shown as 1 Apr · time EST only</div>
                         </div>
                     </div>
-                    <p class="small text-muted mb-2">Cancelled, refunded, voided, and lost marketplace orders — all history unless a date range is set. Same columns as Sales Order Fulfillment → All Order.</p>
+                    <p class="small text-muted mb-2">All marketplace orders — every status. Defaults to the last 30 days, same as Sales Order Fulfillment → All Order.</p>
                     <div id="sales-loss-order-table" style="height: calc(100vh - 320px);"></div>
                 </div>
             </div>
@@ -732,7 +732,7 @@
         const hint = document.getElementById('slo-date-filter-hint');
         if (!hint) return;
         if (!p.date_from && !p.date_to) {
-            hint.textContent = 'Dates shown as 1 Apr · time EST only (all data)';
+            hint.textContent = 'Last 30 days · display EST';
         } else {
             hint.textContent = 'Filter: ' + (p.date_from || '…') + ' → ' + (p.date_to || 'today') + ' · display EST';
         }
@@ -1000,7 +1000,7 @@
         }
     }
 
-    let sloGpftLowFilter = true;
+    let sloGpftLowFilter = false;
     let sloGroiLowFilter = false;
 
     function sloIsGpftLow(row) {
@@ -1496,8 +1496,8 @@
     document.getElementById('slo-clear-dates')?.addEventListener('click', function () {
         const fromEl = document.getElementById('slo-date-from');
         const toEl = document.getElementById('slo-date-to');
-        if (fromEl) fromEl.value = '';
-        if (toEl) toEl.value = '';
+        if (fromEl) fromEl.value = @json($sloDateFrom ?? '');
+        if (toEl) toEl.value = @json($sloDateTo ?? '');
         sloUpdateDateHint();
         table.setData();
     });
