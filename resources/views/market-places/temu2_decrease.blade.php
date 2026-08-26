@@ -329,6 +329,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ asset('js/temu-view-data-upload.js') }}?v={{ @filemtime(public_path('js/temu-view-data-upload.js')) ?: 1 }}"></script>
 @endsection
 
 @section('content')
@@ -894,22 +895,28 @@
                     
                     <form id="uploadViewDataForm" action="{{ route('temu2.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
                         @csrf
+                        @if($errors->any())
+                            <div class="alert alert-danger py-2">
+                                {{ $errors->first() }}
+                            </div>
+                        @endif
                         <div class="mb-3">
                             <label for="viewDataFile" class="form-label fw-bold">
                                 <i class="fa fa-file-excel text-success me-1"></i>Choose View File(s)
                             </label>
-                            <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple required>
+                            <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple>
                             <div class="form-text">
                                 <i class="fa fa-info-circle text-info me-1"></i>
-                                Select <strong>multiple</strong> Seller Center daily exports (.xlsx / .xls / .csv / .tsv). Max 10MB each, up to 30 files.
+                                Select multiple Seller Center daily exports (.xlsx / .xls / .csv / .tsv). Max 10MB each.
+                                Click <strong>Choose files</strong> again to add more — they stay queued.
                                 Writes to <code>temu2_view_data</code> (separate from Temu 1).
                             </div>
-                            <div id="viewDataFileList" class="small text-muted mt-2"></div>
+                            <div id="viewDataFileList" class="small mt-2"></div>
+                            <div id="viewDataUploadStatus" class="alert py-2 px-3 mb-0 mt-2" style="display:none;"></div>
                         </div>
                         <div class="alert alert-warning">
                             <i class="fa fa-exclamation-triangle me-2"></i>
-                            <strong>Every upload TRUNCATES</strong> all existing rows in <code>temu2_view_data</code>, then inserts only the file(s) you select now.
-                            Multi-file in one upload are merged first (same Date + Goods ID → last wins).
+                            First batch replaces existing rows in <code>temu2_view_data</code>. Extra files merge (same Date + Goods ID → last wins).
                             <a href="{{ route('temu2.viewdata.sample') }}" class="alert-link">
                                 <i class="fa fa-download"></i> Download Sample File
                             </a>
@@ -4088,7 +4095,7 @@
                     hozAlign: "center",
                     minWidth: 88,
                     editor: "input",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4097,19 +4104,22 @@
                             const calc = chPromoSpriceFromStdTPromo(rowData);
                             if (calc > 0) value = calc;
                         }
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        if (cap && cap.shown > 0) value = cap.shown;
                         const live = parseFloat(rowData.temu_price) || 0;
-                        const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                        const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = lmp > 0 && value > lmp;
+                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
                             : formatted;
+                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -4134,7 +4144,9 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent) return '';
-                        const sprice = parseFloat(rowData.sprice) || 0;
+                        const sprice = window.SpriceLmpCap
+                            ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.sprice) || 0)
+                            : (parseFloat(rowData.sprice) || 0);
                         const pushBase = temuPushBaseFromSprice(sprice);
                         const pushStatus = rowData.push_status || null;
                         if (sprice <= 0 || pushBase == null || pushBase <= 0) return '';
@@ -4694,7 +4706,8 @@
                     if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const sprice = parseFloat(data.sprice) || 0;
                     const lmp = parseFloat(data.lmp) || 0;
-                    return sprice > 0 && lmp > 0 && sprice > lmp;
+                    if (window.SpriceLmpCap) return SpriceLmpCap.hasAlert(data, sprice);
+                    return sprice > 0 && lmp > 0 && sprice + 0.0001 >= lmp;
                 });
             }
 
@@ -6020,18 +6033,25 @@
             });
         });
 
-        $('#viewDataFile').on('change', function() {
-            const files = this.files || [];
-            const $list = $('#viewDataFileList');
-            if (!files.length) {
-                $list.text('');
-                return;
-            }
-            const names = Array.from(files).map(function(f, i) {
-                return (i + 1) + '. ' + f.name;
+        if (window.TemuViewDataUpload) {
+            TemuViewDataUpload.init({
+                formId: 'uploadViewDataForm',
+                inputId: 'viewDataFile',
+                listId: 'viewDataFileList',
+                statusId: 'viewDataUploadStatus',
+                onSuccess: function() {
+                    if (table) table.setData('/temu2-decrease-data');
+                }
             });
-            $list.html('<strong>' + files.length + ' file(s) selected:</strong><br>' + names.join('<br>'));
-        });
+        }
+        @if(session('success') || session('error') || $errors->any())
+        try {
+            var uploadViewModalEl = document.getElementById('uploadViewDataModal');
+            if (uploadViewModalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(uploadViewModalEl).show();
+            }
+        } catch (e) {}
+        @endif
 
         $('#startPricingUploadBtn').on('click', function() {
             const fileInput = document.getElementById('pricingFile');

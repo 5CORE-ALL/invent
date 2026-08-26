@@ -1316,6 +1316,7 @@
             const calc = chPromoSpriceFromStdTPromo(data);
             if (calc > 0) sprice = calc;
         }
+        if (window.SpriceLmpCap) sprice = SpriceLmpCap.prepare(data, sprice);
         return sprice;
     }
     function reverbHasBlueTriangle(data) {
@@ -2953,6 +2954,9 @@
         // SAVE SPRICE to database with retry
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
             const maxRetries = 3;
+            if (window.SpriceLmpCap && row && typeof row.getData === 'function') {
+                sprice = SpriceLmpCap.prepare(row.getData(), sprice);
+            }
             
             $.ajax({
                 url: '/reverb-save-sprice',
@@ -4191,7 +4195,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -4206,10 +4210,12 @@
                             const calc = chPromoSpriceFromStdTPromo(rowData);
                             if (calc > 0) value = calc;
                         }
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        if (cap && cap.shown > 0) value = cap.shown;
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData['RV Price']) || 0;
-                        const lmp = parseFloat(rowData.lmp_price) || 0;
+                        const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
                         
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
@@ -4220,15 +4226,16 @@
                         if (!(value > 0)) return '';
 
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = lmp > 0 && value > lmp;
+                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
+                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     },
                     width: 96
                 },

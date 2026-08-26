@@ -1454,6 +1454,26 @@
         }
         /** App base path (XAMPP subdir / public): root-relative "/ebay-data-json" would 404 */
         const EBAY_DATA_JSON_URL = @json(url('/ebay-data-json'));
+
+        /** Parse JSON even if PHP notices / a second payload were appended after the first value. */
+        function ebayParseAjaxJson(text) {
+            const raw = String(text == null ? '' : text);
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                const msg = String((e && e.message) || '');
+                const m = msg.match(/position\s+(\d+)/i);
+                if (m) {
+                    const pos = Number(m[1]);
+                    if (pos > 0) {
+                        try {
+                            return JSON.parse(raw.slice(0, pos));
+                        } catch (e2) { /* fall through */ }
+                    }
+                }
+                throw e;
+            }
+        }
         let skuMetricsChart = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
         let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views' | 'prmt' | 'cpn' | 'push_prc'
@@ -3427,12 +3447,19 @@
                 try { row.reformat(); } catch (e) { /* ignore */ }
             }
 
+            function ebay1SpriceAutoPushOn() {
+                if (typeof chPushSpriceAutoPushAllowed === 'function') return chPushSpriceAutoPushAllowed();
+                if (typeof chPromoPageReloadPushAllowed === 'function') return chPromoPageReloadPushAllowed();
+                return true;
+            }
+
             function ebay1SpriceSaveToast(sku, response) {
                 const live = response && response.ebay_price != null ? parseFloat(response.ebay_price) : NaN;
                 const liveTxt = (isFinite(live) && live > 0) ? ('$' + live.toFixed(2)) : '';
                 if (response && (response.price_push_status === 'skipped' || response.SPRICE_STATUS === 'saved' || response.SPRICE_STATUS === 'queued')) {
-                    showToast('success', 'S PRC saved — eBay push queued (page close OK)'
-                        + (sku ? (' for ' + sku) : ''));
+                    showToast('success', ebay1SpriceAutoPushOn()
+                        ? ('S PRC saved — eBay push queued (page close OK)' + (sku ? (' for ' + sku) : ''))
+                        : ('S PRC saved' + (sku ? (' for ' + sku) : '') + ' — auto-push is off'));
                     return;
                 }
                 if (response && response.price_push_success) {
@@ -3849,6 +3876,24 @@
             // Event delegation for eye button clicks (add to SKU column formatter)
             table = new Tabulator("#ebay-table", {
                 ajaxURL: EBAY_DATA_JSON_URL,
+                ajaxRequestFunc: function(url, config, params) {
+                    const qs = params ? new URLSearchParams(params).toString() : '';
+                    const href = qs ? (url + (String(url).indexOf('?') >= 0 ? '&' : '?') + qs) : url;
+                    return fetch(href, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin'
+                    }).then(function(res) {
+                        return res.text().then(function(text) {
+                            if (!res.ok) {
+                                throw new Error('Data load failed (' + res.status + ')');
+                            }
+                            return ebayParseAjaxJson(text);
+                        });
+                    });
+                },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 rowHeight: 36,
@@ -4789,18 +4834,20 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. Never stored. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP. Dot = vs last recorded S PRC.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const sprice = (typeof chPromoLiveSprice === 'function')
+                            let sprice = (typeof chPromoLiveSprice === 'function')
                                 ? chPromoLiveSprice(rowData)
                                 : 0;
                             if (!(sprice > 0)) {
                                 return '';
                             }
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
+                            if (cap && cap.shown > 0) sprice = cap.shown;
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
 
@@ -4840,12 +4887,16 @@
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
 
+                            const atOrAboveLmp = cap ? cap.alert : (lmp > 0 && sprice + 0.0001 >= lmp);
                             let priceHtml = formattedValue;
-                            if (lmp > 0 && sprice > lmp) {
+                            if (atOrAboveLmp) {
                                 priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
                             }
+                            const redTri = atOrAboveLmp
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + Number(lmp).toFixed(2) + '"></i>')
+                                : '';
 
-                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${blueTri}${dotBtn}</span>`;
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${redTri}${blueTri}${dotBtn}</span>`;
                         },
                         cellClick: function(e) {
                             const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
@@ -5560,14 +5611,17 @@
                     });
                 }
 
-                // Sprice/LMP: "Red" keeps only rows where SPRICE is shown in red (SPRICE > LMP).
+                // Sprice/LMP: "Red" keeps only rows where S PRC ≥ LMP (capped, red triangle).
                 if (spriceLmpFilter === 'red') {
                     table.addFilter(function(data) {
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
                             return true;
-                        const sprice = parseFloat(data.SPRICE) || 0;
+                        const sprice = (typeof ebay1RowSpriceForAlert === 'function')
+                            ? ebay1RowSpriceForAlert(data)
+                            : (parseFloat(data.SPRICE) || 0);
+                        if (window.SpriceLmpCap) return SpriceLmpCap.hasAlert(data, sprice);
                         const lmp = parseFloat(data.lmp_price) || 0;
-                        return sprice > 0 && lmp > 0 && sprice > lmp;
+                        return sprice > 0 && lmp > 0 && sprice + 0.0001 >= lmp;
                     });
                 }
 

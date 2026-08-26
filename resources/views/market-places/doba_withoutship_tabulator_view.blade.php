@@ -2216,7 +2216,7 @@
                             min: 0,
                             step: 0.01
                         },
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
@@ -2225,19 +2225,22 @@
                                 const calc = chPromoSpriceFromStdTPromo(rowData);
                                 if (calc > 0) value = calc;
                             }
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                            if (cap && cap.shown > 0) value = cap.shown;
                             const live = parseFloat(rowData.self_pick_price || rowData['doba Price']) || 0;
-                            const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
+                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                             if (!(value > 0)) return '';
                             const formatted = '$' + value.toFixed(2);
-                            const overLmp = lmp > 0 && value > lmp;
+                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                             const priceHtml = overLmp
                                 ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
                                 : `<span style="color:#000;font-weight:600;">${formatted}</span>`;
+                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                         }
                     },
                     {

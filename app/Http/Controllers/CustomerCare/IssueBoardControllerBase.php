@@ -550,6 +550,7 @@ abstract class IssueBoardControllerBase extends Controller
             'issue_date'           => ['issue_date', 'issue date', 'date'],
             'department'           => ['department', 'dept'],
             'order_number'         => ['order_number', 'order id', 'order_id', 'order #'],
+            'total_loss'           => ['total_loss', 'loss', 'loss $', 'loss$'],
         ];
         $map = array_merge($map, $this->csvImportColumnMap());
 
@@ -713,5 +714,34 @@ abstract class IssueBoardControllerBase extends Controller
         });
 
         return response()->json(['message' => 'Hold issue archived successfully.']);
+    }
+
+    /**
+     * Inline-edit endpoint for the Loss $ column on every ISSUES board.
+     * Empty string clears the stored override so the cell can fall back
+     * to the Amazon listing price when one exists.
+     */
+    public function updateTotalLoss(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'total_loss')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+
+        $validated = $request->validate(['total_loss' => 'nullable|numeric']);
+        $raw = $request->input('total_loss');
+        $value = ($raw === null || $raw === '') ? null : (float) $validated['total_loss'];
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['total_loss' => $value, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'total_loss' => $value]);
     }
 }

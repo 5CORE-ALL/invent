@@ -5,16 +5,16 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
-use App\Models\ProductMaster;
-use App\Models\ShopifySku;
 use App\Services\Amazon\AmazonBidUtilizationService;
+use App\Services\AmazonAdsPauseRuleApplicator;
+use App\Support\AmazonAdsCampaignSkuMetrics;
+use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
@@ -57,6 +57,9 @@ class AmazonAdsController extends Controller
             'id', 'level', 'campaignName', 'campaign_id', 'ad_group_id', 'keywordText', 'matchType', 'state',
         ],
     ];
+
+    /** Inv / ovl30 / dil / price from /amazon-tabulator-view, shown after campaignName. */
+    private const SKU_METRIC_DISPLAY_COLUMNS = ['Inv', 'ovl30', 'dil', 'price'];
 
     /**
      * SP and SB campaign raw tables: hide noisy Amazon metric / audit columns on Amazon Ads All (keep ids, cost, CPC block, L-spends, Sold/Prchase, BGT/SBGT, ACOS, SL 30).
@@ -150,9 +153,9 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Columns sent to the Amazon Ads All DataTables, including computed utilization % after `campaignName`
+     * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `bgt` follows `campaignName`; `sbgt` follows `bgt` when the table has campaign budget.
+     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `sbgt` follows `bgt` when the table has campaign budget.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -216,6 +219,32 @@ class AmazonAdsController extends Controller
             $idxCn = array_search('campaignName', $ordered, true);
             if ($idxCn !== false) {
                 array_splice($ordered, $idxCn + 1, 0, ['bgt']);
+            }
+        }
+
+        // Stat immediately before BGT on Amazon Ads All.
+        if (in_array('campaignStatus', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'campaignStatus'));
+            $idxBgtForStat = array_search('bgt', $ordered, true);
+            if ($idxBgtForStat !== false) {
+                array_splice($ordered, $idxBgtForStat, 0, ['campaignStatus']);
+            } else {
+                $idxCnStat = array_search('campaignName', $ordered, true);
+                if ($idxCnStat !== false) {
+                    array_splice($ordered, $idxCnStat + 1, 0, ['campaignStatus']);
+                } else {
+                    $ordered[] = 'campaignStatus';
+                }
+            }
+        }
+
+        // Rule Status immediately after Stat (SP/SB campaign reports only).
+        if (($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')
+            && in_array('campaignStatus', $ordered, true)) {
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ruleStatus'));
+            $idxStatForRule = array_search('campaignStatus', $ordered, true);
+            if ($idxStatForRule !== false) {
+                array_splice($ordered, $idxStatForRule + 1, 0, ['ruleStatus']);
             }
         }
 
@@ -369,18 +398,15 @@ class AmazonAdsController extends Controller
         if ($table === 'amazon_sb_campaign_reports') {
             $spOrder = self::displayColumnsForTable('amazon_sp_campaign_reports');
             $have = array_flip($ordered);
+            foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
+                $have[$skuCol] = true;
+            }
+            unset($have['INV']);
             $filtered = [];
             foreach ($spOrder as $c) {
                 if (isset($have[$c])) {
                     $filtered[] = $c;
                 }
-            }
-            // SB-only: inventory from product_master → shopify_skus.inv, keyed by campaign name (HL-style SKU match).
-            $idxCnSb = array_search('campaignName', $filtered, true);
-            if ($idxCnSb !== false) {
-                array_splice($filtered, $idxCnSb + 1, 0, ['INV']);
-            } else {
-                $filtered[] = 'INV';
             }
             $idxL1Sb = array_search('L1spend', $filtered, true);
             if ($idxL1Sb !== false) {
@@ -388,6 +414,32 @@ class AmazonAdsController extends Controller
             }
 
             return $filtered;
+        }
+
+        if ($table === 'amazon_sp_campaign_reports') {
+            return self::withSkuMetricColumnsAfterCampaignName($ordered);
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Inv / ovl30 / dil / price from /amazon-tabulator-view, immediately after campaign name.
+     *
+     * @param  list<string>  $ordered
+     * @return list<string>
+     */
+    private static function withSkuMetricColumnsAfterCampaignName(array $ordered): array
+    {
+        $ordered = array_values(array_filter(
+            $ordered,
+            static fn (string $c): bool => ! in_array($c, self::SKU_METRIC_DISPLAY_COLUMNS, true) && $c !== 'INV'
+        ));
+        $idx = array_search('campaignName', $ordered, true);
+        if ($idx !== false) {
+            array_splice($ordered, $idx + 1, 0, self::SKU_METRIC_DISPLAY_COLUMNS);
+        } else {
+            array_push($ordered, ...self::SKU_METRIC_DISPLAY_COLUMNS);
         }
 
         return $ordered;
@@ -513,161 +565,6 @@ class AmazonAdsController extends Controller
     private static function roundAmazonAdsDisplayNumericFields(array &$arr, array $displayColumns): void
     {
         // Intentionally empty: money/totals are sent at full numeric precision; the grid formats them.
-    }
-
-    /**
-     * CP master / ADVMasters-style: SUM(shopify_skus.inv) for rows where sku is not PARENT and parent matches key.
-     *
-     * @param  Collection<int, ProductMaster>  $productMasterRows
-     * @return array<string, float>
-     */
-    private static function buildInventorySumByParentKeyFromProductMasterRows(Collection $productMasterRows): array
-    {
-        $childSkus = [];
-        foreach ($productMasterRows as $pm) {
-            $s = trim((string) ($pm->sku ?? ''));
-            if ($s === '' || str_starts_with(strtoupper($s), 'PARENT')) {
-                continue;
-            }
-            $childSkus[] = $s;
-        }
-        $shopifyByPmSku = ShopifySku::mapByProductSkus(array_values(array_unique($childSkus)));
-        $totals = [];
-        foreach ($productMasterRows as $pm) {
-            $s = trim((string) ($pm->sku ?? ''));
-            if ($s === '' || str_starts_with(strtoupper($s), 'PARENT')) {
-                continue;
-            }
-            $pKey = strtoupper(trim((string) ($pm->parent ?? '')));
-            if ($pKey === '') {
-                continue;
-            }
-            $rec = $shopifyByPmSku->get($s);
-            $totals[$pKey] = ($totals[$pKey] ?? 0) + (float) ($rec?->inv ?? 0);
-        }
-
-        return $totals;
-    }
-
-    /**
-     * Memoized resolver: SB `campaignName` → INV aligned with CP master.
-     * Campaign ↔ SKU match: HL-style exact / HEAD / longest substring.
-     * `PARENT …` SKUs use sum of children’s Shopify inv by `product_master.parent` (not the synthetic parent’s shopify row).
-     *
-     * @return \Closure(?string): ?int
-     */
-    private static function buildSbInvByCampaignNameResolver(): \Closure
-    {
-        $allPm = ProductMaster::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get(['sku', 'parent']);
-        $pmSkus = $allPm->pluck('sku')->map(static fn ($s) => (string) $s)->unique()->values()->all();
-        $shopifyByPmSku = ShopifySku::mapByProductSkus($pmSkus);
-        $inventoryByParent = self::buildInventorySumByParentKeyFromProductMasterRows($allPm);
-        $parentSkuToFamilyKey = [];
-        foreach ($allPm as $pm) {
-            $s = trim((string) ($pm->sku ?? ''));
-            if ($s === '' || ! str_starts_with(strtoupper($s), 'PARENT')) {
-                continue;
-            }
-            $normSku = preg_replace('/\s+/', ' ', strtoupper($s));
-            $parentCol = trim((string) ($pm->parent ?? ''));
-            if ($parentCol !== '') {
-                $parentSkuToFamilyKey[$normSku] = preg_replace('/\s+/', ' ', strtoupper($parentCol));
-            } else {
-                $rest = trim(preg_replace('/^PARENT\s+/i', '', $s) ?? '');
-                $parentSkuToFamilyKey[$normSku] = $rest === ''
-                    ? $normSku
-                    : preg_replace('/\s+/', ' ', strtoupper($rest));
-            }
-        }
-        usort($pmSkus, static fn (string $a, string $b): int => strlen((string) $b) <=> strlen((string) $a));
-        $memo = [];
-
-        return static function (?string $campaignName) use ($pmSkus, $shopifyByPmSku, $inventoryByParent, $parentSkuToFamilyKey, &$memo): ?int {
-            if ($campaignName === null || trim($campaignName) === '') {
-                return null;
-            }
-            $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($campaignName)));
-            if ($cleanName === '') {
-                return null;
-            }
-            if (array_key_exists($cleanName, $memo)) {
-                return $memo[$cleanName];
-            }
-            $matchedSkus = [];
-            foreach ($pmSkus as $sku) {
-                $cleanSku = preg_replace('/\s+/', ' ', strtoupper((string) $sku));
-                if ($cleanSku === '') {
-                    continue;
-                }
-                $expected1 = $cleanSku;
-                $expected2 = $cleanSku.' HEAD';
-                if ($cleanName === $expected1 || $cleanName === $expected2) {
-                    $matchedSkus[] = (string) $sku;
-                }
-            }
-            $skusToSum = [];
-            if ($matchedSkus !== []) {
-                $skusToSum = array_values(array_unique($matchedSkus));
-            } else {
-                $bestLen = 0;
-                $bestSkus = [];
-                foreach ($pmSkus as $sku) {
-                    $cleanSku = preg_replace('/\s+/', ' ', strtoupper((string) $sku));
-                    if ($cleanSku === '' || ! str_contains($cleanName, $cleanSku)) {
-                        continue;
-                    }
-                    $len = strlen($cleanSku);
-                    if ($len > $bestLen) {
-                        $bestLen = $len;
-                        $bestSkus = [(string) $sku];
-                    } elseif ($len === $bestLen && $len > 0) {
-                        $bestSkus[] = (string) $sku;
-                    }
-                }
-                $skusToSum = array_values(array_unique($bestSkus));
-            }
-            if ($skusToSum === []) {
-                $memo[$cleanName] = null;
-
-                return null;
-            }
-            $sum = 0;
-            $any = false;
-            foreach ($skusToSum as $sku) {
-                $trimSku = trim($sku);
-                if ($trimSku === '') {
-                    continue;
-                }
-                if (str_starts_with(strtoupper($trimSku), 'PARENT')) {
-                    $normParentSku = preg_replace('/\s+/', ' ', strtoupper($trimSku));
-                    $fam = $parentSkuToFamilyKey[$normParentSku] ?? null;
-                    if ($fam !== null) {
-                        $sum += (int) round($inventoryByParent[$fam] ?? 0);
-                        $any = true;
-
-                        continue;
-                    }
-                }
-                $row = $shopifyByPmSku->get($sku);
-                if ($row === null) {
-                    continue;
-                }
-                $inv = $row->inv;
-                if ($inv === null || $inv === '') {
-                    continue;
-                }
-                $n = (int) $inv;
-                $sum += $n;
-                $any = true;
-            }
-            $out = $any ? $sum : null;
-            $memo[$cleanName] = $out;
-
-            return $out;
-        };
     }
 
     /**
@@ -2680,6 +2577,7 @@ class AmazonAdsController extends Controller
             'defaultReportRangeDates' => $defaultReportRangeDates,
             'amazonAdsBgtRule' => AmazonAcosSbgtRule::resolvedRule(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
+            'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
         ]);
     }
 
@@ -2785,6 +2683,71 @@ class AmazonAdsController extends Controller
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', '0');
+    }
+
+    /**
+     * Current Pricing / Dil% / ACOS% pause-or-activate rule (Amazon Ads Pause Rule modal).
+     */
+    public function getPauseRule(): JsonResponse
+    {
+        AmazonAdsPauseRule::forgetResolvedCache();
+
+        return response()->json([
+            'rule' => AmazonAdsPauseRule::resolvedRule(),
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Persist pause-rule bands. When `apply` is true, also pause/enable matching SP+SB campaigns on Amazon.
+     */
+    public function savePauseRule(Request $request): JsonResponse
+    {
+        try {
+            $normalized = AmazonAdsPauseRule::normalizeRule($request->all());
+            AmazonAdsPauseRule::persistRule($normalized);
+            AmazonAdsPauseRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save Pause Rule.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        $freshRule = AmazonAdsPauseRule::resolvedRule();
+        $payload = [
+            'message' => 'Pause Rule saved. Rule Status on the grid uses the new bands after reload.',
+            'rule' => $freshRule,
+            'status' => 200,
+            'timestamp' => time(),
+        ];
+
+        if ($request->boolean('apply')) {
+            try {
+                $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
+                $payload['message'] = 'Pause Rule saved and applied to Amazon. Campaigns stay ENABLED unless they match a Pause band.';
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => 'Pause Rule saved, but Amazon apply failed.',
+                    'error' => $e->getMessage(),
+                    'rule' => $freshRule,
+                    'status' => 500,
+                ], 500);
+            }
+        }
+
+        return response()->json($payload)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
     /**
@@ -3162,8 +3125,26 @@ class AmazonAdsController extends Controller
 
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
-        $needSbInv = $table === 'amazon_sb_campaign_reports' && in_array('INV', $columns, true);
-        $sbInvByName = $needSbInv ? self::buildSbInvByCampaignNameResolver() : null;
+        $needRuleStatus = in_array('ruleStatus', $columns, true);
+        $needSkuMetrics = $needRuleStatus;
+        foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
+            if (in_array($skuCol, $columns, true)) {
+                $needSkuMetrics = true;
+                break;
+            }
+        }
+        $pauseRule = $needRuleStatus ? AmazonAdsPauseRule::resolvedRule() : null;
+        $skuMetricsByCampaign = [];
+        if ($needSkuMetrics) {
+            $ruleNames = [];
+            foreach ($rows as $ruleRow) {
+                $cn = trim((string) (((array) $ruleRow)['campaignName'] ?? ''));
+                if ($cn !== '') {
+                    $ruleNames[] = $cn;
+                }
+            }
+            $skuMetricsByCampaign = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($ruleNames);
+        }
         $sbHasSpendOrCost = in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true);
         $needSbL1Cpc = $table === 'amazon_sb_campaign_reports'
             && in_array('clicks', $dbColumns, true)
@@ -3259,9 +3240,34 @@ class AmazonAdsController extends Controller
                 }
                 unset($arr['campaignBudgetAmount']);
             }
-            if ($sbInvByName !== null) {
-                $cnInv = $rowArr['campaignName'] ?? null;
-                $arr['INV'] = $sbInvByName(is_string($cnInv) ? $cnInv : null);
+            if ($needSkuMetrics) {
+                $cnSku = trim((string) ($rowArr['campaignName'] ?? ''));
+                $mSku = ($cnSku !== '' && isset($skuMetricsByCampaign[$cnSku]))
+                    ? $skuMetricsByCampaign[$cnSku]
+                    : [
+                        'sku' => '',
+                        'price' => null,
+                        'dil' => null,
+                        'inv' => null,
+                        'l30' => null,
+                        'ovl30' => null,
+                        'lmp_price' => null,
+                    ];
+                if (in_array('Inv', $columns, true)) {
+                    $arr['Inv'] = $mSku['inv'];
+                }
+                if (in_array('ovl30', $columns, true)) {
+                    $arr['ovl30'] = $mSku['ovl30'];
+                }
+                if (in_array('dil', $columns, true)) {
+                    $invForDil = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
+                    $ovlForDil = isset($mSku['ovl30']) && is_numeric($mSku['ovl30']) ? (float) $mSku['ovl30'] : null;
+                    $arr['dil'] = AmazonAdsCampaignSkuMetrics::tabulatorDil($invForDil, $ovlForDil);
+                }
+                if (in_array('price', $columns, true)) {
+                    $arr['price'] = $mSku['price'];
+                    $arr['lmp_price'] = $mSku['lmp_price'] ?? null;
+                }
             }
             if (in_array('Prchase', $columns, true)
                 && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true))) {
@@ -3352,6 +3358,28 @@ class AmazonAdsController extends Controller
                 $arr['Cvr'] = ($scv !== null && $ccv !== null && $ccv > 0)
                     ? round(($scv / $ccv) * 100, 2)
                     : null;
+            }
+            if ($needRuleStatus && $pauseRule !== null) {
+                $cnRule = trim((string) ($rowArr['campaignName'] ?? ''));
+                $mRule = $skuMetricsByCampaign[$cnRule] ?? ['price' => null, 'dil' => null];
+                $acosForRule = $arr['ACOS'] ?? null;
+                if ($acosForRule === null && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
+                    $acosRowRule = $rowArr;
+                    if (array_key_exists('cost', $arr)) {
+                        $acosRowRule['cost'] = $arr['cost'];
+                    }
+                    if (array_key_exists('sales30d', $arr)) {
+                        $acosRowRule['sales30d'] = $arr['sales30d'];
+                    }
+                    $acosForRule = self::computedAcosPercentFromReportRow($acosRowRule, $dbColumns);
+                }
+                $decision = AmazonAdsPauseRule::decide($pauseRule, [
+                    'price' => $mRule['price'] ?? null,
+                    'dil' => $mRule['dil'] ?? null,
+                    'acos' => is_numeric($acosForRule) ? (float) $acosForRule : null,
+                ]);
+                $arr['ruleStatus'] = $decision['status'];
+                $arr['ruleStatusTip'] = $decision['reason'];
             }
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);

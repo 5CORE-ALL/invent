@@ -712,6 +712,7 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ asset('js/temu-ads-color-rules.js') }}?v={{ @filemtime(public_path('js/temu-ads-color-rules.js')) ?: 15 }}"></script>
+    <script src="{{ asset('js/temu-view-data-upload.js') }}?v={{ @filemtime(public_path('js/temu-view-data-upload.js')) ?: 1 }}"></script>
 @endsection
 
 @section('content')
@@ -772,23 +773,14 @@
                               title="Click to filter 0 sold items (INV>0)">0 Sold 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'temu-price-gt-lmp-badge', 'pglChannelKey' => 'temu', 'pglPriceField' => 'temu_price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu-price-lt80-lmp-badge', 'pltChannelKey' => 'temu', 'pltPriceField' => 'temu_price'])
-                        {{-- "Views" badge (formerly "Green Alert") removed per product request.
-                             temuIsGreenAlert() helper, greenAlertCount, and the cell-color
-                             logic on the Temu Price column stay so the green coloring on
-                             individual rows still works. Click-to-filter via the badge is
-                             gone with the badge; filter via toolbar dropdowns instead. --}}
-                        {{-- "Alert" badge (formerly "Red Alert"): opposite of the Views/Green-Alert
-                             badge — Temu is uncompetitive (at/above every competitor threshold). --}}
-                        <span id="temu-red-alert-badge"
-                              class="badge text-center"
-                              style="background-color: #a00211; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Click to filter rows where Temu Price &ge; Amz × 0.85 AND &ge; eBay 1 × 0.90 AND &ge; eBay 2 × 0.90 (uncompetitive)"
-                              aria-label="Alert — uncompetitive Temu pricing"><i class="fas fa-triangle-exclamation"></i> 0</span>
+                        {{-- "Views" badge (formerly "Green Alert") and "Alert" badge (formerly
+                             "Red Alert") removed per product request. temuIsGreenAlert() /
+                             temuIsRedAlert() and Temu Price cell colors stay. --}}
                         <span id="temu-sprice-lmp-alert-badge"
                               class="badge text-center"
                               style="background-color: #dc3545; color: white !important; font-weight:700; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="S PRC triangle alert — S PRC &gt; LMP. Click to show only those rows."
-                              aria-label="S PRC greater than LMP"><i class="fas fa-exclamation-triangle"></i> S PRC 0</span>
+                              title="S PRC triangle alert — S PRC ≥ LMP (capped at LMP). Click to show only those rows."
+                              aria-label="S PRC at or above LMP"><i class="fas fa-exclamation-triangle"></i> S PRC 0</span>
 
                         <!-- Pricing & Performance -->
                         {{-- "Total Views" + "Total Sold" badges removed per product request.
@@ -1528,20 +1520,27 @@
 
                     <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
                         @csrf
+                        @if($errors->any())
+                            <div class="alert alert-danger py-2">
+                                {{ $errors->first() }}
+                            </div>
+                        @endif
                         <div class="mb-3">
                             <label for="viewDataFile" class="form-label fw-bold">
                                 <i class="fas fa-file-excel text-success me-1"></i>Choose View File(s)
                             </label>
-                            <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple required>
+                            <input type="file" class="form-control" id="viewDataFile" name="files[]" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple>
                             <div class="form-text">
-                                Select <strong>multiple</strong> Seller Center daily exports (.xlsx / .xls / .csv / .tsv). Max 10MB each.
+                                Select multiple Seller Center daily exports (.xlsx / .xls / .csv / .tsv). Max 10MB each.
+                                Click <strong>Choose files</strong> again to add more — they stay queued.
                                 Writes to <code>temu_view_data</code> — this drives the <strong>Views</strong> column.
                             </div>
-                            <div id="viewDataFileList" class="small text-muted mt-2"></div>
+                            <div id="viewDataFileList" class="small mt-2"></div>
+                            <div id="viewDataUploadStatus" class="alert py-2 px-3 mb-0 mt-2" style="display:none;"></div>
                         </div>
                         <div class="alert alert-info mb-0">
                             <i class="fas fa-info-circle me-1"></i>
-                            Every upload replaces existing Temu 1 view data. Multi-file rows merge (same Date + Goods ID → last wins).
+                            First batch replaces existing Temu 1 view data. Extra files merge (same Date + Goods ID → last wins).
                             <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
                                 <i class="fas fa-download"></i> Download Sample
                             </a>
@@ -2385,6 +2384,193 @@
     let badgeChartFirstSeriesStats = null;
     let currentBadgeChartMetricKey = '';
     let currentBadgeChartLabel = '';
+    let temuTableBuilt = false;
+
+    function badgeChartValueFmt(metricKey, v) {
+        var n = Number(v);
+        if (metricKey === 'total_sales' || metricKey === 'total_spend') return '$' + (n % 1 !== 0 ? n.toFixed(2) : Math.round(n).toLocaleString('en-US'));
+        if (metricKey === 'avg_cvr_pct') return n.toFixed(2) + '%';
+        if (metricKey === 'avg_views') return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        return Math.round(n).toLocaleString('en-US');
+    }
+
+    function initBadgeTrendChart() {
+        const canvas = document.getElementById('badgeTrendChartCanvas');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const ctx = canvas.getContext('2d');
+        const medianLinePlugin = {
+            id: 'badgeMedianLine',
+            afterDraw(chart) {
+                if (!badgeChartFirstSeriesStats || badgeChartFirstSeriesStats.median === undefined) return;
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const cctx = chart.ctx;
+                const yPixel = yScale.getPixelForValue(badgeChartFirstSeriesStats.median);
+                cctx.save();
+                cctx.setLineDash([6, 4]);
+                cctx.strokeStyle = '#6c757d';
+                cctx.lineWidth = 1.2;
+                cctx.beginPath();
+                cctx.moveTo(xScale.left, yPixel);
+                cctx.lineTo(xScale.right, yPixel);
+                cctx.stroke();
+                cctx.restore();
+            }
+        };
+        const valueLabelsPlugin = {
+            id: 'badgeValueLabels',
+            afterDatasetsDraw(chart) {
+                if (!chart.data.datasets.length) return;
+                const dataset = chart.data.datasets[0];
+                const meta = chart.getDatasetMeta(0);
+                const cctx = chart.ctx;
+                cctx.save();
+                cctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                cctx.textAlign = 'center';
+                cctx.textBaseline = 'bottom';
+                const valueFmt = (badgeChartFirstSeriesStats && badgeChartFirstSeriesStats.valueFmt) ? badgeChartFirstSeriesStats.valueFmt : function(v) { return badgeChartValueFmt(currentBadgeChartMetricKey, v); };
+                const labelColors = badgeChartFirstSeriesStats && badgeChartFirstSeriesStats.labelColors ? badgeChartFirstSeriesStats.labelColors : [];
+                meta.data.forEach((point, i) => {
+                    const val = dataset.data[i];
+                    if (val == null) return;
+                    const offsetY = (i % 2 === 0) ? -7 : -14;
+                    cctx.fillStyle = labelColors[i] || '#6c757d';
+                    cctx.fillText(valueFmt(val), point.x, point.y + offsetY);
+                });
+                cctx.restore();
+            }
+        };
+        badgeTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Value',
+                    data: [],
+                    borderColor: '#0dcaf0',
+                    backgroundColor: 'rgba(13, 202, 240, 0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.3,
+                    fill: true,
+                    spanGaps: true
+                }]
+            },
+            plugins: [medianLinePlugin, valueLabelsPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    title: { display: false },
+                    tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        titleFont: { size: 10 },
+                        bodyFont: { size: 10 },
+                        padding: 6,
+                        callbacks: {
+                            label: function(context) {
+                                const v = context.parsed.y;
+                                if (v == null) return '';
+                                return (badgeChartFirstSeriesStats && badgeChartFirstSeriesStats.valueFmt ? badgeChartFirstSeriesStats.valueFmt(v) : badgeChartValueFmt(currentBadgeChartMetricKey, v));
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        ticks: { font: { size: 9 }, callback: function(v) {
+                            return badgeChartValueFmt(currentBadgeChartMetricKey, v);
+                        } }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadBadgeChartData(metricKey, metricLabel, days) {
+        currentBadgeChartMetricKey = metricKey || currentBadgeChartMetricKey;
+        currentBadgeChartLabel = metricLabel || currentBadgeChartLabel;
+        days = days || parseInt($('#badgeTrendChartDays').val(), 10) || 30;
+        $('#badgeTrendChartLoading').show();
+        $('#badgeTrendChartContainer').hide();
+        $('#badgeTrendChartNoData').hide();
+        fetch('/temu-badge-history?days=' + encodeURIComponent(days))
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                $('#badgeTrendChartLoading').hide();
+                if (!badgeTrendChart) return;
+                var data = res.data || [];
+                var key = currentBadgeChartMetricKey;
+                if (!data.length) {
+                    badgeChartFirstSeriesStats = null;
+                    $('#badgeTrendChartHigh, #badgeTrendChartMed, #badgeTrendChartLow').text('-');
+                    badgeTrendChart.data.labels = [];
+                    badgeTrendChart.data.datasets[0].data = [];
+                    badgeTrendChart.update('active');
+                    $('#badgeTrendChartContainer').hide();
+                    $('#badgeTrendChartNoData').show();
+                    return;
+                }
+                $('#badgeTrendChartNoData').hide();
+                $('#badgeTrendChartContainer').show();
+                var labels = data.map(function(d) { return d.record_date; });
+                var values = data.map(function(d) { return Number(d[key]) || 0; });
+                var refFmt = function(v) { return badgeChartValueFmt(key, v); };
+                function statsForArr(arr) {
+                    var valid = arr.filter(function(v) { return v != null && !isNaN(v); });
+                    if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                    var min = Math.min.apply(null, valid);
+                    var max = Math.max.apply(null, valid);
+                    var sorted = valid.slice().sort(function(a, b) { return a - b; });
+                    var mid = Math.floor(sorted.length / 2);
+                    var median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                    return { min: min, max: max, median: median };
+                }
+                var s0 = statsForArr(values);
+                var refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                $('#badgeTrendChartHigh').text(refFmt(s0.max)).css('color', refRed);
+                $('#badgeTrendChartMed').text(refFmt(s0.median)).css('color', refGray);
+                $('#badgeTrendChartLow').text(refFmt(s0.min)).css('color', refGreen);
+                $('#badgeTrendChartRefLabel').text(currentBadgeChartLabel);
+                var dotColors = values.map(function(v, i) {
+                    if (i === 0) return refGray;
+                    return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
+                });
+                var labelColors = values.map(function(v) { return v === 0 ? refGreen : v > 0 ? refRed : refGray; });
+                badgeChartFirstSeriesStats = { values: values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors: dotColors, labelColors: labelColors, valueFmt: refFmt };
+                badgeTrendChart.data.labels = labels;
+                badgeTrendChart.data.datasets[0].data = values;
+                badgeTrendChart.data.datasets[0].pointBackgroundColor = dotColors;
+                badgeTrendChart.data.datasets[0].pointBorderColor = dotColors;
+                badgeTrendChart.data.datasets[0].pointBorderWidth = 1.5;
+                var range = (s0.max - s0.min) || Math.max(Math.abs(s0.min) * 0.1, 1);
+                if (badgeTrendChart.options.scales && badgeTrendChart.options.scales.y) {
+                    badgeTrendChart.options.scales.y.min = Math.max(0, s0.min - range * 0.1);
+                    badgeTrendChart.options.scales.y.max = s0.max + range * 0.1;
+                }
+                badgeTrendChart.update('active');
+            })
+            .catch(function() {
+                $('#badgeTrendChartLoading').hide();
+                badgeChartFirstSeriesStats = null;
+                $('#badgeTrendChartHigh, #badgeTrendChartMed, #badgeTrendChartLow').text('-');
+                $('#badgeTrendChartContainer').hide();
+                $('#badgeTrendChartNoData').show();
+            });
+    }
 
     // Average Views chart
     let avgViewsChart = null;
@@ -2999,6 +3185,7 @@
                     sprice = temuStemuPriceToSprice(res.stemuPrice);
                 }
                 if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
+                sprice = temuPrepareSpriceForSave(rd, sprice);
                 rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
             });
 
@@ -3130,7 +3317,6 @@
         // dropdown (which the 0 Sold badge below just toggles).
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
-        let redAlertFilterActive = false;
         let spriceLmpAlertFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
@@ -3140,17 +3326,6 @@
         $('#zero-sold-count-badge').on('click', function() {
             const next = $('#sold-filter').val() === 'zero' ? 'all' : 'zero';
             $('#sold-filter').val(next);
-            applyFilters();
-        });
-
-        // Red Alert badge toggle — filters to only rows where temuIsRedAlert(rd) is true
-        // (Temu uncompetitive). Mutually exclusive with Green Alert by construction, but
-        // users can toggle either filter independently; if both are on, the intersection
-        // is empty so the table shows no rows — that's a feature, not a bug.
-        $('#temu-red-alert-badge').on('click', function() {
-            redAlertFilterActive = !redAlertFilterActive;
-            $(this).css('outline', redAlertFilterActive ? '3px solid #ffc107' : '');
-            $(this).css('outline-offset', redAlertFilterActive ? '2px' : '');
             applyFilters();
         });
 
@@ -3233,8 +3408,10 @@
         // Retry function for saving SPRICE
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
             return new Promise((resolve, reject) => {
-                if (row) {
-                    row.update({ sprice_status: 'processing' });
+                const rowData = row && typeof row.getData === 'function' ? row.getData() : (row || {});
+                sprice = temuPrepareSpriceForSave(rowData, sprice);
+                if (row && typeof row.update === 'function') {
+                    row.update({ sprice: sprice, sprice_status: 'processing' });
                 }
                 
                 $.ajax({
@@ -3567,7 +3744,7 @@
                 });
         }
 
-        function temuDisplayedSprice(row) {
+        function temuRawSprice(row) {
             const n = parseFloat(row && row.sprice);
             if (isFinite(n) && n > 0) return n;
             return typeof temuSpriceFromStdPrmtCvr === 'function'
@@ -3575,14 +3752,28 @@
                 : 0;
         }
 
+        function temuPrepareSpriceForSave(rowData, sprice) {
+            let s = parseFloat(sprice);
+            if (!(s > 0)) return s;
+            const lmp = typeof getRowLmpL1 === 'function' ? (getRowLmpL1(rowData) || 0) : 0;
+            if (lmp > 0 && s >= lmp) s = lmp;
+            return +Number(s).toFixed(2);
+        }
+
+        function temuDisplayedSprice(row) {
+            return temuPrepareSpriceForSave(row, temuRawSprice(row)) || 0;
+        }
+
         function temuSpriceHasLmpAlert(row) {
             if (!row || (typeof isTemuParentRow === 'function' && isTemuParentRow(row))) return false;
-            const sprice = temuDisplayedSprice(row);
-            if (!(sprice > 0)) return false;
+            const raw = temuRawSprice(row);
+            const shown = temuDisplayedSprice(row);
+            if (!(raw > 0) && !(shown > 0)) return false;
             const lmp = typeof getRowLmpL1 === 'function'
                 ? (getRowLmpL1(row) || 0)
                 : (parseFloat(row.lmp) || 0);
-            return lmp > 0 && sprice > lmp;
+            if (!(lmp > 0)) return false;
+            return raw + 0.0001 >= lmp || shown + 0.0001 >= lmp;
         }
 
         /**
@@ -3639,7 +3830,7 @@
                     skipped++;
                     return;
                 }
-                const sprice = temuSpriceFromStdPrmtCvr(d);
+                const sprice = temuPrepareSpriceForSave(d, temuSpriceFromStdPrmtCvr(d));
                 if (!(sprice > 0)) {
                     skipped++;
                     return;
@@ -3876,7 +4067,6 @@
             let lessAmzCount = 0;
             let moreAmzCount = 0;
             let greenAlertCount = 0;
-            let redAlertCount = 0;
             let spriceLmpAlertCount = 0;
             let matchGreenCount = 0;
             let matchRedCount = 0;
@@ -3951,14 +4141,9 @@
                     zeroSoldCount++;
                 }
 
-                // Green Alert: same rule the formatter uses (Temu Price < Amazon × 0.85)
-                // or < eBay × 0.90 or < eBay 2 × 0.90). Count drives the toolbar badge.
+                // Green Alert count kept for any leftover toolbar wiring; Red Alert badge is gone.
                 if (temuIsGreenAlert(row)) {
                     greenAlertCount++;
-                }
-                // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
-                if (temuIsRedAlert(row)) {
-                    redAlertCount++;
                 }
                 if (temuSpriceHasLmpAlert(row)) {
                     spriceLmpAlertCount++;
@@ -4064,8 +4249,6 @@
                     PriceLt80LmpBadge.update('#temu-price-lt80-lmp-badge', table.getData(), 'temu', 'temu_price');
                 }
             }
-            // Use .html() so the FontAwesome <i> renders; .text() would HTML-escape it.
-            $('#temu-red-alert-badge').html('<i class="fas fa-triangle-exclamation"></i> ' + redAlertCount.toLocaleString());
             $('#temu-sprice-lmp-alert-badge').html('<i class="fas fa-exclamation-triangle"></i> S PRC ' + spriceLmpAlertCount.toLocaleString());
             $('.match-filter-green-label').text('Green (' + matchGreenCount.toLocaleString() + ')');
             $('.match-filter-red-label').text('Red (' + matchRedCount.toLocaleString() + ')');
@@ -4314,7 +4497,7 @@
             paginationSizeSelector: [25, 50, 100, 200, 500, 1000, true],
             paginationCounter: "rows",
             initialSort: [
-                {column: "cvr_percent", dir: "asc"}
+                {column: "cvr_30", dir: "asc"}
             ],
             ajaxResponse: function(url, params, response) {
                 if (temuTableErrorEl) temuTableErrorEl.classList.add('d-none');
@@ -5153,15 +5336,20 @@
                         const lmp = typeof getRowLmpL1 === 'function'
                             ? (getRowLmpL1(rowData) || 0)
                             : (parseFloat(rowData.lmp) || 0);
-                        const overLmp = lmp > 0 && sprice > lmp;
+                        const atOrAboveLmp = typeof temuSpriceHasLmpAlert === 'function'
+                            ? temuSpriceHasLmpAlert(rowData)
+                            : (lmp > 0 && sprice + 0.0001 >= lmp);
+                        if (lmp > 0 && sprice + 0.0001 >= lmp) {
+                            sprice = +Number(lmp).toFixed(2);
+                        }
 
-                        const alertHtml = overLmp
-                            ? '<i class="fas fa-exclamation-triangle temu-sprice-lmp-alert" title="S PRC $'
-                                + sprice.toFixed(2) + ' &gt; LMP $' + Number(lmp).toFixed(2) + '"></i>'
+                        const alertHtml = atOrAboveLmp
+                            ? '<i class="fas fa-exclamation-triangle temu-sprice-lmp-alert" title="S PRC capped at LMP $'
+                                + Number(lmp).toFixed(2) + '"></i>'
                             : '';
                         let color = '';
                         if (sameAsPrice) color = '#ffc107';
-                        else if (overLmp) color = '#dc3545';
+                        else if (atOrAboveLmp) color = '#dc3545';
                         const priceHtml = color
                             ? '<span style="color:' + color + ';font-weight:600;">$' + sprice.toFixed(2) + '</span>'
                             : ('$' + sprice.toFixed(2));
@@ -5179,7 +5367,9 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent) return '';
-                        const sprice = parseFloat(rowData.sprice) || 0;
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
                         const pushBase = temuPushBaseFromSprice(sprice);
                         const pushStatus = rowData.push_status || null;
                         if (sprice <= 0 || pushBase == null || pushBase <= 0) return '';
@@ -5827,13 +6017,6 @@
             } else if (soldFilter === 'sold') {
                 table.addFilter(function(data) {
                     return (parseInt(data['temu_l30']) || 0) > 0;
-                });
-            }
-
-            // Red Alert badge filter — opposite (Temu uncompetitive).
-            if (redAlertFilterActive) {
-                table.addFilter(function(data) {
-                    return temuIsRedAlert(data);
                 });
             }
 
@@ -6682,7 +6865,7 @@
                     return;
                 }
                 
-                const newSprice = parseFloat(cellValue);
+                let newSprice = parseFloat(cellValue);
                 
                 // Check if the parsed value is a valid number
                 if (isNaN(newSprice)) {
@@ -6696,6 +6879,8 @@
                     cell.restoreOldValue();
                     return;
                 }
+
+                newSprice = temuPrepareSpriceForSave(data, newSprice);
                 
                 row.update({ sprice: newSprice, push_status: null });
                 row.reformat();
@@ -6725,8 +6910,11 @@
             const sku = data.sku;
             const goodsId = data.goods_id || '';
             const skuId = data.sku_id || '';
-            // Always convert from stored SPRICE (same rule as /price-increase)
-            const fromSprice = temuPushBaseFromSprice(data.sprice);
+            // Push from S PRC capped at LMP (same value shown in the S PRC column).
+            const cappedSprice = typeof temuDisplayedSprice === 'function'
+                ? temuDisplayedSprice(data)
+                : (parseFloat(data.sprice) || 0);
+            const fromSprice = temuPushBaseFromSprice(cappedSprice);
             const raw = parseFloat(price);
             let pushPrice = fromSprice;
             if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
@@ -6782,7 +6970,9 @@
                 return String(r.getData().sku || '') === String(sku);
             });
             if (!row) return;
-            const sprice = parseFloat(row.getData().sprice) || 0;
+            const sprice = typeof temuDisplayedSprice === 'function'
+                ? temuDisplayedSprice(row.getData())
+                : (parseFloat(row.getData().sprice) || 0);
             const pushBase = temuPushBaseFromSprice(sprice);
             if (pushBase == null || pushBase <= 0) {
                 showToast('Cannot push — invalid or negative S Temu B Prc', 'error');
@@ -6807,7 +6997,9 @@
             table.getRows('active').forEach(function(row) {
                 const d = row.getData();
                 if (d.is_parent) return;
-                const sprice = parseFloat(d.sprice) || 0;
+                const sprice = typeof temuDisplayedSprice === 'function'
+                    ? temuDisplayedSprice(d)
+                    : (parseFloat(d.sprice) || 0);
                 const pushBase = temuPushBaseFromSprice(sprice);
                 if (sprice > 0 && pushBase != null && pushBase > 0 && d.push_status !== 'pushed') {
                     items.push({ row: row, price: sprice, sku: d.sku, pushBase: pushBase });
@@ -7182,8 +7374,10 @@
         }
 
         table.on('tableBuilt', function() {
+            temuTableBuilt = true;
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
+            updateCampaignPeriodUi();
         });
 
         table.on('dataLoaded', function(data) {
@@ -7288,21 +7482,43 @@
             });
         })();
 
+        function temuColumnsReady() {
+            if (temuTableBuilt) return true;
+            if (!table || typeof table.getColumns !== 'function') return false;
+            const cols = table.getColumns() || [];
+            if (!cols.length) return false;
+            temuTableBuilt = true;
+            return true;
+        }
+
+        function temuColumnByField(field) {
+            if (!temuColumnsReady()) return null;
+            const cols = table.getColumns(true) || table.getColumns() || [];
+            for (let i = 0; i < cols.length; i++) {
+                const col = cols[i];
+                if (col && typeof col.getField === 'function' && col.getField() === field) {
+                    return col;
+                }
+            }
+            return null;
+        }
+
         function updateCampaignPeriodUi() {
             const isL7 = currentCampaignPeriod === 'L7';
             $('#export-btn').prop('disabled', isL7).toggleClass('disabled', isL7);
+            if (!temuColumnsReady()) return;
 
-            const temuSalesCol = table.getColumn('temu_l30');
+            const temuSalesCol = temuColumnByField('temu_l30');
             if (temuSalesCol) {
                 temuSalesCol.updateDefinition({
                     title: isL7 ? 'Temu L7' : 'Temu L30',
                 });
             }
-            const ovlCol = table.getColumn('ovl30');
+            const ovlCol = temuColumnByField('ovl30');
             if (ovlCol) {
                 ovlCol.updateDefinition({ title: isL7 ? 'OVL7' : 'OVL30' });
             }
-            const cvr30Col = table.getColumn('cvr_30');
+            const cvr30Col = temuColumnByField('cvr_30');
             if (cvr30Col) {
                 cvr30Col.updateDefinition({ title: isL7 ? 'CVR 7' : 'CVR 30' });
             }
@@ -7346,18 +7562,27 @@
             table.download("csv", "temu_decrease_data_l30.csv");
         });
 
-        $('#viewDataFile').on('change', function() {
-            const files = this.files || [];
-            const $list = $('#viewDataFileList');
-            if (!files.length) {
-                $list.text('');
-                return;
-            }
-            const names = Array.from(files).map(function(f, i) {
-                return (i + 1) + '. ' + f.name;
+        if (window.TemuViewDataUpload) {
+            TemuViewDataUpload.init({
+                formId: 'uploadViewDataForm',
+                inputId: 'viewDataFile',
+                listId: 'viewDataFileList',
+                statusId: 'viewDataUploadStatus',
+                onSuccess: function() {
+                    if (typeof reloadTemuDecreaseAfterViews === 'function') {
+                        reloadTemuDecreaseAfterViews();
+                    }
+                }
             });
-            $list.html('<strong>' + files.length + ' file(s) selected:</strong><br>' + names.join('<br>'));
-        });
+        }
+        @if(session('success') || session('error') || $errors->has('files') || $errors->has('files.0') || $errors->any())
+        try {
+            var uploadViewModalEl = document.getElementById('uploadViewDataModal');
+            if (uploadViewModalEl && window.bootstrap) {
+                bootstrap.Modal.getOrCreateInstance(uploadViewModalEl).show();
+            }
+        } catch (e) {}
+        @endif
 
         // Seller Center Views scrape / JSON import → temu_view_data
         function showScrapeViewStatus(obj) {
@@ -7565,8 +7790,6 @@
             $('#badgeTrendChartSuffix').text('(Rolling L' + days + ')');
             loadBadgeChartData(currentBadgeChartMetricKey, currentBadgeChartLabel, days);
         });
-
-        updateCampaignPeriodUi();
     });
 </script>
 @endsection

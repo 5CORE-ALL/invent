@@ -286,8 +286,8 @@
                         </button>
                     </div>
                 </div>
-                <div id="newegg-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
-                    <div id="newegg-pricing-table" style="flex: 1;"></div>
+                <div id="newegg-table-wrapper" style="height: calc(100vh - 200px); min-height: 480px; display: flex; flex-direction: column;">
+                    <div id="newegg-pricing-table" style="flex: 1; min-height: 480px; width: 100%;"></div>
                 </div>
             </div>
         </div>
@@ -1020,17 +1020,27 @@
             initSkuLinkLmpModal();
 
             table = new Tabulator("#newegg-pricing-table", {
-                ajaxURL: "{{ route('newegg.pricing.data') }}",
+                ajaxURL: "/newegg-pricing-data",
                 ajaxSorting: false,
+                height: "100%",
                 layout: "fitData",
                 responsiveLayout: false,
                 pagination: true,
+                paginationMode: "local",
                 paginationSize: 100,
                 paginationSizeSelector: [10, 25, 50, 100, 200],
                 paginationCounter: "rows",
                 placeholder: "No Data Available",
                 ajaxResponse: function(url, params, response) {
-                    return Array.isArray(response) ? response : (response.data || []);
+                    if (Array.isArray(response)) return response;
+                    if (response && Array.isArray(response.data)) return response.data;
+                    if (response && response.data && Array.isArray(response.data.data)) return response.data.data;
+                    console.warn('Newegg pricing: unexpected ajax payload', response);
+                    return [];
+                },
+                ajaxError: function(error) {
+                    const msg = (error && error.statusText) ? error.statusText : 'Failed to load Newegg pricing data';
+                    showToast(msg, 'error');
                 },
                 initialSort: [{ column: "l30", dir: "desc" }],
                 columns: [
@@ -1292,8 +1302,11 @@
                             if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
+                            if (cap && cap.shown > 0) value = cap.shown;
+                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const formatted = '$' + value.toFixed(2);
-                            const overLmp = lmp > 0 && value > lmp;
                             const priceHtml = overLmp
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
                                 : formatted;
@@ -2303,9 +2316,11 @@
             table.on('tableBuilt', function() {
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
-                applyNeFilters();
             });
-            table.on('dataLoaded', updateSummary);
+            table.on('dataLoaded', function() {
+                applyNeFilters();
+                updateSummary();
+            });
             table.on('dataProcessed', updateSummary);
             table.on('dataFiltered', function() { updateSummary(); updateSelectAllCheckbox(); });
             table.on('renderComplete', updateSelectAllCheckbox);

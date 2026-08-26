@@ -1157,6 +1157,15 @@
             return base + shipCost;
         }
 
+        function amazonCapSpriceToLmp(rowData, sprice) {
+            if (window.SpriceLmpCap) return SpriceLmpCap.prepare(rowData, sprice, lmpWithShipping);
+            const lmp = lmpWithShipping(rowData);
+            let s = parseFloat(sprice);
+            if (!(s > 0)) return s;
+            if (lmp > 0 && s + 0.0001 >= lmp) s = lmp;
+            return +Number(s).toFixed(2);
+        }
+
         /**
          * INV vs INV_AMZ map tolerance — same rule as /map-issues:
          * when 3% of INV is below 3 units, require an absolute gap > 3 units to be a mismatch;
@@ -3280,7 +3289,7 @@
                 selectedSkus.forEach(sku => {
                     const row = tableData.find(r => r['(Child) sku'] === sku);
                     if (row) {
-                        const sprice = parseFloat(row.SPRICE) || 0;
+                        const sprice = amazonCapSpriceToLmp(row, parseFloat(row.SPRICE) || 0);
                         if (sprice > 0) {
                             const asin = (row.asin != null && String(row.asin).trim() !== '') ? String(row.asin).trim() : null;
                             skusToProcess.push({ sku: sku, price: sprice, asin: asin });
@@ -3603,7 +3612,7 @@
                             if (mode !== 'same' && newPrice.toFixed(2) === originalPrice.toFixed(2)) {
                                 newPrice = roundToRetailPrice49(newPrice);
                             }
-                            const newPriceNum = parseFloat(newPrice.toFixed(2));
+                            const newPriceNum = amazonCapSpriceToLmp(row.getData(), parseFloat(newPrice.toFixed(2)));
                             
                             // Update SPRICE via AJAX
                             $.ajax({
@@ -5502,33 +5511,47 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
-                        headerTooltip: "Red = reduced, Yellow = hold, Green = increase vs Amz price",
+                        headerTooltip: "Red = reduced, Yellow = hold, Green = increase vs Amz price. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
-                            const sprice = parseFloat(value) || 0;
+                            let sprice = parseFloat(value) || 0;
 
                             if (!value || sprice <= 0) return '';
 
+                            const cap = window.SpriceLmpCap
+                                ? SpriceLmpCap.apply(rowData, sprice, lmpWithShipping)
+                                : null;
+                            const atOrAboveLmp = cap
+                                ? cap.alert
+                                : (lmpWithShipping(rowData) > 0 && sprice + 0.0001 >= lmpWithShipping(rowData));
+                            if (cap && cap.shown > 0) sprice = cap.shown;
+                            else if (atOrAboveLmp) sprice = amazonCapSpriceToLmp(rowData, sprice);
+
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
+                            const redTri = atOrAboveLmp
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>')
+                                : '';
 
-                            // When SPRICE matches Amazon price, show "-" (hold) instead of the same dollar amount
-                            if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                            // When SPRICE matches Amazon price and is below LMP, show "-" (hold)
+                            if (!atOrAboveLmp && currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
                                 return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                     dot + '<span style="color:#adb5bd;" title="Same as Amz price">-</span></span>';
                             }
 
                             let formattedValue = '$' + sprice.toFixed(2);
-                            if (hasCustomSprice === false) {
+                            if (atOrAboveLmp) {
+                                formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
+                            } else if (hasCustomSprice === false) {
                                 formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
                             }
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + '</span>';
+                                dot + formattedValue + redTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -6231,6 +6254,8 @@
                     });
                 } else if (field === 'SPRICE') {
                     const sku = data['(Child) sku'];
+                    value = amazonCapSpriceToLmp(data, value);
+                    row.update({ SPRICE: value });
                     $.ajax({
                         url: '/save-amazon-sprice',
                         method: 'POST',

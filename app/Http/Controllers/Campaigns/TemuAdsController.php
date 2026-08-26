@@ -464,15 +464,36 @@ class TemuAdsController extends Controller
 
     public function getColorRules(TemuAdsAutoPauseService $pause)
     {
-        return response()->json([
-            'l7_clicks_red_below' => $pause->l7ClicksRedBelow(),
-            'target_roas_bidding' => $pause->targetRoasBidding(),
-            'pause_run_slabs' => $this->pauseRunSlabs(),
-            'pause_run_inv_zero' => $this->pauseRunInvZero(),
-            'roas_rule_slabs' => $this->roasRuleSlabs(),
-            'auto_pause_cron' => $pause->cronEnabled(),
-            'matching_active_ads' => count($pause->matchingAds()),
-        ]);
+        try {
+            $matching = 0;
+            try {
+                $matching = count($pause->matchingAds());
+            } catch (\Throwable $e) {
+                Log::warning('Temu ads color-rules matching count failed: '.$e->getMessage());
+            }
+
+            return response()->json([
+                'l7_clicks_red_below' => $pause->l7ClicksRedBelow(),
+                'target_roas_bidding' => $pause->targetRoasBidding(),
+                'pause_run_slabs' => $this->pauseRunSlabs(),
+                'pause_run_inv_zero' => $this->pauseRunInvZero(),
+                'roas_rule_slabs' => $this->roasRuleSlabs(),
+                'auto_pause_cron' => $pause->cronEnabled(),
+                'matching_active_ads' => $matching,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Temu ads color-rules failed: '.$e->getMessage());
+
+            return response()->json([
+                'l7_clicks_red_below' => 70,
+                'target_roas_bidding' => 8.0,
+                'pause_run_slabs' => $this->defaultPauseRunSlabs(),
+                'pause_run_inv_zero' => true,
+                'roas_rule_slabs' => $this->defaultRoasRuleSlabs(),
+                'auto_pause_cron' => true,
+                'matching_active_ads' => 0,
+            ]);
+        }
     }
 
     public function saveColorRules(Request $request, TemuAdsAutoPauseService $pause)

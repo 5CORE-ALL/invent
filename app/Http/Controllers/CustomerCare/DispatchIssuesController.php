@@ -208,7 +208,6 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'order_number'            => isset($validated['order_number']) ? trim((string) $validated['order_number']) : null,
             'refund_amount'           => $isRefund && isset($validated['refund_amount']) ? (float) $validated['refund_amount'] : null,
             'refund_type'             => $isRefund && in_array($rtype, ['partial', 'full'], true) ? $rtype : null,
-            'total_loss'              => isset($validated['total_loss']) ? (float) $validated['total_loss'] : null,
             'tracking_number'         => $tn !== '' ? $tn : null,
             'issue_link'              => $il !== '' ? $il : null,
             'replacement_sku'         => $isReplacement && $rsku !== '' ? $rsku : null,
@@ -273,6 +272,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 ? trim((string) $validated['department_other_note'])
                 : '';
             $payload['department_other_note'] = ($hasOther && $otherNote !== '') ? $otherNote : null;
+        }
+
+        if (request()->exists('total_loss')) {
+            $lossRaw = request()->input('total_loss');
+            $payload['total_loss'] = ($lossRaw === null || $lossRaw === '') ? null : (float) $lossRaw;
         }
 
         return $payload;

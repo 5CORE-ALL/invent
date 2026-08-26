@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuDataView;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
@@ -2821,6 +2822,12 @@ class TemuController extends Controller
     private function buildTemuDecreaseDataResponse(Request $request, bool $isTemu2Pricing)
     {
         try {
+            // This payload is ~5MB / ~250MB peak (Product Master + orders + ads + Amazon SP).
+            // Apache's default memory_limit is 128M, which fatals before the catch and
+            // shows as a 500 with an empty Tabulator table.
+            @ini_set('memory_limit', '512M');
+            @set_time_limit(180);
+
             $selectedPeriod = strtoupper((string) $request->query('period', 'L30'));
             if (!in_array($selectedPeriod, ['L30', 'L7'], true)) {
                 $selectedPeriod = 'L30';
@@ -4869,16 +4876,17 @@ class TemuController extends Controller
     public function uploadTemuViewData(Request $request)
     {
         try {
-            $result = $this->replaceTemuViewTableFromUploads('temu_view_data', $this->collectTemuViewUploadFiles($request));
-
-            return back()->with(
-                'success',
-                "Truncated old temu_view_data ({$result['deleted']} rows). Imported {$result['imported']} new record(s) from {$result['files']} file(s). ({$result['skipped']} skipped)"
+            $result = $this->replaceTemuViewTableFromUploads(
+                'temu_view_data',
+                $this->collectTemuViewUploadFiles($request),
+                ! $request->boolean('merge')
             );
+
+            return $this->temuViewUploadResult($request, $result, 'temu_view_data');
         } catch (\Exception $e) {
             Log::error('Error uploading Temu view data: '.$e->getMessage());
 
-            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+            return $this->temuViewUploadError($request, $e);
         }
     }
 
@@ -5198,16 +5206,17 @@ class TemuController extends Controller
     public function uploadTemu2ViewData(Request $request)
     {
         try {
-            $result = $this->replaceTemuViewTableFromUploads('temu2_view_data', $this->collectTemuViewUploadFiles($request));
-
-            return back()->with(
-                'success',
-                "Truncated old temu2_view_data ({$result['deleted']} rows). Imported {$result['imported']} new record(s) from {$result['files']} file(s). ({$result['skipped']} skipped)"
+            $result = $this->replaceTemuViewTableFromUploads(
+                'temu2_view_data',
+                $this->collectTemuViewUploadFiles($request),
+                ! $request->boolean('merge')
             );
+
+            return $this->temuViewUploadResult($request, $result, 'temu2_view_data');
         } catch (\Exception $e) {
             Log::error('Error uploading Temu 2 view data: '.$e->getMessage());
 
-            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+            return $this->temuViewUploadError($request, $e);
         }
     }
 
@@ -5218,27 +5227,38 @@ class TemuController extends Controller
     {
         $request->validate([
             'file' => 'nullable|file|max:10240',
-            'files' => 'nullable|array|max:40',
+            'files' => 'nullable|array|max:60',
             'files.*' => 'file|max:10240',
+            'merge' => 'nullable|boolean',
         ]);
 
         $uploadFiles = [];
-        if ($request->hasFile('files')) {
-            foreach ((array) $request->file('files') as $f) {
-                if ($f) {
+        $raw = $request->file('files');
+        if ($raw instanceof UploadedFile) {
+            $uploadFiles[] = $raw;
+        } elseif (is_array($raw)) {
+            array_walk_recursive($raw, static function ($f) use (&$uploadFiles) {
+                if ($f instanceof UploadedFile) {
                     $uploadFiles[] = $f;
                 }
-            }
+            });
         }
         if ($request->hasFile('file')) {
-            $uploadFiles[] = $request->file('file');
+            $single = $request->file('file');
+            if ($single instanceof UploadedFile) {
+                $uploadFiles[] = $single;
+            }
         }
+        $uploadFiles = array_values(array_filter($uploadFiles));
         if ($uploadFiles === []) {
-            throw new \RuntimeException('Choose one or more view data files to upload.');
+            throw new \RuntimeException('Choose one or more view data files to upload. PHP only accepts 20 files per request — use the page uploader, which splits automatically.');
         }
 
         $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
         foreach ($uploadFiles as $f) {
+            if (! $f->isValid()) {
+                throw new \RuntimeException('Upload failed for "'.$f->getClientOriginalName().'": '.$f->getErrorMessage());
+            }
             $ext = strtolower((string) $f->getClientOriginalExtension());
             if (! in_array($ext, $allowed, true)) {
                 throw new \RuntimeException('Invalid file type for "'.$f->getClientOriginalName().'". Use .xlsx, .xls, .csv, or .tsv.');
@@ -5248,11 +5268,50 @@ class TemuController extends Controller
         return $uploadFiles;
     }
 
+    private function temuViewUploadWantsJson(Request $request): bool
+    {
+        return $request->expectsJson() || $request->ajax();
+    }
+
+    /**
+     * @param  array{imported:int,skipped:int,files:int,deleted:int,replaced:bool}  $result
+     */
+    private function temuViewUploadResult(Request $request, array $result, string $table)
+    {
+        if (! empty($result['replaced'])) {
+            $message = "Replaced {$table} ({$result['deleted']} old rows). Imported {$result['imported']} record(s) from {$result['files']} file(s). ({$result['skipped']} skipped)";
+        } else {
+            $message = "Merged {$result['imported']} record(s) from {$result['files']} file(s) into {$table}. ({$result['skipped']} skipped)";
+        }
+
+        if ($this->temuViewUploadWantsJson($request)) {
+            return response()->json(array_merge($result, [
+                'success' => true,
+                'message' => $message,
+            ]));
+        }
+
+        return back()->with('success', $message);
+    }
+
+    private function temuViewUploadError(Request $request, \Throwable $e)
+    {
+        $message = 'Error uploading file: '.$e->getMessage();
+        if ($this->temuViewUploadWantsJson($request)) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 422);
+        }
+
+        return back()->with('error', $message);
+    }
+
     /**
      * @param  list<\Illuminate\Http\UploadedFile>  $uploadFiles
-     * @return array{imported:int,skipped:int,files:int,deleted:int}
+     * @return array{imported:int,skipped:int,files:int,deleted:int,replaced:bool}
      */
-    private function replaceTemuViewTableFromUploads(string $table, array $uploadFiles): array
+    private function replaceTemuViewTableFromUploads(string $table, array $uploadFiles, bool $replaceAll = true): array
     {
         @set_time_limit(300);
         $this->ensureTemuViewIdAutoIncrement($table);
@@ -5261,6 +5320,33 @@ class TemuController extends Controller
         $merged = [];
         $skipped = 0;
         $fileCount = 0;
+
+        if (! $replaceAll && Schema::hasTable($table)) {
+            foreach (DB::table($table)->get() as $row) {
+                $date = $row->date ?? null;
+                if ($date instanceof \DateTimeInterface) {
+                    $date = $date->format('Y-m-d');
+                } elseif ($date !== null && $date !== '') {
+                    $date = (string) $date;
+                } else {
+                    $date = null;
+                }
+                $goodsId = (string) ($row->goods_id ?? '');
+                $key = ((string) $date).'|'.$goodsId;
+                $merged[$key] = [
+                    'date' => $date,
+                    'goods_id' => $goodsId,
+                    'goods_name' => $row->goods_name ?? null,
+                    'product_impressions' => (int) ($row->product_impressions ?? 0),
+                    'visitor_impressions' => (int) ($row->visitor_impressions ?? 0),
+                    'product_clicks' => (int) ($row->product_clicks ?? 0),
+                    'visitor_clicks' => (int) ($row->visitor_clicks ?? 0),
+                    'ctr' => (float) ($row->ctr ?? 0),
+                    'created_at' => $row->created_at ?? $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
 
         foreach ($uploadFiles as $file) {
             $parsed = $this->parseTemuViewDataUploadFile($file);
@@ -5308,6 +5394,7 @@ class TemuController extends Controller
             'skipped' => $skipped,
             'files' => $fileCount,
             'deleted' => $deletedCount,
+            'replaced' => $replaceAll,
         ];
     }
 

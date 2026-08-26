@@ -4676,6 +4676,7 @@
         let afterTatVisibilitySnapshot = null;
         let isApplyingCombinedFilters = false;
         let pendingCombinedFiltersRun = false;
+        let combinedFilterRetry = 0;
         let filterPostCalcTimer = null;
         const FORECAST_FILTER_PREF_KEY = 'forecast_analysis_filter_prefs_v1';
         function clearForecastStoredPrefs() {
@@ -5346,6 +5347,102 @@
             return getEffectiveApprReqValue(rowData) > 0;
         }
 
+        function normalizeForecastSearchText(value) {
+            return String(value == null ? '' : value)
+                .toLowerCase()
+                .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function forecastTextIncludes(haystack, needle) {
+            const n = normalizeForecastSearchText(needle);
+            if (!n) return true;
+            const h = normalizeForecastSearchText(haystack);
+            if (h.includes(n)) return true;
+            const compactH = h.replace(/ /g, '');
+            const compactN = n.replace(/ /g, '');
+            return compactN.length > 0 && compactH.includes(compactN);
+        }
+
+        function forecastRowSkuValue(data) {
+            if (!data) return '';
+            if (data.SKU != null && data.SKU !== '') return data.SKU;
+            return data.sku || '';
+        }
+
+        function forecastRowSupplierValue(data) {
+            if (!data) return '';
+            return data.mfrg_supplier || data.Supplier || data.supplier || '';
+        }
+
+        function rowMatchesSkuSearch(data) {
+            if (!currentSearchSku) return true;
+            return forecastTextIncludes(forecastRowSkuValue(data), currentSearchSku);
+        }
+
+        function rowMatchesParentSearch(data) {
+            if (!currentSearchParent) return true;
+            return forecastTextIncludes(data && data.Parent, currentSearchParent);
+        }
+
+        function rowMatchesSupplierSearch(data) {
+            if (!currentSearchSupplier) return true;
+            return forecastTextIncludes(forecastRowSupplierValue(data), currentSearchSupplier);
+        }
+
+        function rowMatchesExecutiveFilter(data) {
+            if (!currentExecutiveFilter) return true;
+            if (data && (data.is_parent || data.isParent)) return true;
+            const rowExec = String((data && data.exec) || '').trim();
+            if (currentExecutiveFilter === '__unassigned__') return rowExec === '';
+            return rowExec.toLowerCase() === currentExecutiveFilter.toLowerCase();
+        }
+
+        function rowMatchesToolbarTextFilters(data, options) {
+            const opts = options || {};
+            if (currentSearchQuery) {
+                const q = currentSearchQuery;
+                if (!forecastTextIncludes(forecastRowSkuValue(data), q)
+                    && !forecastTextIncludes(data && data.Parent, q)
+                    && !forecastTextIncludes(forecastRowSupplierValue(data), q)) {
+                    return false;
+                }
+            }
+            const isParentRow = !!(data && (data.is_parent || data.isParent));
+            if (!isParentRow || !opts.skipSkuOnParent) {
+                if (!rowMatchesSkuSearch(data)) return false;
+            }
+            if (!rowMatchesParentSearch(data)) return false;
+            if (!rowMatchesSupplierSearch(data)) return false;
+            if (!opts.skipExecutive && !rowMatchesExecutiveFilter(data)) return false;
+            return true;
+        }
+
+        function rowMatchesCategoricalFilters(data, nrpSel) {
+            const filterMatch = currentColorFilter === 'red'
+                ? ((parseFloat(data && data.to_order) || 0) < 0)
+                : currentColorFilter === 'yellow'
+                    ? apprReqYellowRowVisible(data)
+                    : true;
+            const dataNR = (data && data.nr) || '';
+            let effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
+            if (effectiveNR !== 'REQ' && effectiveNR !== 'NR' && effectiveNR !== 'LATER') {
+                effectiveNR = 'REQ';
+            }
+            const nrpMatch = !nrpSel || nrpSel.has(effectiveNR);
+            const matchesNR = !nrpSel || nrpSel.has('NR') || !hideNRYes || (data && data.nr) !== 'NR';
+            const matchesLATER = !nrpSel || nrpSel.has('LATER') || !hideLATERYes || (data && data.nr) !== 'LATER';
+            return filterMatch
+                && matchesTwoOrdColorFilter(data)
+                && matchesTopQtySignFilters(data)
+                && matchesNR
+                && matchesLATER
+                && nrpMatch
+                && matchesStageFilterValue(data, currentStageFilter)
+                && invHeaderMatchesRow(data);
+        }
+
         function setCombinedFilters() {
             if (isApplyingCombinedFilters) {
                 pendingCombinedFiltersRun = true;
@@ -5355,18 +5452,30 @@
             // Tabulator may emit early lifecycle events before rowManager element exists.
             // Applying filters in that window can throw inside RowManager.getBoundingClientRect.
             if (!table || !table.rowManager || !table.rowManager.element) {
+                if (combinedFilterRetry < 20) {
+                    combinedFilterRetry += 1;
+                    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                        window.requestAnimationFrame(function() { setCombinedFilters(); });
+                    } else {
+                        setTimeout(function() { setCombinedFilters(); }, 16);
+                    }
+                }
                 return;
             }
+            combinedFilterRetry = 0;
             isApplyingCombinedFilters = true;
             try {
             const groupedChildrenMap = {};
             const visibleParentKeys = new Set();
+            const skuFallbackParentKeys = new Set();
+            const skuLookupActive = !!currentSearchSku;
+            let skuAndCategoricalHits = 0;
 
             const nrpSel = getEffectiveNRPFilterSet();
 
             // Group all children by parent
             allData.forEach(item => {
-                if (!item.is_parent) {
+                if (!item.is_parent && !item.isParent) {
                     const key = item.Parent;
                     if (!groupedChildrenMap[key]) groupedChildrenMap[key] = [];
                     groupedChildrenMap[key].push(item);
@@ -5376,113 +5485,75 @@
             // Determine which parents should be visible
             Object.keys(groupedChildrenMap).forEach(parentKey => {
                 const children = groupedChildrenMap[parentKey];
-
-                const matchingChildren = children.filter(child => {
-                    const childNR = child.nr || '';
-                    let effectiveChildNR = (childNR === '' ? 'REQ' : String(childNR).trim().toUpperCase());
-                    if (effectiveChildNR !== 'REQ' && effectiveChildNR !== 'NR' && effectiveChildNR !== 'LATER') {
-                        effectiveChildNR = 'REQ';
+                children.forEach(function(child) {
+                    if (!rowMatchesToolbarTextFilters(child, { skipExecutive: true })) return;
+                    if (skuLookupActive && rowMatchesSkuSearch(child)) {
+                        skuFallbackParentKeys.add(parentKey);
                     }
-                    const nrpMatch = !nrpSel || nrpSel.has(effectiveChildNR);
-                    const nrMatch = !nrpSel || nrpSel.has('NR') || !hideNRYes || child.nr !== 'NR';
-                    const laterMatch = !nrpSel || nrpSel.has('LATER') || !hideLATERYes || child.nr !== 'LATER';
-                    
-                    // Stage filter - check stage field or transit field
-                    // If filter is "__blank__", match empty/null/undefined stage
-                    const stageMatch = matchesStageFilterValue(child, currentStageFilter);
-                    
-                    const filterMatch = currentColorFilter === 'red' ?
-                        ((parseFloat(child.to_order) || 0) < 0) :
-                        currentColorFilter === 'yellow' ?
-                        apprReqYellowRowVisible(child) :
-                        true;
-                    const twoOrdColorMatch = matchesTwoOrdColorFilter(child);
-                    const qtySignMatch = matchesTopQtySignFilters(child);
-                    return nrMatch && laterMatch && nrpMatch && stageMatch && filterMatch && twoOrdColorMatch && qtySignMatch && invHeaderMatchesRow(child);
+                    if (!rowMatchesExecutiveFilter(child)) return;
+                    if (rowMatchesCategoricalFilters(child, nrpSel)) {
+                        visibleParentKeys.add(parentKey);
+                        skuAndCategoricalHits += 1;
+                    }
                 });
-
-                if (matchingChildren.length > 0) {
-                    visibleParentKeys.add(parentKey);
-                }
             });
+
+            // If Stage/NRP/qty would hide every SKU hit, fall back to SKU lookup
+            // so typing a real SKU still finds the row.
+            const useSkuFallback = skuLookupActive && skuAndCategoricalHits === 0;
+            if (useSkuFallback) {
+                skuFallbackParentKeys.forEach(function(k) { visibleParentKeys.add(k); });
+            }
             try {
             table.setFilter(function(row) {
                 const data = typeof row.getData === 'function' ? row.getData() : row;
+                const isParent = !!(data && (data.is_parent || data.isParent));
+                const isChild = !isParent;
 
-                // Global search: match SKU, Parent, or Supplier
-                if (currentSearchQuery) {
-                    const sku      = String(data.SKU || '').toLowerCase();
-                    const parent   = String(data.Parent || '').toLowerCase();
-                    const supplier = String(data.mfrg_supplier || '').toLowerCase();
-                    if (!sku.includes(currentSearchQuery) && !parent.includes(currentSearchQuery) && !supplier.includes(currentSearchQuery)) {
-                        return false;
+                // Parent SKU cells are labels like "X PARENT" — keep the parent
+                // when a child under it matches the SKU search.
+                if (!rowMatchesToolbarTextFilters(data, { skipSkuOnParent: true, skipExecutive: useSkuFallback })) {
+                    return false;
+                }
+                if (currentSearchSku && isChild && !rowMatchesSkuSearch(data)) return false;
+                if (currentSearchSku && isParent && !rowMatchesSkuSearch(data) && !visibleParentKeys.has(data.Parent)) {
+                    return false;
+                }
+
+                // SKU lookup fallback: skip Stage/NRP/qty/play only when AND
+                // against those filters produced no SKU hits.
+                const skuHit = useSkuFallback && (
+                    (isChild && rowMatchesSkuSearch(data)) ||
+                    (isParent && (rowMatchesSkuSearch(data) || visibleParentKeys.has(data.Parent)))
+                );
+
+                if (!skuHit) {
+                    if (currentSupplierFilter) {
+                        const rowSupplier = String(forecastRowSupplierValue(data) || '').trim();
+                        if (rowSupplier !== currentSupplierFilter) return false;
+                    }
+
+                    if (currentContainerFilter) {
+                        const rawContainer = String(data.containerName || '').trim();
+                        if (!rawContainer) return false;
+                        const parts = rawContainer.split(',').map(function(p) { return p.trim(); });
+                        if (!parts.includes(currentContainerFilter)) return false;
                     }
                 }
 
-                // Per-column searches
-                if (currentSearchSku      && !String(data.SKU            || '').toLowerCase().includes(currentSearchSku))      return false;
-                if (currentSearchParent   && !String(data.Parent         || '').toLowerCase().includes(currentSearchParent))   return false;
-                if (currentSearchSupplier && !String(data.mfrg_supplier  || '').toLowerCase().includes(currentSearchSupplier)) return false;
-
-                // Executive filter (exact match; "__unassigned__" sentinel = blank exec).
-                // Parent rows render Exec as "-" and don't carry their own exec, so the
-                // unassigned bucket only meaningfully includes child SKUs.
-                if (currentExecutiveFilter) {
-                    const rowExec = String(data.exec || '').trim();
-                    if (currentExecutiveFilter === '__unassigned__') {
-                        if (rowExec !== '') return false;
-                    } else if (rowExec.toLowerCase() !== currentExecutiveFilter.toLowerCase()) {
-                        return false;
-                    }
-                }
-
-                // Supplier play filter
-                if (currentSupplierFilter) {
-                    const rowSupplier = String(data.mfrg_supplier || '').trim();
-                    if (rowSupplier !== currentSupplierFilter) return false;
-                }
-
-                // Container (Trn) play filter
-                if (currentContainerFilter) {
-                    const rawContainer = String(data.containerName || '').trim();
-                    if (!rawContainer) return false;
-                    // containerName may be comma-separated; check if any part matches
-                    const parts = rawContainer.split(',').map(function(p) { return p.trim(); });
-                    if (!parts.includes(currentContainerFilter)) return false;
-                }
-                const isChild = !data.is_parent;
-                const isParent = data.is_parent;
                 const twoOrdRaw = data.to_order ?? (data.raw_data ? data.raw_data.to_order : 0);
                 const twoOrdValue = Number.isFinite(parseFloat(twoOrdRaw)) ? parseFloat(twoOrdRaw) : 0;
                 const twoOrdFilterLive = (document.getElementById('two-ord-color-filter')?.value || currentTwoOrdColorFilter || '').trim().toLowerCase();
-
-                const matchesFilter = currentColorFilter === 'red' ?
-                    ((parseFloat(data.to_order) || 0) < 0) :
-                    currentColorFilter === 'yellow' ?
-                    apprReqYellowRowVisible(data) :
-                    true;
-                const twoOrdColorMatch = matchesTwoOrdColorFilter(data);
                 const qtySignMatch = matchesTopQtySignFilters(data);
-                // Hard guard: when 2 Ord color filter is set, enforce it before all other checks.
-                if ((twoOrdFilterLive === 'neg' || twoOrdFilterLive === 'red') && !(twoOrdValue < 0)) return false;
-                if ((twoOrdFilterLive === 'nonneg' || twoOrdFilterLive === 'yellow') && !(twoOrdValue >= 0)) return false;
 
-                const dataNR = data.nr || '';
-                let effectiveNR = (dataNR === '' ? 'REQ' : String(dataNR).trim().toUpperCase());
-                if (effectiveNR !== 'REQ' && effectiveNR !== 'NR' && effectiveNR !== 'LATER') {
-                    effectiveNR = 'REQ';
+                if (!skuHit) {
+                    if ((twoOrdFilterLive === 'neg' || twoOrdFilterLive === 'red') && !(twoOrdValue < 0)) return false;
+                    if ((twoOrdFilterLive === 'nonneg' || twoOrdFilterLive === 'yellow') && !(twoOrdValue >= 0)) return false;
                 }
-                const rowNrpSel = nrpSel;
-                const nrpMatch = !rowNrpSel || rowNrpSel.has(effectiveNR);
-                const matchesNR = !rowNrpSel || rowNrpSel.has('NR') || !hideNRYes || data.nr !== 'NR';
-                const matchesLATER = !rowNrpSel || rowNrpSel.has('LATER') || !hideLATERYes || data.nr !== 'LATER';
-                
-                // Stage filter - check stage field or transit field
-                // If filter is "__blank__", match empty/null/undefined stage
-                const stageMatch = matchesStageFilterValue(data, currentStageFilter);
 
-                // 🎯 Force filter to one parent group if play mode is active
-                if (currentParentFilter) {
+                const categoricalMatch = skuHit || rowMatchesCategoricalFilters(data, nrpSel);
+
+                if (currentParentFilter && !skuHit) {
                     if (isParent) {
                         if (currentColorFilter === 'yellow') {
                             return false;
@@ -5494,37 +5565,35 @@
                             return false;
                         }
                         return data.Parent === currentParentFilter;
-                    } else {
-                        return data.Parent === currentParentFilter && matchesFilter && twoOrdColorMatch && qtySignMatch && matchesNR && matchesLATER && nrpMatch && stageMatch &&
-                            invHeaderMatchesRow(data);
                     }
+                    return data.Parent === currentParentFilter && categoricalMatch;
                 }
 
                 if (isChild) {
-                    const showChild = matchesFilter && twoOrdColorMatch && qtySignMatch && matchesNR && matchesLATER && nrpMatch && stageMatch &&
-                        invHeaderMatchesRow(data);
                     if (currentRowTypeFilter === 'parent') return false;
-                    if (currentRowTypeFilter === 'sku') return showChild;
-                    return showChild;
+                    return categoricalMatch;
                 }
 
                 if (isParent) {
-                    if (currentColorFilter === 'yellow') {
-                        return false;
-                    }
-                    if (currentTwoOrdColorFilter && !matchesTwoOrdColorFilter(data)) {
-                        return false;
+                    if (!skuHit) {
+                        if (currentColorFilter === 'yellow') {
+                            return false;
+                        }
+                        if (currentTwoOrdColorFilter && !matchesTwoOrdColorFilter(data)) {
+                            return false;
+                        }
                     }
                     if (currentRowTypeFilter === 'sku') return false;
-                    // When NRP multiselect is partial (not all types), only show parents that have
-                    // at least one visible child matching filters — otherwise every parent stayed visible
-                    // with default REQ styling while children were filtered (broken UX).
                     const useChildDerivedParentVisibility =
+                        skuLookupActive ||
                         (nrpSel !== null) ||
                         !!invHeaderFilterMode(currentInvFilter) ||
                         !!currentStageFilter ||
                         !!currentTwoOrdColorFilter ||
-                        hasActiveTopQtySignFilter();
+                        hasActiveTopQtySignFilter() ||
+                        !!currentSearchParent ||
+                        !!currentSearchSupplier ||
+                        !!currentExecutiveFilter;
                     if (useChildDerivedParentVisibility) {
                         return visibleParentKeys.has(data.Parent);
                     }
@@ -5539,6 +5608,7 @@
             });
             } catch (err) {
                 console.warn('[Forecast] skipped filter apply (table not ready):', err);
+                pendingCombinedFiltersRun = true;
                 return;
             }
             updateTopRowCounter();
@@ -6896,11 +6966,16 @@
                     el.addEventListener('input', function() {
                         clearTimeout(timer);
                         timer = setTimeout(function() {
-                            setter(el.value.trim().toLowerCase());
+                            setter(normalizeForecastSearchText(el.value));
                             setCombinedFilters();
                         }, 200);
                     });
                     el.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') {
+                            clearTimeout(timer);
+                            setter(normalizeForecastSearchText(el.value));
+                            setCombinedFilters();
+                        }
                         if (e.key === 'Escape') {
                             el.value = '';
                             setter('');

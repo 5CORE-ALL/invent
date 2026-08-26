@@ -246,7 +246,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="alert alert-info py-2 small mb-3">
+                    <div class="alert alert-info py-2 small mb-3" id="amzCreateCampaignHint">
                         Creates <strong>one PAUSED</strong> Sponsored Products <strong>KW / MANUAL</strong> campaign for the parent
                         (e.g. <code>PARENT PMX KW</code>). Selected child SKUs become product ads
                         (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).
@@ -254,6 +254,7 @@
                     </div>
                     <form id="amzCreateCampaignForm">
                         <input type="hidden" id="amzCreateParent" name="parent">
+                        <input type="hidden" id="amzCreateType" name="type" value="KW">
                         <div class="row g-2 mb-2">
                             <div class="col-md-4">
                                 <label class="form-label small mb-1">Parent</label>
@@ -261,7 +262,7 @@
                             </div>
                             <div class="col-md-8">
                                 <label class="form-label small mb-1">Campaign name</label>
-                                <input type="text" class="form-control form-control-sm" id="amzCreateCampaignName" name="campaign_name" required placeholder="PARENT PMX" maxlength="128">
+                                <input type="text" class="form-control form-control-sm" id="amzCreateCampaignName" name="campaign_name" required placeholder="PARENT PMX KW" maxlength="128">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small mb-1">Daily budget ($)</label>
@@ -306,7 +307,7 @@
                                 <i class="fa fa-magic me-1"></i> Generate AI positive keywords
                             </a>
                         </div>
-                        <div class="form-text small mt-1">
+                        <div class="form-text small mt-1" id="amzCreateTypeNote">
                             Campaigns are created as KW/MANUAL so positive keywords can be pushed.
                         </div>
                     </form>
@@ -665,13 +666,53 @@
             function applyCampaignTypeSuffix(type) {
                 var input = document.getElementById('amzCreateCampaignName');
                 if (!input) { return; }
-                var t = String(type || 'PT').toUpperCase() === 'KW' ? 'KW' : 'PT';
+                var t = normalizeCreateType(type);
                 var base = stripCampaignTypeSuffix(input.value);
                 if (!base) {
                     var parent = document.getElementById('amzCreateParent').value || '';
                     base = parent ? ('PARENT ' + parent) : 'PARENT';
                 }
                 input.value = base + ' ' + t;
+            }
+
+            function normalizeCreateType(type) {
+                return String(type || 'KW').toUpperCase() === 'PT' ? 'PT' : 'KW';
+            }
+
+            function currentCreateType() {
+                return normalizeCreateType((document.getElementById('amzCreateType') || {}).value);
+            }
+
+            function syncCreateModalUi(type) {
+                type = normalizeCreateType(type);
+                var typeInput = document.getElementById('amzCreateType');
+                if (typeInput) { typeInput.value = type; }
+                var targeting = type === 'PT' ? 'PT / AUTO' : 'KW / MANUAL';
+                var example = type === 'PT' ? 'PARENT PMX PT' : 'PARENT PMX KW';
+                var title = document.getElementById('amzCreateCampaignModalLabel');
+                if (title) { title.textContent = 'Create Amz SP Campaign (' + targeting + ')'; }
+                var hint = document.getElementById('amzCreateCampaignHint');
+                if (hint) {
+                    hint.innerHTML = type === 'PT'
+                        ? 'Creates <strong>one PAUSED</strong> Sponsored Products <strong>PT / AUTO</strong> campaign for the parent'
+                            + ' (e.g. <code>' + example + '</code>). Selected child SKUs become product ads'
+                            + ' (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).'
+                            + ' Amazon product targeting is automatic; positive keywords are not used.'
+                        : 'Creates <strong>one PAUSED</strong> Sponsored Products <strong>KW / MANUAL</strong> campaign for the parent'
+                            + ' (e.g. <code>' + example + '</code>). Selected child SKUs become product ads'
+                            + ' (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).'
+                            + ' Campaign negative keywords support Phrase / Exact only (not Broad).';
+                }
+                var nameInput = document.getElementById('amzCreateCampaignName');
+                if (nameInput) { nameInput.placeholder = example; }
+                var note = document.getElementById('amzCreateTypeNote');
+                if (note) {
+                    note.textContent = type === 'PT'
+                        ? 'Campaigns are created as PT/AUTO. Use AI negative keywords if needed; positive keywords are not available.'
+                        : 'Campaigns are created as KW/MANUAL so positive keywords can be pushed.';
+                }
+                var posLink = document.getElementById('amzCreateAiPosLink');
+                if (posLink) { posLink.classList.toggle('d-none', type === 'PT'); }
             }
 
             function pickLinkedCampaignId(d, preferType) {
@@ -692,21 +733,26 @@
                 return '';
             }
 
-            function openCreateModal(d) {
+            function openCreateModal(d, type) {
+                type = normalizeCreateType(type);
                 lastCreateRowData = d || null;
                 // Prefer an already-linked campaign id so Push works without re-create.
-                lastCreatedCampaignId = pickLinkedCampaignId(d, 'KW');
+                lastCreatedCampaignId = pickLinkedCampaignId(d, type);
                 lastCreatedAdGroupId = '';
+                syncCreateModalUi(type);
                 document.getElementById('amzCreateParent').value = d.parent || '';
                 document.getElementById('amzCreateParentDisplay').value = d.parent || '';
                 document.getElementById('amzCreateCampaignName').value = d.sku || ('PARENT ' + (d.parent || ''));
                 document.getElementById('amzCreateBudget').value = '3';
                 document.getElementById('amzCreateDefaultBid').value = '0.60';
-                applyCampaignTypeSuffix('KW');
-                // If a KW chip already exists, use that campaign name for push targeting.
-                var preferList = (Array.isArray(d.kw) && d.kw.length) ? d.kw : [];
+                applyCampaignTypeSuffix(type);
+                // If a same-type chip already exists, use that campaign name for push targeting.
+                var preferList = type === 'PT'
+                    ? ((Array.isArray(d.pt) && d.pt.length) ? d.pt : [])
+                    : ((Array.isArray(d.kw) && d.kw.length) ? d.kw : []);
                 if (preferList.length && preferList[0].campaign_name) {
                     document.getElementById('amzCreateCampaignName').value = preferList[0].campaign_name;
+                    applyCampaignTypeSuffix(type);
                 }
                 document.getElementById('amzCreateTargetSku').value = d.target_sku || '';
                 document.getElementById('amzCreateError').classList.add('d-none');
@@ -796,16 +842,16 @@
                             }
                         },
                         {
-                            title: 'Create', field: 'sku', width: 80,
+                            title: 'Create KW', field: '_create_kw', width: 100,
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: false,
                             formatter: function (cell) {
                                 var d = cell.getData();
-                                var hasPt = Array.isArray(d.pt) && d.pt.length > 0;
-                                var title = hasPt
-                                    ? 'PT already linked — create another AUTO campaign?'
-                                    : 'Create Amz AUTO SP campaign for this parent';
-                                return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" title="' + esc(title) + '">'
+                                var hasKw = Array.isArray(d.kw) && d.kw.length > 0;
+                                var title = hasKw
+                                    ? 'KW already linked — create another MANUAL campaign?'
+                                    : 'Create Amz KW / MANUAL SP campaign for this parent';
+                                return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" data-type="KW" title="' + esc(title) + '">'
                                     + '<i class="fa fa-plus"></i></button>';
                             }
                         },
@@ -818,6 +864,20 @@
                             headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('KW'),
                             accessorDownload: linkNamesAccessor
+                        },
+                        {
+                            title: 'Create PT', field: '_create_pt', width: 100,
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: false,
+                            formatter: function (cell) {
+                                var d = cell.getData();
+                                var hasPt = Array.isArray(d.pt) && d.pt.length > 0;
+                                var title = hasPt
+                                    ? 'PT already linked — create another AUTO campaign?'
+                                    : 'Create Amz PT / AUTO SP campaign for this parent';
+                                return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" data-type="PT" title="' + esc(title) + '">'
+                                    + '<i class="fa fa-plus"></i></button>';
+                            }
                         },
                         {
                             title: 'Campaign PT', field: 'pt', widthGrow: 2,
@@ -1097,6 +1157,7 @@
                         e.preventDefault();
                         e.stopPropagation();
                         var createSku = createBtn.getAttribute('data-sku') || '';
+                        var createType = createBtn.getAttribute('data-type') || 'KW';
                         var createRow = null;
                         try {
                             if (createSku) { createRow = table.getRow(createSku); }
@@ -1108,7 +1169,7 @@
                             }
                         }
                         if (createRow) {
-                            openCreateModal(createRow.getData());
+                            openCreateModal(createRow.getData(), createType);
                         } else {
                             window.alert('Could not load row data for Create.');
                         }
@@ -1670,6 +1731,10 @@
 
                 document.getElementById('amzCreateAiPosLink').addEventListener('click', function (e) {
                     e.preventDefault();
+                    if (currentCreateType() === 'PT') {
+                        window.alert('Positive keywords require a KW / MANUAL campaign. Use Create KW.');
+                        return;
+                    }
                     lastCreatedCampaignId = lastCreatedCampaignId
                         || pickLinkedCampaignId(lastCreateRowData || {}, 'KW')
                         || '';
@@ -1846,7 +1911,7 @@
                         campaign_name: document.getElementById('amzCreateCampaignName').value,
                         budget_amount: parseFloat(document.getElementById('amzCreateBudget').value) || 3,
                         default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.60,
-                        type: 'KW',
+                        type: currentCreateType(),
                         children: children
                     };
                     if (!payload.parent || !(payload.campaign_name || '').trim()) {
@@ -1881,8 +1946,10 @@
                             }
                             updateMissingBadges();
                             // Keep Create modal open so AI Negatives/Positives → Push can use the new campaign id.
-                            window.alert((out.body.message || 'Campaign created.')
-                                + '\n\nYou can now Generate AI negative/positive keywords and Push.');
+                            var followUp = currentCreateType() === 'PT'
+                                ? '\n\nYou can now Generate AI negative keywords and Push.'
+                                : '\n\nYou can now Generate AI negative/positive keywords and Push.';
+                            window.alert((out.body.message || 'Campaign created.') + followUp);
                         } else {
                             errEl.textContent = (out.body && out.body.message) || 'Failed to create campaign.';
                             errEl.classList.remove('d-none');

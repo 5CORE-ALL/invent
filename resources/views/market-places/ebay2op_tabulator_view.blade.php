@@ -985,6 +985,7 @@
 @endsection
 
     @section('script-bottom')
+    @include('partials.sprice-lmp-cap-script')
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => 'ebay2op'])
@@ -1721,6 +1722,7 @@
                         data: {
                             sku: sku,
                             sprice: sprice,
+                            skip_push: 1,
                             _token: '{{ csrf_token() }}'
                         },
                         success: function(response) {
@@ -1731,7 +1733,7 @@
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
-                                    SPRICE_STATUS: 'queued'
+                                    SPRICE_STATUS: 'saved'
                                 });
                             }
                             if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
@@ -2785,20 +2787,24 @@
                             }
 
                             if (!(sprice > 0)) return '';
+                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
+                            if (cap && cap.shown > 0) sprice = cap.shown;
                             
                             // Always show SPRICE when it has a value — even if it equals the eBay price.
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                            const lmp = parseFloat(rowData.lmp_price) || 0;
+                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
                             const differsFromPrice = ebay2Price > 0
                                 && Math.round(sprice * 100) !== Math.round(ebay2Price * 100);
                             const blueTri = differsFromPrice
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebay2Price.toFixed(2) + '"></i>'
                                 : '';
-                            if (lmp > 0 && sprice > lmp) {
+                            const atOrAboveLmp = cap ? cap.alert : (lmp > 0 && sprice + 0.0001 >= lmp);
+                            if (atOrAboveLmp) {
+                                const redTri = cap ? cap.triangleHtml
+                                    : ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;" title="S PRC capped at LMP"></i>';
                                 return '<span style="color:#dc3545;font-weight:600;white-space:nowrap;">'
-                                    + formattedValue
-                                    + ' <i class="fas fa-exclamation-triangle" style="margin-left:3px;color:#dc3545;" title="S PRC &gt; LMP"></i></span>'
+                                    + formattedValue + redTri + '</span>'
                                     + blueTri;
                             }
                             // If using default eBay Price (not custom), show in blue

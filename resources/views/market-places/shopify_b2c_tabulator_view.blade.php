@@ -2582,9 +2582,13 @@
                             return '';
                         }
 
+                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
+                        if (cap && cap.shown > 0) value = cap.shown;
                         const formatted = '$' + value.toFixed(2);
+                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                         let priceHtml = `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
-                        if (lmp > 0 && value > lmp) {
+                        if (overLmp) {
                             priceHtml = `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         }
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
@@ -2592,7 +2596,7 @@
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     },
                     width: 92
                 },
@@ -2606,7 +2610,9 @@
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
                         const sku = rowData['(Child) sku'] || '';
-                        const sprice = parseFloat(rowData.SPRICE) || 0;
+                        const sprice = window.SpriceLmpCap
+                            ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.SPRICE) || 0)
+                            : (parseFloat(rowData.SPRICE) || 0);
                         const status = rowData.SPRICE_STATUS || '';
                         if (!sprice || sprice <= 0) {
                             return '<span style="color:#999;" title="Set S PRC first">N/A</span>';

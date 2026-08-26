@@ -407,6 +407,22 @@ class AmazonAdsService
     }
 
     /**
+     * Update Sponsored Brands campaigns (v4) — state (ENABLED/PAUSED), etc.
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return array<string, mixed>
+     */
+    public function updateSbCampaigns(array $campaigns): array
+    {
+        return $this->put('/sb/v4/campaigns', [
+            'campaigns' => array_values($campaigns),
+        ], [
+            'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+            'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+        ]);
+    }
+
+    /**
      * Delete (archive) Sponsored Products campaigns (v3).
      * Amazon permanently moves them to ARCHIVED via POST /sp/campaigns/delete.
      *

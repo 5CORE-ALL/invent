@@ -64,7 +64,7 @@ class ChannelPushSpriceDailyEnqueue
         }
 
         $store = ChannelPushSpriceJobStore::for($channel);
-        $result = $store->createOrAppend($tasks);
+        $result = $store->createOrAppend($tasks, 'daily');
         $state = $result['state'];
         $queued = count($tasks);
 

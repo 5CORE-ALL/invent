@@ -1537,6 +1537,7 @@ class AliexpressController extends Controller
             $reviewsBySku = [];
             $avgRatingBySku = [];
             $productIdBySku = [];
+            $listingStatusBySku = [];
             if (Schema::hasTable('aliexpress_metric')) {
                 $metricCols = ['sku', 'product_id'];
                 $hasViewsCol = Schema::hasColumn('aliexpress_metric', 'views');
@@ -1544,6 +1545,7 @@ class AliexpressController extends Controller
                 $hasOutputCol = Schema::hasColumn('aliexpress_metric', 'output_order');
                 $hasReviewsCol = Schema::hasColumn('aliexpress_metric', 'reviews');
                 $hasRatingCol = Schema::hasColumn('aliexpress_metric', 'avg_rating');
+                $hasListingStatusCol = Schema::hasColumn('aliexpress_metric', 'listing_status');
                 if ($hasViewsCol) {
                     $metricCols[] = 'views';
                 }
@@ -1559,14 +1561,29 @@ class AliexpressController extends Controller
                 if ($hasRatingCol) {
                     $metricCols[] = 'avg_rating';
                 }
+                if ($hasListingStatusCol) {
+                    $metricCols[] = 'listing_status';
+                }
                 foreach (AliexpressMetric::query()->get($metricCols) as $metric) {
                     $nk = $normalizeSku($metric->sku);
                     if ($nk === '') {
                         continue;
                     }
                     $pid = trim((string) ($metric->product_id ?? ''));
+                    $status = $hasListingStatusCol
+                        ? strtolower(trim((string) ($metric->listing_status ?? '')))
+                        : '';
                     if ($pid !== '' && ! isset($productIdBySku[$nk])) {
                         $productIdBySku[$nk] = $pid;
+                    }
+                    if ($status !== '' && ! isset($listingStatusBySku[$nk])) {
+                        $listingStatusBySku[$nk] = $status;
+                    }
+                    if ($status === 'onselling') {
+                        $listingStatusBySku[$nk] = $status;
+                        if ($pid !== '') {
+                            $productIdBySku[$nk] = $pid;
+                        }
                     }
                     $views = $hasViewsCol ? (int) ($metric->views ?? 0) : 0;
                     $reviews = $hasReviewsCol ? (int) ($metric->reviews ?? 0) : 0;
@@ -1620,6 +1637,12 @@ class AliexpressController extends Controller
                 $priceRow = $uploadedPriceBySku->get($normalizedSku);
                 $price = $priceRow ? (float) $priceRow->price : 0;
                 $aeStock = $priceRow ? (int) ($priceRow->ae_stock ?? 0) : 0;
+                $listingStatus = strtolower(trim((string) ($listingStatusBySku[$normalizedSku] ?? '')));
+                $isOfflineAe = in_array($listingStatus, ['offline', 'service_delete'], true);
+                if ($isOfflineAe) {
+                    $price = 0;
+                    $aeStock = 0;
+                }
 
                 // INV + OV L30 + image from shopify_skus
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
@@ -1638,8 +1661,8 @@ class AliexpressController extends Controller
                 $metaArray = is_array($meta) ? $meta : (is_string($meta) ? json_decode($meta, true) ?: [] : []);
                 $nr = $this->resolveAeNrFromMeta($metaArray, $productMaster !== null);
 
-                // Listed on AE = row in uploaded export with price (like amazon_datsheets row exists).
-                $isMissingAe = $priceRow === null || $price <= 0;
+                // Listed on AE = live onSelling row with price (offline / deleted listings stay blank).
+                $isMissingAe = $priceRow === null || $price <= 0 || $isOfflineAe;
 
                 $missing = '';
                 $mapValue = '';
@@ -1689,6 +1712,11 @@ class AliexpressController extends Controller
                     : [];
                 $buyerLink = $linkVal['buyer_link'] ?? '';
                 $sellerLink = $linkVal['seller_link'] ?? '';
+                [$buyerLink, $sellerLink] = $this->aliexpressLinksForProductId(
+                    $productIdBySku[$normalizedSku] ?? null,
+                    (string) $buyerLink,
+                    (string) $sellerLink
+                );
 
                     $views = (int) ($viewsBySku[$normalizedSku] ?? 0);
                     $outputOrder = (int) ($outputOrderBySku[$normalizedSku] ?? 0);
@@ -2615,6 +2643,47 @@ class AliexpressController extends Controller
         $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
 
         return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
+    }
+
+    /**
+     * Prefer the current AliExpress product_id over a stored link to an older / offline listing.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function aliexpressLinksForProductId(?string $productId, string $buyerLink, string $sellerLink): array
+    {
+        $pid = trim((string) $productId);
+        if ($pid === '' || ! ctype_digit($pid)) {
+            return [trim($buyerLink), trim($sellerLink)];
+        }
+
+        $autoBuyer = 'https://www.aliexpress.com/item/'.$pid.'.html';
+        $autoSeller = 'https://gsp.aliexpress.com/m_apps/product-publish/publish?productId='.$pid;
+        $buyerLink = trim($buyerLink);
+        $sellerLink = trim($sellerLink);
+        $buyerPid = $this->productIdFromAliexpressUrl($buyerLink);
+        $sellerPid = $this->productIdFromAliexpressUrl($sellerLink);
+
+        if ($buyerLink === '' || ($buyerPid !== '' && $buyerPid !== $pid)) {
+            $buyerLink = $autoBuyer;
+        }
+        if ($sellerLink === '' || ($sellerPid !== '' && $sellerPid !== $pid)) {
+            $sellerLink = $autoSeller;
+        }
+
+        return [$buyerLink, $sellerLink];
+    }
+
+    private function productIdFromAliexpressUrl(string $url): string
+    {
+        if (preg_match('#/item/(\d+)#', $url, $m)) {
+            return $m[1];
+        }
+        if (preg_match('#[?&]productId=(\d+)#i', $url, $m)) {
+            return $m[1];
+        }
+
+        return '';
     }
 
     /**

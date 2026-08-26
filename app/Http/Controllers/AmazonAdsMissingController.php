@@ -203,8 +203,10 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
-     * Create one PAUSED KW/MANUAL Sponsored Products campaign for a parent with product ads
+     * Create one PAUSED Sponsored Products campaign for a parent with product ads
      * for selected child seller SKUs (Amazon seller rule: product ads use sku, not ASIN).
+     * KW → MANUAL (keyword targeting); PT → AUTO (product targeting). Campaign names
+     * default with a PT or KW suffix.
      */
     public function create(Request $request): JsonResponse
     {
@@ -221,13 +223,13 @@ class AmazonAdsMissingController extends Controller
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
         $sku = 'PARENT '.$parent;
-        $type = 'KW';
+        $type = strtoupper(trim((string) ($validated['type'] ?? 'KW'))) === 'PT' ? 'PT' : 'KW';
 
-        $campaignName = trim((string) ($validated['campaign_name'] ?? ''));
-        if ($campaignName === '') {
-            $campaignName = $sku;
-        }
-        $campaignName = mb_substr($campaignName, 0, 128);
+        $campaignName = $this->campaignNameWithTypeSuffix(
+            (string) ($validated['campaign_name'] ?? ''),
+            $sku,
+            $type
+        );
 
         $sellerSkus = [];
         $resolvedChildren = [];
@@ -1563,6 +1565,23 @@ PROMPT;
             ->max('campaign_id');
 
         return preg_replace('/\D+/', '', trim((string) $id)) ?: '';
+    }
+
+    /**
+     * Default campaign name is "PARENT {parent} {PT|KW}". Existing PT/KW suffixes are replaced.
+     */
+    private function campaignNameWithTypeSuffix(string $campaignName, string $sku, string $type): string
+    {
+        $type = strtoupper(trim($type)) === 'PT' ? 'PT' : 'KW';
+        $name = trim((string) preg_replace('/\s+(PT|KW)$/i', '', trim($campaignName)));
+        if ($name === '') {
+            $name = trim((string) preg_replace('/\s+(PT|KW)$/i', '', trim($sku)));
+        }
+        if ($name === '') {
+            $name = 'PARENT';
+        }
+
+        return mb_substr($name.' '.$type, 0, 128);
     }
 
     private function ensureUniqueCampaignName(string $base): string
