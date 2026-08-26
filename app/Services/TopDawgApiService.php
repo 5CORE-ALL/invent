@@ -455,6 +455,7 @@ class TopDawgApiService
         $fieldSets = [
             ['product_name' => $title, 'subject' => $title],
             ['product_name' => $title],
+            ['name' => $title, 'product_name' => $title],
             ['title' => $title, 'product_title' => $title],
         ];
         $last = ['success' => false, 'message' => 'TopDawg title update failed.'];

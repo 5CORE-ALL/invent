@@ -3377,7 +3377,16 @@
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
             })
                 .then(function(response) {
-                    if (!response.ok) throw new Error('Network response was not ok');
+                    if (!response.ok) {
+                        return response.text().then(function(text) {
+                            let detail = 'HTTP ' + response.status;
+                            try {
+                                const j = JSON.parse(text);
+                                detail = j.error || j.message || detail;
+                            } catch (e) {}
+                            throw new Error(detail);
+                        });
+                    }
                     return response.json();
                 })
                 .then(function(response) {

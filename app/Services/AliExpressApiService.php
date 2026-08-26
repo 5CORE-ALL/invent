@@ -177,7 +177,15 @@ class AliExpressApiService
             return ['success' => false, 'message' => 'AliExpress product ID and title are required. Sync AliExpress listings first.'];
         }
 
-        return $this->callProductEdit($this->buildEditProductRequest($resolved, $title, $language));
+        $base = $this->buildEditProductRequest($resolved, $title, $language);
+        $first = $this->callProductEdit($base);
+        if (! empty($first['success']) || ! $this->isAliExpressPackageSizeRequired($first['message'] ?? '')) {
+            return $first;
+        }
+
+        $withPackage = array_merge($base, $this->aliexpressPackageSizeFields($resolved));
+
+        return $this->callProductEdit($withPackage);
     }
 
     /**
@@ -194,6 +202,83 @@ class AliExpressApiService
                 ],
             ],
         ];
+    }
+
+    private function isAliExpressPackageSizeRequired(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'package size')
+            || str_contains($m, 'logisticssize')
+            || str_contains($m, 'chk_basic_required');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function aliexpressPackageSizeFields(string $productId): array
+    {
+        $info = $this->getProductInfo($productId);
+        $data = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $length = $this->aliexpressPositiveNumber(
+            $data['package_length'] ?? $data['packageLength'] ?? data_get($data, 'logistics_size.package_length')
+        );
+        $width = $this->aliexpressPositiveNumber(
+            $data['package_width'] ?? $data['packageWidth'] ?? data_get($data, 'logistics_size.package_width')
+        );
+        $height = $this->aliexpressPositiveNumber(
+            $data['package_height'] ?? $data['packageHeight'] ?? data_get($data, 'logistics_size.package_height')
+        );
+        $weight = $this->aliexpressPositiveNumber(
+            $data['gross_weight'] ?? $data['grossWeight'] ?? data_get($data, 'logistics_size.gross_weight')
+        );
+
+        if ($length === null) {
+            $length = 10;
+        }
+        if ($width === null) {
+            $width = 10;
+        }
+        if ($height === null) {
+            $height = 10;
+        }
+        if ($weight === null) {
+            $weight = 0.5;
+        }
+
+        $size = $length.'x'.$width.'x'.$height;
+
+        return [
+            'package_length' => $length,
+            'package_width' => $width,
+            'package_height' => $height,
+            'gross_weight' => $weight,
+            'package_size' => $size,
+            'logistics_size' => [
+                'package_size' => $size,
+                'package_length' => $length,
+                'package_width' => $width,
+                'package_height' => $height,
+                'gross_weight' => $weight,
+            ],
+            'logisticsSize' => [
+                'packageSize' => $size,
+                'package_size' => $size,
+            ],
+        ];
+    }
+
+    private function aliexpressPositiveNumber(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $n = (float) $value;
+
+        return $n > 0 ? $n : null;
     }
 
     /**

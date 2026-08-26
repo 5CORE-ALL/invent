@@ -929,22 +929,125 @@ class NeweggApiService
             return ['success' => false, 'message' => 'Newegg API credentials are not configured.'];
         }
 
-        $body = ['Item' => array_merge(['SellerPartNumber' => $sku], $itemFields)];
-        $paths = [
-            "/marketplace/contentmgmt/item/basicinfo?sellerid={$this->sellerId}",
-            "/marketplace/contentmgmt/item/update?sellerid={$this->sellerId}",
-        ];
-
         $lastMessage = 'Newegg content update failed.';
-        foreach ($paths as $path) {
-            $res = $this->request('PUT', $path, [], $body);
-            if ($this->extractItemSuccess($res)) {
-                return ['success' => true, 'message' => 'Newegg product content updated.'];
+        $paths = [
+            '/marketplace/contentmgmt/item/basicinfo',
+            '/marketplace/contentmgmt/item/update',
+        ];
+        foreach ($this->neweggSkuCandidates($sku) as $candidate) {
+            $body = ['Item' => array_merge(['SellerPartNumber' => $candidate], $itemFields)];
+            foreach ($paths as $path) {
+                $res = $this->request('PUT', $path, [], $body);
+                if ($this->extractItemSuccess($res)) {
+                    return ['success' => true, 'message' => 'Newegg product content updated.'];
+                }
+                $lastMessage = $this->extractItemError($res);
             }
-            $lastMessage = $this->extractItemError($res);
+        }
+
+        $feed = $this->submitItemBasicInfoFeed($sku, $itemFields);
+        if ($feed['success'] ?? false) {
+            return $feed;
+        }
+        if (trim((string) ($feed['message'] ?? '')) !== '') {
+            $lastMessage = (string) $feed['message'];
         }
 
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function neweggSkuCandidates(string $sku): array
+    {
+        $sku = trim($sku);
+        $out = [];
+        foreach ([
+            $sku,
+            str_replace(' ', '', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+        ] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '' && ! in_array($candidate, $out, true)) {
+                $out[] = $candidate;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Newegg title/content REST paths often 404; ITEM_DATA feed is the documented write API.
+     *
+     * @param  array<string, mixed>  $itemFields
+     * @return array{success: bool, message: string}
+     */
+    protected function submitItemBasicInfoFeed(string $sku, array $itemFields): array
+    {
+        if (! $this->sellerId || ! $this->apiKey || ! $this->secretKey) {
+            return ['success' => false, 'message' => 'Newegg API credentials are not configured.'];
+        }
+
+        $title = trim((string) ($itemFields['WebsiteShortTitle'] ?? $itemFields['Title'] ?? ''));
+        $sellerPart = htmlspecialchars($this->neweggSkuCandidates($sku)[0] ?? $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $safeTitle = str_replace(']]>', ']] >', $title);
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<NeweggEnvelope>'
+            .'<Header><DocumentVersion>2.0</DocumentVersion></Header>'
+            .'<MessageType>BatchItemCreation</MessageType>'
+            .'<Message><Itemfeed><Item>'
+            .'<Action>UpdateItem</Action>'
+            .'<BasicInfo>'
+            .'<SellerPartNumber>'.$sellerPart.'</SellerPartNumber>'
+            .'<WebsiteShortTitle><![CDATA['.$safeTitle.']]></WebsiteShortTitle>'
+            .'</BasicInfo>'
+            .'</Item></Itemfeed></Message>'
+            .'</NeweggEnvelope>';
+
+        $url = $this->baseUrl.'/marketplace/datafeedmgmt/feeds/submitfeed?'
+            .http_build_query([
+                'sellerid' => $this->sellerId,
+                'requesttype' => 'ITEM_DATA',
+            ]);
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => $this->apiKey,
+                'SecretKey' => $this->secretKey,
+                'Content-Type' => 'application/xml',
+                'Accept' => 'application/json',
+            ])
+                ->timeout($this->timeout)
+                ->connectTimeout($this->connectTimeout)
+                ->withBody($xml, 'application/xml')
+                ->post($url);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Newegg feed submit failed: '.$e->getMessage()];
+        }
+
+        if ($response->successful() || in_array($response->status(), [200, 201, 202], true)) {
+            $json = $response->json();
+            if (! is_array($json)) {
+                return ['success' => false, 'message' => $this->extractItemError($this->normalize($response))];
+            }
+            if (! empty($json[0]['Message']) || data_get($json, 'NeweggAPIResponse.IsSuccess') === false) {
+                return ['success' => false, 'message' => $this->extractItemError($this->normalize($response))];
+            }
+            $requestId = (string) (data_get($json, 'NeweggAPIResponse.ResponseBody.ResponseList.0.RequestId')
+                ?? data_get($json, 'ResponseBody.ResponseList.0.RequestId')
+                ?? '');
+
+            return [
+                'success' => true,
+                'message' => $requestId !== ''
+                    ? 'Newegg item feed submitted (RequestId '.$requestId.').'
+                    : 'Newegg item feed submitted.',
+            ];
+        }
+
+        $normalized = $this->normalize($response);
+
+        return ['success' => false, 'message' => $this->extractItemError($normalized)];
     }
 
     public function updateTitle(string $sku, string $title): array

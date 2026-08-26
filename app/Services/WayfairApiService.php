@@ -292,12 +292,20 @@ XML;
                 return ['success' => false, 'message' => 'Wayfair authentication failed.'];
             }
 
-            $requestId = $this->submitTitleUpdate($token, $sku, $title);
-            if ($requestId === null) {
-                return ['success' => false, 'message' => 'Wayfair: failed to submit title update or get requestId.'];
+            $lastMessage = 'Wayfair: failed to submit title update or get requestId.';
+            foreach ($this->wayfairSkuCandidates($sku) as $candidate) {
+                foreach (['itemName', 'productName'] as $titleField) {
+                    $submitted = $this->submitTitleUpdate($token, $candidate, $title, $titleField);
+                    if (($submitted['request_id'] ?? null) !== null) {
+                        return $this->pollUpdateStatus($token, (string) $submitted['request_id'], $candidate);
+                    }
+                    if (trim((string) ($submitted['message'] ?? '')) !== '') {
+                        $lastMessage = (string) $submitted['message'];
+                    }
+                }
             }
 
-            return $this->pollUpdateStatus($token, $requestId, $sku);
+            return ['success' => false, 'message' => $lastMessage];
         } catch (\Throwable $e) {
             Log::error('Wayfair updateTitle exception: ' . $e->getMessage(), [
                 'sku' => $sku,
@@ -308,9 +316,11 @@ XML;
     }
 
     /**
-     * Step 1: Submit updateMarketSpecificCatalogItems mutation; returns requestId or null.
+     * Step 1: Submit updateMarketSpecificCatalogItems mutation; returns requestId or error.
+     *
+     * @return array{request_id: ?string, message: string}
      */
-    private function submitTitleUpdate(string $token, string $sku, string $title): ?string
+    private function submitTitleUpdate(string $token, string $sku, string $title, string $titleField = 'itemName'): array
     {
         $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
         $supplierId = (string) config('services.wayfair.supplier_id', '2603');
@@ -328,6 +338,11 @@ XML;
         }
         GRAPHQL;
 
+        $item = [
+            'supplierPartNumber' => $sku,
+            $titleField => $title,
+        ];
+
         $variables = [
             'input' => [
                 'marketContext' => [
@@ -336,17 +351,12 @@ XML;
                     'brand' => $brand,
                 ],
                 'supplierId' => $supplierId,
-                'catalogItemsToUpdate' => [
-                    [
-                        'supplierPartNumber' => $sku,
-                        'itemName' => $title,
-                    ],
-                ],
+                'catalogItemsToUpdate' => [$item],
                 'validateOnly' => false,
             ],
         ];
 
-        Log::info('Wayfair - Submitting title update (GraphQL)', ['sku' => $sku, 'url' => $url]);
+        Log::info('Wayfair - Submitting title update (GraphQL)', ['sku' => $sku, 'url' => $url, 'title_field' => $titleField]);
 
         $response = Http::withoutVerifying()
             ->withToken($token)
@@ -361,17 +371,67 @@ XML;
 
         if ($errors) {
             Log::warning('Wayfair - GraphQL errors on submit', ['sku' => $sku, 'errors' => $errors]);
-            return null;
+
+            return ['request_id' => null, 'message' => 'Wayfair GraphQL: '.$this->formatWayfairGraphqlErrors($errors)];
         }
 
         $requestId = $data['data']['updateCatalogEntitiesMutations']['updateMarketSpecificCatalogItems']['requestId'] ?? null;
         if ($requestId === null) {
             Log::warning('Wayfair - No requestId in response', ['sku' => $sku, 'response' => $data]);
-            return null;
+
+            return [
+                'request_id' => null,
+                'message' => 'Wayfair: no requestId. '.mb_substr(json_encode($data) ?: $response->body(), 0, 400),
+            ];
         }
 
         Log::info('Wayfair - Title update submitted', ['sku' => $sku, 'requestId' => $requestId]);
-        return $requestId;
+
+        return ['request_id' => (string) $requestId, 'message' => ''];
+    }
+
+    /**
+     * @param  list<mixed>|array<string, mixed>  $errors
+     */
+    private function formatWayfairGraphqlErrors(array $errors): string
+    {
+        $parts = [];
+        foreach ($errors as $error) {
+            if (is_string($error)) {
+                $parts[] = $error;
+                continue;
+            }
+            if (! is_array($error)) {
+                continue;
+            }
+            $msg = trim((string) ($error['message'] ?? ''));
+            if ($msg !== '') {
+                $parts[] = $msg;
+            }
+        }
+
+        return $parts !== [] ? implode(' | ', $parts) : 'unknown GraphQL error';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function wayfairSkuCandidates(string $sku): array
+    {
+        $sku = trim($sku);
+        $out = [];
+        foreach ([
+            $sku,
+            str_replace(' ', '', $sku),
+            preg_replace('/\s+/', '-', $sku) ?: '',
+        ] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '' && ! in_array($candidate, $out, true)) {
+                $out[] = $candidate;
+            }
+        }
+
+        return $out;
     }
 
     /**
