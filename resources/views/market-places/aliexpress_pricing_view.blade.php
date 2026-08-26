@@ -1395,8 +1395,13 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const buyerLink = d.buyer_link || '';
-                            const sellerLink = d.seller_link || '';
+                            const pid = String(d.ae_product_id || '').trim();
+                            let buyerLink = d.buyer_link || '';
+                            let sellerLink = d.seller_link || '';
+                            if (pid) {
+                                if (!buyerLink) buyerLink = 'https://www.aliexpress.com/item/' + encodeURIComponent(pid) + '.html';
+                                if (!sellerLink) sellerLink = 'https://gsp.aliexpress.com/m_apps/product-publish/publish?productId=' + encodeURIComponent(pid);
+                            }
                             let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
                             if (sellerLink) {
                                 html += '<a href="' + sellerLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" class="text-info" style="font-size:11px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> S</a>';

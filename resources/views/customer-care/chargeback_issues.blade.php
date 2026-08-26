@@ -55,6 +55,14 @@
             color: #adb5bd;
         }
 
+        .issue-loss-input {
+            width: 100%;
+            max-width: 5.5rem;
+            font-size: 0.8125rem;
+            padding: 0.15rem 0.3rem;
+            text-align: right;
+        }
+
         .issue-img-thumb {
             max-height: 36px;
             max-width: 54px;
@@ -331,10 +339,73 @@
                     '" title="' + escAttr(v) + '"><i class="bi bi-clipboard"></i></button>';
             };
 
+            function parseLossInput(raw) {
+                const t = String(raw ?? '').trim().replace(/[$,]/g, '');
+                if (t === '') return null;
+                const n = parseFloat(t);
+                return isNaN(n) ? null : Math.round(n * 100) / 100;
+            }
+
+            function formatLossInputValue(n) {
+                if (n == null || n === '' || isNaN(parseFloat(n))) return '';
+                return String(Math.round(parseFloat(n)));
+            }
+
+            function lossInputDisplayValue(d) {
+                const tl = d?.total_loss;
+                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                    return formatLossInputValue(tl);
+                }
+                return '';
+            }
+
             const fmtLoss = function (cell) {
-                const v = cell.getValue();
-                return (v != null && v !== '') ? '$' + Math.round(parseFloat(v)) : '—';
+                const d = cell.getData();
+                const v = lossInputDisplayValue(d);
+                return '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
+                    'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" ' +
+                    'data-issue-id="' + escAttr(String(d.id)) + '" inputmode="decimal" ' +
+                    'autocomplete="off" aria-label="Loss $">';
             };
+
+            async function saveTotalLossFromInput(input) {
+                const id = input.getAttribute('data-issue-id');
+                if (!id) return;
+                const parsed = parseLossInput(input.value);
+                const newDisplay = parsed == null ? '' : formatLossInputValue(parsed);
+                const original = input.getAttribute('data-original') || '';
+                if (newDisplay === original) {
+                    input.value = original;
+                    return;
+                }
+                try {
+                    const res = await fetch(URLS.updateBase + '/' + encodeURIComponent(id) + '/total-loss', {
+                        method: 'PATCH',
+                        headers: jsonHeaders,
+                        body: JSON.stringify({ total_loss: parsed }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.message || 'Save failed');
+                    const saved = data.total_loss != null ? data.total_loss : null;
+                    const row = table ? table.getRow(id) : null;
+                    if (row) {
+                        row.update({ total_loss: saved });
+                    }
+                    if (typeof updateDataBadges === 'function' && table) {
+                        updateDataBadges(table.getData());
+                    }
+                    if (typeof computeL30Badges === 'function' && table) {
+                        computeL30Badges(table.getData());
+                    }
+                    if (!row) {
+                        input.value = newDisplay;
+                        input.setAttribute('data-original', newDisplay);
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not save Loss $');
+                    input.value = original;
+                }
+            }
 
             const fmtWhatHappened = function (cell) {
                 const t = String(cell.getValue() || '').trim();
@@ -430,7 +501,7 @@
                         { title: '', field: 'image_url', width: 56, formatter: fmtImage, headerSort: false },
                         { title: 'SKU', field: 'sku', width: 120, formatter: fmtSku },
                         { title: 'Ord', field: 'order_number', width: 60, formatter: fmtOrderNum, hozAlign: 'center' },
-                        { title: 'Loss $', field: 'total_loss', width: 70, formatter: fmtLoss },
+                        { title: 'Loss $', field: 'total_loss', width: 90, formatter: fmtLoss, tooltip: false, headerSort: false },
                         { title: 'QTY', field: 'order_qty', width: 60, formatter: function (c) { return dash(c.getValue()); } },
                         { title: 'MKT', field: 'marketplace_1', width: 90, formatter: function (c) { return dash(c.getValue()); } },
                         { title: 'Issue?', field: 'what_happened', width: 60, formatter: fmtWhatHappened, hozAlign: 'center' },
@@ -721,6 +792,18 @@
                     if (!block || caseBlocks().length < 2) return;
                     block.remove();
                     renumberChargebackCases();
+                });
+
+                document.getElementById('chargeback-tabulator')?.addEventListener('focusout', function (e) {
+                    const inp = e.target.closest('.issue-loss-input');
+                    if (inp) saveTotalLossFromInput(inp);
+                });
+                document.getElementById('chargeback-tabulator')?.addEventListener('keydown', function (e) {
+                    const inp = e.target.closest('.issue-loss-input');
+                    if (inp && e.key === 'Enter') {
+                        e.preventDefault();
+                        inp.blur();
+                    }
                 });
 
                 document.getElementById('cb-search').addEventListener('input', function () {

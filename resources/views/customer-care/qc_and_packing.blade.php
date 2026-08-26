@@ -3,6 +3,8 @@
 @php
     $woOrderId = (bool) ($showOrderIdField ?? false);
     $hideActionRemarkFlag = (bool) ($hideActionRemark ?? false);
+    $showLossColumn = (bool) ($showLossColumn ?? (($showDispatchExtras ?? false) || ($showOrderIdField ?? false)));
+    $lossColspanExtra = ($showLossColumn && !($showDispatchExtras ?? false)) ? 1 : 0;
     $importCsvHeaders = $woOrderId
         ? ['sku', 'order_number', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1']
         : ['sku', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1'];
@@ -437,6 +439,23 @@
 
         .orders-hold-loss-cell {
             white-space: nowrap;
+        }
+
+        .orders-hold-table th.orders-hold-loss-cell,
+        .orders-hold-table td.orders-hold-loss-cell {
+            width: 1%;
+            min-width: 5.5rem;
+            max-width: 7rem;
+            vertical-align: middle;
+        }
+
+        .orders-hold-table .issue-loss-input {
+            max-width: 6.5rem;
+            min-width: 4.5rem;
+            width: 100%;
+            text-align: right;
+            padding-left: 0.35rem;
+            padding-right: 0.35rem;
         }
 
         .orders-hold-col-parent {
@@ -1550,9 +1569,11 @@
                                     <th class="orders-hold-col-sku">SKU</th>
                                     @if ($showDispatchExtras ?? false)
                                         <th class="orders-hold-col-action">Ord</th>
-                                        <th class="orders-hold-col-action">Loss $</th>
                                     @elseif($showOrderIdField ?? false)
                                         <th class="orders-hold-col-action">{{ $orderIdFieldLabel ?? 'Order ID' }}</th>
+                                    @endif
+                                    @if ($showLossColumn)
+                                        <th class="orders-hold-loss-cell">Loss $</th>
                                     @endif
                                     <th class="orders-hold-col-qty">QTY</th>
                                     <th class="orders-hold-col-mp">MKT</th>
@@ -1678,7 +1699,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) + $lossColspanExtra - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimableRemarkColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -2403,6 +2424,7 @@
             const defaultDepartmentFilter = @json($defaultDepartmentFilter ?? null);
             const hideDepartmentColumnAndFilter = @json((bool) ($hideDepartmentColumnAndFilter ?? false));
             const showDispatchExtras = @json((bool) ($showDispatchExtras ?? false));
+            const showLossColumn = @json((bool) $showLossColumn);
             const showClaimFiledColumn = @json((bool) ($showClaimFiledColumn ?? false));
             const showClaimableColumn = @json((bool) ($showClaimableColumn ?? false));
             const showClaimableRemarkColumn = @json((bool) ($showClaimableRemarkColumn ?? false));
@@ -2927,9 +2949,10 @@
                 return el.innerHTML;
             }
 
-            // Loss $ — prefer Amazon listing price from amazon_datsheets (same
-            // as /customer-care/all-issues). Cell shows rounded unit price;
-            // hover tooltip shows price × qty = total loss.
+            // Loss $ — editable override stored as total_loss. Until a value
+            // is saved, the cell shows the Amazon listing price (same as
+            // /customer-care/all-issues). Hover tooltip still shows
+            // price × qty = derived total when Amz price exists.
             function lossQtyForRow(row) {
                 const orderQty = row?.order_qty;
                 const qty = row?.qty;
@@ -2942,26 +2965,48 @@
                 return null;
             }
 
-            function lossCellDisplay(row) {
-                const price = row?.amz_price;
-                if (price != null && price !== '' && !isNaN(parseFloat(price))) {
-                    return '$' + Math.round(Number(price)).toLocaleString();
-                }
+            function parseLossInput(raw) {
+                const t = String(raw ?? '').trim().replace(/[$,]/g, '');
+                if (t === '') return null;
+                const n = parseFloat(t);
+                return isNaN(n) ? null : Math.round(n * 100) / 100;
+            }
+
+            function formatLossInputValue(n) {
+                if (n == null || n === '' || isNaN(parseFloat(n))) return '';
+                return String(Math.round(parseFloat(n)));
+            }
+
+            function lossInputDisplayValue(row) {
                 const tl = row?.total_loss;
                 if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
-                    return '$' + Math.round(parseFloat(tl)).toLocaleString();
+                    return formatLossInputValue(tl);
                 }
-                return '—';
+                const price = row?.amz_price;
+                if (price != null && price !== '' && !isNaN(parseFloat(price))) {
+                    return formatLossInputValue(price);
+                }
+                return '';
+            }
+
+            function lossCellDisplay(row) {
+                const v = lossInputDisplayValue(row);
+                return v === '' ? '—' : ('$' + Number(v).toLocaleString());
             }
 
             function lossCellTooltip(row) {
+                const tl = row?.total_loss;
+                const hasOverride = tl != null && tl !== '' && !isNaN(parseFloat(tl));
                 const price = row?.amz_price;
-                if (price == null || price === '' || isNaN(parseFloat(price))) {
-                    const tl = row?.total_loss;
-                    if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
-                        return 'Loss $' + Number(tl).toFixed(2);
+                if (hasOverride) {
+                    const parts = ['Loss $' + Number(tl).toFixed(2)];
+                    if (price != null && price !== '' && !isNaN(parseFloat(price))) {
+                        parts.push('(Amz $' + Number(price).toFixed(2) + ')');
                     }
-                    return 'No Amz price for this SKU';
+                    return parts.join(' ');
+                }
+                if (price == null || price === '' || isNaN(parseFloat(price))) {
+                    return 'Click to enter Loss $';
                 }
                 const loss = row?.amz_loss;
                 const lossQty = lossQtyForRow(row);
@@ -2976,6 +3021,10 @@
             }
 
             function lossDetailsDisplay(row) {
+                const tl = row?.total_loss;
+                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                    return '$' + Math.round(parseFloat(tl)).toLocaleString();
+                }
                 const price = row?.amz_price;
                 const lossTotal = row?.amz_loss;
                 if (price != null && price !== '' && !isNaN(parseFloat(price))) {
@@ -2984,11 +3033,62 @@
                             ? '  (total loss $' + Math.round(Number(lossTotal)).toLocaleString() + ')'
                             : '');
                 }
-                const tl = row?.total_loss;
-                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
-                    return '$' + Math.round(parseFloat(tl)).toLocaleString();
-                }
                 return '';
+            }
+
+            function lossCellHtml(row) {
+                const v = lossInputDisplayValue(row);
+                return '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
+                    '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
+                    'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" ' +
+                    'data-issue-id="' + escAttr(String(row.id)) + '" inputmode="decimal" ' +
+                    'autocomplete="off" aria-label="Loss $">' +
+                    '</td>';
+            }
+
+            async function saveTotalLossFromInput(input) {
+                if (!showLossColumn) return;
+                const id = input.getAttribute('data-issue-id');
+                if (!id) return;
+                const parsed = parseLossInput(input.value);
+                const newDisplay = parsed == null ? '' : formatLossInputValue(parsed);
+                const original = input.getAttribute('data-original') || '';
+                if (newDisplay === original) {
+                    input.value = original;
+                    return;
+                }
+                const r = holdIssueRows.find(x => String(x.id) === String(id));
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) + '/total-loss', {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({
+                            total_loss: parsed
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    if (r) {
+                        r.total_loss = data.total_loss != null ? data.total_loss : null;
+                    }
+                    const next = lossInputDisplayValue(r || {
+                        total_loss: data.total_loss,
+                        amz_price: r?.amz_price
+                    });
+                    input.value = next;
+                    input.setAttribute('data-original', next);
+                    input.closest('td')?.setAttribute('title', lossCellTooltip(r || {}));
+                } catch (e) {
+                    alert(e.message || 'Could not save Loss $');
+                    input.value = original;
+                }
             }
 
             /**
@@ -4508,8 +4608,9 @@
                                 '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
                                 @endif
                                 : '—') + '</td>' +
-                            '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
-                                lossCellDisplay(row) + '</td>' +
+                            @if ($showLossColumn)
+                            lossCellHtml(row) +
+                            @endif
                         @elseif ($showOrderIdField ?? false)
                             '<td class="order-num-cell">' + (row.order_number ?
                                 '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
@@ -4521,6 +4622,11 @@
                                 '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
                                 @endif
                                 : '—') + '</td>' +
+                            @if ($showLossColumn)
+                            lossCellHtml(row) +
+                            @endif
+                        @elseif ($showLossColumn)
+                            lossCellHtml(row) +
                         @endif
                     '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
                     '</td>' +
@@ -5356,7 +5462,7 @@
                             order_number: (document.getElementById('hold_issue_order_number')?.value ||
                                 '').trim(),
                         @endif
-                        @if ($showDispatchExtras ?? false)
+                        @if (($showDispatchExtras ?? false) && !($hideLossDollarInput ?? false))
                             total_loss: document.getElementById('hold_issue_total_loss')?.value || '',
                         @endif
                         marketplace_1: marketplace1Input.value.trim(),
@@ -5517,6 +5623,10 @@
                 if (remarkInp && tableBody.contains(remarkInp) && showClaimableRemarkColumn) {
                     saveClaimableRemarkFromInput(remarkInp);
                 }
+                const lossInp = event.target.closest('.issue-loss-input');
+                if (lossInp && tableBody.contains(lossInp) && showLossColumn) {
+                    saveTotalLossFromInput(lossInp);
+                }
             });
 
             tableBody.addEventListener('input', (event) => {
@@ -5530,10 +5640,17 @@
 
             tableBody.addEventListener('keydown', (event) => {
                 const remarkInp = event.target.closest('.carrier-claimable-remark-input');
-                if (!remarkInp || !tableBody.contains(remarkInp) || !showClaimableRemarkColumn) return;
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (remarkInp && tableBody.contains(remarkInp) && showClaimableRemarkColumn) {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        remarkInp.blur();
+                    }
+                    return;
+                }
+                const lossInp = event.target.closest('.issue-loss-input');
+                if (lossInp && tableBody.contains(lossInp) && showLossColumn && event.key === 'Enter') {
                     event.preventDefault();
-                    remarkInp.blur();
+                    lossInp.blur();
                 }
             });
 

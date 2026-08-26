@@ -103,6 +103,11 @@ class FetchAliexpressMetrics extends Command
         $saved = 0;
         $pricingSaved = 0;
         $stockUpdated = 0;
+        $seenProductIds = [];
+        $apiTotalCount = null;
+        $catalogComplete = false;
+        $hasListingStatus = Schema::hasTable('aliexpress_metric')
+            && Schema::hasColumn('aliexpress_metric', 'listing_status');
 
         while (true) {
             $result = $api->getInventory($page, $pageSize);
@@ -116,7 +121,12 @@ class FetchAliexpressMetrics extends Command
             }
 
             $products = $result['data']['products'] ?? [];
+            $apiTotalCount = isset($result['data']['total_count'])
+                ? (int) $result['data']['total_count']
+                : $apiTotalCount;
+            $totalPage = isset($result['data']['total_page']) ? (int) $result['data']['total_page'] : 0;
             if ($products === []) {
+                $catalogComplete = true;
                 if ($page === 1) {
                     $this->warn('No products returned on page 1.');
                 }
@@ -134,6 +144,11 @@ class FetchAliexpressMetrics extends Command
                     continue;
                 }
 
+                $listProductId = trim((string) ($product['product_id'] ?? $product['id'] ?? ''));
+                if ($listProductId !== '') {
+                    $seenProductIds[$listProductId] = true;
+                }
+
                 $rows = $api->extractSkuRowsFromListItem($product, $withSkus);
 
                 foreach ($rows as $row) {
@@ -141,18 +156,25 @@ class FetchAliexpressMetrics extends Command
                     $productId = (string) $row['product_id'];
                     $price = (float) $row['price'];
                     $stock = $row['stock'];
+                    if ($productId !== '') {
+                        $seenProductIds[$productId] = true;
+                    }
 
                     $hasMerchantSku = $sku !== '' && $sku !== $productId;
                     if ($sku === '' || (! $hasMerchantSku && $price <= 0 && $stock === null)) {
                         continue;
                     }
 
+                    $payload = [
+                        'price' => $price,
+                        'product_name' => $row['product_name'] ?? null,
+                    ];
+                    if ($hasListingStatus) {
+                        $payload['listing_status'] = 'onselling';
+                    }
                     AliexpressMetric::updateOrCreate(
                         ['product_id' => $productId, 'sku' => $sku],
-                        [
-                            'price' => $price,
-                            'product_name' => $row['product_name'] ?? null,
-                        ]
+                        $payload
                     );
                     $saved++;
 
@@ -172,6 +194,15 @@ class FetchAliexpressMetrics extends Command
                 }
             }
 
+            if ($totalPage > 0 && $page >= $totalPage) {
+                $catalogComplete = true;
+                break;
+            }
+            if (count($products) < $pageSize) {
+                $catalogComplete = true;
+                break;
+            }
+
             $page++;
             usleep(150000);
         }
@@ -184,7 +215,127 @@ class FetchAliexpressMetrics extends Command
         }
         $this->info($msg);
 
+        if ($syncPricing && $catalogComplete) {
+            $cleared = $this->clearPricesNotOnSelling(array_keys($seenProductIds), $apiTotalCount);
+            if ($cleared > 0) {
+                $this->info("Cleared {$cleared} pricing row(s) no longer in the onSelling catalog.");
+            }
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Zero list price + AE stock for SKUs whose product_id is no longer onSelling.
+     * A SKU stays if any of its metric product_ids was in this catalog (republished listings).
+     *
+     * @param  list<string>  $seenProductIds
+     */
+    private function clearPricesNotOnSelling(array $seenProductIds, ?int $apiTotalCount): int
+    {
+        $seen = [];
+        foreach ($seenProductIds as $id) {
+            $id = trim((string) $id);
+            if ($id !== '') {
+                $seen[$id] = true;
+            }
+        }
+        $seenCount = count($seen);
+        if ($seenCount < 20) {
+            $this->warn("Skip stale-price prune: only {$seenCount} onSelling product_id(s).");
+
+            return 0;
+        }
+        if ($apiTotalCount !== null && $apiTotalCount > 0 && $seenCount < (int) floor($apiTotalCount * 0.9)) {
+            $this->warn("Skip stale-price prune: saw {$seenCount} of {$apiTotalCount} onSelling product(s).");
+
+            return 0;
+        }
+
+        $pidsBySku = [];
+        AliexpressMetric::query()
+            ->whereNotNull('product_id')
+            ->where('product_id', '!=', '')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereColumn('sku', '!=', 'product_id')
+            ->select(['sku', 'product_id'])
+            ->orderBy('id')
+            ->chunk(500, function ($rows) use (&$pidsBySku) {
+                foreach ($rows as $row) {
+                    $norm = $this->normalizePricingSku((string) $row->sku);
+                    $pid = trim((string) $row->product_id);
+                    if ($norm === '' || $pid === '') {
+                        continue;
+                    }
+                    $pidsBySku[$norm][$pid] = true;
+                }
+            });
+
+        $staleSkus = [];
+        foreach ($pidsBySku as $norm => $pids) {
+            $live = false;
+            foreach (array_keys($pids) as $pid) {
+                if (isset($seen[$pid])) {
+                    $live = true;
+                    break;
+                }
+            }
+            if (! $live) {
+                $staleSkus[$norm] = true;
+            }
+        }
+
+        $hasListingStatus = Schema::hasColumn('aliexpress_metric', 'listing_status');
+        if ($hasListingStatus) {
+            $offlinePids = [];
+            foreach ($pidsBySku as $pids) {
+                foreach (array_keys($pids) as $pid) {
+                    if (! isset($seen[$pid])) {
+                        $offlinePids[$pid] = true;
+                    }
+                }
+            }
+            foreach (array_chunk(array_keys($offlinePids), 200) as $chunk) {
+                AliexpressMetric::query()
+                    ->whereIn('product_id', $chunk)
+                    ->update(['listing_status' => 'offline']);
+            }
+            foreach (array_chunk(array_keys($seen), 200) as $chunk) {
+                AliexpressMetric::query()
+                    ->whereIn('product_id', $chunk)
+                    ->update(['listing_status' => 'onselling']);
+            }
+        }
+
+        if ($staleSkus === []) {
+            return 0;
+        }
+
+        $cleared = 0;
+        AliexpressPricingPrice::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(200, function ($rows) use ($staleSkus, &$cleared) {
+                foreach ($rows as $row) {
+                    $norm = $this->normalizePricingSku((string) $row->sku);
+                    if ($norm === '' || ! isset($staleSkus[$norm])) {
+                        continue;
+                    }
+                    $price = (float) $row->price;
+                    $stock = (int) ($row->ae_stock ?? 0);
+                    if ($price <= 0 && $stock <= 0) {
+                        continue;
+                    }
+                    $row->price = 0;
+                    $row->ae_stock = 0;
+                    $row->save();
+                    $cleared++;
+                }
+            });
+
+        return $cleared;
     }
 
     /**

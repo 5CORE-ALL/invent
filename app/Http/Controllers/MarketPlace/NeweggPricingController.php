@@ -18,6 +18,7 @@ use App\Services\NeweggApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class NeweggPricingController extends Controller
 {
@@ -28,6 +29,7 @@ class NeweggPricingController extends Controller
 
     public function getData(Request $request)
     {
+        try {
         // Margin from marketplace_percentages (Neweggb2c): factor = (percentage - ad_updates) / 100.
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Neweggb2c')->first();
         $percentage = $marketplaceData ? (float) $marketplaceData->percentage : 80;
@@ -61,17 +63,24 @@ class NeweggPricingController extends Controller
         }
 
         // 5) Newegg L30 units sold (last 30 days, excl. voided) keyed by normalized SKU.
-        $neweggL30Raw = DB::table('newegg_order_items as i')
-            ->join('newegg_orders as o', 'o.order_number', '=', 'i.order_number')
-            ->where('o.order_date', '>=', now()->subDays(30))
-            ->where(function ($q) {
-                $q->whereNull('o.order_status_description')
-                  ->orWhere('o.order_status_description', 'not like', '%void%');
-            })
-            ->whereNotNull('i.seller_part_number')
-            ->groupBy('i.seller_part_number')
-            ->select('i.seller_part_number', DB::raw('SUM(i.ordered_qty) as qty'))
-            ->pluck('qty', 'seller_part_number');
+        $neweggL30Raw = collect();
+        try {
+            if (Schema::hasTable('newegg_order_items') && Schema::hasTable('newegg_orders')) {
+                $neweggL30Raw = DB::table('newegg_order_items as i')
+                    ->join('newegg_orders as o', 'o.order_number', '=', 'i.order_number')
+                    ->where('o.order_date', '>=', now()->subDays(30))
+                    ->where(function ($q) {
+                        $q->whereNull('o.order_status_description')
+                          ->orWhere('o.order_status_description', 'not like', '%void%');
+                    })
+                    ->whereNotNull('i.seller_part_number')
+                    ->groupBy('i.seller_part_number')
+                    ->select('i.seller_part_number', DB::raw('SUM(i.ordered_qty) as qty'))
+                    ->pluck('qty', 'seller_part_number');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Newegg L30 query failed: '.$e->getMessage());
+        }
 
         $neweggL30ByNorm = [];
         foreach ($neweggL30Raw as $spn => $qty) {
@@ -281,7 +290,20 @@ class NeweggPricingController extends Controller
             $data[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
         }
 
-        return response()->json(['data' => $data]);
+        // Tabulator 6 expects a JSON array (same as /tiktok-pricing). ajaxResponse
+        // still accepts {data: [...]} so either shape works.
+        return response()->json($data);
+        } catch (\Throwable $e) {
+            Log::error('Newegg pricing getData failed: '.$e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to fetch Newegg pricing data',
+                'data' => [],
+            ], 500);
+        }
     }
 
     /**

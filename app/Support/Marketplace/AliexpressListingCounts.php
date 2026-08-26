@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Schema;
  * - skip PARENT SKUs
  * - skip INV <= 0 (shopify_skus.inv — Product Master, not live catalog)
  * - nr_req from AliexpressDataView.value.NRL (NRL/NR → NR, else REQ)
- * - listed if real aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
- *   (normalized SKU: spaces / hyphens / case)
+ * - listed if onSelling aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
+ *   with price > 0 (normalized SKU: spaces / hyphens / case). Offline / deleted IDs do not count.
  * - Missing L (Pending) = REQ and not listed
  */
 class AliexpressListingCounts
@@ -114,15 +114,31 @@ class AliexpressListingCounts
             return $byNorm;
         }
 
+        $hasListingStatus = Schema::hasColumn('aliexpress_metric', 'listing_status');
+        $cols = ['id', 'sku', 'product_id'];
+        if ($hasListingStatus) {
+            $cols[] = 'listing_status';
+        }
+
         AliexpressMetric::query()
+            ->select($cols)
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
-            ->chunkById(500, function ($rows) use (&$byNorm) {
+            ->chunkById(500, function ($rows) use (&$byNorm, $hasListingStatus) {
                 foreach ($rows as $row) {
+                    $status = $hasListingStatus
+                        ? strtolower(trim((string) ($row->listing_status ?? '')))
+                        : '';
+                    if (in_array($status, ['offline', 'service_delete'], true)) {
+                        continue;
+                    }
                     $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
                     $id = self::normalizeProductId($row->product_id, (string) $row->sku);
                     if ($norm !== '' && $id !== '' && ! isset($byNorm[$norm])) {
+                        $byNorm[$norm] = $id;
+                    }
+                    if ($status === 'onselling' && $norm !== '' && $id !== '') {
                         $byNorm[$norm] = $id;
                     }
                 }
@@ -144,6 +160,7 @@ class AliexpressListingCounts
         AliexpressPricingPrice::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
+            ->where('price', '>', 0)
             ->orderBy('id')
             ->chunkById(500, function ($rows) use (&$byNorm) {
                 foreach ($rows as $row) {

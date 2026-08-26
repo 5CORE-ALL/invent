@@ -2154,6 +2154,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.label.issues.list.update');
     Route::post('/customer-care/label-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'archive'])
         ->name('customer.care.label.issues.list.archive');
+    Route::patch('/customer-care/label-issues/issues/{id}/total-loss', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'updateTotalLoss'])
+        ->name('customer.care.label.issues.list.patch.total.loss');
     Route::get('/customer-care/label-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.label.issues.dropdown.options.index');
     Route::post('/customer-care/label-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\LabelIssuesController::class, 'dropdownOptionsStore'])
@@ -2210,6 +2212,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.patch.amp.usd');
     Route::patch('/customer-care/all-issues/issues/{id}/amt-rec', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmtRec'])
         ->name('customer.care.dispatch.issues.list.patch.amt.rec');
+    Route::patch('/customer-care/all-issues/issues/{id}/total-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateTotalLoss'])
+        ->name('customer.care.dispatch.issues.list.patch.total.loss');
     Route::patch('/customer-care/all-issues/issues/{id}/claim-received', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimReceived'])
         ->name('customer.care.dispatch.issues.list.patch.claim.received');
     Route::patch('/customer-care/all-issues/issues/{id}/issue-carrier', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateIssueCarrier'])
@@ -2252,6 +2256,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.listing.issue.issues.update');
     Route::post('/customer-care/listing-issue/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'archive'])
         ->name('customer.care.listing.issue.issues.archive');
+    Route::patch('/customer-care/listing-issue/issues/{id}/total-loss', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'updateTotalLoss'])
+        ->name('customer.care.listing.issue.issues.patch.total.loss');
     Route::get('/customer-care/listing-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.listing.issue.dropdown.options.index');
     Route::post('/customer-care/listing-issue/dropdown-options', [\App\Http\Controllers\CustomerCare\ListingIssueController::class, 'dropdownOptionsStore'])
@@ -2273,6 +2279,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.c.care.issues.list.update');
     Route::post('/customer-care/c-care-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'archive'])
         ->name('customer.care.c.care.issues.list.archive');
+    Route::patch('/customer-care/c-care-issues/issues/{id}/total-loss', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'updateTotalLoss'])
+        ->name('customer.care.c.care.issues.list.patch.total.loss');
     Route::get('/customer-care/c-care-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.c.care.issues.dropdown.options.index');
     Route::post('/customer-care/c-care-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\CCareIssuesController::class, 'dropdownOptionsStore'])
@@ -2294,6 +2302,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.other.issues.list.update');
     Route::post('/customer-care/other-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'archive'])
         ->name('customer.care.other.issues.list.archive');
+    Route::patch('/customer-care/other-issues/issues/{id}/total-loss', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'updateTotalLoss'])
+        ->name('customer.care.other.issues.list.patch.total.loss');
     Route::get('/customer-care/other-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.other.issues.dropdown.options.index');
     Route::post('/customer-care/other-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\OtherIssuesController::class, 'dropdownOptionsStore'])
@@ -2319,6 +2329,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             'mergeCreatedAtIntoCreatedBy' => true,
             // Shrink columns to content width; center all cell values.
             'autofitTableColumns' => true,
+            'showLossColumn' => true,
         ]));
     })->name('customer.care.qc.and.packing');
     Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
@@ -2412,33 +2423,37 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     })->name('customer.care.qc.and.packing.sku.details');
     Route::get('/customer-care/qc-and-packing/issues', function () {
         \App\Support\CustomerCareIssueFanout::ensureForDepartments(['QC', 'Packaging']);
+        $qcIssueCols = [
+            'id',
+            'sku',
+            'qty',
+            'order_qty',
+            'parent',
+            'marketplace_1',
+            'marketplace_2',
+            'what_happened',
+            'issue',
+            'issue_remark',
+            'action_1',
+            'action_1_remark',
+            'replacement_tracking',
+            'c_action_1',
+            'c_action_1_remark',
+            'close_note',
+            'department',
+            'created_by',
+            'created_at',
+        ];
+        if (\Illuminate\Support\Facades\Schema::hasColumn('qc_and_packing_issues', 'total_loss')) {
+            $qcIssueCols[] = 'total_loss';
+        }
         $rows = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')
             ->where(function ($q) {
                 $q->whereNull('is_archived')->orWhere('is_archived', false);
             })
             ->orderByDesc('id')
             ->limit(1000)
-            ->get([
-                'id',
-                'sku',
-                'qty',
-                'order_qty',
-                'parent',
-                'marketplace_1',
-                'marketplace_2',
-                'what_happened',
-                'issue',
-                'issue_remark',
-                'action_1',
-                'action_1_remark',
-                'replacement_tracking',
-                'c_action_1',
-                'c_action_1_remark',
-                'close_note',
-                'department',
-                'created_by',
-                'created_at',
-            ]);
+            ->get($qcIssueCols);
 
         $skus = $rows->map(fn ($r) => strtoupper(trim((string) ($r->sku ?? ''))))->filter()->unique()->values()->all();
         $productMap = [];
@@ -2520,6 +2535,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'c_action_1' => $row->c_action_1,
                 'c_action_1_remark' => $row->c_action_1_remark,
                 'close_note' => $row->close_note,
+                'total_loss' => isset($row->total_loss) && $row->total_loss !== null ? (float) $row->total_loss : null,
                 'department' => $row->department ?? null,
                 'created_by' => $row->created_by,
                 'created_at' => $row->created_at,
@@ -2929,6 +2945,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return response()->json(['message' => 'Hold issue updated successfully.']);
     })->name('customer.care.qc.and.packing.issues.update');
+    Route::patch('/customer-care/qc-and-packing/issues/{id}/total-loss', function (\Illuminate\Http\Request $request, int $id) {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('qc_and_packing_issues', 'total_loss')) {
+            return response()->json(['message' => 'Not available.'], 503);
+        }
+        $validated = $request->validate(['total_loss' => 'nullable|numeric']);
+        $raw = $request->input('total_loss');
+        $value = ($raw === null || $raw === '') ? null : (float) $validated['total_loss'];
+
+        $updated = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['total_loss' => $value, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'total_loss' => $value]);
+    })->name('customer.care.qc.and.packing.issues.patch.total.loss');
     Route::post('/customer-care/qc-and-packing/issues/{id}/archive', function (int $id) {
         $row = \Illuminate\Support\Facades\DB::table('qc_and_packing_issues')->where('id', $id)->first();
         if (! $row) {

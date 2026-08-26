@@ -1,13 +1,15 @@
 <?php
 /**
- * Sequential production runner for every unique Kernel artisan command.
- * Waits for an in-flight sales-backfill so Amazon/eBay pulls do not overlap.
+ * Sequential production runner: 1) sales  2) last-7-day missed sales fill
+ * 3) price  4) everything else.
+ * Sales start immediately. Price/others wait for any older Kernel runner.
  */
 $root = '/var/www/inventory_5c_usr/data/www/inventory.5coremanagement.com';
 chdir($root);
 
 $php = file_exists('/usr/bin/php8.3') ? '/usr/bin/php8.3' : '/usr/bin/php';
 $log = $root . '/storage/logs/kernel-run-all-' . date('Ymd-His') . '.log';
+$selfPid = getmypid();
 
 function ka_out(string $log, string $msg): void
 {
@@ -26,6 +28,41 @@ function ka_run(string $php, string $log, string $cmd): int
     return (int) $ec;
 }
 
+function ka_wait_pids(string $log, array $pids, string $label): void
+{
+    $waited = 0;
+    $pids = array_values(array_unique(array_filter($pids, static fn ($pid) => ctype_digit((string) $pid) && (int) $pid > 1)));
+    if ($pids === []) {
+        return;
+    }
+    ka_out($log, 'waiting for ' . $label . ' pid(s)=' . implode(',', $pids));
+    while (true) {
+        $alive = [];
+        foreach ($pids as $pid) {
+            if (file_exists('/proc/' . $pid)) {
+                $alive[] = $pid;
+            }
+        }
+        if ($alive === []) {
+            break;
+        }
+        sleep(20);
+        $waited += 20;
+        if ($waited % 120 === 0) {
+            ka_out($log, 'still waiting for ' . $label . ' after ' . $waited . 's pid(s)=' . implode(',', $alive));
+        }
+    }
+    ka_out($log, $label . ' finished after ' . $waited . 's');
+}
+
+function ka_other_kernel_pids(int $selfPid): array
+{
+    $out = [];
+    exec("ps -eo pid=,args= | awk '\$2==\"/usr/bin/php\" && \$3==\"/tmp/run-all-kernel.php\" {print \$1}'", $out);
+
+    return array_values(array_filter($out, static fn ($pid) => ctype_digit((string) $pid) && (int) $pid !== $selfPid));
+}
+
 $skip = [
     'users:auto-logout',
     'queue:ensure-watchdog-daemon',
@@ -34,8 +71,8 @@ $skip = [
     'cron-monitor:cleanup',
 ];
 
-$cmds = [
-    // Sales / orders / daily metrics (Kernel scheduleSalesCommands)
+$sales = [
+    'app:fetch-amazon-orders --with-items --resync-last-days=7',
     'app:fetch-amazon-orders --auto-sync --with-items',
     'app:fetch-fba-reports',
     'app:fetch-fba-monthly-sales',
@@ -53,7 +90,7 @@ $cmds = [
     'ebay:collect-metrics',
     'ebay2:collect-metrics',
     'tiktok:collect-metrics',
-    'shopify:sync-orders --days=2',
+    'shopify:sync-orders --days=7',
     'shopify:sync-orders --days=60',
     'app:fetch-shopify-b2b-metrics --days=60',
     'app:fetch-shopify-b2c-metrics --days=60',
@@ -81,13 +118,12 @@ $cmds = [
     'walmart:fetch-orders --days=60',
     'tiktok:fetch-orders --days=60 --prune',
     'tiktok:fetch-orders --channel=tiktok2 --days=60 --prune',
-    'app:update-marketplace-daily-metrics',
     'sync:tiktok-api-data',
     'sync:tiktok-api-data --channel=tiktok2',
-    'sof:snapshot-daily',
-    'sof:snapshot-daily --catch-up --backfill=3',
+    'sof:snapshot-daily --catch-up --backfill=7',
+];
 
-    // Price / listed / competitor (schedulePriceCommands)
+$price = [
     'app:fetch-fba-inventory --insert --prices',
     'amazon:dil-prmt-auto-push',
     'amazon:cvr-cpn-auto-push',
@@ -106,8 +142,9 @@ $cmds = [
     'pef:dil-prmt-auto-apply',
     'pef:cvr-cpn-auto-apply',
     'channel:push-sprice-daily',
+];
 
-    // Ads / inventory / sheets / other (scheduleOtherCommands + retryFiveTimesUntil)
+$others = [
     'amazon:sync-inventory',
     'app:fetch-amazon-listings',
     'amazon:sync-products --enrich --enrich-limit=200',
@@ -230,56 +267,152 @@ $cmds = [
     'tasks:execute-automated',
     'tasks:assign-amz-lvv-mismatch-daily',
     'tasks:assign-missing-mapping-daily',
-
-    // Recalc channel master after all pulls
-    'channel:calculate-data --force',
-    'channel:calculate-data --force',
     'channel:calculate-data --force',
 ];
 
-$toRun = [];
-$seen = [];
-foreach ($cmds as $cmd) {
-    if (in_array($cmd, $skip, true) || isset($seen[$cmd])) {
-        continue;
+function ka_dedupe(array $cmds, array $skip): array
+{
+    $toRun = [];
+    $seen = [];
+    foreach ($cmds as $cmd) {
+        if (in_array($cmd, $skip, true) || isset($seen[$cmd])) {
+            continue;
+        }
+        $seen[$cmd] = true;
+        $toRun[] = $cmd;
     }
-    $seen[$cmd] = true;
-    $toRun[] = $cmd;
+
+    return $toRun;
 }
 
-$total = count($toRun);
-ka_out($log, 'start ' . date('c') . ' php=' . $php . ' count=' . $total);
+$sales = ka_dedupe($sales, $skip);
+$price = ka_dedupe($price, $skip);
+$others = ka_dedupe($others, $skip);
 
-$waited = 0;
-while (true) {
-    $out = [];
-    exec("ps -eo pid=,args= | awk '\$2==\"/usr/bin/php\" && \$3==\"/tmp/run-sales-backfill.php\" {print \$1}'", $out);
-    $out = array_values(array_filter($out, static fn ($pid) => ctype_digit((string) $pid) && (int) $pid !== getmypid()));
-    if ($out === []) {
-        break;
-    }
-    if ($waited === 0) {
-        ka_out($log, 'waiting for in-flight sales-backfill pid(s)=' . implode(',', $out));
-    }
-    sleep(20);
-    $waited += 20;
-    if ($waited % 120 === 0) {
-        ka_out($log, 'still waiting for sales-backfill after ' . $waited . 's');
-    }
-}
-if ($waited > 0) {
-    ka_out($log, 'sales-backfill finished after ' . $waited . 's — starting Kernel queue');
-}
+ka_out($log, 'start ' . date('c') . ' php=' . $php . ' pid=' . $selfPid);
+ka_out($log, 'order=sales -> 7-day-missed-fill -> price -> others');
+ka_out($log, 'counts sales=' . count($sales) . ' price=' . count($price) . ' others=' . count($others));
 
 $failed = [];
-foreach ($toRun as $i => $cmd) {
-    $n = $i + 1;
-    echo "[{$n}/{$total}] {$cmd}" . PHP_EOL;
-    $ec = ka_run($php, $log, $cmd);
-    if ($ec !== 0) {
-        $failed[] = $cmd . ' exit=' . $ec;
+$phase = function (string $name, array $cmds) use ($php, $log, &$failed): void {
+    $total = count($cmds);
+    ka_out($log, '===== PHASE ' . $name . ' count=' . $total . ' =====');
+    foreach ($cmds as $i => $cmd) {
+        $n = $i + 1;
+        echo "[{$name} {$n}/{$total}] {$cmd}" . PHP_EOL;
+        $ec = ka_run($php, $log, $cmd);
+        if ($ec !== 0) {
+            $failed[] = $name . ': ' . $cmd . ' exit=' . $ec;
+        }
+    }
+};
+
+$phase('SALES', $sales);
+
+require $root . '/vendor/autoload.php';
+$app = require $root . '/bootstrap/app.php';
+$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+$kernel->bootstrap();
+
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+$tz = 'America/Los_Angeles';
+$nowPt = Carbon::now($tz);
+$from7 = $nowPt->copy()->subDays(7)->toDateString();
+$todayPt = $nowPt->toDateString();
+$metricDates = [];
+$missed = [];
+
+ka_out($log, '=== 7-DAY SALES GAP CHECK PT from ' . $from7 . ' to ' . $todayPt . ' ===');
+
+if (Schema::hasTable('marketplace_daily_metrics')) {
+    $have = DB::table('marketplace_daily_metrics')
+        ->where('date', '>=', $from7)
+        ->select('date', DB::raw('count(*) as channels'), DB::raw('round(sum(total_sales),2) as sales'))
+        ->groupBy('date')
+        ->orderBy('date')
+        ->get();
+    $haveDates = [];
+    foreach ($have as $row) {
+        $d = substr((string) $row->date, 0, 10);
+        $haveDates[] = $d;
+        ka_out($log, 'metrics ' . $d . ' channels=' . $row->channels . ' sales=' . $row->sales);
+        if ((int) $row->channels < 20) {
+            $missed[] = $d;
+            ka_out($log, 'THIN marketplace_daily_metrics for ' . $d . ' (channels=' . $row->channels . ')');
+        }
+    }
+    $cursor = Carbon::parse($from7, $tz)->startOfDay();
+    $end = $nowPt->copy()->startOfDay();
+    while ($cursor->lte($end)) {
+        $d = $cursor->toDateString();
+        $metricDates[] = $d;
+        if (! in_array($d, $haveDates, true)) {
+            $missed[] = $d;
+            ka_out($log, 'MISSING marketplace_daily_metrics for ' . $d);
+        }
+        $cursor->addDay();
     }
 }
+
+if (Schema::hasTable('amazon_daily_syncs')) {
+    $syncs = DB::table('amazon_daily_syncs')
+        ->where('sync_date', '>=', $from7)
+        ->orderBy('sync_date')
+        ->get(['sync_date', 'status', 'orders_fetched', 'items_fetched']);
+    $syncDates = [];
+    foreach ($syncs as $row) {
+        $d = substr((string) $row->sync_date, 0, 10);
+        $syncDates[] = $d;
+        ka_out($log, 'amazon_sync ' . $d . ' status=' . $row->status . ' orders=' . $row->orders_fetched . ' items=' . $row->items_fetched);
+        $isToday = $d === $todayPt;
+        $thin = (int) $row->orders_fetched <= 5 && ! $isToday;
+        $badStatus = in_array((string) $row->status, ['failed', 'pending', 'in_progress'], true) && ! $isToday;
+        if ($thin || $badStatus) {
+            $missed[] = $d;
+            ka_out($log, 'MISSED amazon sales day ' . $d . ' — will refill');
+        }
+    }
+    $cursor = Carbon::parse($from7, $tz)->startOfDay();
+    $end = $nowPt->copy()->startOfDay();
+    while ($cursor->lte($end)) {
+        $d = $cursor->toDateString();
+        if (! in_array($d, $syncDates, true) && $d !== $todayPt) {
+            $missed[] = $d;
+            ka_out($log, 'MISSING amazon_daily_syncs for ' . $d);
+        }
+        $cursor->addDay();
+    }
+}
+
+$missed = array_values(array_unique($missed));
+sort($missed);
+$metricDates = array_values(array_unique($metricDates));
+sort($metricDates);
+
+ka_out($log, 'missed sales days last 7d: ' . ($missed === [] ? '(none)' : implode(', ', $missed)));
+ka_out($log, 'will write marketplace_daily_metrics for: ' . implode(', ', $metricDates));
+
+$fill = [];
+if ($missed !== []) {
+    $fill[] = 'app:fetch-amazon-orders --with-items --resync-last-days=7';
+    $fill[] = 'app:fetch-ebay-orders';
+    $fill[] = 'app:fetch-ebay2-orders';
+    $fill[] = 'shopify:sync-orders --days=7';
+}
+foreach ($metricDates as $date) {
+    $fill[] = 'app:update-marketplace-daily-metrics --date=' . $date;
+}
+$fill[] = 'channel:calculate-data --force';
+
+$phase('FILL-7D', $fill);
+
+ka_wait_pids($log, ka_other_kernel_pids($selfPid), 'older-kernel-runner');
+
+$phase('PRICE', $price);
+$phase('OTHERS', $others);
 
 ka_out($log, 'DONE ' . date('c') . ' failed=' . count($failed));
 if ($failed !== []) {

@@ -217,6 +217,14 @@
             min-width: 4.5rem;
         }
 
+        #all-issues-tabulator .issue-loss-input {
+            width: 100%;
+            max-width: 5.5rem;
+            font-size: 0.8125rem;
+            padding: 0.15rem 0.3rem;
+            text-align: right;
+        }
+
         .copy-order-btn.copied,
         .copy-tracking-btn.copied {
             color: #198754;
@@ -1626,28 +1634,47 @@
                 return '<button class="copy-order-btn" data-copy="' + escAttr(v) + '" title="' + escAttr(v) +
                     '"><i class="bi bi-clipboard"></i></button>';
             };
-            // Loss $ — column shows the Amazon listing price for that SKU
-            // (from amazon_datsheets.price), so users can see the per-unit
-            // dollar value at a glance. The price × qty total is in the
-            // tooltip alongside it.
-            //
-            // Rounded to whole dollars in the cell (no cents) per request —
-            // exact two-decimal values still appear in the hover tooltip.
-            const fmtLoss = function(cell) {
-                const d = cell.getData();
-                const price = d.amz_price;
-                if (price == null || isNaN(parseFloat(price))) return '—';
-                return '$' + Math.round(Number(price)).toLocaleString();
-            };
-            const tooltipLoss = function(e, cell) {
-                const d = cell.getData();
-                const price = d.amz_price;
-                const loss = d.amz_loss;
-                if (price == null || isNaN(parseFloat(price))) {
-                    return 'No Amz price for this SKU';
+            function parseLossInput(raw) {
+                const t = String(raw ?? '').trim().replace(/[$,]/g, '');
+                if (t === '') return null;
+                const n = parseFloat(t);
+                return isNaN(n) ? null : Math.round(n * 100) / 100;
+            }
+
+            function formatLossInputValue(n) {
+                if (n == null || n === '' || isNaN(parseFloat(n))) return '';
+                return String(Math.round(parseFloat(n)));
+            }
+
+            function lossInputDisplayValue(d) {
+                const tl = d?.total_loss;
+                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                    return formatLossInputValue(tl);
                 }
-                const orderQty = d.order_qty;
-                const qty = d.qty;
+                const price = d?.amz_price;
+                if (price != null && price !== '' && !isNaN(parseFloat(price))) {
+                    return formatLossInputValue(price);
+                }
+                return '';
+            }
+
+            function lossTooltipText(d) {
+                const tl = d?.total_loss;
+                const hasOverride = tl != null && tl !== '' && !isNaN(parseFloat(tl));
+                const price = d?.amz_price;
+                if (hasOverride) {
+                    const parts = ['Loss $' + Number(tl).toFixed(2)];
+                    if (price != null && price !== '' && !isNaN(parseFloat(price))) {
+                        parts.push('(Amz $' + Number(price).toFixed(2) + ')');
+                    }
+                    return parts.join(' ');
+                }
+                if (price == null || isNaN(parseFloat(price))) {
+                    return 'Click to enter Loss $';
+                }
+                const loss = d?.amz_loss;
+                const orderQty = d?.order_qty;
+                const qty = d?.qty;
                 const lossQty = (orderQty != null && !isNaN(parseFloat(orderQty)) && parseFloat(orderQty) > 0)
                     ? orderQty
                     : qty;
@@ -1659,6 +1686,17 @@
                     parts.push('= total loss $' + Number(loss).toFixed(2));
                 }
                 return parts.join(' ');
+            }
+
+            // Loss $ — editable override (total_loss). Until saved, shows the
+            // Amazon listing price. Hover title keeps the price × qty breakdown.
+            const fmtLoss = function(cell) {
+                const d = cell.getData();
+                const v = lossInputDisplayValue(d);
+                return '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
+                    'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" ' +
+                    'data-issue-id="' + escAttr(String(d.id)) + '" inputmode="decimal" ' +
+                    'autocomplete="off" aria-label="Loss $" title="' + escAttr(lossTooltipText(d)) + '">';
             };
             const fmtWhatHappened = function(cell) {
                 const t = String(cell.getValue() || '').trim();
@@ -1930,15 +1968,18 @@
             function renderDetailsModalBody(d) {
                 if (!d) return '<div class="text-muted">No data.</div>';
 
+                const tl = d.total_loss;
                 const lossPrice = d.amz_price;
                 const lossTotal = d.amz_loss;
-                // Rounded to whole dollars to match the Loss $ column.
-                const lossDisplay = (lossPrice == null || isNaN(parseFloat(lossPrice)))
-                    ? ''
-                    : ('$' + Math.round(Number(lossPrice)).toLocaleString() +
+                let lossDisplay = '';
+                if (tl != null && tl !== '' && !isNaN(parseFloat(tl))) {
+                    lossDisplay = '$' + Math.round(parseFloat(tl)).toLocaleString();
+                } else if (lossPrice != null && !isNaN(parseFloat(lossPrice))) {
+                    lossDisplay = '$' + Math.round(Number(lossPrice)).toLocaleString() +
                         (lossTotal != null && !isNaN(parseFloat(lossTotal))
                             ? '  (total loss $' + Math.round(Number(lossTotal)).toLocaleString() + ')'
-                            : ''));
+                            : '');
+                }
 
                 const action1 = String(d.action_1 || '').trim();
                 const action1Remark = String(d.action_1_remark || '').trim();
@@ -2312,10 +2353,11 @@
                 },
                 {
                     title: 'Loss $',
-                    field: 'amz_price',
-                    width: 70,
+                    field: 'total_loss',
+                    width: 90,
                     formatter: fmtLoss,
-                    tooltip: tooltipLoss
+                    tooltip: false,
+                    headerSort: false
                 },
                 {
                     title: 'QTY',
@@ -3007,6 +3049,58 @@
                     return true;
                 });
                 updateTotalCount();
+            }
+
+            async function saveTotalLossFromInput(input) {
+                const id = input.getAttribute('data-issue-id');
+                if (!id) return;
+                const parsed = parseLossInput(input.value);
+                const newDisplay = parsed == null ? '' : formatLossInputValue(parsed);
+                const original = input.getAttribute('data-original') || '';
+                if (newDisplay === original) {
+                    input.value = original;
+                    return;
+                }
+                const r = holdIssueRows.find(x => String(x.id) === String(id));
+                try {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
+                        '/total-loss', {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: JSON.stringify({
+                                total_loss: parsed
+                            }),
+                        });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    const saved = data.total_loss != null ? data.total_loss : null;
+                    if (r) {
+                        r.total_loss = saved;
+                    }
+                    const row = table ? table.getRow(id) : null;
+                    if (row) {
+                        row.update({
+                            total_loss: saved
+                        });
+                    } else {
+                        const next = lossInputDisplayValue(r || {
+                            total_loss: saved,
+                            amz_price: r?.amz_price
+                        });
+                        input.value = next;
+                        input.setAttribute('data-original', next);
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not save Loss $');
+                    input.value = original;
+                }
             }
 
             async function saveIssueCarrierFromSelect(sel) {
@@ -5245,6 +5339,17 @@
                 document.getElementById('all-issues-tabulator')?.addEventListener('change', function(e) {
                     const sel = e.target.closest('.carrier-issue-carrier-select');
                     if (sel) saveIssueCarrierFromSelect(sel);
+                });
+                document.getElementById('all-issues-tabulator')?.addEventListener('focusout', function(e) {
+                    const inp = e.target.closest('.issue-loss-input');
+                    if (inp) saveTotalLossFromInput(inp);
+                });
+                document.getElementById('all-issues-tabulator')?.addEventListener('keydown', function(e) {
+                    const inp = e.target.closest('.issue-loss-input');
+                    if (inp && e.key === 'Enter') {
+                        e.preventDefault();
+                        inp.blur();
+                    }
                 });
 
                 skuInput.addEventListener('input', () => {
