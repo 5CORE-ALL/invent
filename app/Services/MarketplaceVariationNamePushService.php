@@ -32,8 +32,8 @@ class MarketplaceVariationNamePushService
                     'Shopify PLS variation name update failed.'
                 ),
                 'shopify_b5c', 'business5core' => $this->wrapBool(
-                    app(ShopifyPLSApiService::class)->updateVariantTitle($sku, $name),
-                    'ShopifyPLSApiService::updateVariantTitle (B5C)',
+                    app(ShopifyB5CApiService::class)->updateVariantTitle($sku, $name),
+                    'ShopifyB5CApiService::updateVariantTitle',
                     'Business 5Core variation name update failed.'
                 ),
                 default => [

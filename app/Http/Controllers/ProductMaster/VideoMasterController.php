@@ -19,6 +19,7 @@ use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\ReverbApiService;
 use App\Services\ShopifyApiService;
+use App\Services\ShopifyB5CApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
 use App\Services\Support\VideoMasterPushJobStore;
@@ -36,6 +37,7 @@ use App\Services\SheinApiService;
 use App\Services\AliExpressApiService;
 use App\Services\NeweggApiService;
 use App\Services\TopDawgApiService;
+use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -468,6 +470,8 @@ class VideoMasterController extends Controller
                     return app(ShopifyApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
                 case 'shopify_pls':
                     return app(ShopifyPLSApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
+                case 'shopify_b5c':
+                    return app(ShopifyB5CApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
                 case 'reverb':
                     return app(ReverbApiService::class)->dryRunUpdateVideos($sku, $imageUrls);
                 case 'ebay':
@@ -839,6 +843,8 @@ class VideoMasterController extends Controller
                     return app(ShopifyApiService::class)->updateVideos($sku, $imageUrls, $mode);
                 case 'shopify_pls':
                     return app(ShopifyPLSApiService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'shopify_b5c':
+                    return app(ShopifyB5CApiService::class)->updateVideos($sku, $imageUrls, $mode);
                 case 'macy':
                     return app(MacysApiService::class)->updateVideos($sku, $imageUrls);
                 case 'reverb':
@@ -860,8 +866,9 @@ class VideoMasterController extends Controller
                 case 'topdawg':
                     return app(TopDawgApiService::class)->updateVideos($sku, $imageUrls, $mode);
                 case 'tiktok':
-                case 'tiktok2':
                     return app(TikTokShopService::class)->updateVideos($sku, $imageUrls, $mode);
+                case 'tiktok2':
+                    return app(TikTok2ShopService::class)->updateVideos($sku, $imageUrls, $mode);
                 default:
                     return [
                         'success' => false,

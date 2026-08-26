@@ -98,8 +98,8 @@ class MarketplaceTitlePushService
                     'TopDawgApiService::updateTitle'
                 ),
                 'shopify_b5c' => $this->wrapBool(
-                    app(ShopifyPLSApiService::class)->updateTitle($sku, $title),
-                    'ShopifyPLSApiService::updateTitle (B5C)',
+                    app(\App\Services\ShopifyB5CApiService::class)->updateTitle($sku, $title),
+                    'ShopifyB5CApiService::updateTitle',
                     'Business 5Core Shopify title update failed.'
                 ),
                 'purchasing_power' => $this->wrapArray(

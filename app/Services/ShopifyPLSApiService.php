@@ -26,14 +26,24 @@ class ShopifyPLSApiService
     use ShopifyProductVideoPushTrait;
     use VideoMasterMarketplaceMethods;
 
-    private function plsDomain(): ?string
+    protected function plsDomain(): ?string
     {
         return app(ShopifyPlsTokenService::class)->getDomain();
     }
 
-    private function plsToken(bool $forceRefresh = false): ?string
+    protected function plsToken(bool $forceRefresh = false): ?string
     {
         return app(ShopifyPlsTokenService::class)->getAccessToken($forceRefresh);
+    }
+
+    protected function catalogStoreKey(): string
+    {
+        return 'pls';
+    }
+
+    protected function storeDisplayName(): string
+    {
+        return 'Shopify PLS';
     }
 
     /**
@@ -414,7 +424,7 @@ class ShopifyPLSApiService
             $domain = $this->plsDomain();
             $token = $this->plsToken();
             if (! $domain || ! $token) {
-                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+                return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
             }
 
             $trim = trim($identifier);
@@ -555,7 +565,7 @@ class ShopifyPLSApiService
             $domain = $this->plsDomain();
             $token = $this->plsToken();
             if (! $domain || ! $token) {
-                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+                return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
             }
 
             $trim = trim($identifier);
@@ -675,7 +685,7 @@ class ShopifyPLSApiService
         $domain = $this->plsDomain();
         $token = $this->plsToken();
         if (! $domain || ! $token) {
-            return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+            return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
         }
 
         try {
@@ -739,7 +749,7 @@ class ShopifyPLSApiService
             $domain = $this->plsDomain();
             $token = $this->plsToken();
             if (! $domain || ! $token) {
-                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+                return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
             }
 
             $trim = trim($identifier);
@@ -898,7 +908,7 @@ class ShopifyPLSApiService
             $domain = $this->plsDomain();
             $token = $this->plsToken();
             if (! $domain || ! $token) {
-                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+                return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
             }
 
             $trim = trim($identifier);
@@ -1033,7 +1043,7 @@ class ShopifyPLSApiService
             $domain = $this->plsDomain();
             $token = $this->plsToken();
             if (! $domain || ! $token) {
-                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+                return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
             }
 
             $trim   = trim($identifier);
@@ -1230,7 +1240,7 @@ class ShopifyPLSApiService
             return $res;
         }
 
-        $saved = $this->saveImageUrlsToShopifyCatalog('pls', $identifier, $images);
+        $saved = $this->saveImageUrlsToShopifyCatalog($this->catalogStoreKey(), $identifier, $images);
         if (! $saved) {
             $res['message'] = ($res['message'] ?? 'Shopify PLS product images updated.').' Metrics save failed.';
         }
@@ -1263,7 +1273,7 @@ class ShopifyPLSApiService
             $domain = $this->plsDomain();
             $token = $this->plsToken();
             if (! $domain || ! $token) {
-                return ['success' => false, 'message' => 'Shopify PLS credentials not configured.'];
+                return ['success' => false, 'message' => $this->storeDisplayName().' credentials not configured.'];
             }
 
             $productId = $this->resolvePlsProductId($identifier, $domain, $token);
