@@ -114,7 +114,7 @@ class PurchasingPowerOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('purchasingpower');
         $queue = MarketplaceManagerRegistry::queueFor('purchasingpower');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(PurchasingPowerSale::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(PurchasingPowerSale::class, $queue);
         $query = PurchasingPowerSale::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');

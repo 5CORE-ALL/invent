@@ -2,11 +2,14 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Jobs\ImportTikTokOrderToShopify;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\TiktokOrder;
 use App\Services\TikTokShopService;
 use Carbon\Carbon;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 class TikTokOrderSyncService
@@ -147,8 +150,7 @@ class TikTokOrderSyncService
             ->get();
 
         $seenOrderIds = [];
-        $pushed = 0;
-        $pushService = app(TikTokOrderPushService::class);
+        $dispatched = 0;
 
         foreach ($orders as $order) {
             $orderId = (string) $order->order_id;
@@ -165,9 +167,6 @@ class TikTokOrderSyncService
             if ($alreadyImported) {
                 TiktokOrder::query()
                     ->where('order_id', $orderId)
-                    ->where(function ($q) {
-                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-                    })
                     ->update([
                         'shopify_order_id' => (string) $alreadyImported,
                         'import_status' => 'imported',
@@ -184,35 +183,31 @@ class TikTokOrderSyncService
             }
 
             try {
+                $job = new ImportTikTokOrderToShopify((int) $order->id);
+                (new UniqueLock(app('cache.store')))->release($job);
+                Queue::connection('database')->pushOn(
+                    MarketplaceManagerRegistry::queueFor('tiktok'),
+                    $job
+                );
                 TiktokOrder::query()
                     ->where('order_id', $orderId)
                     ->whereNull('shopify_order_id')
                     ->update(['import_status' => 'queued']);
-
-                $shopifyId = $pushService->importToShopify($order->fresh() ?? $order);
-                if ($shopifyId) {
-                    $pushed++;
-                    continue;
-                }
-
-                Log::warning('TikTokOrderSyncService: Shopify push returned no id', [
-                    'order_id' => $orderId,
-                    'reason' => $pushService->lastFailureReason,
-                ]);
+                $dispatched++;
             } catch (\Throwable $e) {
-                Log::warning('TikTokOrderSyncService: failed to push import', [
+                Log::warning('TikTokOrderSyncService: failed to queue import', [
                     'id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
 
-        return $pushed;
+        return $dispatched;
     }
 
     protected function releaseStuckQueuedImports(): void
     {
-        MarketplaceShopifyImportQueue::releaseStuckQueued(
+        MarketplaceShopifyImportQueue::prepareForDispatch(
             TiktokOrder::class,
             MarketplaceManagerRegistry::queueFor('tiktok'),
             function ($q) {

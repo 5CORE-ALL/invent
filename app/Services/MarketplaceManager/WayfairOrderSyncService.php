@@ -112,7 +112,7 @@ class WayfairOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('wayfair');
         $queue = MarketplaceManagerRegistry::queueFor('wayfair');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(WayfairDailyData::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(WayfairDailyData::class, $queue);
         $query = WayfairDailyData::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');

@@ -19,7 +19,7 @@ trait PreservesMarketplaceImportStatus
 
         $shopifyId = trim((string) ($existing->shopify_order_id ?? ''));
         if ($shopifyId !== '') {
-            return [];
+            return ['import_status' => 'imported'];
         }
 
         $status = strtolower(trim((string) ($existing->import_status ?? '')));

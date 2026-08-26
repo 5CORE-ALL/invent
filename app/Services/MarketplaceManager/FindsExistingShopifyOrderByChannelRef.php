@@ -78,11 +78,37 @@ trait FindsExistingShopifyOrderByChannelRef
             $noteAttributeKeys,
             $logContext
         );
-        if (($gql['error'] ?? null) !== null) {
-            return $gql;
-        }
         if (! empty($gql['id'])) {
             return $gql;
+        }
+
+        $graphqlFailed = ($gql['error'] ?? null) !== null;
+        if (! $graphqlFailed) {
+            return ['id' => null, 'matched_by' => null, 'error' => null];
+        }
+
+        // GraphQL search is down — REST tag lookup still catches existing copies.
+        foreach ($candidates as $ref) {
+            foreach ($tagPrefixes as $prefix) {
+                $tag = trim((string) $prefix).$ref;
+                if ($tag === $ref) {
+                    continue;
+                }
+                $byTag = $this->shopifyRestFindOrderByTag($storeUrl, $token, $tag, $logContext);
+                if (($byTag['error'] ?? null) !== null) {
+                    return $byTag;
+                }
+                if (! empty($byTag['id'])) {
+                    return $byTag;
+                }
+            }
+        }
+
+        if ($graphqlFailed) {
+            Log::warning($logContext.': GraphQL duplicate check failed; REST name/tag found no match', [
+                'error' => $gql['error'],
+                'refs' => $candidates,
+            ]);
         }
 
         return ['id' => null, 'matched_by' => null, 'error' => null];
@@ -214,6 +240,89 @@ trait FindsExistingShopifyOrderByChannelRef
                 'id' => null,
                 'matched_by' => null,
                 'error' => 'Shopify duplicate check (name) failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{id: ?string, matched_by: ?string, error: ?string}
+     */
+    protected function shopifyRestFindOrderByTag(
+        string $storeUrl,
+        string $token,
+        string $tag,
+        string $logContext
+    ): array {
+        $tag = trim($tag);
+        if ($tag === '') {
+            return ['id' => null, 'matched_by' => null, 'error' => null];
+        }
+
+        try {
+            $url = 'https://'.$storeUrl.'/admin/api/2024-01/orders.json';
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->get($url, [
+                'status' => 'any',
+                'tag' => $tag,
+                'limit' => 10,
+                'fields' => 'id,name,tags,note,note_attributes',
+            ]);
+
+            if (! $response->successful()) {
+                $status = $response->status();
+                $this->rememberDuplicateCheckHttpStatus($status);
+                $msg = 'Shopify duplicate check (tag) failed: HTTP '.$status;
+
+                Log::warning($logContext.': REST tag search failed', [
+                    'tag' => $tag,
+                    'status' => $status,
+                    'body' => mb_substr($response->body(), 0, 300),
+                ]);
+
+                return ['id' => null, 'matched_by' => null, 'error' => $msg, 'status' => $status];
+            }
+
+            $orders = $response->json('orders') ?? [];
+            if (! is_array($orders)) {
+                return ['id' => null, 'matched_by' => null, 'error' => null];
+            }
+
+            foreach ($orders as $order) {
+                if (! is_array($order)) {
+                    continue;
+                }
+                $id = (string) ($order['id'] ?? '');
+                if ($id === '') {
+                    continue;
+                }
+                $tagsRaw = $order['tags'] ?? '';
+                $tags = is_array($tagsRaw)
+                    ? array_map('strval', $tagsRaw)
+                    : array_map('trim', explode(',', (string) $tagsRaw));
+                foreach ($tags as $existing) {
+                    if (strcasecmp((string) $existing, $tag) === 0) {
+                        return [
+                            'id' => $id,
+                            'matched_by' => 'tag:'.$tag,
+                            'error' => null,
+                        ];
+                    }
+                }
+            }
+
+            return ['id' => null, 'matched_by' => null, 'error' => null];
+        } catch (\Throwable $e) {
+            Log::warning($logContext.': REST tag search exception', [
+                'tag' => $tag,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'id' => null,
+                'matched_by' => null,
+                'error' => 'Shopify duplicate check (tag) failed: '.$e->getMessage(),
             ];
         }
     }

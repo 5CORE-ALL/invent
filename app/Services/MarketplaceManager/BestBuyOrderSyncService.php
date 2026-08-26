@@ -113,7 +113,7 @@ class BestBuyOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('bestbuy');
         $queue = MarketplaceManagerRegistry::queueFor('bestbuy');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(BestBuyOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(BestBuyOrderMetric::class, $queue);
         $query = BestBuyOrderMetric::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');

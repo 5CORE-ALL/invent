@@ -523,7 +523,7 @@ class VeeqoShopifyFulfillmentService
             'fulfillment_status' => 'unfulfilled',
             'limit' => 50,
             'created_at_min' => now()->subDays(45)->toIso8601String(),
-            'fields' => 'id,name,tags,note,fulfillment_status',
+            'fields' => 'id,name,tags,note,note_attributes,fulfillment_status',
         ];
         for ($page = 0; $page < 8 && count($out) < $limit; $page++) {
             try {
@@ -1214,6 +1214,9 @@ class VeeqoShopifyFulfillmentService
                     continue;
                 }
                 $status = strtolower((string) ($fo['status'] ?? ''));
+                if ($status === 'on_hold' && $this->releaseShopifyFulfillmentHold($storeUrl, $token, (int) $fo['id'])) {
+                    $status = 'open';
+                }
                 if (! in_array($status, ['open', 'in_progress', 'scheduled'], true)) {
                     continue;
                 }
@@ -1263,6 +1266,37 @@ class VeeqoShopifyFulfillmentService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    protected function releaseShopifyFulfillmentHold(string $storeUrl, string $token, int $fulfillmentOrderId): bool
+    {
+        if ($fulfillmentOrderId < 1) {
+            return false;
+        }
+
+        try {
+            $res = $this->shopifyApi(
+                $storeUrl,
+                $token,
+                'POST',
+                "fulfillment_orders/{$fulfillmentOrderId}/release_hold.json"
+            );
+            if ($res->successful()) {
+                return true;
+            }
+            Log::info('VeeqoShopifyFulfillmentService: fulfillment hold not released', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'status' => $res->status(),
+                'body' => mb_substr($res->body(), 0, 200),
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('VeeqoShopifyFulfillmentService: fulfillment hold release failed', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return false;
     }
 
     /**

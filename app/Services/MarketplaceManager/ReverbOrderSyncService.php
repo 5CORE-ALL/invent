@@ -423,7 +423,7 @@ class ReverbOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('reverb');
         $queue = MarketplaceManagerRegistry::queueFor('reverb');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(
+        MarketplaceShopifyImportQueue::prepareForDispatch(
             ReverbOrderMetric::class,
             $queue,
             function ($q) {

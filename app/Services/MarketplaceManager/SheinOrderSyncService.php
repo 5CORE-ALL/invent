@@ -138,7 +138,7 @@ class SheinOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('shein', $settings);
         $queue = MarketplaceManagerRegistry::queueFor('shein');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(SheinOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(SheinOrderMetric::class, $queue);
 
         $orders = SheinOrderMetric::query()
             ->where(function ($q) {

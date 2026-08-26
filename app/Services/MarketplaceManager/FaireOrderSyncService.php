@@ -137,7 +137,7 @@ class FaireOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('faire', $settings);
         $queue = MarketplaceManagerRegistry::queueFor('faire');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(FaireOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(FaireOrderMetric::class, $queue);
 
         $orders = FaireOrderMetric::query()
             ->where(function ($q) {

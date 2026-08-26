@@ -273,7 +273,7 @@ class TemuOrderSyncService
         $allowedStatuses = self::AUTO_IMPORT_ALLOWED_STATUSES;
         $placeholders = implode(', ', array_fill(0, count($allowedStatuses), '?'));
         $queue = MarketplaceManagerRegistry::queueFor('temu');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(TemuOrder::class, $queue, function ($q) use ($importFrom) {
+        MarketplaceShopifyImportQueue::prepareForDispatch(TemuOrder::class, $queue, function ($q) use ($importFrom) {
             $q->whereNotNull('parent_order_time')
                 ->where('parent_order_time', '>=', $importFrom->format('Y-m-d H:i:s'));
         });

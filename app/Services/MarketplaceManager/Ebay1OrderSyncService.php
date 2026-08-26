@@ -147,7 +147,7 @@ class Ebay1OrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('ebay1', $settings);
         $queue = MarketplaceManagerRegistry::queueFor('ebay1');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(Ebay1OrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(Ebay1OrderMetric::class, $queue);
 
         $orders = Ebay1OrderMetric::query()
             ->where(function ($q) {

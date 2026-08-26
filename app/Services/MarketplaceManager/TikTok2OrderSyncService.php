@@ -209,7 +209,7 @@ class TikTok2OrderSyncService
 
     protected function releaseStuckQueuedImports(): void
     {
-        MarketplaceShopifyImportQueue::releaseStuckQueued(
+        MarketplaceShopifyImportQueue::prepareForDispatch(
             Tiktok2Order::class,
             MarketplaceManagerRegistry::queueFor('tiktok2'),
             function ($q) {

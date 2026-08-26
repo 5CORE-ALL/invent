@@ -129,7 +129,7 @@ class NeweggOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('newegg');
         $queue = MarketplaceManagerRegistry::queueFor('newegg');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(NeweggOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(NeweggOrderMetric::class, $queue);
 
         $orders = NeweggOrderMetric::query()
             ->where(function ($q) {

@@ -136,7 +136,7 @@ class AmazonOrderSyncService
             return 0;
         }
 
-        MarketplaceShopifyImportQueue::releaseStuckQueued(
+        MarketplaceShopifyImportQueue::prepareForDispatch(
             AmazonOrder::class,
             MarketplaceManagerRegistry::queueFor('amazon')
         );

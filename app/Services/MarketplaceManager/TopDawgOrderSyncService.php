@@ -103,7 +103,7 @@ class TopDawgOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('topdawg');
         $queue = MarketplaceManagerRegistry::queueFor('topdawg');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(TopDawgOrderMetric::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(TopDawgOrderMetric::class, $queue);
 
         $orders = TopDawgOrderMetric::query()
             ->where(function ($q) {

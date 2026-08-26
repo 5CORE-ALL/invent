@@ -112,7 +112,7 @@ class DobaOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('doba');
         $queue = MarketplaceManagerRegistry::queueFor('doba');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(DobaDailyData::class, $queue);
+        MarketplaceShopifyImportQueue::prepareForDispatch(DobaDailyData::class, $queue);
         $query = DobaDailyData::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');

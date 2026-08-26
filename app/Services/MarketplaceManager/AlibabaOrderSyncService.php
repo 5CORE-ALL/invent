@@ -369,7 +369,7 @@ class AlibabaOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('alibaba');
         $queue = MarketplaceManagerRegistry::queueFor('alibaba');
-        MarketplaceShopifyImportQueue::releaseStuckQueued(
+        MarketplaceShopifyImportQueue::prepareForDispatch(
             AlibabaOrderMetric::class,
             $queue,
             function ($q) {
