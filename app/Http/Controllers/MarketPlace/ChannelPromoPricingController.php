@@ -218,7 +218,11 @@ class ChannelPromoPricingController extends Controller
         }
 
         $store = ChannelPushSpriceJobStore::for($channel);
-        $result = $store->createOrAppend($tasks);
+        $exclusive = $request->boolean('exclusive')
+            || $request->input('source') === 'after_save';
+        $result = $exclusive
+            ? $store->createOrAppendEdited($tasks)
+            : $store->createOrAppend($tasks, (string) $request->input('source', 'manual'));
         $state = $result['state'];
         $mode = $result['mode'];
         if ((int) ($state['total'] ?? 0) === 0) {
@@ -267,9 +271,9 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * Per-channel switch: stop S PRC / Push Prc auto-push on analytics page reload only.
-     * Daily cron (channel:push-sprice-daily, amazon:dil-prmt-auto-push, amazon:cvr-cpn-auto-push)
-     * is not gated by this.
+     * Per-channel switch: auto-push only the SKUs just edited (not the whole catalog).
+     * Daily cron (channel:push-sprice-daily, amazon:dil-prmt-auto-push,
+     * amazon:cvr-cpn-auto-push) is not gated by this.
      */
     public static function isPageReloadPushEnabled(string $channel): bool
     {

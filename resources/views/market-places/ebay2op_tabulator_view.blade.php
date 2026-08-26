@@ -1722,6 +1722,7 @@
                         data: {
                             sku: sku,
                             sprice: sprice,
+                            skip_push: 1,
                             _token: '{{ csrf_token() }}'
                         },
                         success: function(response) {
@@ -1732,7 +1733,7 @@
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
-                                    SPRICE_STATUS: 'queued'
+                                    SPRICE_STATUS: 'saved'
                                 });
                             }
                             if (typeof enqueueChannelPushSpriceAfterSave === 'function') {

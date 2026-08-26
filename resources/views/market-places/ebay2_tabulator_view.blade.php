@@ -2931,7 +2931,7 @@
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
-                                    SPRICE_STATUS: (parseFloat(sprice) > 0) ? 'queued' : 'saved'
+                                    SPRICE_STATUS: 'saved'
                                 });
                                 // Re-render the row so the Accept button's data-price
                                 // reflects the NEW SPRICE (otherwise push uses the old value).
@@ -4483,7 +4483,12 @@
                     
                     saveSpriceWithRetry(data['(Child) sku'], value, row)
                         .then((response) => {
-                            showToast('success', 'S PRC saved — eBay 2 push queued (page close OK)');
+                            const autoPush = typeof chPushSpriceAutoPushAllowed === 'function'
+                                ? chPushSpriceAutoPushAllowed()
+                                : (typeof chPromoPageReloadPushAllowed === 'function' ? chPromoPageReloadPushAllowed() : true);
+                            showToast('success', autoPush
+                                ? 'S PRC saved — eBay 2 push queued (page close OK)'
+                                : 'S PRC saved — auto-push is off');
                         })
                         .catch((error) => {
                             showToast('error', 'Failed to save SPRICE');

@@ -43,7 +43,7 @@ class ChannelPushSpriceJobStore
     /**
      * @param  list<array<string, mixed>>  $tasks
      */
-    public function create(array $tasks): array
+    public function create(array $tasks, string $source = 'manual'): array
     {
         $normalized = $this->normalizeTasks($tasks);
         $queueMsg = 'S PRC push queued ('.count($normalized).' SKU(s)).';
@@ -51,6 +51,7 @@ class ChannelPushSpriceJobStore
         $state = array_merge($this->defaultState(), [
             'id' => date('YmdHis').'_'.bin2hex(random_bytes(4)),
             'channel' => $this->channel,
+            'source' => $source !== '' ? $source : 'manual',
             'status' => 'running',
             'tasks' => $normalized,
             'total' => count($normalized),
@@ -144,13 +145,13 @@ class ChannelPushSpriceJobStore
      * @param  list<array<string, mixed>>  $tasks
      * @return array{state: array, mode: string}
      */
-    public function createOrAppend(array $tasks): array
+    public function createOrAppend(array $tasks, string $source = 'manual'): array
     {
         $current = $this->load();
         if ($this->isActive($current)) {
             if ($this->isStale($current, 180)) {
                 $this->forceStop('Cleared a stale S PRC push job (no worker was processing it).');
-                $state = $this->create($tasks);
+                $state = $this->create($tasks, $source);
 
                 return ['state' => $state, 'mode' => 'create'];
             }
@@ -159,7 +160,34 @@ class ChannelPushSpriceJobStore
             return ['state' => $state, 'mode' => 'append'];
         }
 
-        $state = $this->create($tasks);
+        $state = $this->create($tasks, $source);
+
+        return ['state' => $state, 'mode' => 'create'];
+    }
+
+    /**
+     * Price-edit queue: only the SKUs just changed.
+     * Appends onto another after-save job; replaces a leftover daily/reload job
+     * so a 3-SKU edit does not wait behind hundreds of leftover listings.
+     *
+     * @param  list<array<string, mixed>>  $tasks
+     * @return array{state: array, mode: string}
+     */
+    public function createOrAppendEdited(array $tasks): array
+    {
+        $current = $this->load();
+        if ($this->isActive($current) && $this->isStale($current, 180)) {
+            $this->forceStop('Cleared a stale S PRC push job (no worker was processing it).');
+            $current = $this->load();
+        }
+
+        if ($this->isActive($current) && ($current['source'] ?? '') === 'after_save') {
+            $state = $this->append($tasks);
+
+            return ['state' => $state, 'mode' => 'append'];
+        }
+
+        $state = $this->create($tasks, 'after_save');
 
         return ['state' => $state, 'mode' => 'create'];
     }
@@ -375,6 +403,7 @@ class ChannelPushSpriceJobStore
         return [
             'id' => null,
             'channel' => $this->channel,
+            'source' => 'manual',
             'status' => 'idle',
             'tasks' => [],
             'total' => 0,

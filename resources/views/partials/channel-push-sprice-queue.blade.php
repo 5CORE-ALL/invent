@@ -69,6 +69,7 @@
             let chPushSpricePollTimer = null;
             let chPushSpriceLastToastKey = '';
             let chPushSpriceFlushing = false;
+            let chPushSpriceExclusive = false;
 
             function chPushSpriceCsrf() {
                 return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -172,47 +173,64 @@
                     }, 10000);
                 }
             }
+            function chPushSpriceAutoPushAllowed() {
+                if (typeof global.chPromoPageReloadPushAllowed === 'function') {
+                    return global.chPromoPageReloadPushAllowed();
+                }
+                const sw = document.getElementById('ch-promo-reload-push-switch');
+                if (sw) return !!sw.checked;
+                return true;
+            }
             function applyChannelPushSpriceTasks(tasks) {
                 if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
                 const bySku = {};
                 tasks.forEach(function(t) {
                     if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
                 });
+                if (!Object.keys(bySku).length) return;
                 function patchRecord(d, t) {
                     if (!d || !t) return false;
                     const st = String(t.status || '');
                     const live = Number(t.ebay_price != null ? t.ebay_price : t.price);
+                    const patch = {};
+                    let priceChanged = false;
                     if (st === 'ok') {
-                        d.SPRICE_STATUS = 'pushed';
-                        if (live > 0) {
-                            d[CH_PUSH_SPRICE_PRICE_FIELD] = live;
-                            d['eBay Price'] = live;
+                        if (d.SPRICE_STATUS !== 'pushed') patch.SPRICE_STATUS = 'pushed';
+                        if (live > 0 && !chPushSpriceNearlyEqual(d[CH_PUSH_SPRICE_PRICE_FIELD], live)) {
+                            patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
+                            patch['eBay Price'] = live;
+                            priceChanged = true;
                         }
-                        return true;
-                    }
-                    if (st === 'failed') {
-                        d.SPRICE_STATUS = 'error';
+                    } else if (st === 'failed') {
+                        if (d.SPRICE_STATUS !== 'error') patch.SPRICE_STATUS = 'error';
                         const err = String(t.error || t.message || '').toLowerCase();
                         if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
-                            d.listing_status = 'ENDED';
-                            d.listing_ended = true;
+                            if (d.listing_status !== 'ENDED') patch.listing_status = 'ENDED';
+                            if (!d.listing_ended) patch.listing_ended = true;
                         }
-                        return true;
+                    } else if (st === 'pushing' || st === 'pending' || st === 'queued') {
+                        if (d.SPRICE_STATUS !== 'queued') patch.SPRICE_STATUS = 'queued';
+                    } else {
+                        return false;
                     }
-                    if (st === 'pushing' || st === 'pending' || st === 'queued') {
-                        d.SPRICE_STATUS = 'queued';
-                        return true;
-                    }
-                    return false;
+                    const keys = Object.keys(patch);
+                    if (!keys.length) return null;
+                    Object.assign(d, patch);
+                    return { kind: priceChanged ? 'price' : 'status', patch: patch };
                 }
+                let priceChanged = 0;
                 let rows = [];
                 try { rows = table.getRows() || []; } catch (e) { rows = []; }
                 rows.forEach(function walk(row) {
                     const d = row.getData() || {};
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
                     const t = sku ? bySku[sku] : null;
-                    if (t && patchRecord(d, t)) {
-                        try { row.update(d); } catch (e) { /* ignore */ }
+                    if (t) {
+                        const result = patchRecord(d, t);
+                        if (result) {
+                            if (result.kind === 'price') priceChanged++;
+                            try { row.update(result.patch); } catch (e) { /* ignore */ }
+                        }
                     }
                     if (typeof row.getTreeChildren === 'function') {
                         (row.getTreeChildren() || []).forEach(walk);
@@ -226,7 +244,7 @@
                     const t = sku ? bySku[sku] : null;
                     if (t) patchRecord(d, t);
                 });
-                if (typeof updateSummary === 'function') {
+                if (priceChanged && typeof updateSummary === 'function') {
                     clearTimeout(applyChannelPushSpriceTasks._sumTimer);
                     applyChannelPushSpriceTasks._sumTimer = setTimeout(function() {
                         try { updateSummary(); } catch (e) { /* ignore */ }
@@ -277,7 +295,8 @@
                 chPushSpricePollTimer = setInterval(pollChannelPushSpriceStatus, 1500);
                 pollChannelPushSpriceStatus();
             }
-            function postChannelPushSpriceItems(items) {
+            function postChannelPushSpriceItems(items, opts) {
+                opts = opts || {};
                 if (!items || !items.length) return $.Deferred().resolve(null).promise();
                 setChannelPushSpriceProgress({
                     active: true,
@@ -288,11 +307,16 @@
                     pct: 0,
                     title: 'S PRC queue',
                 });
+                const payload = { _token: chPushSpriceCsrf(), items: items };
+                if (opts.exclusive) {
+                    payload.exclusive = 1;
+                    payload.source = 'after_save';
+                }
                 return $.ajax({
                     url: CH_PUSH_SPRICE_URL,
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                    data: { _token: chPushSpriceCsrf(), items: items },
+                    data: payload,
                     timeout: 60000,
                 }).done(function(resp) {
                     startChannelPushSpricePoll();
@@ -319,7 +343,9 @@
                 const keys = Object.keys(chPushSpriceBuf);
                 if (!keys.length) return;
                 const items = keys.map(function(k) { return chPushSpriceBuf[k]; });
+                const exclusive = chPushSpriceExclusive;
                 chPushSpriceBuf = {};
+                chPushSpriceExclusive = false;
                 chPushSpriceFlushing = true;
                 let i = 0;
                 function nextChunk() {
@@ -329,12 +355,13 @@
                     }
                     const chunk = items.slice(i, i + CH_PUSH_SPRICE_CHUNK);
                     i += chunk.length;
-                    postChannelPushSpriceItems(chunk).always(nextChunk);
+                    postChannelPushSpriceItems(chunk, { exclusive: exclusive }).always(nextChunk);
                 }
                 nextChunk();
             }
             function enqueueChannelPushSprice(items, opts) {
                 opts = opts || {};
+                if (opts.exclusive) chPushSpriceExclusive = true;
                 if (!items || !items.length) return;
                 items.forEach(function(item) {
                     if (!item) return;
@@ -363,14 +390,26 @@
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
                 let p = chPushSpriceRound2(price);
                 if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
-                if (!sku || !(p > 0)) return;
+                if (!sku || !(p > 0)) return false;
+                if (!chPushSpriceAutoPushAllowed()) {
+                    try {
+                        if (row && typeof row.update === 'function') {
+                            const status = String(d.SPRICE_STATUS || '');
+                            if (status === 'queued' || status === 'processing') {
+                                row.update({ SPRICE_STATUS: 'saved' });
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                    return false;
+                }
                 const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
-                if (live > 0 && chPushSpriceNearlyEqual(p, live)) return;
-                if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;
+                if (live > 0 && chPushSpriceNearlyEqual(p, live)) return false;
+                if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
                 try {
                     if (row && typeof row.update === 'function') row.update({ SPRICE_STATUS: 'queued' });
                 } catch (e) { /* ignore */ }
-                enqueueChannelPushSprice([{ sku: sku, price: p }]);
+                enqueueChannelPushSprice([{ sku: sku, price: p }], { exclusive: true });
+                return true;
             }
             function chPushSpriceIsChild(d) {
                 if (!d || d.is_parent_summary || d.is_parent_row || d.is_parent) return false;
@@ -457,6 +496,7 @@
 
             global.enqueueChannelPushSprice = enqueueChannelPushSprice;
             global.enqueueChannelPushSpriceAfterSave = enqueueChannelPushSpriceAfterSave;
+            global.chPushSpriceAutoPushAllowed = chPushSpriceAutoPushAllowed;
             global.scanAndQueueChannelPushSprice = scanAndQueueChannelPushSprice;
             global.startChannelPushSpricePoll = startChannelPushSpricePoll;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;

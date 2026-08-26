@@ -3447,12 +3447,19 @@
                 try { row.reformat(); } catch (e) { /* ignore */ }
             }
 
+            function ebay1SpriceAutoPushOn() {
+                if (typeof chPushSpriceAutoPushAllowed === 'function') return chPushSpriceAutoPushAllowed();
+                if (typeof chPromoPageReloadPushAllowed === 'function') return chPromoPageReloadPushAllowed();
+                return true;
+            }
+
             function ebay1SpriceSaveToast(sku, response) {
                 const live = response && response.ebay_price != null ? parseFloat(response.ebay_price) : NaN;
                 const liveTxt = (isFinite(live) && live > 0) ? ('$' + live.toFixed(2)) : '';
                 if (response && (response.price_push_status === 'skipped' || response.SPRICE_STATUS === 'saved' || response.SPRICE_STATUS === 'queued')) {
-                    showToast('success', 'S PRC saved — eBay push queued (page close OK)'
-                        + (sku ? (' for ' + sku) : ''));
+                    showToast('success', ebay1SpriceAutoPushOn()
+                        ? ('S PRC saved — eBay push queued (page close OK)' + (sku ? (' for ' + sku) : ''))
+                        : ('S PRC saved' + (sku ? (' for ' + sku) : '') + ' — auto-push is off'));
                     return;
                 }
                 if (response && response.price_push_success) {

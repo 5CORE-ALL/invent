@@ -1581,7 +1581,7 @@
                                     SROI: response.data?.sroi || response.sroi_percent,
                                     SGROI: response.data?.sgroi ?? response.sgroi_percent ?? null,
                                     SGPFT: response.data?.sgpft || response.sgpft_percent,
-                                    SPRICE_STATUS: 'queued',
+                                    SPRICE_STATUS: 'saved',
                                     has_custom_sprice: true
                                 });
                             }
@@ -3697,7 +3697,12 @@
                 
                 saveSpriceWithRetry(data['(Child) sku'], value, row)
                     .then((response) => {
-                        showToast('S PRC saved — eBay 3 push queued (page close OK)', 'success');
+                        const autoPush = typeof chPushSpriceAutoPushAllowed === 'function'
+                            ? chPushSpriceAutoPushAllowed()
+                            : (typeof chPromoPageReloadPushAllowed === 'function' ? chPromoPageReloadPushAllowed() : true);
+                        showToast(autoPush
+                            ? 'S PRC saved — eBay 3 push queued (page close OK)'
+                            : 'S PRC saved — auto-push is off', 'success');
                     })
                     .catch((error) => {
                         showToast('Failed to save SPRICE', 'error');

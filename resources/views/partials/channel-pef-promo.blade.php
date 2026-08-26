@@ -406,7 +406,7 @@
         @push('page-title-after')
             <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
                 id="ch-promo-reload-push-wrap"
-                title="When ON, this page auto-pushes price on reload. When OFF, reload does not push. Daily cron still pushes either way.">
+                title="When ON, changing a price auto-pushes only those edited SKUs. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
                 <span class="ch-promo-reload-push-text">
                     Push on reload
                     <span class="ch-promo-reload-push-state" id="ch-promo-reload-push-label">{{ $channelPromoPageReloadPushEnabled ? 'On' : 'Off' }}</span>
@@ -3471,7 +3471,8 @@
                 data = { sku: sku, sprice: val, _token: chPromoCsrf() };
             }
             const queueEnabled = chPromoEbayStdMinusPrmtCpnEnabled()
-                && typeof enqueueChannelPushSpriceAfterSave === 'function';
+                && typeof enqueueChannelPushSpriceAfterSave === 'function'
+                && (typeof chPromoPageReloadPushAllowed !== 'function' || chPromoPageReloadPushAllowed());
             if (queueEnabled || extra.skip_push) data.skip_push = 1;
             return $.ajax({
                 url: chPromoCfg.saveSpriceUrl,
@@ -3486,7 +3487,7 @@
                     else shouldQueue = extra.skip_push !== true;
                 }
                 if (shouldQueue) {
-                    enqueueChannelPushSpriceAfterSave(sku, val, extra.row || null);
+                    shouldQueue = enqueueChannelPushSpriceAfterSave(sku, val, extra.row || null) !== false;
                 }
                 if (!silent) chPromoToast('success', shouldQueue ? 'S PRC saved — push queued' : 'S PRC updated');
             }).fail(function() {
@@ -6676,7 +6677,8 @@
             if (hadValue && current === fill && alreadyLive) return { sku: sku, price: fill, row: row };
             const extra = {
                 skip_push: opts.skip_push === true || alreadyLive,
-                queue_push: opts.skip_push !== true && !alreadyLive,
+                queue_push: opts.skip_push !== true && !alreadyLive
+                    && (typeof chPromoPageReloadPushAllowed !== 'function' || chPromoPageReloadPushAllowed()),
                 row: row,
             };
             saveChannelSprice(sku, fill, true, extra).done(function(saveRes) {
@@ -6861,6 +6863,7 @@
         function chPromoPageReloadPushAllowed() {
             return chPromoPageReloadPushEnabled !== false;
         }
+        window.chPromoPageReloadPushAllowed = chPromoPageReloadPushAllowed;
         function syncChPromoReloadPushSwitchUi() {
             const on = chPromoPageReloadPushAllowed();
             const $wrap = $('#ch-promo-reload-push-wrap');
@@ -6906,9 +6909,7 @@
             if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {
                 chPromoSyncEbayPrmtColumnFromSlabs();
             }
-            setTimeout(function() {
-                autopopulateEbaySpriceFromStdPrmtCpn({ persist: true, silent: true });
-            }, 150);
+            // Autopush is after-save on the edited row only. Do not persist/push the whole catalog.
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -7803,8 +7804,8 @@
                         chPromoToast(
                             'success',
                             on
-                                ? 'Reload push on — this page will auto-push S PRC on the next reload. Cron is unchanged.'
-                                : 'Reload push off — this page will not auto-push on reload. Daily cron still pushes.'
+                                ? 'Auto-push on — only the SKUs you change will be queued. Cron is unchanged.'
+                                : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
                     })
                     .fail(function(xhr) {
