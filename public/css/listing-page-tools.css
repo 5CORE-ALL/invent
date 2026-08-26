@@ -82,6 +82,27 @@
 }
 .listing-mp-publish-btn:hover { background: #0b5ed7; color: #fff; }
 .listing-publish-modal-note { font-size: 13px; color: #475569; margin-bottom: 12px; }
+.listing-publish-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    font-size: 13px;
+    color: #0f172a;
+}
+.listing-publish-mode label {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    cursor: pointer;
+    font-weight: 500;
+}
+.listing-publish-mode input { margin-top: 3px; }
 .listing-publish-group {
     border: 1px solid #e2e8f0;
     border-radius: 8px;

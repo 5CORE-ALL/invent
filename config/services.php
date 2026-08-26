@@ -748,6 +748,14 @@ return [
         'seller_user_agent' => env('TEMU_SELLER_USER_AGENT'),
         /** JSON array of {label,base,url,body} — overrides default candidate scrape endpoints. */
         'seller_view_endpoints' => env('TEMU_SELLER_VIEW_ENDPOINTS'),
+        /** Create-listing API (Publish to Temu 1). v2 is recommended; v1 fallback is bg.local.goods.add. */
+        'goods_add_type' => env('TEMU_GOODS_ADD_TYPE', 'temu.local.goods.v2.add'),
+        'cost_template_id' => env('TEMU_COST_TEMPLATE_ID', ''),
+        'shipment_limit_day' => (int) env('TEMU_SHIPMENT_LIMIT_DAY', 2),
+        'import_designation' => env('TEMU_IMPORT_DESIGNATION', '4'),
+        'origin_region1' => env('TEMU_ORIGIN_REGION1', 'China'),
+        'origin_region2' => env('TEMU_ORIGIN_REGION2', 'Guangdong'),
+        'currency' => env('TEMU_CURRENCY', 'USD'),
     ],
 
     /*

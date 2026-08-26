@@ -1528,6 +1528,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
     }
 
+    public function persistNewListing(string $sku, string $goodsId, ?string $skuId = null): void
+    {
+        $this->persistTemuMapping($sku, $goodsId, $skuId);
+    }
+
     /**
      * Pull ACTIVE then INACTIVE SKUs and store listing_status on temu_metrics.
      */

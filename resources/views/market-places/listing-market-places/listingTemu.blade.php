@@ -3,7 +3,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
-    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=2">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -552,7 +552,7 @@
                             <button type="button"
                                 class="btn btn-sm btn-primary listing-page-tools-btn"
                                 id="bulk-publish-btn"
-                                title="Publish selected SKUs as parent variations">
+                                title="Publish selected SKUs independently or as parent variations">
                                 <i class="fas fa-cloud-upload-alt"></i> Publish selected
                             </button>
                             <div class="toolbar-actions">
@@ -1098,9 +1098,11 @@
             exportName: 'temu_listing',
             channel: 'temu',
             channelLabel: "Temu",
+            supportsIndependentPublish: true,
+            defaultPublishMode: 'single',
             previewUrl: '/listing_temu/save-status',
             publishUrl: '/listing_temu/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=5"></script>
 @endsection
