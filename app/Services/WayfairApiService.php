@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -294,14 +295,12 @@ XML;
 
             $lastMessage = 'Wayfair: failed to submit title update or get requestId.';
             foreach ($this->wayfairSkuCandidates($sku) as $candidate) {
-                foreach (['itemName', 'productName'] as $titleField) {
-                    $submitted = $this->submitTitleUpdate($token, $candidate, $title, $titleField);
-                    if (($submitted['request_id'] ?? null) !== null) {
-                        return $this->pollUpdateStatus($token, (string) $submitted['request_id'], $candidate);
-                    }
-                    if (trim((string) ($submitted['message'] ?? '')) !== '') {
-                        $lastMessage = (string) $submitted['message'];
-                    }
+                $submitted = $this->submitTitleUpdate($token, $candidate, $title);
+                if (($submitted['request_id'] ?? null) !== null) {
+                    return $this->pollUpdateStatus($token, (string) $submitted['request_id'], $candidate);
+                }
+                if (trim((string) ($submitted['message'] ?? '')) !== '') {
+                    $lastMessage = (string) $submitted['message'];
                 }
             }
 
@@ -320,7 +319,7 @@ XML;
      *
      * @return array{request_id: ?string, message: string}
      */
-    private function submitTitleUpdate(string $token, string $sku, string $title, string $titleField = 'itemName'): array
+    private function submitTitleUpdate(string $token, string $sku, string $title): array
     {
         $url = config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
         $supplierId = (string) config('services.wayfair.supplier_id', '2603');
@@ -340,7 +339,7 @@ XML;
 
         $item = [
             'supplierPartNumber' => $sku,
-            $titleField => $title,
+            'itemName' => $title,
         ];
 
         $variables = [
@@ -356,7 +355,7 @@ XML;
             ],
         ];
 
-        Log::info('Wayfair - Submitting title update (GraphQL)', ['sku' => $sku, 'url' => $url, 'title_field' => $titleField]);
+        Log::info('Wayfair - Submitting title update (GraphQL)', ['sku' => $sku, 'url' => $url]);
 
         $response = Http::withoutVerifying()
             ->withToken($token)
@@ -419,15 +418,36 @@ XML;
     private function wayfairSkuCandidates(string $sku): array
     {
         $sku = trim($sku);
+        $stripped = ltrim($sku, "- \t");
         $out = [];
         foreach ([
             $sku,
+            $stripped,
             str_replace(' ', '', $sku),
+            str_replace(' ', '', $stripped),
             preg_replace('/\s+/', '-', $sku) ?: '',
+            preg_replace('/\s+/', '-', $stripped) ?: '',
+            $this->normalizePartNumber($sku),
+            $this->normalizePartNumber($stripped),
         ] as $candidate) {
             $candidate = trim((string) $candidate);
             if ($candidate !== '' && ! in_array($candidate, $out, true)) {
                 $out[] = $candidate;
+            }
+        }
+
+        if (Schema::hasTable('wayfair_metrics') && Schema::hasColumn('wayfair_metrics', 'sku')) {
+            $row = DB::table('wayfair_metrics')
+                ->where(function ($q) use ($out) {
+                    $q->whereIn('sku', $out);
+                    foreach ($out as $candidate) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($candidate)]);
+                    }
+                })
+                ->first();
+            $fromDb = trim((string) ($row->sku ?? ''));
+            if ($fromDb !== '' && ! in_array($fromDb, $out, true)) {
+                array_unshift($out, $fromDb);
             }
         }
 

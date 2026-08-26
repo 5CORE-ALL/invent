@@ -178,14 +178,16 @@ class AliExpressApiService
         }
 
         $base = $this->buildEditProductRequest($resolved, $title, $language);
-        $first = $this->callProductEdit($base);
+        $withPackage = array_merge($base, $this->aliexpressPackageSizeFields($resolved));
+        $first = $this->callProductEdit($withPackage);
         if (! empty($first['success']) || ! $this->isAliExpressPackageSizeRequired($first['message'] ?? '')) {
             return $first;
         }
 
-        $withPackage = array_merge($base, $this->aliexpressPackageSizeFields($resolved));
-
-        return $this->callProductEdit($withPackage);
+        return $this->callProductEdit(array_merge($withPackage, [
+            'usLogisticsWeight' => (string) ($withPackage['usLogisticsWeight'] ?? '0.5'),
+            'package_weight' => (string) ($withPackage['package_weight'] ?? '0.5'),
+        ]));
     }
 
     /**
@@ -209,7 +211,10 @@ class AliExpressApiService
         $m = strtolower($message);
 
         return str_contains($m, 'package size')
+            || str_contains($m, 'package weight')
             || str_contains($m, 'logisticssize')
+            || str_contains($m, 'uslogisticsweight')
+            || str_contains($m, 'us_logistics_weight')
             || str_contains($m, 'chk_basic_required');
     }
 
@@ -230,7 +235,14 @@ class AliExpressApiService
             $data['package_height'] ?? $data['packageHeight'] ?? data_get($data, 'logistics_size.package_height')
         );
         $weight = $this->aliexpressPositiveNumber(
-            $data['gross_weight'] ?? $data['grossWeight'] ?? data_get($data, 'logistics_size.gross_weight')
+            $data['usLogisticsWeight']
+                ?? $data['us_logistics_weight']
+                ?? $data['package_weight']
+                ?? $data['packageWeight']
+                ?? $data['gross_weight']
+                ?? $data['grossWeight']
+                ?? data_get($data, 'logistics_size.gross_weight')
+                ?? data_get($data, 'logistics_size.usLogisticsWeight')
         );
 
         if ($length === null) {
@@ -253,6 +265,9 @@ class AliExpressApiService
             'package_width' => $width,
             'package_height' => $height,
             'gross_weight' => $weight,
+            'package_weight' => $weight,
+            'usLogisticsWeight' => $weight,
+            'us_logistics_weight' => $weight,
             'package_size' => $size,
             'logistics_size' => [
                 'package_size' => $size,
@@ -260,10 +275,13 @@ class AliExpressApiService
                 'package_width' => $width,
                 'package_height' => $height,
                 'gross_weight' => $weight,
+                'package_weight' => $weight,
+                'usLogisticsWeight' => $weight,
             ],
             'logisticsSize' => [
                 'packageSize' => $size,
                 'package_size' => $size,
+                'usLogisticsWeight' => $weight,
             ],
         ];
     }
