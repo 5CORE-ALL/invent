@@ -79,7 +79,7 @@ class AutomatedListingPage
                 $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
             );
 
-            $listingId = trim((string) ($listedMap[$skuLower] ?? ''));
+            $listingId = ListingCountsEngine::listingIdFromMap($listedMap, $childSku);
             $idOrNull = $listingId !== '' ? $listingId : null;
             $item->{$idField} = $idOrNull;
             $item->listing_id = $idOrNull;

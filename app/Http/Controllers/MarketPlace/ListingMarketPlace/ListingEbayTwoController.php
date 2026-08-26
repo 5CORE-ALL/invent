@@ -55,11 +55,11 @@ class ListingEbayTwoController extends Controller
             });
 
         // Missing Listing / Listed — same rule as ebay2-tabulator-view Missing L (ebay_2_metrics.item_id)
-        $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)
-            ->get(['sku', 'item_id'])
-            ->mapWithKeys(function ($row) {
-                return [strtolower(trim((string) $row->sku)) => $row];
-            });
+        $ebayMetrics = \App\Support\Marketplace\ListingCountsEngine::listedIdsFromColumn(
+            Ebay2Metric::class,
+            $skus,
+            'item_id'
+        );
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics) {
             $childSku = (string) $item->sku;
@@ -87,8 +87,7 @@ class ListingEbayTwoController extends Controller
             );
 
             // Listed / Not Listed from ebay_2_metrics.item_id (Missing Listing logic)
-            $ebayMetric = $ebayMetrics->get($skuLower);
-            $itemId = $ebayMetric ? trim((string) ($ebayMetric->item_id ?? '')) : '';
+            $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayMetrics, $childSku);
             $item->eBay_item_id = $itemId !== '' ? $itemId : null;
             $item->listed = $item->eBay_item_id ? 'Listed' : 'Pending';
 

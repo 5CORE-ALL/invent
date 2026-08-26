@@ -50,7 +50,7 @@ class ListingCountsEngine
                 $nrlCount++;
             }
 
-            $listingId = trim((string) ($listedIdBySkuLower[strtolower($sku)] ?? ''));
+            $listingId = self::listingIdFromMap($listedIdBySkuLower, $sku);
             if ($listingId !== '') {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
@@ -99,6 +99,34 @@ class ListingCountsEngine
     }
 
     /**
+     * Resolve a listing id with exact and normalized SKU keys
+     * (NBSP / hyphen variants like "DS CH YLW REST-LVR").
+     *
+     * @param  array<string, string>  $listedIdBySkuLower
+     */
+    public static function listingIdFromMap(array $listedIdBySkuLower, string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $listedIdBySkuLower === []) {
+            return '';
+        }
+
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        foreach (array_unique(array_filter([
+            strtolower($sku),
+            $norm,
+            strtolower($norm),
+        ], fn ($key) => $key !== '')) as $key) {
+            $id = trim((string) ($listedIdBySkuLower[$key] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Load sku_lower → id from a metric/product model column (non-empty string = listed).
      *
      * @param  class-string  $modelClass
@@ -111,21 +139,54 @@ class ListingCountsEngine
             return [];
         }
 
+        $wantedNorm = [];
+        foreach ($skus as $rawSku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $rawSku);
+            if ($norm !== '') {
+                $wantedNorm[$norm] = true;
+            }
+        }
+        if ($wantedNorm === []) {
+            return [];
+        }
+
+        $byNorm = [];
+        $modelClass::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull($column)
+            ->where($column, '!=', '')
+            ->get(['sku', $column])
+            ->each(function ($row) use (&$byNorm, $column, $rejectSkuAsId, $wantedNorm) {
+                $sku = trim((string) $row->sku);
+                $id = trim((string) ($row->{$column} ?? ''));
+                if ($sku === '' || $id === '') {
+                    return;
+                }
+                if ($rejectSkuAsId && strcasecmp($id, $sku) === 0) {
+                    return;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '' || ! isset($wantedNorm[$norm]) || isset($byNorm[$norm])) {
+                    return;
+                }
+                $byNorm[$norm] = $id;
+            });
+
         $map = [];
-        $rows = $modelClass::whereIn('sku', $skus)->get(['sku', $column]);
-        foreach ($rows as $row) {
-            $sku = trim((string) $row->sku);
+        foreach ($skus as $rawSku) {
+            $sku = trim((string) $rawSku);
             if ($sku === '') {
                 continue;
             }
-            $id = trim((string) ($row->{$column} ?? ''));
-            if ($id === '') {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '' || ! isset($byNorm[$norm])) {
                 continue;
             }
-            if ($rejectSkuAsId && strcasecmp($id, $sku) === 0) {
-                continue;
-            }
+            $id = $byNorm[$norm];
             $map[strtolower($sku)] = $id;
+            $map[$norm] = $id;
+            $map[strtolower($norm)] = $id;
         }
 
         return $map;
