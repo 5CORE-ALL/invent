@@ -35,11 +35,7 @@ class EbayTwoListingCounts
                 return [strtoupper(trim((string) $row->sku)) => $row->value];
             });
 
-        $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)
-            ->get(['sku', 'item_id'])
-            ->mapWithKeys(function ($row) {
-                return [strtolower(trim((string) $row->sku)) => $row];
-            });
+        $listedIds = ListingCountsEngine::listedIdsFromColumn(Ebay2Metric::class, $skus, 'item_id');
 
         $reqCount = 0;
         $nrlCount = 0;
@@ -64,8 +60,7 @@ class EbayTwoListingCounts
                 $nrlCount++;
             }
 
-            $ebayMetric = $ebayMetrics->get(strtolower($sku));
-            $itemId = $ebayMetric ? trim((string) ($ebayMetric->item_id ?? '')) : '';
+            $itemId = ListingCountsEngine::listingIdFromMap($listedIds, $sku);
             if ($itemId !== '') {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
