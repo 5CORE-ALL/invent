@@ -17,15 +17,17 @@ class TikTok2OrderSyncService
     use PreservesMarketplaceImportStatus;
     use ResolvesTikTokOrderRawJson;
 
-    public const AUTO_IMPORT_MAX_AGE_DAYS = 7;
+    public const MIN_ORDER_DATE = '2026-07-07';
 
     /** @var list<string> */
     public const AUTO_IMPORT_STATUSES = [
+        'UNPAID',
         'AWAITING_SHIPMENT',
         'PARTIALLY_SHIPPING',
         'AWAITING_COLLECTION',
         'ON_HOLD',
         'IN_TRANSIT',
+        'SHIPPED',
         'DELIVERED',
         'COMPLETED',
     ];
@@ -36,9 +38,7 @@ class TikTok2OrderSyncService
 
     public function autoImportFromDate(): Carbon
     {
-        return Carbon::now('America/Los_Angeles')
-            ->subDays(max(1, self::AUTO_IMPORT_MAX_AGE_DAYS))
-            ->startOfDay();
+        return Carbon::parse(self::MIN_ORDER_DATE, 'America/Los_Angeles')->startOfDay();
     }
 
     public static function normalizeOrderStatus(?string $status): string
@@ -141,7 +141,7 @@ class TikTok2OrderSyncService
             ->where('order_created_at', '>=', $cutoff)
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->orderByDesc('order_created_at')
             ->orderByDesc('id')

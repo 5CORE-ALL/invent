@@ -87,7 +87,7 @@ trait FindsExistingShopifyOrderByChannelRef
             return ['id' => null, 'matched_by' => null, 'error' => null];
         }
 
-        // GraphQL search is down — REST tag lookup still catches existing copies.
+        // GraphQL is down — REST tags can still prove an existing copy (link, never create).
         foreach ($candidates as $ref) {
             foreach ($tagPrefixes as $prefix) {
                 $tag = trim((string) $prefix).$ref;
@@ -104,14 +104,16 @@ trait FindsExistingShopifyOrderByChannelRef
             }
         }
 
-        if ($graphqlFailed) {
-            Log::warning($logContext.': GraphQL duplicate check failed; REST name/tag found no match', [
-                'error' => $gql['error'],
-                'refs' => $candidates,
-            ]);
-        }
+        Log::warning($logContext.': duplicate check incomplete — create blocked', [
+            'error' => $gql['error'],
+            'refs' => $candidates,
+        ]);
 
-        return ['id' => null, 'matched_by' => null, 'error' => null];
+        return [
+            'id' => null,
+            'matched_by' => null,
+            'error' => (string) ($gql['error'] ?? 'Shopify duplicate check failed'),
+        ];
     }
 
     /**
@@ -153,10 +155,10 @@ trait FindsExistingShopifyOrderByChannelRef
         }
         if (! empty($existing['id'])) {
             if (property_exists($this, 'lastDuplicateLinkMessage')) {
-                $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$existing['id']
-                    .' (rechecked '.$existing['matched_by'].'). No new order created.';
+                $this->lastDuplicateLinkMessage = 'Already exists in Shopify as '.$existing['id']
+                    .' (matched '.$existing['matched_by'].'). Create skipped.';
             }
-            Log::info($logContext.': recheck linked existing Shopify order (duplicate avoided)', [
+            Log::info($logContext.': existing Shopify order found — create skipped', [
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
                 'refs' => $refs,

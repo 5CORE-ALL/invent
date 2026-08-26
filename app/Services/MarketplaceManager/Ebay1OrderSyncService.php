@@ -96,7 +96,7 @@ class Ebay1OrderSyncService
             ];
         }
 
-        if ($import) {
+        if ($import || MarketplaceShopifyImportQueue::shouldDispatchImports('ebay1')) {
             $this->dispatchImportsForNewOrders();
         }
 
@@ -155,7 +155,7 @@ class Ebay1OrderSyncService
             })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
             })
             ->orderBy('id')
             ->limit(200)

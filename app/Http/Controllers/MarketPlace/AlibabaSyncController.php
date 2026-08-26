@@ -648,7 +648,7 @@ class AlibabaSyncController extends Controller
 
         // Only auto-queue Shopify imports when explicitly requested.
         // Prefer from_date fetches without import when older orders already exist on Shopify.
-        if ($request->boolean('import')) {
+        if ($request->boolean('import') || MarketplaceSyncSettings::canAutoImportToShopify('alibaba')) {
             $dispatched = $sync->dispatchImportsForNewOrders();
             $result['message'] .= " Dispatched {$dispatched} import job(s).";
         }

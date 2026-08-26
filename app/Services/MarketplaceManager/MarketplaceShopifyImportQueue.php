@@ -14,6 +14,27 @@ use Illuminate\Support\Facades\Schema;
  */
 class MarketplaceShopifyImportQueue
 {
+    /** Shared floor for auto-import when a channel has no older dedicated cutoff. */
+    public const DEFAULT_IMPORT_CUTOFF_DATE = '2026-07-07';
+
+    /**
+     * Rows the dispatcher may queue. skipped_closed is included so widening
+     * eligibility (e.g. SHIPPED) can pick up rows skipped under the old rules.
+     *
+     * @var list<string>
+     */
+    public const DISPATCHABLE_IMPORT_STATUSES = ['ready', 'import_failed', 'failed', 'skipped_closed'];
+
+    public static function defaultImportCutoff(): \Carbon\Carbon
+    {
+        return \Carbon\Carbon::parse(self::DEFAULT_IMPORT_CUTOFF_DATE, 'America/Los_Angeles')->startOfDay();
+    }
+
+    public static function shouldDispatchImports(string $slug, bool $requested = false): bool
+    {
+        return $requested || \App\Models\MarketplaceSyncSettings::canAutoImportToShopify($slug);
+    }
+
     /**
      * Unique locks / crashed workers can leave import_status=queued with no jobs
      * row and no shopify_order_id. Reset those rows when this order's import job

@@ -59,7 +59,7 @@ class ImportTemuOrderToShopify implements ShouldQueue
 
         $parent = trim((string) $order->parent_order_sn);
 
-        // Hard stop for delivered / shipped / old backlog even if a job was already queued.
+        // Hard stop for cancelled / delivered / closed even if a job was already queued.
         $sync = app(TemuOrderSyncService::class);
         if (! $sync->isEligibleForAutoImport($order)) {
             if ($parent !== '') {

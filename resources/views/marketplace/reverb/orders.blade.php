@@ -5,7 +5,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'reverb') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> Reverb Manager</a>
         @include('marketplace._page-heading', ['slug' => 'reverb', 'heading' => 'Reverb Orders'])
-        <p class="text-muted mb-3">Orders from <strong>July 7, 2026</strong> onward (same cutoff as AliExpress). Older historical Reverb rows stay in the database but are hidden here. Push to Shopify manually or enable auto-import in <a href="{{ route('marketplace.settings', 'reverb') }}">Settings</a>.</p>
+        <p class="text-muted mb-3">Orders from <strong>July 7, 2026</strong> onward. They auto-push to Shopify when auto-import is On in <a href="{{ route('marketplace.settings', 'reverb') }}">Settings</a>. If the order already exists in Shopify, it is linked — a second copy is not created.</p>
 
         @include('marketplace._queue-status', ['slug' => 'reverb'])
 
@@ -129,13 +129,13 @@ document.getElementById('btn-fetch-orders')?.addEventListener('click', function 
     if (selected.indexOf('from:') === 0) {
         var fromDate = selected.slice(5);
         body.from_date = fromDate;
-        confirmMsg = 'Fetch Reverb orders from ' + fromDate + ' onward?\n\nThis will NOT auto-push to Shopify (avoids duplicates for orders already entered).';
+        confirmMsg = 'Fetch Reverb orders from ' + fromDate + ' onward?\n\nUnpushed orders will be queued to Shopify when auto-import is On. Existing Shopify copies are linked, not duplicated.';
     } else {
         var days = parseInt(selected, 10);
         body.days = days;
         confirmMsg = days === 0
-            ? 'Fetch all Reverb orders (up to 2 years)? This may take several minutes.\n\nThis will NOT auto-push to Shopify.'
-            : 'Fetch orders from the last ' + days + ' days?\n\nThis will NOT auto-push to Shopify.';
+            ? 'Fetch all Reverb orders (up to 2 years)? This may take several minutes.\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).'
+            : 'Fetch orders from the last ' + days + ' days?\n\nUnpushed orders will be queued when auto-import is On (existing Shopify copies are linked, not duplicated).';
     }
 
     if (!confirm(confirmMsg)) {
