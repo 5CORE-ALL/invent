@@ -6,12 +6,44 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
+        .amz-ads-all,
+        .amz-ads-all .col-12,
+        .amz-ads-all .card,
+        .amz-ads-all .card-body {
+            min-width: 0;
+        }
+        .amz-ads-all .card,
+        .amz-ads-all .card-body {
+            max-width: 100%;
+        }
+        /* clip does not create a scrollport, so sticky headers still pin to the page */
+        .amz-ads-all .card { overflow-x: clip; }
+        .amz-ads-all .card-body { overflow-x: visible; }
+
+        #amz-ads-raw-wrap {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            overflow: visible;
+            padding-bottom: 56px;
+        }
         #amz-ads-raw-wrap .tabulator {
-            border: 1px solid #dee2e6; border-radius: 8px; font-size: 13px;
+            border: 1px solid #dee2e6; border-radius: 0 0 8px 8px; font-size: 13px;
+            width: 100% !important;
+            max-width: 100%;
+            min-width: 0;
             overflow: visible !important;
         }
+        #amz-ads-raw-wrap .tabulator .tabulator-header,
+        #amz-ads-raw-wrap .tabulator .tabulator-tableholder,
+        #amz-ads-raw-wrap .tabulator .tabulator-footer {
+            max-width: 100%;
+            min-width: 0;
+        }
         #amz-ads-raw-wrap .tabulator .tabulator-tableholder {
-            overflow: visible !important;
+            overflow-x: auto !important;
+            overflow-y: visible !important;
+            -webkit-overflow-scrolling: touch;
         }
         #amz-ads-raw-wrap .tabulator .tabulator-header {
             position: sticky !important;
@@ -43,6 +75,7 @@
         /* Pagination footer */
         #amz-ads-raw-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important; padding: 10px 16px !important;
+            overflow-x: auto;
         }
         #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap;
@@ -60,18 +93,41 @@
         }
         #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] { opacity: 0.4 !important; cursor: not-allowed !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-page-counter { margin: 0 0.5rem; font-size: 12px; color: #334155; }
-        #amz-ads-raw-wrap { overflow: visible; width: 100%; padding-bottom: 56px; }
         /* U% utilization colors */
         #amz-ads-raw-wrap .tabulator .tabulator-cell.green-bg { color: #16a34a !important; font-weight: 600; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell.pink-bg { color: #db2777 !important; font-weight: 600; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell.red-bg { color: #dc2626 !important; font-weight: 600; }
+        /* Toolbar + badges */
+        .amz-ads-toolbar { min-width: 0; }
+        .amz-stat-badges {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+            min-width: 0; flex: 1 1 auto;
+        }
+        .amz-ads-toolbar-actions {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
+            min-width: 0;
+        }
         /* Filter bar */
         #amz-raw-filter-bar { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
+        #amz-raw-filter-bar .amz-raw-filter-fields {
+            display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem 1rem;
+        }
+        #amz-raw-filter-bar .amz-raw-filter-field {
+            flex: 0 1 auto; min-width: 110px;
+        }
+        #amz-raw-filter-bar .amz-raw-filter-actions { flex: 0 0 auto; }
         #amz-raw-filter-bar .amz-raw-filter-label {
             display: block; font-size: 0.75rem; font-weight: 600; color: #475569; margin-bottom: 4px; letter-spacing: 0.01em;
         }
-        #amz-raw-filter-bar .amz-raw-filter-select { min-width: 120px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #64748b; font-size: 0.8125rem; padding-top: 0.35rem; padding-bottom: 0.35rem; }
-        #amz-raw-filter-bar .amz-raw-date-input { border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #334155; font-size: 0.8125rem; padding: 0.35rem 0.4rem; }
+        #amz-raw-filter-bar .amz-raw-filter-select,
+        #amz-raw-filter-bar .amz-raw-date-input {
+            width: 100%; min-width: 0; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff;
+            font-size: 0.8125rem; padding: 0.35rem 0.4rem;
+        }
+        #amz-raw-filter-bar .amz-raw-filter-select { color: #64748b; }
+        #amz-raw-filter-bar .amz-raw-date-input { color: #334155; }
+        .amz-ads-search-bar { min-width: 0; }
+        .amz-ads-search-bar #amz-filter-search { min-width: 0; flex: 1 1 auto; }
         /* Stat badges */
         .amz-stat-badge {
             display: inline-flex; align-items: center; flex-shrink: 0; color: #fff; font-size: 15px; font-weight: 700;
@@ -90,18 +146,44 @@
         .amz-stat-badge--cpc      { background: #0891b2; }
         .amz-stat-badge--sales    { background: #16a34a; }
         #amz-ads-raw-wrap #amazonAdsU7Pie { width: 100%; min-height: 400px; }
+
+        @media (max-width: 991.98px) {
+            .amz-stat-badge { font-size: 13px; padding: 7px 12px; }
+            .amz-stat-badge > span { font-size: 14px; }
+            #amz-raw-filter-bar .amz-raw-filter-field { flex: 1 1 calc(33.333% - 1rem); min-width: 140px; }
+        }
+        @media (max-width: 767.98px) {
+            .amz-ads-all .card-body { padding: 0.75rem; }
+            .amz-stat-badge { font-size: 12px; padding: 6px 10px; }
+            .amz-stat-badge > span { font-size: 13px; }
+            #amz-raw-filter-bar { padding: 10px; }
+            #amz-raw-filter-bar .amz-raw-filter-field { flex: 1 1 calc(50% - 0.75rem); min-width: 130px; }
+            #amz-ads-raw-wrap .tabulator { font-size: 12px; }
+            #amz-ads-raw-wrap .tabulator .tabulator-footer { padding: 8px 10px !important; }
+            #amz-ads-raw-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+                min-width: 32px !important; height: 32px !important; line-height: 32px !important; font-size: 13px !important;
+            }
+            #amz-ads-raw-wrap .tabulator .tabulator-header { top: var(--tz-topbar-height, 56px) !important; }
+        }
+        @media (max-width: 575.98px) {
+            #amz-raw-filter-bar .amz-raw-filter-field { flex: 1 1 100%; min-width: 0; }
+            #amz-raw-filter-bar .amz-raw-filter-actions { width: 100%; }
+            #amz-raw-filter-bar .amz-raw-filter-actions .btn { flex: 1 1 auto; }
+            .amz-ads-search-bar { flex-wrap: wrap; }
+            #amazonAdsU7Pie { min-height: 280px !important; }
+        }
     </style>
 @endsection
 
 @section('content')
     @include('layouts.shared/page-title', ['sub_title' => 'Amz Ads', 'page_title' => 'Amz Ads All'])
 
-    <div class="row">
+    <div class="row amz-ads-all">
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="d-flex align-items-center flex-wrap gap-2 py-1">
+                    <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="amz-stat-badges py-1">
                             <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching current filters">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
                             <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS (L30) for the filtered set">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
                             <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Spend (L30) total">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
@@ -112,30 +194,32 @@
                             <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) total">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
                         </div>
 
-                        <span id="amz-raw-total" class="badge bg-secondary">Total: —</span>
-                        <span id="amz-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
-                        <button type="button" id="amz-raw-refresh" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
-                            <i class="fa fa-refresh"></i>
-                        </button>
-                        <button type="button" id="amazonAdsSectionExportBtn" class="btn btn-sm btn-success amz-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
-                            <i class="fas fa-file-csv"></i>
-                        </button>
-                        <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS% bands">PAUSE RULE</button>
-                        <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
-                            <i class="fa fa-cloud-upload-alt"></i> SBGT
-                        </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 5 using the values shown on this page (SP/SB only).">
-                            <i class="fa fa-cloud-upload-alt"></i> SBID
-                        </button>
+                        <div class="amz-ads-toolbar-actions">
+                            <span id="amz-raw-total" class="badge bg-secondary">Total: —</span>
+                            <span id="amz-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
+                            <button type="button" id="amz-raw-refresh" class="btn btn-sm btn-outline-primary amz-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
+                                <i class="fa fa-refresh"></i>
+                            </button>
+                            <button type="button" id="amazonAdsSectionExportBtn" class="btn btn-sm btn-success amz-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
+                                <i class="fas fa-file-csv"></i>
+                            </button>
+                            <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS% bands">PAUSE RULE</button>
+                            <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
+                            <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
+                                <i class="fa fa-cloud-upload-alt"></i> SBGT
+                            </button>
+                            <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 5 using the values shown on this page (SP/SB only).">
+                                <i class="fa fa-cloud-upload-alt"></i> SBID
+                            </button>
+                        </div>
                     </div>
 
                     <div id="amz-raw-filter-bar" class="mb-3">
-                        <div class="d-flex flex-wrap align-items-end gap-3 gap-md-4">
-                            <div>
+                        <div class="amz-raw-filter-fields">
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterReportType">Table</label>
                                 <select id="amazonAdsFilterReportType" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="all_reports">All (SP + SB)</option>
@@ -148,7 +232,7 @@
                                     <option value="fbm_targeting">FBM targeting</option>
                                 </select>
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterSummaryRange">Range</label>
                                 <select id="amazonAdsFilterSummaryRange" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="" selected>Calendar</option>
@@ -160,15 +244,15 @@
                                     <option value="L60">L60</option>
                                 </select>
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterDateFrom">From</label>
                                 <input type="date" id="amazonAdsFilterDateFrom" class="form-control form-control-sm amz-raw-date-input">
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterDateTo">To</label>
                                 <input type="date" id="amazonAdsFilterDateTo" class="form-control form-control-sm amz-raw-date-input">
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterU7">U7%</label>
                                 <select id="amazonAdsFilterU7" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="" selected>All</option>
@@ -177,7 +261,7 @@
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterU2">U2%</label>
                                 <select id="amazonAdsFilterU2" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="" selected>All</option>
@@ -186,7 +270,7 @@
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterU1">U1%</label>
                                 <select id="amazonAdsFilterU1" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="" selected>All</option>
@@ -195,7 +279,7 @@
                                     <option value="gt99">&gt; 99%</option>
                                 </select>
                             </div>
-                            <div>
+                            <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterCampaignStatus">Stat</label>
                                 <select id="amazonAdsFilterCampaignStatus" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="" selected>All</option>
@@ -204,7 +288,7 @@
                                     <option value="ARCHIVED">Archived</option>
                                 </select>
                             </div>
-                            <div class="d-flex align-items-end gap-2">
+                            <div class="amz-raw-filter-actions d-flex align-items-end flex-wrap gap-2">
                                 <button type="button" class="btn btn-sm btn-primary" id="amazonAdsFilterApply">Apply</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="amazonAdsFilterClear">Clear</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="amazonAdsU7PieOpenBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsU7PieModal" title="Row counts by U7% band (U7 filter ignored). Click a slice for last 30 days.">U7% mix</button>
@@ -218,9 +302,9 @@
                     </div>
 
                     <div id="amz-ads-raw-wrap">
-                        <div class="p-2 bg-light border rounded-top d-flex align-items-center gap-2">
+                        <div class="amz-ads-search-bar p-2 bg-light border rounded-top d-flex align-items-center gap-2">
                             <input type="search" id="amz-filter-search" class="form-control" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
-                            <span id="amz-raw-source-label" class="badge bg-dark text-nowrap"></span>
+                            <span id="amz-raw-source-label" class="badge bg-dark text-nowrap flex-shrink-0"></span>
                         </div>
                         <div id="amz-ads-raw-table"></div>
                     </div>
@@ -230,7 +314,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsU7PieModal" tabindex="-1" aria-labelledby="amazonAdsU7PieModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsU7PieModalLabel">U7% mix</h5>
@@ -248,7 +332,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsU7HistoryModal" tabindex="-1" aria-labelledby="amazonAdsU7HistoryModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsU7HistoryModalLabel">U7% — daily row counts</h5>
@@ -282,7 +366,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsBgtRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — ACOS % → Suggested Budget (SBGT)</h5>
@@ -294,6 +378,7 @@
                         <strong>top to bottom</strong>; the first range that contains the campaign's ACOS gets its SBGT.
                         Use <code>9999</code> on <em>To</em> for the catch-all highest band.
                     </p>
+                    <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
                         <thead class="table-light">
                             <tr>
@@ -308,6 +393,7 @@
                         </thead>
                         <tbody id="amazonAdsBgtRuleBandsBody"></tbody>
                     </table>
+                    </div>
                     <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtRuleAddBandBtn">
                         <i class="fas fa-plus me-1"></i>Add band
                     </button>
@@ -322,7 +408,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsSbidRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbidRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsSbidRuleModalLabel">SBID rule — U2% / U1% → suggested bid</h5>
@@ -331,37 +417,37 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-2">When <strong>both</strong> U2% and U1% are <strong>below</strong> the low threshold, SBID = CPC × under multipliers (or fallback when no CPC). When <strong>both</strong> are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. Otherwise SBID shows —.</p>
                     <div class="row g-2 mb-2">
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilLow">Low threshold (%)</label>
                             <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilHigh">High threshold (%)</label>
                             <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback (no CPC)</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleBothLowFallback" name="both_low_fallback" required>
                         </div>
                     </div>
                     <p class="small fw-semibold mb-1">Both below low — CPC multipliers</p>
                     <div class="row g-2 mb-3">
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL1">× L1 CPC</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL1" name="both_low_mult_l1" required>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL2">× L2 CPC</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL2" name="both_low_mult_l2" required>
                         </div>
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
                         </div>
                     </div>
                     <p class="small fw-semibold mb-1">Both above high</p>
                     <div class="row g-2">
-                        <div class="col-4">
+                        <div class="col-6 col-md-4">
                             <label class="form-label small mb-0" for="amazonAdsSbidRuleHighMultL1">× L1 CPC</label>
                             <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleHighMultL1" name="both_high_mult_l1" required>
                         </div>
@@ -377,7 +463,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsPauseRuleModal" tabindex="-1" aria-labelledby="amazonAdsPauseRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS%</h5>
@@ -457,7 +543,7 @@
                     <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPauseRuleModalError" role="alert"></p>
                     <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsPauseRuleModalOk" role="status"></p>
                 </div>
-                <div class="modal-footer py-2">
+                <div class="modal-footer py-2 d-flex flex-wrap gap-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsPauseRuleSaveBtn">Save &amp; refresh grid</button>
                     <button type="button" class="btn btn-sm btn-danger" id="amazonAdsPauseRuleApplyBtn" title="Save bands and pause/enable matching SP + SB campaigns on Amazon">Save &amp; apply to Amazon</button>
@@ -716,7 +802,13 @@
 
             // Map a source display-column name to Tabulator column def extras.
             function amzApplyColFormat(col, c) {
-                if (c === 'campaignName') { col.formatter = fmtCampaignName; col.minWidth = 200; col.widthGrow = 4; col.hozAlign = 'left'; return; }
+                if (c === 'campaignName') {
+                    col.formatter = fmtCampaignName;
+                    col.minWidth = window.innerWidth < 768 ? 140 : 200;
+                    col.widthGrow = 4;
+                    col.hozAlign = 'left';
+                    return;
+                }
                 if (c === 'Inv' || c === 'INV') {
                     col.title = 'Inv';
                     col.headerTooltip = 'Shopify inventory — same as /amazon-tabulator-view INV';
@@ -903,7 +995,7 @@
                 ajaxURL: dataUrlTemplate + 'sp_reports',
                 ajaxRequestFunc: amzAjaxRequestFunc,
                 height: false,
-                layout: 'fitColumns',
+                layout: 'fitDataFill',
                 layoutColumnsOnNewData: true,
                 pagination: true,
                 paginationMode: 'remote',
@@ -938,6 +1030,15 @@
             table.on('dataLoadError', function (error) {
                 console.error('amazon-ads raw data load error', error);
                 amzUpdateTotalBadge(NaN);
+            });
+
+            var amzResizeTimer = null;
+            window.addEventListener('resize', function () {
+                if (!table) return;
+                clearTimeout(amzResizeTimer);
+                amzResizeTimer = setTimeout(function () {
+                    try { table.redraw(true); } catch (e) {}
+                }, 150);
             });
 
             // ---- reload / source switching ----

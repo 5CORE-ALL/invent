@@ -46,6 +46,12 @@ class AmazonAdsPauseRuleApplicator
         ];
 
         $rule = AmazonAdsPauseRule::resolvedRule();
+        if (! AmazonAdsPauseRule::hasBands($rule)) {
+            $stats['errors'][] = 'No pause/activate bands configured — Amazon was not updated.';
+            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (no bands). Refusing to enable/pause campaigns.');
+
+            return $stats;
+        }
         $sp = $this->collectLatestCampaigns('sp');
         $sb = $this->collectLatestCampaigns('sb');
         $names = array_values(array_unique(array_filter(array_merge(
@@ -142,6 +148,11 @@ class AmazonAdsPauseRuleApplicator
                 'acos' => $row['acos'],
             ]);
             $desired = $decision['status'];
+            $matched = ($decision['hits'] ?? []) !== [];
+            if ($desired === '' || $desired === null || ! $matched) {
+                $stats['unchanged']++;
+                continue;
+            }
             if ($desired === $status) {
                 $stats['unchanged']++;
                 continue;

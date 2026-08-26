@@ -22,6 +22,10 @@ class ApplyAmazonAdsPauseRule extends Command
 
         Log::info('amazon:ads-pause-rule finished', $stats + ['dry_run' => $dryRun]);
 
+        if (($stats['errors'][0] ?? '') !== '' && $stats['paused'] === 0 && $stats['enabled'] === 0 && str_contains((string) $stats['errors'][0], 'No pause')) {
+            $this->warn($stats['errors'][0]);
+        }
+
         $this->info(sprintf(
             'Paused %d. Enabled %d. Unchanged %d. Skipped %d. Failed %d.',
             $stats['paused'],

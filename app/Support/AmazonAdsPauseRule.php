@@ -37,6 +37,18 @@ final class AmazonAdsPauseRule
     }
 
     /**
+     * @param  array<string, mixed>|null  $rule
+     */
+    public static function hasBands(?array $rule): bool
+    {
+        $r = $rule ?? [];
+
+        return ($r['pricing'] ?? []) !== []
+            || ($r['dil'] ?? []) !== []
+            || ($r['acos'] ?? []) !== [];
+    }
+
+    /**
      * @return array{
      *     pricing: list<array{from: float, to: float, action: string, label: string}>,
      *     dil: list<array{from: float, to: float, action: string, label: string}>,
@@ -124,6 +136,13 @@ final class AmazonAdsPauseRule
     public static function decide(?array $rule, array $metrics): array
     {
         $r = $rule ?? self::defaults();
+        if (! self::hasBands($r)) {
+            return [
+                'status' => '',
+                'reason' => 'No pause bands configured',
+                'hits' => [],
+            ];
+        }
         $hits = [];
 
         $priceHit = self::firstMatchingBand($r['pricing'] ?? [], $metrics['price'] ?? null, 'Price', '$');
