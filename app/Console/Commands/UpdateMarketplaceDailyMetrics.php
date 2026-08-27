@@ -33,6 +33,7 @@ use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Services\EbayChannelMetricsService;
 use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
+use App\Support\EbayCampaignReportRollup;
 use App\Support\ProductMasterTemuShip;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
@@ -567,11 +568,13 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // eBay 2 ads: L30 campaign reports (daily date rows are clicks-only / gapped).
+        // eBay 2 ads: latest L30 snapshot (daily date rows are clicks-only / gapped).
         // TCOS uses ads sales as denom when L30 spend exceeds store sales — same as
         // /ebay2/campaign-ads and /all-marketplace-master.
-        $kwRow = DB::table('ebay_2_priority_reports')
-            ->whereRaw("UPPER(TRIM(report_range)) = 'L30'")
+        $kwQuery = DB::table('ebay_2_priority_reports')
+            ->whereRaw("UPPER(TRIM(report_range)) = 'L30'");
+        EbayCampaignReportRollup::restrictToLatestL30Snapshot($kwQuery, 'ebay_2_priority_reports');
+        $kwRow = $kwQuery
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(cpc_clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
@@ -582,8 +585,10 @@ class UpdateMarketplaceDailyMetrics extends Command
         $kwSales = (float) ($kwRow->sales ?? 0);
         $kwSold = (int) ($kwRow->sold ?? 0);
 
-        $pmtRow = DB::table('ebay_2_general_reports')
-            ->whereRaw("UPPER(TRIM(report_range)) = 'L30'")
+        $pmtQuery = DB::table('ebay_2_general_reports')
+            ->whereRaw("UPPER(TRIM(report_range)) = 'L30'");
+        EbayCampaignReportRollup::restrictToLatestL30Snapshot($pmtQuery, 'ebay_2_general_reports');
+        $pmtRow = $pmtQuery
             ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
                          COALESCE(SUM(clicks), 0) as clicks,
                          COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,

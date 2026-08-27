@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ebay2Metric;
 use App\Models\ProductMaster;
 use App\Services\EbayChannelMetricsService;
+use App\Support\EbayCampaignReportRollup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -759,8 +760,8 @@ class Ebay2CampaignAdsController extends Controller
     }
 
     /**
-     * Single eBay 2 row for /advertisement-master — KW + PMT combined from daily
-     * ebay_2_priority_reports and ebay_2_general_reports (31-day window).
+     * Single eBay 2 row for /advertisement-master — KW + PMT from the latest
+     * L30 snapshot on ebay_2_priority_reports and ebay_2_general_reports.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -844,7 +845,8 @@ class Ebay2CampaignAdsController extends Controller
 
     /**
      * L30 rollup for /ebay2/campaign-ads badges and /advertisement-master.
-     * Daily date rows are often clicks-only / missing days; L30 has spend + sold + ads sales.
+     * L30 is the last 31 calendar days including today (Seller Hub "Past 31 days").
+     * Only the latest sync day is summed — stale leftovers inflate spend.
      *
      * @return array{spend: float, clicks: int, sold: int, sales: float}
      */
@@ -857,6 +859,7 @@ class Ebay2CampaignAdsController extends Controller
         }
 
         $query = DB::table($table)->whereRaw("UPPER(TRIM(report_range)) = 'L30'");
+        EbayCampaignReportRollup::restrictToLatestL30Snapshot($query, $table);
 
         if ($type === 'kw') {
             $row = $query

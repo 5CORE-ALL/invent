@@ -331,6 +331,14 @@
         #summary-stats .summary-trend-dot.down { background: #ef4444; }
         #summary-stats .summary-trend-dot.flat,
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
+        #marketplace-table .metric-diff-value {
+            font-size: 9px;
+            font-weight: 700;
+            margin-left: 4px;
+            white-space: nowrap;
+            cursor: pointer;
+            letter-spacing: -0.02em;
+        }
     </style>
 @endsection
 
@@ -1028,6 +1036,36 @@
             });
         }
 
+        var METRIC_DIFF_MONEY = {
+            l30_sales: 1, y_sales: 1, ad_spend: 1, pft: 1, ad_sales: 1,
+            inv_at_lp: 1, inv_at_sp: 1, inventory: 1, l60_sales: 1
+        };
+        var METRIC_DIFF_PCT = {
+            gprofit: 1, groi: 1, npft: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
+        };
+
+        function formatMetricDiffText(metric, diff) {
+            if (diff == null || isNaN(diff)) return '';
+            if (Math.abs(diff) < 1e-9) return '';
+            var sign = diff > 0 ? '+' : '−';
+            var abs = Math.abs(diff);
+            var text;
+            if (metric === 'tat') {
+                text = abs.toFixed(2);
+            } else if (METRIC_DIFF_MONEY[metric]) {
+                if (abs >= 1000000) text = '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+                else if (abs >= 1000) text = '$' + (abs / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+                else text = '$' + Math.round(abs).toLocaleString('en-US');
+            } else if (METRIC_DIFF_PCT[metric]) {
+                text = (abs >= 10 ? abs.toFixed(0) : abs.toFixed(1)) + '%';
+            } else if (abs >= 1000) {
+                text = (abs / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+            } else {
+                text = Math.round(abs).toLocaleString('en-US');
+            }
+            return sign + text;
+        }
+
         // Toast notification helper
         function showToast(type, message) {
             const toast = $(`
@@ -1238,6 +1276,12 @@
                 var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
                 return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
             }
+            function getMetricDiffAmount(channelName, metricKey) {
+                var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
+                var pair = lastDotPairByKey[k];
+                if (!pair || pair[0] == null || pair[1] == null || isNaN(pair[0]) || isNaN(pair[1])) return null;
+                return pair[1] - pair[0];
+            }
             function saveDotColorsToStorage() {
                 try {
                     localStorage.setItem('channelMasterDotColors', JSON.stringify(lastDotColorByKey));
@@ -1284,14 +1328,23 @@
                 return channelKeys;
             }
             function paintMetricDots(channelKeys) {
-                document.querySelectorAll('.metric-chart-icon, .ad-chart-icon').forEach(function(el) {
+                document.querySelectorAll('i.metric-chart-icon, i.ad-chart-icon').forEach(function(el) {
                     var ch = el.getAttribute('data-channel');
-                    var metric = el.getAttribute('data-metric') || 'ad_spend';
-                    var color = getMetricDotColor(ch, metric);
+                    var metric = el.getAttribute('data-metric');
+                    var color = getMetricDotColor(ch, metric || 'ad_spend');
                     el.style.color = color;
+                    el.style.display = '';
+
                     var prev = el.previousElementSibling;
-                    if (prev && prev.tagName === 'SPAN' && prev.style && String(prev.style.fontWeight) === '600') {
-                        prev.style.color = color;
+                    if (prev && prev.classList && prev.classList.contains('metric-diff-value')) {
+                        prev.remove();
+                    }
+
+                    if (metric) {
+                        var text = formatMetricDiffText(metric, getMetricDiffAmount(ch, metric));
+                        el.title = text
+                            ? (text + ' vs previous day — click for chart')
+                            : 'View Chart';
                     }
                 });
                 if (typeof colorSummaryBadgeDots === 'function') {
@@ -1663,7 +1716,7 @@
                         headerTooltip: "Rolling sales per channel. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} complete Pacific days through yesterday — Seller Central Ordered product sales (ItemPrice − promo; shipping/gift/tax excluded; Canceled excluded).",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
+                        width: 136,
                         formatter: function(cell) {
                             const value = Math.round(parseNumber(cell.getValue()));
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -1792,7 +1845,7 @@
                         headerTooltip: "Yesterday Pacific. Amz = Seller Central Ordered product sales for that calendar day (shipping/gift/tax excluded).",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 90,
+                        width: 128,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue() || 0);
                             const channel = (cell.getRow().getData()['Channel '] || '').trim();
@@ -3589,6 +3642,10 @@
                 ]
             });
 
+            table.on('renderComplete', function() {
+                paintMetricDots(channelKeysFromTableData());
+            });
+
             $(window).on('resize.ammFreezeHeader', function() {
                 const wrap = document.getElementById('marketplace-table-wrapper');
                 if (wrap) wrap.style.height = marketplaceTableHeight() + 'px';
@@ -4827,6 +4884,12 @@
                     return Math.round(v).toLocaleString('en-US');
                 };
 
+                const fmtSignedDiff = (d) => {
+                    if (d == null || isNaN(d)) return '';
+                    if (Math.abs(d) < 1e-9) return '0';
+                    return (d > 0 ? '+' : '−') + fmtVal(Math.abs(d));
+                };
+
                 // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
                 const invertedMetrics = ['acos', 'ads_pct'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
@@ -4910,7 +4973,8 @@
                             ctx.fillStyle = labelColors[i];
                             ctx.translate(point.x, point.y + offsetY);
                             ctx.rotate(-Math.PI / 5);
-                            ctx.fillText(fmtVal(val), 2, 0);
+                            const label = (i === 0) ? fmtVal(val) : fmtSignedDiff(val - values[i - 1]);
+                            ctx.fillText(label, 2, 0);
                             ctx.restore();
                         });
                         ctx.restore();
@@ -4958,7 +5022,7 @@
                                         if (idx > 0) {
                                             const diff = context.raw - values[idx - 1];
                                             const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
-                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
+                                            parts.push('Diff: ' + arrow + ' ' + fmtSignedDiff(diff));
                                         }
                                         return parts;
                                     }

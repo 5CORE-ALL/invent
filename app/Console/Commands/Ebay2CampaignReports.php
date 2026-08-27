@@ -16,7 +16,7 @@ class Ebay2CampaignReports extends Command
      *
      * @var string
      */
-    protected $signature = 'app:ebay2-campaign-reports';
+    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)}';
 
     /**
      * The console command description.
@@ -57,33 +57,39 @@ class Ebay2CampaignReports extends Command
         }
         $this->info("✅ Successfully fetched " . count($campaignsMap) . " campaigns. Will use for all date ranges.");
         
+        $only = strtoupper(trim((string) $this->option('only')));
+
         // Fetch only yesterday's data for charts
         $yesterday = Carbon::yesterday()->toDateString();
-        
-        // Check if yesterday's data already exists
-        $yesterdayExists = Ebay2PriorityReport::where('report_range', $yesterday)
-            ->exists();
-            
-        if (!$yesterdayExists) {
-            $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
-            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
-            $this->info("✅ Yesterday's data fetched: {$yesterday}");
-        } else {
-            $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
+
+        if ($only === '' || $only === $yesterday) {
+            $yesterdayExists = Ebay2PriorityReport::where('report_range', $yesterday)
+                ->exists();
+
+            if (!$yesterdayExists) {
+                $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
+                $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
+                $this->info("✅ Yesterday's data fetched: {$yesterday}");
+            } else {
+                $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
+            }
         }
 
-        // Always fetch summary ranges for backward compatibility with table data
+        // L30 = last 31 calendar days including today — same window as Seller Hub "Past 31 days".
+        // eBay 1 uses clean UTC day bounds; IST/PT → utc() was cutting the last hours off.
         $summaryRanges = [
             'L90' => [Carbon::today()->subDays(90), Carbon::today()->subDays(31)->endOfDay()],
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
-            'L30' => [Carbon::today()->subDays(29), Carbon::today()->subDay()->endOfDay()],
-            'L15' => [Carbon::today()->subDays(14), Carbon::today()->subDay()->endOfDay()],
-            'L7' => [Carbon::today()->subDays(6), Carbon::today()->subDay()->endOfDay()],
+            'L30' => [Carbon::today()->subDays(30)->startOfDay(), Carbon::today()->endOfDay()],
+            'L15' => [Carbon::today()->subDays(14), Carbon::today()->endOfDay()],
+            'L7' => [Carbon::today()->subDays(6), Carbon::today()->endOfDay()],
             'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()]
         ];
 
-        // Loop through summary ranges
         foreach ($summaryRanges as $rangeKey => [$from, $to]) {
+            if ($only !== '' && $only !== $rangeKey) {
+                continue;
+            }
             $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey);
         }
 
@@ -102,9 +108,7 @@ class Ebay2CampaignReports extends Command
     {
         $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
-        // Use UTC timezone for eBay API compatibility
-        $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
-        $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        [$dateFrom, $dateTo] = $this->ebayUtcDayBounds($from, $to);
 
         $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
             "dateFrom" => $dateFrom,
@@ -224,9 +228,11 @@ class Ebay2CampaignReports extends Command
     {
         $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
+        [$dateFrom, $dateTo] = $this->ebayUtcDayBounds($from, $to);
+
         $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-            "dateFrom" => $from,
-            "dateTo" => $to,
+            "dateFrom" => $dateFrom,
+            "dateTo" => $dateTo,
             "marketplaceId" => "EBAY_US",
             "reportFormat" => "TSV_GZIP",
             "fundingModels" => ["COST_PER_SALE"],
@@ -260,10 +266,13 @@ class Ebay2CampaignReports extends Command
 
         // Process in chunks to avoid too many connections
         $chunks = array_chunk($items, 100);
+        $seenListingIds = [];
         
         foreach($chunks as $chunkIndex => $chunk) {
             foreach($chunk as $item){
                 if (!$item || empty($item['listing_id'])) continue;
+
+                $seenListingIds[] = $item['listing_id'];
                 
                 Ebay2GeneralReport::updateOrCreate(
                 ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
@@ -284,6 +293,17 @@ class Ebay2CampaignReports extends Command
             // Disconnect after each chunk
             DB::connection()->disconnect();
         }
+
+        $seenListingIds = array_values(array_unique($seenListingIds));
+        if ($seenListingIds !== []) {
+            $pruned = Ebay2GeneralReport::where('report_range', $rangeKey)
+                ->whereNotIn('listing_id', $seenListingIds)
+                ->delete();
+            if ($pruned > 0) {
+                $this->info("Pruned {$pruned} stale {$rangeKey} listing rows not in the latest report");
+            }
+        }
+
         $this->info("✅ CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
     }
 
@@ -550,6 +570,20 @@ class Ebay2CampaignReports extends Command
         @unlink($tsvPath);
 
         return $allData;
+    }
+
+    /**
+     * Clean UTC calendar-day bounds (same as eBay 1).
+     * startOfDay()->utc() shifts PT/IST and shortens the window vs Seller Hub.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function ebayUtcDayBounds(Carbon $from, Carbon $to): array
+    {
+        return [
+            $from->copy()->format('Y-m-d').'T00:00:00.000Z',
+            $to->copy()->format('Y-m-d').'T23:59:59.000Z',
+        ];
     }
 
     private function getAccessToken()
