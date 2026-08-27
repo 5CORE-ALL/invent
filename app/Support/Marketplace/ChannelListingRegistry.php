@@ -142,7 +142,7 @@ class ChannelListingRegistry
             'aliexpress' => [
                 'dataView' => \App\Models\AliexpressDataView::class,
                 'status' => \App\Models\AliexpressListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => AliexpressMetric::class, 'column' => 'product_id', 'reject_sku' => true],
+                'listed' => ['type' => 'custom', 'method' => 'listedAliexpress'],
                 'id_field' => 'product_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -443,6 +443,42 @@ class ChannelListingRegistry
                 $id = trim((string) ($row->product_id ?? ''));
                 $map[strtolower($sku)] = $id !== '' ? $id : $sku;
             });
+
+        return $map;
+    }
+
+    /**
+     * AliExpress Listed = onSelling aliexpress_metric.product_id OR priced
+     * aliexpress_pricing_prices row, matched with normalized / compact SKU.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedAliexpress(array $skus): array
+    {
+        $metrics = AliexpressListingCounts::metricsByNormalizedSku();
+        $pricing = AliexpressListingCounts::pricingSkusByNormalizedSku();
+        $map = [];
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '') {
+                continue;
+            }
+            $resolved = AliexpressListingCounts::resolveListed($sku, $metrics, $pricing);
+            if (! ($resolved['listed'] ?? false)) {
+                continue;
+            }
+            $id = trim((string) ($resolved['product_id'] ?? ''));
+            if ($id === '') {
+                $id = $sku;
+            }
+            $map[strtolower($sku)] = $id;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $map[$norm] = $id;
+                $map[strtolower($norm)] = $id;
+            }
+        }
 
         return $map;
     }

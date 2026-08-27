@@ -183,7 +183,8 @@
     function supportsIndependentPublish() {
         const c = cfg();
         if (c.supportsIndependentPublish === true) return true;
-        return String(c.channel || '').toLowerCase() === 'temu';
+        const channel = String(c.channel || '').toLowerCase();
+        return channel === 'temu' || channel === 'reverb' || channel === 'reverbcom';
     }
 
     function selectedPublishMode() {

@@ -14,6 +14,8 @@ class ListingVariationPreviewService
         private Temu2ListingPublishService $temu2,
         private TemuListingPublishService $temu,
         private FaireListingPublishService $faire,
+        private AliexpressListingPublishService $aliexpress,
+        private ReverbListingPublishService $reverb,
     ) {
     }
 
@@ -65,6 +67,12 @@ class ListingVariationPreviewService
         }
         if ($channel === 'faire') {
             return $this->faire->publishSkus($skus, $expandSiblings);
+        }
+        if ($channel === 'aliexpress') {
+            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint);
+        }
+        if (in_array($channel, ['reverb', 'reverbcom'], true)) {
+            return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint);
         }
 
         $label = $this->channelLabel($channel);

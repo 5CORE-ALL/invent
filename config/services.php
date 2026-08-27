@@ -297,6 +297,9 @@ return [
         | public site (e.g. https://inventory.example.com) where /storage/... is reachable from the internet.
         */
         'sku_image_public_base_url' => env('REVERB_SKU_IMAGE_PUBLIC_BASE_URL'),
+        'shipping_profile_id' => env('REVERB_SHIPPING_PROFILE_ID'),
+        'default_category_uuid' => env('REVERB_DEFAULT_CATEGORY_UUID'),
+        'default_condition_uuid' => env('REVERB_DEFAULT_CONDITION_UUID'),
     ],
 
     'topdawg' => [
@@ -952,6 +955,10 @@ return [
             'ALIEXPRESS_SHOPIFY_SOURCE_URL_TEMPLATE',
             'https://csp.aliexpress.com/m_apps/order-manage/order_detail?orderId={order_id}'
         ),
+        'freight_template_id' => env('ALIEXPRESS_FREIGHT_TEMPLATE_ID', ''),
+        'default_category_id' => env('ALIEXPRESS_DEFAULT_CATEGORY_ID', ''),
+        'product_unit' => env('ALIEXPRESS_PRODUCT_UNIT', '100000015'),
+        'shipping_lead_time' => (int) env('ALIEXPRESS_SHIPPING_LEAD_TIME', 7),
     ],
 
     /*

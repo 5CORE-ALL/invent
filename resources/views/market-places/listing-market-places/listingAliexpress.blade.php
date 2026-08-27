@@ -693,7 +693,10 @@
                     return;
                 }
 
-                const rows = aliexpressListingTable.getData('active') || [];
+                const source = (allListingData && allListingData.length)
+                    ? allListingData
+                    : (aliexpressListingTable.getData() || []);
+                const filtered = aliexpressListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -703,13 +706,12 @@
                     pendingTotal: 0
                 };
 
-                rows.forEach(item => {
+                source.forEach(item => {
                     if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
                         if (item.nr_req === 'REQ') {
                             metrics.reqTotal++;
-                            // No Link: REQ rows with no aliexpress product id (dynamic link unavailable)
                             if (!String(item.ae_product_id || '').trim()) {
                                 metrics.withoutLinkTotal++;
                             }
@@ -733,7 +735,7 @@
                 $('#without-link-total').text(metrics.withoutLinkTotal);
                 $('#listed-total').text(metrics.listedTotal);
                 $('#pending-total').text(metrics.pendingTotal);
-                $('#rows-total').text(rows.length.toLocaleString());
+                $('#rows-total').text(filtered.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
                 resetMetricsToZero();
@@ -1101,5 +1103,5 @@
             publishUrl: '/listing_aliexpress/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=5"></script>
 @endsection

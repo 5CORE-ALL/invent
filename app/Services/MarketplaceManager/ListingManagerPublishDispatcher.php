@@ -33,6 +33,9 @@ class ListingManagerPublishDispatcher
         if ($key === 'faire') {
             return $this->publishFaire($sku);
         }
+        if (in_array($key, ['reverb', 'reverbcom'], true)) {
+            return $this->publishReverb($sku);
+        }
 
         $url = ListingChannelCounts::listingUrl($channelName);
         $hint = $url
@@ -56,6 +59,7 @@ class ListingManagerPublishDispatcher
             'ebay3', 'ebaythree',
             'temu2', 'temutwo',
             'faire',
+            'reverb', 'reverbcom',
         ], true);
     }
 
@@ -123,6 +127,24 @@ class ListingManagerPublishDispatcher
         return [
             'success' => true,
             'message' => $result['message'] ?? 'Published to Faire.',
+            'item_id' => $result['goods_id'] ?? null,
+            'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
+        ];
+    }
+
+    /**
+     * @return array{success: bool, message: string, item_id?: string|null, sibling_skus?: list<string>}
+     */
+    private function publishReverb(string $sku): array
+    {
+        $result = app(ReverbListingPublishService::class)->publishSkus([$sku], false, 'single');
+        if (! ($result['success'] ?? false)) {
+            return $result;
+        }
+
+        return [
+            'success' => true,
+            'message' => $result['message'] ?? 'Published to Reverb.',
             'item_id' => $result['goods_id'] ?? null,
             'sibling_skus' => is_array($result['skus'] ?? null) ? $result['skus'] : [$sku],
         ];

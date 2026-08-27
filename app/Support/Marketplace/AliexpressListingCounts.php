@@ -141,8 +141,14 @@ class AliexpressListingCounts
                     if ($status === 'onselling' && $norm !== '' && $id !== '') {
                         $byNorm[$norm] = $id;
                     }
+                    $compact = self::compactSku((string) $row->sku);
+                    if ($compact !== '' && $id !== '' && ! isset($byNorm['c:'.$compact])) {
+                        $byNorm['c:'.$compact] = $id;
+                    }
                 }
             });
+
+        self::mergeLiveListingsIntoMetrics($byNorm);
 
         return $byNorm;
     }
@@ -168,6 +174,10 @@ class AliexpressListingCounts
                     if ($norm !== '' && ! isset($byNorm[$norm])) {
                         $byNorm[$norm] = trim((string) $row->sku);
                     }
+                    $compact = self::compactSku((string) $row->sku);
+                    if ($compact !== '' && ! isset($byNorm['c:'.$compact])) {
+                        $byNorm['c:'.$compact] = trim((string) $row->sku);
+                    }
                 }
             });
 
@@ -180,8 +190,15 @@ class AliexpressListingCounts
     public static function productIdForSku(string $sku, array $metricsByNorm): string
     {
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($metricsByNorm[$norm])) {
+            return $metricsByNorm[$norm];
+        }
+        $compact = self::compactSku($sku);
+        if ($compact !== '' && isset($metricsByNorm['c:'.$compact])) {
+            return $metricsByNorm['c:'.$compact];
+        }
 
-        return ($norm !== '' && isset($metricsByNorm[$norm])) ? $metricsByNorm[$norm] : '';
+        return '';
     }
 
     /**
@@ -190,8 +207,12 @@ class AliexpressListingCounts
     public static function inPricing(string $sku, array $pricingByNorm): bool
     {
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($pricingByNorm[$norm])) {
+            return true;
+        }
+        $compact = self::compactSku($sku);
 
-        return $norm !== '' && isset($pricingByNorm[$norm]);
+        return $compact !== '' && isset($pricingByNorm['c:'.$compact]);
     }
 
     /**
@@ -233,5 +254,57 @@ class AliexpressListingCounts
         }
 
         return $id;
+    }
+
+    /**
+     * Collapse spaces / punctuation so "MS 080 RED 2 PCS" matches "MS 080 RED 2PCS".
+     */
+    public static function compactSku(string $sku): string
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm === '') {
+            return '';
+        }
+
+        return strtoupper((string) preg_replace('/[^A-Z0-9]+/i', '', $norm));
+    }
+
+    /**
+     * Overlay cached live catalog SKUs (onSelling / auditing) onto the metric map.
+     *
+     * @param  array<string, string>  $byNorm
+     */
+    private static function mergeLiveListingsIntoMetrics(array &$byNorm): void
+    {
+        try {
+            $cached = app(\App\Services\MarketplaceManager\AliexpressLiveListingsService::class)->peekCached();
+        } catch (\Throwable) {
+            return;
+        }
+        if (! is_array($cached) || $cached === []) {
+            return;
+        }
+        foreach ($cached as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $state = strtolower(trim((string) ($row['state'] ?? '')));
+            if (in_array($state, ['offline', 'service_delete', 'deleted'], true)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $id = self::normalizeProductId($row['product_id'] ?? '', $sku);
+            if ($sku === '' || $id === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && ! isset($byNorm[$norm])) {
+                $byNorm[$norm] = $id;
+            }
+            $compact = self::compactSku($sku);
+            if ($compact !== '' && ! isset($byNorm['c:'.$compact])) {
+                $byNorm['c:'.$compact] = $id;
+            }
+        }
     }
 }

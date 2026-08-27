@@ -16,6 +16,11 @@ class ListingAliexpressController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'aliexpress';
+    }
+
     public function listingAliexpress(Request $request)
     {
         $mode = $request->query('mode');

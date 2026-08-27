@@ -128,6 +128,13 @@ class ReverbApiService
         Cache::forget('reverb_oauth_access_token');
     }
 
+    public function isConfigured(): bool
+    {
+        $token = self::getReverbBearerToken();
+
+        return is_string($token) && $token !== '';
+    }
+
     /**
      * Normalize listing state/status from API response.
      *
@@ -1654,6 +1661,212 @@ class ReverbApiService
                 'listing_id' => $listingId,
             ];
         }
+    }
+
+    /**
+     * Create a new Reverb listing (POST /api/listings).
+     *
+     * @param  array<string, mixed>  $fields  Same editor-shaped fields as {@see updateListing()}
+     * @return array{success: bool, message: string, listing_id?: string, web_url?: string, body?: string}
+     */
+    public function createListing(array $fields): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+            ];
+        }
+
+        $title = trim((string) ($fields['title'] ?? ''));
+        if ($title === '') {
+            return ['success' => false, 'message' => 'Title is required to create a Reverb listing.'];
+        }
+
+        $payload = [
+            'title' => $title,
+            'publish' => array_key_exists('publish', $fields)
+                ? filter_var($fields['publish'], FILTER_VALIDATE_BOOLEAN)
+                : true,
+        ];
+
+        foreach (['make', 'model', 'finish', 'year', 'sku'] as $key) {
+            $value = trim((string) ($fields[$key] ?? ''));
+            if ($value !== '') {
+                $payload[$key] = $value;
+            }
+        }
+
+        $upc = trim((string) ($fields['upc'] ?? ''));
+        if ($upc !== '') {
+            $payload['upc'] = $upc;
+        } else {
+            $payload['upc_does_not_apply'] = true;
+        }
+
+        $desc = trim((string) ($fields['description'] ?? ''));
+        if ($desc !== '') {
+            $payload['description'] = $desc;
+            $payload['plain_text_description'] = trim(html_entity_decode(strip_tags($desc), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+
+        if (isset($fields['price_amount']) && is_numeric($fields['price_amount'])) {
+            $currency = trim((string) ($fields['price_currency'] ?? $fields['currency'] ?? 'USD')) ?: 'USD';
+            $payload['price'] = [
+                'amount' => number_format((float) $fields['price_amount'], 2, '.', ''),
+                'currency' => $currency,
+            ];
+        }
+
+        if (array_key_exists('inventory', $fields) && is_numeric($fields['inventory'])) {
+            $payload['inventory'] = max(0, (int) $fields['inventory']);
+            $payload['has_inventory'] = true;
+        } else {
+            $payload['has_inventory'] = filter_var($fields['has_inventory'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        $payload['offers_enabled'] = array_key_exists('offers_enabled', $fields)
+            ? filter_var($fields['offers_enabled'], FILTER_VALIDATE_BOOLEAN)
+            : true;
+
+        $conditionUuid = trim((string) ($fields['condition_uuid'] ?? ''));
+        if ($conditionUuid !== '') {
+            $payload['condition'] = ['uuid' => $conditionUuid];
+        }
+
+        $categoryUuid = trim((string) ($fields['category_uuid'] ?? ''));
+        if ($categoryUuid !== '') {
+            $payload['categories'] = [['uuid' => $categoryUuid]];
+        }
+
+        $photos = [];
+        if (isset($fields['photos']) && is_array($fields['photos'])) {
+            foreach ($fields['photos'] as $photo) {
+                if (is_string($photo) && trim($photo) !== '') {
+                    $photos[] = trim($photo);
+                } elseif (is_array($photo)) {
+                    $u = trim((string) ($photo['url'] ?? $photo['href'] ?? ''));
+                    if ($u !== '') {
+                        $photos[] = $u;
+                    }
+                }
+            }
+        }
+        if ($photos !== []) {
+            $prep = $this->prepareReverbPhotoUrls($photos);
+            if (! ($prep['success'] ?? false)) {
+                return ['success' => false, 'message' => $prep['message'] ?? 'Invalid photo URLs.'];
+            }
+            $payload['photos'] = array_slice($prep['urls'], 0, 25);
+        }
+
+        $shippingProfileId = trim((string) ($fields['shipping_profile_id'] ?? ''));
+        if ($shippingProfileId !== '') {
+            $payload['shipping_profile_id'] = is_numeric($shippingProfileId)
+                ? (int) $shippingProfileId
+                : $shippingProfileId;
+        } elseif (isset($fields['shipping']) && is_array($fields['shipping'])) {
+            $payload['shipping'] = $fields['shipping'];
+        } else {
+            $payload['shipping'] = $this->defaultCreateShippingRates();
+        }
+
+        try {
+            $response = $this->reverbApiRequestWithRetry($token, 'POST', '/listings', $payload);
+            if (! $response->successful() && isset($payload['photos']) && is_array($payload['photos'])) {
+                $linked = $this->photosAsReverbLinks($payload['photos']);
+                if ($linked !== $payload['photos']) {
+                    $retry = $payload;
+                    $retry['photos'] = $linked;
+                    $linkedResponse = $this->reverbApiRequestWithRetry($token, 'POST', '/listings', $retry);
+                    if ($linkedResponse->successful()) {
+                        $response = $linkedResponse;
+                    }
+                }
+            }
+
+            if ($response->successful()) {
+                $json = $response->json();
+                $json = is_array($json) ? $json : [];
+                $listingId = $this->extractCreatedListingId($json);
+                $web = trim((string) (
+                    $json['_links']['web']['href']
+                    ?? $json['listing']['_links']['web']['href']
+                    ?? $json['_links']['self']['href']
+                    ?? ''
+                ));
+
+                return [
+                    'success' => true,
+                    'message' => 'Listing created on Reverb.',
+                    'listing_id' => $listingId !== '' ? $listingId : null,
+                    'web_url' => $web !== '' ? $web : null,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.$this->formatReverbErrorBody($response),
+                'body' => mb_substr($response->body(), 0, 2000),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getListing(string $listingId): array
+    {
+        $listingId = trim($listingId);
+        if ($listingId === '') {
+            return [];
+        }
+        $json = $this->reverbApiGet('/listings/'.$listingId);
+        if (isset($json['listing']) && is_array($json['listing'])) {
+            return $json['listing'];
+        }
+
+        return is_array($json) ? $json : [];
+    }
+
+    public function firstShippingProfileId(): string
+    {
+        $configured = trim((string) config('services.reverb.shipping_profile_id', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $cached = Cache::get('reverb_shipping_profile_id_v1');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        foreach (['shop/shipping_profiles', 'shipping/profiles', 'my/shipping_profiles'] as $path) {
+            $json = $this->reverbApiGet($path);
+            $rows = $json['shipping_profiles'] ?? $json['_embedded']['shipping_profiles'] ?? $json['profiles'] ?? [];
+            if (! is_array($rows)) {
+                continue;
+            }
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = trim((string) ($row['id'] ?? $row['uuid'] ?? ''));
+                if ($id !== '') {
+                    Cache::put('reverb_shipping_profile_id_v1', $id, now()->addHours(12));
+
+                    return $id;
+                }
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -3717,6 +3930,95 @@ class ReverbApiService
                 $this->flattenReverbCategoryNodes($subs, $out, $path !== '' ? $path : $parentPath);
             }
         }
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return list<string|array<string, mixed>>
+     */
+    private function photosAsReverbLinks(array $urls): array
+    {
+        $out = [];
+        foreach ($urls as $url) {
+            $url = trim((string) $url);
+            if ($url === '') {
+                continue;
+            }
+            $out[] = [
+                '_links' => [
+                    'photo' => ['href' => $url],
+                ],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{local: bool, rates: list<array<string, mixed>>}
+     */
+    private function defaultCreateShippingRates(): array
+    {
+        return [
+            'local' => false,
+            'rates' => [[
+                'region_code' => 'US',
+                'rate' => ['amount' => '0.00', 'currency' => 'USD'],
+            ]],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     */
+    private function extractCreatedListingId(array $json): string
+    {
+        foreach (['id', 'listing_id'] as $key) {
+            $value = $json[$key] ?? null;
+            if (is_numeric($value) || (is_string($value) && trim($value) !== '')) {
+                return trim((string) $value);
+            }
+        }
+        $nested = $json['listing'] ?? null;
+        if (is_array($nested)) {
+            $value = $nested['id'] ?? $nested['listing_id'] ?? null;
+            if (is_numeric($value) || (is_string($value) && trim((string) $value) !== '')) {
+                return trim((string) $value);
+            }
+        }
+        $href = (string) ($json['_links']['self']['href'] ?? $json['_links']['web']['href'] ?? '');
+        if (preg_match('#/(?:listings|item)/(\d+)#', $href, $m)) {
+            return $m[1];
+        }
+
+        return '';
+    }
+
+    private function formatReverbErrorBody(Response $response): string
+    {
+        $json = $response->json();
+        if (! is_array($json)) {
+            return mb_substr($response->body(), 0, 2000);
+        }
+        $parts = [];
+        if (! empty($json['message']) && is_string($json['message'])) {
+            $parts[] = $json['message'];
+        }
+        $errors = $json['errors'] ?? [];
+        if (is_array($errors)) {
+            foreach ($errors as $field => $msgs) {
+                if (is_string($field) && ! is_numeric($field)) {
+                    $text = is_array($msgs) ? implode('; ', array_map('strval', $msgs)) : (string) $msgs;
+                    $parts[] = $field.': '.$text;
+                } elseif (is_string($msgs)) {
+                    $parts[] = $msgs;
+                } elseif (is_array($msgs)) {
+                    $parts[] = implode('; ', array_map('strval', $msgs));
+                }
+            }
+        }
+
+        return $parts !== [] ? implode(' ', $parts) : mb_substr($response->body(), 0, 2000);
     }
 
     /**
