@@ -1524,31 +1524,35 @@ class ChannelPromoPricingController extends Controller
 
     public static function sharedDilPrmtSlabKey(float $dil): string
     {
+        // Lower-inclusive slabs: 0–3, 3–6, …, 21–24, 24–25. Dil > 25 or invalid → no rule.
         if (! is_finite($dil) || $dil < 0) {
-            return '0-3';
+            return 'none';
         }
-        if ($dil > 24) {
+        if ($dil > 25) {
+            return 'gt-25';
+        }
+        if ($dil >= 24) {
             return '24-25';
         }
-        if ($dil > 21) {
+        if ($dil >= 21) {
             return '21-24';
         }
-        if ($dil > 18) {
+        if ($dil >= 18) {
             return '18-21';
         }
-        if ($dil > 15) {
+        if ($dil >= 15) {
             return '15-18';
         }
-        if ($dil > 12) {
+        if ($dil >= 12) {
             return '12-15';
         }
-        if ($dil > 9) {
+        if ($dil >= 9) {
             return '9-12';
         }
-        if ($dil > 6) {
+        if ($dil >= 6) {
             return '6-9';
         }
-        if ($dil > 3) {
+        if ($dil >= 3) {
             return '3-6';
         }
 

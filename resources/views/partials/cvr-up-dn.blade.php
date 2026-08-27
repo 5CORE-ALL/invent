@@ -279,8 +279,9 @@
             }
             const mag = Math.abs(delta);
             const dir = forceDown || delta < 0 ? 'down' : 'up';
+            // Red [0, 7) → ignore UP. Green [7, 13] / Pink > 13 → ignore Down.
             const ignoreDown = dir === 'down' && recent >= 7;
-            const ignoreUp = dir === 'up' && recent >= 0 && recent <= 7;
+            const ignoreUp = dir === 'up' && recent >= 0 && recent < 7;
             if (ignoreDown) {
                 const band = recent > 13 ? 'Pink (> 13%)' : 'Green (7–13%)';
                 return {
