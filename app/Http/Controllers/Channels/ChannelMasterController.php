@@ -592,25 +592,99 @@ class ChannelMasterController extends Controller
             }
         }
 
+        return $this->getTemu2TabulatorSalesSummary();
+    }
+
+    /**
+     * Same L30 as /temu2-tabulator: temu2_daily_data rows matched to Product Master,
+     * revenue = qty × FB price (base + $2.99 when base ≤ $26.99).
+     * Do not use /temu2-decrease sales_summary — that reads temu2_orders and can
+     * overwrite the master Sales column with $0.
+     *
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
+     */
+    private function getTemu2TabulatorSalesSummary(): ?array
+    {
         try {
-            $req = Request::create($isTemu2 ? '/temu2-decrease-data' : '/temu-decrease-data', 'GET');
-            $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
-            $response = $isTemu2
-                ? $temuCtrl->getTemu2DecreaseData($req)
-                : $temuCtrl->getTemuDecreaseData($req);
-            $payload = json_decode($response->getContent(), true);
-            $summary = is_array($payload) ? ($payload['sales_summary'] ?? null) : null;
-            if (! is_array($summary)) {
+            if (! Schema::hasTable('temu2_daily_data')) {
+                return null;
+            }
+
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $productMasters = ProductMaster::query()
+                ->orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get(['sku', 'parent']);
+
+            $normalizedPmSet = [];
+            $pmByNormalized = [];
+            foreach ($productMasters as $pm) {
+                $sku = (string) ($pm->sku ?? '');
+                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                    continue;
+                }
+                $key = $normalizeSku($sku);
+                $normalizedPmSet[$key] = true;
+                $pmByNormalized[$key] = $pm;
+            }
+
+            $allowedRawSkus = Temu2DailyData::select('contribution_sku')->distinct()
+                ->get()
+                ->filter(function ($r) use ($normalizeSku, $normalizedPmSet) {
+                    return isset($normalizedPmSet[$normalizeSku($r->contribution_sku ?? '')]);
+                })
+                ->pluck('contribution_sku')
+                ->unique()
+                ->values()
+                ->all();
+
+            if ($allowedRawSkus === []) {
+                return null;
+            }
+
+            $totalOrders = 0;
+            $totalQuantity = 0;
+            $totalRevenue = 0.0;
+            foreach (Temu2DailyData::whereIn('contribution_sku', $allowedRawSkus)->get() as $item) {
+                $sku = trim((string) ($item->contribution_sku ?? ''));
+                $orderId = trim((string) ($item->order_id ?? ''));
+                if ($sku === '' || $orderId === '') {
+                    continue;
+                }
+                $pm = $pmByNormalized[$normalizeSku($sku)] ?? null;
+                $parent = $pm ? (string) ($pm->parent ?? '') : '';
+                if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                    continue;
+                }
+                $qty = (int) ($item->quantity_purchased ?? 0);
+                $base = $item->base_price_total !== null ? (float) $item->base_price_total : 0.0;
+                $totalOrders++;
+                $totalQuantity += $qty;
+                if ($qty > 0 && $base > 0) {
+                    $fbPrice = $base <= 26.99 ? ($base + 2.99) : $base;
+                    $totalRevenue += $qty * $fbPrice;
+                }
+            }
+
+            if ($totalRevenue <= 0) {
                 return null;
             }
 
             return [
-                'total_orders' => (int) ($summary['total_orders'] ?? 0),
-                'total_quantity' => (int) ($summary['total_quantity'] ?? 0),
-                'total_revenue' => (float) ($summary['total_revenue'] ?? 0),
+                'total_orders' => $totalOrders,
+                'total_quantity' => $totalQuantity,
+                'total_revenue' => round($totalRevenue, 2),
             ];
         } catch (\Throwable $e) {
-            Log::warning('Temu live sales summary fallback: '.$e->getMessage(), ['temu2' => $isTemu2]);
+            Log::warning('Temu 2 tabulator sales summary failed: '.$e->getMessage());
 
             return null;
         }
@@ -836,7 +910,7 @@ class ChannelMasterController extends Controller
             $liveL60 = $this->resolveTemuL60SalesAndOrders($isTemu2);
             $l60Sales = (float) $liveL60['sales'];
 
-            if ($liveSales) {
+            if ($liveSales && (float) ($liveSales['total_revenue'] ?? 0) > 0) {
                 $l30Sales = (float) $liveSales['total_revenue'];
                 $row['L30 Sales'] = (int) round($l30Sales);
                 $row['L30 Orders'] = (int) $liveSales['total_orders'];
@@ -926,7 +1000,7 @@ class ChannelMasterController extends Controller
                 $liveSales = null;
             }
 
-            if ($liveSales) {
+            if ($liveSales && (float) ($liveSales['total_revenue'] ?? 0) > 0) {
                 $l30Sales = (float) $liveSales['total_revenue'];
                 $row['L30 Sales'] = (int) round($l30Sales);
                 $row['L30 Orders'] = (int) $liveSales['total_orders'];
@@ -10096,11 +10170,14 @@ class ChannelMasterController extends Controller
         $l60Sales = $l60Resolved['sales'];
         $l60Orders = $l60Resolved['orders'];
 
-        // L30 sales/orders/qty: live from tabulator (same as /temu2-tabulator badge), not stale metrics cache.
+        // L30 sales/orders/qty: live from /temu2-tabulator (temu2_daily_data × FB price).
+        // Ignore a $0 live summary so it cannot wipe a real cached L30.
         $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
-        $l30Sales = $liveSales ? ($liveSales['total_revenue'] ?? 0) : ($metrics->total_sales ?? 0);
-        $l30Orders = $liveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
-        $totalQuantity = $liveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
+        $liveRevenue = (float) ($liveSales['total_revenue'] ?? 0);
+        $useLiveSales = $liveSales && $liveRevenue > 0;
+        $l30Sales = $useLiveSales ? $liveRevenue : ($metrics->total_sales ?? 0);
+        $l30Orders = $useLiveSales ? ($liveSales['total_orders'] ?? 0) : ($metrics->total_orders ?? 0);
+        $totalQuantity = $useLiveSales ? ($liveSales['total_quantity'] ?? 0) : ($metrics->total_quantity ?? 0);
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
