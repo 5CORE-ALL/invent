@@ -171,8 +171,81 @@
         const sku = String(data.sku || '').trim();
         if (!sku) return '';
         const label = escapeHtml(cfg().channelLabel || 'marketplace');
+        const independent = supportsIndependentPublish();
         return '<button type="button" class="listing-mp-publish-btn" data-sku="' + escapeHtml(sku) +
-            '" title="Review variations then publish to ' + label + '"><i class="fas fa-cloud-upload-alt"></i> Publish</button>';
+            '" title="' + (independent ? 'Publish this SKU independently or as a variation to ' : 'Review variations then publish to ') +
+            label + '"><i class="fas fa-cloud-upload-alt"></i> Publish</button>';
+    }
+
+    let previewSeedSkus = [];
+    let lastPreviewGroups = [];
+
+    function supportsIndependentPublish() {
+        const c = cfg();
+        if (c.supportsIndependentPublish === true) return true;
+        const channel = String(c.channel || '').toLowerCase();
+        return channel === 'temu' || channel === 'reverb' || channel === 'reverbcom';
+    }
+
+    function selectedPublishMode() {
+        if (!supportsIndependentPublish()) return 'variation';
+        const checked = document.querySelector('input[name="listing-publish-mode"]:checked');
+        const mode = String((checked && checked.value) || cDefaultPublishMode()).toLowerCase();
+        return mode === 'single' ? 'single' : 'variation';
+    }
+
+    function cDefaultPublishMode() {
+        const raw = String(cfg().defaultPublishMode || (supportsIndependentPublish() ? 'single' : 'variation')).toLowerCase();
+        return raw === 'variation' ? 'variation' : 'single';
+    }
+
+    function applyPublishModeUi() {
+        const box = document.getElementById('listing-publish-mode-box');
+        if (box) box.style.display = supportsIndependentPublish() ? '' : 'none';
+        const want = cDefaultPublishMode();
+        const radio = document.querySelector('input[name="listing-publish-mode"][value="' + want + '"]');
+        if (radio) radio.checked = true;
+        updateModalCopy();
+    }
+
+    function updateModalCopy() {
+        const title = document.getElementById('listingPublishModalLabel');
+        const note = document.querySelector('#listingPublishModal .listing-publish-modal-note');
+        const btn = document.getElementById('listing-publish-confirm');
+        const single = selectedPublishMode() === 'single';
+        if (title) title.textContent = single ? 'Publish independently' : 'Publish as variation';
+        if (note) {
+            note.textContent = single
+                ? 'Each checked SKU becomes its own marketplace listing. Siblings are not bundled. Uncheck a child to leave it off.'
+                : 'Each parent becomes one marketplace listing. Missing L siblings are included automatically. Already listed and NRL SKUs are skipped. Uncheck a child to leave it off this listing.';
+        }
+        if (btn && !btn.disabled) {
+            btn.innerHTML = single
+                ? '<i class="fas fa-cloud-upload-alt"></i> Publish listing(s)'
+                : '<i class="fas fa-cloud-upload-alt"></i> Publish variation(s)';
+        }
+    }
+
+    function childShouldCheck(child) {
+        if (child.status !== 'will_publish') return false;
+        if (selectedPublishMode() !== 'single') return true;
+        const sku = String(child.sku || '').trim();
+        if (!previewSeedSkus.length) return child.selected !== false;
+        return previewSeedSkus.indexOf(sku) !== -1;
+    }
+
+    function skuParentsMap(skus) {
+        const table = findTable();
+        const map = {};
+        const want = {};
+        (skus || []).forEach(function (sku) { want[String(sku).trim()] = true; });
+        if (!table) return map;
+        (table.getData() || []).forEach(function (row) {
+            const sku = String(row.sku || '').trim();
+            if (!sku || !want[sku]) return;
+            map[sku] = String(row.parent || '').trim();
+        });
+        return map;
     }
 
     function showModal() {
@@ -197,6 +270,7 @@
     }
 
     function renderGroups(groups) {
+        lastPreviewGroups = groups || [];
         const box = document.getElementById('listing-publish-groups');
         const confirm = document.getElementById('listing-publish-confirm');
         if (!box) return;
@@ -205,21 +279,24 @@
             if (confirm) confirm.disabled = true;
             return;
         }
+        const single = selectedPublishMode() === 'single';
         let html = '';
         let canPublish = false;
         groups.forEach(function (group, gi) {
             const parent = String(group.parent || 'Standalone');
-            const count = Number(group.publish_count || 0);
-            html += '<div class="listing-publish-group" data-group-index="' + gi + '">';
-            html += '<div class="listing-publish-group-head">' + escapeHtml(parent) + ' · ' + count +
-                ' variation' + (count === 1 ? '' : 's') + '</div>';
+            const children = group.children || [];
+            const selectedCount = children.filter(childShouldCheck).length;
+            html += '<div class="listing-publish-group" data-group-index="' + gi + '" data-parent="' + escapeHtml(parent) + '">';
+            html += '<div class="listing-publish-group-head">' + escapeHtml(parent) + ' · ' + selectedCount +
+                (single ? ' independent listing' + (selectedCount === 1 ? '' : 's') : (' variation' + (selectedCount === 1 ? '' : 's'))) + '</div>';
             html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
-            (group.children || []).forEach(function (child) {
+            children.forEach(function (child) {
                 const sku = String(child.sku || '');
                 const publishable = child.status === 'will_publish';
-                if (publishable) canPublish = true;
+                const checked = childShouldCheck(child);
+                if (checked) canPublish = true;
                 html += '<tr><td><input type="checkbox" class="listing-publish-sku-check" data-sku="' +
-                    escapeHtml(sku) + '"' + (publishable ? ' checked' : ' disabled') + '></td>';
+                    escapeHtml(sku) + '"' + (checked ? ' checked' : '') + (publishable ? '' : ' disabled') + '></td>';
                 html += '<td>' + escapeHtml(sku) + '</td><td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
                 html += '<td>' + statusLabel(child.status, child.reason) + '</td></tr>';
             });
@@ -229,12 +306,13 @@
         if (confirm) confirm.disabled = !canPublish;
         const progress = document.getElementById('listing-publish-progress');
         if (progress) progress.textContent = '';
+        updateModalCopy();
     }
 
     function selectedGroups() {
         const groups = [];
         document.querySelectorAll('#listing-publish-groups .listing-publish-group').forEach(function (el) {
-            const parent = (el.querySelector('.listing-publish-group-head')?.textContent || '').split(' · ')[0] || '';
+            const parent = String(el.getAttribute('data-parent') || (el.querySelector('.listing-publish-group-head')?.textContent || '').split(' · ')[0] || '').trim();
             const skus = [];
             el.querySelectorAll('.listing-publish-sku-check:checked:not(:disabled)').forEach(function (cb) {
                 const sku = String(cb.getAttribute('data-sku') || '').trim();
@@ -243,6 +321,18 @@
             if (skus.length) groups.push({ parent: parent, skus: skus });
         });
         return groups;
+    }
+
+    function groupsForPublish() {
+        const groups = selectedGroups();
+        if (selectedPublishMode() !== 'single') return groups;
+        const out = [];
+        groups.forEach(function (group) {
+            group.skus.forEach(function (sku) {
+                out.push({ parent: sku, skus: [sku] });
+            });
+        });
+        return out;
     }
 
     function ajaxError(xhr) {
@@ -279,6 +369,8 @@
             notify('danger', 'Select at least one SKU.');
             return;
         }
+        previewSeedSkus = unique.slice();
+        applyPublishModeUi();
         const box = document.getElementById('listing-publish-groups');
         if (box) box.innerHTML = '<p class="text-muted mb-0">Loading variation preview…</p>';
         const confirm = document.getElementById('listing-publish-confirm');
@@ -289,7 +381,13 @@
         $.ajax({
             url: url,
             type: 'POST',
-            data: { skus: unique, preview: 1, channel: c.channel || '' },
+            data: {
+                skus: unique,
+                sku_parents: skuParentsMap(unique),
+                preview: 1,
+                channel: c.channel || '',
+                mode: selectedPublishMode()
+            },
             headers: { 'X-CSRF-TOKEN': csrf() },
             success: function (response) {
                 renderGroups((response && response.groups) || []);
@@ -318,12 +416,19 @@
         if (typeof calculateTotals === 'function') calculateTotals();
     }
 
-    function publishGroup(skus) {
+    function publishGroup(skus, parent) {
         const c = cfg();
         return $.ajax({
             url: actionUrl(),
             type: 'POST',
-            data: { skus: skus, confirmed: 1, publish: 1, channel: c.channel || '' },
+            data: {
+                skus: skus,
+                confirmed: 1,
+                publish: 1,
+                channel: c.channel || '',
+                mode: selectedPublishMode(),
+                parent: parent || ''
+            },
             headers: { 'X-CSRF-TOKEN': csrf() },
             timeout: 180000
         });
@@ -400,10 +505,30 @@
             openPreview(selected);
         });
 
+        $(document).off('change.listingPageTools', 'input[name="listing-publish-mode"]')
+            .on('change.listingPageTools', 'input[name="listing-publish-mode"]', function () {
+                updateModalCopy();
+                if (lastPreviewGroups.length) renderGroups(lastPreviewGroups);
+            });
+
+        $(document).off('change.listingPageTools', '.listing-publish-sku-check')
+            .on('change.listingPageTools', '.listing-publish-sku-check', function () {
+                const $group = $(this).closest('.listing-publish-group');
+                const parent = String($group.attr('data-parent') || '').trim();
+                const selectedCount = $group.find('.listing-publish-sku-check:checked:not(:disabled)').length;
+                const single = selectedPublishMode() === 'single';
+                $group.find('.listing-publish-group-head').text(
+                    parent + ' · ' + selectedCount +
+                    (single ? ' independent listing' + (selectedCount === 1 ? '' : 's') : (' variation' + (selectedCount === 1 ? '' : 's')))
+                );
+                const anyChecked = $('#listing-publish-groups .listing-publish-sku-check:checked:not(:disabled)').length > 0;
+                $('#listing-publish-confirm').prop('disabled', !anyChecked);
+            });
+
         $('#listing-publish-confirm').off('click.listingPageTools').on('click.listingPageTools', function () {
             const $btn = $(this);
             if ($btn.prop('disabled')) return;
-            const groups = selectedGroups();
+            const groups = groupsForPublish();
             if (!groups.length) {
                 notify('danger', 'No Missing L children selected to publish.');
                 return;
@@ -411,6 +536,7 @@
             const originalHtml = $btn.html();
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Publishing');
             $('#listingPublishModal .btn-close, #listingPublishModal [data-bs-dismiss="modal"]').prop('disabled', true);
+            $('#listing-publish-mode-box input').prop('disabled', true);
             let index = 0;
             const ok = [];
             const fail = [];
@@ -418,6 +544,7 @@
                 if (index >= groups.length) {
                     $btn.prop('disabled', false).html(originalHtml);
                     $('#listingPublishModal .btn-close, #listingPublishModal [data-bs-dismiss="modal"]').prop('disabled', false);
+                    $('#listing-publish-mode-box input').prop('disabled', false);
                     if (ok.length) notify('success', ok.join(' '));
                     if (fail.length) notify('danger', fail.join(' '));
                     if (ok.length && !fail.length) hideModal();
@@ -427,7 +554,7 @@
                 index += 1;
                 const progress = document.getElementById('listing-publish-progress');
                 if (progress) progress.textContent = 'Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…';
-                publishGroup(group.skus).done(function (response) {
+                publishGroup(group.skus, group.parent).done(function (response) {
                     const goodsId = String((response && response.goods_id) || '').trim();
                     const listedSkus = (response && response.skus) || group.skus;
                     if (goodsId) markListed(table, listedSkus, goodsId);

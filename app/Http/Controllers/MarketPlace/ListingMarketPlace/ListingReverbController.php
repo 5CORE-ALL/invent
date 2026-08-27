@@ -19,6 +19,11 @@ class ListingReverbController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'reverb';
+    }
+
     public function listingReverb(Request $request)
     {
         $mode = $request->query('mode');

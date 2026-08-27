@@ -10,6 +10,16 @@
                                         Each parent becomes one marketplace listing. Missing L siblings are included automatically.
                                         Already listed and NRL SKUs are skipped. Uncheck a child to leave it off this listing.
                                     </p>
+                                    <div id="listing-publish-mode-box" class="listing-publish-mode" role="radiogroup" aria-label="Publish mode" style="display:none;">
+                                        <label>
+                                            <input type="radio" name="listing-publish-mode" value="single" checked>
+                                            <span>Each checked SKU as its own listing</span>
+                                        </label>
+                                        <label>
+                                            <input type="radio" name="listing-publish-mode" value="variation">
+                                            <span>One variation listing — all checked SKUs under this parent</span>
+                                        </label>
+                                    </div>
                                     <div id="listing-publish-groups"></div>
                                     <div id="listing-publish-progress"></div>
                                 </div>

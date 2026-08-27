@@ -552,7 +552,7 @@
                             <button type="button"
                                 class="btn btn-sm btn-primary listing-page-tools-btn"
                                 id="bulk-publish-btn"
-                                title="Publish selected SKUs as parent variations">
+                                title="Publish each selected SKU as its own Reverb listing">
                                 <i class="fas fa-cloud-upload-alt"></i> Publish selected
                             </button>
                             <div class="toolbar-actions">
@@ -1086,9 +1086,11 @@
             exportName: 'reverb_listing',
             channel: 'reverb',
             channelLabel: "Reverb",
+            supportsIndependentPublish: true,
+            defaultPublishMode: 'single',
             previewUrl: '/listing_reverb/save-status',
             publishUrl: '/listing_reverb/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=3"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=5"></script>
 @endsection

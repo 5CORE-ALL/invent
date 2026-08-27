@@ -297,6 +297,9 @@ return [
         | public site (e.g. https://inventory.example.com) where /storage/... is reachable from the internet.
         */
         'sku_image_public_base_url' => env('REVERB_SKU_IMAGE_PUBLIC_BASE_URL'),
+        'shipping_profile_id' => env('REVERB_SHIPPING_PROFILE_ID'),
+        'default_category_uuid' => env('REVERB_DEFAULT_CATEGORY_UUID'),
+        'default_condition_uuid' => env('REVERB_DEFAULT_CONDITION_UUID'),
     ],
 
     'topdawg' => [
@@ -748,6 +751,14 @@ return [
         'seller_user_agent' => env('TEMU_SELLER_USER_AGENT'),
         /** JSON array of {label,base,url,body} — overrides default candidate scrape endpoints. */
         'seller_view_endpoints' => env('TEMU_SELLER_VIEW_ENDPOINTS'),
+        /** Create-listing API (Publish to Temu 1). v2 is recommended; v1 fallback is bg.local.goods.add. */
+        'goods_add_type' => env('TEMU_GOODS_ADD_TYPE', 'temu.local.goods.v2.add'),
+        'cost_template_id' => env('TEMU_COST_TEMPLATE_ID', ''),
+        'shipment_limit_day' => (int) env('TEMU_SHIPMENT_LIMIT_DAY', 2),
+        'import_designation' => env('TEMU_IMPORT_DESIGNATION', '4'),
+        'origin_region1' => env('TEMU_ORIGIN_REGION1', 'China'),
+        'origin_region2' => env('TEMU_ORIGIN_REGION2', 'Guangdong'),
+        'currency' => env('TEMU_CURRENCY', 'USD'),
     ],
 
     /*
@@ -944,6 +955,10 @@ return [
             'ALIEXPRESS_SHOPIFY_SOURCE_URL_TEMPLATE',
             'https://csp.aliexpress.com/m_apps/order-manage/order_detail?orderId={order_id}'
         ),
+        'freight_template_id' => env('ALIEXPRESS_FREIGHT_TEMPLATE_ID', ''),
+        'default_category_id' => env('ALIEXPRESS_DEFAULT_CATEGORY_ID', ''),
+        'product_unit' => env('ALIEXPRESS_PRODUCT_UNIT', '100000015'),
+        'shipping_lead_time' => (int) env('ALIEXPRESS_SHIPPING_LEAD_TIME', 7),
     ],
 
     /*

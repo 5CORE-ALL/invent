@@ -135,6 +135,151 @@ class AliExpressApiService
         return $this->accessToken;
     }
 
+    public function isConfigured(): bool
+    {
+        return trim($this->appKey) !== ''
+            && trim($this->appSecret) !== ''
+            && trim((string) $this->accessToken) !== '';
+    }
+
+    /**
+     * Create a new AliExpress listing — aliexpress.solution.product.post.
+     *
+     * @param  array<string, mixed>  $request
+     * @return array{success: bool, message?: string, product_id?: string, data?: mixed}
+     */
+    public function postProduct(array $request): array
+    {
+        $encoded = $this->encodeRequestPayload($request);
+        $attempts = [
+            ['aliexpress.solution.product.post', ['post_product_request' => $encoded]],
+            ['aliexpress.solution.product.post', ['aeop_a_e_product' => $encoded]],
+            ['aliexpress.postproduct.redefining.postaeproduct', ['aeop_a_e_product' => $encoded]],
+        ];
+        $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
+        foreach ($attempts as [$method, $params]) {
+            $res = $this->callApiFlexible($method, [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            if (! empty($res['success'])) {
+                $productId = $this->extractPostedProductId($res['data'] ?? []);
+                if ($productId !== '') {
+                    $res['product_id'] = $productId;
+                }
+
+                return $res;
+            }
+            $last = $res;
+        }
+
+        return $last;
+    }
+
+    /**
+     * Suggest a leaf category from title (and optional image).
+     */
+    public function suggestCategory(string $title, string $imageUrl = ''): ?int
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return null;
+        }
+
+        $payloads = [
+            ['subject' => $title],
+            ['title' => $title],
+        ];
+        if ($imageUrl !== '') {
+            $payloads[] = ['subject' => $title, 'image_url' => $imageUrl];
+            $payloads[] = ['subject' => $title, 'imageUrl' => $imageUrl];
+        }
+
+        foreach ([
+            'aliexpress.solution.product.category.suggest',
+            'aliexpress.postproduct.redefining.categoryforecast',
+        ] as $method) {
+            foreach ($payloads as $params) {
+                $res = $this->callApiFlexible($method, [
+                    'rest' => $params,
+                    'sync' => $params,
+                ]);
+                if (empty($res['success'])) {
+                    continue;
+                }
+                $id = $this->extractCategoryId($res['data'] ?? []);
+                if ($id !== null) {
+                    return $id;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function extractCategoryId(mixed $data): ?int
+    {
+        if (! is_array($data)) {
+            return null;
+        }
+        foreach ([
+            'category_id', 'categoryId', 'leaf_category_id', 'leafCategoryId', 'cat_id',
+        ] as $key) {
+            $raw = $data[$key] ?? null;
+            $id = (int) preg_replace('/\D+/', '', (string) $raw);
+            if ($id > 0) {
+                return $id;
+            }
+        }
+        foreach (['result', 'category', 'data'] as $wrap) {
+            if (isset($data[$wrap]) && is_array($data[$wrap])) {
+                $nested = $this->extractCategoryId($data[$wrap]);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+        $list = $data['category_list'] ?? $data['categorys'] ?? $data['forecast_category_list'] ?? [];
+        if (is_array($list) && $list !== []) {
+            $first = is_array($list[0] ?? null) ? $list[0] : (is_array(end($list)) ? end($list) : []);
+            $nested = $this->extractCategoryId($first);
+            if ($nested !== null) {
+                return $nested;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  mixed  $data
+     */
+    private function extractPostedProductId(mixed $data): string
+    {
+        if (! is_array($data)) {
+            return '';
+        }
+        foreach (['product_id', 'productId', 'item_id', 'itemId'] as $key) {
+            $id = trim((string) ($data[$key] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+        foreach (['result', 'data'] as $wrap) {
+            if (isset($data[$wrap])) {
+                $nested = $this->extractPostedProductId($data[$wrap]);
+                if ($nested !== '') {
+                    return $nested;
+                }
+            }
+        }
+
+        return '';
+    }
+
     /**
      * Product list — method aliexpress.solution.product.list.get with product_list_get_request (JSON).
      */

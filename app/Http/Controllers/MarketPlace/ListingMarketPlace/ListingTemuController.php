@@ -19,6 +19,11 @@ class ListingTemuController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'temu';
+    }
+
     public function listingTemu(Request $request)
     {
         $mode = $request->query('mode');

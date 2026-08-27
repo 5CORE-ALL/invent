@@ -42,8 +42,80 @@ class Temu2ListingPublishService
     /** @var array<string, float>|null */
     private ?array $stdPriceByLookupKey = null;
 
-    public function __construct(private Temu2ApiService $api)
+    /** @var Temu2ApiService|\App\Services\TemuApiService */
+    protected $api;
+
+    public function __construct(Temu2ApiService $api)
     {
+        $this->api = $api;
+    }
+
+    protected function shopConfigKey(): string
+    {
+        return 'temu2';
+    }
+
+    protected function shopLabel(): string
+    {
+        return 'Temu 2';
+    }
+
+    protected function credentialsHelp(): string
+    {
+        return 'Set TEMU2_APP_KEY, TEMU2_SECRET_KEY, and TEMU2_ACCESS_TOKEN.';
+    }
+
+    protected function stdPriceHelp(): string
+    {
+        return 'Temu 2 Analytics (/temu2-decrease)';
+    }
+
+    protected function pricingTable(): string
+    {
+        return 'temu2_pricing';
+    }
+
+    protected function metricsTable(): string
+    {
+        return 'temu2_metrics';
+    }
+
+    protected function pricingClass(): string
+    {
+        return Temu2Pricing::class;
+    }
+
+    protected function metricClass(): string
+    {
+        return Temu2Metric::class;
+    }
+
+    protected function dataViewClass(): string
+    {
+        return Temu2DataView::class;
+    }
+
+    protected function costTemplateCacheKey(): string
+    {
+        return 'temu2_cost_template_id_v1';
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function listingCountCacheKeys(): array
+    {
+        return ['listing_channel_counts_v1:temu2', 'listing_channel_counts_v1:temutwo'];
+    }
+
+    protected function shopConfig(string $key, mixed $default = null): mixed
+    {
+        return config('services.'.$this->shopConfigKey().'.'.$key, $default);
+    }
+
+    protected function shopCostTemplateEnv(): string
+    {
+        return strtoupper($this->shopConfigKey()).'_COST_TEMPLATE_ID';
     }
 
     /**
@@ -89,7 +161,7 @@ class Temu2ListingPublishService
         if (! $this->api->isConfigured()) {
             return [
                 'success' => false,
-                'message' => 'Temu 2 API credentials missing. Set TEMU2_APP_KEY, TEMU2_SECRET_KEY, and TEMU2_ACCESS_TOKEN.',
+                'message' => $this->shopLabel().' API credentials missing. '.$this->credentialsHelp(),
             ];
         }
 
@@ -124,7 +196,7 @@ class Temu2ListingPublishService
             $listed = [];
             $lastGoods = null;
             foreach ($skus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'variation', $parentHint);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -179,7 +251,7 @@ class Temu2ListingPublishService
             }
             $price = $this->resolvePrice($sku);
             if ($price === null || $price <= 0) {
-                return ['success' => false, 'message' => 'No Std Prc found for '.$sku.'. Set Std Prc on Temu 2 Analytics (/temu2-decrease).'];
+                return ['success' => false, 'message' => 'No Std Prc found for '.$sku.'. Set Std Prc on '.$this->stdPriceHelp().'.'];
             }
             $images = $this->resolveSourceImages($product, $sku);
             foreach ($images as $url) {
@@ -206,7 +278,7 @@ class Temu2ListingPublishService
         }
         $hostedImages = $upload['urls'] ?? [];
         if ($hostedImages === []) {
-            return ['success' => false, 'message' => 'Failed to upload images to Temu 2. Check TEMU2 credentials and image URLs.'];
+            return ['success' => false, 'message' => 'Failed to upload images to '.$this->shopLabel().'. Check API credentials and image URLs.'];
         }
         while (count($hostedImages) < 3) {
             $hostedImages[] = $hostedImages[0];
@@ -215,15 +287,15 @@ class Temu2ListingPublishService
 
         $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0]);
         if ($catId === null) {
-            return ['success' => false, 'message' => 'Could not resolve a Temu leaf category. Set temu2_pricing.category_id or check category recommend API access.'];
+            return ['success' => false, 'message' => 'Could not resolve a Temu leaf category. Set '.$this->pricingTable().'.category_id or check category recommend API access.'];
         }
 
         $costTemplateId = $this->resolveCostTemplateId();
         if ($costTemplateId === '') {
-            return ['success' => false, 'message' => 'No Temu 2 shipping template found. Create one in Seller Center or set TEMU2_COST_TEMPLATE_ID.'];
+            return ['success' => false, 'message' => 'No '.$this->shopLabel().' shipping template found. Create one in Seller Center or set '.$this->shopCostTemplateEnv().'.'];
         }
 
-        $currency = strtoupper(trim((string) config('services.temu2.currency', 'USD'))) ?: 'USD';
+        $currency = strtoupper(trim((string) $this->shopConfig('currency', 'USD'))) ?: 'USD';
         $skuList = [];
         foreach ($prepared as $row) {
             $spec = $this->uniqueSpecDetails($catId, $row['sku']);
@@ -259,7 +331,7 @@ class Temu2ListingPublishService
         }
 
         $goodsProperty = $this->buildGoodsProperty($catId, $costTemplateId, $primary, $primarySku);
-        $shipmentLimitDay = max(1, (int) config('services.temu2.shipment_limit_day', 2));
+        $shipmentLimitDay = max(1, (int) $this->shopConfig('shipment_limit_day', 2));
         $goodsOriginInfo = $this->buildGoodsOriginInfo();
 
         $stillPrepared = [];
@@ -295,15 +367,15 @@ class Temu2ListingPublishService
             return [
                 'success' => true,
                 'message' => $restored !== []
-                    ? 'Restored '.count($restored).' deleted Temu 2 listing(s) and linked them.'
-                    : 'SKU already exists on Temu 2 (active). Linked the existing listing.',
+                    ? 'Restored '.count($restored).' deleted '.$this->shopLabel().' listing(s) and linked them.'
+                    : 'SKU already exists on '.$this->shopLabel().' (active). Linked the existing listing.',
                 'skus' => $skus,
             ];
         }
         $prepared = $stillPrepared;
         $skuList = $stillSkuList;
 
-        $existingGoodsId = $this->siblingGoodsId($parentKey);
+        $existingGoodsId = $mode === 'single' ? '' : $this->siblingGoodsId($parentKey);
         if ($existingGoodsId !== '') {
             $added = $this->addSkusToExistingGoods($existingGoodsId, $skuList);
             if ($added['success'] ?? false) {
@@ -311,7 +383,7 @@ class Temu2ListingPublishService
 
                 return [
                     'success' => true,
-                    'message' => 'Added '.count($prepared).' variation(s) to the existing Temu 2 listing.',
+                    'message' => 'Added '.count($prepared).' variation(s) to the existing '.$this->shopLabel().' listing.',
                     'goods_id' => $existingGoodsId,
                     'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
                     'skus' => array_values(array_map(static fn ($row) => $row['sku'], $prepared)),
@@ -332,7 +404,7 @@ class Temu2ListingPublishService
         );
 
         $payloadV2 = [
-            'type' => (string) config('services.temu2.goods_add_type', 'temu.local.goods.v2.add'),
+            'type' => (string) $this->shopConfig('goods_add_type', 'temu.local.goods.v2.add'),
             'language' => 'en',
             'goodsBasic' => [
                 'catId' => $catId,
@@ -407,7 +479,7 @@ class Temu2ListingPublishService
 
                     return [
                         'success' => false,
-                        'message' => $msg !== '' ? $msg : 'Temu 2 add-goods API rejected the listing.',
+                        'message' => $msg !== '' ? $msg : $this->shopLabel().' add-goods API rejected the listing.',
                     ];
                 }
             }
@@ -415,7 +487,7 @@ class Temu2ListingPublishService
 
         $goodsId = (string) ($data['result']['goodsId'] ?? '');
         if ($goodsId === '') {
-            return ['success' => false, 'message' => 'Temu 2 add succeeded but returned no goodsId.'];
+            return ['success' => false, 'message' => $this->shopLabel().' add succeeded but returned no goodsId.'];
         }
 
         $firstSkuId = $this->persistPublishedRows($prepared, $goodsId, $data);
@@ -431,8 +503,8 @@ class Temu2ListingPublishService
         return [
             'success' => true,
             'message' => $count > 1
-                ? 'Published '.$count.' variations of '.$parentKey.' to Temu 2.'
-                : 'Published to Temu 2.',
+                ? 'Published '.$count.' variations of '.$parentKey.' to '.$this->shopLabel().'.'
+                : 'Published '.$primarySku.' to '.$this->shopLabel().'.',
             'goods_id' => $goodsId,
             'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
             'skus' => $skus,
@@ -1024,7 +1096,7 @@ class Temu2ListingPublishService
     private function nrReqForSku(string $sku): string
     {
         try {
-            $nrValues = ListingCountsEngine::loadNrValues(Temu2DataView::class, [$sku]);
+            $nrValues = ListingCountsEngine::loadNrValues($this->dataViewClass(), [$sku]);
 
             return ListingCountsEngine::nrReqFromDataView($nrValues->get(strtoupper($sku)));
         } catch (\Throwable) {
@@ -1321,8 +1393,8 @@ class Temu2ListingPublishService
             }
         };
 
-        if (Schema::hasTable('temu2_pricing')) {
-            Temu2Pricing::query()
+        if (Schema::hasTable($this->pricingTable())) {
+            $this->pricingClass()::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->get(['sku', 'base_price'])
@@ -1331,8 +1403,8 @@ class Temu2ListingPublishService
                 });
         }
 
-        if (Schema::hasTable('temu2_metrics')) {
-            Temu2Metric::query()
+        if (Schema::hasTable($this->metricsTable())) {
+            $this->metricClass()::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->get(['sku', 'base_price'])
@@ -1632,8 +1704,8 @@ class Temu2ListingPublishService
             return [
                 'urls' => [],
                 'error' => $msg !== ''
-                    ? 'Temu 2 image upload failed: '.$msg
-                    : 'Temu 2 image upload failed.',
+                    ? $this->shopLabel().' image upload failed: '.$msg
+                    : $this->shopLabel().' image upload failed.',
             ];
         }
 
@@ -1757,8 +1829,8 @@ class Temu2ListingPublishService
         $ip = $this->detectPublicIp();
         $ipBit = $ip !== '' ? " Your public IP is {$ip}." : '';
 
-        return 'Temu 2 blocked this computer (NOT_IN_IP_WHITE_LIST).'.$ipBit
-            .' Open partner.temu.com → the Temu 2 app → IP whitelist, add that IP, wait about a minute, then click Publish again.'
+        return $this->shopLabel().' blocked this computer (NOT_IN_IP_WHITE_LIST).'.$ipBit
+            .' Open partner.temu.com → the '.$this->shopLabel().' app → IP whitelist, add that IP, wait about a minute, then click Publish again.'
             .' Production (inventory.5coremanagement.com) is a different IP from this PC.';
     }
 
@@ -1778,8 +1850,8 @@ class Temu2ListingPublishService
 
     private function resolveCatId(string $sku, string $title, string $imageUrl): ?int
     {
-        if (Schema::hasTable('temu2_pricing')) {
-            $raw = Temu2Pricing::query()->where('sku', $sku)->value('category_id');
+        if (Schema::hasTable($this->pricingTable())) {
+            $raw = $this->pricingClass()::query()->where('sku', $sku)->value('category_id');
             $id = (int) preg_replace('/\D+/', '', (string) $raw);
             if ($id >= 1000) {
                 return $id;
@@ -1819,15 +1891,15 @@ class Temu2ListingPublishService
      */
     private function buildGoodsOriginInfo(): array
     {
-        $origin1 = $this->normalizeOriginRegion1((string) config('services.temu2.origin_region1', 'China'));
+        $origin1 = $this->normalizeOriginRegion1((string) $this->shopConfig('origin_region1', 'China'));
         $isChina = strcasecmp($origin1, 'China') === 0;
 
         $info = [
-            'importDesignation' => $this->normalizeImportDesignation((string) config('services.temu2.import_designation', 'Imported')),
+            'importDesignation' => $this->normalizeImportDesignation((string) $this->shopConfig('import_designation', 'Imported')),
             'originRegion1' => $origin1,
         ];
         if ($isChina) {
-            $origin2 = trim((string) config('services.temu2.origin_region2', 'Guangdong'));
+            $origin2 = trim((string) $this->shopConfig('origin_region2', 'Guangdong'));
             $info['originRegion2'] = $origin2 !== '' ? $origin2 : 'Guangdong';
         }
 
@@ -1880,12 +1952,12 @@ class Temu2ListingPublishService
 
     private function resolveCostTemplateId(): string
     {
-        $configured = trim((string) config('services.temu2.cost_template_id', ''));
+        $configured = trim((string) $this->shopConfig('cost_template_id', ''));
         if ($configured !== '') {
             return $configured;
         }
 
-        $cached = trim((string) Cache::get('temu2_cost_template_id_v1', ''));
+        $cached = trim((string) Cache::get($this->costTemplateCacheKey(), ''));
         if ($cached !== '') {
             return $cached;
         }
@@ -1912,7 +1984,7 @@ class Temu2ListingPublishService
             foreach (['costTemplateId', 'freightTemplateId', 'templateId'] as $key) {
                 $id = trim((string) ($row[$key] ?? ''));
                 if ($id !== '') {
-                    Cache::put('temu2_cost_template_id_v1', $id, now()->addHour());
+                    Cache::put($this->costTemplateCacheKey(), $id, now()->addHour());
 
                     return $id;
                 }
@@ -2750,7 +2822,7 @@ class Temu2ListingPublishService
         } catch (\Throwable) {
         }
 
-        foreach ([Temu2Metric::class, TemuMetric::class] as $class) {
+        foreach (array_values(array_unique([$this->metricClass(), Temu2Metric::class, TemuMetric::class])) as $class) {
             try {
                 $row = $class::query()->whereIn('sku', $this->skuLookupKeys($sku))->first();
                 if ($row) {
@@ -3224,14 +3296,14 @@ class Temu2ListingPublishService
     private function markLocalListingStatus(string $sku, string $status): void
     {
         try {
-            if (! Schema::hasTable('temu2_metrics') || ! Schema::hasColumn('temu2_metrics', 'listing_status')) {
+            if (! Schema::hasTable($this->metricsTable()) || ! Schema::hasColumn($this->metricsTable(), 'listing_status')) {
                 return;
             }
             $keys = $this->skuLookupKeys($sku);
             if ($keys === []) {
                 return;
             }
-            Temu2Metric::query()->whereIn('sku', $keys)->update(['listing_status' => $status]);
+            $this->metricClass()::query()->whereIn('sku', $keys)->update(['listing_status' => $status]);
         } catch (\Throwable) {
         }
     }
@@ -3259,14 +3331,14 @@ class Temu2ListingPublishService
     {
         try {
             $update = [];
-            if (Schema::hasColumn('temu2_metrics', 'base_price')) {
+            if (Schema::hasColumn($this->metricsTable(), 'base_price')) {
                 $update['base_price'] = $price;
             }
-            if (Schema::hasColumn('temu2_metrics', 'quantity')) {
+            if (Schema::hasColumn($this->metricsTable(), 'quantity')) {
                 $update['quantity'] = $qty;
             }
             if ($update !== []) {
-                Temu2Metric::query()->where('sku', $sku)->update($update);
+                $this->metricClass()::query()->where('sku', $sku)->update($update);
             }
         } catch (\Throwable $e) {
             Log::warning('Temu2 persist extra listing fields failed', [
@@ -3280,8 +3352,9 @@ class Temu2ListingPublishService
     {
         try {
             Cache::forget(ListingChannelCounts::TOTAL_CACHE_KEY);
-            Cache::forget('listing_channel_counts_v1:temu2');
-            Cache::forget('listing_channel_counts_v1:temutwo');
+            foreach ($this->listingCountCacheKeys() as $key) {
+                Cache::forget($key);
+            }
         } catch (\Throwable) {
         }
     }
@@ -3305,9 +3378,9 @@ class Temu2ListingPublishService
         return ShopifySku::mapByProductSkus([$sku])->get($sku);
     }
 
-    private function metricRow(string $sku): ?Temu2Metric
+    private function metricRow(string $sku): ?object
     {
-        if (! Schema::hasTable('temu2_metrics')) {
+        if (! Schema::hasTable($this->metricsTable())) {
             return null;
         }
 
@@ -3316,6 +3389,6 @@ class Temu2ListingPublishService
             return null;
         }
 
-        return Temu2Metric::query()->whereIn('sku', $keys)->first();
+        return $this->metricClass()::query()->whereIn('sku', $keys)->first();
     }
 }

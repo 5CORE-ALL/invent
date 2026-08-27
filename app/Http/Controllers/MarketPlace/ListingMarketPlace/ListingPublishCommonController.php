@@ -27,7 +27,11 @@ class ListingPublishCommonController extends Controller
             ], 422);
         }
 
-        return response()->json($preview->previewFromSkus($skus, $channel, $this->skuParentsFromRequest($request)));
+        $mode = strtolower(trim((string) $request->input('mode', 'variation'))) === 'single'
+            ? 'single'
+            : 'variation';
+
+        return response()->json($preview->previewFromSkus($skus, $channel, $this->skuParentsFromRequest($request), $mode));
     }
 
     public function publish(Request $request, ListingVariationPreviewService $preview)
