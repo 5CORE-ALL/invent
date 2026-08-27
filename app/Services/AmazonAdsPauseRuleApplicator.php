@@ -92,6 +92,14 @@ class AmazonAdsPauseRuleApplicator
         if (Schema::hasColumn($table, 'report_date_range')) {
             $query->where('report_date_range', 'L30');
         }
+        $profileId = trim($this->ads->resolvedProfileId());
+        if ($profileId !== '' && Schema::hasColumn($table, 'profile_id')) {
+            $query->where(function ($q) use ($profileId) {
+                $q->where('profile_id', $profileId)
+                    ->orWhereNull('profile_id')
+                    ->orWhere('profile_id', '');
+            });
+        }
         $rows = $query
             ->whereNotNull('campaign_id')
             ->where('campaign_id', '!=', '')
@@ -109,7 +117,7 @@ class AmazonAdsPauseRuleApplicator
             $status = strtoupper(trim((string) ($row->campaignStatus ?? '')));
             $out[] = [
                 'campaign_id' => $cid,
-                'campaignName' => (string) ($row->campaignName ?? ''),
+                'campaignName' => trim((string) ($row->campaignName ?? '')),
                 'campaignStatus' => $status,
                 'acos' => AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($row->toArray()),
             ];
@@ -149,25 +157,25 @@ class AmazonAdsPauseRuleApplicator
                 'acos' => $row['acos'],
             ]);
             $desired = $decision['status'];
-            $matched = ($decision['hits'] ?? []) !== [];
-            if ($desired === '' || $desired === null || ! $matched) {
-                $stats['unchanged']++;
+            $hits = $decision['hits'] ?? [];
+            if ($desired === AmazonAdsPauseRule::ACTION_PAUSED) {
+                if ($status === AmazonAdsPauseRule::ACTION_PAUSED) {
+                    $stats['unchanged']++;
+                    continue;
+                }
+                $pauseIds[] = $row['campaign_id'];
                 continue;
             }
-            if ($desired === $status) {
-                $stats['unchanged']++;
-                continue;
-            }
-            if ($desired === AmazonAdsPauseRule::ACTION_ENABLED) {
+            if ($desired === AmazonAdsPauseRule::ACTION_ENABLED && $hits !== [] && $status !== AmazonAdsPauseRule::ACTION_ENABLED) {
                 $sku = (string) ($m['sku'] ?? '');
                 if ($sku !== '' && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv($sku)) {
                     $stats['skipped']++;
                     continue;
                 }
                 $enableIds[] = $row['campaign_id'];
-            } else {
-                $pauseIds[] = $row['campaign_id'];
+                continue;
             }
+            $stats['unchanged']++;
         }
 
         if ($dryRun) {
@@ -192,40 +200,97 @@ class AmazonAdsPauseRuleApplicator
         if ($campaignIds === []) {
             return;
         }
-        $chunkSize = $channel === 'sb' ? 10 : 100;
+        $chunkSize = $channel === 'sb' ? 10 : 10;
         foreach (array_chunk($campaignIds, $chunkSize) as $chunk) {
-            try {
-                $payload = [];
-                foreach ($chunk as $id) {
-                    $payload[] = [
-                        'campaignId' => (string) $id,
-                        'state' => $state,
-                    ];
-                }
-                $result = $channel === 'sb'
-                    ? $this->ads->updateSbCampaigns($payload)
-                    : $this->ads->updateCampaigns($payload);
-                [$okIds, $failMsgs] = self::parseUpdateResult($result, $chunk);
-                $this->updateLocalStatus($channel, $okIds, $state);
-                if ($state === AmazonAdsPauseRule::ACTION_PAUSED) {
-                    $stats['paused'] += count($okIds);
-                } else {
-                    $stats['enabled'] += count($okIds);
-                }
-                $stats['failed'] += count($failMsgs);
-                foreach ($failMsgs as $msg) {
-                    $stats['errors'][] = $msg;
-                }
-            } catch (\Throwable $e) {
-                $stats['failed'] += count($chunk);
-                $stats['errors'][] = $e->getMessage();
-                Log::error('Amazon Ads pause rule push failed', [
+            $this->pushStateChunk($channel, $chunk, $state, $stats, true);
+        }
+    }
+
+    /**
+     * @param  'sp'|'sb'  $channel
+     * @param  list<string>  $chunk
+     * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
+     */
+    private function pushStateChunk(string $channel, array $chunk, string $state, array &$stats, bool $retrySingles): void
+    {
+        try {
+            $payload = [];
+            foreach ($chunk as $id) {
+                $payload[] = [
+                    'campaignId' => (string) $id,
+                    'state' => $state,
+                ];
+            }
+            $result = $channel === 'sb'
+                ? $this->ads->updateSbCampaigns($payload)
+                : $this->ads->updateCampaigns($payload);
+            $this->recordPushResult($channel, $chunk, $state, $result, $stats);
+        } catch (\Throwable $e) {
+            if ($retrySingles && count($chunk) > 1) {
+                Log::warning('Amazon Ads pause rule batch failed; retrying one campaign at a time', [
                     'channel' => $channel,
                     'state' => $state,
                     'count' => count($chunk),
                     'error' => $e->getMessage(),
                 ]);
+                foreach ($chunk as $id) {
+                    $this->pushStateChunk($channel, [$id], $state, $stats, false);
+                }
+
+                return;
             }
+            $decoded = self::decodeThrownAmazonBody($e);
+            if (is_array($decoded)) {
+                $this->recordPushResult($channel, $chunk, $state, $decoded, $stats);
+
+                return;
+            }
+            $stats['failed'] += count($chunk);
+            $stats['errors'][] = self::shortAmazonError($e->getMessage());
+            Log::error('Amazon Ads pause rule push failed', [
+                'channel' => $channel,
+                'state' => $state,
+                'count' => count($chunk),
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @param  'sp'|'sb'  $channel
+     * @param  list<string>  $chunk
+     * @param  array<string, mixed>  $result
+     * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
+     */
+    private function recordPushResult(string $channel, array $chunk, string $state, array $result, array &$stats): void
+    {
+        [$okIds, $failMsgs] = self::parseUpdateResult($result, $chunk);
+        $alreadyOk = [];
+        $realFails = [];
+        foreach ($failMsgs as $msg) {
+            if (self::isAlreadyInDesiredStateMessage($msg, $state)) {
+                $cid = self::campaignIdPrefixFromError($msg);
+                if ($cid !== '') {
+                    $alreadyOk[] = $cid;
+                }
+            } else {
+                $realFails[] = $msg;
+            }
+        }
+        $okIds = array_values(array_unique(array_merge($okIds, $alreadyOk)));
+        if ($okIds === [] && $realFails === [] && $failMsgs !== []) {
+            $okIds = $chunk;
+            $realFails = [];
+        }
+        $this->updateLocalStatus($channel, $okIds, $state);
+        if ($state === AmazonAdsPauseRule::ACTION_PAUSED) {
+            $stats['paused'] += count($okIds);
+        } else {
+            $stats['enabled'] += count($okIds);
+        }
+        $stats['failed'] += count($realFails);
+        foreach ($realFails as $msg) {
+            $stats['errors'][] = $msg;
         }
     }
 
@@ -236,29 +301,98 @@ class AmazonAdsPauseRuleApplicator
      */
     private static function parseUpdateResult(array $result, array $chunk): array
     {
-        $block = $result['campaigns'] ?? $result;
+        $block = is_array($result['campaigns'] ?? null) ? $result['campaigns'] : $result;
         $success = is_array($block['success'] ?? null) ? $block['success'] : [];
-        $errors = is_array($block['error'] ?? null) ? $block['error'] : [];
+        $errors = [];
+        if (is_array($block['error'] ?? null)) {
+            $errors = $block['error'];
+        } elseif (is_array($block['errors'] ?? null)) {
+            $errors = $block['errors'];
+        }
         $ok = [];
         foreach ($success as $row) {
-            if (is_array($row) && isset($row['campaignId'])) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (isset($row['campaignId']) && (string) $row['campaignId'] !== '') {
                 $ok[] = (string) $row['campaignId'];
+            } elseif (isset($row['index']) && isset($chunk[(int) $row['index']])) {
+                $ok[] = (string) $chunk[(int) $row['index']];
             }
         }
         $failMsgs = [];
         foreach ($errors as $row) {
             if (! is_array($row)) {
+                if (is_string($row) && $row !== '') {
+                    $failMsgs[] = $row;
+                }
                 continue;
             }
-            $cid = (string) ($row['campaignId'] ?? '');
-            $err = $row['errors'][0]['errorValue']['message'] ?? ($row['message'] ?? 'Amazon rejected campaign');
-            $failMsgs[] = ($cid !== '' ? $cid.': ' : '').(is_string($err) ? $err : 'Amazon rejected campaign');
+            $cid = trim((string) ($row['campaignId'] ?? ''));
+            if ($cid === '' && isset($row['index']) && isset($chunk[(int) $row['index']])) {
+                $cid = (string) $chunk[(int) $row['index']];
+            }
+            $err = data_get($row, 'errors.0.errorValue.message')
+                ?? data_get($row, 'errors.0.message')
+                ?? data_get($row, 'errorValue.message')
+                ?? ($row['message'] ?? null);
+            $err = is_string($err) && $err !== '' ? $err : 'Amazon rejected campaign';
+            $failMsgs[] = $cid !== '' ? $cid.': '.$err : $err;
         }
-        if ($ok === [] && $errors === []) {
-            $ok = $chunk;
+        if ($ok === [] && $failMsgs === []) {
+            $top = $result['message'] ?? $result['details'] ?? $result['code'] ?? $block['message'] ?? null;
+            if (is_string($top) && trim($top) !== '') {
+                $msg = trim($top);
+                foreach ($chunk as $id) {
+                    $failMsgs[] = $id.': '.$msg;
+                }
+            } else {
+                $ok = $chunk;
+            }
         }
 
         return [$ok, $failMsgs];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function decodeThrownAmazonBody(\Throwable $e): ?array
+    {
+        if (! $e instanceof \GuzzleHttp\Exception\RequestException || ! $e->hasResponse()) {
+            return null;
+        }
+        $decoded = json_decode((string) $e->getResponse()->getBody(), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private static function shortAmazonError(string $msg): string
+    {
+        $msg = trim((string) preg_replace('/\s+/', ' ', $msg));
+        if (strlen($msg) > 280) {
+            return substr($msg, 0, 277).'...';
+        }
+
+        return $msg;
+    }
+
+    private static function isAlreadyInDesiredStateMessage(string $msg, string $state): bool
+    {
+        $m = strtolower($msg);
+        $st = strtolower($state);
+
+        return str_contains($m, 'already')
+            && (str_contains($m, $st) || str_contains($m, 'specified state') || str_contains($m, 'current state'));
+    }
+
+    private static function campaignIdPrefixFromError(string $msg): string
+    {
+        if (preg_match('/^(\d+)\s*:/', $msg, $m) === 1) {
+            return $m[1];
+        }
+
+        return '';
     }
 
     /**

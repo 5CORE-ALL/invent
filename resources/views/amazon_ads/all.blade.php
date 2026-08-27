@@ -1934,6 +1934,11 @@
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
                                 + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                            var pauseErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
+                            if (pauseErrs.length && err) {
+                                err.textContent = pauseErrs.slice(0, 8).join(' | ');
+                                err.classList.remove('d-none');
+                            }
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
                         if (!apply && typeof bootstrap !== 'undefined') {
@@ -2077,6 +2082,11 @@
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
                                 + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                            var prErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
+                            if (prErrs.length && err) {
+                                err.textContent = prErrs.slice(0, 8).join(' | ');
+                                err.classList.remove('d-none');
+                            }
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
                         if (!apply && !(en && en.checked) && typeof bootstrap !== 'undefined') {
