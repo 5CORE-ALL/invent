@@ -16,9 +16,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * - Inv = shopify_skus.inv
  * - ovl30 = shopify_skus.quantity (OV L30)
- * - Dil (grid) = ovl30 ÷ Inv × 100
- * - Price = amazon_datsheets.price
- * - dil (pause rule) = Amazon L30 units ÷ Shopify INV × 100
+ * - Dil (grid and pause/PR) = ovl30 ÷ Inv × 100
+ * - Price (grid) = amazon_datsheets.price, else grey LMP
  */
 final class AmazonAdsCampaignSkuMetrics
 {
@@ -57,6 +56,31 @@ final class AmazonAdsCampaignSkuMetrics
         }
 
         return round(((float) ($ovl30 ?? 0)) / $invF * 100, 2);
+    }
+
+    /**
+     * Price and Dil% for pause/PR — same values as the Amazon Ads All grid.
+     * Dil = ovl30 ÷ Inv. Price = Amazon list price, or the grey LMP when list price is missing.
+     *
+     * @param  array{price?: mixed, dil?: mixed, inv?: mixed, ovl30?: mixed, lmp_price?: mixed}  $m
+     * @return array{price: float|null, dil: float|null}
+     */
+    public static function gridMetricsForPause(array $m): array
+    {
+        $inv = isset($m['inv']) && is_numeric($m['inv']) ? (float) $m['inv'] : null;
+        $ovl = isset($m['ovl30']) && is_numeric($m['ovl30']) ? (float) $m['ovl30'] : null;
+        $dil = self::tabulatorDil($inv, $ovl);
+        if ($dil === null && isset($m['dil']) && is_numeric($m['dil'])) {
+            $dil = (float) $m['dil'];
+        }
+
+        $amazon = isset($m['price']) && is_numeric($m['price']) ? (float) $m['price'] : null;
+        $lmp = isset($m['lmp_price']) && is_numeric($m['lmp_price']) ? (float) $m['lmp_price'] : null;
+        $price = ($amazon !== null && is_finite($amazon) && $amazon > 0)
+            ? $amazon
+            : (($lmp !== null && is_finite($lmp) && $lmp > 0) ? $lmp : null);
+
+        return ['price' => $price, 'dil' => $dil];
     }
 
     /**
@@ -238,7 +262,7 @@ final class AmazonAdsCampaignSkuMetrics
                 $out[$key] = [
                     'sku' => $key,
                     'price' => $price,
-                    'dil' => $inv > 0 ? round(($l30 / $inv) * 100, 2) : ($l30 > 0 ? 100.0 : 0.0),
+                    'dil' => self::tabulatorDil($inv, $ovl30),
                     'inv' => $inv,
                     'l30' => $l30,
                     'ovl30' => $ovl30,
@@ -264,17 +288,11 @@ final class AmazonAdsCampaignSkuMetrics
             $inv = $sh !== null ? (float) ($sh->inv ?? 0) : null;
             $ovl30 = $sh !== null ? (float) ($sh->quantity ?? 0) : null;
             $l30 = $sheet !== null ? (float) ($sheet->units_ordered_l30 ?? 0) : null;
-            $dil = null;
-            if ($inv !== null && $inv > 0 && $l30 !== null) {
-                $dil = round(($l30 / $inv) * 100, 2);
-            } elseif ($inv !== null && $inv <= 0) {
-                $dil = ($l30 !== null && $l30 > 0) ? 100.0 : 0.0;
-            }
 
             $out[$key] = [
                 'sku' => $key,
                 'price' => $price,
-                'dil' => $dil,
+                'dil' => self::tabulatorDil($inv, $ovl30),
                 'inv' => $inv,
                 'l30' => $l30,
                 'ovl30' => $ovl30,

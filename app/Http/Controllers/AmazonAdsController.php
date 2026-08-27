@@ -15,8 +15,9 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AmazonAdsController extends Controller
 {
@@ -60,6 +61,18 @@ class AmazonAdsController extends Controller
 
     /** Inv / ovl30 / dil / price from /amazon-tabulator-view, shown after campaignName. */
     private const SKU_METRIC_DISPLAY_COLUMNS = ['Inv', 'ovl30', 'dil', 'price'];
+
+    /**
+     * Display columns computed after SQL (Shopify metrics, L-spend overlays, pause Rule).
+     * Sorted in PHP over the filtered window so header click order matches the grid.
+     *
+     * @var list<string>
+     */
+    private const PHP_SORT_DISPLAY_COLUMNS = [
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'ruleStatus',
+        'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
+        'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
+    ];
 
     /**
      * SP and SB campaign raw tables: hide noisy Amazon metric / audit columns on Amazon Ads All (keep ids, cost, CPC block, L-spends, Sold/Prchase, BGT/SBGT, ACOS, SL 30).
@@ -2751,6 +2764,82 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Persist Dil% auto-pause threshold (PR button). When `apply` is true, pause matching SP+SB campaigns.
+     */
+    public function savePrRule(Request $request): JsonResponse
+    {
+        try {
+            AmazonAdsPauseRule::persistPr([
+                'enabled' => $request->boolean('enabled', true),
+                'dil_above' => $request->input('dil_above', 100),
+                'dil_enabled' => $request->boolean('dil_enabled', true),
+                'price_below' => $request->input('price_below', 20),
+                'price_enabled' => $request->boolean('price_enabled', true),
+            ]);
+            AmazonAdsPauseRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Could not save PR Dil% pause rule', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'message' => 'Could not save PR Dil% pause rule. '.$e->getMessage(),
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        $freshRule = AmazonAdsPauseRule::resolvedRule();
+        $pr = $freshRule['pr'] ?? AmazonAdsPauseRule::defaultPr();
+        $parts = [];
+        if (! empty($pr['enabled'])) {
+            if (! empty($pr['dil_enabled'])) {
+                $th = rtrim(rtrim(number_format((float) ($pr['dil_above'] ?? 100), 2, '.', ''), '0'), '.');
+                $parts[] = 'Dil% ≥ '.$th.'%';
+            }
+            if (! empty($pr['price_enabled'])) {
+                $th = rtrim(rtrim(number_format((float) ($pr['price_below'] ?? 20), 2, '.', ''), '0'), '.');
+                $parts[] = 'Price < $'.$th;
+            }
+        }
+        $payload = [
+            'message' => ! empty($pr['enabled']) && $parts !== []
+                ? 'PR saved. Campaigns matching '.implode(' or ', $parts).' will be paused.'
+                : 'PR saved and turned off. Dil% / price will not auto-pause from this rule.',
+            'rule' => $freshRule,
+            'status' => 200,
+            'timestamp' => time(),
+        ];
+
+        if ($request->boolean('apply')) {
+            try {
+                $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
+                $payload['message'] = 'PR saved and applied to Amazon.'
+                    .($parts !== [] ? ' Paused campaigns where '.implode(' or ', $parts).'.' : '');
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => 'PR saved, but Amazon apply failed.',
+                    'error' => $e->getMessage(),
+                    'rule' => $freshRule,
+                    'status' => 500,
+                ], 500);
+            }
+        }
+
+        return response()->json($payload)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
+    /**
      * SQL CASE for U7% bucket labels (must match grid / {@see utilizationPercentValuesFromLSlice} thresholds 66 / 99).
      */
     private static function sqlU7BucketCaseExpression(): string
@@ -3082,9 +3171,19 @@ class AmazonAdsController extends Controller
 
         self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
 
-        $rows = $query->offset($start)
-            ->limit($length)
-            ->get();
+        $requestedOrderCol = ($orderColumnIndex >= 0 && $orderColumnIndex < count($columns))
+            ? (string) $columns[$orderColumnIndex]
+            : '';
+        $usePhpSort = in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
+
+        if ($usePhpSort) {
+            $fetchLen = (int) min(8000, max($recordsFiltered, $start + $length));
+            $rows = $query->limit(max(1, $fetchLen))->get();
+        } else {
+            $rows = $query->offset($start)
+                ->limit($length)
+                ->get();
+        }
 
         $hasLSpendCols = in_array('L7spend', $columns, true);
         $hasUtilCols = in_array('U7%', $columns, true);
@@ -3362,6 +3461,7 @@ class AmazonAdsController extends Controller
             if ($needRuleStatus && $pauseRule !== null) {
                 $cnRule = trim((string) ($rowArr['campaignName'] ?? ''));
                 $mRule = $skuMetricsByCampaign[$cnRule] ?? ['price' => null, 'dil' => null];
+                $gmRule = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mRule);
                 $acosForRule = $arr['ACOS'] ?? null;
                 if ($acosForRule === null && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
                     $acosRowRule = $rowArr;
@@ -3374,8 +3474,8 @@ class AmazonAdsController extends Controller
                     $acosForRule = self::computedAcosPercentFromReportRow($acosRowRule, $dbColumns);
                 }
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
-                    'price' => $mRule['price'] ?? null,
-                    'dil' => $mRule['dil'] ?? null,
+                    'price' => $gmRule['price'],
+                    'dil' => $gmRule['dil'],
                     'acos' => is_numeric($acosForRule) ? (float) $acosForRule : null,
                 ]);
                 $arr['ruleStatus'] = $decision['status'];
@@ -3384,6 +3484,18 @@ class AmazonAdsController extends Controller
             self::roundAmazonAdsDisplayNumericFields($arr, $columns);
             unset($arr['pink_dil_paused_at'], $arr['campaignBudgetCurrencyCode']);
             $data[] = $arr;
+        }
+
+        if ($usePhpSort) {
+            usort($data, static function ($a, $b) use ($requestedOrderCol, $orderDir) {
+                $cmp = self::compareAmazonAdsRowValues(
+                    self::amazonAdsRowSortValue($a, $requestedOrderCol),
+                    self::amazonAdsRowSortValue($b, $requestedOrderCol)
+                );
+
+                return $orderDir === 'asc' ? $cmp : -$cmp;
+            });
+            $data = array_values(array_slice($data, $start, $length));
         }
 
         $payload = [
@@ -3502,7 +3614,10 @@ class AmazonAdsController extends Controller
         }
 
         usort($rows, static function ($a, $b) use ($orderKey, $orderDir) {
-            $cmp = self::compareAmazonAdsRowValues($a[$orderKey] ?? null, $b[$orderKey] ?? null);
+            $cmp = self::compareAmazonAdsRowValues(
+                self::amazonAdsRowSortValue($a, $orderKey),
+                self::amazonAdsRowSortValue($b, $orderKey)
+            );
 
             return $orderDir === 'asc' ? $cmp : -$cmp;
         });
@@ -3538,6 +3653,27 @@ class AmazonAdsController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * Cell value used when sorting a display column. Missing Amazon price falls back to LMP so
+     * the order matches the grey italic price shown in the grid.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private static function amazonAdsRowSortValue(array $row, string $column): mixed
+    {
+        $v = $row[$column] ?? null;
+        if ($column !== 'price') {
+            return $v;
+        }
+        $n = self::amazonAdsSortableNumber($v);
+        if ($n !== null && $n > 0) {
+            return $n;
+        }
+        $lmp = self::amazonAdsSortableNumber($row['lmp_price'] ?? null);
+
+        return $lmp ?? $v;
     }
 
     /**

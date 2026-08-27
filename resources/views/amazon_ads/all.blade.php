@@ -52,7 +52,49 @@
             background: #dbeafe; border-bottom: 1px solid #dee2e6;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
-        #amz-ads-raw-wrap .tabulator-col .tabulator-col-sorter { display: none !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: flex !important;
+            align-items: center;
+            visibility: visible !important;
+            width: auto !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            opacity: 0.4;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter .tabulator-arrow {
+            display: inline-block !important;
+            visibility: visible !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            border-left: 4px solid transparent !important;
+            border-right: 4px solid transparent !important;
+            border-bottom: 5px solid #64748b !important;
+            border-top: 0 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="desc"] .tabulator-col-sorter .tabulator-arrow {
+            border-bottom: 0 !important;
+            border-top: 5px solid #334155 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="asc"] .tabulator-col-sorter .tabulator-arrow {
+            border-top: 0 !important;
+            border-bottom: 5px solid #334155 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-col-sorter,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="asc"] .tabulator-col-sorter,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="desc"] .tabulator-col-sorter {
+            opacity: 1;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 12px;
+        }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important; text-orientation: mixed !important;
@@ -207,6 +249,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS% bands">PAUSE RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is high or price is below your threshold">PR</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -552,6 +595,52 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsPrRuleModal" tabindex="-1" aria-labelledby="amazonAdsPrRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsPrRuleModalLabel">PR — auto-pause</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Dil% and Price are <strong>separate</strong> rules. If <strong>either</strong> matches, the campaign is paused (OR).
+                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
+                        Price uses the amount shown in the <strong>price</strong> column, including grey LMP when Amazon price is missing.
+                        Save (with auto-pause on) pauses matching campaigns on Amazon now. The job also runs daily at 18:25 IST.
+                    </p>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
+                        <label class="form-check-label small" for="amazonAdsPrDilEnabled">Pause when Dil% ≥</label>
+                    </div>
+                    <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
+                        <input type="number" min="0" max="100000" step="1" class="form-control" id="amazonAdsPrDilAbove" value="100">
+                        <span class="input-group-text">%</span>
+                    </div>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="amazonAdsPrPriceEnabled" checked>
+                        <label class="form-check-label small" for="amazonAdsPrPriceEnabled">Pause when Price &lt;</label>
+                    </div>
+                    <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
+                        <span class="input-group-text">$</span>
+                        <input type="number" min="0" max="1000000" step="0.01" class="form-control" id="amazonAdsPrPriceBelow" value="20">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="amazonAdsPrEnabled" checked>
+                        <label class="form-check-label small" for="amazonAdsPrEnabled">Enable auto-pause</label>
+                    </div>
+                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPrRuleModalError" role="alert"></p>
+                    <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsPrRuleModalOk" role="status"></p>
+                </div>
+                <div class="modal-footer py-2 d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsPrRuleSaveBtn">Save</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="amazonAdsPrRuleApplyBtn">Save &amp; apply to Amazon</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -571,6 +660,7 @@
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
             var pauseRuleSaveUrl = @json(route('amazon.ads.pause-rule.save'));
+            var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
@@ -585,7 +675,8 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate'];
-            var NON_ORDERABLE_COLUMNS = ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV', 'Inv', 'ovl30', 'dil', 'price', 'ruleStatus'];
+            var NON_ORDERABLE_COLUMNS = [];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'bgt', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -887,6 +978,7 @@
                 cols.forEach(function (c) {
                     var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
                     col.headerSort = NON_ORDERABLE_COLUMNS.indexOf(c) === -1;
+                    if (NUMERIC_SORT_DESC.indexOf(c) !== -1) col.headerSortStartingDir = 'desc';
                     if (HIDDEN_COLUMNS.indexOf(c) !== -1) col.visible = false;
                     amzApplyColFormat(col, c);
                     defs.push(col);
@@ -1005,6 +1097,7 @@
                 paginationButtonCount: 10,
                 paginationInitialPage: 1,
                 sortMode: 'remote',
+                headerSortClickElement: 'header',
                 placeholder: 'No rows for this source.',
                 selectableRows: true,
                 ajaxResponse: function (url, params, response) {
@@ -1841,6 +1934,11 @@
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
                                 + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                            var pauseErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
+                            if (pauseErrs.length && err) {
+                                err.textContent = pauseErrs.slice(0, 8).join(' | ');
+                                err.classList.remove('d-none');
+                            }
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
                         if (!apply && typeof bootstrap !== 'undefined') {
@@ -1890,6 +1988,157 @@
                 if (!window.confirm('Save these bands and pause/enable matching SP + SB campaigns on Amazon? Campaigns stay active unless they match a Pause band.')) return;
                 amzSavePauseRule(true);
             });
+
+            function amzPrFromRule(rule) {
+                var pr = (rule && rule.pr) ? rule.pr : {};
+                var dil = Number(pr.dil_above);
+                var price = Number(pr.price_below);
+                return {
+                    enabled: !!pr.enabled,
+                    dil_above: isFinite(dil) ? dil : 100,
+                    dil_enabled: pr.dil_enabled !== false,
+                    price_below: isFinite(price) ? price : 20,
+                    price_enabled: pr.price_enabled !== false
+                };
+            }
+            function amzRefreshPrBtn() {
+                var btn = document.getElementById('amazonAdsPrRuleBtn');
+                if (!btn) return;
+                var pr = amzPrFromRule(window.amazonAdsPauseRule);
+                var bits = [];
+                if (pr.enabled && pr.dil_enabled) bits.push(pr.dil_above + '%');
+                if (pr.enabled && pr.price_enabled) bits.push('$' + pr.price_below);
+                btn.textContent = bits.length ? ('PR ' + bits.join(' · ')) : 'PR';
+                btn.classList.toggle('btn-danger', pr.enabled);
+                btn.classList.toggle('text-white', pr.enabled);
+                btn.classList.toggle('btn-outline-danger', !pr.enabled);
+                var tips = [];
+                if (pr.dil_enabled) tips.push('Dil% ≥ ' + pr.dil_above + '%');
+                if (pr.price_enabled) tips.push('Price < $' + pr.price_below);
+                btn.title = pr.enabled && tips.length
+                    ? ('Auto-pause when ' + tips.join(' or '))
+                    : 'Dil% / price pause rule — click to set thresholds';
+            }
+            function amzFillPrModal() {
+                var pr = amzPrFromRule(window.amazonAdsPauseRule);
+                var dilInput = document.getElementById('amazonAdsPrDilAbove');
+                var priceInput = document.getElementById('amazonAdsPrPriceBelow');
+                var dilEn = document.getElementById('amazonAdsPrDilEnabled');
+                var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
+                var en = document.getElementById('amazonAdsPrEnabled');
+                if (dilInput) dilInput.value = String(pr.dil_above);
+                if (priceInput) priceInput.value = String(pr.price_below);
+                if (dilEn) dilEn.checked = pr.dil_enabled;
+                if (priceEn) priceEn.checked = pr.price_enabled;
+                if (en) en.checked = pr.enabled;
+            }
+            function amzSavePrRule(apply) {
+                var err = document.getElementById('amazonAdsPrRuleModalError');
+                var ok = document.getElementById('amazonAdsPrRuleModalOk');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                var dilInput = document.getElementById('amazonAdsPrDilAbove');
+                var priceInput = document.getElementById('amazonAdsPrPriceBelow');
+                var dilEn = document.getElementById('amazonAdsPrDilEnabled');
+                var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
+                var en = document.getElementById('amazonAdsPrEnabled');
+                var dil = dilInput ? parseFloat(String(dilInput.value).trim()) : NaN;
+                var price = priceInput ? parseFloat(String(priceInput.value).trim()) : NaN;
+                if (!isFinite(dil) || dil < 0) {
+                    if (err) { err.textContent = 'Enter a Dil% threshold (0 or higher).'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (!isFinite(price) || price < 0) {
+                    if (err) { err.textContent = 'Enter a price threshold (0 or higher).'; err.classList.remove('d-none'); }
+                    return;
+                }
+                var saveBtn = document.getElementById('amazonAdsPrRuleSaveBtn');
+                var applyBtn = document.getElementById('amazonAdsPrRuleApplyBtn');
+                if (saveBtn) saveBtn.disabled = true;
+                if (applyBtn) applyBtn.disabled = true;
+                fetch(prRuleSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        enabled: !!(en && en.checked),
+                        dil_above: dil,
+                        dil_enabled: !!(dilEn && dilEn.checked),
+                        price_below: price,
+                        price_enabled: !!(priceEn && priceEn.checked),
+                        apply: !!apply || !!(en && en.checked)
+                    })
+                })
+                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                    .then(function (out) {
+                        var b = out.body || {};
+                        if (!out.ok || b.status === 422 || b.status === 500) {
+                            if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
+                        amzRefreshPrBtn();
+                        var msg = b.message || 'Saved.';
+                        if (b.apply) {
+                            msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
+                                + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
+                            var prErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
+                            if (prErrs.length && err) {
+                                err.textContent = prErrs.slice(0, 8).join(' | ');
+                                err.classList.remove('d-none');
+                            }
+                        }
+                        if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
+                        if (!apply && !(en && en.checked) && typeof bootstrap !== 'undefined') {
+                            var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsPrRuleModal'));
+                            if (inst) inst.hide();
+                        }
+                        return table ? Promise.resolve(table.setData()) : null;
+                    })
+                    .then(function () { amzRefreshUiSoon(); })
+                    .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                    .finally(function () {
+                        if (saveBtn) saveBtn.disabled = false;
+                        if (applyBtn) applyBtn.disabled = false;
+                    });
+            }
+            var prModalEl = document.getElementById('amazonAdsPrRuleModal');
+            if (prModalEl) {
+                prModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsPrRuleModalError');
+                    var ok = document.getElementById('amazonAdsPrRuleModalOk');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                    fetch(pauseRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (body) {
+                            if (body && body.rule) window.amazonAdsPauseRule = body.rule;
+                            amzFillPrModal();
+                            amzRefreshPrBtn();
+                        })
+                        .catch(function () { amzFillPrModal(); });
+                });
+            }
+            var prSaveBtn = document.getElementById('amazonAdsPrRuleSaveBtn');
+            if (prSaveBtn) prSaveBtn.addEventListener('click', function () { amzSavePrRule(false); });
+            var prApplyBtn = document.getElementById('amazonAdsPrRuleApplyBtn');
+            if (prApplyBtn) prApplyBtn.addEventListener('click', function () {
+                var dilInput = document.getElementById('amazonAdsPrDilAbove');
+                var priceInput = document.getElementById('amazonAdsPrPriceBelow');
+                var dilEn = document.getElementById('amazonAdsPrDilEnabled');
+                var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
+                var en = document.getElementById('amazonAdsPrEnabled');
+                var on = !!(en && en.checked);
+                var bits = [];
+                if (dilEn && dilEn.checked) bits.push('Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '%');
+                if (priceEn && priceEn.checked) bits.push('Price < $' + (priceInput ? priceInput.value : '20'));
+                var msg = on
+                    ? ('Save PR (' + (bits.join(' or ') || 'no conditions') + ') and pause matching SP + SB campaigns on Amazon now?')
+                    : 'Save PR turned off? Matching Dil% / price campaigns will not be auto-paused by this rule.';
+                if (!window.confirm(msg)) return;
+                amzSavePrRule(true);
+            });
+            amzRefreshPrBtn();
 
             // ---- initial state ----
             (function () {
