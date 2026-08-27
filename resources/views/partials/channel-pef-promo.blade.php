@@ -3599,10 +3599,16 @@
         function saveChannelSprice(sku, sprice, silent, extra) {
             extra = extra || {};
             const rowData = chPromoRowDataFromExtra(extra);
-            let val = extra.skip_lmp_cap
-                ? chPromoRound2(sprice)
-                : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
-            if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
+            let val;
+            if (rowData && typeof temuPrepareSpriceForSave === 'function'
+                && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')) {
+                val = temuPrepareSpriceForSave(rowData, sprice);
+            } else {
+                val = extra.skip_lmp_cap
+                    ? chPromoRound2(sprice)
+                    : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
+                if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
+            }
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();
             }
@@ -3642,10 +3648,13 @@
             extra = extra || {};
             const d = row.getData();
             const sku = chPromoSku(d);
-            const val = chPromoFloorShopifySpriceToAmz(
-                d,
-                extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra)
-            );
+            const val = (typeof temuPrepareSpriceForSave === 'function'
+                && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2'))
+                ? temuPrepareSpriceForSave(d, sprice)
+                : chPromoFloorShopifySpriceToAmz(
+                    d,
+                    extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra)
+                );
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);
             if (val > 0) {
@@ -6985,16 +6994,21 @@
          * If both % are 0: eBay-style channels use Std; AliExpress keeps the live listing Price
          * (Std is Amazon's shared list price — do not overwrite AE Price when no promo/coupon exists).
          */
-        function chPromoSpriceFromStdTPromo(d) {
+        function chPromoSpriceFromStdTPromo(d, extra) {
+            extra = extra || {};
+            const finish = function(p) {
+                if (!(p >= 0.01)) return 0;
+                return extra.skip_lmp_cap ? chPromoRound2(p) : chPromoCapSpriceToLmp(d, p, extra);
+            };
             if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                 && typeof chPromoKeepZeroSoldPrcSprice === 'function'
                 && chPromoKeepZeroSoldPrcSprice(d)) {
                 const stored = chPromoGetSprice(d);
-                if (stored > 0) return chPromoCapSpriceToLmp(d, stored);
+                if (stored > 0) return finish(stored);
                 if (typeof chPromoZeroSoldGroiForRow === 'function'
                     && typeof chPromoSpriceFromTargetRoi === 'function') {
                     const target = chPromoSpriceFromTargetRoi(d, chPromoZeroSoldGroiForRow(d));
-                    if (target > 0) return chPromoCapSpriceToLmp(d, target);
+                    if (target > 0) return finish(target);
                 }
             }
             // AliExpress 0-sold: discount Std (not live Price) so SROI ≈ Target ROI%.
@@ -7022,8 +7036,7 @@
                     price = chPromoRound2(std);
                 }
             }
-            if (!(price >= 0.01)) return 0;
-            return chPromoCapSpriceToLmp(d, price);
+            return finish(price);
         }
 
         /** Recalc S PRC from current Std / PRMT% / cvr%. AliExpress with no promo keeps live Price. */
@@ -7032,7 +7045,10 @@
             if (!chPromoEbayStdMinusPrmtCpnEnabled() || !row) return null;
             const d = row.getData();
             if (!chPromoIsChildRow(d)) return null;
-            const fill = chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
+            let fill = chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
+            if (typeof temuPrepareSpriceForSave === 'function' && chPromoIsTemuPromoChannel()) {
+                fill = temuPrepareSpriceForSave(d, fill);
+            }
             const sku = chPromoSku(d);
             if (!sku || !(fill > 0)) return null;
             const current = chPromoRound2(chPromoGetSprice(d));

@@ -1714,12 +1714,7 @@
     }
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu', 'channelPromoHidePushCpn' => true])
     function temu2RowSpriceForAlert(data) {
-        let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
-        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isTemu2ParentRow(data)) {
-            const calc = chPromoSpriceFromStdTPromo(data);
-            if (calc > 0) sprice = calc;
-        }
-        return sprice;
+        return typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(data) : 0;
     }
     function temu2HasBlueTriangle(data) {
         if (isTemu2ParentRow(data)) return false;
@@ -1729,7 +1724,7 @@
     }
 
     function temuRawSprice(row) {
-        return temu2RowSpriceForAlert(row) || 0;
+        return temuDiscountedPrice(row) || 0;
     }
 
     function temuAmzRefPrice(row) {
@@ -1753,33 +1748,53 @@
         return (isFinite(fallback) && fallback > 0) ? fallback : 0;
     }
 
-    /** Cap S PRC to Amz / eBay when above those prices, then to LMP. */
+    /** Discounted Price = Std × (1 − T Promo%/100). No Amz / EB / LMP cap. */
+    function temuDiscountedPrice(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return 0;
+        if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
+            const combo = Number(chPromoTemuSpriceFromStdPrmtCpn(row));
+            if (combo > 0) return +combo.toFixed(2);
+        }
+        if (typeof chPromoSpriceFromStdTPromo === 'function') {
+            const calc = chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true });
+            if (calc > 0) return +Number(calc).toFixed(2);
+        }
+        const stored = parseFloat(row.sprice != null ? row.sprice : row.SPRICE) || 0;
+        return stored > 0 ? +stored.toFixed(2) : 0;
+    }
+
+    /**
+     * S PRC = Discounted Price.
+     * If Discounted is higher than eBay, Amazon, or LMP, use that lower price.
+     * Always the lowest of the prices that apply.
+     */
     function temuSpriceCapResult(row, rawSprice, extra) {
         extra = extra || {};
-        const raw = parseFloat(rawSprice);
-        if (!(raw > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: 0, ebay: 0, lmp: 0 };
+        const discounted = temuDiscountedPrice(row);
+        let base = discounted;
+        const passed = parseFloat(rawSprice);
+        // Allow a typed value only when it is already lower than Discounted Price.
+        if (passed > 0 && (!(base > 0) || passed + 0.0001 < base)) base = +passed.toFixed(2);
+        if (!(base > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: 0, ebay: 0, lmp: 0 };
+        base = +base.toFixed(2);
         const amz = temuAmzRefPrice(row);
         const ebay = temuEbayRefPrice(row);
-        const fromStd = typeof chPromoSpriceFromStdTPromo === 'function'
-            ? (chPromoSpriceFromStdTPromo(row) || 0)
-            : 0;
         const lmp = extra.skip_lmp_cap ? 0 : temuLmpRefPrice(row);
-        const candidates = [{ key: 'raw', price: +raw.toFixed(2) }];
-        if (amz > 0 && (raw > amz + 0.0001 || fromStd > amz + 0.0001)) {
-            candidates.push({ key: 'Amz', price: +amz.toFixed(2) });
-        }
-        if (ebay > 0 && (raw > ebay + 0.0001 || fromStd > ebay + 0.0001)) {
-            candidates.push({ key: 'EB', price: +ebay.toFixed(2) });
-        }
-        if (lmp > 0 && raw + 0.0001 >= lmp) candidates.push({ key: 'LMP', price: +lmp.toFixed(2) });
+        const candidates = [{ key: 'dsc', price: base }];
+        if (ebay > 0) candidates.push({ key: 'EB', price: +ebay.toFixed(2) });
+        if (amz > 0) candidates.push({ key: 'Amz', price: +amz.toFixed(2) });
+        if (lmp > 0) candidates.push({ key: 'LMP', price: +lmp.toFixed(2) });
         let minP = candidates[0].price;
         candidates.forEach(function(c) { if (c.price < minP) minP = c.price; });
         const labels = [];
         let lmpAlert = false;
         candidates.forEach(function(c) {
             if (Math.abs(c.price - minP) > 0.015) return;
-            if (c.key === 'LMP') lmpAlert = true;
-            else if (c.key === 'Amz' || c.key === 'EB') labels.push(c.key);
+            if (c.key === 'LMP') {
+                if (base + 0.0001 >= lmp) lmpAlert = true;
+            } else if ((c.key === 'Amz' || c.key === 'EB') && base > c.price + 0.0001) {
+                labels.push(c.key);
+            }
         });
         return { sprice: +minP.toFixed(2), labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
     }
@@ -2526,6 +2541,10 @@
             return (isFinite(v) && v > 0) ? v : 0;
         }
         function temu2DisplayedSprice(row) {
+            if (typeof temuDisplayedSprice === 'function') {
+                const shown = temuDisplayedSprice(row);
+                if (shown > 0) return shown;
+            }
             const n = parseFloat(row && row.sprice);
             return (isFinite(n) && n > 0) ? n : 0;
         }
@@ -3958,21 +3977,19 @@
                     hozAlign: "center",
                     minWidth: 88,
                     editor: "input",
-                    headerTooltip: "S PRC capped to Amz if above Amazon, to EB if above eBay (lower of eBay 1 / eBay 2), then to LMP. Orange Amz/EB = channel cap. Red triangle = LMP cap. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC = Discounted Price (Std after promo). If that is higher than eBay, Amazon, or LMP, S PRC becomes the lowest of those. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
-                        let rawSprice = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                            const calc = chPromoSpriceFromStdTPromo(rowData);
-                            if (calc > 0) rawSprice = calc;
-                        }
+                        const discounted = typeof temuDiscountedPrice === 'function'
+                            ? temuDiscountedPrice(rowData)
+                            : (parseFloat(cell.getValue() || 0) || 0);
                         const cap = typeof temuSpriceCapResult === 'function'
-                            ? temuSpriceCapResult(rowData, rawSprice)
+                            ? temuSpriceCapResult(rowData, discounted)
                             : null;
-                        let value = (cap && cap.sprice > 0) ? cap.sprice : rawSprice;
-                        if (!(value > 0) && cap && window.SpriceLmpCap) {
-                            const lmpCap = SpriceLmpCap.apply(rowData, rawSprice);
+                        let value = (cap && cap.sprice > 0) ? cap.sprice : discounted;
+                        if (!(value > 0) && window.SpriceLmpCap) {
+                            const lmpCap = SpriceLmpCap.apply(rowData, discounted);
                             if (lmpCap && lmpCap.shown > 0) value = lmpCap.shown;
                         }
                         const live = parseFloat(rowData.temu_price) || 0;
@@ -4008,7 +4025,10 @@
                     sorter: "number",
                     headerTooltip: "S Recovery = Sprice × 0.88",
                     formatter: function(cell) {
-                        const sprice = parseFloat(cell.getRow().getData()['sprice']) || 0;
+                        const rowData = cell.getRow().getData();
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
                         if (sprice <= 0) return '';
                         return temu2FormatMoney(temu2SRecovery(sprice));
                     }
@@ -4103,7 +4123,8 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const lp = parseFloat(rowData['lp']) || 0;
-                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData) : null;
+                        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(rowData) : 0;
+                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData, sprice) : null;
                         if (snpft == null || !(lp > 0)) return '';
                         const snroi = (snpft / lp) * 100;
                         const colorClass = getRoiColor(snroi);
@@ -4123,8 +4144,10 @@
                     headerTooltip: "SGPRFT% = SPFT / S PRC. SPFT = (S R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData) : null;
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
+                        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(rowData, sprice) : null;
                         if (!(sprice > 0) || spft == null) return '';
                         const sgprft = (spft / sprice) * 100;
                         const colorClass = getPftColor(sgprft);
@@ -4139,8 +4162,10 @@
                     headerTooltip: "SPFT% = SNPFT / S PRC. SNPFT = SPFT − (S PRC × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData) : null;
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
+                        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(rowData, sprice) : null;
                         if (!(sprice > 0) || snpft == null) return '';
                         const spft = (snpft / sprice) * 100;
                         const colorClass = getPftColor(spft);
@@ -5187,13 +5212,16 @@
             
             // Handle SPRICE edit
             if (field === 'sprice') {
-                const newSprice = parseFloat(cell.getValue());
-                if (newSprice < 0) {
+                const typed = parseFloat(cell.getValue());
+                if (typed < 0) {
                     showToast('SPRICE cannot be negative', 'error');
                     cell.restoreOldValue();
                     return;
                 }
-                
+                const newSprice = typeof temuPrepareSpriceForSave === 'function'
+                    ? temuPrepareSpriceForSave(data, typed)
+                    : typed;
+
                 row.update({ sprice: newSprice });
                 row.reformat();
                 
