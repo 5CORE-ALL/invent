@@ -604,9 +604,10 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Matching SP/SB campaigns are paused on Amazon automatically.
-                        The scheduled job runs daily at 18:25 IST. Click <strong>Save &amp; apply</strong> to pause now.
-                        Rows with no price (<strong>--</strong>) are skipped for the price rule.
+                        Dil% and Price are <strong>separate</strong> rules. If <strong>either</strong> matches, the campaign is paused (OR).
+                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
+                        Price uses the amount shown in the <strong>price</strong> column, including grey LMP when Amazon price is missing.
+                        The job runs daily at 18:25 IST. Click <strong>Save &amp; apply</strong> to pause now.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
@@ -1992,7 +1993,7 @@
                     dil_above: isFinite(dil) ? dil : 100,
                     dil_enabled: pr.dil_enabled !== false,
                     price_below: isFinite(price) ? price : 20,
-                    price_enabled: !!pr.price_enabled
+                    price_enabled: pr.price_enabled !== false
                 };
             }
             function amzRefreshPrBtn() {

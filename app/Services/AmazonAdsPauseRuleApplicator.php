@@ -142,9 +142,10 @@ class AmazonAdsPauseRuleApplicator
                 continue;
             }
             $m = $metricsByName[$row['campaignName']] ?? ['price' => null, 'dil' => null, 'sku' => ''];
+            $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
             $decision = AmazonAdsPauseRule::decide($rule, [
-                'price' => $m['price'] ?? null,
-                'dil' => $m['dil'] ?? null,
+                'price' => $gm['price'],
+                'dil' => $gm['dil'],
                 'acos' => $row['acos'],
             ]);
             $desired = $decision['status'];

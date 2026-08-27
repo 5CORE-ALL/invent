@@ -3454,6 +3454,7 @@ class AmazonAdsController extends Controller
             if ($needRuleStatus && $pauseRule !== null) {
                 $cnRule = trim((string) ($rowArr['campaignName'] ?? ''));
                 $mRule = $skuMetricsByCampaign[$cnRule] ?? ['price' => null, 'dil' => null];
+                $gmRule = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mRule);
                 $acosForRule = $arr['ACOS'] ?? null;
                 if ($acosForRule === null && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
                     $acosRowRule = $rowArr;
@@ -3466,8 +3467,8 @@ class AmazonAdsController extends Controller
                     $acosForRule = self::computedAcosPercentFromReportRow($acosRowRule, $dbColumns);
                 }
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
-                    'price' => $mRule['price'] ?? null,
-                    'dil' => $mRule['dil'] ?? null,
+                    'price' => $gmRule['price'],
+                    'dil' => $gmRule['dil'],
                     'acos' => is_numeric($acosForRule) ? (float) $acosForRule : null,
                 ]);
                 $arr['ruleStatus'] = $decision['status'];

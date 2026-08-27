@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsPauseRule
 {
-    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v3';
+    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v4';
 
     public const ACTION_PAUSED = 'PAUSED';
 
@@ -194,6 +194,7 @@ final class AmazonAdsPauseRule
 
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : self::defaultPr();
         if (! empty($pr['enabled'])) {
+            // Dil% and Price are independent: either matching condition pauses the campaign (OR).
             if (! empty($pr['dil_enabled'])) {
                 $dilVal = $metrics['dil'] ?? null;
                 $threshold = (float) ($pr['dil_above'] ?? 100);
@@ -330,17 +331,13 @@ final class AmazonAdsPauseRule
         }
         $dil = self::normalizePrNumber($pr['dil_above'] ?? $pr['dilAbove'] ?? $base['dil_above'], 'PR Dil%', 0, 100000);
         $price = self::normalizePrNumber($pr['price_below'] ?? $pr['priceBelow'] ?? $base['price_below'], 'PR Price', 0, 1000000);
-        $hasPriceFlag = array_key_exists('price_enabled', $pr) || array_key_exists('priceEnabled', $pr);
 
         return [
             'enabled' => self::normalizePrBool($pr['enabled'] ?? false),
             'dil_above' => $dil,
             'dil_enabled' => self::normalizePrBool($pr['dil_enabled'] ?? $pr['dilEnabled'] ?? true),
             'price_below' => $price,
-            // Existing Dil-only PR rows stay Dil-only until Price is saved from the modal.
-            'price_enabled' => $hasPriceFlag
-                ? self::normalizePrBool($pr['price_enabled'] ?? $pr['priceEnabled'] ?? false)
-                : false,
+            'price_enabled' => self::normalizePrBool($pr['price_enabled'] ?? $pr['priceEnabled'] ?? true),
         ];
     }
 
