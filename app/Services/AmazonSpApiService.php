@@ -240,8 +240,19 @@ class AmazonSpApiService
     }
 
     /**
+     * Live Amazon listing Price already equals S PRC — auto-push should leave the SKU alone.
+     */
+    public static function listingPriceMatchesSprice(mixed $price, mixed $sprice): bool
+    {
+        $p = is_numeric($price) ? round((float) $price, 2) : 0.0;
+        $s = is_numeric($sprice) ? round((float) $sprice, 2) : 0.0;
+
+        return $p > 0 && $s > 0 && self::moneyEquals($p, $s);
+    }
+
+    /**
      * Sale / Business / Min from the calculated Sale Price.
-     * Min = Sale (same value). Business = Sale × 0.95.
+     * Sale = Business = Min (same value).
      *
      * @return array{sale_price: float, business_price: float, min_price: float}
      */
@@ -251,13 +262,13 @@ class AmazonSpApiService
 
         return [
             'sale_price' => $sale,
-            'business_price' => max(0.01, round($sale * 0.95, 2)),
+            'business_price' => $sale,
             'min_price' => $sale,
         ];
     }
 
     /**
-     * Business Price = Sale × 0.95.
+     * Business Price = Sale Price (same value).
      */
     public function businessPriceFromSalePrice(float $salePrice): float
     {
@@ -443,7 +454,7 @@ class AmazonSpApiService
      * @param  float|int|string  $price  Your Price (our_price)
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
-     *   - sale_price (float): calculated Sale Price. Business = Sale × 0.95, Min = Sale.
+     *   - sale_price (float): calculated Sale Price. Sale = Business = Min.
      *   - min_price / business_price: ignored — always derived from Sale.
      *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
      *   - push_reason (string): optional log reason

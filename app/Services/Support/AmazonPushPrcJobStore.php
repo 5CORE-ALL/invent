@@ -347,7 +347,7 @@ class AmazonPushPrcJobStore
                 ? round((float) $task['max'], 2)
                 : round($std * 1.10, 2);
             $min = $saleBase;
-            $business = max(0.01, round($saleBase * 0.95, 2));
+            $business = $saleBase;
             $effective = isset($task['effective']) && is_numeric($task['effective'])
                 ? round((float) $task['effective'], 2)
                 : ($sale !== null ? $sale : $std);

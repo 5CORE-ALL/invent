@@ -91,6 +91,11 @@ class AmazonCvrCpnAutoPushService
                     continue;
                 }
 
+                if (AmazonSpApiService::listingPriceMatchesSprice($row['price'] ?? 0, $computed['sprice'])) {
+                    $stats['skipped_unchanged']++;
+                    continue;
+                }
+
                 if (! $pushAll && $this->isUnchanged($row, $computed)) {
                     $stats['skipped_unchanged']++;
                     continue;

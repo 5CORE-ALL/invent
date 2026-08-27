@@ -787,6 +787,11 @@
                         <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-live-value="0" data-invert="1" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Click dot for trend">
                             <span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span>0 Sold: <span id="zero-sold-count">0</span>
                         </span>
+                        <span class="badge fs-6 p-2" id="amazon-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue alert: Price ≠ S PRC. Click to show only those SKUs. Auto-push skips SKUs where Price already equals S PRC.">
+                            <i class="fas fa-exclamation-triangle"></i> 0
+                        </span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'amazon-price-lt80-lmp-badge', 'pltChannelKey' => 'amazon', 'pltPriceField' => 'price'])
@@ -1111,6 +1116,7 @@
         let lmpMissingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
+        let blueTriangleFilterActive = false;
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -1343,6 +1349,25 @@
          * SPRICE vs Amazon price: reduce / hold / increase → red / yellow / green dot.
          * Returns { kind, color, title } or null when no SPRICE.
          */
+        function amazonHasBlueTriangle(data) {
+            if (!data || data.is_parent_summary) return false;
+            const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
+            if (!sku || sku.indexOf('PARENT') === 0) return false;
+            const price = parseFloat(data.price) || 0;
+            const sprice = parseFloat(data.SPRICE) || 0;
+            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function amazonListingPriceEqualsSprice(data, spriceOverride) {
+            const price = parseFloat(data && data.price) || 0;
+            const sprice = spriceOverride != null ? (parseFloat(spriceOverride) || 0) : (parseFloat(data && data.SPRICE) || 0);
+            return price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100);
+        }
+        function syncAmazonBlueTriangleBadgeState() {
+            $('#amazon-blue-triangle-badge').css({
+                outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: blueTriangleFilterActive ? '2px' : ''
+            });
+        }
         function amazonSpriceChangeDotMeta(sprice, amazonPrice) {
             const sp = parseFloat(sprice) || 0;
             const ap = parseFloat(amazonPrice) || 0;
@@ -2861,13 +2886,25 @@
                 applyFilters();
             });
 
+            $('#amazon-blue-triangle-badge').on('click', function() {
+                blueTriangleFilterActive = !blueTriangleFilterActive;
+                if (blueTriangleFilterActive) {
+                    lmpMissingFilterActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                }
+                applyFilters();
+                syncAmazonBlueTriangleBadgeState();
+            });
             if (window.LmpMissingBadge) {
                 LmpMissingBadge.bind({
                     badge: '#amazon-lmp-missing-badge',
                     getActive: function() { return lmpMissingFilterActive; },
                     onToggle: function(on) {
                         lmpMissingFilterActive = on;
+                        if (on) blueTriangleFilterActive = false;
                         applyFilters();
+                        syncAmazonBlueTriangleBadgeState();
                     }
                 });
             }
@@ -2877,7 +2914,9 @@
                     getActive: function() { return priceGtLmpFilterActive; },
                     onToggle: function(on) {
                         priceGtLmpFilterActive = on;
+                        if (on) blueTriangleFilterActive = false;
                         applyFilters();
+                        syncAmazonBlueTriangleBadgeState();
                     }
                 });
             }
@@ -2887,7 +2926,9 @@
                     getActive: function() { return priceLt80LmpFilterActive; },
                     onToggle: function(on) {
                         priceLt80LmpFilterActive = on;
+                        if (on) blueTriangleFilterActive = false;
                         applyFilters();
+                        syncAmazonBlueTriangleBadgeState();
                     }
                 });
             }
@@ -3290,7 +3331,7 @@
                     const row = tableData.find(r => r['(Child) sku'] === sku);
                     if (row) {
                         const sprice = amazonCapSpriceToLmp(row, parseFloat(row.SPRICE) || 0);
-                        if (sprice > 0) {
+                        if (sprice > 0 && !amazonListingPriceEqualsSprice(row, sprice)) {
                             const asin = (row.asin != null && String(row.asin).trim() !== '') ? String(row.asin).trim() : null;
                             skusToProcess.push({ sku: sku, price: sprice, asin: asin });
                         }
@@ -3300,7 +3341,7 @@
                 if (skusToProcess.length === 0) {
                     $btn.prop('disabled', false);
                     $btn.html(originalHtml);
-                    showToast('error', 'No valid prices found for selected SKUs');
+                    showToast('success', 'Price already equals S PRC for selected SKUs — left unchanged');
                     return;
                 }
                 
@@ -3988,6 +4029,15 @@
                     showToast('error', 'Invalid SKU or price');
                     return;
                 }
+                const applyRow = (typeof table !== 'undefined' && table)
+                    ? table.getRows().find(function(r) {
+                        return String((r.getData()['(Child) sku'] || '')).trim() === String(sku).trim();
+                    })
+                    : null;
+                if (applyRow && amazonListingPriceEqualsSprice(applyRow.getData(), price)) {
+                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
+                    return;
+                }
                 
                 // Disable button and show loading state
                 $btn.prop('disabled', true);
@@ -4036,6 +4086,15 @@
                 const price = parseFloat($btn.attr('data-price'));
                 if (!sku || !price || price <= 0 || isNaN(price)) {
                     showToast('error', 'Invalid SKU or price');
+                    return;
+                }
+                const modalRow = (typeof table !== 'undefined' && table)
+                    ? table.getRows().find(function(r) {
+                        return String((r.getData()['(Child) sku'] || '')).trim() === String(sku).trim();
+                    })
+                    : null;
+                if (modalRow && amazonListingPriceEqualsSprice(modalRow.getData(), price)) {
+                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
                     return;
                 }
                 $btn.prop('disabled', true);
@@ -5536,6 +5595,11 @@
                             const redTri = atOrAboveLmp
                                 ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>')
                                 : '';
+                            const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
+                                && currentPrice.toFixed(2) !== sprice.toFixed(2))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
+                                : '';
 
                             // When SPRICE matches Amazon price and is below LMP, show "-" (hold)
                             if (!atOrAboveLmp && currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
@@ -5551,7 +5615,7 @@
                             }
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + redTri + '</span>';
+                                dot + formattedValue + blueTri + redTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -5733,6 +5797,10 @@
                                 
                                 if (!sku || !price || price <= 0 || isNaN(price)) {
                                     showToast('error', 'Invalid SKU or price');
+                                    return;
+                                }
+                                if (amazonListingPriceEqualsSprice(rowData, price)) {
+                                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
                                     return;
                                 }
                                 
@@ -6806,6 +6874,12 @@
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'price');
                     });
                 }
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
+                        return amazonHasBlueTriangle(data);
+                    });
+                }
                 updateCalcValues();
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
@@ -7007,6 +7081,14 @@
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');
                 }
+                let blueTriangleCount = 0;
+                allData.forEach(function(row) {
+                    if (amazonHasBlueTriangle(row)) blueTriangleCount++;
+                });
+                $('#amazon-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
+                syncAmazonBlueTriangleBadgeState();
 
                 // Filtered (active) row count — exclude parent summary rows
                 const visibleRowCount = data.filter(function(row) {

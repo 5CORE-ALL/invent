@@ -1247,7 +1247,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push Prc: Your=Std. 0 Sold → Sale=GROI. Sold → Sale=Std−(PRMT+CVR Disc+CVR UP/DN). Min=Sale; Biz=Sale×0.95. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std. 0 Sold → Sale=GROI. Sold → Sale=Std−(PRMT+CVR Disc+CVR UP/DN). Sale=Biz=Min. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -1370,7 +1370,7 @@
          * Push Prc plan per SKU:
          *  0 Sold → Sale = GROI target (0 Sold owns price; UP/DN does not stack)
          *  Sold   → Sale = Std × (1 − (PRMT + CVR Disc + CVR UP/DN)/100)
-         *  Your = Std, Min = Sale, Biz = Sale × 0.95
+         *  Your = Std; Sale = Business = Min
          */
         function computeAmzTDiscountsPct(d) {
             const stack = computeAmzRuleStack(d);
@@ -1392,7 +1392,7 @@
             const saleBase = sale != null ? sale : amzPefRound2(std);
             const max = amzPefRound2(std * 1.10);
             const min = saleBase;
-            const business = amzPefRound2(Math.max(0.01, saleBase * 0.95));
+            const business = saleBase;
             const effective = sale != null ? sale : std;
             return {
                 std: amzPefRound2(std),
@@ -1869,6 +1869,14 @@
                 amzPefToast('error', 'Set Std Prc first (optional PRMT% / CVR Discount for Sale)');
                 return;
             }
+            const liveEq = (typeof amazonListingPriceEqualsSprice === 'function')
+                ? amazonListingPriceEqualsSprice(d, plan.effective)
+                : (Number(d.price) > 0 && Number(plan.effective) > 0
+                    && Math.round(Number(d.price) * 100) === Math.round(Number(plan.effective) * 100));
+            if (liveEq) {
+                amzPefToast('success', sku + ': Price already equals S PRC — left unchanged');
+                return;
+            }
             const confirmSale = plan.sale != null ? plan.sale : plan.std;
             if (!confirm(
                 'Queue Push Prc for ' + sku + ' in background?\n\n'
@@ -1897,24 +1905,38 @@
                 return;
             }
             const ready = [];
+            let alreadyEqual = 0;
             targets.forEach(function(t) {
                 const d = t.row.getData();
                 const plan = computeAmzPushPrcPlan(d);
-                if (plan && plan.std > 0) {
-                    ready.push({ row: t.row, d: d, plan: plan });
+                if (!plan || !(plan.std > 0)) return;
+                const liveEq = (typeof amazonListingPriceEqualsSprice === 'function')
+                    ? amazonListingPriceEqualsSprice(d, plan.effective)
+                    : (Number(d.price) > 0 && Number(plan.effective) > 0
+                        && Math.round(Number(d.price) * 100) === Math.round(Number(plan.effective) * 100));
+                if (liveEq) {
+                    alreadyEqual++;
+                    return;
                 }
+                ready.push({ row: t.row, d: d, plan: plan });
             });
-            const skipped = targets.length - ready.length;
+            const skipped = targets.length - ready.length - alreadyEqual;
             if (!ready.length) {
-                amzPefToast('error', 'Selected SKUs need Std Prc set');
+                amzPefToast(
+                    alreadyEqual ? 'success' : 'error',
+                    alreadyEqual
+                        ? 'Price already equals S PRC — left unchanged'
+                        : 'Selected SKUs need Std Prc set'
+                );
                 return;
             }
             if (!confirm(
                 'Queue Push Prc for ' + ready.length + ' selected SKU(s) in background?'
                 + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
+                + (alreadyEqual ? ('\n(' + alreadyEqual + ' left unchanged — Price = S PRC)') : '')
                 + '\n\nEach SKU uses its own PRMT, CVR Disc, 0 Sold GROI, and CVR UP/DN.'
                 + '\nYour=Std; 0 Sold Sale=GROI; Sold Sale=Std−(PRMT+CVR Disc+UP/DN);'
-                + '\nMin=Sale; Biz=Sale×0.95'
+                + '\nSale=Business=Min'
                 + '\n\nSafe to refresh — progress continues. You can select more and queue again.'
             )) return;
 
