@@ -3826,9 +3826,9 @@
                 if (inventoryFilter === 'zero' && inv !== 0) return false;
                 if (inventoryFilter === 'more' && inv <= 0) return false;
                 
-                // Apply NRL filter
-                if (nrlFilter === 'req' && row.nr_req === 'NR') return false;
-                if (nrlFilter === 'nr' && row.nr_req !== 'NR') return false;
+                // Apply NRL filter (dropdown values are REQ / NR)
+                if (nrlFilter === 'REQ' && row.nr_req !== 'REQ') return false;
+                if (nrlFilter === 'NR' && row.nr_req !== 'NR') return false;
                 
                 return true;
             });
@@ -3917,7 +3917,8 @@
             setShopifyB2cSummaryBadge($('#total-b2b-l30-badge'), `B2B: ${totalB2BL30.toLocaleString()}`, totalB2BL30);
             setShopifyB2cSummaryBadge($('#zero-sold-count-badge'), `0 Sold: ${zeroSoldCount}`, zeroSoldCount);
             if (window.LmpMissingBadge) {
-                LmpMissingBadge.update('#shopifyb2c-lmp-missing-badge', allData, 'shopifyb2c');
+                // Same INV + REQ + child-SKU set the table uses when this badge is clicked
+                LmpMissingBadge.update('#shopifyb2c-lmp-missing-badge', data, 'shopifyb2c');
             }
             if (window.PriceGtLmpBadge) {
                 PriceGtLmpBadge.update('#shopifyb2c-price-gt-lmp-badge', allData, 'shopifyb2c', 'Price');
