@@ -36,6 +36,30 @@ class ReverbSearchController extends Controller
         $searchQuery = $request->input('query');
         $marketplace = $request->input('marketplace', 'reverb');
         $maxPages = (int) $request->input('max_pages', 5);
+        $forceRefresh = $request->boolean('force_refresh', false);
+
+        if (! $forceRefresh) {
+            $cached = ReverbCompetitorItem::where('search_query', $searchQuery)
+                ->orderBy('position', 'asc')
+                ->get();
+            if ($cached->isNotEmpty()) {
+                $priceStats = $this->calculatePriceStats($cached);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Loaded saved results (no API credits used)',
+                    'query' => $searchQuery,
+                    'from_cache' => true,
+                    'total_results' => $cached->count(),
+                    'price_stats' => [
+                        'min_price' => $priceStats['min_price'],
+                        'max_price' => $priceStats['max_price'],
+                        'avg_price' => $priceStats['avg_price'],
+                    ],
+                    'data' => $cached,
+                ]);
+            }
+        }
 
         $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
         $collectedItemIds = [];
@@ -207,7 +231,7 @@ class ReverbSearchController extends Controller
         $searches = ReverbCompetitorItem::select('search_query')
             ->groupBy('search_query')
             ->orderByRaw('MAX(created_at) DESC')
-            ->limit(10)
+            ->limit(50)
             ->pluck('search_query');
 
         return response()->json([

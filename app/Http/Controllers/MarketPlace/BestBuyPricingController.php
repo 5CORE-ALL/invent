@@ -1315,7 +1315,9 @@ class BestBuyPricingController extends Controller
             $itemId = trim((string) ($lmp->item_id ?: $requestItemId));
             $toDelete = collect([$lmp]);
             if ($itemId !== '') {
-                $toDelete = BestbuySkuCompetitor::query()->where('item_id', $itemId)->get();
+                $candidates = BestbuySkuCompetitor::query()->where('item_id', $itemId)->get();
+                $filtered = LmpSkuGroupService::filterRowsToSkuGroup($candidates, (string) $lmp->sku);
+                $toDelete = $filtered->isNotEmpty() ? $filtered : collect([$lmp]);
             }
 
             $deletedIds = [];

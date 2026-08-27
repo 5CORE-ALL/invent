@@ -296,6 +296,12 @@
                         </div>
                     </div>
 
+                    <div class="form-check mt-2 mb-2">
+                        <input class="form-check-input" type="checkbox" id="forceRefresh">
+                        <label class="form-check-label" for="forceRefresh">
+                            Refresh from API (uses credits). Leave off to reuse saved results.
+                        </label>
+                    </div>
                     <button type="submit" class="btn btn-dark btn-lg">
                         <i class="mdi mdi-magnify me-2"></i>Search Shein
                     </button>
@@ -599,6 +605,7 @@ $(document).ready(function() {
                 country: country,
                 order_by: orderBy,
                 max_products: maxProducts,
+                force_refresh: $('#forceRefresh').is(':checked') ? 1 : 0,
                 _token: '{{ csrf_token() }}'
             },
             success: function(response) {
@@ -956,8 +963,25 @@ $(document).ready(function() {
 
     window.loadHistoryQuery = function(query) {
         $('#searchQuery').val(query);
-        performSearch(query);
+        $('#loadingSpinner').show();
+        $('#resultsContainer').hide();
+        currentSearchQuery = query;
+        $.get('/repricer/shein-search/results', { query: query })
+            .done(function(response) {
+                $('#loadingSpinner').hide();
+                if (response.success && (response.data || []).length) {
+                    response.from_cache = true;
+                    displayResults(response);
+                    if (typeof loadFilterOptions === 'function') loadFilterOptions(query);
+                    return;
+                }
+                performSearch(query);
+            })
+            .fail(function() {
+                performSearch(query);
+            });
     };
+    loadSearchHistory();
 });
 </script>
 @endsection

@@ -62,6 +62,30 @@ class SheinSearchController extends Controller
         $country = strtolower((string) $request->input('country', config('services.apify.shein.country', 'us')));
         $maxProducts = (int) $request->input('max_products', config('services.apify.shein.max_products', 100));
         $orderBy = $request->input('order_by', 'recommend');
+        $forceRefresh = $request->boolean('force_refresh', false);
+
+        if (! $forceRefresh) {
+            $cached = SheinCompetitorProduct::where('search_query', $searchQuery)
+                ->orderBy('position', 'asc')
+                ->get();
+            if ($cached->isNotEmpty()) {
+                $priceStats = $this->calculatePriceStats($cached);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Loaded saved results (no API credits used)',
+                    'query' => $searchQuery,
+                    'from_cache' => true,
+                    'total_results' => $cached->count(),
+                    'price_stats' => [
+                        'min_price' => $priceStats['min_price'],
+                        'max_price' => $priceStats['max_price'],
+                        'avg_price' => $priceStats['avg_price'],
+                    ],
+                    'data' => $cached,
+                ]);
+            }
+        }
 
         $token = config('services.apify.token');
         if (!$token) {
@@ -358,7 +382,7 @@ class SheinSearchController extends Controller
         $searches = SheinCompetitorProduct::select('search_query')
             ->groupBy('search_query')
             ->orderByRaw('MAX(created_at) DESC')
-            ->limit(10)
+            ->limit(50)
             ->pluck('search_query');
 
         return response()->json([

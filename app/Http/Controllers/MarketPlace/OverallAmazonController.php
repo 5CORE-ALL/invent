@@ -4512,9 +4512,11 @@ class OverallAmazonController extends Controller
             // Delete every linked-SKU copy of this listing so it does not reappear.
             $toDelete = collect([$lmp]);
             if ($asin !== '') {
-                $toDelete = AmazonSkuCompetitor::query()
+                $candidates = AmazonSkuCompetitor::query()
                     ->whereRaw('UPPER(TRIM(asin)) = ?', [strtoupper($asin)])
                     ->get();
+                $filtered = LmpSkuGroupService::filterRowsToSkuGroup($candidates, (string) $sku);
+                $toDelete = $filtered->isNotEmpty() ? $filtered : collect([$lmp]);
             }
 
             $deletedIds = [];

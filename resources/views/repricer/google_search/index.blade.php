@@ -160,8 +160,23 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Multiple SKUs</label>
+                                    <div class="mb-2 d-flex gap-2">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllSkus">
+                                            <i class="mdi mdi-checkbox-marked"></i> Select All
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllSkus">
+                                            <i class="mdi mdi-checkbox-blank-outline"></i> Deselect All
+                                        </button>
+                                        <input type="text" class="form-control form-control-sm" id="skuSearchInput" placeholder="Search SKUs...">
+                                    </div>
                                     <div id="skuCheckboxList" style="max-height:180px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;padding:10px;">
                                         <p class="text-muted mb-0">Loading SKUs...</p>
+                                    </div>
+                                    <div class="mt-1">
+                                        <small class="text-muted">
+                                            Selected: <span id="selectedSkuCount" class="fw-bold text-primary">0</span> SKU(s)
+                                            <span id="skuSearchEmpty" class="text-danger ms-2" style="display:none;">No matching SKUs</span>
+                                        </small>
                                     </div>
                                 </div>
                                 <div class="col-12 text-center">
@@ -204,6 +219,16 @@ $(function() {
         $('.competitor-checkbox').prop('checked', $(this).prop('checked'));
     });
     $('#applyFiltersBtn').on('click', applyFiltersAndSort);
+    $('#selectAllSkus').on('click', function() {
+        $('.sku-checkbox:visible').prop('checked', true);
+        updateSelectedSkuCount();
+    });
+    $('#deselectAllSkus').on('click', function() {
+        $('.sku-checkbox').prop('checked', false);
+        updateSelectedSkuCount();
+    });
+    $('#skuSearchInput').on('input', filterSkuList);
+    $(document).on('change', '.sku-checkbox', updateSelectedSkuCount);
 
     function performSearch(query) {
         currentSearchQuery = query;
@@ -396,7 +421,27 @@ $(function() {
                 html += '<div class="form-check mb-1"><input class="form-check-input sku-checkbox" type="checkbox" value="' + sku + '" id="sku-' + id + '"><label class="form-check-label" for="sku-' + id + '">' + sku + '</label></div>';
             });
             $('#skuCheckboxList').html(html || '<p class="text-muted mb-0">No SKUs found</p>');
+            filterSkuList();
+            updateSelectedSkuCount();
         });
+    }
+
+    function filterSkuList() {
+        const searchTerm = ($('#skuSearchInput').val() || '').toLowerCase().trim();
+        let visible = 0;
+        $('.sku-checkbox').each(function() {
+            const $checkbox = $(this);
+            const sku = ($checkbox.val() || '').toLowerCase();
+            const $parent = $checkbox.closest('.form-check');
+            const match = !searchTerm || sku.includes(searchTerm);
+            $parent.toggle(match);
+            if (match) visible++;
+        });
+        $('#skuSearchEmpty').toggle($('.sku-checkbox').length > 0 && visible === 0);
+    }
+
+    function updateSelectedSkuCount() {
+        $('#selectedSkuCount').text($('.sku-checkbox:checked').length);
     }
 
     function saveSelectedCompetitors() {

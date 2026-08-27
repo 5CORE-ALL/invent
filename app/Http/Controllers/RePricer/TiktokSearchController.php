@@ -56,6 +56,31 @@ class TiktokSearchController extends Controller
         $marketplace = $request->input('marketplace', 'tiktok');
         $region = strtoupper((string) $request->input('region', config('services.apify.tiktok.region', 'US')));
         $maxProducts = (int) $request->input('max_products', config('services.apify.tiktok.max_products', 100));
+        $forceRefresh = $request->boolean('force_refresh', false);
+
+        if (! $forceRefresh) {
+            $cached = TiktokCompetitorProduct::where('search_query', $searchQuery)
+                ->when($region, fn ($q) => $q->where('region', $region))
+                ->orderBy('position', 'asc')
+                ->get();
+            if ($cached->isNotEmpty()) {
+                $priceStats = $this->calculatePriceStats($cached);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Loaded saved results (no API credits used)',
+                    'query' => $searchQuery,
+                    'from_cache' => true,
+                    'total_results' => $cached->count(),
+                    'price_stats' => [
+                        'min_price' => $priceStats['min_price'],
+                        'max_price' => $priceStats['max_price'],
+                        'avg_price' => $priceStats['avg_price'],
+                    ],
+                    'data' => $cached,
+                ]);
+            }
+        }
 
         $token = config('services.apify.token');
         if (!$token) {
@@ -236,7 +261,7 @@ class TiktokSearchController extends Controller
         $searches = TiktokCompetitorProduct::select('search_query')
             ->groupBy('search_query')
             ->orderByRaw('MAX(created_at) DESC')
-            ->limit(10)
+            ->limit(50)
             ->pluck('search_query');
 
         return response()->json([

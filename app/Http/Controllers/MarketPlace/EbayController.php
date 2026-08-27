@@ -12,6 +12,7 @@ use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
 use App\Models\LmpCompetitorHistory;
+use App\Services\LmpSkuGroupService;
 use App\Models\ChannelMaster;
 use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
@@ -5322,9 +5323,11 @@ class EbayController extends Controller
             // Deleting only one row lets the same listing reappear from a linked SKU.
             $toDelete = collect([$lmp]);
             if ($itemId !== '') {
-                $toDelete = \App\Models\EbaySkuCompetitor::query()
+                $candidates = \App\Models\EbaySkuCompetitor::query()
                     ->where('item_id', $itemId)
                     ->get();
+                $filtered = LmpSkuGroupService::filterRowsToSkuGroup($candidates, (string) $sku);
+                $toDelete = $filtered->isNotEmpty() ? $filtered : collect([$lmp]);
             }
 
             $deletedIds = [];

@@ -61,6 +61,37 @@ class LmpSkuGroupService
     }
 
     /**
+     * @return array<string, true>
+     */
+    public static function normalizedGroupKeySet(string $sku): array
+    {
+        $sku = trim($sku);
+        $service = new self();
+        $service->prepareForSkus([$sku]);
+        $group = $sku !== '' ? $service->groupContaining($sku) : [];
+        $keys = [];
+        foreach (array_merge($group, [$sku]) as $member) {
+            $norm = strtoupper(trim((string) $member));
+            if ($norm !== '') {
+                $keys[$norm] = true;
+            }
+        }
+
+        return $keys;
+    }
+
+    public static function filterRowsToSkuGroup($rows, string $sku)
+    {
+        $keys = self::normalizedGroupKeySet($sku);
+
+        return collect($rows)->filter(function ($row) use ($keys) {
+            $norm = strtoupper(trim((string) ($row->sku ?? '')));
+
+            return $norm !== '' && isset($keys[$norm]);
+        })->values();
+    }
+
+    /**
      * @return list<string>
      */
     public function groupContaining(string $sku): array

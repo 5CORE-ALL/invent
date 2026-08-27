@@ -2408,7 +2408,9 @@ class ReverbController extends Controller
             $itemId = trim((string) ($lmp->item_id ?: $requestItemId));
             $toDelete = collect([$lmp]);
             if ($itemId !== '') {
-                $toDelete = ReverbSkuCompetitor::query()->where('item_id', $itemId)->get();
+                $candidates = ReverbSkuCompetitor::query()->where('item_id', $itemId)->get();
+                $filtered = LmpSkuGroupService::filterRowsToSkuGroup($candidates, (string) $lmp->sku);
+                $toDelete = $filtered->isNotEmpty() ? $filtered : collect([$lmp]);
             }
 
             $deletedIds = [];

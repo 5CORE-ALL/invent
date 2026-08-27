@@ -43,6 +43,30 @@ class AmazonSearchController extends Controller
         $searchQuery = $request->input('query');
         $marketplace = $request->input('marketplace', 'amazon');
         $maxPages = $request->input('max_pages', 20);
+        $forceRefresh = $request->boolean('force_refresh', false);
+
+        if (! $forceRefresh) {
+            $cached = AmazonCompetitorAsin::where('search_query', $searchQuery)
+                ->orderBy('position', 'asc')
+                ->get();
+            if ($cached->isNotEmpty()) {
+                $priceStats = $this->calculatePriceStats($cached);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Loaded saved results (no API credits used)',
+                    'query' => $searchQuery,
+                    'from_cache' => true,
+                    'total_results' => $cached->count(),
+                    'price_stats' => [
+                        'min_price' => $priceStats['min_price'],
+                        'max_price' => $priceStats['max_price'],
+                        'avg_price' => $priceStats['avg_price'],
+                    ],
+                    'data' => $cached,
+                ]);
+            }
+        }
         
         $serpApiKey = config('services.serpapi.key');
         
@@ -272,8 +296,8 @@ class AmazonSearchController extends Controller
     {
         $searches = AmazonCompetitorAsin::select('search_query')
             ->groupBy('search_query')
-            ->orderBy('created_at', 'desc')
-            ->limit(10)
+            ->orderByRaw('MAX(created_at) DESC')
+            ->limit(50)
             ->pluck('search_query');
 
         return response()->json([
