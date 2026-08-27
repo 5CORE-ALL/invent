@@ -3398,12 +3398,11 @@
             ParentExpand.bind();
         }
 
-        // SKU Search functionality
+        // SKU / Parent search: use applyFilters() so it stacks with INV, REQ,
+        // row-type (SKUs / Parents), and every other dropdown. table.setFilter()
+        // would replace those and bring parent summary rows back.
         $('#sku-search, #parent-search').on('keyup', function() {
-            table.setFilter([
-                { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
-                { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
-            ]);
+            applyFilters();
         });
 
         // NR/REQ dropdown change handler
@@ -3677,6 +3676,28 @@
             } else if (parentFilter === 'skus') {
                 table.addFilter(function(data) {
                     return !isShopifyB2cParentRow(data);
+                });
+            }
+
+            // SKU search: match child SKU (or Parent for parent rows).
+            // Normalize whitespace + case so "CAPO BLUE 2 Pcs" matches "CAPO BLUE 2PCS".
+            var searchVal = ($('#sku-search').val() || '').replace(/\s+/g, '').toLowerCase();
+            if (searchVal) {
+                table.addFilter(function(data) {
+                    var sku = (isShopifyB2cParentRow(data)
+                        ? (data.Parent || data['(Child) sku'] || data.sku || '')
+                        : (data['(Child) sku'] || data.sku || ''));
+                    sku = (sku + '').replace(/\s+/g, '').toLowerCase();
+                    return sku.indexOf(searchVal) !== -1;
+                });
+            }
+
+            // Parent search: filter by Parent column
+            var parentSearchVal = ($('#parent-search').val() || '').replace(/\s+/g, '').toLowerCase();
+            if (parentSearchVal) {
+                table.addFilter(function(data) {
+                    var parent = (data.Parent || '').toString().replace(/\s+/g, '').toLowerCase();
+                    return parent.indexOf(parentSearchVal) !== -1;
                 });
             }
 
