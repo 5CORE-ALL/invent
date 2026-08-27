@@ -13,7 +13,7 @@ class AutoPauseTemuAds extends Command
                             {--force : Run even if the daily cron toggle is paused}
                             {--goods-id= : Comma-separated goods IDs to retry}';
 
-    protected $description = 'Pause Active Temu ads that match L7 clicks < threshold and ROAS < Stop ROAS';
+    protected $description = 'Push Temu ads whose Active/Pause status changes from the L7 click limit';
 
     public function handle(TemuAdsAutoPauseService $service): int
     {
@@ -26,9 +26,8 @@ class AutoPauseTemuAds extends Command
         }
 
         $below = $service->l7ClicksRedBelow();
-        $stopRoas = $service->targetRoasBidding();
 
-        $this->info(($dryRun ? 'Dry-run: ' : '') . "Pausing ads with L7 clicks < {$below} and ROAS < {$stopRoas}...");
+        $this->info(($dryRun ? 'Dry-run: ' : '') . "Pushing only ads whose Active/Pause status changes from L7 clicks vs {$below}...");
 
         $bar = null;
         $onEach = null;
@@ -63,19 +62,19 @@ class AutoPauseTemuAds extends Command
             'dry_run' => $dryRun,
         ]);
 
-        $this->info("Matched {$stats['matched']}. Paused {$stats['paused']}. Failed {$stats['failed']}.");
+        $this->info("Matched {$stats['matched']}. Paused {$stats['paused']}. Resumed {$stats['resumed']}. Already correct {$stats['already']}. Failed {$stats['failed']}.");
         if ($stats['matched'] === 0) {
-            $this->warn('No rows have L7 clicks < '.$below.' and ROAS < '.$stopRoas.' with spend or clicks. Fetch L7 first if the table looks empty.');
+            $this->warn('No rows need an Active/Pause change from the L7 click limit ('.$below.'). Fetch L7 first if the table looks empty.');
         }
-        if ($dryRun && $stats['paused_goods'] !== []) {
-            foreach ($stats['paused_goods'] as $row) {
+        if ($dryRun) {
+            foreach (array_merge($stats['paused_goods'] ?? [], $stats['resumed_goods'] ?? []) as $row) {
                 $this->line(sprintf(
-                    '  %s  L7 clicks %d  ROAS %s  spend $%s  %s',
+                    '  %s  %s  L7 clicks %d  %s → %s',
                     $row['goods_id'],
+                    $row['action'] ?? '',
                     $row['clicks_l7'],
-                    $row['roas'],
-                    number_format((float) $row['ad_spend'], 2),
-                    $row['status'] ?? ''
+                    $row['status'] ?? '',
+                    ($row['action'] ?? '') === 'run' ? 'Active' : 'Inactive'
                 ));
             }
         }
@@ -85,6 +84,6 @@ class AutoPauseTemuAds extends Command
             }
         }
 
-        return $stats['failed'] > 0 && $stats['paused'] === 0 ? 1 : 0;
+        return $stats['failed'] > 0 && $stats['paused'] === 0 && ($stats['resumed'] ?? 0) === 0 ? 1 : 0;
     }
 }

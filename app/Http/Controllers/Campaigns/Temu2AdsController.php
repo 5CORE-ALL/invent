@@ -87,6 +87,9 @@ class Temu2AdsController extends Controller
             $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
             $soldQty = $shopify ? (float) ($shopify->quantity ?? $shopify->shopify_l30 ?? 0) : 0;
             $unitPrice = $shopify ? (float) ($shopify->price ?? $shopify->b2c_price ?? 0) : 0;
+            $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+            $ovl30 = (int) round($soldQty);
+            $dilPercent = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
             $spend = (float) ($r->spend ?? 0);
             $sales = (float) ($r->base_price_sales ?? 0);
             $status = $r->displayAdStatus();
@@ -96,7 +99,9 @@ class Temu2AdsController extends Controller
                 'goods_id' => $r->goods_id,
                 'sku' => $r->sku,
                 'image_path' => $this->productMasterImagePath($productMaster, $shopify),
-                'inv' => $shopify ? (int) ($shopify->inv ?? 0) : 0,
+                'inv' => $inv,
+                'ovl30' => $ovl30,
+                'dil_percent' => $dilPercent,
                 'period' => $r->report_range,
                 'impressions' => $r->impressions,
                 'clicks' => $r->clicks,
@@ -445,7 +450,7 @@ class Temu2AdsController extends Controller
             'pause_run_inv_zero' => $this->pauseRunInvZero(),
             'roas_rule_slabs' => $this->roasRuleSlabs(),
             'auto_pause_cron' => $pause->cronEnabled(),
-            'matching_active_ads' => count($pause->matchingAds()),
+            'matching_active_ads' => 0,
         ]);
     }
 
@@ -519,7 +524,7 @@ class Temu2AdsController extends Controller
             'pause_run_inv_zero' => $invZero,
             'roas_rule_slabs' => $roasRuleSlabs,
             'auto_pause_cron' => $pause->cronEnabled(),
-            'matching_active_ads' => count($pause->matchingAds()),
+            'matching_active_ads' => 0,
         ]);
     }
 
@@ -591,7 +596,7 @@ class Temu2AdsController extends Controller
     private function defaultRoasRuleSlabs(): array
     {
         return [
-            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => -3.0, 'style' => 'red'],
+            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 4.0, 'style' => 'red'],
             ['spend_min' => 0.01, 'spend_max' => 5.99, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 5.0, 'style' => 'yellow'],
             ['spend_min' => 6.0, 'spend_max' => 9.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 10.0, 'style' => 'green'],
             ['spend_min' => 9.01, 'spend_max' => null, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 12.0, 'style' => 'pink'],
@@ -688,6 +693,15 @@ class Temu2AdsController extends Controller
     {
         $first = $slabs[0] ?? null;
         if (
+            $first
+            && round((float) ($first['spend_min'] ?? -1), 2) === 0.0
+            && round((float) ($first['spend_max'] ?? -1), 2) === 0.0
+            && (float) ($first['target_roas'] ?? 0) === -3.0
+        ) {
+            $slabs[0]['target_roas'] = 4.0;
+            $first = $slabs[0];
+        }
+        if (
             ! $first
             || round((float) ($first['spend_min'] ?? -1), 2) !== 0.0
             || round((float) ($first['spend_max'] ?? -1), 2) !== 5.99
@@ -696,7 +710,7 @@ class Temu2AdsController extends Controller
         }
 
         return array_merge([
-            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => -3.0, 'style' => 'red'],
+            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 4.0, 'style' => 'red'],
             [
                 'spend_min' => 0.01,
                 'spend_max' => 5.99,
@@ -709,26 +723,26 @@ class Temu2AdsController extends Controller
     }
 
     /**
-     * Pause Active ads that match the L7 clicks / Stop ROAS rule.
+     * Pause Active ads that match the L7 clicks / T ROAS rule.
      */
     public function autoPause(Request $request, Temu2AdsAutoPauseService $pause)
     {
         $dryRun = $request->boolean('dry_run');
         $stats = $pause->pauseMatching($dryRun);
 
-        $rule = "L7 < {$stats['l7_clicks_red_below']} → ROAS {$stats['target_roas_bidding']}";
+        $rule = "L7 click limit {$stats['l7_clicks_red_below']}";
         if ($dryRun) {
-            $message = "{$stats['matched']} Active ads match {$rule}";
+            $message = "{$stats['matched']} ads would change Active/Pause from {$rule}";
         } elseif ($stats['matched'] === 0) {
-            $message = "No Active ads match {$rule}";
+            $message = "No ads need an Active/Pause change from {$rule}";
         } else {
-            $message = "Paused {$stats['paused']}/{$stats['matched']} ads ({$rule})";
+            $message = "Paused {$stats['paused']}, resumed {$stats['resumed']} ({$rule})";
             if ($stats['failed'] > 0) {
                 $message .= ". Failed {$stats['failed']}";
             }
         }
 
-        $success = $stats['failed'] === 0 || $stats['paused'] > 0 || $stats['matched'] === 0;
+        $success = $stats['failed'] === 0 || $stats['paused'] > 0 || ($stats['resumed'] ?? 0) > 0 || $stats['matched'] === 0;
 
         Log::info('Temu2AdsController::autoPause', [
             'dry_run' => $dryRun,
@@ -758,8 +772,8 @@ class Temu2AdsController extends Controller
             'success' => true,
             'enabled' => $enabled,
             'message' => $enabled
-                ? 'Daily auto-pause cron is ON. Matching ads will pause after the L7 fetch and at 16:10 IST.'
-                : 'Daily auto-pause cron is PAUSED. Scheduled and post-fetch auto-pause will not run.',
+                ? 'Auto Cron is ON. Only rows whose Active/Pause status changes from the click limit are pushed after L7 fetch and at 16:10 IST.'
+                : 'Auto Cron is OFF. Scheduled and post-fetch pushes will not run.',
         ]);
     }
 

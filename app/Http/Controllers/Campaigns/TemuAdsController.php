@@ -8,6 +8,7 @@ use App\Models\MarketplaceDailyMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
+use App\Services\TemuAdCreateRejectService;
 use App\Services\TemuAdsApiReportService;
 use App\Services\TemuAdsAutoPauseService;
 use App\Services\TemuApiService;
@@ -40,7 +41,25 @@ class TemuAdsController extends Controller
             $query->where('period', $period);
         }
 
-        $records = $query->get();
+        $hasCreateReject = Schema::hasColumn('temu_ads_api_reports', 'ad_create_reject');
+        $hasPauseRunOk = Schema::hasColumn('temu_ads_api_reports', 'pause_run_ok');
+        $listColumns = [
+            'id', 'goods_id', 'sku', 'period', 'impressions', 'clicks', 'ctr',
+            'cart_cnt', 'order_pay_cnt', 'order_pay_amt', 'ad_spend', 'roas', 'acos',
+            'ad_status', 'success', 'error_msg', 'fetched_at', 'updated_at',
+        ];
+        if ($hasCreateReject) {
+            $listColumns[] = 'ad_create_reject';
+        }
+        if ($hasPauseRunOk) {
+            $listColumns[] = 'pause_run_ok';
+            $listColumns[] = 'pause_run_error';
+            $listColumns[] = 'pause_run_at';
+            if (Schema::hasColumn('temu_ads_api_reports', 'pause_run_history')) {
+                $listColumns[] = 'pause_run_history';
+            }
+        }
+        $records = $query->get($listColumns);
         $spendSum = round((float) $records->sum(fn (TemuAdsApiReport $r) => (float) ($r->ad_spend ?? 0)), 2);
         $imprSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->impressions ?? 0));
         $clickSum = (int) $records->sum(fn (TemuAdsApiReport $r) => (int) ($r->clicks ?? 0));
@@ -58,22 +77,26 @@ class TemuAdsController extends Controller
             ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
 
         $spendL1ByGoods = [];
-        if (! in_array($period, ['L7', 'L30'], true)) {
-            $spendLookups = TemuAdsApiReport::query()
-                ->whereIn('period', ['L7', 'L30'])
-                ->whereNotNull('raw_response')
-                ->get(['goods_id', 'period', 'raw_response']);
-            foreach ($spendLookups as $rep) {
-                $gidKey = (string) $rep->goods_id;
-                $extracted = $service->lastDaySpendFromResult($rep->rawPayload);
-                if ($extracted === null) {
-                    continue;
+        $spendLookupPeriods = in_array($period, ['L7', 'L30'], true) ? [$period] : ['L7', 'L30'];
+        TemuAdsApiReport::query()
+            ->whereIn('period', $spendLookupPeriods)
+            ->whereNotNull('goods_id')
+            ->whereNotNull('raw_response')
+            ->select(['id', 'goods_id', 'period', 'raw_response'])
+            ->orderBy('id')
+            ->chunkById(40, function ($chunk) use (&$spendL1ByGoods, $service) {
+                foreach ($chunk as $rep) {
+                    $gidKey = (string) $rep->goods_id;
+                    $extracted = $service->lastDaySpendFromResult($rep->rawPayload);
+                    $rep->raw_response = null;
+                    if ($extracted === null) {
+                        continue;
+                    }
+                    if ($rep->period === 'L7' || ! isset($spendL1ByGoods[$gidKey])) {
+                        $spendL1ByGoods[$gidKey] = $extracted;
+                    }
                 }
-                if ($rep->period === 'L7' || ! isset($spendL1ByGoods[$gidKey])) {
-                    $spendL1ByGoods[$gidKey] = $extracted;
-                }
-            }
-        }
+            });
 
         $skus = $records->pluck('sku')
             ->filter(fn ($s) => $s !== null && trim((string) $s) !== '')
@@ -84,7 +107,7 @@ class TemuAdsController extends Controller
         $shopifyByNorm = ShopifySku::buildShopifySkuLookupByNormalizedSku($skus);
         $productMasterByNorm = $this->productMasterByNormalizedSku($skus);
 
-        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $service) {
+        $rows = $records->map(function (TemuAdsApiReport $r) use ($l7ClicksByGoods, $l30ClicksByGoods, $spendL1ByGoods, $shopifyByNorm, $productMasterByNorm, $hasCreateReject, $hasPauseRunOk) {
             $clicks = (int) ($r->clicks ?? 0);
             $orders = (int) ($r->order_pay_cnt ?? 0);
             $gid = (string) $r->goods_id;
@@ -96,25 +119,25 @@ class TemuAdsController extends Controller
             $clicksL30 = $r->period === 'L30'
                 ? $clicks
                 : (int) (optional($l30Row)->clicks ?? 0);
-            $spendL1 = in_array((string) $r->period, ['L7', 'L30'], true)
-                ? $service->lastDaySpendFromResult($r->rawPayload)
-                : null;
-            if ($spendL1 === null) {
-                $spendL1 = $spendL1ByGoods[$gid] ?? 0;
-            }
+            $spendL1 = $spendL1ByGoods[$gid] ?? 0;
 
             $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->sku ?? ''));
             $shopify = $skuKey !== '' ? ($shopifyByNorm[$skuKey] ?? null) : null;
             $productMaster = $skuKey !== '' ? ($productMasterByNorm[$skuKey] ?? null) : null;
             $soldQty = $shopify ? (float) ($shopify->quantity ?? $shopify->shopify_l30 ?? 0) : 0;
             $unitPrice = $shopify ? (float) ($shopify->price ?? $shopify->b2c_price ?? 0) : 0;
+            $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+            $ovl30 = (int) round($soldQty);
+            $dilPercent = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
 
             return [
                 'id' => $r->id,
                 'goods_id' => $r->goods_id,
                 'sku' => $r->sku,
                 'image_path' => $this->productMasterImagePath($productMaster, $shopify),
-                'inv' => $shopify ? (int) ($shopify->inv ?? 0) : 0,
+                'inv' => $inv,
+                'ovl30' => $ovl30,
+                'dil_percent' => $dilPercent,
                 'period' => $r->period,
                 'impressions' => $r->impressions,
                 'clicks' => $r->clicks,
@@ -131,11 +154,16 @@ class TemuAdsController extends Controller
                 'roas' => $r->roas,
                 'acos' => $r->acos,
                 'ad_status' => $r->displayAdStatus(),
+                'ad_create_reject' => $hasCreateReject ? trim((string) ($r->ad_create_reject ?? '')) : '',
+                'pause_run_ok' => $hasPauseRunOk ? $r->pause_run_ok : null,
+                'pause_run_error' => $hasPauseRunOk ? trim((string) ($r->pause_run_error ?? '')) : '',
+                'pause_run_at' => $hasPauseRunOk && $r->pause_run_at ? optional($r->pause_run_at)->toDateTimeString() : null,
+                'pause_run_history' => $hasPauseRunOk && is_array($r->pause_run_history) ? $r->pause_run_history : [],
                 'success' => (bool) $r->success,
                 'error_msg' => $r->error_msg,
                 'fetched_at' => optional($r->fetched_at)->toDateTimeString(),
                 'updated_at' => optional($r->updated_at)->toDateTimeString(),
-                'raw_response' => $r->raw_response,
+                'has_raw' => true,
             ];
         })->values();
 
@@ -163,6 +191,21 @@ class TemuAdsController extends Controller
             'clicks_sum' => $clickSum,
             'channel_sales' => $channelSales,
             'tacos' => $tacos,
+        ]);
+    }
+
+    public function getRaw(int $id)
+    {
+        $row = TemuAdsApiReport::query()->find($id, ['id', 'goods_id', 'period', 'raw_response']);
+        if (! $row) {
+            return response()->json(['success' => false, 'raw_response' => null], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'raw_response' => $row->raw_response,
+            'goods_id' => $row->goods_id,
+            'period' => $row->period,
         ]);
     }
 
@@ -220,7 +263,7 @@ class TemuAdsController extends Controller
     /**
      * Create a Temu search ad (temu.searchrec.ad.create).
      */
-    public function createAd(Request $request, TemuApiService $temuApi)
+    public function createAd(Request $request, TemuApiService $temuApi, TemuAdCreateRejectService $rejects)
     {
         $request->validate([
             'goods_id' => 'required|string|max:64',
@@ -233,10 +276,20 @@ class TemuAdsController extends Controller
         $roas = (float) $request->input('roas');
 
         $result = $temuApi->createAd($goodsId, $budget, $roas);
+        $rejectInfo = ['rejected' => false, 'task_id' => null, 'title' => null];
         if ($result['ok']) {
+            $rejects->clearReject($goodsId);
             $statuses = $temuApi->queryAdStatuses([$goodsId]);
             $status = $statuses['statuses'][$goodsId] ?? 'Inactive';
             TemuAdsApiReport::where('goods_id', $goodsId)->update(['ad_status' => $status]);
+        } else {
+            $sku = TemuAdsApiReport::query()->where('goods_id', $goodsId)->value('sku');
+            $rejectInfo = $rejects->handleFailedCreate(
+                $goodsId,
+                $sku !== null ? (string) $sku : null,
+                (string) ($result['error_msg'] ?? ''),
+                $result['error_code'] ?? null
+            );
         }
 
         Log::info('TemuAdsController::createAd', [
@@ -245,21 +298,31 @@ class TemuAdsController extends Controller
             'roas' => $roas,
             'ok' => $result['ok'],
             'error' => $result['error_msg'] ?? null,
+            'rejected' => $rejectInfo['rejected'],
+            'task_id' => $rejectInfo['task_id'],
         ]);
+
+        $failMessage = 'Create failed: '.($result['error_msg'] ?? 'unknown error');
+        if (! empty($rejectInfo['task_id']) && ! empty($rejectInfo['title'])) {
+            $failMessage .= ' Task created: '.$rejectInfo['title'];
+        }
 
         return response()->json([
             'success' => $result['ok'],
             'message' => $result['ok']
                 ? "Created Temu ad for goods {$goodsId} (budget \${$budget}, ROAS {$roas})"
-                : ('Create failed: ' . ($result['error_msg'] ?? 'unknown error')),
+                : $failMessage,
             'result' => $result['result'] ?? null,
+            'rejected' => $rejectInfo['rejected'],
+            'task_id' => $rejectInfo['task_id'],
+            'task_title' => $rejectInfo['title'],
         ], $result['ok'] ? 200 : 422);
     }
 
     /**
      * Create Temu search ads for many goods IDs (same budget / ROAS as Create Ad).
      */
-    public function createAdsBulk(Request $request, TemuApiService $temuApi)
+    public function createAdsBulk(Request $request, TemuApiService $temuApi, TemuAdCreateRejectService $rejects)
     {
         $request->validate([
             'goods_ids' => 'required|array|min:1|max:20',
@@ -283,6 +346,13 @@ class TemuAdsController extends Controller
             }
         }
 
+        $skuByGoods = TemuAdsApiReport::query()
+            ->whereIn('goods_id', $ids)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['goods_id', 'sku'])
+            ->mapWithKeys(fn (TemuAdsApiReport $r) => [(string) $r->goods_id => (string) $r->sku]);
+
         $created = [];
         $failed = [];
         foreach ($ids as $i => $goodsId) {
@@ -292,11 +362,21 @@ class TemuAdsController extends Controller
             $rowRoas = isset($roasByGoods[$goodsId]) ? (float) $roasByGoods[$goodsId] : $roas;
             $result = $temuApi->createAd($goodsId, $budget, $rowRoas);
             if ($result['ok'] ?? false) {
+                $rejects->clearReject($goodsId);
                 $created[] = $goodsId;
             } else {
+                $rejectInfo = $rejects->handleFailedCreate(
+                    $goodsId,
+                    $skuByGoods->get($goodsId),
+                    (string) ($result['error_msg'] ?? ''),
+                    $result['error_code'] ?? null
+                );
                 $failed[] = [
                     'goods_id' => $goodsId,
                     'message' => (string) ($result['error_msg'] ?? 'unknown error'),
+                    'rejected' => $rejectInfo['rejected'],
+                    'task_id' => $rejectInfo['task_id'],
+                    'task_title' => $rejectInfo['title'],
                 ];
             }
         }
@@ -466,11 +546,6 @@ class TemuAdsController extends Controller
     {
         try {
             $matching = 0;
-            try {
-                $matching = count($pause->matchingAds());
-            } catch (\Throwable $e) {
-                Log::warning('Temu ads color-rules matching count failed: '.$e->getMessage());
-            }
 
             return response()->json([
                 'l7_clicks_red_below' => $pause->l7ClicksRedBelow(),
@@ -566,7 +641,7 @@ class TemuAdsController extends Controller
             'pause_run_inv_zero' => $invZero,
             'roas_rule_slabs' => $roasRuleSlabs,
             'auto_pause_cron' => $pause->cronEnabled(),
-            'matching_active_ads' => count($pause->matchingAds()),
+            'matching_active_ads' => 0,
         ]);
     }
 
@@ -638,7 +713,7 @@ class TemuAdsController extends Controller
     private function defaultRoasRuleSlabs(): array
     {
         return [
-            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => -3.0, 'style' => 'red'],
+            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 4.0, 'style' => 'red'],
             ['spend_min' => 0.01, 'spend_max' => 5.99, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 5.0, 'style' => 'yellow'],
             ['spend_min' => 6.0, 'spend_max' => 9.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 10.0, 'style' => 'green'],
             ['spend_min' => 9.01, 'spend_max' => null, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 12.0, 'style' => 'pink'],
@@ -735,6 +810,15 @@ class TemuAdsController extends Controller
     {
         $first = $slabs[0] ?? null;
         if (
+            $first
+            && round((float) ($first['spend_min'] ?? -1), 2) === 0.0
+            && round((float) ($first['spend_max'] ?? -1), 2) === 0.0
+            && (float) ($first['target_roas'] ?? 0) === -3.0
+        ) {
+            $slabs[0]['target_roas'] = 4.0;
+            $first = $slabs[0];
+        }
+        if (
             ! $first
             || round((float) ($first['spend_min'] ?? -1), 2) !== 0.0
             || round((float) ($first['spend_max'] ?? -1), 2) !== 5.99
@@ -743,7 +827,7 @@ class TemuAdsController extends Controller
         }
 
         return array_merge([
-            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => -3.0, 'style' => 'red'],
+            ['spend_min' => 0.0, 'spend_max' => 0.0, 'roas_min' => null, 'roas_max' => null, 'target_roas' => 4.0, 'style' => 'red'],
             [
                 'spend_min' => 0.01,
                 'spend_max' => 5.99,
@@ -756,26 +840,26 @@ class TemuAdsController extends Controller
     }
 
     /**
-     * Pause Active ads that match the L7 clicks / Stop ROAS rule.
+     * Pause Active ads that match the L7 clicks / T ROAS rule.
      */
     public function autoPause(Request $request, TemuAdsAutoPauseService $pause)
     {
         $dryRun = $request->boolean('dry_run');
         $stats = $pause->pauseMatching($dryRun);
 
-        $rule = "L7 < {$stats['l7_clicks_red_below']} → ROAS {$stats['target_roas_bidding']}";
+        $rule = "L7 click limit {$stats['l7_clicks_red_below']}";
         if ($dryRun) {
-            $message = "{$stats['matched']} Active ads match {$rule}";
+            $message = "{$stats['matched']} ads would change Active/Pause from {$rule}";
         } elseif ($stats['matched'] === 0) {
-            $message = "No Active ads match {$rule}";
+            $message = "No ads need an Active/Pause change from {$rule}";
         } else {
-            $message = "Paused {$stats['paused']}/{$stats['matched']} ads ({$rule})";
+            $message = "Paused {$stats['paused']}, resumed {$stats['resumed']} ({$rule})";
             if ($stats['failed'] > 0) {
                 $message .= ". Failed {$stats['failed']}";
             }
         }
 
-        $success = $stats['failed'] === 0 || $stats['paused'] > 0 || $stats['matched'] === 0;
+        $success = $stats['failed'] === 0 || $stats['paused'] > 0 || ($stats['resumed'] ?? 0) > 0 || $stats['matched'] === 0;
 
         Log::info('TemuAdsController::autoPause', [
             'dry_run' => $dryRun,
@@ -805,15 +889,15 @@ class TemuAdsController extends Controller
             'success' => true,
             'enabled' => $enabled,
             'message' => $enabled
-                ? 'Daily auto-pause cron is ON. Matching ads will pause after the L7 fetch and at 16:10 IST.'
-                : 'Daily auto-pause cron is PAUSED. Scheduled and post-fetch auto-pause will not run.',
+                ? 'Auto Cron is ON. Only rows whose Active/Pause status changes from the click limit are pushed after L7 fetch and at 16:10 IST.'
+                : 'Auto Cron is OFF. Scheduled and post-fetch pushes will not run.',
         ]);
     }
 
     /**
      * Pause or run one Temu ad from the Pause/Run toggle.
      */
-    public function toggleAd(Request $request, TemuApiService $temuApi)
+    public function toggleAd(Request $request, TemuApiService $temuApi, TemuAdsAutoPauseService $pause)
     {
         $request->validate([
             'goods_id' => 'required|string|max:64',
@@ -826,29 +910,36 @@ class TemuAdsController extends Controller
             ? $temuApi->resumeAd($goodsId)
             : $temuApi->pauseAd($goodsId);
 
-        if ($result['ok'] ?? false) {
+        $ok = (bool) ($result['ok'] ?? false);
+        $verb = $action === 'run' ? 'Run' : 'Pause';
+        $message = $ok
+            ? "{$verb} sent to Temu for goods {$goodsId}"
+            : ("{$verb} failed: ".($result['error_msg'] ?? 'unknown error'));
+
+        if ($ok) {
             TemuAdsApiReport::where('goods_id', $goodsId)->update([
                 'ad_status' => $action === 'run' ? 'Active' : 'Inactive',
             ]);
         }
 
+        $history = $pause->recordPauseRunPush($goodsId, $action, $ok, $message);
+
         Log::info('TemuAdsController::toggleAd', [
             'goods_id' => $goodsId,
             'action' => $action,
-            'ok' => $result['ok'] ?? false,
+            'ok' => $ok,
             'error' => $result['error_msg'] ?? null,
         ]);
 
-        $verb = $action === 'run' ? 'Run' : 'Pause';
-
         return response()->json([
-            'success' => (bool) ($result['ok'] ?? false),
+            'success' => $ok,
             'action' => $action,
             'ad_status' => $action === 'run' ? 'Active' : 'Inactive',
-            'message' => ($result['ok'] ?? false)
-                ? "{$verb} sent to Temu for goods {$goodsId}"
-                : ("{$verb} failed: " . ($result['error_msg'] ?? 'unknown error')),
-        ], ($result['ok'] ?? false) ? 200 : 422);
+            'message' => $message,
+            'pause_run_ok' => $ok,
+            'pause_run_error' => $ok ? '' : $message,
+            'pause_run_history' => $history,
+        ], $ok ? 200 : 422);
     }
 
     /**

@@ -867,6 +867,32 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Listing-level reject (misleading / review / not eligible), not budget or ROAS errors.
+     */
+    public function isListingCreateReject(?string $message, mixed $errorCode = null): bool
+    {
+        $code = strtolower(trim((string) $errorCode));
+        if ($code === 'not_eligible') {
+            return true;
+        }
+
+        $lower = strtolower(trim((string) $message));
+        if ($lower === '') {
+            return false;
+        }
+        if (str_contains($lower, 'between 0.1 and 12') || str_contains($lower, 'target roas')) {
+            return false;
+        }
+
+        return str_contains($lower, 'misleading')
+            || str_contains($lower, 'ad approval')
+            || str_contains($lower, 'pass the review')
+            || str_contains($lower, 'seller center')
+            || str_contains($lower, 'rejected this listing')
+            || str_contains($lower, 'not eligible');
+    }
+
+    /**
      * Temu may return HTTP success with per-goods failures in createGoodsFailObjList.
      *
      * @param  array{ok: bool, result: mixed, error_code: mixed, error_msg: ?string, http_status: ?int, request: array}  $response

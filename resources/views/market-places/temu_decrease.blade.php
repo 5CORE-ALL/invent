@@ -1166,8 +1166,8 @@
                     </div>
                     <button type="button" id="temu-ads-rules-btn" class="btn btn-sm btn-outline-dark flex-shrink-0"
                             data-bs-toggle="modal" data-bs-target="#temuAdsRulesModal"
-                            title="Open L7 Clicks / Stop ROAS bidding rule">
-                        <i class="fas fa-sliders-h me-1"></i><span id="temu-ads-rules-summary">L7 &lt; 70 → ROAS 8</span>
+                            title="Ad rules — L7 clicks Pause/Run and Auto Cron">
+                        <i class="fas fa-sliders-h me-1"></i>Ad rules
                     </button>
                     <a href="{{ route('temu.ads') }}" class="btn btn-sm btn-outline-warning" title="Ads Spend / Clicks / ACOS / Status come from this page (temu_ads_api_reports)">
                         <i class="fas fa-bullhorn"></i> Ads
@@ -1264,7 +1264,7 @@
         </div>
     </div>
 
-    {{-- Shared L7 Clicks → Stop ROAS bidding rule --}}
+    {{-- Shared L7 Clicks → T ROAS bidding rule --}}
     <div class="modal fade" id="temuAdsRulesModal" tabindex="-1" aria-labelledby="temuAdsRulesModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -1273,32 +1273,29 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Shared with /temu/ads. If L7 clicks are below the threshold, the row is red. Active ads with L7 clicks below the threshold and ROAS below Stop ROAS are paused automatically after the daily L7 fetch when the cron is ON.</p>
+                    <p class="text-muted small mb-3">Shared with /temu/ads. L7 clicks below the threshold stay in Run mode. L7 clicks at or above the threshold are Pause. Auto Cron only pushes rows whose Active/Pause status actually changes.</p>
                     <div class="d-inline-flex flex-wrap align-items-center gap-1 border rounded px-3 py-2 bg-light">
                         <label for="temu-l7-clicks-red-threshold" class="mb-0 small fw-semibold text-nowrap text-dark">L7 Clicks &lt;</label>
                         <input type="number" id="temu-l7-clicks-red-threshold" class="form-control form-control-sm"
                                min="0" max="100000" step="1" value="70" style="width: 70px;">
-                        <span class="small fw-bold" style="color:#a00211;">Red</span>
+                        <span class="small fw-bold" style="color:#198754;">Run</span>
                         <span class="text-muted px-1">→</span>
-                        <label for="temu-target-roas-bidding" class="mb-0 small fw-semibold text-nowrap text-dark">Stop ROAS</label>
-                        <input type="number" id="temu-target-roas-bidding" class="form-control form-control-sm"
-                               min="0.1" max="1000" step="0.1" value="8" style="width: 70px;">
+                        <span class="small fw-semibold text-nowrap text-dark">L7 Clicks ≥ <span data-temu-l7-pause-threshold>70</span></span>
                         <span class="small fw-bold" style="color:#0d6efd;">Pause</span>
                     </div>
-                    <div id="temu-ads-cron-status" class="small mt-2 text-success">Daily cron: ON — auto-pause after L7 fetch and at 16:10 IST.</div>
+                    <div id="temu-ads-cron-status" class="small mt-2 text-success">Daily cron: ON — only rows whose Active/Pause status changes from the click limit, after L7 fetch and at 16:10 IST.</div>
                     <div id="temu-ads-pause-status" class="mt-3" style="display:none;"></div>
                 </div>
                 <div class="modal-footer flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-warning" id="temu-ads-cron-toggle-btn"
                             data-enabled="1"
-                            title="Daily auto-pause cron is ON. Click to pause it.">
-                        <i class="fas fa-pause me-1"></i>Pause Cron
+                            title="Auto cron is ON. Only rows whose Active/Pause status changes from the click limit are pushed. Click to turn off.">
+                        <i class="fas fa-bolt me-1"></i>Auto Cron
                     </button>
-                    <button type="button" class="btn btn-sm btn-danger" id="temu-ads-auto-pause-btn"
-                            title="Pause Active ads that match this rule on Temu now">
-                        <i class="fas fa-pause me-1"></i>Pause matching ads
+                    <button type="button" class="btn btn-sm btn-primary" id="temu-ads-save-rule-btn"
+                            title="Save the L7 clicks threshold">
+                        <i class="fas fa-save me-1"></i>Save
                     </button>
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -4484,25 +4481,16 @@
                 if (typeof TemuAdsColorRules.bindThresholdInput === 'function') {
                     TemuAdsColorRules.bindThresholdInput(document.getElementById('temu-l7-clicks-red-threshold'));
                 }
-                if (typeof TemuAdsColorRules.bindTargetRoasInput === 'function') {
-                    TemuAdsColorRules.bindTargetRoasInput(document.getElementById('temu-target-roas-bidding'));
-                }
-                if (typeof TemuAdsColorRules.bindRuleSummary === 'function') {
-                    TemuAdsColorRules.bindRuleSummary(document.getElementById('temu-ads-rules-summary'));
-                }
                 if (typeof TemuAdsColorRules.bindCronToggleButton === 'function') {
                     TemuAdsColorRules.bindCronToggleButton(
                         document.getElementById('temu-ads-cron-toggle-btn'),
                         document.getElementById('temu-ads-cron-status')
                     );
                 }
-                if (typeof TemuAdsColorRules.bindAutoPauseButton === 'function') {
-                    TemuAdsColorRules.bindAutoPauseButton(
-                        document.getElementById('temu-ads-auto-pause-btn'),
-                        document.getElementById('temu-ads-pause-status'),
-                        function () {
-                            if (table) table.replaceData();
-                        }
+                if (typeof TemuAdsColorRules.bindSaveRuleButton === 'function') {
+                    TemuAdsColorRules.bindSaveRuleButton(
+                        document.getElementById('temu-ads-save-rule-btn'),
+                        document.getElementById('temu-ads-pause-status')
                     );
                 }
                 if (typeof TemuAdsColorRules.onChange === 'function') {
@@ -5552,7 +5540,7 @@
                     field: "clicks_l7",
                     hozAlign: "right",
                     sorter: "number",
-                    headerTooltip: "Last 7 days ad clicks from /temu/ads. Red when below the shared L7 Clicks rule (default 70).",
+                    headerTooltip: "Last 7 days ad clicks from /temu/ads. Red when at or above the shared L7 Clicks rule (default 70) — pause zone.",
                     formatter: function(cell) {
                         const value = parseInt(String(cell.getValue() ?? '0').replace(/,/g, ''), 10) || 0;
                         if (window.TemuAdsColorRules) {
@@ -5602,13 +5590,9 @@
                     field: "acos_ad",
                     hozAlign: "right",
                     sorter: "number",
-                    headerTooltip: "ACOS from /temu/ads. Blue when L7 clicks are below the merged rule and ACOS is worse than Stop ROAS / Bidding (default 8).",
+                    headerTooltip: "ACOS from /temu/ads.",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        if (window.TemuAdsColorRules) {
-                            const row = cell.getRow().getData() || {};
-                            TemuAdsColorRules.colorAcosBidding(cell.getElement(), value, row.clicks_l7 != null ? row.clicks_l7 : row.ad_clicks);
-                        }
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${Math.round(value)}%</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS"></i>
@@ -5668,15 +5652,11 @@
                     title: "OUT ROAS",
                     field: "out_roas_l30",
                     hozAlign: "right",
-                    headerTooltip: "ROAS from /temu/ads. Blue when L7 clicks are below the merged rule and ROAS is below Stop ROAS / Bidding (default 8).",
+                    headerTooltip: "ROAS from /temu/ads.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // Use net_roas as OUT ROAS if out_roas_l30 is not available
                         const value = parseFloat(cell.getValue() || rowData.net_roas || 0);
-                        if (window.TemuAdsColorRules) {
-                            const row = cell.getRow().getData() || {};
-                            TemuAdsColorRules.colorRoasBidding(cell.getElement(), value, row.clicks_l7 != null ? row.clicks_l7 : row.ad_clicks);
-                        }
                         return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span>${value.toFixed(2)}</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="OUT ROAS"></i>
@@ -5726,7 +5706,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     visible: false,
-                    headerTooltip: "Budget and Bidding Target ROAS. Empty rows use the shared Stop ROAS default (8).",
+                    headerTooltip: "Budget and Bidding Target ROAS. Empty rows use T ROAS from the ads rule slabs.",
                     formatter: function(cell) {
                         let value = parseFloat(cell.getValue());
                         if (!isFinite(value) || value <= 0) {

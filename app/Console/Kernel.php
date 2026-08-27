@@ -2426,7 +2426,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(15)
             ->runInBackground()
             ->appendOutputTo($log);
-        // After L7 reports: pause Active ads that match L7 clicks / Stop ROAS.
+        // After L7 reports: push only ads whose Active/Pause status changes from the click limit.
         // Toggle from Ad rules modal (temu_ads_auto_pause_cron). Command also no-ops when paused.
         $retryFiveTimesUntil('temu:auto-pause-ads', 'temu-ads-auto-pause', '16:10');
         $retryFiveTimesUntil('temu2:fetch-ads-data --period=L30', 'temu2-ads-data-sync-l30', '16:15');

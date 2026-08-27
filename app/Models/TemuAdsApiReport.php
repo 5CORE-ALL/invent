@@ -24,6 +24,12 @@ class TemuAdsApiReport extends Model
         'roas',
         'acos',
         'ad_status',
+        'ad_create_reject',
+        'ad_create_reject_at',
+        'pause_run_ok',
+        'pause_run_error',
+        'pause_run_at',
+        'pause_run_history',
         'raw_response',
         'success',
         'error_msg',
@@ -44,6 +50,10 @@ class TemuAdsApiReport extends Model
         'acos' => 'float',
         'success' => 'boolean',
         'fetched_at' => 'datetime',
+        'ad_create_reject_at' => 'datetime',
+        'pause_run_ok' => 'boolean',
+        'pause_run_at' => 'datetime',
+        'pause_run_history' => 'array',
     ];
 
     /**

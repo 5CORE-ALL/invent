@@ -4902,6 +4902,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(TemuAdsController::class)->group(function () {
         Route::get('/temu/ads', 'index')->name('temu.ads');
         Route::get('/temu/ads/data', 'getTemuAdsData')->name('temu.ads.data');
+        Route::get('/temu/ads/raw/{id}', 'getRaw')->name('temu.ads.raw');
         Route::post('/temu/ads/refresh', 'refresh')->name('temu.ads.refresh');
         Route::post('/temu/ads/create', 'createAd')->name('temu.ads.create');
         Route::post('/temu/ads/create-bulk', 'createAdsBulk')->name('temu.ads.create-bulk');

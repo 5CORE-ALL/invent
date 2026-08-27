@@ -1,7 +1,7 @@
 /**
  * Shared Temu ads dynamic rules for /temu/ads and /temu-decrease.
- * 1) Last 7 days clicks < 70 → red. Threshold is editable and persisted.
- * 2) Budget and Bidding Target ROAS used to stop/tighten ads. Default 8.
+ * L7 clicks < threshold → Run. L7 clicks ≥ threshold → Pause (red).
+ * Pause/Run does not use ROAS vs T ROAS.
  */
 (function (global) {
     'use strict';
@@ -18,7 +18,7 @@
         { min: 70, max: null, action: 'pause' },
     ];
     var DEFAULT_ROAS_RULE_SLABS = [
-        { spend_min: 0, spend_max: 0, roas_min: null, roas_max: null, target_roas: -3, style: 'red' },
+        { spend_min: 0, spend_max: 0, roas_min: null, roas_max: null, target_roas: 4, style: 'red' },
         { spend_min: 0.01, spend_max: 5.99, roas_min: null, roas_max: null, target_roas: 5, style: 'yellow' },
         { spend_min: 6, spend_max: 9, roas_min: null, roas_max: null, target_roas: 10, style: 'green' },
         { spend_min: 9.01, spend_max: null, roas_min: null, roas_max: null, target_roas: 12, style: 'pink' },
@@ -31,6 +31,13 @@
     };
     var RED = '#a00211';
     var BIDDING_COLOR = '#0d6efd';
+    // Dil% bands — same as /temu-decrease and /topdawg-tabulator:
+    // red < 25, green 25–50, pink ≥ 50.
+    var DIL_COLORS = {
+        red: '#a00211',
+        green: '#28a745',
+        pink: '#e83e8c',
+    };
     var listeners = [];
 
     function parseClicks(v) {
@@ -163,11 +170,15 @@
 
     function migrateLegacyRoasRuleSlabs(slabs) {
         var first = slabs[0];
+        if (first && first.spend_min === 0 && first.spend_max === 0 && first.target_roas === -3) {
+            first = Object.assign({}, first, { target_roas: 4 });
+            slabs = [first].concat(slabs.slice(1));
+        }
         if (!first || first.spend_min !== 0 || first.spend_max !== 5.99) {
             return slabs;
         }
         return [
-            { spend_min: 0, spend_max: 0, roas_min: null, roas_max: null, target_roas: -3, style: 'red' },
+            { spend_min: 0, spend_max: 0, roas_min: null, roas_max: null, target_roas: 4, style: 'red' },
             {
                 spend_min: 0.01,
                 spend_max: 5.99,
@@ -516,51 +527,64 @@
         return n < rules.l7ClicksRedBelow;
     }
 
-    function isBelowTargetRoas(roas, clicks) {
-        if (clicks !== undefined && !isLowL7Clicks(clicks)) return false;
-        var n = parseRoas(roas);
-        if (!isFinite(n) || n <= 0) return false;
-        return n < rules.targetRoasBidding;
+    function isHighL7Clicks(clicks) {
+        var n = parseClicks(clicks);
+        if (!isFinite(n)) return false;
+        return n >= rules.l7ClicksRedBelow;
     }
 
-    function stopAcosPercent() {
-        var target = rules.targetRoasBidding;
+    function rowSpendForTRoas(row) {
+        if (!row) return 0;
+        if (row.spend_l1 != null && row.spend_l1 !== '') return row.spend_l1;
+        return row.spend;
+    }
+
+    function resolveTargetRoas(targetRoas, row) {
+        if (targetRoas != null && targetRoas !== '') {
+            var direct = parseRoas(targetRoas);
+            if (isFinite(direct)) return direct;
+        }
+        if (row && row.t_roas != null && row.t_roas !== '') {
+            var stored = parseRoas(row.t_roas);
+            if (isFinite(stored)) return stored;
+        }
+        return targetRoasForSpend(rowSpendForTRoas(row));
+    }
+
+    function stopAcosPercent(targetRoas, row) {
+        var target = resolveTargetRoas(targetRoas, row);
         return target > 0 ? (100 / target) : 12.5;
     }
 
-    function isAboveStopAcos(acosPct, clicks) {
-        if (clicks !== undefined && !isLowL7Clicks(clicks)) return false;
-        var n = parseRoas(acosPct);
-        if (!isFinite(n) || n <= 0) return false;
-        return n > stopAcosPercent();
+    function parseDil(v) {
+        if (v === null || v === undefined || v === '') return 0;
+        if (typeof v === 'number') return isFinite(v) ? v : 0;
+        var n = parseFloat(String(v).replace(/%/g, '').replace(/,/g, '').trim());
+        return isFinite(n) ? n : 0;
+    }
+
+    function dilBand(dil) {
+        var n = parseDil(dil);
+        if (n < 25) return 'red';
+        if (n < 50) return 'green';
+        return 'pink';
+    }
+
+    function dilColor(dil) {
+        return DIL_COLORS[dilBand(dil)] || DIL_COLORS.red;
+    }
+
+    function dilHtml(dil) {
+        var n = parseDil(dil);
+        return '<span style="color:' + dilColor(n) + ';font-weight:600;">' + Math.round(n) + '%</span>';
     }
 
     function colorL7Clicks(cellEl, clicks) {
         if (!cellEl) return;
         cellEl.style.color = '';
         cellEl.style.fontWeight = '';
-        if (isLowL7Clicks(clicks)) {
+        if (isHighL7Clicks(clicks)) {
             cellEl.style.color = RED;
-            cellEl.style.fontWeight = '700';
-        }
-    }
-
-    function colorRoasBidding(cellEl, roas, clicks) {
-        if (!cellEl) return;
-        cellEl.style.color = '';
-        cellEl.style.fontWeight = '';
-        if (isBelowTargetRoas(roas, clicks)) {
-            cellEl.style.color = BIDDING_COLOR;
-            cellEl.style.fontWeight = '700';
-        }
-    }
-
-    function colorAcosBidding(cellEl, acosPct, clicks) {
-        if (!cellEl) return;
-        cellEl.style.color = '';
-        cellEl.style.fontWeight = '';
-        if (isAboveStopAcos(acosPct, clicks)) {
-            cellEl.style.color = BIDDING_COLOR;
             cellEl.style.fontWeight = '700';
         }
     }
@@ -573,34 +597,53 @@
         return n.toLocaleString();
     }
 
-    function rowL7Clicks(cell) {
-        if (!cell || !cell.getRow) return undefined;
-        var data = cell.getRow().getData() || {};
-        if (data.clicks_l7 != null && data.clicks_l7 !== '') return data.clicks_l7;
-        if (data.t_clicks_l7 != null && data.t_clicks_l7 !== '') return data.t_clicks_l7;
-        if (data.period === 'L7' && data.clicks != null) return data.clicks;
-        if (data.ad_clicks != null) return data.ad_clicks;
-        return data.clicks;
-    }
-
     function formatRoasBidding(cell, roas) {
         var n = parseRoas(roas);
         if (!isFinite(n)) n = 0;
-        var el = cell && cell.getElement ? cell.getElement() : null;
-        colorRoasBidding(el, n, rowL7Clicks(cell));
         return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function paintPauseThresholdLabels() {
+        var els = document.querySelectorAll('[data-temu-l7-pause-threshold]');
+        for (var i = 0; i < els.length; i++) {
+            els[i].textContent = String(rules.l7ClicksRedBelow);
+        }
     }
 
     function bindThresholdInput(input) {
         if (!input) return;
         input.value = String(rules.l7ClicksRedBelow);
-        input.addEventListener('change', function () {
-            setL7ClicksRedBelow(input.value, true);
-            input.value = String(rules.l7ClicksRedBelow);
+        paintPauseThresholdLabels();
+        input.addEventListener('input', function () {
+            var n = toInt(input.value, rules.l7ClicksRedBelow);
+            var els = document.querySelectorAll('[data-temu-l7-pause-threshold]');
+            for (var i = 0; i < els.length; i++) {
+                els[i].textContent = String(n);
+            }
         });
         onChange(function () {
             if (document.activeElement !== input) {
                 input.value = String(rules.l7ClicksRedBelow);
+                paintPauseThresholdLabels();
+            }
+        });
+    }
+
+    function bindSaveRuleButton(btn, statusEl) {
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var input = document.getElementById('temu-l7-clicks-red-threshold');
+            if (!input) return;
+            var prev = rules.l7ClicksRedBelow;
+            setL7ClicksRedBelow(input.value, true);
+            input.value = String(rules.l7ClicksRedBelow);
+            paintPauseThresholdLabels();
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                var changed = prev !== rules.l7ClicksRedBelow;
+                statusEl.innerHTML = changed
+                    ? '<div class="alert alert-success py-2 mb-0">Saved L7 clicks threshold: ' + rules.l7ClicksRedBelow + '.</div>'
+                    : '<div class="alert alert-info py-2 mb-0">No change to save.</div>';
             }
         });
     }
@@ -619,34 +662,15 @@
         });
     }
 
-    function ruleSummaryText() {
-        return 'L7 < ' + rules.l7ClicksRedBelow + ' → ROAS ' + rules.targetRoasBidding;
-    }
-
-    function bindRuleSummary(el) {
-        if (!el) return;
-        function paint() {
-            el.textContent = ruleSummaryText();
-        }
-        paint();
-        onChange(paint);
-    }
-
     function computedPauseRunAction(row) {
-        if (rowInv(row) <= 0) {
+        if (rules.pauseRunInvZero && rowInv(row) <= 0) {
             return 'pause';
         }
         return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
     }
 
     function pauseRunAction(row) {
-        if (rowInv(row) <= 0) {
-            return 'pause';
-        }
-        if (row && (row.pause_run === 'pause' || row.pause_run === 'run')) {
-            return row.pause_run;
-        }
-        return actionFromSlabs(row && row.clicks_l7 != null ? row.clicks_l7 : 0);
+        return computedPauseRunAction(row);
     }
 
     function pauseRunButtonHtml(row) {
@@ -684,6 +708,9 @@
                         pause_run_ok: ok,
                         pause_run_error: ok ? '' : reason,
                     };
+                    if (res.data && res.data.pause_run_history) {
+                        patch.pause_run_history = res.data.pause_run_history;
+                    }
                     if (ok) {
                         patch.pause_run = next;
                         if (res.data.ad_status) patch.ad_status = res.data.ad_status;
@@ -712,31 +739,73 @@
             .replace(/>/g, '&gt;');
     }
 
-    function pauseRunResultHtml(row) {
-        if (!row || row.pause_run_ok == null) return '';
-        if (row.pause_run_ok) {
-            return '<span class="temu-pause-run-ok" title="Success"><i class="fas fa-check"></i></span>';
+    function pauseRunHistoryTitle(row) {
+        var hist = row && Array.isArray(row.pause_run_history) ? row.pause_run_history : [];
+        if (!hist.length) {
+            if (row && row.pause_run_error) return String(row.pause_run_error);
+            if (row && row.pause_run_ok) return 'Success';
+            return '';
         }
-        return '<span class="temu-pause-run-fail" title="' + escapeAttr(row.pause_run_error || 'Failed') + '"><i class="fas fa-times"></i></span>';
+        return hist.slice(0, 12).map(function (h) {
+            var when = h && h.at ? String(h.at) : '';
+            var act = h && h.action ? String(h.action) : '';
+            var state = h && h.ok ? 'OK' : 'Fail';
+            var msg = h && h.message ? String(h.message) : '';
+            return [when, act, state].filter(Boolean).join(' ') + (msg ? ' — ' + msg : '');
+        }).join('\n');
+    }
+
+    function pauseRunResultHtml(row) {
+        if (!row) return '';
+        var hist = Array.isArray(row.pause_run_history) ? row.pause_run_history : [];
+        if (row.pause_run_ok == null && !hist.length) return '';
+        var title = pauseRunHistoryTitle(row);
+        var n = hist.length > 1 ? '<span class="temu-pause-run-hist-n">' + hist.length + '</span>' : '';
+        if (row.pause_run_ok) {
+            return '<span class="temu-pause-run-ok" title="' + escapeAttr(title || 'Success') + '"><i class="fas fa-check"></i>' + n + '</span>';
+        }
+        return '<span class="temu-pause-run-fail" title="' + escapeAttr(title || 'Failed') + '"><i class="fas fa-times"></i>' + n + '</span>';
+    }
+
+    function runAutoPauseCron(onDone) {
+        var token = document.querySelector('meta[name="csrf-token"]');
+        return fetch(rules.pauseUrl || '/temu/ads/auto-pause', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': token ? token.getAttribute('content') : '',
+            },
+            body: JSON.stringify({}),
+        })
+            .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+            .then(function (res) {
+                if (typeof onDone === 'function') onDone(res);
+                return res;
+            })
+            .catch(function () {
+                var res = { ok: false, data: { success: false, message: 'Temu Pause/Run update failed' } };
+                if (typeof onDone === 'function') onDone(res);
+                return res;
+            });
     }
 
     function paintCronToggle(btn, statusEl, enabled) {
         if (btn) {
             btn.dataset.enabled = enabled ? '1' : '0';
+            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Auto Cron';
             if (enabled) {
                 btn.className = 'btn btn-sm btn-warning';
-                btn.innerHTML = '<i class="fas fa-pause me-1"></i>Pause Cron';
-                btn.title = 'Daily auto-pause cron is ON. Click to pause it.';
+                btn.title = 'Auto cron is ON. Only rows whose Active/Pause status changes from the click limit are pushed. Click to turn off.';
             } else {
-                btn.className = 'btn btn-sm btn-success';
-                btn.innerHTML = '<i class="fas fa-play me-1"></i>Run Cron Daily';
-                btn.title = 'Daily auto-pause cron is PAUSED. Click to run it daily.';
+                btn.className = 'btn btn-sm btn-outline-secondary';
+                btn.title = 'Auto cron is OFF. Click to turn on.';
             }
         }
         if (statusEl) {
             statusEl.textContent = enabled
-                ? 'Daily cron: ON — auto-pause after L7 fetch and at 16:10 IST.'
-                : 'Daily cron: PAUSED — scheduled auto-pause will not run.';
+                ? 'Daily cron: ON — only rows whose Active/Pause status changes from the click limit, after L7 fetch and at 16:10 IST.'
+                : 'Daily cron: OFF — scheduled auto cron will not run.';
             statusEl.className = enabled ? 'small mt-2 text-success' : 'small mt-2 text-danger';
         }
     }
@@ -746,8 +815,8 @@
         paintCronToggle(btn, statusEl, rules.autoPauseCron !== false);
         btn.addEventListener('click', function () {
             var next = btn.dataset.enabled !== '1';
-            var label = next ? 'turn ON daily auto-pause cron' : 'PAUSE daily auto-pause cron';
-            if (!confirm((next ? 'Run Cron Daily' : 'Pause Cron') + '?\n\nThis will ' + label + '.')) {
+            var label = next ? 'turn ON Auto Cron' : 'turn OFF Auto Cron';
+            if (!confirm('Auto Cron?\n\nThis will ' + label + '.')) {
                 return;
             }
             btn.disabled = true;
@@ -783,8 +852,7 @@
     function bindAutoPauseButton(btn, statusEl, onDone) {
         if (!btn) return;
         btn.addEventListener('click', function () {
-            var rule = ruleSummaryText();
-            if (!confirm('Pause all Active Temu ads that match ' + rule + '?\n\nL7 clicks below the threshold and ROAS below Stop ROAS will be set Inactive on Temu.')) {
+            if (!confirm('Pause all Active Temu ads that match the L7 click limit?\n\nL7 clicks at or above the threshold will be set Inactive on Temu.')) {
                 return;
             }
             btn.disabled = true;
@@ -890,17 +958,17 @@
         getTargetRoasBidding: function () { return rules.targetRoasBidding; },
         setTargetRoasBidding: setTargetRoasBidding,
         isLowL7Clicks: isLowL7Clicks,
-        isBelowTargetRoas: isBelowTargetRoas,
-        isAboveStopAcos: isAboveStopAcos,
+        isHighL7Clicks: isHighL7Clicks,
         stopAcosPercent: stopAcosPercent,
+        dilBand: dilBand,
+        dilColor: dilColor,
+        dilHtml: dilHtml,
         colorL7Clicks: colorL7Clicks,
-        colorRoasBidding: colorRoasBidding,
-        colorAcosBidding: colorAcosBidding,
         formatL7Clicks: formatL7Clicks,
         formatRoasBidding: formatRoasBidding,
         bindThresholdInput: bindThresholdInput,
+        bindSaveRuleButton: bindSaveRuleButton,
         bindTargetRoasInput: bindTargetRoasInput,
-        bindRuleSummary: bindRuleSummary,
         bindAutoPauseButton: bindAutoPauseButton,
         bindCronToggleButton: bindCronToggleButton,
         paintCronToggle: paintCronToggle,
@@ -929,9 +997,10 @@
         bindRoasRuleSummary: bindRoasRuleSummary,
         pauseRunButtonHtml: pauseRunButtonHtml,
         pauseRunResultHtml: pauseRunResultHtml,
+        pauseRunHistoryTitle: pauseRunHistoryTitle,
         pushPauseRun: pushPauseRun,
+        runAutoPauseCron: runAutoPauseCron,
         pushRoasRule: pushRoasRule,
-        ruleSummaryText: ruleSummaryText,
         onChange: onChange,
         loadFromServer: loadFromServer,
         configureChannel: configureChannel,
