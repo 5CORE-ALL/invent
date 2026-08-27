@@ -4922,12 +4922,6 @@
                     return Math.round(v).toLocaleString('en-US');
                 };
 
-                const fmtSignedDiff = (d) => {
-                    if (d == null || isNaN(d)) return '';
-                    if (Math.abs(d) < 1e-9) return '0';
-                    return (d > 0 ? '+' : '−') + fmtVal(Math.abs(d));
-                };
-
                 // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & TAcos % (lower is better) ---
                 const invertedMetrics = ['acos', 'ads_pct'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
@@ -5011,8 +5005,7 @@
                             ctx.fillStyle = labelColors[i];
                             ctx.translate(point.x, point.y + offsetY);
                             ctx.rotate(-Math.PI / 5);
-                            const label = (i === 0) ? fmtVal(val) : fmtSignedDiff(val - values[i - 1]);
-                            ctx.fillText(label, 2, 0);
+                            ctx.fillText(fmtVal(val), 2, 0);
                             ctx.restore();
                         });
                         ctx.restore();
@@ -5060,7 +5053,7 @@
                                         if (idx > 0) {
                                             const diff = context.raw - values[idx - 1];
                                             const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
-                                            parts.push('Diff: ' + arrow + ' ' + fmtSignedDiff(diff));
+                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
                                         }
                                         return parts;
                                     }
