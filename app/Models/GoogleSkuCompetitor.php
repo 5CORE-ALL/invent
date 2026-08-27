@@ -60,6 +60,36 @@ class GoogleSkuCompetitor extends Model
         return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->values();
     }
 
+    public static function offerDedupeKey($item): string
+    {
+        $productId = strtoupper(trim((string) ($item->product_id ?? '')));
+        $source = strtoupper(trim((string) ($item->source ?? '')));
+        $link = strtoupper(trim((string) ($item->product_link ?? $item->link ?? '')));
+        $key = $productId.'|'.$source.'|'.$link;
+
+        if ($key === '||') {
+            return 'id:'.(string) ($item->id ?? spl_object_id($item));
+        }
+
+        return $key;
+    }
+
+    public static function uniqueOffersFromCollection($items)
+    {
+        $seen = [];
+        $out = collect();
+        foreach (self::sortCollectionByNumericPrice($items) as $item) {
+            $key = self::offerDedupeKey($item);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out->push($item);
+        }
+
+        return $out->values();
+    }
+
     /**
      * @return array{details: \Illuminate\Support\Collection, lowest: \Illuminate\Support\Collection}
      */
@@ -116,6 +146,6 @@ class GoogleSkuCompetitor extends Model
             })
             ->get();
 
-        return self::sortCollectionByNumericPrice($records);
+        return self::uniqueOffersFromCollection($records);
     }
 }

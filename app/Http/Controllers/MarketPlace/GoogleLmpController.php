@@ -28,26 +28,7 @@ class GoogleLmpController extends Controller
                     : [];
             }
 
-            $groupSkus = [$sku];
-            try {
-                $lmpGroupService = new LmpSkuGroupService();
-                $seed = array_values(array_filter(array_map(
-                    static fn ($value) => trim((string) $value),
-                    array_merge([$sku], $linkedSkus)
-                )));
-                $lmpGroupService->prepareForSkus($seed);
-                $resolved = $lmpGroupService->groupContaining($sku);
-                if (! empty($resolved)) {
-                    $groupSkus = $resolved;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('LmpSkuGroupService in getGoogleLmpData failed: '.$e->getMessage());
-            }
-
-            $groupSkus = array_values(array_unique(array_filter(array_map(
-                static fn ($value) => trim((string) $value),
-                array_merge($groupSkus, $linkedSkus, [$sku])
-            ))));
+            $groupSkus = $this->resolveGoogleLmpGroupSkus($sku, $linkedSkus);
 
             $competitors = GoogleSkuCompetitor::getCompetitorsForSkus($groupSkus, 'google');
 
@@ -187,12 +168,29 @@ class GoogleLmpController extends Controller
             DB::beginTransaction();
 
             $productId = trim((string) ($lmp->product_id ?? ''));
-            // Delete every Sku-Link copy of this Google listing (modal dedupes by product_id).
+            // Only remove Sku-Link copies of this listing inside the same LMP group.
+            // Matching on product_id alone used to delete that ID on every SKU in the table
+            // (manual adds often reuse short IDs like 1 / 2 / a model number).
             $toDelete = collect([$lmp]);
             if ($productId !== '') {
-                $toDelete = GoogleSkuCompetitor::query()
+                $groupSkus = $this->resolveGoogleLmpGroupSkus((string) $lmp->sku);
+                $groupKeys = [];
+                foreach ($groupSkus as $groupSku) {
+                    $key = GoogleSkuCompetitor::normalizeSkuKey((string) $groupSku);
+                    if ($key !== '') {
+                        $groupKeys[$key] = true;
+                    }
+                }
+
+                $candidates = GoogleSkuCompetitor::query()
                     ->where('product_id', $productId)
                     ->get();
+                $found = $candidates->filter(function ($row) use ($groupKeys) {
+                    $key = GoogleSkuCompetitor::normalizeSkuKey((string) $row->sku);
+
+                    return $key !== '' && isset($groupKeys[$key]);
+                })->values();
+                $toDelete = $found->isNotEmpty() ? $found : collect([$lmp]);
             }
 
             $deletedIds = [];
@@ -336,5 +334,35 @@ class GoogleLmpController extends Controller
             'imported' => $imported,
             'lowest_price' => $results[0]['price'] ?? null,
         ]);
+    }
+
+    /**
+     * @param  list<string>  $linkedSkus
+     * @return list<string>
+     */
+    private function resolveGoogleLmpGroupSkus(string $sku, array $linkedSkus = []): array
+    {
+        $sku = trim($sku);
+        $groupSkus = $sku !== '' ? [$sku] : [];
+
+        try {
+            $lmpGroupService = new LmpSkuGroupService();
+            $seed = array_values(array_filter(array_map(
+                static fn ($value) => trim((string) $value),
+                array_merge([$sku], $linkedSkus)
+            )));
+            $lmpGroupService->prepareForSkus($seed);
+            $resolved = $sku !== '' ? $lmpGroupService->groupContaining($sku) : [];
+            if (! empty($resolved)) {
+                $groupSkus = $resolved;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService in Google LMP failed: '.$e->getMessage());
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($value) => trim((string) $value),
+            array_merge($groupSkus, $linkedSkus, [$sku])
+        ))));
     }
 }

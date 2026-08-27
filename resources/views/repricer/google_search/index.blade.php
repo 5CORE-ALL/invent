@@ -72,15 +72,21 @@
                         </div>
                     </div>
                     <div class="form-check mt-3">
-                        <input class="form-check-input" type="checkbox" id="expandSellers" checked>
+                        <input class="form-check-input" type="checkbox" id="forceRefresh">
+                        <label class="form-check-label" for="forceRefresh">
+                            Refresh from Google (uses SerpAPI credits). Leave off to reuse saved results.
+                        </label>
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="expandSellers">
                         <label class="form-check-label" for="expandSellers">
-                            Expand multi-seller offers (Walmart, eBay, Target, etc.)
+                            Expand multi-seller offers — extra credits (Walmart, eBay, Target, etc.)
                         </label>
                     </div>
                     <div class="form-check mt-2">
                         <input class="form-check-input" type="checkbox" id="deepExpand">
                         <label class="form-check-label" for="deepExpand">
-                            Deep expand (slower) — more products and extra store pages
+                            Deep expand — many extra credits, slower
                         </label>
                     </div>
                     <button type="submit" class="btn btn-success btn-lg mt-3">
@@ -183,6 +189,7 @@ $(function() {
     let currentSearchQuery = '';
 
     loadSkus();
+    loadSearchHistory();
 
     $('#searchForm').on('submit', function(e) {
         e.preventDefault();
@@ -209,6 +216,7 @@ $(function() {
             data: {
                 query: query,
                 max_pages: $('#maxPages').val(),
+                force_refresh: $('#forceRefresh').is(':checked') ? 1 : 0,
                 expand_sellers: $('#expandSellers').is(':checked') ? 1 : 0,
                 deep_expand: $('#deepExpand').is(':checked') ? 1 : 0,
                 _token: '{{ csrf_token() }}'
@@ -219,8 +227,17 @@ $(function() {
                 else showSearchError(response);
             },
             error: function(xhr) {
+                const payload = xhr.responseJSON || {};
+                if ((payload.error_code || '') === 'quota_exceeded' || xhr.status === 429) {
+                    loadSavedResults(query, function(loaded) {
+                        $('#loadingSpinner').hide();
+                        if (loaded) return;
+                        showSearchError(payload);
+                    });
+                    return;
+                }
                 $('#loadingSpinner').hide();
-                showSearchError(xhr.responseJSON || {});
+                showSearchError(payload);
             }
         });
     }
@@ -275,7 +292,11 @@ $(function() {
     function displayResults(response) {
         const results = response.data || [];
         const stats = response.price_stats || {};
+        const cacheNote = response.from_cache
+            ? '<div class="alert alert-info py-2 px-3 mb-3">Saved results — no SerpAPI credits used. Check “Refresh from Google” only if you need new prices.</div>'
+            : '';
         $('#statsContainer').html(
+            cacheNote +
             '<div class="stat-card"><div class="stat-value">' + (response.total_results || 0) + '</div><div class="stat-label">Results</div></div>' +
             '<div class="stat-card" style="background:linear-gradient(135deg,#4285f4 0%,#1a73e8 100%);"><div class="stat-value">$' + parseFloat(stats.min_price || 0).toFixed(2) + '</div><div class="stat-label">Lowest</div></div>' +
             '<div class="stat-card" style="background:linear-gradient(135deg,#fbbc04 0%,#f29900 100%);"><div class="stat-value">$' + parseFloat(stats.avg_price || 0).toFixed(2) + '</div><div class="stat-label">Average</div></div>' +
@@ -335,9 +356,34 @@ $(function() {
         });
     }
 
+    function loadSavedResults(query, done) {
+        currentSearchQuery = query;
+        $.get('/repricer/google-search/results', { query: query })
+            .done(function(response) {
+                if (response.success && (response.data || []).length) {
+                    response.from_cache = true;
+                    displayResults(response);
+                    if (done) done(true);
+                    return;
+                }
+                if (done) done(false);
+            })
+            .fail(function() {
+                if (done) done(false);
+            });
+    }
+
     window.loadHistoryQuery = function(query) {
         $('#searchQuery').val(query);
-        performSearch(query);
+        $('#loadingSpinner').show();
+        $('#resultsContainer').hide();
+        loadSavedResults(query, function(loaded) {
+            if (loaded) {
+                $('#loadingSpinner').hide();
+                return;
+            }
+            performSearch(query);
+        });
     };
 
     function loadSkus() {
@@ -385,7 +431,10 @@ $(function() {
             });
         });
 
-        if (!confirm('Save ' + competitors.length + ' Google LMP mapping(s)?')) return;
+        if (!confirm(
+            'Save ' + checked.length + ' product(s) to ' + selectedSkus.length +
+            ' SKU(s)? Each product is stored once per SKU.'
+        )) return;
 
         const $btn = $('#saveCompetitorsBtn');
         $btn.prop('disabled', true);

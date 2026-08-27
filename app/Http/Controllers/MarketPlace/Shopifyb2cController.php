@@ -1133,10 +1133,7 @@ class Shopifyb2cController extends Controller
                     continue;
                 }
                 foreach ($groupEntries as $comp) {
-                    $dedupeKey = ((string) ($comp->id ?? '')).'|'
-                        .((string) ($comp->product_id ?? '')).'|'
-                        .strtoupper(trim((string) ($comp->source ?? ''))).'|'
-                        .strtoupper(trim((string) ($comp->product_link ?? '')));
+                    $dedupeKey = GoogleSkuCompetitor::offerDedupeKey($comp);
                     if (isset($seenLmp[$dedupeKey])) {
                         continue;
                     }

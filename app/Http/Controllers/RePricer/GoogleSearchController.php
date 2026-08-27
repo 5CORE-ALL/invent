@@ -36,10 +36,18 @@ class GoogleSearchController extends Controller
         }
 
         $searchQuery = trim($request->input('query'));
-        $expandSellers = $request->boolean('expand_sellers', true);
+        $forceRefresh = $request->boolean('force_refresh', false);
+        $expandSellers = $request->boolean('expand_sellers', false);
         $deepExpand = $request->boolean('deep_expand', false);
         $maxPages = (int) $request->input('max_pages', 1);
         $limit = $expandSellers ? 0 : (int) $request->input('limit', 40);
+
+        if (! $forceRefresh) {
+            $cached = $this->cachedSearchPayload($searchQuery);
+            if ($cached) {
+                return response()->json($cached);
+            }
+        }
 
         try {
             $fetcher = app(GoogleLivePriceFetcher::class);
@@ -96,22 +104,7 @@ class GoogleSearchController extends Controller
                 'position' => $item['position'] ?? null,
             ]);
 
-            $prices = $stored->pluck('price')->filter(fn ($p) => $p > 0);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Search completed successfully',
-                'query' => $searchQuery,
-                'total_results' => $stored->count(),
-                'expand_sellers' => $expandSellers,
-                'unique_sources' => $stored->pluck('source')->filter()->unique()->values(),
-                'price_stats' => [
-                    'min_price' => $prices->min() ?? 0,
-                    'max_price' => $prices->max() ?? 0,
-                    'avg_price' => $prices->isNotEmpty() ? round($prices->avg(), 2) : 0,
-                ],
-                'data' => $stored,
-            ]);
+            return response()->json($this->searchPayload($searchQuery, $stored, false, $expandSellers));
         } catch (\Throwable $e) {
             Log::error('GoogleSearchController search failed', [
                 'query' => $searchQuery,
@@ -147,7 +140,7 @@ class GoogleSearchController extends Controller
             ->selectRaw('MAX(created_at) as last_searched')
             ->groupBy('search_query')
             ->orderByDesc('last_searched')
-            ->limit(10)
+            ->limit(50)
             ->pluck('search_query');
 
         return response()->json([
@@ -186,19 +179,44 @@ class GoogleSearchController extends Controller
         }
 
         $results = $query->get();
-        $prices = $results->pluck('price')->filter(fn ($p) => $p > 0);
 
-        return response()->json([
+        return response()->json($this->searchPayload($searchQuery, $results, true));
+    }
+
+    private function cachedSearchPayload(string $searchQuery): ?array
+    {
+        $results = GoogleCompetitorItem::where('search_query', $searchQuery)
+            ->orderByRaw('CAST(price AS DECIMAL(10,2)) ASC')
+            ->get();
+
+        if ($results->isEmpty()) {
+            return null;
+        }
+
+        return $this->searchPayload($searchQuery, $results, true);
+    }
+
+    private function searchPayload(string $searchQuery, $results, bool $fromCache, ?bool $expandSellers = null): array
+    {
+        $prices = collect($results)->pluck('price')->filter(fn ($p) => $p > 0);
+
+        return [
             'success' => true,
+            'message' => $fromCache
+                ? 'Loaded saved results (no SerpAPI credits used)'
+                : 'Search completed successfully',
             'query' => $searchQuery,
-            'total_results' => $results->count(),
+            'from_cache' => $fromCache,
+            'total_results' => collect($results)->count(),
+            'expand_sellers' => $expandSellers,
+            'unique_sources' => collect($results)->pluck('source')->filter()->unique()->values(),
             'price_stats' => [
                 'min_price' => $prices->min() ?? 0,
                 'max_price' => $prices->max() ?? 0,
                 'avg_price' => $prices->isNotEmpty() ? round($prices->avg(), 2) : 0,
             ],
             'data' => $results,
-        ]);
+        ];
     }
 
     public function getSkus()
