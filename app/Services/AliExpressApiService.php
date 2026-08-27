@@ -2616,7 +2616,7 @@ class AliExpressApiService
     {
         $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 12);
         if (trim($identifier) === '' || $images === []) {
-            return ['success' => false, 'message' => 'SKU (or AliExpress product_id) and at least one image URL are required.'];
+            return ['success' => false, 'message' => 'SKU (or '.$this->channelLabel.' product_id) and at least one image URL are required.'];
         }
 
         foreach ($images as $url) {
@@ -2626,43 +2626,107 @@ class AliExpressApiService
         }
 
         $trim = trim($identifier);
-        $row = AliexpressMetric::query()
-            ->where('sku', $trim)
-            ->orWhere('sku', strtoupper($trim))
-            ->orWhere('sku', strtolower($trim))
-            ->first();
-        if (! $row) {
-            $row = AliexpressMetric::query()->where('product_id', $trim)->first();
+        $row = $this->findChannelMetricRow($trim);
+        $productId = $this->resolveProductIdBySku($trim);
+        if ($productId === null || $productId === '') {
+            $productId = ($row && $row->product_id) ? (string) $row->product_id : '';
         }
-        $productId = $row && $row->product_id ? (string) $row->product_id : $trim;
+        if ($productId === '' && preg_match('/^\d{6,}$/', $trim)) {
+            $productId = $trim;
+        }
+        if ($productId === '') {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' product_id not found for this SKU. Sync '.$this->channelLabel.' listings first.',
+            ];
+        }
+
         $primary = $images[0];
+        $joined = implode(';', $images);
+        $skuCode = $row && $row->sku ? (string) $row->sku : $trim;
+
+        foreach ([
+            ['product_id' => $productId, 'fied_name' => 'image_u_r_ls', 'fiedvalue' => $joined],
+            ['productId' => $productId, 'fiedName' => 'image_u_r_ls', 'fiedValue' => $joined],
+            ['product_id' => $productId, 'fied_name' => 'imageURLs', 'fiedvalue' => $joined],
+        ] as $params) {
+            foreach ([
+                'aliexpress.postproduct.redefining.editsinglefiled',
+                'aliexpress.postproduct.redefining.editSingleFiled',
+            ] as $method) {
+                $single = $this->callApiFlexible($method, [
+                    'rest' => $params,
+                    'sync' => $params,
+                ]);
+                if (! empty($single['success'])) {
+                    return $this->finishChannelImageUpdate($row, $trim, $images, $single);
+                }
+            }
+        }
 
         $attempts = [
-            ['product_id' => $productId, 'image_u_r_ls' => implode(';', $images), 'main_image_url' => $primary],
+            ['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary],
             ['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary],
-            ['product_id' => $productId, 'aeop_a_e_product_s_k_us' => ['sku_code' => $trim, 'sku_image' => $primary]],
+            ['product_id' => $productId, 'aeop_a_e_product_s_k_us' => ['sku_code' => $skuCode, 'sku_image' => $primary]],
         ];
 
-        $lastMessage = 'AliExpress image update failed.';
+        $lastMessage = $this->channelLabel.' image update failed.';
         foreach ($attempts as $editRequest) {
-            $res = $this->callSync('aliexpress.solution.product.edit', [
-                'edit_product_request' => $this->encodeRequestPayload($editRequest),
+            $encoded = $this->encodeRequestPayload($editRequest);
+            $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+                'rest' => ['edit_product_request' => $encoded],
+                'sync' => ['edit_product_request' => $encoded],
             ]);
             if (! empty($res['success'])) {
-                $sku = $row && $row->sku ? (string) $row->sku : $trim;
-                $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)->table('aliexpress') ?? 'aliexpress_metric';
-                $this->saveImageUrlsToMetricsRow($table, $sku, $images);
-
-                return [
-                    'success' => true,
-                    'message' => 'AliExpress product images updated.',
-                    'normalized_urls' => $images,
-                ];
+                return $this->finishChannelImageUpdate($row, $trim, $images, $res);
             }
             $lastMessage = (string) ($res['message'] ?? $lastMessage);
         }
 
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * @param  object{sku?: mixed}|null  $row
+     * @param  list<string>  $images
+     * @param  array<string, mixed>  $res
+     * @return array{success: bool, message: string, normalized_urls: list<string>}
+     */
+    protected function finishChannelImageUpdate(?object $row, string $identifier, array $images, array $res): array
+    {
+        $sku = $row && ! empty($row->sku) ? (string) $row->sku : $identifier;
+        $table = app(\App\Services\Support\MarketplaceMetricsTableResolver::class)
+            ->table($this->channelImageMetricsMarketplaceKey())
+            ?? ($this->channelImageMetricsMarketplaceKey() === 'alibaba' ? 'alibaba_metrics' : 'aliexpress_metric');
+        $this->saveImageUrlsToMetricsRow($table, $sku, $images);
+
+        return [
+            'success' => true,
+            'message' => (string) ($res['message'] ?? $this->channelLabel.' product images updated.'),
+            'normalized_urls' => $images,
+        ];
+    }
+
+    protected function channelImageMetricsMarketplaceKey(): string
+    {
+        return 'aliexpress';
+    }
+
+    /**
+     * @return object{sku?: mixed, product_id?: mixed}|null
+     */
+    protected function findChannelMetricRow(string $trim): ?object
+    {
+        $row = AliexpressMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if ($row) {
+            return $row;
+        }
+
+        return AliexpressMetric::query()->where('product_id', $trim)->first();
     }
 
     /**
@@ -2675,20 +2739,16 @@ class AliExpressApiService
             return null;
         }
 
-        $row = AliexpressMetric::query()
-            ->where('sku', $trim)
-            ->orWhere('sku', strtoupper($trim))
-            ->orWhere('sku', strtolower($trim))
-            ->first();
+        $row = $this->findChannelMetricRow($trim);
         if ($row && $row->product_id) {
             return (string) $row->product_id;
         }
 
-        $byId = AliexpressMetric::query()->where('product_id', $trim)->first();
-        if ($byId && $byId->product_id) {
-            return (string) $byId->product_id;
-        }
+        return $this->findChannelProductIdFromDataView($trim);
+    }
 
+    protected function findChannelProductIdFromDataView(string $trim): ?string
+    {
         try {
             $view = AliexpressDataView::query()
                 ->where('sku', $trim)

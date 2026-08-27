@@ -322,14 +322,14 @@ class BestBuyApiService
     }
 
     /**
-     * Push image URLs to Best Buy through Mirakl Connect product attributes.
+     * Push image URLs to Best Buy through Mirakl Connect, then MCM P41 (live listing).
      *
      * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string, normalized_urls?: list<string>}
      */
     public function updateListingImages(string $sku, array $imageUrls): array
     {
-        $sku = trim($sku);
+        $sku = $this->resolveMiraklMcmLiveShopSku(trim($sku));
         $urls = array_slice(array_values(array_unique(array_filter(array_map('trim', $imageUrls), fn ($url) => $url !== ''))), 0, 12);
         if ($sku === '' || $urls === []) {
             return ['success' => false, 'message' => 'SKU and at least one image URL are required.'];
@@ -343,6 +343,7 @@ class BestBuyApiService
         $baseUrl = 'https://miraklconnect.com/api/products';
         $productPayload = [
             'id' => $sku,
+            'images' => array_map(fn ($url) => ['url' => $url], $urls),
             'attributes' => [
                 'imageUrls' => $urls,
                 'productImageUrls' => $urls,
@@ -356,6 +357,7 @@ class BestBuyApiService
             'channel_id' => $this->miraklChannelCode(),
         ];
 
+        $connect = ['success' => false, 'message' => 'Best Buy Connect image update failed.'];
         try {
             $request = Http::withoutVerifying()->withToken($token)->withHeaders($headers)->timeout(60);
             $response = $request->post($baseUrl, ['products' => [$productPayload]]);
@@ -366,20 +368,61 @@ class BestBuyApiService
                 $response = $request->put("{$baseUrl}/{$sku}", $productPayload);
             }
 
-            if (! $response->successful()) {
-                return ['success' => false, 'message' => 'Best Buy image update failed: '.$response->body()];
+            if ($response->successful()) {
+                $connect = ['success' => true, 'message' => 'Best Buy Connect catalog accepted the images.'];
+            } else {
+                $connect = ['success' => false, 'message' => 'Best Buy image update failed: '.$response->body()];
             }
-
-            $saved = $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
-            $message = 'Best Buy product images updated.';
-            if (! $saved) {
-                $message .= ' Metrics save failed.';
-            }
-
-            return ['success' => true, 'message' => $message, 'normalized_urls' => $urls];
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            $connect = ['success' => false, 'message' => $e->getMessage()];
         }
+
+        if ($this->miraklMcmApiKey() === null) {
+            if ($connect['success'] ?? false) {
+                $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
+                $connect['message'] = trim(($connect['message'] ?? '')
+                    .' Best Buy MCM (mainImage) skipped — set BESTBUY_MCM_API_KEY for seller portal sync.');
+                $connect['normalized_urls'] = $urls;
+            }
+
+            return $connect;
+        }
+
+        if (! filter_var($this->miraklMcmConfig('mcm_image_push', true), FILTER_VALIDATE_BOOL)) {
+            if ($connect['success'] ?? false) {
+                $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
+                $connect['message'] = trim(($connect['message'] ?? '')
+                    .' MCM P41 image push disabled (BESTBUY_MCM_IMAGE_PUSH=false). Connect catalog only.');
+                $connect['normalized_urls'] = $urls;
+            }
+
+            return $connect;
+        }
+
+        $mcm = $this->pushImagesViaMiraklMcm($sku, $urls);
+        if ($mcm['success'] ?? false) {
+            $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
+            if ($connect['success'] ?? false) {
+                $mcm['message'] = trim(($mcm['message'] ?? '').' Mirakl Connect upsert also accepted.');
+            }
+            $mcm['normalized_urls'] = $urls;
+
+            return $mcm;
+        }
+
+        if ($connect['success'] ?? false) {
+            $this->saveImageUrlsToBestBuyMetrics($sku, $urls);
+            $suffix = ($mcm['mcm_integration_pending'] ?? false)
+                ? ' Connect OK. MCM P41 image import queued (SENT) — seller portal may not update until integration completes.'
+                : ' Connect OK. MCM P41 image issue: '.($mcm['message'] ?? 'unknown error');
+            $connect['message'] = trim(($connect['message'] ?? '').$suffix);
+            $connect['mcm_integration_pending'] = $mcm['mcm_integration_pending'] ?? false;
+            $connect['normalized_urls'] = $urls;
+
+            return $connect;
+        }
+
+        return $mcm;
     }
 
     /**

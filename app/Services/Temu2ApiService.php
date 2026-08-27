@@ -16,6 +16,11 @@ class Temu2ApiService extends TemuApiService
         return rtrim((string) config('services.temu2.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
     }
 
+    protected function temuServiceConfigKey(): string
+    {
+        return 'temu2';
+    }
+
     protected function imageMetricsTable(): string
     {
         return 'temu2_metrics';

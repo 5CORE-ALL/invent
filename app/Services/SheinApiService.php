@@ -1823,6 +1823,7 @@ class SheinApiService
         }
 
         $sku = $this->resolveSheinSellerSku($identifier);
+        $skuCode = $this->resolveSheinSkuCode($identifier);
         $openKeyId = config('services.shein.open_key_id');
         $secretKey = config('services.shein.secret_key');
         if (empty($openKeyId) || empty($secretKey)) {
@@ -1831,9 +1832,6 @@ class SheinApiService
 
         $endpoint = (string) config('services.shein.product_update_path', '/open-api/openapi-business-backend/product/update');
         $url = $this->baseUrl.$endpoint;
-        $timestamp = (int) round(microtime(true) * 1000);
-        $random = Str::random(5);
-        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
         $metric = $this->safeSheinMetricFindBySku($sku);
         $productName = $metric && ! empty($metric->product_name) ? $metric->product_name : $sku;
         $imageList = array_map(fn ($imageUrl, $i) => [
@@ -1842,10 +1840,13 @@ class SheinApiService
             'imageType' => $i === 0 ? 1 : 2,
         ], $images, array_keys($images));
 
-        $payloadAttempts = [
-            ['skuCode' => $sku, 'productName' => $productName, 'imageList' => $imageList],
-            ['skuCode' => $sku, 'productName' => $productName, 'mainImageUrl' => $images[0], 'imageUrls' => $images],
-        ];
+        $skuCodes = array_values(array_unique(array_filter([$skuCode, $sku, $identifier], fn ($v) => trim((string) $v) !== '')));
+        $payloadAttempts = [];
+        foreach ($skuCodes as $code) {
+            $payloadAttempts[] = ['skuCode' => $code, 'productName' => $productName, 'imageList' => $imageList];
+            $payloadAttempts[] = ['skuCode' => $code, 'productName' => $productName, 'mainImageUrl' => $images[0], 'imageUrls' => $images];
+            $payloadAttempts[] = ['skuCode' => $code, 'productName' => $productName, 'mainImage' => $images[0], 'detailImageList' => $imageList];
+        }
         if ($metric && ! empty($metric->spu_name)) {
             foreach ($payloadAttempts as &$payload) {
                 $payload['spuCode'] = $metric->spu_name;
@@ -1856,13 +1857,7 @@ class SheinApiService
         $lastMessage = 'Shein image update failed.';
         foreach ($payloadAttempts as $payload) {
             try {
-                $response = Http::withoutVerifying()->timeout(60)->withHeaders([
-                    'Language' => 'en-us',
-                    'x-lt-openKeyId' => $openKeyId,
-                    'x-lt-timestamp' => (string) $timestamp,
-                    'x-lt-signature' => $signature,
-                    'Content-Type' => 'application/json',
-                ])->post($url, $payload);
+                $response = Http::withoutVerifying()->timeout(60)->withHeaders($this->buildSheinAuthHeaders($endpoint))->post($url, $payload);
 
                 $json = is_array($response->json()) ? $response->json() : null;
                 if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {

@@ -992,6 +992,13 @@ class NeweggApiService
         $title = trim((string) ($itemFields['WebsiteShortTitle'] ?? $itemFields['Title'] ?? ''));
         $sellerPart = htmlspecialchars($this->neweggSkuCandidates($sku)[0] ?? $sku, ENT_XML1 | ENT_COMPAT, 'UTF-8');
         $safeTitle = str_replace(']]>', ']] >', $title);
+        $imageXml = $this->neweggItemImagesXml($itemFields);
+        $titleXml = $title !== ''
+            ? '<WebsiteShortTitle><![CDATA['.$safeTitle.']]></WebsiteShortTitle>'
+            : '';
+        if ($titleXml === '' && $imageXml === '') {
+            return ['success' => false, 'message' => 'No Newegg title or image fields to submit.'];
+        }
         $xml = '<?xml version="1.0" encoding="UTF-8"?>'
             .'<NeweggEnvelope>'
             .'<Header><DocumentVersion>2.0</DocumentVersion></Header>'
@@ -1000,7 +1007,8 @@ class NeweggApiService
             .'<Action>UpdateItem</Action>'
             .'<BasicInfo>'
             .'<SellerPartNumber>'.$sellerPart.'</SellerPartNumber>'
-            .'<WebsiteShortTitle><![CDATA['.$safeTitle.']]></WebsiteShortTitle>'
+            .$titleXml
+            .$imageXml
             .'</BasicInfo>'
             .'</Item></Itemfeed></Message>'
             .'</NeweggEnvelope>';
@@ -1050,6 +1058,52 @@ class NeweggApiService
         return ['success' => false, 'message' => $this->extractItemError($normalized)];
     }
 
+    /**
+     * @param  array<string, mixed>  $itemFields
+     */
+    protected function neweggItemImagesXml(array $itemFields): string
+    {
+        $urls = [];
+        foreach (['Image', 'PrimaryImage', 'ImageUrl'] as $key) {
+            $value = trim((string) ($itemFields[$key] ?? ''));
+            if ($value !== '' && preg_match('#^https?://#i', $value)) {
+                $urls[] = $value;
+            }
+        }
+        if (! empty($itemFields['ItemImages']) && is_array($itemFields['ItemImages'])) {
+            foreach ($itemFields['ItemImages'] as $img) {
+                if (is_string($img) && preg_match('#^https?://#i', trim($img))) {
+                    $urls[] = trim($img);
+                } elseif (is_array($img)) {
+                    $url = trim((string) ($img['ImageUrl'] ?? $img['Url'] ?? $img['url'] ?? ''));
+                    if ($url !== '' && preg_match('#^https?://#i', $url)) {
+                        $urls[] = $url;
+                    }
+                }
+            }
+        }
+        if (! empty($itemFields['AdditionalImages']) && is_array($itemFields['AdditionalImages'])) {
+            foreach ($itemFields['AdditionalImages'] as $img) {
+                if (is_string($img) && preg_match('#^https?://#i', trim($img))) {
+                    $urls[] = trim($img);
+                }
+            }
+        }
+        $urls = array_values(array_unique($urls));
+        if ($urls === []) {
+            return '';
+        }
+
+        $xml = '<ItemImages>';
+        foreach ($urls as $i => $url) {
+            $safe = htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+            $primary = $i === 0 ? 'true' : 'false';
+            $xml .= '<Image><ImageUrl>'.$safe.'</ImageUrl><IsPrimary>'.$primary.'</IsPrimary></Image>';
+        }
+
+        return $xml.'</ItemImages>';
+    }
+
     public function updateTitle(string $sku, string $title): array
     {
         return $this->pushItemContent($sku, [
@@ -1091,6 +1145,12 @@ class NeweggApiService
         return $this->pushItemContent($identifier, [
             'Image' => $images[0],
             'PrimaryImage' => $images[0],
+            'ImageUrl' => $images[0],
+            'ItemImages' => array_map(fn ($url, $i) => [
+                'ImageUrl' => $url,
+                'IsPrimary' => $i === 0 ? 'true' : 'false',
+            ], $images, array_keys($images)),
+            'AdditionalImages' => array_slice($images, 1),
         ]);
     }
 

@@ -771,6 +771,11 @@ class TopDawgApiService
         return $this->pushSupplierProductFields($identifier, [
             'image_url' => $images[0],
             'main_image' => $images[0],
+            'image_urls' => $images,
+            'images' => $images,
+            'extra_images' => array_slice($images, 1),
+            'gallery_images' => $images,
+            'additional_images' => array_slice($images, 1),
         ]);
     }
 

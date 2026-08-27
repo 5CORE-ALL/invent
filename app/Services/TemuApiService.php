@@ -2401,8 +2401,8 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return ['success' => false, 'url' => null, 'message' => 'Invalid image URL.'];
         }
 
-        $primary = trim((string) config('services.temu.image_upload_type', 'files/upload_image'));
-        $extra = config('services.temu.image_upload_types');
+        $primary = trim((string) $this->temuCfg('image_upload_type', 'files/upload_image'));
+        $extra = $this->temuCfg('image_upload_types');
         if (! is_array($extra)) {
             $extra = [];
         }
@@ -2414,7 +2414,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             $types = ['files/upload_image'];
         }
 
-        $router = rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+        $router = $this->openApiRouterUrl();
         $lastMsg = '';
 
         $postSigned = function (array $body) use ($router, &$lastMsg): ?string {
@@ -2441,7 +2441,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         };
 
         $tryBase64 = function () use ($imageUrl, $types, $postSigned): ?array {
-            if (! config('services.temu.image_upload_try_base64', true)) {
+            if (! $this->temuCfg('image_upload_try_base64', true)) {
                 return null;
             }
             try {
@@ -2501,7 +2501,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return null;
         };
 
-        $preferBase64 = config('services.temu.image_upload_prefer_base64', true);
+        $preferBase64 = $this->temuCfg('image_upload_prefer_base64', true);
         $attempts = $preferBase64 ? [$tryBase64, $tryUrl] : [$tryUrl, $tryBase64];
         foreach ($attempts as $attempt) {
             $result = $attempt();
@@ -2902,13 +2902,13 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         }
 
         $skuInfo = $this->getSkuInfoForGoodsAndSku($goodsId, $sku);
-        $apiType = config('services.temu.goods_update_type', 'bg.local.goods.partial.update');
+        $apiType = $this->temuCfg('goods_update_type', 'bg.local.goods.partial.update');
         $url = $this->openApiRouterUrl();
-        $skuListField = config('services.temu.update_sku_list_field', 'skuList');
-        $goodsBasicField = config('services.temu.goods_basic_field', 'goodsBasic');
-        $imageField = config('services.temu.goods_image_urls_field', 'carouselImageUrlList');
-        $skuIdField = config('services.temu.sku_id_field', 'skuId');
-        $skuCodeField = config('services.temu.sku_code_field', 'outSkuSn');
+        $skuListField = $this->temuCfg('update_sku_list_field', 'skuList');
+        $goodsBasicField = $this->temuCfg('goods_basic_field', 'goodsBasic');
+        $imageField = $this->temuCfg('goods_image_urls_field', 'carouselImageUrlList');
+        $skuIdField = $this->temuCfg('sku_id_field', 'skuId');
+        $skuCodeField = $this->temuCfg('sku_code_field', 'outSkuSn');
 
         $requestBody = [
             'type' => $apiType,
@@ -3326,7 +3326,17 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
     protected function openApiRouterUrl(): string
     {
-        return rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+        return rtrim((string) $this->temuCfg('openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+    }
+
+    protected function temuServiceConfigKey(): string
+    {
+        return 'temu';
+    }
+
+    protected function temuCfg(string $key, mixed $default = null): mixed
+    {
+        return config('services.'.$this->temuServiceConfigKey().'.'.$key, $default);
     }
 
     protected function imageMetricsTable(): string

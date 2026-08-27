@@ -902,12 +902,10 @@ trait MiraklMcmBulletImport
         $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
         $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
         if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            $label = $this->miraklMcmMarketplaceLabel();
-
-            return [
-                'success' => false,
-                'message' => "{$label} MCM P41 image push skipped: categoryCode could not be resolved for [{$sku}].",
-            ];
+            Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 image using image-only row (no categoryCode)', [
+                'sku' => $sku,
+            ]);
+            $useEnriched = false;
         }
 
         $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
@@ -994,6 +992,12 @@ trait MiraklMcmBulletImport
     ): string {
         $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
         $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
+        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
+            Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 image using image-only row (no categoryCode)', [
+                'sku' => $sku,
+            ]);
+            $useEnriched = false;
+        }
 
         $rowValues = $useEnriched
             ? $this->resolveMiraklMcmP41RowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen, null, null, $imageUrls)

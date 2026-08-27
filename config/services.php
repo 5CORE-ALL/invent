@@ -320,6 +320,8 @@ return [
         'features_benefits_verify_attempts' => (int) env('BESTBUY_BULLET_VERIFY_ATTEMPTS', 4),
         'features_benefits_verify_delay_seconds' => (int) env('BESTBUY_BULLET_VERIFY_DELAY_SECONDS', 2),
         'mcm_title_push' => filter_var(env('BESTBUY_MCM_TITLE_PUSH', true), FILTER_VALIDATE_BOOL),
+        'mcm_image_push' => filter_var(env('BESTBUY_MCM_IMAGE_PUSH', true), FILTER_VALIDATE_BOOL),
+        'mcm_image_allow_locked_override' => filter_var(env('BESTBUY_MCM_IMAGE_ALLOW_LOCKED_OVERRIDE', true), FILTER_VALIDATE_BOOL),
         'mcm_p41_enriched_row' => filter_var(env('BESTBUY_MCM_P41_ENRICHED_ROW', true), FILTER_VALIDATE_BOOL),
     ],
 
