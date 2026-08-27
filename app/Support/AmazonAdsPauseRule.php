@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Models\AmazonAdsPauseRuleSetting;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -131,9 +133,7 @@ final class AmazonAdsPauseRule
      */
     public static function persistRule(array $rule): void
     {
-        if (! Schema::hasTable('amazon_ads_pause_rule_settings')) {
-            throw new \RuntimeException('Table amazon_ads_pause_rule_settings does not exist. Run migrations.');
-        }
+        self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
         $existing = self::loadResolvedRule();
         if (! array_key_exists('pr', $rule)) {
@@ -146,6 +146,26 @@ final class AmazonAdsPauseRule
             $row->update(['rule' => $normalized]);
         }
         self::forgetResolvedCache();
+    }
+
+    /**
+     * Create amazon_ads_pause_rule_settings if production skipped the migration.
+     */
+    private static function ensureSettingsTable(): void
+    {
+        if (Schema::hasTable('amazon_ads_pause_rule_settings')) {
+            return;
+        }
+        try {
+            Schema::create('amazon_ads_pause_rule_settings', function (Blueprint $table) {
+                $table->id();
+                $table->longText('rule');
+                $table->timestamps();
+            });
+        } catch (\Throwable $e) {
+            Log::error('amazon_ads_pause_rule_settings create failed', ['error' => $e->getMessage()]);
+            throw new \RuntimeException('Could not create amazon_ads_pause_rule_settings: '.$e->getMessage(), 0, $e);
+        }
     }
 
     /**

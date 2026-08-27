@@ -15,8 +15,9 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AmazonAdsController extends Controller
 {
@@ -2782,8 +2783,14 @@ class AmazonAdsController extends Controller
                 'status' => 422,
             ], 422);
         } catch (\Throwable $e) {
+            Log::error('Could not save PR Dil% pause rule', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
             return response()->json([
-                'message' => 'Could not save PR Dil% pause rule.',
+                'message' => 'Could not save PR Dil% pause rule. '.$e->getMessage(),
                 'error' => $e->getMessage(),
                 'status' => 500,
             ], 500);

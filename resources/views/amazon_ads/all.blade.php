@@ -607,7 +607,7 @@
                         Dil% and Price are <strong>separate</strong> rules. If <strong>either</strong> matches, the campaign is paused (OR).
                         Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
                         Price uses the amount shown in the <strong>price</strong> column, including grey LMP when Amazon price is missing.
-                        The job runs daily at 18:25 IST. Click <strong>Save &amp; apply</strong> to pause now.
+                        Save (with auto-pause on) pauses matching campaigns on Amazon now. The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
@@ -2061,7 +2061,7 @@
                         dil_enabled: !!(dilEn && dilEn.checked),
                         price_below: price,
                         price_enabled: !!(priceEn && priceEn.checked),
-                        apply: !!apply
+                        apply: !!apply || !!(en && en.checked)
                     })
                 })
                     .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
@@ -2079,7 +2079,7 @@
                                 + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
                         }
                         if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
-                        if (!apply && typeof bootstrap !== 'undefined') {
+                        if (!apply && !(en && en.checked) && typeof bootstrap !== 'undefined') {
                             var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsPrRuleModal'));
                             if (inst) inst.hide();
                         }
