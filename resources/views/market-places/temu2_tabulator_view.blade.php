@@ -118,7 +118,7 @@
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
                         <i class="fa fa-upload"></i> Upload Daily Data
                     </button>
-                    <a href="{{ route('temu2.decrease') }}" class="btn btn-sm btn-outline-primary" title="View Temu 2 pricing (DIL%, CVR, orders from temu2_daily_data)">
+                    <a href="{{ route('temu2.decrease') }}" class="btn btn-sm btn-outline-primary" title="View Temu 2 pricing (DIL%, CVR, orders from temu2_orders)">
                         <i class="fa fa-chart-line"></i> Temu Analytics
                     </a>
                 </div>
@@ -159,7 +159,7 @@
             </div>
         </div>
     </div>
-    <!-- Upload Daily Data Modal (same as Temu: same DB tables temu_daily_data / temu_daily_data_l60) -->
+    <!-- Upload Daily Data Modal -->
     <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">

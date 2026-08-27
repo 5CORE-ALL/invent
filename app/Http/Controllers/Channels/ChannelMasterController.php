@@ -107,7 +107,6 @@ use App\Models\ReverbListingStatus;
 use App\Models\SheinDailyData;
 use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
-use App\Models\TemuDailyData;
 use App\Models\TemuDailyDataL60;
 use App\Models\TemuAdsApiReport;
 use App\Models\Temu2CampaignReport;

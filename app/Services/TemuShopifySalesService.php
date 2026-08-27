@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
+use App\Models\Temu2Metric;
+use App\Models\Temu2Order;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
 use App\Support\ProductMasterTemuShip;
@@ -12,9 +14,9 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Temu L30/L60/L7/Y sales sourced from the `temu_orders` table (Temu API order-wise data,
- * populated by `app:fetch-temu-orders`). Line price comes from temu_metrics (base_price);
- * LP / Temu ship from product_master. (No longer reads apicentral.shopify_order_items.)
+ * Temu L30/L60/L7/Y sales from `temu_orders` (app:fetch-temu-orders).
+ * Temu 2 L30/L60/L7 sales from `temu2_orders` (app:fetch-temu2-orders) — not sheet uploads.
+ * Line price from temu_metrics / temu2_metrics (or order_base_amount); LP / ship from product_master.
  */
 class TemuShopifySalesService
 {
@@ -379,15 +381,32 @@ class TemuShopifySalesService
    
     public static function getOrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
-        // FetchTemuOrders stores parent_order_time in Pacific (Temu's reporting tz) and the
-        // app timezone is America/Los_Angeles, so Pacific windows already match the stored
-        // wall-clock. Align boundaries to the app tz anyway so this stays correct even if the
-        // app timezone changes or older rows were written under a different tz.
+        return self::getChannelOrdersTableRows($startDate, $endDate, false);
+    }
+
+    /** Same shape as getOrdersTableRows, from temu2_orders + temu2_metrics (not temu2_daily_data). */
+    public static function getTemu2OrdersTableRows(Carbon $startDate, Carbon $endDate): array
+    {
+        return self::getChannelOrdersTableRows($startDate, $endDate, true);
+    }
+
+    private static function getChannelOrdersTableRows(Carbon $startDate, Carbon $endDate, bool $isTemu2): array
+    {
+        // FetchTemuOrders / FetchTemu2Orders store parent_order_time in Pacific (Temu's
+        // reporting tz) and the app timezone is America/Los_Angeles, so Pacific windows
+        // already match the stored wall-clock. Align boundaries to the app tz anyway so
+        // this stays correct even if the app timezone changes or older rows were written
+        // under a different tz.
         $appTz = config('app.timezone');
         $start = $startDate->copy()->setTimezone($appTz);
         $end = $endDate->copy()->setTimezone($appTz);
 
-        $orders = TemuOrder::whereBetween('parent_order_time', [$start, $end])
+        if ($isTemu2 && ! Schema::hasTable('temu2_orders')) {
+            return [];
+        }
+
+        $orderModel = $isTemu2 ? Temu2Order::class : TemuOrder::class;
+        $orders = $orderModel::whereBetween('parent_order_time', [$start, $end])
             ->orderBy('parent_order_time', 'desc')
             ->orderBy('id', 'desc')
             ->get();
@@ -396,19 +415,32 @@ class TemuShopifySalesService
             return [];
         }
 
+        // Same marketplace_percentages.Temu take-home as /temu-decrease and /temu2-decrease.
         $margin = self::temuMarginDecimal();
-        $skus = $orders->pluck('ext_code');
+        $skus = $orders->map(function ($o) {
+            $sku = trim((string) ($o->ext_code ?? ''));
+            if ($sku === '') {
+                $sku = trim((string) ($o->display_sku ?? ''));
+            }
+
+            return $sku;
+        });
         $productMasters = self::productMastersForSkus($skus);
 
         $skuList = $skus->filter()->unique()->values()->toArray();
-        $priceBySku = ! empty($skuList) && Schema::hasTable('temu_metrics')
-            ? TemuMetric::whereIn('sku', $skuList)->pluck('base_price', 'sku')
+        $metricsTable = $isTemu2 ? 'temu2_metrics' : 'temu_metrics';
+        $metricsModel = $isTemu2 ? Temu2Metric::class : TemuMetric::class;
+        $priceBySku = ! empty($skuList) && Schema::hasTable($metricsTable)
+            ? $metricsModel::whereIn('sku', $skuList)->pluck('base_price', 'sku')
             : collect();
 
         $result = [];
 
         foreach ($orders as $o) {
-            $sku = $o->ext_code ?? '';
+            $sku = trim((string) ($o->ext_code ?? ''));
+            if ($sku === '') {
+                $sku = trim((string) ($o->display_sku ?? ''));
+            }
             $pm = ($sku !== '' && isset($productMasters[$sku])) ? $productMasters[$sku] : null;
             [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);
             $parent = $pm ? ($pm->parent ?? '') : '';
@@ -416,10 +448,10 @@ class TemuShopifySalesService
             $quantity = (int) ($o->quantity ?? 0);
 
             // Prefer Temu's ACTUAL reported base amount (bg.order.amount.query, stored on
-            // temu_orders.order_base_amount) over catalog price × qty — the same principle
-            // as Amazon summing real per-order item price. order_base_amount is the line
-            // total for this sub-order, so per-unit = amount / qty. Fall back to temu_pricing
-            // when the amount hasn't been fetched yet, so nothing regresses (temu_metrics fallback).
+            // temu_orders / temu2_orders.order_base_amount) over catalog price × qty — the
+            // same principle as Amazon summing real per-order item price. order_base_amount
+            // is the line total for this sub-order, so per-unit = amount / qty. Fall back
+            // to metrics catalog price when the amount hasn't been fetched yet.
             $price = (float) ($priceBySku[$sku] ?? 0);
             if ($o->order_base_amount !== null && $quantity > 0) {
                 $price = ((float) $o->order_base_amount) / $quantity;

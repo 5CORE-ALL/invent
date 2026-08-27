@@ -15,7 +15,6 @@ use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
-use App\Models\TemuDailyData;
 use App\Models\TemuDailyDataL60;
 use App\Models\TemuDailyDataL7;
 use App\Models\Temu2DailyData;
@@ -832,36 +831,6 @@ class TemuController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
-    }
-
-    public function uploadDailyDataChunk(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Temu daily data sheet upload has been removed. Use temu_orders (API).',
-        ], 410);
-    }
-
-    /**
-     * Upload L60 sales daily data (same format as L30, stored in temu_daily_data_l60).
-     */
-    public function uploadDailyDataL60Chunk(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Temu L60 daily data sheet upload has been removed. Use temu_orders (API).',
-        ], 410);
-    }
-
-    /**
-     * Upload L7 sales daily data (same format as L30, stored in temu_daily_data_l7).
-     */
-    public function uploadDailyDataL7Chunk(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Temu L7 daily data sheet upload has been removed. Use temu_orders (API).',
-        ], 410);
     }
 
     /**
@@ -1682,7 +1651,7 @@ class TemuController extends Controller
     }
 
     /**
-     * Show Temu 2 Tabulator View (same upload, same badges, same DB tables: temu_daily_data / temu_daily_data_l60)
+     * Show Temu 2 Tabulator View (uploads to temu2_daily_data / temu2_daily_data_l60).
      */
     public function temu2TabulatorView()
     {
@@ -1780,113 +1749,6 @@ class TemuController extends Controller
             Log::error('Error getting Temu 2 column visibility: ' . $e->getMessage());
             return response()->json([], 500);
         }
-    }
-
-    /**
-     * Upload Temu Pricing Data
-     */
-    public function uploadTemuPricing(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Temu pricing sheet upload has been removed. Use temu_metrics (API).',
-        ], 410);
-    }
-
-    /**
-     * Download Temu Pricing Sample File
-     */
-    public function downloadTemuPricingSample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row
-        $headers = [
-            'Category',
-            'Category id',
-            'Product name',
-            'Contribution Goods',
-            'SKU',
-            'Goods ID',
-            'SKU ID',
-            'Variation',
-            'Quantity',
-            'Base price',
-            'External Product ID Type',
-            'External product ID',
-            'Status',
-            'Detail status',
-            'Date created',
-            'Incomplete product information'
-        ];
-        
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data
-        $sampleData = [
-            [
-                'Musical Instruments/Electronic Music',
-                '18434',
-                '5Core Speaker Stand 2Pc Heavy Duty',
-                'SS SQ WH',
-                'SS SQ WH',
-                '603239688828956',
-                '47514283725096',
-                'White',
-                '100',
-                '249.99',
-                '',
-                '',
-                'Active',
-                'Active',
-                '24/12/2025 03:44:26',
-                ''
-            ],
-            [
-                'Musical Instruments/Electronic Music',
-                '18434',
-                '5Core Speaker Stand 2Pc Heavy Duty',
-                'SS SQ BLK',
-                'SS SQ BLK',
-                '603239688833129',
-                '43116237163596',
-                'Black',
-                '200',
-                '249.99',
-                '',
-                '',
-                'Active',
-                'Active',
-                '24/12/2025 03:33:55',
-                ''
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        foreach (range('A', 'P') as $col) {
-            $sheet->getColumnDimension($col)->setWidth(20);
-        }
-
-        // Style header row
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:P1')->applyFromArray($headerStyle);
-
-        // Output Download
-        $fileName = 'Temu_Pricing_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
     }
 
     /**
@@ -2667,24 +2529,21 @@ class TemuController extends Controller
         }
     }
 
-    /**
-     * Show Temu Decrease View
-     */
-    public function temuDecreaseView()
-    {
-        // Margin from marketplace_percentages (Temu) — same source as GROI/GPFT backend
-        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
-
-        return view('market-places.temu_decrease', [
-            'temuMargin' => $temuMargin,
-        ]);
-    }
-
     public function temu2DecreaseView()
     {
         // Same margin source/name as /temu-decrease (marketplace_percentages.Temu)
         $temuMargin = TemuShopifySalesService::temuMarginDecimal();
         return view('market-places.temu2_decrease', compact('temuMargin'));
+    }
+
+    /**
+     * Temu Analytics — same UI as /temu2-decrease, fed by Temu 1 decrease data.
+     */
+    public function temu1DataView()
+    {
+        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+
+        return view('market-places.temu1_data', compact('temuMargin'));
     }
 
     /**
@@ -2805,7 +2664,8 @@ class TemuController extends Controller
     }
 
     /**
-     * Temu 2 pricing table: same structure as Temu Decrease, but order aggregates use temu2_daily_data (and L7/L60 Temu 2 tables); no ads, Amazon, or eBay fields.
+     * Temu 2 pricing table: same structure as Temu Decrease, but L30/L7/L60 sales come from
+     * temu2_orders (Temu 2 sales API), not temu2_daily_data sheet uploads.
      */
     public function getTemu2DecreaseData(Request $request)
     {
@@ -3016,35 +2876,18 @@ class TemuController extends Controller
                 }
             }
             
-            if ($isTemu2Pricing) {
-                $hasL7Rows = $isL7Period
-                    && Schema::hasTable('temu2_daily_data_l7')
-                    && Temu2DailyDataL7::query()->exists();
-
-                if ($hasL7Rows) {
-                    $orderRows = Temu2DailyDataL7::select('contribution_sku', 'quantity_purchased')->get();
-                } elseif (Schema::hasTable('temu2_daily_data')) {
-                    $orderRowsQuery = Temu2DailyData::select('contribution_sku', 'quantity_purchased');
-                    if ($isL7Period) {
-                        $orderRowsQuery->where('purchase_date', '>=', Carbon::now()->subDays(7));
-                    }
-                    $orderRows = $orderRowsQuery->get();
-                } else {
-                    $orderRows = collect();
-                }
+            if ($isL7Period) {
+                $todayPst = Carbon::now(TemuShopifySalesService::PST);
+                $apiStart = $todayPst->copy()->subDays(6)->startOfDay();
+                $apiEnd = $todayPst->copy()->endOfDay();
             } else {
-                $hasL7Rows = $isL7Period;
-               
-                if ($isL7Period) {
-                    $todayPst = Carbon::now(TemuShopifySalesService::PST);
-                    $apiStart = $todayPst->copy()->subDays(6)->startOfDay();
-                    $apiEnd = $todayPst->copy()->endOfDay();
-                } else {
-                    [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
-                }
-                $orderRows = collect(TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd))
-                    ->map(fn ($r) => (object) $r);
+                [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
             }
+            $orderRows = collect(
+                $isTemu2Pricing
+                    ? TemuShopifySalesService::getTemu2OrdersTableRows($apiStart, $apiEnd)
+                    : TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd)
+            )->map(fn ($r) => (object) $r);
             foreach ($orderRows as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -3066,17 +2909,14 @@ class TemuController extends Controller
                 return [$sku => (object) ['sku' => $sku, 'temu_l30' => $temuL30]];
             });
 
-            // L60 = prior 30-day window. Temu 1: temu_orders (days 31–60); Temu 2: temu2_daily_data_l60.
+            // L60 = prior 30-day window from temu_orders / temu2_orders (days 31–60).
             $l60ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
-            if ($isTemu2Pricing) {
-                $orderRowsL60 = Schema::hasTable('temu2_daily_data_l60')
-                    ? Temu2DailyDataL60::select('contribution_sku', 'quantity_purchased')->get()
-                    : collect();
-            } else {
-                [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
-                $orderRowsL60 = collect(TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End))
-                    ->map(fn ($r) => (object) $r);
-            }
+            [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+            $orderRowsL60 = collect(
+                $isTemu2Pricing
+                    ? TemuShopifySalesService::getTemu2OrdersTableRows($l60Start, $l60End)
+                    : TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End)
+            )->map(fn ($r) => (object) $r);
             foreach ($orderRowsL60 as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
                 if ($raw === '') {
@@ -3097,24 +2937,9 @@ class TemuController extends Controller
             $normalizedPmSet = collect($skus)->mapWithKeys(function ($s) use ($normalizeSku) {
                 return [$normalizeSku($s) => true];
             })->all();
-            if ($isTemu2Pricing) {
-                if ($hasL7Rows) {
-                    $salesOrderRows = Temu2DailyDataL7::query()
-                        ->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
-                } elseif (Schema::hasTable('temu2_daily_data')) {
-                    $salesSource = Temu2DailyData::query();
-                    if ($isL7Period) {
-                        $salesSource->where('purchase_date', '>=', Carbon::now()->subDays(7));
-                    }
-                    $salesOrderRows = $salesSource->get(['contribution_sku', 'order_id', 'quantity_purchased', 'base_price_total']);
-                } else {
-                    $salesOrderRows = collect();
-                }
-            } else {
-                // Reuse the same temu_orders window already loaded for the L30/L7 table rows.
-                $salesOrderRows = $orderRows;
-            }
-            // ProductMaster lookups for order-level GPFT/GROI (Temu 2 matches /temu2-tabulator).
+            // Reuse the same temu_orders / temu2_orders window already loaded for L30/L7 rows.
+            $salesOrderRows = $orderRows;
+            // ProductMaster lookups for order-level GPFT/GROI (Temu 2 matches /temu2-decrease).
             $pmBySku = $productMasters->keyBy('sku');
             $pmByNormalized = $productMasters->keyBy(function ($pm) use ($normalizeSku) {
                 return $normalizeSku($pm->sku ?? '');
@@ -3498,7 +3323,7 @@ class TemuController extends Controller
                 $inventory = $shopify->inv ?? 0;
                 $l30 = $shopify->quantity ?? 0;
                 
-                // Get Temu L30 (last 30 days sales from Temu daily data)
+                // Get Temu L30 (last 30 days units from temu_orders / temu2_orders)
                 $temuL30 = $temuSales ? (int) ($temuSales->temu_l30 ?? 0) : 0;
                 
                 // Views / O Clicks by goods_id:
@@ -3579,7 +3404,7 @@ class TemuController extends Controller
                 $adSalesL60 = $l60Item ? round((float)($l60Item->ad_sales_l60 ?? 0), 2) : 0;
                 $l60Acos = ($adSalesL60 > 0) ? round(($spendL60 / $adSalesL60) * 100, 2) : null;
                 $l60VsL30 = ($l60Acos !== null && $l60Acos != 0) ? round((($acosAd - $l60Acos) / $l60Acos) * 100, 2) : null;
-                // Temu L60 sales from temu_daily_data_l60 table (L60 Sales upload); same aggregation as L30
+                // Temu L60 units from temu_orders / temu2_orders (days 31–60); same aggregation as L30
                 $temuL60FromSales = (int) ($l60ByNormalizedSku[$normalizeSku($sku)] ?? 0);
                 if ($campaignReportItem && isset($campaignReportItem->status_l30)
                     && trim((string) $campaignReportItem->status_l30) !== ''
@@ -3643,7 +3468,7 @@ class TemuController extends Controller
                     : null;
                 $cvrDenom = (int) $productClicks + (int) $adsViews;
                 $cvrPercent = $cvrDenom > 0 ? ($temuL30 / $cvrDenom) * 100 : 0;
-                // Temu L60 = from L60 sales upload table; Temu 2: sales only (no ad fallback)
+                // Temu L60 = from orders window; Temu 2: sales only (no ad fallback)
                 $temuL60 = $temuL60FromSales > 0
                     ? $temuL60FromSales
                     : ($isTemu2Pricing ? 0 : $adSoldL60);
@@ -4731,42 +4556,6 @@ class TemuController extends Controller
                 'error' => 'Failed to save SPRICE',
                 'message' => $e->getMessage(),
             ], 500);
-        }
-    }
-
-    /**
-     * Save Temu Decrease column visibility preferences
-     */
-    public function saveTemuDecreaseColumnVisibility(Request $request)
-    {
-        try {
-            $userId = auth()->id() ?? 'guest';
-            $key = "temu_decrease_column_visibility_{$userId}";
-            
-            $visibility = $request->input('visibility', []);
-            Cache::put($key, $visibility, now()->addDays(30));
-            
-            return response()->json(['success' => true]);
-        } catch (\Exception $e) {
-            Log::error('Error saving Temu Decrease column visibility: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to save preferences'], 500);
-        }
-    }
-
-    /**
-     * Get Temu Decrease column visibility preferences
-     */
-    public function getTemuDecreaseColumnVisibility()
-    {
-        try {
-            $userId = auth()->id() ?? 'guest';
-            $key = "temu_decrease_column_visibility_{$userId}";
-            
-            $visibility = Cache::get($key, []);
-            return response()->json($visibility);
-        } catch (\Exception $e) {
-            Log::error('Error getting Temu Decrease column visibility: ' . $e->getMessage());
-            return response()->json([], 500);
         }
     }
 

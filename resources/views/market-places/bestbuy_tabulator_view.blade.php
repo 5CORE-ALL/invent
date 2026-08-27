@@ -2628,6 +2628,11 @@
         });
 
         table.on('dataLoaded', function(data) {
+            // ParentExpand.expand() replaces the table data with a single parent's
+            // children, which fires dataLoaded again. Without this guard allTableData would
+            // be overwritten by that subset and later filters would run against only
+            // those rows, leaving the table stuck on the expanded group.
+            if (window.ParentExpand && ParentExpand.isExpanded()) return;
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
             setTimeout(function() {

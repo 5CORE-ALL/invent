@@ -34,7 +34,7 @@ class TemuListingPublishService extends Temu2ListingPublishService
 
     protected function stdPriceHelp(): string
     {
-        return 'Temu Analytics (/temu-decrease)';
+        return 'Temu Analytics (/temu1-data)';
     }
 
     protected function pricingTable(): string

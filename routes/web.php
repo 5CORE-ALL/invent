@@ -3583,9 +3583,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/zero-reverb/view-data', [ReverbZeroController::class, 'getViewReverbZeroData']);
     Route::get('/reverb/zero-low-visibility/view-data', [ReverbLowVisibilityController::class, 'getViewReverbLowVisibilityData']);
     Route::get('/temu/view-data', [TemuController::class, 'getViewTemuData']);
-    Route::post('/temu/upload-daily-data-chunk', [TemuController::class, 'uploadDailyDataChunk']);
-    Route::post('/temu/upload-daily-data-l60-chunk', [TemuController::class, 'uploadDailyDataL60Chunk']);
-    Route::post('/temu/upload-daily-data-l7-chunk', [TemuController::class, 'uploadDailyDataL7Chunk']);
     Route::get('/temu/download-daily-data-sample', [TemuController::class, 'downloadDailyDataSample'])->name('temu.daily.sample');
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/temu/daily-data-l60', [TemuController::class, 'getDailyDataL60'])->name('temu.daily.data.l60');
@@ -4860,10 +4857,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-column-visibility', [TemuController::class, 'saveTemu2ColumnVisibility']);
     Route::get('/temu2-column-visibility', [TemuController::class, 'getTemu2ColumnVisibility']);
 
-    // Temu Pricing Upload
-    Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');
-    Route::get('/temu-pricing/sample', [TemuController::class, 'downloadTemuPricingSample'])->name('temu.pricing.sample');
-
     // Temu 2 pricing sheet upload disabled — use Open API sync
     Route::post('/temu2-pricing/upload', [TemuController::class, 'uploadTemu2Pricing'])->name('temu2.pricing.upload');
     Route::get('/temu2-pricing/sample', [TemuController::class, 'downloadTemu2PricingSample'])->name('temu2.pricing.sample');
@@ -4886,11 +4879,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu Ad Data Upload
     Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');
 
-    // Temu Decrease Page
-    Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
     Route::get('/temu-decrease-data-l7', [TemuController::class, 'getTemuDecreaseDataL7'])->name('temu.decrease.l7');
     // Temu 2 pricing (temu2_daily_data orders; no ads / Amazon / eBay)
+    Route::get('/temu1-data', [TemuController::class, 'temu1DataView'])->name('temu1.data');
     Route::get('/temu2-decrease', [TemuController::class, 'temu2DecreaseView'])->name('temu2.decrease');
     Route::get('/temu2-decrease-data', [TemuController::class, 'getTemu2DecreaseData']);
     Route::get('/temu2-decrease-data-l7', [TemuController::class, 'getTemu2DecreaseDataL7'])->name('temu2.decrease.l7');
@@ -4945,8 +4937,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-pricing/update-price', [TemuController::class, 'updateTemu2Price']);
     Route::post('/temu2-pricing/save-sprice', [TemuController::class, 'saveTemu2Sprice']);
     Route::post('/temu2-sync-data-view-from-temu', [TemuController::class, 'syncTemu2DataViewFromTemuDataView'])->name('temu2.sync.dataview');
-    Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
-    Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
     Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
     Route::post('/temu-decrease/save-links', [TemuController::class, 'saveTemuDecreaseLinks'])->name('temu.decrease.save.links');
     Route::post('/temu-decrease/upload-campaign-report', [TemuController::class, 'uploadCampaignReport'])->name('temu.ads.upload.campaign');

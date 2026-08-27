@@ -1515,6 +1515,11 @@
             if (!suppressDataLoadedHandler) {
                 // Reorder so "10 FR" group is first, then others A-Z; within group children A-Z then parent row last
                 const reordered = reorderDataWith10FRFirst(data);
+                // ParentExpand.expand() replaces the table data with a single parent's
+                // children, which fires dataLoaded again. Without this guard fullDataset would
+                // be overwritten by that subset and later filters would run against only
+                // those rows, leaving the table stuck on the expanded group.
+                if (window.ParentExpand && ParentExpand.isExpanded()) return;
                 fullDataset = reordered;
                 if (window.ParentExpand) ParentExpand.captureDataset(reordered);
                 

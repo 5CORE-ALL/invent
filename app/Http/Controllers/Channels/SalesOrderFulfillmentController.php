@@ -625,7 +625,6 @@ class SalesOrderFulfillmentController extends Controller
 
         $temuMap = $temuKeys !== []
             ? $this->loadTemuSitesTrackingMap(array_keys($temuKeys), [
-                'temu_daily_data',
                 'temu_daily_data_l7',
                 'temu_daily_data_l60',
                 'temu_daily_data_l70',

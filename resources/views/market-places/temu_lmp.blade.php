@@ -10,8 +10,8 @@
             <div class="col-12">
                 <div class="page-title-box d-flex align-items-center justify-content-between">
                     <h4 class="mb-0">Temu LMP</h4>
-                    <a href="{{ route('temu.decrease') }}" class="btn btn-outline-primary btn-sm">
-                        <i class="fa fa-arrow-left me-1"></i> Temu Decrease
+                    <a href="{{ route('temu1.data') }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fa fa-arrow-left me-1"></i> Temu Analytics
                     </a>
                 </div>
             </div>

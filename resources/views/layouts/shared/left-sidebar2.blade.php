@@ -1437,6 +1437,9 @@
                                         <li>
                                             <a href="{{ route('temu.pricing.dsc') }}"> Temu Pricing Decrease CVR</a>
                                         </li>
+                                        <li>
+                                            <a href="{{ route('temu1.data') }}">Temu Analytics</a>
+                                        </li>
 
                                         @if (isset($permissions['listing_temu']) && in_array('view', $permissions['listing_temu']))
                                             <li>

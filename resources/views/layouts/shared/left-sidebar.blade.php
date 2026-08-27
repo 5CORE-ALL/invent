@@ -1791,7 +1791,7 @@
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('temu-decrease') }}">Temu - Analytics</a>
+                                        <a href="{{ route('temu1.data') }}">Temu Analytics</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('temu.ads') }}">Temu Ads (API)</a>

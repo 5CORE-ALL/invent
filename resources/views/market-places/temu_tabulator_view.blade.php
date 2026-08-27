@@ -99,7 +99,7 @@
                     <button type="button" class="btn btn-sm btn-info" id="export-l7-btn">
                         <i class="fa fa-download"></i> Export L7
                     </button>
-                    <a href="{{ route('temu.decrease') }}" class="btn btn-sm btn-outline-primary" title="View SKU analytics (DIL%, CVR, pricing, ads)">
+                    <a href="{{ route('temu1.data') }}" class="btn btn-sm btn-outline-primary" title="View SKU analytics (DIL%, CVR, pricing, ads)">
                         <i class="fa fa-chart-line"></i> Temu Analytics
                     </a>
                 </div>

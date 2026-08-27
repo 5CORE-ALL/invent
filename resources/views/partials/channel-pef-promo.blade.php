@@ -9,6 +9,7 @@
     $channelPromoPart = $channelPromoPart ?? 'all';
     $channelPromoChannel = $channelPromoChannel ?? 'ebay1';
     $channelPromoHideCvrCpn = !empty($channelPromoHideCvrCpn);
+    $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
     $channelPromoShowZeroSoldDilRule = true;
@@ -894,6 +895,7 @@
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
+        const CHANNEL_PROMO_HIDE_PUSH_CPN = @json($channelPromoHidePushCpn);
         const CHANNEL_PROMO_USES_AMAZON_CVR_DISC = @json($channelPromoUsesAmazonCvrDisc ?? false);
         const CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES = @json($channelPromoShowZeroSoldRules);
         const CHANNEL_PROMO_SHOW_GT_SOLD_RULES = @json($channelPromoShowGtSoldRules);
@@ -8009,7 +8011,7 @@
                 ...(!CHANNEL_PROMO_HIDE_CVR_CPN && CHANNEL_PROMO_CHANNEL === 'ebay2op'
                     ? [channelPromoPushCpnColumn()]
                     : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'temu' ? [{
+                ...(!CHANNEL_PROMO_HIDE_PUSH_CPN && CHANNEL_PROMO_CHANNEL === 'temu' ? [{
                     title: 'Push CPN',
                     field: 'push_cpn',
                     width: 72,
@@ -8709,7 +8711,7 @@
                 dsc: 1,
                 appr: 1,
             };
-            if (CHANNEL_PROMO_CHANNEL !== 'temu') hide.push_cpn = 1;
+            if (CHANNEL_PROMO_HIDE_PUSH_CPN || CHANNEL_PROMO_CHANNEL !== 'temu') hide.push_cpn = 1;
             return (channelPromoPricingColumns() || []).filter(function(c) {
                 return c && !hide[c.field];
             });
