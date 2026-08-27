@@ -281,7 +281,6 @@ class ChannelMasterController extends Controller
             $miss = 0;
             $nmap = 0;
             $views = 0;
-            $aL30 = 0;
 
             foreach ($productMasters as $pm) {
                 $sku = (string) $pm->sku;
@@ -306,10 +305,8 @@ class ChannelMasterController extends Controller
                 $isMissingAmazon = ($sheet === null);
                 $price = (float) ($sheet->price ?? 0);
 
-                // Views + A_L30: same scope as /amazon-tabulator-view listing CVR
-                // (INV>0, non-parent, not NR) so master CVR matches that page.
+                // Views: sessions over all valid rows (same scope as the page summary).
                 $views += (float) ($sheet?->sessions_l30 ?? 0);
-                $aL30 += (float) ($sheet?->units_ordered_l30 ?? 0);
 
                 $childSku = strtoupper($sku);
                 $parentSku = strtoupper((string) ($pm->parent ?? ''));
@@ -348,14 +345,11 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $cvrPct = $views > 0 ? round(($aL30 / $views) * 100, 2) : 0.0;
-
             return [
                 'map' => $map,
                 'miss' => $miss,
                 'nmap' => $nmap,
                 'total_views' => (int) $views,
-                'cvr_pct' => $cvrPct,
             ];
         } catch (\Throwable $e) {
             Log::warning('Amazon live map/miss fallback used: ' . $e->getMessage());
@@ -2910,9 +2904,15 @@ class ChannelMasterController extends Controller
                 $row['Total Views'] = $counts['total_views'];
             }
             // Reverb (and any channel that returns cvr_pct): listing CVR from pricing page,
-            // not Qty ÷ Views (order units disagree with RV L30 ÷ Views / Amazon formula).
-            if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
+            // not Qty ÷ Views (order units disagree with RV L30 ÷ Views).
+            // Amazon must stay Sold qty ÷ Views — do not overlay A_L30 ÷ sessions.
+            if ($name !== 'Amazon' && array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
                 $row['CVR'] = $counts['cvr_pct'];
+            }
+            if ($name === 'Amazon') {
+                $qty = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Qty'] ?? 0));
+                $viewsForCvr = (float) ($row['Total Views'] ?? 0);
+                $row['CVR'] = $viewsForCvr > 0 ? round(($qty / $viewsForCvr) * 100, 2) : 0.0;
             }
 
             // EbayTwo views chart was reading a stale ChannelMasterSummary total_views
@@ -8090,7 +8090,9 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
-            'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
+            'CVR'        => (($mapMissCounts['total_views'] ?? 0) > 0)
+                ? round(($totalQuantity / (float) $mapMissCounts['total_views']) * 100, 2)
+                : null,
             ...$this->getChannelHealthAndReviewsStub(),
         ];
 
@@ -15685,15 +15687,6 @@ class ChannelMasterController extends Controller
                         $value = $clicks > 0 ? round(($adSold / $clicks) * 100, 1) : 0;
                     } elseif ($metric === 'cvr') {
                         $cvrResolved = $this->resolveListingCvrPercentFromSummary($summaryData, $channel);
-                        if ($this->allMarketplaceSnapshotKey($channel) === 'amazon') {
-                            $cmsDate = Carbon::parse($rows->first()->snapshot_date)->toDateString();
-                            $acsCvr = $this->amazonChannelSummaryCvrByDate()[$cmsDate]
-                                ?? $this->amazonChannelSummaryCvrByDate()[$dateKey]
-                                ?? null;
-                            if ($acsCvr !== null) {
-                                $cvrResolved = $acsCvr;
-                            }
-                        }
                         // Shopify/Temu days before listing_cvr used order qty ÷ views and
                         // disagreed with page badges — skip those so the chart stays honest.
                         if ($cvrResolved === null) {
@@ -15863,7 +15856,7 @@ class ChannelMasterController extends Controller
     {
         // v3: Amazon listing CVR from amazon_channel_summary_data (A_L30 ÷ Sess30)
         // so the table CVR dot is no longer stuck gray on a null listing_cvr.
-        return 'amm_dot_trends_v4_w'.$window;
+        return 'amm_dot_trends_v5_w'.$window;
     }
 
     /**
@@ -15981,8 +15974,6 @@ class ChannelMasterController extends Controller
                         $this->aggregateDailyMetricRows($metric, $allM2),
                     ];
                 }
-
-                $this->overlayAmazonListingCvrDotPair($out);
 
                 return $out;
             }
@@ -16131,7 +16122,6 @@ class ChannelMasterController extends Controller
             }
 
             $out['all'] = $this->computeAllChannelsLastTwoDayPairs($processedByChannel, $metrics, $metricMap);
-            $this->overlayAmazonListingCvrDotPair($out);
 
             return $out;
     }

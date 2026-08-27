@@ -1320,10 +1320,6 @@
             }
             function amazonLiveCvrFromRow(row) {
                 if (!row) return null;
-                if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') {
-                    var fromServer = parseNumber(row['CVR']);
-                    if (isFinite(fromServer)) return Math.round(fromServer * 100) / 100;
-                }
                 var views = parseNumber(row['Total Views'] || 0);
                 var qty = parseNumber(row['Qty'] || 0);
                 if (!(views > 0)) return null;
@@ -2063,8 +2059,12 @@
                            
                             const serverCvr = row['CVR'];
                             const hasServerCvr = (serverCvr !== undefined && serverCvr !== null && serverCvr !== '');
+                            const isAmazon = snapshotChannelKey(channel) === 'amazon';
                             let pct;
-                            if (hasServerCvr) {
+                            if (isAmazon) {
+                                if (views === 0) return '-';
+                                pct = (parseNumber(row['Qty'] || 0) / views) * 100;
+                            } else if (hasServerCvr) {
                                 pct = parseNumber(serverCvr);
                             } else {
                                 if (views === 0) return '-';
