@@ -36,9 +36,14 @@ class WayfairOrderSyncService
      */
     public function fetchAndStoreFromDate(string $fromDate): array
     {
-        unset($fromDate);
+        try {
+            $from = \Carbon\Carbon::parse($fromDate)->startOfDay();
+            $days = max(1, min(730, (int) $from->diffInDays(now()) + 1));
+        } catch (\Throwable $e) {
+            $days = 60;
+        }
 
-        return $this->fetchAndStore(60);
+        return $this->fetchAndStore($days);
     }
 
     /**
@@ -113,7 +118,7 @@ class WayfairOrderSyncService
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('wayfair');
         $queue = MarketplaceManagerRegistry::queueFor('wayfair');
         MarketplaceShopifyImportQueue::prepareForDispatch(WayfairDailyData::class, $queue);
-        $query = WayfairDailyData::query()
+        $orders = WayfairDailyData::query()
             ->where(function ($q) {
                 $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
             })
@@ -124,17 +129,71 @@ class WayfairOrderSyncService
             ->when(Schema::hasColumn('wayfair_daily_data', 'po_date'), function ($q) {
                 $q->where('po_date', '>=', MarketplaceShopifyImportQueue::DEFAULT_IMPORT_CUTOFF_DATE);
             })
+            ->orderByDesc('po_date')
             ->orderByDesc('id')
-            ->limit(200);
+            ->limit(400)
+            ->get();
 
+        $seen = [];
         $dispatched = 0;
-        foreach ($query->get() as $row) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('wayfair', $row)) {
+        foreach ($orders as $row) {
+            $poNumber = trim((string) $row->po_number);
+            if ($poNumber === '' || isset($seen[$poNumber])) {
                 continue;
             }
-            $row->update(['import_status' => 'queued']);
+            $seen[$poNumber] = true;
+
+            $status = strtoupper(trim((string) ($row->status ?? '')));
+            if (str_contains($status, 'CANCEL')) {
+                WayfairDailyData::query()
+                    ->where('po_number', $poNumber)
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
+                    ->update(['import_status' => 'skipped_closed']);
+                continue;
+            }
+
+            $alreadyImported = WayfairDailyData::query()
+                ->where('po_number', $poNumber)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($alreadyImported) {
+                WayfairDailyData::query()
+                    ->where('po_number', $poNumber)
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
+                    ->update([
+                        'shopify_order_id' => (string) $alreadyImported,
+                        'import_status' => 'imported',
+                        'pushed_to_shopify_at' => now(),
+                    ]);
+                continue;
+            }
+
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('wayfair', $row)) {
+                WayfairDailyData::query()
+                    ->where('po_number', $poNumber)
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
+                    ->update(['import_status' => 'skipped_unpaid']);
+                continue;
+            }
+
             MarketplaceShopifyImportQueue::push(new ImportWayfairOrderToShopify((int) $row->id), $queue);
+            WayfairDailyData::query()
+                ->where('po_number', $poNumber)
+                ->where(function ($q) {
+                    $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                })
+                ->update(['import_status' => 'queued']);
             $dispatched++;
+            if ($dispatched >= 200) {
+                break;
+            }
         }
 
         return $dispatched;

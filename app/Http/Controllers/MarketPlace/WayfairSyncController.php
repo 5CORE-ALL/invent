@@ -598,16 +598,6 @@ class WayfairSyncController extends Controller
         $aeDataSource = 'cached';
         $detailService = app(WayfairOrderDetailService::class);
 
-        if ($this->apiConfig->isConfigured('wayfair')) {
-            $pull = $detailService->fetchAndPersistOrderDetail($orderId);
-            if (! empty($pull['success'])) {
-                $aeDataSource = 'api';
-                $line->refresh();
-            } else {
-                $aeLiveError = $pull['message'] ?? 'Could not refresh live Wayfair order details.';
-            }
-        }
-
         $orderRoot = $detailService->resolveOrderRoot($line);
         $detail = app(WayfairDetailFormatter::class)->formatOrder($orderRoot, $lines, $line);
 
@@ -631,7 +621,7 @@ class WayfairSyncController extends Controller
         }
 
         $line = WayfairDailyData::query()->findOrFail($id);
-        $result = app(WayfairOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->po_number);
+        $result = app(WayfairOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->po_number, true);
 
         // Persist only — Shopify address fill matches AliExpress / Reverb (SyncWayfairAddressJob).
         return response()->json([
@@ -845,12 +835,23 @@ class WayfairSyncController extends Controller
 
         if ($shopifyOrderId) {
             $order->refresh();
+            $message = $push->lastDuplicateLinkMessage
+                ?: 'Pushed to Shopify.';
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pushed to Shopify.',
+                'message' => $message,
                 'shopify_order_id' => $shopifyOrderId,
+                'linked_existing' => $push->lastDuplicateLinkMessage !== null,
             ]);
+        }
+
+        $order->refresh();
+        if (in_array((string) $order->import_status, ['skipped_closed', 'skipped_unpaid', 'imported'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => $push->lastFailureReason ?: 'Order was not imported.',
+            ], 422);
         }
 
         $order->update(['import_status' => 'import_failed']);
