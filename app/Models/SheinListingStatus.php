@@ -156,7 +156,13 @@ class SheinListingStatus extends Model
                 continue;
             }
             $value = is_array($row->value) ? $row->value : [];
-            $spu = static::extractSpuNameFromSellerLink((string) ($value['seller_link'] ?? ''));
+            $spu = trim((string) ($value['spu_name'] ?? $value['spuName'] ?? $value['spu_code'] ?? $value['spuCode'] ?? ''));
+            if ($spu === '') {
+                $spu = static::extractSpuNameFromSellerLink((string) ($value['seller_link'] ?? ''));
+            }
+            if ($spu === '') {
+                $spu = static::extractSpuNameFromSellerLink((string) ($value['buyer_link'] ?? ''));
+            }
             if ($spu === '') {
                 continue;
             }

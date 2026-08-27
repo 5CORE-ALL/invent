@@ -324,6 +324,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     var original = btn.innerHTML;
     var url = '{{ route('marketplace.manager.ebay2.sync.mismatch.inventory') }}';
     var offset = 0;
+    var ready = false;
     var totals = { updated: 0, failed: 0, skipped: 0 };
     var retries = 0;
 
@@ -334,7 +335,9 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     }
 
     function tick() {
-        btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
+        btn.innerHTML = ready
+            ? ('<i class="ri-loader-4-line"></i> Syncing… ' + offset)
+            : '<i class="ri-loader-4-line"></i> Preparing…';
         return fetch(url, {
             method: 'POST',
             headers: {
@@ -342,17 +345,17 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ offset: offset, limit: 10, scope: scope }),
+            body: JSON.stringify({ offset: offset, limit: 1, scope: scope, ready: ready ? 1 : 0 }),
         }).then(function (r) {
             return r.text().then(function (text) {
                 var data = null;
                 try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
-                if (!r.ok) {
-                    var errMsg = (data && (data.message || data.error)) || ('HTTP ' + r.status + ' at offset ' + offset);
-                    throw new Error(errMsg);
-                }
                 if (!data || typeof data !== 'object') {
-                    throw new Error('Invalid server response at offset ' + offset);
+                    var snippet = (text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240);
+                    throw new Error('HTTP ' + r.status + (snippet ? (': ' + snippet) : ' (empty response) at offset ' + offset));
+                }
+                if (!r.ok && !data.success) {
+                    throw new Error(data.message || data.error || ('HTTP ' + r.status + ' at offset ' + offset));
                 }
                 return data;
             });
@@ -362,6 +365,18 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return;
             }
             retries = 0;
+            if (data.prepared) {
+                ready = true;
+                if (data.done) {
+                    alert(data.message || 'No mismatch SKUs to sync.');
+                    location.reload();
+                    return;
+                }
+                btn.innerHTML = '<i class="ri-loader-4-line"></i> Prepared ' + (data.total || 0);
+                setTimeout(tick, 200);
+                return;
+            }
+            ready = true;
             totals.updated += data.updated || 0;
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
@@ -379,10 +394,12 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             }
             setTimeout(tick, 1200);
         }).catch(function (err) {
-            // One automatic retry helps recover from short gateway/timeout blips.
-            if (retries < 1) {
+            var msg = String((err && err.message) || '');
+            var timeoutish = /504|502|503|timeout|gateway|empty response/i.test(msg);
+            var maxRetries = timeoutish ? 3 : 1;
+            if (retries < maxRetries) {
                 retries++;
-                setTimeout(tick, 1500);
+                setTimeout(tick, timeoutish ? 2000 : 1500);
                 return;
             }
             finish((err && err.message) || ('Request failed at offset ' + offset + '.')

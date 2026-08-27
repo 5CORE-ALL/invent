@@ -200,6 +200,7 @@ final class MarketplacePortalStatusTabs
             $item = [
                 'shopify_sku_id' => $shopify->id ?? null,
                 'product_id' => $cachedRow['product_id'] ?? null,
+                'sku_id' => $cachedRow['sku_id'] ?? null,
                 'sku' => $sku,
                 'title' => $shopifyTitle,
                 $titleProperty => $cachedRow['title'] ?? null,

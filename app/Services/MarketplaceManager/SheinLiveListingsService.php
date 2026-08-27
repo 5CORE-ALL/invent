@@ -126,7 +126,7 @@ final class SheinLiveListingsService
                 ->whereNotNull('sku')
                 ->get(['sku', 'product_id', 'product_name'])
                 ->each(function (SheinMmMetric $m) use (&$mmBySku) {
-                    $mmBySku[trim((string) $m->sku)] = $m;
+                    $this->indexBySku($mmBySku, trim((string) $m->sku), $m);
                 });
         }
 
@@ -136,7 +136,7 @@ final class SheinLiveListingsService
                 ->whereNotNull('sku')
                 ->get(['sku', 'shein_sku_code', 'product_name', 'status', 'inventory'])
                 ->each(function (SheinMetric $m) use (&$cacheBySku) {
-                    $cacheBySku[trim((string) $m->sku)] = $m;
+                    $this->indexBySku($cacheBySku, trim((string) $m->sku), $m);
                 });
         }
 
@@ -147,7 +147,12 @@ final class SheinLiveListingsService
             ->orderBy('id')
             ->chunkById(500, function ($chunk) use (&$out, $mmBySku, $cacheBySku) {
                 foreach ($chunk as $row) {
-                    $parsed = $this->mapPricingRow($row, $mmBySku[$row->sku] ?? null, $cacheBySku[$row->sku] ?? null);
+                    $sku = trim((string) $row->sku);
+                    $parsed = $this->mapPricingRow(
+                        $row,
+                        $this->lookupBySku($mmBySku, $sku),
+                        $this->lookupBySku($cacheBySku, $sku)
+                    );
                     if ($parsed !== null) {
                         $out[] = $parsed;
                     }
@@ -182,7 +187,9 @@ final class SheinLiveListingsService
             }
         }
 
-        foreach (SheinListingStatus::listedSellerSkus() as $sku) {
+        $listed = SheinListingStatus::listedSellerSkus();
+        $hints = $listed === [] ? [] : SheinListingStatus::skuCodeHintsForSellerSkus($listed);
+        foreach ($listed as $sku) {
             $upper = strtoupper($sku);
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if (isset($have[$upper]) || ($norm !== '' && isset($have[$norm]))) {
@@ -192,8 +199,9 @@ final class SheinLiveListingsService
             if ($norm !== '') {
                 $have[$norm] = true;
             }
+            $productId = trim((string) ($hints[$sku] ?? $sku));
             $rows[] = [
-                'product_id' => $sku,
+                'product_id' => $productId !== '' ? $productId : $sku,
                 'sku' => $sku,
                 'state' => 'active',
                 'inventory' => null,
@@ -247,5 +255,37 @@ final class SheinLiveListingsService
             'title' => $title,
             'price' => $price !== null ? (float) $price : null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $bySku
+     */
+    protected function indexBySku(array &$bySku, string $sku, mixed $row): void
+    {
+        if ($sku === '') {
+            return;
+        }
+        $bySku[$sku] = $row;
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && ! isset($bySku[$norm])) {
+            $bySku[$norm] = $row;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $bySku
+     */
+    protected function lookupBySku(array $bySku, string $sku): mixed
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        if (isset($bySku[$sku])) {
+            return $bySku[$sku];
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return $norm !== '' ? ($bySku[$norm] ?? null) : null;
     }
 }

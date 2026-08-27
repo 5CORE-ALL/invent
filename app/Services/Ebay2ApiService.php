@@ -34,6 +34,9 @@ class Ebay2ApiService
     protected $siteId;
     protected $compatLevel;
 
+    /** @var array{shipping: string, payment: string, return: string}|null */
+    protected ?array $ebay2PolicyIds = null;
+
     public function __construct()
     {
         $this->appId       = config('services.ebay2.app_id');
@@ -497,15 +500,20 @@ class Ebay2ApiService
      */
     private function parseEbayError(array $error): string
     {
-        $long   = $error['LongMessage'] ?? null;
-        $short  = $error['ShortMessage'] ?? null;
+        $long   = is_string($error['LongMessage'] ?? null) ? html_entity_decode(strip_tags((string) $error['LongMessage'])) : null;
+        $short  = is_string($error['ShortMessage'] ?? null) ? html_entity_decode(strip_tags((string) $error['ShortMessage'])) : null;
         $code   = $error['ErrorCode'] ?? null;
         $params = $error['ErrorParameters'] ?? [];
         $parts  = [];
-        if ($long && $long !== $short) {
-            $parts[] = $long;
-        } elseif ($short) {
+        $codeStr = $code !== null && $code !== '' ? (string) $code : '';
+        // 21919456 is a business-policy warning; keep it short so the UI is not a wall of eBay help links.
+        if ($codeStr === '21919456') {
+            return 'Use eBay business policy IDs for shipping/payment/returns (eBay code: 21919456).';
+        }
+        if ($short) {
             $parts[] = $short;
+        } elseif ($long) {
+            $parts[] = $long;
         }
         if ($code) {
             $parts[] = "(eBay code: {$code})";
@@ -513,10 +521,12 @@ class Ebay2ApiService
         if (is_array($params)) {
             foreach ($params as $p) {
                 if (is_array($p) && isset($p['Value'])) {
-                    $val = is_string($p['Value']) ? strip_tags($p['Value']) : json_encode($p['Value']);
-                    if (trim($val) !== '') {
-                        $parts[] = $val;
+                    $val = is_string($p['Value']) ? html_entity_decode(strip_tags($p['Value'])) : json_encode($p['Value']);
+                    $val = trim((string) $val);
+                    if ($val === '' || preg_match('#^https?://#i', $val)) {
+                        continue;
                     }
+                    $parts[] = $val;
                 }
             }
         }
@@ -2403,6 +2413,8 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
 
             $item = $xml->addChild('Item');
             $item->addChild('ItemID', $itemId);
+            $this->attachEbay2SellerProfiles($item);
+            $this->attachEbay2DeletedLegacyPolicyFields($xml);
             $sku = $sku !== null ? trim($sku) : '';
             if ($sku !== '' && $quantity !== null) {
                 $variations = $item->addChild('Variations');
@@ -2554,8 +2566,6 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         return str_contains($blob, 'this item cannot be accessed')
             || str_contains($blob, 'listing has been ended')
             || str_contains($blob, 'auction has been closed')
-            || str_contains($blob, 'ended')
-            || str_contains($blob, 'completed')
             || str_contains($blob, 'errorcode>17')
             || str_contains($blob, '"17"')
             || str_contains($blob, '21916250')
@@ -2866,6 +2876,87 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
         } catch (\Throwable $e) {
             return ['success' => false, 'categories' => [], 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * @param  \SimpleXMLElement  $item  Item node
+     */
+    protected function attachEbay2SellerProfiles(SimpleXMLElement $item): void
+    {
+        $ids = $this->resolvedEbay2PolicyIds();
+        if ($ids['shipping'] === '' && $ids['payment'] === '' && $ids['return'] === '') {
+            return;
+        }
+        $profiles = $item->addChild('SellerProfiles');
+        if ($ids['shipping'] !== '') {
+            $profiles->addChild('SellerShippingProfile')->addChild('ShippingProfileID', $ids['shipping']);
+        }
+        if ($ids['payment'] !== '') {
+            $profiles->addChild('SellerPaymentProfile')->addChild('PaymentProfileID', $ids['payment']);
+        }
+        if ($ids['return'] !== '') {
+            $profiles->addChild('SellerReturnProfile')->addChild('ReturnProfileID', $ids['return']);
+        }
+    }
+
+    /**
+     * Drop legacy shipping/payment/return so Relist/Revise uses SellerProfiles (eBay 21919456).
+     */
+    protected function attachEbay2DeletedLegacyPolicyFields(SimpleXMLElement $request): void
+    {
+        foreach ([
+            'Item.ShippingDetails',
+            'Item.PaymentMethods',
+            'Item.PayPalEmailAddress',
+            'Item.ReturnPolicy',
+        ] as $field) {
+            $request->addChild('DeletedField', $field);
+        }
+    }
+
+    /**
+     * @return array{shipping: string, payment: string, return: string}
+     */
+    protected function resolvedEbay2PolicyIds(): array
+    {
+        if (is_array($this->ebay2PolicyIds)) {
+            return $this->ebay2PolicyIds;
+        }
+
+        $defaults = config('listing_manager.ebay2_defaults', []);
+        $shipping = trim((string) ($defaults['shipping_policy_id'] ?? ''));
+        $payment = trim((string) ($defaults['payment_policy_id'] ?? ''));
+        $return = trim((string) ($defaults['return_policy_id'] ?? ''));
+
+        if ($shipping === '') {
+            $policies = $this->getBusinessPolicies();
+            $want = strtolower(trim((string) ($defaults['shipping_policy_name'] ?? 'as per weight')));
+            foreach ($policies['shipping'] ?? [] as $policy) {
+                if (! is_array($policy)) {
+                    continue;
+                }
+                $id = trim((string) ($policy['id'] ?? ''));
+                $name = strtolower(trim((string) ($policy['name'] ?? '')));
+                if ($id === '') {
+                    continue;
+                }
+                if ($want !== '' && $name !== '' && str_contains($name, $want)) {
+                    $shipping = $id;
+                    break;
+                }
+            }
+            if ($shipping === '') {
+                $shipping = trim((string) ($policies['shipping'][0]['id'] ?? ''));
+            }
+        }
+
+        $this->ebay2PolicyIds = [
+            'shipping' => $shipping,
+            'payment' => $payment,
+            'return' => $return,
+        ];
+
+        return $this->ebay2PolicyIds;
     }
 
     /**

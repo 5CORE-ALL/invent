@@ -344,11 +344,28 @@ class TikTokListingsPageBuilder
         $liveService = $this->liveService();
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $offset = max(0, (int) $request->input('offset', 0));
-        if ($offset === 0) {
-            $this->forgetMismatchSkuCache();
+        // One SKU per request so nginx/gateway (~60s) cannot 504 the first batch.
+        $limit = 1;
+
+        $hasReadyFlag = $request->exists('ready');
+        if ($offset === 0 && $hasReadyFlag && ! $request->boolean('ready')) {
+            $mismatch = $this->mismatchSkusForSync($scope);
+            $total = count($mismatch);
+
+            return [
+                'success' => true,
+                'prepared' => true,
+                'done' => $total === 0,
+                'total' => $total,
+                'offset' => 0,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'Prepared '.$total.' SKU(s). Starting…',
+            ];
         }
+
         $mismatch = $this->mismatchSkusForSync($scope);
-        $limit = max(1, min(10, (int) $request->input('limit', 5)));
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
 
@@ -499,29 +516,47 @@ class TikTokListingsPageBuilder
             return [];
         }
 
-        $keys = [];
+        $wanted = [];
         foreach ($skus as $sku) {
-            $keys[] = $sku;
-            $keys[] = strtoupper($sku);
+            $upper = strtoupper($sku);
+            $wanted[$upper] = true;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm !== '') {
-                $keys[] = $norm;
+                $wanted[$norm] = true;
+                $wanted[strtoupper($norm)] = true;
+            }
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '') {
+                $wanted[$compact] = true;
             }
         }
-        $keys = array_values(array_unique($keys));
 
         $map = [];
         ($this->productModel())::query()
-            ->whereIn('sku', $keys)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->get()
-            ->each(function (Model $row) use (&$map) {
-                $sku = (string) $row->sku;
-                $map[$sku] = $row;
+            ->each(function (Model $row) use (&$map, $wanted) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '') {
+                    return;
+                }
                 $upper = strtoupper($sku);
-                $map[$upper] = $row;
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                $compact = ShopifySku::compactSkuForLookup($sku);
+                if (! isset($wanted[$upper])
+                    && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
+                    && ($compact === '' || ! isset($wanted[$compact]))) {
+                    return;
+                }
+                $map[$sku] = $row;
+                $map[$upper] = $row;
                 if ($norm !== '') {
                     $map[$norm] = $row;
+                    $map[strtoupper($norm)] = $row;
+                }
+                if ($compact !== '') {
+                    $map[$compact] = $row;
                 }
             });
 
@@ -530,6 +565,7 @@ class TikTokListingsPageBuilder
             $out[$sku] = $map[$sku]
                 ?? $map[strtoupper($sku)]
                 ?? $map[ShopifySku::normalizeSkuForShopifyLookup($sku)]
+                ?? $map[ShopifySku::compactSkuForLookup($sku)]
                 ?? null;
         }
 
@@ -663,7 +699,7 @@ class TikTokListingsPageBuilder
         $linkedSkus = $this->linkedSkus();
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            null,
+            $this->liveService()->peekCached(),
             $this->stockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];

@@ -1132,12 +1132,38 @@ final class MarketplaceListingStockResolver
             if (! Schema::hasTable('shein_pricing_prices') || ! Schema::hasColumn('shein_pricing_prices', 'shein_stock')) {
                 return;
             }
+            $wanted = [];
+            foreach ($keys as $key) {
+                $trim = strtoupper(trim((string) $key));
+                if ($trim === '') {
+                    continue;
+                }
+                $wanted[$trim] = true;
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+                if ($norm !== '') {
+                    $wanted[$norm] = true;
+                    $wanted[strtoupper($norm)] = true;
+                }
+            }
             \App\Models\SheinPricingPrice::query()
-                ->whereIn('sku', $keys)
                 ->whereNotNull('shein_stock')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
                 ->get(['sku', 'shein_stock'])
-                ->each(function ($row) use (&$map) {
-                    self::put($map, (string) $row->sku, (int) $row->shein_stock);
+                ->each(function ($row) use (&$map, $wanted) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '') {
+                        return;
+                    }
+                    $upper = strtoupper($sku);
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($wanted !== []
+                        && ! isset($wanted[$upper])
+                        && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
+                    ) {
+                        return;
+                    }
+                    self::put($map, $sku, (int) $row->shein_stock);
                 });
 
             return;
@@ -1227,12 +1253,42 @@ final class MarketplaceListingStockResolver
             if (! Schema::hasTable('ebay_2_metrics') || ! Schema::hasColumn('ebay_2_metrics', 'ebay_stock')) {
                 return;
             }
+            $wanted = [];
+            foreach ($keys as $key) {
+                $trim = strtoupper(trim((string) $key));
+                if ($trim === '') {
+                    continue;
+                }
+                $wanted[$trim] = true;
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+                if ($norm !== '') {
+                    $wanted[$norm] = true;
+                    $wanted[strtoupper($norm)] = true;
+                }
+            }
             \App\Models\Ebay2Metric::query()
-                ->whereIn('sku', $keys)
                 ->whereNotNull('ebay_stock')
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
                 ->get(['sku', 'ebay_stock'])
-                ->each(function ($row) use (&$map) {
-                    self::put($map, (string) $row->sku, (int) $row->ebay_stock);
+                ->each(function ($row) use (&$map, $wanted) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '') {
+                        return;
+                    }
+                    $upper = strtoupper($sku);
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($wanted !== []
+                        && ! isset($wanted[$upper])
+                        && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
+                    ) {
+                        return;
+                    }
+                    $qty = self::normalizeMarketplaceQtyValue($row->ebay_stock);
+                    if ($qty === null) {
+                        return;
+                    }
+                    self::put($map, $sku, $qty);
                 });
 
             return;
@@ -1544,12 +1600,39 @@ final class MarketplaceListingStockResolver
             ? \App\Models\TikTokProductTwo::class
             : \App\Models\TikTokProduct::class;
 
+        $wanted = [];
+        foreach ($keys as $key) {
+            $trim = strtoupper(trim((string) $key));
+            if ($trim === '') {
+                continue;
+            }
+            $wanted[$trim] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $key);
+            if ($norm !== '') {
+                $wanted[$norm] = true;
+                $wanted[strtoupper($norm)] = true;
+            }
+        }
+
         $model::query()
-            ->whereIn('sku', $keys)
             ->whereNotNull('stock')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->get(['sku', 'stock'])
-            ->each(function ($row) use (&$map) {
-                self::put($map, (string) $row->sku, (int) $row->stock);
+            ->each(function ($row) use (&$map, $wanted) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '') {
+                    return;
+                }
+                $upper = strtoupper($sku);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($wanted !== []
+                    && ! isset($wanted[$upper])
+                    && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
+                ) {
+                    return;
+                }
+                self::put($map, $sku, (int) $row->stock);
             });
     }
 

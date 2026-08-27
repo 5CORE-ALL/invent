@@ -29,6 +29,7 @@ use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -252,6 +253,13 @@ class SheinSyncController extends Controller
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
         $mismatchInactive = $overlay['mismatchInactive'];
+        if ($mismatchActive !== []) {
+            Cache::put(
+                $this->sheinMismatchSyncCacheKey('mismatch'),
+                array_values($mismatchActive),
+                now()->addMinutes(30)
+            );
+        }
 
         $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         if (in_array($linkTab, $portalTabs, true)) {
@@ -811,35 +819,47 @@ class SheinSyncController extends Controller
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor('shein');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+        $liveService = app(SheinLiveListingsService::class);
+        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+        $offset = max(0, (int) $request->input('offset', 0));
+        $limit = 1;
+        $cacheKey = $this->sheinMismatchSyncCacheKey($scope);
+        $hasReadyFlag = $request->exists('ready');
+
+        if ($offset === 0 && $hasReadyFlag && ! $request->boolean('ready')) {
+            $cached = Cache::get($cacheKey);
+            $mismatch = is_array($cached) && $cached !== []
+                ? array_values($cached)
+                : $this->resolveSheinMismatchSkuList($scope);
+            Cache::put($cacheKey, $mismatch, now()->addMinutes(30));
+            $total = count($mismatch);
+
             return response()->json([
-                'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ], 422);
+                'success' => true,
+                'prepared' => true,
+                'done' => $total === 0,
+                'total' => $total,
+                'offset' => 0,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'Prepared '.$total.' SKU(s). Starting…',
+            ]);
         }
 
-        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
-        $liveService = app(SheinLiveListingsService::class);
-        $linkedSkus = $this->linkedSheinSkus();
-        $verified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            $liveService->peekCached(),
-            $this->sheinStockMapForSkus($verified)
-        );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
-        $mismatchQty = $classified['mismatch'] ?? [];
-        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
-            ? []
-            : $mismatchQty;
-
-        $offset = max(0, (int) $request->input('offset', 0));
-        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $cached = Cache::get($cacheKey);
+        $mismatch = is_array($cached) && $cached !== []
+            ? array_values($cached)
+            : $this->resolveSheinMismatchSkuList($scope);
+        if (! is_array($cached) || $cached === []) {
+            Cache::put($cacheKey, $mismatch, now()->addMinutes(30));
+        }
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
 
         if ($batch === []) {
+            Cache::forget($cacheKey);
+
             return response()->json([
                 'success' => true,
                 'done' => true,
@@ -855,6 +875,10 @@ class SheinSyncController extends Controller
         $result = app(SheinInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
+        if ($done) {
+            Cache::forget($cacheKey);
+            $liveService->clearCache();
+        }
 
         return response()->json([
             'success' => true,
@@ -1408,6 +1432,33 @@ class SheinSyncController extends Controller
         }
 
         return $out;
+    }
+
+    protected function sheinMismatchSyncCacheKey(string $scope): string
+    {
+        return 'shein_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function resolveSheinMismatchSkuList(string $scope): array
+    {
+        if (in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)) {
+            return [];
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(SheinLiveListingsService::class);
+        $linkedSkus = $this->linkedSheinSkus();
+        $verified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->sheinStockMapForSkus($verified)
+        );
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+
+        return array_values($classified['mismatch'] ?? []);
     }
 
     /**

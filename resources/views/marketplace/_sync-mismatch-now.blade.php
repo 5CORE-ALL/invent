@@ -17,9 +17,10 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     var original = btn.innerHTML;
     var url = @json($url);
     var offset = 0;
+    var ready = false;
     var totals = { updated: 0, failed: 0, skipped: 0 };
     var retries = 0;
-    var limit = {{ (int) ($limit ?? 5) }};
+    var limit = {{ (int) ($limit ?? 1) }};
 
     function finish(msg) {
         alert(msg);
@@ -28,7 +29,9 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     }
 
     function tick() {
-        btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
+        btn.innerHTML = ready
+            ? ('<i class="ri-loader-4-line"></i> Syncing… ' + offset)
+            : '<i class="ri-loader-4-line"></i> Preparing…';
         return fetch(url, {
             method: 'POST',
             headers: {
@@ -36,7 +39,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ offset: offset, limit: limit, scope: scope }),
+            body: JSON.stringify({ offset: offset, limit: limit, scope: scope, ready: ready ? 1 : 0 }),
         }).then(function (r) {
             return r.text().then(function (text) {
                 var data = null;
@@ -56,6 +59,18 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return;
             }
             retries = 0;
+            if (data.prepared) {
+                ready = true;
+                if (data.done) {
+                    alert(data.message || 'No mismatch SKUs to sync.');
+                    location.reload();
+                    return;
+                }
+                btn.innerHTML = '<i class="ri-loader-4-line"></i> Prepared ' + (data.total || 0);
+                setTimeout(tick, 200);
+                return;
+            }
+            ready = true;
             totals.updated += data.updated || 0;
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
@@ -72,9 +87,12 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             }
             setTimeout(tick, 400);
         }).catch(function (err) {
-            if (retries < 1) {
+            var msg = String((err && err.message) || '');
+            var timeoutish = /504|502|503|timeout|gateway|empty response/i.test(msg);
+            var maxRetries = timeoutish ? 3 : 1;
+            if (retries < maxRetries) {
                 retries++;
-                setTimeout(tick, 1500);
+                setTimeout(tick, timeoutish ? 2000 : 1500);
                 return;
             }
             finish(((err && err.message) || ('Request failed at offset ' + offset + '.'))

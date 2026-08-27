@@ -113,11 +113,19 @@ class SheinInventorySyncService
                 $maxQty
             );
 
+            $aliases = [$sku];
+            foreach ($skus as $requested) {
+                if (ShopifySku::normalizeSkuForShopifyLookup($requested)
+                    === ShopifySku::normalizeSkuForShopifyLookup($sku)) {
+                    $aliases[] = $requested;
+                }
+            }
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
                 'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
                 'shopify_qty' => $shopifyStock ?? 0,
+                'sku_aliases' => array_values(array_unique(array_filter($aliases))),
             ];
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm !== '') {
@@ -168,6 +176,10 @@ class SheinInventorySyncService
                 'sku_code' => $sku,
                 'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
                 'shopify_qty' => $shopifyStock ?? 0,
+                'sku_aliases' => array_values(array_unique(array_filter([
+                    $sku,
+                    (string) ($hit['seller_sku'] ?? ''),
+                ]))),
             ];
             $warehouse = trim((string) ($hit['warehouse_code'] ?? ''));
             if ($warehouse !== '') {
@@ -191,22 +203,7 @@ class SheinInventorySyncService
         }
 
         $invResult = $this->pushInventoryRows($inventoryRows);
-        $okSkus = [];
-        foreach ($invResult['results'] ?? [] as $row) {
-            if (! empty($row['success'])) {
-                $seller = strtoupper(trim((string) ($row['seller_part_number'] ?? '')));
-                if ($seller !== '') {
-                    $okSkus[$seller] = true;
-                }
-            }
-        }
-        $persisted = $inventoryRows;
-        if ($okSkus !== []) {
-            $persisted = array_values(array_filter(
-                $inventoryRows,
-                static fn (array $row): bool => isset($okSkus[strtoupper(trim((string) ($row['sku_code'] ?? '')))])
-            ));
-        }
+        $persisted = $this->successfulInventoryRows($inventoryRows, $invResult);
         if (($invResult['pushed'] ?? 0) > 0 && $persisted !== []) {
             $this->updateLocalStock($persisted);
             $this->updateLocalPlatformQuantities($persisted);
@@ -343,17 +340,20 @@ class SheinInventorySyncService
             }
 
             if ($settings['inventory']['inventory_sync'] ?? false) {
-                $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
-                $pushQty = $shopifyStock === null
-                    ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                if ($this->sheinApi->isPlatformSkuCode($productId, $sku)) {
+                    $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+                    $pushQty = $shopifyStock === null
+                        ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                        : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
-                $inventoryRows[] = [
-                    'product_id' => $productId,
-                    'sku_code' => $sku,
-                    'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
-                    'shopify_qty' => $shopifyStock ?? 0,
-                ];
+                    $inventoryRows[] = [
+                        'product_id' => $productId,
+                        'sku_code' => $sku,
+                        'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                        'shopify_qty' => $shopifyStock ?? 0,
+                        'sku_aliases' => [$sku],
+                    ];
+                }
             }
 
             if ($settings['pricing']['price_sync'] ?? false) {
@@ -371,6 +371,69 @@ class SheinInventorySyncService
                         'sku_code' => $sku,
                         'price' => $price,
                     ];
+                }
+            }
+        }
+
+        if ($settings['inventory']['inventory_sync'] ?? false) {
+            $seenNorms = [];
+            foreach ($inventoryRows as $row) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku_code'] ?? ''));
+                if ($norm !== '') {
+                    $seenNorms[$norm] = true;
+                }
+            }
+            $needResolve = [];
+            foreach ($metrics as $metric) {
+                $sku = trim((string) $metric->sku);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($sku === '' || ($norm !== '' && isset($seenNorms[$norm]))) {
+                    continue;
+                }
+                $needResolve[] = $sku;
+            }
+            foreach (SheinListingStatus::listedSellerSkus() as $sku) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '' && isset($seenNorms[$norm])) {
+                    continue;
+                }
+                $needResolve[] = $sku;
+            }
+            $needResolve = array_values(array_unique($needResolve));
+            if ($needResolve !== []) {
+                foreach ($this->shopifyApi->getInventoryQuantitiesBySku($needResolve) as $sku => $qty) {
+                    $shopifyQty[$sku] = (int) $qty;
+                }
+                $resolved = $this->sheinApi->resolvePlatformSkuCodesForSellerSkus(
+                    $needResolve,
+                    SheinListingStatus::spuNamesForSellerSkus($needResolve),
+                    true
+                );
+                foreach ($needResolve as $sku) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    $hit = ($norm !== '' && isset($resolved[$norm])) ? $resolved[$norm] : ($resolved[$sku] ?? null);
+                    $skuCode = trim((string) ($hit['sku_code'] ?? ''));
+                    if (! $this->sheinApi->isPlatformSkuCode($skuCode, $sku)) {
+                        $skipped++;
+                        continue;
+                    }
+                    $shopifyStock = $this->resolveShopifyQty($shopifyQty, $sku);
+                    $pushQty = $shopifyStock === null
+                        ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                        : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+                    $inventoryRows[] = [
+                        'product_id' => $skuCode,
+                        'sku_code' => $sku,
+                        'inventory' => MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0),
+                        'shopify_qty' => $shopifyStock ?? 0,
+                        'sku_aliases' => array_values(array_unique(array_filter([
+                            $sku,
+                            (string) ($hit['seller_sku'] ?? ''),
+                        ]))),
+                    ];
+                    if ($norm !== '') {
+                        $seenNorms[$norm] = true;
+                    }
                 }
             }
         }
@@ -393,9 +456,15 @@ class SheinInventorySyncService
             $invResult = $this->pushInventoryRows($inventoryRows);
             $updated = (int) ($invResult['pushed'] ?? 0);
             $failed = (int) ($invResult['failed'] ?? 0);
-            if ($updated > 0) {
-                $this->updateLocalStock($inventoryRows);
-                $this->updateLocalPlatformQuantities($inventoryRows);
+            $persisted = $this->successfulInventoryRows($inventoryRows, $invResult);
+            if ($updated > 0 && $persisted !== []) {
+                $this->updateLocalStock($persisted);
+                $this->updateLocalPlatformQuantities($persisted);
+                try {
+                    app(SheinLiveListingsService::class)->clearCache();
+                } catch (\Throwable $e) {
+                    // ignore
+                }
             } elseif ($failed > 0) {
                 Log::warning('SheinInventorySyncService: inventory push failed', $invResult);
             }
@@ -431,6 +500,51 @@ class SheinInventorySyncService
         $pass = app(MarketplaceMismatchInventoryPass::class)->run('shein');
 
         return ' '.$pass['message'];
+    }
+
+    /**
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, sku_aliases?: list<string>}>  $inventoryRows
+     * @param  array{pushed?: int, results?: list<array<string, mixed>>}  $invResult
+     * @return array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, sku_aliases?: list<string>}>
+     */
+    protected function successfulInventoryRows(array $inventoryRows, array $invResult): array
+    {
+        $okNorms = [];
+        foreach ($invResult['results'] ?? [] as $row) {
+            if (empty($row['success'])) {
+                continue;
+            }
+            $seller = trim((string) ($row['seller_part_number'] ?? ''));
+            if ($seller === '') {
+                continue;
+            }
+            $okNorms[ShopifySku::normalizeSkuForShopifyLookup($seller) ?: strtoupper($seller)] = true;
+        }
+        if ($okNorms === []) {
+            return ((int) ($invResult['pushed'] ?? 0)) > 0 ? $inventoryRows : [];
+        }
+
+        return array_values(array_filter(
+            $inventoryRows,
+            static function (array $row) use ($okNorms): bool {
+                $candidates = array_merge(
+                    [(string) ($row['sku_code'] ?? '')],
+                    is_array($row['sku_aliases'] ?? null) ? $row['sku_aliases'] : []
+                );
+                foreach ($candidates as $sku) {
+                    $sku = trim((string) $sku);
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku) ?: strtoupper($sku);
+                    if (isset($okNorms[$norm])) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        ));
     }
 
     /**
@@ -528,22 +642,30 @@ class SheinInventorySyncService
     }
 
     /**
-     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
+     * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, sku_aliases?: list<string>}>  $rows
      */
     protected function updateLocalStock(array $rows): void
     {
         foreach ($rows as $row) {
-            $sku = trim((string) $row['sku_code']);
-            if ($sku === '') {
-                continue;
-            }
             $qty = (int) $row['inventory'];
+            $skus = array_merge(
+                [(string) ($row['sku_code'] ?? '')],
+                is_array($row['sku_aliases'] ?? null) ? $row['sku_aliases'] : []
+            );
+            $written = [];
+            foreach ($skus as $sku) {
+                $sku = trim((string) $sku);
+                if ($sku === '' || isset($written[strtoupper($sku)])) {
+                    continue;
+                }
+                $written[strtoupper($sku)] = true;
 
-            if (Schema::hasTable('shein_pricing_prices')) {
-                SheinPricingPrice::updateOrCreate(
-                    ['sku' => $sku],
-                    ['shein_stock' => $qty]
-                );
+                if (Schema::hasTable('shein_pricing_prices')) {
+                    SheinPricingPrice::updateOrCreate(
+                        ['sku' => $sku],
+                        ['shein_stock' => $qty]
+                    );
+                }
             }
         }
     }
