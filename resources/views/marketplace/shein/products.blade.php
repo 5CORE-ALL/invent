@@ -316,6 +316,6 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 @include('marketplace._sync-mismatch-now', [
     'url' => route('marketplace.manager.shein.sync.mismatch.inventory'),
     'confirm' => 'Sync Inv SKU Mismatch SKUs from live Shopify → Shein right now (no queue)? This looks up Shein skuCode then pushes qty.',
-    'limit' => 10,
+    'limit' => 1,
 ])
 @endsection

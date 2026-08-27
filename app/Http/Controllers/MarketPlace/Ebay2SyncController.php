@@ -263,6 +263,13 @@ class Ebay2SyncController extends Controller
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
         $mismatchInactive = $overlay['mismatchInactive'];
+        if ($mismatchActive !== []) {
+            Cache::put(
+                $this->ebay2MismatchSyncCacheKey('mismatch'),
+                array_values($mismatchActive),
+                now()->addMinutes(30)
+            );
+        }
 
         $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         if (in_array($linkTab, $portalTabs, true)) {
@@ -861,20 +868,37 @@ class Ebay2SyncController extends Controller
 
             $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
             $offset = max(0, (int) $request->input('offset', 0));
-            $limit = max(1, min(20, (int) $request->input('limit', 10)));
-            $cacheKey = 'ebay2_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
+            $limit = 1;
+            $cacheKey = $this->ebay2MismatchSyncCacheKey($scope);
 
-            // Rebuild mismatch list only on first batch; later offsets reuse cache (avoids timeout).
-            $mismatch = null;
-            if ($offset > 0) {
+            $hasReadyFlag = $request->exists('ready');
+            if ($offset === 0 && $hasReadyFlag && ! $request->boolean('ready')) {
                 $cached = Cache::get($cacheKey);
-                if (is_array($cached)) {
-                    $mismatch = $cached;
-                }
+                $mismatch = is_array($cached) && $cached !== []
+                    ? array_values($cached)
+                    : $this->resolveEbay2MismatchSkuList($scope);
+                Cache::put($cacheKey, $mismatch, now()->addMinutes(30));
+                $total = count($mismatch);
+
+                return response()->json([
+                    'success' => true,
+                    'prepared' => true,
+                    'done' => $total === 0,
+                    'total' => $total,
+                    'offset' => 0,
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => 0,
+                    'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'Prepared '.$total.' SKU(s). Starting…',
+                ]);
             }
-            if (! is_array($mismatch)) {
-                $mismatch = $this->resolveEbay2MismatchSkuList($scope);
-                Cache::put($cacheKey, array_values($mismatch), now()->addMinutes(30));
+
+            $cached = Cache::get($cacheKey);
+            $mismatch = is_array($cached) && $cached !== []
+                ? array_values($cached)
+                : $this->resolveEbay2MismatchSkuList($scope);
+            if (! is_array($cached) || $cached === []) {
+                Cache::put($cacheKey, $mismatch, now()->addMinutes(30));
             }
 
             $total = count($mismatch);
@@ -934,6 +958,11 @@ class Ebay2SyncController extends Controller
                 'message' => 'Sync failed: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    protected function ebay2MismatchSyncCacheKey(string $scope): string
+    {
+        return 'ebay2_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
     }
 
     /**

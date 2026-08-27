@@ -2129,27 +2129,8 @@ class TikTokShopService
                 return ['success' => false, 'message' => 'Access denied. Your IP address is not in the IP allow list configured for this app.'];
             }
 
-            $skuWarehouses = $this->skuWarehouseInventoryRows($productId, $skuId);
-            if ($skuWarehouses !== []) {
-                $liveTotal = 0;
-                foreach ($skuWarehouses as $row) {
-                    $liveTotal += (int) ($row['quantity'] ?? 0);
-                }
-                if ($liveTotal === max(0, $quantity)) {
-                    return ['success' => true, 'message' => 'Inventory already matches.'];
-                }
-                $rows = $this->inventoryRowsForPushQty($skuWarehouses, $quantity);
-                $result = $this->sendInventoryRows($productId, $skuId, $rows);
-                if (! empty($result['success'])) {
-                    return $result;
-                }
-                $message = (string) ($result['message'] ?? '');
-                $this->rememberIpAllowList($message);
-                if ($this->ipAllowListBlocked) {
-                    return ['success' => false, 'message' => $message];
-                }
-            }
-
+            // Skip inventorySearch here. That extra SDK call uses the same 45s
+            // Guzzle timeout and is enough by itself to 504 a mismatch batch.
             $warehouseId = $this->resolveDefaultWarehouseId();
             $result = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $warehouseId);
             if (! empty($result['success'])) {
@@ -2593,47 +2574,45 @@ class TikTokShopService
         $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
         $inventoryParams = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
 
-        $hosts = array_values(array_unique(array_filter([
-            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
-            'https://open-api.tiktokglobalshop.com',
-            'https://open-api-us.tiktokglobalshop.com',
-        ])));
-
-        $tries = [
-            ['path' => "/product/202509/products/{$productId}/partial_edit", 'body' => $partialParams],
-            ['path' => "/product/202309/products/{$productId}/partial_edit", 'body' => $partialParams],
-            ['path' => "/product/202309/products/{$productId}/inventory/update", 'body' => $inventoryParams],
-            ['path' => "/product/202509/products/{$productId}/inventory/update", 'body' => $inventoryParams],
-        ];
+        $host = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $tries = $this->workingInventoryPath === '202309|inventory'
+            ? [
+                ['path' => "/product/202309/products/{$productId}/inventory/update", 'body' => $inventoryParams],
+                ['path' => "/product/202309/products/{$productId}/partial_edit", 'body' => $partialParams],
+            ]
+            : [
+                ['path' => "/product/202309/products/{$productId}/partial_edit", 'body' => $partialParams],
+                ['path' => "/product/202309/products/{$productId}/inventory/update", 'body' => $inventoryParams],
+            ];
 
         $lastError = 'TikTok inventory update failed.';
-        foreach ($hosts as $base) {
-            foreach ($tries as $try) {
-                try {
-                    $this->tiktokOpenApi('POST', $try['path'], [], $try['body'], 45, false, $base);
-                    $this->workingInventoryPath = $try['path'];
-                    Log::info('TikTok inventory updated via Open API', [
-                        'product_id' => $productId,
-                        'sku_id' => $skuId,
-                        'path' => $try['path'],
-                        'base' => $base,
-                    ]);
+        foreach ($tries as $try) {
+            try {
+                $this->tiktokOpenApi('POST', $try['path'], [], $try['body'], 12, false, $host);
+                $this->workingInventoryPath = str_contains($try['path'], 'partial_edit')
+                    ? '202309|partial'
+                    : '202309|inventory';
+                Log::info('TikTok inventory updated via Open API', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $try['path'],
+                    'base' => $host,
+                ]);
 
-                    return ['success' => true, 'message' => 'Inventory updated.'];
-                } catch (\Throwable $e) {
-                    $lastError = $e->getMessage();
-                    $this->rememberIpAllowList($lastError);
-                    if ($this->ipAllowListBlocked) {
-                        return ['success' => false, 'message' => $lastError];
-                    }
-                    Log::info('TikTok Open API inventory attempt failed', [
-                        'product_id' => $productId,
-                        'sku_id' => $skuId,
-                        'path' => $try['path'],
-                        'base' => $base,
-                        'error' => $lastError,
-                    ]);
+                return ['success' => true, 'message' => 'Inventory updated.'];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                $this->rememberIpAllowList($lastError);
+                if ($this->ipAllowListBlocked) {
+                    return ['success' => false, 'message' => $lastError];
                 }
+                Log::info('TikTok Open API inventory attempt failed', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $try['path'],
+                    'base' => $host,
+                    'error' => $lastError,
+                ]);
             }
         }
 

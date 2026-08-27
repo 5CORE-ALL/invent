@@ -2106,6 +2106,28 @@ class SheinApiService
     }
 
     /**
+     * @return list<string>
+     */
+    protected function sellerSkuIndexKeys(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+        $keys = [$sku, strtoupper($sku)];
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '') {
+            $keys[] = $norm;
+        }
+        $compact = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '', $sku));
+        if (strlen($compact) >= 6) {
+            $keys[] = $compact;
+        }
+
+        return array_values(array_unique(array_filter($keys)));
+    }
+
+    /**
      * Resolve Shein skuCode for a seller SKU (shein_metrics.shein_sku_code / shein_metric.product_id).
      * Never falls back to the seller SKU — Shein inventory API requires platform skuCode.
      */
@@ -2137,10 +2159,8 @@ class SheinApiService
             if ($sku === '') {
                 continue;
             }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            $wanted[$sku] = $sku;
-            if ($norm !== '') {
-                $wanted[$norm] = $sku;
+            foreach ($this->sellerSkuIndexKeys($sku) as $key) {
+                $wanted[$key] = $sku;
             }
         }
         if ($wanted === []) {
@@ -2225,15 +2245,10 @@ class SheinApiService
             }
         }
         if ($spuList !== []) {
+            $this->mergeLocalSheinSkuCodeHitsBySpu($spuMap, $wanted, $out);
             $spuRows = $this->queryStockBySpuNames($spuList);
             $this->mergeStockHitsIntoSkuCodeMap($spuRows, $wanted, $out);
             $this->bindSkuCodesByKnownSpu($spuMap, $spuRows, $wanted, $out);
-            $skuCodesFromQuery = $this->querySkuCodesBySpuNames($spuList);
-            if ($skuCodesFromQuery !== []) {
-                $detailRows = $this->safeGetStock($skuCodesFromQuery);
-                $this->mergeStockHitsIntoSkuCodeMap($detailRows, $wanted, $out);
-                $this->bindSkuCodesByKnownSpu($spuMap, $detailRows, $wanted, $out);
-            }
             $this->mergeStockHitsIntoSkuCodeMap($this->safeGetStock($spuList), $wanted, $out);
         }
 
@@ -2350,10 +2365,7 @@ class SheinApiService
                         continue;
                     }
                     $warehouse = $this->warehouseCodeFromSheinRaw(is_array($metric->raw_data) ? $metric->raw_data : []);
-                    foreach (array_unique(array_filter([
-                        $sku,
-                        ShopifySku::normalizeSkuForShopifyLookup($sku),
-                    ])) as $key) {
+                    foreach ($this->sellerSkuIndexKeys($sku) as $key) {
                         if (! isset($wanted[$key])) {
                             continue;
                         }
@@ -2413,6 +2425,72 @@ class SheinApiService
     }
 
     /**
+     * Hub-listed SPUs are often missing from shein_metrics.sku but present as spu_name.
+     *
+     * @param  array<string, string>  $spuBySku
+     * @param  array<string, string>  $wanted
+     * @param  array<string, array{sku_code: string, seller_sku: string, warehouse_code?: string}>  $out
+     */
+    protected function mergeLocalSheinSkuCodeHitsBySpu(array $spuBySku, array $wanted, array &$out): void
+    {
+        if ($spuBySku === [] || ! $this->metricsTableExists() || ! Schema::hasColumn('shein_metrics', 'spu_name')) {
+            return;
+        }
+
+        $spus = [];
+        foreach ($spuBySku as $spu) {
+            $spu = trim((string) $spu);
+            if ($spu !== '') {
+                $spus[strtolower($spu)] = $spu;
+            }
+        }
+        if ($spus === []) {
+            return;
+        }
+
+        try {
+            $codesBySpu = [];
+            foreach (SheinMetric::query()
+                ->whereNotNull('spu_name')
+                ->where('spu_name', '!=', '')
+                ->whereNotNull('shein_sku_code')
+                ->where('shein_sku_code', '!=', '')
+                ->get(['sku', 'spu_name', 'shein_sku_code']) as $metric
+            ) {
+                $spuKey = strtolower(trim((string) $metric->spu_name));
+                $code = trim((string) $metric->shein_sku_code);
+                if ($spuKey === '' || ! isset($spus[$spuKey]) || ! $this->isPlatformSkuCode($code, (string) $metric->sku)) {
+                    continue;
+                }
+                $codesBySpu[$spuKey][$code] = true;
+            }
+            foreach ($spuBySku as $sellerSku => $spu) {
+                $sellerSku = trim((string) $sellerSku);
+                $spuKey = strtolower(trim((string) $spu));
+                if ($sellerSku === '' || $spuKey === '') {
+                    continue;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sellerSku);
+                $slot = $norm !== '' ? $norm : $sellerSku;
+                if (isset($out[$slot])) {
+                    continue;
+                }
+                $codes = array_keys($codesBySpu[$spuKey] ?? []);
+                if (count($codes) !== 1) {
+                    continue;
+                }
+                $req = $wanted[$slot] ?? $wanted[$sellerSku] ?? $sellerSku;
+                $out[$slot] = [
+                    'sku_code' => $codes[0],
+                    'seller_sku' => $req,
+                ];
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, string>  $wanted
      * @param  array<string, array{sku_code: string, seller_sku: string, warehouse_code?: string}>  $out
@@ -2432,13 +2510,14 @@ class SheinApiService
             if (! $this->isPlatformSkuCode($code, $seller)) {
                 continue;
             }
-            $keys = array_unique(array_filter([
-                $seller,
-                ShopifySku::normalizeSkuForShopifyLookup($seller),
-                ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? '')),
-                ShopifySku::normalizeSkuForShopifyLookup((string) ($row['product_number'] ?? '')),
-                ShopifySku::normalizeSkuForShopifyLookup((string) ($row['model_sku'] ?? '')),
-            ]));
+            $keys = $this->sellerSkuIndexKeys($seller);
+            foreach (['sku', 'product_number', 'model_sku', 'seller_sku'] as $field) {
+                $extra = trim((string) ($row[$field] ?? ''));
+                if ($extra !== '') {
+                    $keys = array_merge($keys, $this->sellerSkuIndexKeys($extra));
+                }
+            }
+            $keys = array_values(array_unique(array_filter($keys)));
             foreach ($keys as $key) {
                 if (! isset($wanted[$key])) {
                     continue;
@@ -2538,6 +2617,24 @@ class SheinApiService
             $this->mergeStockHitsIntoSkuCodeMap($rows, $wanted, $out);
             $this->bindSkuCodesByKnownSpu([$sku => $spu, $norm => $spu], $rows, $wanted, $out);
             if (($norm !== '' && isset($out[$norm])) || isset($out[$sku])) {
+                continue;
+            }
+            $codes = $this->querySkuCodesForOneSpu($spu);
+            if ($codes !== []) {
+                $detailRows = $this->safeGetStock($codes);
+                $this->mergeStockHitsIntoSkuCodeMap($detailRows, $wanted, $out);
+                $this->bindSkuCodesByKnownSpu([$sku => $spu, $norm => $spu], $detailRows, $wanted, $out);
+            }
+            if (($norm !== '' && isset($out[$norm])) || isset($out[$sku])) {
+                continue;
+            }
+            if (count($codes) === 1) {
+                $req = $wanted[$norm] ?? $wanted[$sku] ?? $sku;
+                $slot = $norm !== '' ? $norm : $sku;
+                $out[$slot] = [
+                    'sku_code' => (string) $codes[0],
+                    'seller_sku' => $req,
+                ];
                 continue;
             }
             $codes = [];
@@ -2674,30 +2771,41 @@ class SheinApiService
         $endpoint = '/open-api/stock/stock-query';
         $out = [];
         foreach (array_chunk($spuNames, 10) as $chunk) {
-            try {
-                $response = Http::withoutVerifying()
-                    ->timeout(90)
-                    ->withHeaders($this->buildSheinAuthHeaders($endpoint))
-                    ->post($this->baseUrl.$endpoint, [
-                        'languageList' => ['en'],
-                        'skuCodeList' => [],
-                        'skcNameList' => [],
-                        'spuNameList' => $chunk,
-                        'warehouseType' => '3',
-                    ]);
-                $json = is_array($response->json()) ? $response->json() : null;
-                if (! $response->successful()) {
-                    Log::warning('Shein stock-query by SPU failed', [
-                        'status' => $response->status(),
-                        'body' => substr((string) $response->body(), 0, 400),
-                    ]);
+            $chunkOut = [];
+            foreach (['3', '1', '2'] as $warehouseType) {
+                try {
+                    $response = Http::withoutVerifying()
+                        ->timeout(12)
+                        ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                        ->post($this->baseUrl.$endpoint, [
+                            'languageList' => ['en'],
+                            'skuCodeList' => [],
+                            'skcNameList' => [],
+                            'spuNameList' => $chunk,
+                            'warehouseType' => $warehouseType,
+                        ]);
+                    $json = is_array($response->json()) ? $response->json() : null;
+                    if (! $response->successful()) {
+                        Log::warning('Shein stock-query by SPU failed', [
+                            'status' => $response->status(),
+                            'warehouseType' => $warehouseType,
+                            'body' => substr((string) $response->body(), 0, 400),
+                        ]);
 
-                    continue;
+                        continue;
+                    }
+                    $this->flattenSheinStockRows($json['info'] ?? $json, $chunkOut);
+                    if ($chunkOut !== []) {
+                        break;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Shein stock-query by SPU exception', [
+                        'error' => $e->getMessage(),
+                        'warehouseType' => $warehouseType,
+                    ]);
                 }
-                $this->flattenSheinStockRows($json['info'] ?? $json, $out);
-            } catch (\Throwable $e) {
-                Log::warning('Shein stock-query by SPU exception', ['error' => $e->getMessage()]);
             }
+            $out = array_merge($out, $chunkOut);
         }
 
         return $out;
@@ -2717,44 +2825,81 @@ class SheinApiService
             return [];
         }
 
+        $codes = [];
+        foreach ($spuNames as $spu) {
+            foreach ($this->querySkuCodesForOneSpu($spu) as $code) {
+                $codes[$code] = true;
+            }
+        }
+
+        return array_keys($codes);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function querySkuCodesForOneSpu(string $spu): array
+    {
+        $spu = trim($spu);
+        if ($spu === '') {
+            return [];
+        }
+        $want = strtolower($spu);
         $endpoint = '/open-api/openapi-business-backend/product/query';
         $codes = [];
-        try {
-            $response = Http::withoutVerifying()
-                ->timeout(90)
-                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
-                ->post($this->baseUrl.$endpoint, [
-                    'pageNum' => 1,
-                    'pageSize' => max(20, min(50, count($spuNames) * 5)),
-                    'insertTimeEnd' => '',
-                    'insertTimeStart' => '',
-                    'updateTimeEnd' => '',
-                    'updateTimeStart' => '',
-                    'spuNameList' => $spuNames,
-                ]);
-            $json = is_array($response->json()) ? $response->json() : null;
-            $products = $json['info']['data'] ?? [];
-            if (! is_array($products) || $products === []) {
-                return [];
-            }
-            // product/query ignores unknown filters and returns a catalog page — skip if too large.
-            if (count($products) > max(20, count($spuNames) * 8)) {
-                return [];
-            }
-            foreach ($products as $item) {
-                foreach (($item['skuCodeList'] ?? []) as $code) {
-                    $code = trim((string) $code);
-                    if ($this->isPlatformSkuCode($code)) {
-                        $codes[$code] = true;
+
+        foreach ([
+            ['spuNameList' => [$spu]],
+            ['spuName' => $spu],
+        ] as $filter) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(20)
+                    ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                    ->post($this->baseUrl.$endpoint, array_merge([
+                        'pageNum' => 1,
+                        'pageSize' => 10,
+                        'insertTimeEnd' => '',
+                        'insertTimeStart' => '',
+                        'updateTimeEnd' => '',
+                        'updateTimeStart' => '',
+                    ], $filter));
+                $json = is_array($response->json()) ? $response->json() : null;
+                $products = $json['info']['data'] ?? [];
+                if (! is_array($products) || $products === []) {
+                    continue;
+                }
+                foreach ($products as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    $itemSpu = strtolower(trim((string) ($item['spuName'] ?? $item['spu_name'] ?? $item['spuCode'] ?? '')));
+                    if ($itemSpu !== '' && $itemSpu !== $want) {
+                        continue;
+                    }
+                    if ($itemSpu === '' && count($products) > 2) {
+                        continue;
+                    }
+                    foreach (($item['skuCodeList'] ?? []) as $code) {
+                        $code = trim((string) $code);
+                        if ($this->isPlatformSkuCode($code)) {
+                            $codes[$code] = true;
+                        }
+                    }
+                    $single = trim((string) ($item['skuCode'] ?? ''));
+                    if ($this->isPlatformSkuCode($single)) {
+                        $codes[$single] = true;
                     }
                 }
-                $single = trim((string) ($item['skuCode'] ?? ''));
-                if ($this->isPlatformSkuCode($single)) {
-                    $codes[$single] = true;
+                if ($codes !== []) {
+                    return array_keys($codes);
                 }
+            } catch (\Throwable $e) {
+                Log::warning('Shein product/query by SPU failed', [
+                    'spu' => $spu,
+                    'error' => $e->getMessage(),
+                ]);
             }
-        } catch (\Throwable $e) {
-            Log::warning('Shein product/query by SPU failed', ['error' => $e->getMessage()]);
         }
 
         return array_keys($codes);
@@ -2776,14 +2921,34 @@ class SheinApiService
             return [];
         }
 
+        $expanded = [];
+        foreach ($sellerSkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $expanded[$sku] = true;
+            $hyphen = str_replace(' ', '-', $sku);
+            $space = str_replace('-', ' ', $sku);
+            if ($hyphen !== '') {
+                $expanded[$hyphen] = true;
+            }
+            if ($space !== '') {
+                $expanded[$space] = true;
+            }
+        }
+        $sellerSkus = array_keys($expanded);
+        if ($sellerSkus === []) {
+            return [];
+        }
+
         $endpoint = '/open-api/openapi-business-backend/product/query';
         $codes = [];
         $wantedNorms = [];
         foreach ($sellerSkus as $sku) {
-            $wantedNorms[strtoupper($sku)] = true;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '') {
-                $wantedNorms[$norm] = true;
+            foreach ($this->sellerSkuIndexKeys($sku) as $key) {
+                $wantedNorms[$key] = true;
+                $wantedNorms[strtoupper($key)] = true;
             }
         }
 

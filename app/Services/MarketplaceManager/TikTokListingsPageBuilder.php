@@ -344,8 +344,28 @@ class TikTokListingsPageBuilder
         $liveService = $this->liveService();
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $offset = max(0, (int) $request->input('offset', 0));
+        // One SKU per request so nginx/gateway (~60s) cannot 504 the first batch.
+        $limit = 1;
+
+        $hasReadyFlag = $request->exists('ready');
+        if ($offset === 0 && $hasReadyFlag && ! $request->boolean('ready')) {
+            $mismatch = $this->mismatchSkusForSync($scope);
+            $total = count($mismatch);
+
+            return [
+                'success' => true,
+                'prepared' => true,
+                'done' => $total === 0,
+                'total' => $total,
+                'offset' => 0,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'Prepared '.$total.' SKU(s). Starting…',
+            ];
+        }
+
         $mismatch = $this->mismatchSkusForSync($scope);
-        $limit = max(1, min(10, (int) $request->input('limit', 5)));
         $total = count($mismatch);
         $batch = array_slice($mismatch, $offset, $limit);
 
