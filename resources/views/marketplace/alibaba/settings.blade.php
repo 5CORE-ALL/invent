@@ -94,7 +94,7 @@
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_alibaba]" value="1" {{ ($settings['order']['push_tracking_to_alibaba'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Push Shopify tracking → Alibaba (declare shipment)</span>
                         </label>
-                        <div class="form-text ms-4">When on, scheduled jobs read Shopify fulfillments and push tracking to Alibaba. API wiring is pending — jobs run as no-ops until implemented.</div>
+                        <div class="form-text ms-4">When on, scheduled jobs read Shopify fulfillments and declare/update tracking on Alibaba. Existing Alibaba shipments with the same tracking are left alone.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>

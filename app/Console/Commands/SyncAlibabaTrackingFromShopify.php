@@ -13,7 +13,7 @@ class SyncAlibabaTrackingFromShopify extends Command
                             {--force : Run even if Push Shopify tracking setting is Off}
                             {--order= : Push tracking for a single Alibaba order_id}';
 
-    protected $description = 'Push Shopify fulfillment tracking numbers to Alibaba (stub).';
+    protected $description = 'Push Shopify fulfillment tracking numbers to Alibaba.';
 
     public function handle(AlibabaTrackingSyncService $sync): int
     {

@@ -684,7 +684,7 @@ class AlibabaSyncController extends Controller
     }
 
     /**
-     * Push Shopify fulfillment tracking number to Alibaba (declare shipment stub).
+     * Push Shopify fulfillment tracking number to Alibaba (declare / modify shipment).
      */
     public function pushTrackingToAlibaba(int $id): JsonResponse
     {

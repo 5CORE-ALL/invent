@@ -1668,11 +1668,11 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Shopify label/tracking → Alibaba declare/modify shipment (settings-gated).
-        $schedule->job(new \App\Jobs\SyncAlibabaTrackingJob(true, 40))
+        $schedule->job(new \App\Jobs\SyncAlibabaTrackingJob(true, 80))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sync-tracking')
-            ->withoutOverlapping(4)
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         // Alibaba receipt address → fill missing Shopify shipping + customer address.
@@ -2181,11 +2181,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncEbay1TrackingJob(true, 40))
+        $schedule->job(new \App\Jobs\SyncEbay1TrackingJob(true, 80))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay1-sync-tracking')
-            ->withoutOverlapping(4)
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay1AddressJob(true, 40))
@@ -2218,11 +2218,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(50)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncEbay2TrackingJob(true, 40))
+        $schedule->job(new \App\Jobs\SyncEbay2TrackingJob(true, 80))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay2-sync-tracking')
-            ->withoutOverlapping(4)
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay2AddressJob(true, 40))
@@ -2255,11 +2255,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncEbay3TrackingJob(true, 40))
+        $schedule->job(new \App\Jobs\SyncEbay3TrackingJob(true, 80))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay3-sync-tracking')
-            ->withoutOverlapping(4)
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncEbay3AddressJob(true, 40))

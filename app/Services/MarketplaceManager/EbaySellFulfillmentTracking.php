@@ -6,6 +6,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Push Shopify tracking to eBay via Sell Fulfillment createShippingFulfillment.
@@ -60,7 +61,7 @@ class EbaySellFulfillmentTracking
             ];
         }
 
-        $shopify = $this->fetchShopifyTracking($channel, $shopifyOrderId);
+        $shopify = $this->fetchShopifyTracking($channel, $shopifyOrderId, $line);
         $tracking = trim((string) ($shopify['tracking'] ?? ''));
         $carrier = trim((string) ($shopify['carrier'] ?? ''));
         if ($tracking === '') {
@@ -151,6 +152,7 @@ class EbaySellFulfillmentTracking
         }
 
         if ($response->successful() || in_array($response->status(), [201, 204], true)) {
+            $this->rememberPushedTracking($line, $tracking, $carrierCode);
             Log::info('EbaySellFulfillmentTracking: tracking pushed', [
                 'channel' => $channel,
                 'order_id' => $orderId,
@@ -196,9 +198,96 @@ class EbaySellFulfillmentTracking
     }
 
     /**
+     * Scan linked Shopify copies from the last 90 days. Newest unfulfilled eBay
+     * orders first so older labeled orders are not starved by a short ID window.
+     *
+     * @param  class-string  $modelClass
+     * @return array{success: bool, processed: int, pushed: int, skipped: int, failed: int, message: string}
+     */
+    public function syncPending(string $channel, string $modelClass, int $limit = 40): array
+    {
+        $limit = max(1, min(100, $limit));
+        $since = now()->subDays(90);
+        $table = (new $modelClass)->getTable();
+
+        $query = $modelClass::query()
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->where('shopify_order_id', 'not like', 'manual%')
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereNotIn('status', ['CANCELLED', 'CANCELED', 'INVALID']);
+            });
+
+        if (Schema::hasColumn($table, 'order_date')) {
+            $query->where(function ($q) use ($since, $table) {
+                $q->where('order_date', '>=', $since);
+                if (Schema::hasColumn($table, 'created_at')) {
+                    $q->orWhere('created_at', '>=', $since);
+                }
+            });
+        } elseif (Schema::hasColumn($table, 'created_at')) {
+            $query->where('created_at', '>=', $since);
+        }
+
+        $rows = $query
+            ->orderByRaw("CASE WHEN UPPER(COALESCE(status, '')) IN ('FULFILLED', 'SHIPPED') THEN 1 ELSE 0 END")
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
+            ->limit($limit * 8)
+            ->get();
+
+        $unique = [];
+        foreach ($rows as $row) {
+            $orderId = trim((string) ($row->order_id ?? ''));
+            if ($orderId === '' || isset($unique[$orderId])) {
+                continue;
+            }
+            $unique[$orderId] = $row;
+            if (count($unique) >= $limit) {
+                break;
+            }
+        }
+
+        $processed = 0;
+        $pushed = 0;
+        $skipped = 0;
+        $failed = 0;
+        foreach ($unique as $line) {
+            $processed++;
+            $result = $this->pushForChannel($channel, $line);
+            if (! empty($result['success']) && empty($result['skipped'])) {
+                $pushed++;
+            } elseif (! empty($result['skipped'])) {
+                $skipped++;
+            } else {
+                $failed++;
+            }
+            usleep(250000);
+        }
+
+        Log::info('EbaySellFulfillmentTracking: pending sync completed', [
+            'channel' => $channel,
+            'processed' => $processed,
+            'pushed' => $pushed,
+            'skipped' => $skipped,
+            'failed' => $failed,
+        ]);
+
+        return [
+            'success' => $failed === 0,
+            'processed' => $processed,
+            'pushed' => $pushed,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Tracking sync: checked {$processed}, pushed {$pushed}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
      * @return array{tracking: ?string, carrier: ?string}
      */
-    protected function fetchShopifyTracking(string $channel, string $shopifyOrderId): array
+    protected function fetchShopifyTracking(string $channel, string $shopifyOrderId, ?object $line = null): array
     {
         $settings = MarketplaceSyncSettings::getFor($channel);
         $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
@@ -254,7 +343,38 @@ class EbaySellFulfillmentTracking
             ]);
         }
 
+        $raw = is_array($line?->raw_payload ?? null) ? $line->raw_payload : [];
+        $local = trim((string) ($raw['tracking_number'] ?? ''));
+        if ($local !== '') {
+            return [
+                'tracking' => $local,
+                'carrier' => trim((string) ($raw['carrier'] ?? $raw['carrier_name'] ?? '')) ?: null,
+            ];
+        }
+
         return ['tracking' => null, 'carrier' => null];
+    }
+
+    protected function rememberPushedTracking(object $line, string $tracking, string $carrier): void
+    {
+        if (! isset($line->raw_payload) || ! method_exists($line, 'save')) {
+            return;
+        }
+        $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+        $raw['tracking_number'] = $tracking;
+        if ($carrier !== '') {
+            $raw['carrier'] = $carrier;
+        }
+        $raw['shopify_tracking_pushed'] = $tracking;
+        $raw['shopify_tracking_pushed_at'] = now()->toIso8601String();
+        $line->raw_payload = $raw;
+        try {
+            $line->save();
+        } catch (\Throwable $e) {
+            Log::debug('EbaySellFulfillmentTracking: could not persist pushed tracking', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
