@@ -390,6 +390,9 @@
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
                 let p = chPushSpriceRound2(price);
                 if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
+                if (typeof chPromoFloorShopifySpriceToAmz === 'function') {
+                    p = chPromoFloorShopifySpriceToAmz(d, p);
+                }
                 if (!sku || !(p > 0)) return false;
                 if (!chPushSpriceAutoPushAllowed()) {
                     try {

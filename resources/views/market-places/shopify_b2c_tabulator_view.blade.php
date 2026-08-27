@@ -116,6 +116,14 @@
         /* ========== DROPDOWN STYLING ========== */
         /* Match /amazon-tabulator-view: wrap + auto-width selects so sidebar open doesn't clip labels.
            Keep toolbar z-index BELOW .leftside-menu (1000) — high z-index was painting filters over the sidebar. */
+        .shopifyb2c-sprice-amz-lbl {
+            color: #0d6efd;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
+        }
         .shopify-b2c-toolbar {
             position: relative;
             z-index: auto;
@@ -782,8 +790,8 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
                             data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Purple triangle: S PRC &lt; A Price. Click badge to filter. Click dot for rolling history.">
-                            <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
+                            title="Amz: S PRC was below A Price and was raised to Amz. Click badge to filter. Click dot for rolling history.">
+                            <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2c-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2c', 'pltPriceField' => 'Price'])
@@ -939,7 +947,7 @@
         total_l30: 'L30', total_views: 'Views', cvr_percent: 'CVR%', total_b2b_l30: 'B2C L30',
         zero_sold_count: '0 Sold', sold_count: '> 0 Sold', missing_count: 'Miss',
         less_amz_count: '< Amz', more_amz_count: '> Amz',
-        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC < A Price',
+        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC raised to Amz',
         lmp_missing_count: 'LMP M.', prc_gt_lmp_count: 'Price > LMP', price_lt80_lmp_count: 'Price < 80% LMP',
         avg_price: 'Price', total_inv: 'INV'
     };
@@ -1331,8 +1339,20 @@
         return stored;
     }
 
-    /** Cell / push value: displayed S PRC after LMP cap (same as the S PRC formatter). */
-    function shopifyB2cShownSprice(data) {
+    function shopifyB2cAmzPrice(data) {
+        return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
+    }
+
+    /** Raise S PRC to A Price when it is below Amz; keep S PRC when it is above. */
+    function shopifyB2cApplyAmzFloor(data, sprice) {
+        const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+        const amz = shopifyB2cAmzPrice(data);
+        if (s > 0 && amz > 0 && s < amz) return Math.round(amz * 100) / 100;
+        return s > 0 ? s : 0;
+    }
+
+    /** Displayed S PRC after LMP cap, before the Amz floor. */
+    function shopifyB2cPriceBeforeAmzFloor(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         let value = shopifyB2cDisplayedSprice(data);
         if (!(value > 0)) return 0;
@@ -1343,31 +1363,45 @@
         return Math.round(value * 100) / 100;
     }
 
-    function shopifyB2cAmzPrice(data) {
-        return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
+    /** Cell / push value: LMP-capped S PRC, then floored up to A Price when below Amz. */
+    function shopifyB2cShownSprice(data) {
+        return shopifyB2cApplyAmzFloor(data, shopifyB2cPriceBeforeAmzFloor(data));
+    }
+
+    function shopifyB2cHasAmzFloor(data) {
+        if (!data || isShopifyB2cParentRow(data)) return false;
+        const before = shopifyB2cPriceBeforeAmzFloor(data);
+        const amz = shopifyB2cAmzPrice(data);
+        return before > 0 && amz > 0 && before < amz;
+    }
+
+    function shopifyB2cShowAmzLabel(data) {
+        if (!data || isShopifyB2cParentRow(data)) return false;
+        return shopifyB2cHasAmzFloor(data)
+            || (shopifyB2cIsAmzSuggApplied(data) && shopifyB2cAmzPrice(data) > 0);
     }
 
     function shopifyB2cHasBlueTriangle(data) {
         if (isShopifyB2cParentRow(data)) return false;
+        if (shopifyB2cShowAmzLabel(data)) return false;
         const sprice = shopifyB2cShownSprice(data);
         const price = parseFloat(data && data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
 
-    /** Purple triangle: shown S PRC is below current A Price (still pushed). */
+    /** Badge / filter: S PRC was below A Price and was raised to Amz. */
     function shopifyB2cHasPurpleTriangle(data) {
-        if (!data || isShopifyB2cParentRow(data)) return false;
-        const sprice = shopifyB2cShownSprice(data);
-        const amz = shopifyB2cAmzPrice(data);
-        return sprice > 0 && amz > 0 && sprice < amz;
+        return shopifyB2cHasAmzFloor(data);
     }
 
-    function shopifyB2cPurpleTriangleHtml(sprice, amz) {
-        const s = parseFloat(sprice) || 0;
-        const a = parseFloat(amz) || 0;
-        if (!(s > 0 && a > 0 && s < a)) return '';
-        return '<i class="fas fa-exclamation-triangle" style="color:#6f42c1;font-size:10px;margin-left:3px;" title="S PRC $'
-            + s.toFixed(2) + ' &lt; A Price $' + a.toFixed(2) + ' — capped to S PRC, still pushed"></i>';
+    function shopifyB2cAmzLabelHtml(data) {
+        if (!shopifyB2cShowAmzLabel(data)) return '';
+        const amz = shopifyB2cAmzPrice(data);
+        const before = shopifyB2cPriceBeforeAmzFloor(data);
+        const title = shopifyB2cHasAmzFloor(data)
+            ? ('S PRC $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz')
+            : ('S PRC set to A Price $' + amz.toFixed(2));
+        return '<span class="shopifyb2c-sprice-amz-lbl" title="' + title + '">Amz</span>';
     }
 
     function syncShopifyB2cPurpleTriangleBadgeState() {
@@ -1875,7 +1909,7 @@
                 const ads  = shopifyChannelAdsPct();
 
                 const candidate = (lp * roiMultiplier + ship) / SHOPIFY_B2C_MARGIN;
-                const newSprice = +candidate.toFixed(2);
+                const newSprice = shopifyB2cApplyAmzFloor(rowData, +candidate.toFixed(2));
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
                 const grossProfit = (newSprice * SHOPIFY_B2C_MARGIN) - lp - ship;
@@ -1958,7 +1992,7 @@
                 const ads  = shopifyChannelAdsPct();
 
                 const candidate = (lp + ship) / denom;
-                const newSprice = +candidate.toFixed(2);
+                const newSprice = shopifyB2cApplyAmzFloor(rowData, +candidate.toFixed(2));
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
                 const grossProfit = (newSprice * SHOPIFY_B2C_MARGIN) - lp - ship;
@@ -2326,8 +2360,9 @@
                         // Apply retail price rounding (round to .99 endings)
                         newSprice = roundToRetailPrice(newSprice);
 
-                        // Ensure minimum price
+                        // Ensure minimum price, then raise to Amz when below A Price
                         newSprice = Math.max(0.99, newSprice);
+                        newSprice = shopifyB2cApplyAmzFloor(rowData, newSprice);
 
                         // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
                         const percentage = 0.95; // Shopify B2C margin
@@ -3162,7 +3197,7 @@
                         step: 0.01
                     },
                     sorter: "number",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CVR Disc%)/100). Sugg Amz Prc sets S PRC to A Price (not LMP-capped). If S PRC < A Price, price is capped to S PRC and still pushed (purple triangle). Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CVR Disc%)/100). If that S PRC is below A Price, S PRC is raised to Amz (Amz label). If S PRC is above A Price, S PRC is kept. Sugg Amz Prc sets S PRC to A Price (not LMP-capped). Blue triangle = S PRC ≠ Price (hidden when Amz label shows). Red triangle = S PRC capped at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3196,18 +3231,29 @@
                             redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Amazon suggested price is at/above LMP $'
                                 + lmp.toFixed(2) + ' — not capped"></i>';
                         }
+                        const amzFloor = shopifyB2cHasAmzFloor(rowData);
+                        value = shopifyB2cShownSprice(rowData);
+                        if (amzFloor && lmp > 0 && value + 0.0001 >= lmp) {
+                            overLmp = true;
+                            redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC raised to Amz $'
+                                + value.toFixed(2) + ' — at/above LMP $' + lmp.toFixed(2) + '"></i>';
+                        }
+                        if (!(value > 0)) {
+                            return '';
+                        }
                         const formatted = '$' + value.toFixed(2);
                         let priceHtml = `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         if (overLmp) {
                             priceHtml = `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         }
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                        const showAmz = shopifyB2cShowAmzLabel(rowData);
+                        const amzLbl = shopifyB2cAmzLabelHtml(rowData);
+                        const blueTri = (!showAmz && live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        const purpleTri = shopifyB2cPurpleTriangleHtml(value, shopifyB2cAmzPrice(rowData));
                         
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}${purpleTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${amzLbl}${blueTri}</span>`;
                     }
                 },
                 {
@@ -3329,7 +3375,7 @@
                         // Same shape as NROI badge / Amazon SNROI: (gross − SPRICE×Ads%) / LP × 100
                         const rowData = cell.getRow().getData();
                         const snroi = shopifyComputeSnroi(
-                            rowData['SPRICE'],
+                            shopifyB2cShownSprice(rowData),
                             rowData['LP_productmaster'],
                             rowData['Ship_productmaster'],
                             parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0
@@ -3477,7 +3523,7 @@
                 const rowData = row.getData();
                 if (isShopifyB2cParentRow(rowData)) return;
                 const sku = rowData['(Child) sku'];
-                const newSprice = parseFloat(cell.getValue()) || 0;
+                let newSprice = shopifyB2cApplyAmzFloor(rowData, parseFloat(cell.getValue()) || 0);
                 
                 // Recalculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
                 const percentage = 0.95; // Shopify B2C margin
@@ -3499,6 +3545,7 @@
                 const snroi = shopifyComputeSnroi(newSprice, lp, ship, ads);
                 
                 row.update({
+                    SPRICE: newSprice,
                     SGPFT: sgpft,
                     SNPFT: snpft,
                     SROI: sroi,
@@ -3635,10 +3682,10 @@
                 });
             }
 
-            // Purple triangle: shown S PRC < A Price
+            // Amz floor: formula / LMP-capped S PRC was below A Price
             if (purpleTriangleFilterActive) {
                 table.addFilter(function(data) {
-                    return shopifyB2cHasPurpleTriangle(data);
+                    return shopifyB2cHasAmzFloor(data);
                 });
             }
 
@@ -3941,7 +3988,7 @@
             );
             setShopifyB2cSummaryBadge(
                 $('#shopifyb2c-purple-triangle-badge'),
-                '<i class="fas fa-exclamation-triangle"></i> ' + purpleTriangleCount.toLocaleString(),
+                'Amz ' + purpleTriangleCount.toLocaleString(),
                 purpleTriangleCount,
                 true
             );

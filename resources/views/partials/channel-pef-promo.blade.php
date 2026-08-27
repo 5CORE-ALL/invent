@@ -600,7 +600,7 @@
                             <strong>INV = 0</strong> or <strong>CVR = 0%</strong> forces Disc% to <strong>0</strong>.
                             <strong>Apply</strong> saves rules and refreshes the CVR Disc. column
                             (all SKUs — no sold filter).
-                            If discounted S PRC is <strong>below Amz price</strong>, S PRC is still applied and <strong>pushed</strong> (purple triangle).
+                            If discounted S PRC is <strong>below Amz price</strong>, S PRC is raised to A Price (Amz label).
                         @elseif(in_array($channelPromoChannel, ['ebay1', 'ebay2op', 'ebay2', 'ebay3'], true))
                             Map CVR% slabs to <strong>CPN %</strong> (no 0% slab).
                             Change a slab to autofill rows below by <strong>−1</strong> each (min 0).
@@ -665,7 +665,7 @@
                         Changing any slab fills <strong>PRMT %</strong>.
                         If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
                         @if($channelPromoChannel === 'shopify_b2c')
-                        If discounted S PRC is <strong>below Amz price</strong>, S PRC is still applied and <strong>pushed</strong> (purple triangle).
+                        If discounted S PRC is <strong>below Amz price</strong>, S PRC is raised to A Price (Amz label).
                         @endif
                     </p>
                     <div class="table-responsive">
@@ -2955,6 +2955,14 @@
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
             return s;
         }
+        /** Shopify B2C: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
+        function chPromoFloorShopifySpriceToAmz(d, sprice) {
+            if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return chPromoRound2(sprice);
+            const s = chPromoRound2(sprice);
+            const amz = chPromoRound2(chPromoAmazonPrice(d));
+            if (s > 0 && amz > 0 && s < amz) return amz;
+            return s;
+        }
         function chPromoRowDataFromExtra(extra) {
             extra = extra || {};
             if (extra.row && typeof extra.row.getData === 'function') return extra.row.getData();
@@ -3102,7 +3110,7 @@
         /** Live S PRC from Dil/cvr rules only. Never uses stored SPRICE or live Price. */
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
-            return chPromoSpriceFromStdTPromo(d) || 0;
+            return chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0);
         }
         function chPromoSpricePatch(val) {
             const n = Number(val);
@@ -3483,9 +3491,10 @@
         function saveChannelSprice(sku, sprice, silent, extra) {
             extra = extra || {};
             const rowData = chPromoRowDataFromExtra(extra);
-            const val = extra.skip_lmp_cap
+            let val = extra.skip_lmp_cap
                 ? chPromoRound2(sprice)
                 : (rowData ? chPromoCapSpriceToLmp(rowData, sprice, extra) : chPromoRound2(sprice));
+            if (rowData) val = chPromoFloorShopifySpriceToAmz(rowData, val);
             if (!sku || !chPromoCfg.saveSpriceUrl) {
                 return $.Deferred().reject().promise();
             }
@@ -3525,7 +3534,10 @@
             extra = extra || {};
             const d = row.getData();
             const sku = chPromoSku(d);
-            const val = extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra);
+            const val = chPromoFloorShopifySpriceToAmz(
+                d,
+                extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra)
+            );
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);
             if (val > 0) {
@@ -4288,7 +4300,7 @@
         }
         /**
          * Shopify B2C: promo S PRC = Std × (1 − (PRMT+CVR Disc)/100) is below Amz (A Price).
-         * S PRC is still applied and pushed (purple triangle).
+         * Shown / saved S PRC is raised to Amz (Amz label).
          */
         function chPromoShopifyPromoBlockedByAmz(d) {
             if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return false;
@@ -4826,7 +4838,7 @@
                     if (chPromoInv(d) === 0) { skipped++; continue; }
                     const rule = chPromoGtSoldRuleForRow(d);
                     const useAmz = chPromoGtSoldIsAmazonRule(rule);
-                    const newPrice = chPromoGtSoldSpriceFromStd(d, rule);
+                    const newPrice = chPromoFloorShopifySpriceToAmz(d, chPromoGtSoldSpriceFromStd(d, rule));
                     const sku = chPromoSku(d);
                     if (!(newPrice > 0) || !sku) { skipped++; continue; }
                     const pct = useAmz ? 0 : (rule ? (Number(rule.pct) || 0) : 0);
@@ -6740,7 +6752,7 @@
                 const rowData = item.row.getData();
                 const plan = computeChannelPushPrcPlan(rowData);
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
-                const fill = (chPromoTemuZeroSoldOwnsSprice(rowData) || chPromoKeepZeroSoldPrcSprice(rowData))
+                const fill = chPromoFloorShopifySpriceToAmz(rowData, (chPromoTemuZeroSoldOwnsSprice(rowData) || chPromoKeepZeroSoldPrcSprice(rowData))
                     ? (chPromoZeroSoldTargetPrice(rowData) || chPromoGetSprice(rowData) || 0)
                     : (chPromoPrmtCpnComboEnabled()
                         ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
@@ -6748,7 +6760,7 @@
                             ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
                             : (chPromoEbayStdMinusPrmtCpnEnabled()
                                 ? (chPromoSpriceFromStdTPromo(rowData) || 0)
-                                : chPromoPlanSaleSprice(plan))));
+                                : chPromoPlanSaleSprice(plan)))));
                 if (!plan || !(fill > 0)) {
                     fail++;
                     next();
@@ -6912,7 +6924,7 @@
             if (!chPromoEbayStdMinusPrmtCpnEnabled() || !row) return null;
             const d = row.getData();
             if (!chPromoIsChildRow(d)) return null;
-            const fill = chPromoSpriceFromStdTPromo(d);
+            const fill = chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
             const sku = chPromoSku(d);
             if (!sku || !(fill > 0)) return null;
             const current = chPromoRound2(chPromoGetSprice(d));
@@ -6973,7 +6985,7 @@
                 const sku = chPromoSku(d);
                 const key = chPromoSkuKey(sku);
                 if (!sku || !key || queuedKeys.has(key)) return;
-                const fill = chPromoSpriceFromStdTPromo(d);
+                const fill = chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
                 if (!(fill > 0)) return;
                 const current = chPromoGetSprice(d);
                 const live = chPromoLivePrice(d);
@@ -7268,7 +7280,7 @@
                 }
                 const item = ready[i++];
                 const rowData = item.row.getData();
-                const fill = chPromoSpriceFromStdTPromo(rowData);
+                const fill = chPromoFloorShopifySpriceToAmz(rowData, chPromoSpriceFromStdTPromo(rowData));
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
                 if (!(fill > 0)) {
                     fail++;
@@ -7790,7 +7802,7 @@
                     editor: 'input',
                     headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
                         + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                            ? ' Applied to S PRC even when below Amz price (purple triangle; still pushed).'
+                            ? ' If discounted S PRC is below Amz, S PRC is raised to A Price (Amz label).'
                             : ' Same table on every marketplace page.')
                         + ' Dot = PDT daily history.',
                     formatter: function(cell) {
@@ -7818,7 +7830,7 @@
                                     + '% → ' + key + ' slab → PRMT ' + slab;
                                 if (typeof chPromoShopifyPromoBlockedByAmz === 'function'
                                     && chPromoShopifyPromoBlockedByAmz(d)) {
-                                    tip += ' (S PRC below Amz — purple triangle; still pushed)';
+                                    tip += ' (S PRC below Amz — raised to A Price)';
                                 }
                             }
                         }
@@ -7958,7 +7970,7 @@
                     headerTooltip: chPromoUsesAmazonCvrDisc()
                         ? ('CVR Disc. — same rules as /amazon-tabulator-view. INV=0 → 0%. Read-only.'
                             + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                                ? ' Applied to S PRC even when below Amz price (purple triangle; still pushed).'
+                                ? ' If discounted S PRC is below Amz, S PRC is raised to A Price (Amz label).'
                                 : ''))
                         : '% less on S PRC. Also filled by CVR vs CPN. Dot = PDT daily history.',
                     formatter: function(cell) {
@@ -7977,7 +7989,7 @@
                                 + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
                             if (typeof chPromoShopifyPromoBlockedByAmz === 'function'
                                 && chPromoShopifyPromoBlockedByAmz(d)) {
-                                tip += ' (S PRC below Amz — purple triangle; still pushed)';
+                                tip += ' (S PRC below Amz — raised to A Price)';
                             }
                             return '<span title="' + chPromoEscAttr(tip) + '">'
                                 + fmtChPromoCvrDiscBadge(pct) + '</span>';
@@ -8269,7 +8281,7 @@
                             + '<strong>Save and Apply</strong> writes PRMT% on selected rows, or all visible SKUs. '
                             + 'If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.'
                             + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                                ? ' If discounted S PRC is <strong>below Amz price</strong>, S PRC is still applied and <strong>pushed</strong> (purple triangle).'
+                                ? ' If discounted S PRC is <strong>below Amz price</strong>, S PRC is raised to A Price (Amz label).'
                                 : '');
                     }
                 } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
@@ -8518,7 +8530,7 @@
                             + '(all SKUs — no sold filter). '
                             + 'S PRC = Std × (1 − (PRMT% + CVR Disc%)/100).'
                             + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                                ? ' If that S PRC is <strong>below Amz price</strong>, it is still applied and <strong>pushed</strong> (purple triangle).'
+                                ? ' If that S PRC is <strong>below Amz price</strong>, it is raised to A Price (Amz label).'
                                 : '');
                     }
                 }
@@ -8687,7 +8699,7 @@
                 $('#ch-promo-sprice-recalc-btn').attr(
                     'title',
                     (CHANNEL_PROMO_CHANNEL === 'shopify_b2c')
-                        ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CVR Disc%)/100) — same as /amazon-tabulator-view. If that S PRC is below Amz price, it is still applied and pushed (purple triangle). Auto-pushes when it differs from live Price. Skips INV = 0.'
+                        ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CVR Disc%)/100) — same as /amazon-tabulator-view. If that S PRC is below Amz price, it is raised to A Price (Amz label). Auto-pushes when it differs from live Price. Skips INV = 0.'
                         : (CHANNEL_PROMO_CHANNEL === 'reverb'
                             ? 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + cvr%)/100). Auto-pushes when it differs from live Price. Skips INV = 0.'
                             : 'Clear S PRC, then refill: S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std. No marketplace push. Skips INV = 0.')
@@ -8746,6 +8758,7 @@
         window.chPromoEbaySlabPrmt = chPromoEbaySlabPrmt;
         window.chPromoCvrDiscForRow = chPromoCvrDiscForRow;
         window.chPromoShopifyPromoBlockedByAmz = chPromoShopifyPromoBlockedByAmz;
+        window.chPromoFloorShopifySpriceToAmz = chPromoFloorShopifySpriceToAmz;
         window.chPromoStdBase = chPromoStdBase;
         window.chPromoSyncEbayPrmtColumnFromSlabs = chPromoSyncEbayPrmtColumnFromSlabs;
         window.chPromoDilColorBand = chPromoDilColorBand;
