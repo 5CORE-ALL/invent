@@ -18,6 +18,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
     protected $signature = 'amazon:dil-prmt-auto-push
         {--dry-run : Compute + save SPRICE, but do NOT push to Amazon}
         {--skip-push : Skip Amazon push (same as dry-run for the push step)}
+        {--push-all : Push every eligible SKU (ignore Sale/Business/Min match)}
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Amazon Listings API calls (ms)}';
 
@@ -40,6 +41,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
 
         $dryRun = (bool) $this->option('dry-run');
         $skipPush = (bool) $this->option('skip-push');
+        $pushAll = (bool) $this->option('push-all');
         $limitOpt = $this->option('limit');
         $limit = ($limitOpt !== null && $limitOpt !== '') ? max(1, (int) $limitOpt) : null;
         $sleepMs = max(0, (int) $this->option('sleep-ms'));
@@ -48,7 +50,7 @@ class AmazonDilPrmtAutoPushCommand extends Command
         $this->info('Amazon Dil vs PRMT Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: daily 04:00 America/New_York (EST/EDT)');
         $this->info('Rules: dil_vs_prmt_shared (all marketplaces)');
-        $this->info('Push: Amazon Listings our_price — only when price changed');
+        $this->info('Push: Amazon Listings — only when Sale/Business/Min differ from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         $summary = $service->run(
@@ -57,7 +59,8 @@ class AmazonDilPrmtAutoPushCommand extends Command
             limit: $limit,
             sleepMs: $sleepMs,
             onlySkus: null,
-            logger: fn (string $msg) => $this->line($msg)
+            logger: fn (string $msg) => $this->line($msg),
+            pushAll: $pushAll
         );
 
         $stats = $summary['stats'] ?? [];

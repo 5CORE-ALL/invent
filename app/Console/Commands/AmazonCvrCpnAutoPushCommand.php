@@ -18,6 +18,7 @@ class AmazonCvrCpnAutoPushCommand extends Command
     protected $signature = 'amazon:cvr-cpn-auto-push
         {--dry-run : Compute + save SPRICE, but do NOT push to Amazon}
         {--skip-push : Skip Amazon push (same as dry-run for the push step)}
+        {--push-all : Push every eligible SKU (ignore Sale/Business/Min match)}
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Amazon Listings API calls (ms)}';
 
@@ -40,6 +41,7 @@ class AmazonCvrCpnAutoPushCommand extends Command
 
         $dryRun = (bool) $this->option('dry-run');
         $skipPush = (bool) $this->option('skip-push');
+        $pushAll = (bool) $this->option('push-all');
         $limitOpt = $this->option('limit');
         $limit = ($limitOpt !== null && $limitOpt !== '') ? max(1, (int) $limitOpt) : null;
         $sleepMs = max(0, (int) $this->option('sleep-ms'));
@@ -49,7 +51,7 @@ class AmazonCvrCpnAutoPushCommand extends Command
         $this->info('Schedule: daily 04:05 America/New_York (EST/EDT)');
         $this->info('Coupons: 5% + 10% (1 coupon per day only)');
         $this->info('Rules: pef_cvr_vs_cpn (shared with pricing-errors-fix)');
-        $this->info('Push: Amazon Listings our_price — only when price/tier changed');
+        $this->info('Push: Amazon Listings — only when Sale/Business/Min or coupon tier differ'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         $summary = $service->run(
@@ -58,7 +60,8 @@ class AmazonCvrCpnAutoPushCommand extends Command
             limit: $limit,
             sleepMs: $sleepMs,
             onlySkus: null,
-            logger: fn (string $msg) => $this->line($msg)
+            logger: fn (string $msg) => $this->line($msg),
+            pushAll: $pushAll
         );
 
         $stats = $summary['stats'] ?? [];

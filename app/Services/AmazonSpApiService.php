@@ -228,23 +228,217 @@ class AmazonSpApiService
     }
 
     /**
-     * Sprice push: Sale Price and Minimum Price are the same value (SPRICE × 0.95).
-     * Amazon requires Sale < Your Price, so both are set 5% below the pushed SPRICE.
-     *
-     * @return array{sale_price: float, min_price: float}
+     * Money equality in cents (avoids float noise).
      */
-    public function matchingSaleAndMinFromSprice(float $sprice): array
+    public static function moneyEquals(?float $a, ?float $b): bool
     {
-        $shared = $this->minSellerAllowedPriceFromOurPrice($sprice);
-        $sprice = round($sprice, 2);
-        if ($shared >= $sprice && $sprice > 0.01) {
-            $shared = max(0.01, round($sprice - 0.01, 2));
+        if ($a === null || $b === null) {
+            return false;
+        }
+
+        return (int) round($a * 100) === (int) round($b * 100);
+    }
+
+    /**
+     * Sale / Business / Min from the calculated Sale Price.
+     * Business = Sale × 0.95. Min = Sale − 0.01 (always strictly less than Sale).
+     *
+     * @return array{sale_price: float, business_price: float, min_price: float}
+     */
+    public static function computeSaleBusinessMin(float $salePrice): array
+    {
+        $sale = round($salePrice, 2);
+        $business = max(0.01, round($sale * 0.95, 2));
+        $min = max(0.01, round($sale - 0.01, 2));
+        if ((int) round($min * 100) >= (int) round($sale * 100)) {
+            $min = max(0.01, round($sale - 0.01, 2));
         }
 
         return [
-            'sale_price' => $shared,
-            'min_price' => $shared,
+            'sale_price' => $sale,
+            'business_price' => $business,
+            'min_price' => $min,
         ];
+    }
+
+    /**
+     * Business Price = Sale × 0.95.
+     */
+    public function businessPriceFromSalePrice(float $salePrice): float
+    {
+        return self::computeSaleBusinessMin($salePrice)['business_price'];
+    }
+
+    /**
+     * Min Price = Sale − 0.01 (strictly less than Sale).
+     */
+    public function minPriceFromSalePrice(float $salePrice): float
+    {
+        return self::computeSaleBusinessMin($salePrice)['min_price'];
+    }
+
+    /**
+     * @return array{sale_price: float, business_price: float, min_price: float}
+     */
+    public function saleBusinessMinFromSalePrice(float $salePrice): array
+    {
+        return self::computeSaleBusinessMin($salePrice);
+    }
+
+    /**
+     * @return array{sale_price: float, business_price: float, min_price: float}
+     */
+    public function matchingSaleAndMinFromSprice(float $sprice): array
+    {
+        return self::computeSaleBusinessMin($sprice);
+    }
+
+    /**
+     * Last successfully pushed Sale / Business / Min from amazon_data_view.value.
+     * Missing Business or Min means a legacy push — treat as changed.
+     *
+     * @param  array<string, mixed>  $dv
+     * @return array{sale: ?float, business: ?float, min: ?float}
+     */
+    public static function lastPushedSaleBusinessMin(array $dv): array
+    {
+        $sale = isset($dv['AMAZON_PUSHED_SALE']) && is_numeric($dv['AMAZON_PUSHED_SALE'])
+            ? round((float) $dv['AMAZON_PUSHED_SALE'], 2)
+            : (isset($dv['SPRICE_PUSHED_VALUE']) && is_numeric($dv['SPRICE_PUSHED_VALUE'])
+                ? round((float) $dv['SPRICE_PUSHED_VALUE'], 2)
+                : null);
+        $business = isset($dv['AMAZON_PUSHED_BUSINESS']) && is_numeric($dv['AMAZON_PUSHED_BUSINESS'])
+            ? round((float) $dv['AMAZON_PUSHED_BUSINESS'], 2)
+            : null;
+        $min = isset($dv['AMAZON_PUSHED_MIN']) && is_numeric($dv['AMAZON_PUSHED_MIN'])
+            ? round((float) $dv['AMAZON_PUSHED_MIN'], 2)
+            : null;
+
+        return ['sale' => $sale, 'business' => $business, 'min' => $min];
+    }
+
+    /**
+     * True when last successfully pushed Sale/Business/Min equal the new calculated trio.
+     */
+    public static function offerMatchesLastPushed(
+        ?float $oldSale,
+        ?float $oldBusiness,
+        ?float $oldMin,
+        float $newSale,
+        float $newBusiness,
+        float $newMin
+    ): bool {
+        if ($oldSale === null || $oldBusiness === null || $oldMin === null) {
+            return false;
+        }
+
+        return self::moneyEquals($oldSale, $newSale)
+            && self::moneyEquals($oldBusiness, $newBusiness)
+            && self::moneyEquals($oldMin, $newMin);
+    }
+
+    /**
+     * @deprecated use offerMatchesLastPushed with the computed trio
+     */
+    public static function offerMatchesCanonicalTarget(?float $oldSale, ?float $oldBusiness, ?float $oldMin, float $target): bool
+    {
+        $plan = self::computeSaleBusinessMin($target);
+
+        return self::offerMatchesLastPushed(
+            $oldSale,
+            $oldBusiness,
+            $oldMin,
+            $plan['sale_price'],
+            $plan['business_price'],
+            $plan['min_price']
+        );
+    }
+
+    public static function offerMismatchReason(
+        ?float $oldSale,
+        ?float $oldBusiness,
+        ?float $oldMin,
+        float $newSale,
+        ?float $newBusiness = null,
+        ?float $newMin = null
+    ): string {
+        $plan = self::computeSaleBusinessMin($newSale);
+        $newBusiness = $newBusiness ?? $plan['business_price'];
+        $newMin = $newMin ?? $plan['min_price'];
+        $saleOff = ! self::moneyEquals($oldSale, $newSale);
+        $bizOff = ! self::moneyEquals($oldBusiness, $newBusiness);
+        $minOff = ! self::moneyEquals($oldMin, $newMin);
+        if (! $saleOff && ! $bizOff && ! $minOff) {
+            return 'price push';
+        }
+        if ($saleOff && ($bizOff || $minOff)) {
+            return 'Sale/Business/Min changed';
+        }
+        if ($saleOff) {
+            return 'Sale price changed';
+        }
+
+        return 'Business/Min changed';
+    }
+
+    /**
+     * Persist last_pushed Sale / Business / Min only after Amazon success.
+     *
+     * @param  array<string, mixed>  $existing
+     * @return array<string, mixed>
+     */
+    public static function stampPushedSaleBusinessMin(array $existing, float $salePrice, ?float $businessPrice = null, ?float $minPrice = null): array
+    {
+        $plan = self::computeSaleBusinessMin($salePrice);
+        $sale = $plan['sale_price'];
+        $business = $businessPrice !== null ? round($businessPrice, 2) : $plan['business_price'];
+        $min = $minPrice !== null ? round($minPrice, 2) : $plan['min_price'];
+        $existing['SPRICE_PUSHED_VALUE'] = $sale;
+        $existing['AMAZON_PUSHED_SALE'] = $sale;
+        $existing['AMAZON_PUSHED_BUSINESS'] = $business;
+        $existing['AMAZON_PUSHED_MIN'] = $min;
+        $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
+        $existing['SPRICE_STATUS'] = 'pushed';
+        unset($existing['AMAZON_PUSH_ERROR']);
+
+        return $existing;
+    }
+
+    /**
+     * Record a failed push without touching last_pushed_* values.
+     *
+     * @param  array<string, mixed>  $existing
+     * @return array<string, mixed>
+     */
+    public static function stampPushError(array $existing, string $error): array
+    {
+        $existing['SPRICE_STATUS'] = 'error';
+        $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        $existing['AMAZON_PUSH_ERROR'] = mb_substr($error, 0, 500);
+
+        return $existing;
+    }
+
+    public static function logPushDelta(
+        string $sku,
+        ?float $oldSale,
+        ?float $oldBusiness,
+        ?float $oldMin,
+        float $newSale,
+        float $newBusiness,
+        float $newMin
+    ): void {
+        $fmt = static fn (?float $v): string => $v === null ? '—' : number_format($v, 2, '.', '');
+        Log::info(sprintf(
+            "Amazon price change\nSKU: %s\nold Sale: %s\nnew Sale: %s\nold Business: %s\nnew Business: %s\nold Min: %s\nnew Min: %s",
+            $sku,
+            $fmt($oldSale),
+            $fmt($newSale),
+            $fmt($oldBusiness),
+            $fmt($newBusiness),
+            $fmt($oldMin),
+            $fmt($newMin)
+        ));
     }
 
     /**
@@ -254,10 +448,10 @@ class AmazonSpApiService
      * @param  float|int|string  $price  Your Price (our_price)
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
-     *   - sale_price (float): Sale / discounted_price (Std − Promotion %). On Sprice push, same as min (SPRICE × 0.95).
-     *   - min_price (float): minimum_seller_allowed_price (defaults to sale×0.95 or our_price×0.95)
+     *   - sale_price (float): calculated Sale Price. Business = Sale × 0.95, Min = Sale − 0.01.
+     *   - min_price / business_price: ignored — always derived from Sale.
      *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
-     *   - business_price (float): B2B audience our_price (defaults to sale×0.95 or our_price×0.95)
+     *   - push_reason (string): optional log reason
      */
     public function updateAmazonPriceUS($sku, $price, $maxRetries = 3, ?array $extras = null)
     {
@@ -288,24 +482,19 @@ class AmazonSpApiService
         // Round price to 2 decimal places (Amazon requirement)
         $price = round($price, 2);
         $extras = is_array($extras) ? $extras : [];
-        $salePrice = isset($extras['sale_price']) && is_numeric($extras['sale_price'])
+        $salePrice = isset($extras['sale_price']) && is_numeric($extras['sale_price']) && (float) $extras['sale_price'] > 0
             ? round((float) $extras['sale_price'], 2)
             : null;
-        if ($salePrice !== null && ($salePrice <= 0 || $salePrice >= $price)) {
-            // Sale must be a positive discount below Your Price
-            $salePrice = null;
+        if ($salePrice === null) {
+            $salePrice = $this->matchingSaleAndMinFromSprice($price)['sale_price'];
         }
-        $saleBase = $salePrice !== null ? $salePrice : $price;
-
-        $minPrice = isset($extras['min_price']) && is_numeric($extras['min_price']) && (float) $extras['min_price'] > 0
-            ? round((float) $extras['min_price'], 2)
-            : max(0.01, round($saleBase * 0.95, 2));
-        // Amazon requires min ≤ our_price (and ≤ sale when sale is set)
-        if ($minPrice > $price) {
-            $minPrice = $this->minSellerAllowedPriceFromOurPrice($price);
-        }
-        if ($salePrice !== null && $minPrice > $salePrice) {
-            $minPrice = $salePrice;
+        $fromSale = self::computeSaleBusinessMin($salePrice);
+        $salePrice = $fromSale['sale_price'];
+        $businessPrice = $fromSale['business_price'];
+        $minPrice = $fromSale['min_price'];
+        $pushReason = trim((string) ($extras['push_reason'] ?? 'price push'));
+        if ($pushReason === '') {
+            $pushReason = 'price push';
         }
 
         $maxPrice = isset($extras['max_price']) && is_numeric($extras['max_price']) && (float) $extras['max_price'] > 0
@@ -316,15 +505,22 @@ class AmazonSpApiService
             $maxPrice = round($price * 1.10, 2);
         }
 
-        $businessPrice = isset($extras['business_price']) && is_numeric($extras['business_price']) && (float) $extras['business_price'] > 0
-            ? round((float) $extras['business_price'], 2)
-            : max(0.01, round($saleBase * 0.95, 2));
-        // Business price should not exceed consumer Your Price
-        if ($businessPrice > $price) {
-            $businessPrice = max(0.01, round($saleBase * 0.95, 2));
-        }
-        if ($businessPrice > $price) {
-            $businessPrice = $price;
+        if ((int) round($minPrice * 100) >= (int) round($salePrice * 100) || $salePrice < 0.02) {
+            Log::error('Amazon push failed', [
+                'sku' => $sku,
+                'error' => 'Min Price must be strictly less than Sale Price',
+                'sale_price' => $salePrice,
+                'business_price' => $businessPrice,
+                'min_price' => $minPrice,
+                'reason' => $pushReason,
+            ]);
+
+            return [
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Min Price must be strictly less than Sale Price.',
+                ]],
+            ];
         }
 
         $sellerId = config('services.amazon_sp.seller_id');
@@ -506,17 +702,26 @@ class AmazonSpApiService
                     ]]
                 ];
 
-                // Log request for debugging
-                Log::info("Amazon Price Update Request (Attempt {$attempt}/{$maxRetries})", [
-                    "original_sku" => $sku,
-                    "amazon_sku" => $amazonSku,
-                    "price" => $price,
-                    "sale_price" => $salePrice,
-                    "min_price" => $minPrice,
-                    "max_price" => $maxPrice,
-                    "business_price" => $businessPrice,
-                    "productType" => $productType,
-                    "token_fresh" => true
+                Log::info(sprintf(
+                    "Amazon Price Update\nSKU: %s\nTarget: %.2f\nSale: %.2f\nBusiness: %.2f\nMin: %.2f\nReason: %s",
+                    $sku,
+                    $salePrice,
+                    $salePrice,
+                    $businessPrice,
+                    $minPrice,
+                    $pushReason
+                ), [
+                    'sku' => $sku,
+                    'original_sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'target' => $salePrice,
+                    'sale_price' => $salePrice,
+                    'business_price' => $businessPrice,
+                    'min_price' => $minPrice,
+                    'max_price' => $maxPrice,
+                    'reason' => $pushReason,
+                    'productType' => $productType,
+                    'attempt' => $attempt,
                 ]);
 
                 $response = Http::withToken($accessToken)
@@ -549,12 +754,16 @@ class AmazonSpApiService
                         || str_contains($errBlob, 'business');
                     // Also retry without B2B on generic 400 validation — business offer often blocks the whole replace
                     if ($looksLikeB2bIssue || $response->status() === 400 || $patchFailurePreview !== null) {
-                        Log::warning('Amazon Price Update: retrying without B2B business price', [
+                        Log::warning('Amazon Price Update: retrying without B2B business price (keeping Sale/Min/Max)', [
                             'sku' => $sku,
                             'amazon_sku' => $amazonSku,
                             'status' => $response->status(),
+                            'sale_price' => $salePrice,
+                            'min_price' => $minPrice,
+                            'business_price_omitted' => $businessPrice,
                         ]);
                         $includedB2b = false;
+                        // Same ALL-audience offer (Sale + Min + Max). Do not change Min.
                         $body['patches'][0]['value'] = [$offerValue];
                         $response = Http::withToken($accessToken)
                             ->withHeaders([
@@ -665,14 +874,25 @@ class AmazonSpApiService
                     return $confirmFailure;
                 }
 
-                Log::info("Amazon Price Update: SUCCESS and verified (Attempt {$attempt}/{$maxRetries})", [
-                    "original_sku" => $sku,
-                    "amazon_sku" => $amazonSku,
-                    "price" => $price,
-                    "response" => $responseData
+                Log::info('Amazon push successful', [
+                    'sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'sale_price' => $salePrice,
+                    'business_price' => $businessPrice,
+                    'min_price' => $minPrice,
                 ]);
 
-                return !empty($responseData) ? $responseData : ['success' => true, 'status' => 'ACCEPTED'];
+                $resolved = [
+                    'our_price' => $price,
+                    'sale_price' => $salePrice,
+                    'business_price' => $businessPrice,
+                    'min_price' => $minPrice,
+                    'max_price' => $maxPrice,
+                ];
+
+                return !empty($responseData)
+                    ? array_merge($responseData, $resolved)
+                    : array_merge(['success' => true, 'status' => 'ACCEPTED'], $resolved);
                 
             } catch (\Exception $e) {
                 Log::error("Amazon Price Update Exception (Attempt {$attempt}/{$maxRetries})", [

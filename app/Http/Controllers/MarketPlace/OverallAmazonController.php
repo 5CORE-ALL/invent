@@ -1834,12 +1834,16 @@ class OverallAmazonController extends Controller
 
         try {
             $service = new AmazonSpApiService();
-            // Sprice push (no explicit Push Prc sale/min): Sale Price and Minimum Price are the same (SPRICE × 0.95).
-            if (! isset($extras['sale_price']) && ! isset($extras['min_price'])) {
-                $matched = $service->matchingSaleAndMinFromSprice($priceFloat);
-                $extras['sale_price'] = $matched['sale_price'];
-                $extras['min_price'] = $matched['min_price'];
+            // Sale = calculated Sale; Business = Sale × 0.95; Min = Sale − 0.01.
+            if (isset($extras['sale_price'])) {
+                $fromSale = $service->saleBusinessMinFromSalePrice((float) $extras['sale_price']);
+            } else {
+                $fromSale = $service->matchingSaleAndMinFromSprice($priceFloat);
             }
+            $extras['sale_price'] = $fromSale['sale_price'];
+            $extras['min_price'] = $fromSale['min_price'];
+            $extras['business_price'] = $fromSale['business_price'];
+            $extras['push_reason'] = $extras['push_reason'] ?? 'manual / tabulator push';
             $result = $service->updateAmazonPriceUS(
                 $skuForAmazon,
                 $priceFloat,
@@ -1868,8 +1872,12 @@ class OverallAmazonController extends Controller
                 return response()->json($result);
             }
 
-            // Also update Amazon's minimum seller allowed price (price floor) when requested
+            // Min is already on the main purchasable_offer patch. Do not send a second
+            // PRODUCT-type merge — that can wipe Sale / Business / Min.
             $updateMinPriceConstraint = $request->boolean('update_amazon_min_price');
+            $resolvedMin = isset($result['min_price'])
+                ? (float) $result['min_price']
+                : (float) ($extras['min_price'] ?? 0);
             $minPriceResult = null;
 
             Log::info('Checking Amazon min price update parameter', [
@@ -1877,77 +1885,41 @@ class OverallAmazonController extends Controller
                 'raw_param' => $request->input('update_amazon_min_price'),
                 'sku' => $skuForAmazon,
                 'price' => $priceFloat,
-                'sale_price' => $extras['sale_price'] ?? null,
-                'min_price' => $extras['min_price'] ?? null,
+                'sale_price' => $result['sale_price'] ?? $extras['sale_price'] ?? null,
+                'business_price' => $result['business_price'] ?? $extras['business_price'] ?? null,
+                'min_price' => $resolvedMin,
             ]);
 
             if ($updateMinPriceConstraint) {
-                // Sprice push: Sale and Min are the same (explicit min, else sale, else SPRICE).
-                $saleBase = isset($extras['sale_price'])
-                    ? (float) $extras['sale_price']
-                    : $priceFloat;
-                $minFloor = isset($extras['min_price'])
-                    ? (float) $extras['min_price']
-                    : $saleBase;
-                Log::info('Updating Amazon minimum price constraint', [
+                Log::info('Amazon min price included in offer patch (no separate PRODUCT patch)', [
                     'sku' => $skuForAmazon,
                     'our_price' => $priceFloat,
-                    'min_price' => $minFloor,
+                    'sale_price' => $result['sale_price'] ?? $extras['sale_price'] ?? null,
+                    'min_price' => $resolvedMin,
                 ]);
-
-                try {
-                    $constraintResult = $service->updateCompetitivePriceConstraints($skuForAmazon, $minFloor);
-
-                    if (isset($constraintResult['errors']) && !empty($constraintResult['errors'])) {
-                        Log::warning('Amazon minimum price constraint update failed (non-blocking)', [
-                            'sku' => $skuForAmazon,
-                            'errors' => $constraintResult['errors'],
-                        ]);
-                        $minPriceResult = [
-                            'ok' => false,
-                            'errors' => $constraintResult['errors'],
-                        ];
-                    } else {
-                        Log::info('Amazon minimum price constraint updated successfully', [
-                            'sku' => $skuForAmazon,
-                            'min_price' => $minFloor,
-                        ]);
-                        $minPriceResult = [
-                            'ok' => true,
-                            'min_price' => $minFloor,
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Amazon minimum price constraint update exception (non-blocking)', [
-                        'sku' => $skuForAmazon,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $minPriceResult = [
-                        'ok' => false,
-                        'errors' => [[
-                            'code' => 'Exception',
-                            'message' => $e->getMessage(),
-                        ]],
-                    ];
-                }
+                $minPriceResult = [
+                    'ok' => true,
+                    'min_price' => $resolvedMin,
+                    'included_in_offer_patch' => true,
+                ];
             }
 
             // Check if we should push to Shopify (default true for backward compatibility)
             $pushShopify = $request->input('push_shopify', true);
             
-            $saleBaseForDefaults = isset($extras['sale_price'])
-                ? (float) $extras['sale_price']
-                : $priceFloat;
+            $saleBaseForDefaults = isset($result['sale_price'])
+                ? (float) $result['sale_price']
+                : (float) ($extras['sale_price'] ?? $priceFloat);
+            $pushedOffer = AmazonSpApiService::computeSaleBusinessMin($saleBaseForDefaults);
             $responseData = array_merge(is_array($result) ? $result : [], [
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
                 'our_price' => $priceFloat,
-                'sale_price' => $extras['sale_price'] ?? $saleBaseForDefaults,
-                'min_price' => $extras['min_price'] ?? $saleBaseForDefaults,
+                'sale_price' => $pushedOffer['sale_price'],
+                'min_price' => $result['min_price'] ?? $pushedOffer['min_price'],
                 'max_price' => $extras['max_price']
-                    ?? round($priceFloat * 1.10, 2),
-                'business_price' => $extras['business_price']
-                    ?? max(0.01, round($saleBaseForDefaults * 0.95, 2)),
+                    ?? ($result['max_price'] ?? round($priceFloat * 1.10, 2)),
+                'business_price' => $result['business_price'] ?? $pushedOffer['business_price'],
             ]);
 
             if ($minPriceResult !== null) {
@@ -1969,7 +1941,11 @@ class OverallAmazonController extends Controller
                 );
                 
                 // Save status based on Shopify push result - only mark as pushed if Shopify succeeds
-                $this->saveSpriceStatus($statusSku, ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error');
+                $this->saveSpriceStatus(
+                    $statusSku,
+                    ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error',
+                    ($shopifyPush['ok'] ?? false) ? $saleBaseForDefaults : null
+                );
                 
                 // Save Shopify status separately
                 $this->saveShopifyStatus($statusSku, ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error');
@@ -1987,7 +1963,7 @@ class OverallAmazonController extends Controller
                 $responseData['S_STATUS'] = ($shopifyPush['ok'] ?? false) ? 'pushed' : 'error';
             } else {
                 // Only save Amazon status when Shopify is skipped
-                $this->saveSpriceStatus($statusSku, 'pushed');
+                $this->saveSpriceStatus($statusSku, 'pushed', $saleBaseForDefaults);
                 
                 Log::info('Amazon price update successful (Shopify skipped)', [
                     'status_sku' => $statusSku,
@@ -2555,7 +2531,7 @@ class OverallAmazonController extends Controller
      * Save SPRICE status to database
      * Status: 'pushed', 'applied', 'error'
      */
-    private function saveSpriceStatus($sku, $status)
+    private function saveSpriceStatus($sku, $status, ?float $canonicalPrice = null)
     {
         try {
             $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
@@ -2568,6 +2544,11 @@ class OverallAmazonController extends Controller
             // Save status
             $existing['SPRICE_STATUS'] = $status;
             $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            if ($status === 'pushed' && $canonicalPrice !== null && $canonicalPrice > 0) {
+                $existing = AmazonSpApiService::stampPushedSaleBusinessMin($existing, $canonicalPrice);
+            } elseif ($status === 'error') {
+                $existing = AmazonSpApiService::stampPushError($existing, 'Amazon push failed');
+            }
             
             $amazonDataView->value = $existing;
             $amazonDataView->save();
@@ -2631,7 +2612,8 @@ class OverallAmazonController extends Controller
             limit: null,
             sleepMs: $sleepMs,
             onlySkus: $onlySkus,
-            logger: null
+            logger: null,
+            pushAll: $request->boolean('push_all')
         );
 
         $stats = $summary['stats'] ?? [];
@@ -2675,7 +2657,8 @@ class OverallAmazonController extends Controller
             limit: null,
             sleepMs: $sleepMs,
             onlySkus: $onlySkus,
-            logger: null
+            logger: null,
+            pushAll: $request->boolean('push_all')
         );
 
         $stats = $summary['stats'] ?? [];

@@ -254,15 +254,14 @@
             left: 18px;
         }
         @push('page-title-after')
-            <label class="amz-reload-push-switch{{ $amazonPageReloadPushEnabled ? '' : ' is-off' }}"
+            <label class="amz-reload-push-switch is-off"
                 id="amz-reload-push-wrap"
-                title="When ON, this page auto-queues Push Prc on reload for listings whose plan differs from live Price. When OFF, reload does not push. Daily Dil vs PRMT cron still runs either way.">
+                title="Page load never pushes to Amazon. Use Push Prc, Dil vs PRMT, or the daily cron.">
                 <span class="amz-reload-push-text">
                     Push on reload
-                    <span class="amz-reload-push-state" id="amz-reload-push-label">{{ $amazonPageReloadPushEnabled ? 'On' : 'Off' }}</span>
+                    <span class="amz-reload-push-state" id="amz-reload-push-label">Off</span>
                 </span>
-                <input type="checkbox" role="switch" id="amz-reload-push-switch"
-                    {{ $amazonPageReloadPushEnabled ? 'checked' : '' }}>
+                <input type="checkbox" role="switch" id="amz-reload-push-switch" disabled>
             </label>
         @endpush
 @endif
@@ -486,7 +485,7 @@
             { key: 'pink', label: 'Pink Dil (50%+)', groi: 70 },
         ];
         let amzZeroSoldRules = AMZ_ZERO_SOLD_DEFAULTS.map(function(r) { return Object.assign({}, r); });
-        let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? true);
+        let amzPageReloadPushEnabled = false;
 
         function amzPefCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -1284,7 +1283,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push Prc: Your=Std; Sale=Std−T Discounts; T Discounts=PRMT%+CVR Disc.+CVR Up/Dn. Max=Std×1.10; Min=Sale×0.95; Business=Sale×0.95. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std; Sale=Std−T Discounts; T Discounts=PRMT%+CVR Disc.+CVR Up/Dn. Max=Std×1.10; Sale=Business=Min. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -1368,8 +1367,8 @@
          *  1) Std → Amazon Your Price (our_price)
          *  2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100)
          *  3) Maximum = Std × 1.10
-         *  4) Minimum = Sale × 0.95  (if no Sale → Std × 0.95)
-         *  5) Business = Sale × 0.95 (if no Sale → Std × 0.95) — B2B our_price
+         *  4) Minimum = Sale − 0.01 (always strictly less than Sale)
+         *  5) Business = Sale × 0.95 — B2B our_price
          *  6) Coupon API — not available via SP-API (skipped)
          */
         function computeAmzTDiscountsPct(d) {
@@ -1393,7 +1392,7 @@
             }
             const saleBase = sale != null ? sale : amzPefRound2(std);
             const max = amzPefRound2(std * 1.10);
-            const min = amzPefRound2(Math.max(0.01, saleBase * 0.95));
+            const min = amzPefRound2(Math.max(0.01, saleBase - 0.01));
             const business = amzPefRound2(Math.max(0.01, saleBase * 0.95));
             const effective = sale != null ? sale : std;
             return {
@@ -1821,7 +1820,7 @@
             if (!confirm(
                 'Queue Push Prc for ' + ready.length + ' selected SKU(s) in background?'
                 + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
-                + '\n\nYour=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Min/Biz=Sale×0.95'
+                + '\n\nYour=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Sale=Business=Min'
                 + '\n\nSafe to refresh — progress continues. You can select more and queue again.'
             )) return;
 
@@ -1850,7 +1849,7 @@
         }
 
         function amzPageReloadPushAllowed() {
-            return amzPageReloadPushEnabled !== false;
+            return false;
         }
         function syncAmzReloadPushSwitchUi() {
             const on = amzPageReloadPushAllowed();
@@ -1900,66 +1899,16 @@
             return items;
         }
         function amzTryQueuePushOnReload() {
-            if (!amzPageReloadPushAllowed()) {
-                window._amzReloadPushQueued = true;
-                return;
-            }
-            if (window._amzReloadPushQueued) return;
-            if (typeof table === 'undefined' || !table) {
-                setTimeout(amzTryQueuePushOnReload, 400);
-                return;
-            }
-            const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
-            const extraN = (typeof allTableData !== 'undefined' && Array.isArray(allTableData))
-                ? allTableData.length
-                : 0;
-            if (!(n > 0) && !(extraN > 0)) {
-                setTimeout(amzTryQueuePushOnReload, 400);
-                return;
-            }
             window._amzReloadPushQueued = true;
-            const items = collectAmzReloadPushItems();
-            if (!items.length) return;
-            queueAmzPushPrcItems(items, { silent: true });
+            return;
         }
         function bindAmzReloadPushOnTable() {
-            if (typeof table === 'undefined' || !table || !table.on) {
-                setTimeout(bindAmzReloadPushOnTable, 400);
-                return;
-            }
-            if (table._amzReloadPushBound) return;
-            table._amzReloadPushBound = true;
-            table.on('dataLoaded', function() {
-                setTimeout(amzTryQueuePushOnReload, 150);
-            });
-            try {
-                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
-                    setTimeout(amzTryQueuePushOnReload, 150);
-                }
-            } catch (e) { /* wait for dataLoaded */ }
+            return;
         }
 
         function initAmazonPefPromoUi() {
             syncAmzReloadPushSwitchUi();
-            $('#amz-reload-push-switch').off('change.amzReload').on('change.amzReload', function() {
-                const on = !!this.checked;
-                const prev = amzPageReloadPushAllowed();
-                saveAmzPageReloadPush(on)
-                    .done(function() {
-                        amzPefToast(
-                            'success',
-                            on
-                                ? 'Reload push on — this page will auto-queue Push Prc on the next reload. Cron is unchanged.'
-                                : 'Reload push off — this page will not auto-push on reload. Daily Dil vs PRMT cron still runs.'
-                        );
-                    })
-                    .fail(function(xhr) {
-                        amzPageReloadPushEnabled = prev;
-                        syncAmzReloadPushSwitchUi();
-                        amzPefToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save reload-push switch');
-                    });
-            });
-            bindAmzReloadPushOnTable();
+            $('#amz-reload-push-switch').off('change.amzReload');
 
             // Prefetch Dil / CVR Disc rules
             if (typeof loadDilPrmtRules === 'function') loadDilPrmtRules();

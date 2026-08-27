@@ -281,16 +281,19 @@ class ChannelPromoPricingController extends Controller
     public static function isPageReloadPushEnabled(string $channel): bool
     {
         $channel = strtolower(trim($channel));
+        if ($channel === 'amazon') {
+            return false;
+        }
         try {
             $row = ChannelTabulatorColumnSetting::query()
                 ->where('channel_name', $channel.'_page_reload_push')
                 ->first();
         } catch (\Throwable) {
-            return true;
+            return $channel !== 'amazon';
         }
         $vis = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($vis) || ! array_key_exists('enabled', $vis)) {
-            return true;
+            return $channel !== 'amazon';
         }
 
         return filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
