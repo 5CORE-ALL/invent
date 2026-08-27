@@ -62,6 +62,18 @@ class AmazonAdsController extends Controller
     private const SKU_METRIC_DISPLAY_COLUMNS = ['Inv', 'ovl30', 'dil', 'price'];
 
     /**
+     * Display columns computed after SQL (Shopify metrics, L-spend overlays, pause Rule).
+     * Sorted in PHP over the filtered window so header click order matches the grid.
+     *
+     * @var list<string>
+     */
+    private const PHP_SORT_DISPLAY_COLUMNS = [
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'ruleStatus',
+        'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
+        'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
+    ];
+
+    /**
      * SP and SB campaign raw tables: hide noisy Amazon metric / audit columns on Amazon Ads All (keep ids, cost, CPC block, L-spends, Sold/Prchase, BGT/SBGT, ACOS, SL 30).
      * SB uses the same list; SB display is then restricted to the same column set and order as SP.
      *
@@ -3152,9 +3164,19 @@ class AmazonAdsController extends Controller
 
         self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
 
-        $rows = $query->offset($start)
-            ->limit($length)
-            ->get();
+        $requestedOrderCol = ($orderColumnIndex >= 0 && $orderColumnIndex < count($columns))
+            ? (string) $columns[$orderColumnIndex]
+            : '';
+        $usePhpSort = in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
+
+        if ($usePhpSort) {
+            $fetchLen = (int) min(8000, max($recordsFiltered, $start + $length));
+            $rows = $query->limit(max(1, $fetchLen))->get();
+        } else {
+            $rows = $query->offset($start)
+                ->limit($length)
+                ->get();
+        }
 
         $hasLSpendCols = in_array('L7spend', $columns, true);
         $hasUtilCols = in_array('U7%', $columns, true);
@@ -3456,6 +3478,18 @@ class AmazonAdsController extends Controller
             $data[] = $arr;
         }
 
+        if ($usePhpSort) {
+            usort($data, static function ($a, $b) use ($requestedOrderCol, $orderDir) {
+                $cmp = self::compareAmazonAdsRowValues(
+                    self::amazonAdsRowSortValue($a, $requestedOrderCol),
+                    self::amazonAdsRowSortValue($b, $requestedOrderCol)
+                );
+
+                return $orderDir === 'asc' ? $cmp : -$cmp;
+            });
+            $data = array_values(array_slice($data, $start, $length));
+        }
+
         $payload = [
             'draw' => $draw,
             'recordsTotal' => $recordsTotal,
@@ -3572,7 +3606,10 @@ class AmazonAdsController extends Controller
         }
 
         usort($rows, static function ($a, $b) use ($orderKey, $orderDir) {
-            $cmp = self::compareAmazonAdsRowValues($a[$orderKey] ?? null, $b[$orderKey] ?? null);
+            $cmp = self::compareAmazonAdsRowValues(
+                self::amazonAdsRowSortValue($a, $orderKey),
+                self::amazonAdsRowSortValue($b, $orderKey)
+            );
 
             return $orderDir === 'asc' ? $cmp : -$cmp;
         });
@@ -3608,6 +3645,27 @@ class AmazonAdsController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * Cell value used when sorting a display column. Missing Amazon price falls back to LMP so
+     * the order matches the grey italic price shown in the grid.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private static function amazonAdsRowSortValue(array $row, string $column): mixed
+    {
+        $v = $row[$column] ?? null;
+        if ($column !== 'price') {
+            return $v;
+        }
+        $n = self::amazonAdsSortableNumber($v);
+        if ($n !== null && $n > 0) {
+            return $n;
+        }
+        $lmp = self::amazonAdsSortableNumber($row['lmp_price'] ?? null);
+
+        return $lmp ?? $v;
     }
 
     /**

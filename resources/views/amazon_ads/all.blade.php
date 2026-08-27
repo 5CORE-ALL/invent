@@ -52,7 +52,49 @@
             background: #dbeafe; border-bottom: 1px solid #dee2e6;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
-        #amz-ads-raw-wrap .tabulator-col .tabulator-col-sorter { display: none !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: flex !important;
+            align-items: center;
+            visibility: visible !important;
+            width: auto !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            opacity: 0.4;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter .tabulator-arrow {
+            display: inline-block !important;
+            visibility: visible !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            border-left: 4px solid transparent !important;
+            border-right: 4px solid transparent !important;
+            border-bottom: 5px solid #64748b !important;
+            border-top: 0 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="desc"] .tabulator-col-sorter .tabulator-arrow {
+            border-bottom: 0 !important;
+            border-top: 5px solid #334155 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="asc"] .tabulator-col-sorter .tabulator-arrow {
+            border-top: 0 !important;
+            border-bottom: 5px solid #334155 !important;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable:hover .tabulator-col-sorter,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="asc"] .tabulator-col-sorter,
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="desc"] .tabulator-col-sorter {
+            opacity: 1;
+        }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 12px;
+        }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important; text-orientation: mixed !important;
@@ -632,7 +674,8 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate'];
-            var NON_ORDERABLE_COLUMNS = ['U7%', 'U2%', 'U1%', 'CPC3', 'CPC2', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'INV', 'Inv', 'ovl30', 'dil', 'price', 'ruleStatus'];
+            var NON_ORDERABLE_COLUMNS = [];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'bgt', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -934,6 +977,7 @@
                 cols.forEach(function (c) {
                     var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
                     col.headerSort = NON_ORDERABLE_COLUMNS.indexOf(c) === -1;
+                    if (NUMERIC_SORT_DESC.indexOf(c) !== -1) col.headerSortStartingDir = 'desc';
                     if (HIDDEN_COLUMNS.indexOf(c) !== -1) col.visible = false;
                     amzApplyColFormat(col, c);
                     defs.push(col);
@@ -1052,6 +1096,7 @@
                 paginationButtonCount: 10,
                 paginationInitialPage: 1,
                 sortMode: 'remote',
+                headerSortClickElement: 'header',
                 placeholder: 'No rows for this source.',
                 selectableRows: true,
                 ajaxResponse: function (url, params, response) {
