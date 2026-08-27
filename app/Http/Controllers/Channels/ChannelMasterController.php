@@ -15766,9 +15766,20 @@ class ChannelMasterController extends Controller
             // - single channel: when badge_value is sent, pin only the latest point to that
             //   value (EbayTwo views column is live-overlaid; snapshots can lag). Do not
             //   rescale history — that would distort real day-to-day movement.
-            // Never touch listing CVR: it is a ratio (Σ qty / Σ views).
+            // Listing CVR is pinned the same way for a single channel (Amazon live
+            // A_L30÷sessions vs snapshot cvr_percent) so the last graph point equals
+            // the table cell. We still never scale the whole CVR series (it is a ratio).
             // Never pin Y Sales to the badge: listing-copy snapshots reuse yesterday's
             // figure, and the badge can be that same stale number.
+            if (!empty($chartData) && $metric === 'cvr' && ! $isAll) {
+                $badgeValue = $request->input('badge_value');
+                if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
+                    $lastIdx = array_key_last($chartData);
+                    if ($lastIdx !== null) {
+                        $chartData[$lastIdx]['value'] = round((float) $badgeValue, 2);
+                    }
+                }
+            }
             if (!empty($chartData) && $metric !== 'cvr' && $metric !== 'y_sales') {
                 $badgeValue = $request->input('badge_value');
                 $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
@@ -15852,7 +15863,7 @@ class ChannelMasterController extends Controller
     {
         // v3: Amazon listing CVR from amazon_channel_summary_data (A_L30 ÷ Sess30)
         // so the table CVR dot is no longer stuck gray on a null listing_cvr.
-        return 'amm_dot_trends_v3_w'.$window;
+        return 'amm_dot_trends_v4_w'.$window;
     }
 
     /**
@@ -16399,7 +16410,7 @@ class ChannelMasterController extends Controller
     private function overlayAmazonListingCvrDotPair(array &$out): void
     {
         $pair = $this->amazonListingCvrLastTwoFromChannelSummary();
-        if ($pair[0] === null || $pair[1] === null) {
+        if ($pair[0] === null && $pair[1] === null) {
             return;
         }
         $out['amazon']['cvr'] = $pair;

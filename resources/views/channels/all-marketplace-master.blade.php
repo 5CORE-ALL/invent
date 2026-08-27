@@ -1318,6 +1318,41 @@
                 });
                 saveDotColorsToStorage();
             }
+            function amazonLiveCvrFromRow(row) {
+                if (!row) return null;
+                if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') {
+                    var fromServer = parseNumber(row['CVR']);
+                    if (isFinite(fromServer)) return Math.round(fromServer * 100) / 100;
+                }
+                var views = parseNumber(row['Total Views'] || 0);
+                var qty = parseNumber(row['Qty'] || 0);
+                if (!(views > 0)) return null;
+                return Math.round((qty / views) * 10000) / 100;
+            }
+            function alignAmazonCvrDotToTable(tableData) {
+                var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
+                var row = null;
+                for (var i = 0; i < data.length; i++) {
+                    if (snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '') === 'amazon') {
+                        row = data[i];
+                        break;
+                    }
+                }
+                var live = amazonLiveCvrFromRow(row);
+                if (live == null || isNaN(live)) return;
+                var key = 'amazon_cvr';
+                var pair = lastDotPairByKey[key] || [null, null];
+                var v1 = pair[0];
+                lastDotPairByKey[key] = [v1, live];
+                if (v1 == null || isNaN(v1)) {
+                    lastDotColorByKey[key] = DEFAULT_DOT_GRAY;
+                } else if (v1 === live) {
+                    lastDotColorByKey[key] = DEFAULT_DOT_GRAY;
+                } else {
+                    lastDotColorByKey[key] = live > v1 ? '#28a745' : '#dc3545';
+                }
+                saveDotColorsToStorage();
+            }
             function channelKeysFromTableData(tableData) {
                 var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
                 var channelKeys = [];
@@ -1362,6 +1397,7 @@
             }).done(function(response) {
                 if (response && response.success && response.channels) {
                     applyDotTrendsMap(response.channels);
+                    alignAmazonCvrDotToTable();
                     if (table) {
                         paintMetricDots(Object.keys(response.channels));
                     }
@@ -1453,6 +1489,7 @@
                         if (response.dot_trends) {
                             applyDotTrendsMap(response.dot_trends);
                         }
+                        alignAmazonCvrDotToTable(response.data);
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
                             loadMetricDotTrends(response.data);
@@ -3658,6 +3695,7 @@
 
                 function finish(channels) {
                     if (channels) applyDotTrendsMap(channels);
+                    alignAmazonCvrDotToTable(tableData);
                     for (var c = 0; c < channelKeys.length; c++) {
                         for (var m = 0; m < metricDotMetricKeys.length; m++) {
                             var key = channelKeys[c] + '_' + metricDotMetricKeys[m];
