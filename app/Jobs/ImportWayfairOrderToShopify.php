@@ -17,11 +17,11 @@ class ImportWayfairOrderToShopify implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 5;
 
     public int $timeout = 180;
 
-    public array $backoff = [30, 60, 120];
+    public array $backoff = [30, 60, 120, 300, 600];
 
     public function __construct(
         protected int $wfOrderId
@@ -31,8 +31,11 @@ class ImportWayfairOrderToShopify implements ShouldQueue
 
     public function middleware(): array
     {
+        $poNumber = WayfairDailyData::query()->where('id', $this->wfOrderId)->value('po_number');
+        $key = $poNumber ? 'wf_import_po:'.$poNumber : "wf_import:{$this->wfOrderId}";
+
         return [
-            (new WithoutOverlapping("wf_import:{$this->wfOrderId}"))
+            (new WithoutOverlapping($key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];
@@ -53,12 +56,18 @@ class ImportWayfairOrderToShopify implements ShouldQueue
 
         $shopifyOrderId = $pushService->importToShopify($order);
         if ($shopifyOrderId) {
-            $order->update([
+            $order->refresh();
+            Log::info('ImportWayfairOrderToShopify: success', [
+                'po_number' => $order->po_number,
                 'shopify_order_id' => $shopifyOrderId,
-                'pushed_to_shopify_at' => now(),
-                'import_status' => 'imported',
+                'linked_existing' => $pushService->lastDuplicateLinkMessage !== null,
             ]);
 
+            return;
+        }
+
+        $order->refresh();
+        if (in_array((string) $order->import_status, ['imported', 'skipped_closed', 'skipped_unpaid'], true)) {
             return;
         }
 
@@ -69,6 +78,10 @@ class ImportWayfairOrderToShopify implements ShouldQueue
         }
 
         $order->update(['import_status' => 'import_failed']);
+        Log::error('ImportWayfairOrderToShopify: failed', [
+            'po_number' => $order->po_number,
+            'reason' => $reason ?? 'Import returned no Shopify order id',
+        ]);
     }
 
     public function failed(\Throwable $exception): void

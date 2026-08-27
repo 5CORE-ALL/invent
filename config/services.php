@@ -691,6 +691,9 @@ return [
         'brand' => env('WAYFAIR_BRAND', 'WAYFAIR'),
         'country' => env('WAYFAIR_COUNTRY', 'UNITED_STATES'),
         'locale' => env('WAYFAIR_LOCALE', 'en-US'),
+        'shopify_source_name' => env('WAYFAIR_SHOPIFY_SOURCE_NAME', 'wayfair'),
+        'shopify_source_display_name' => env('WAYFAIR_SHOPIFY_SOURCE_DISPLAY_NAME', 'Wayfair'),
+        'shopify_source_url_template' => env('WAYFAIR_SHOPIFY_SOURCE_URL_TEMPLATE', 'https://partners.wayfair.com/d/orders/{order_id}'),
     ],
 
     /*

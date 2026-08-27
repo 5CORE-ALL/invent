@@ -48,19 +48,20 @@
                                 @php $orderUrl = route('marketplace.orders.show', ['marketplace' => 'wayfair', 'order' => $o->id]); @endphp
                                 <tr style="cursor: pointer;" onclick="window.location='{{ $orderUrl }}'">
                                     <td>
-                                        <a href="{{ $orderUrl }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ $o->order_id }}</a>
+                                        <a href="{{ $orderUrl }}" class="text-decoration-none" onclick="event.stopPropagation();">{{ $o->po_number ?: $o->order_id ?: '—' }}</a>
                                     </td>
                                     <td class="small">
-                                        @if($o->order_date)
-                                            {{ \Carbon\Carbon::parse($o->order_date)->format('M d, Y H:i') }}
+                                        @php $orderDate = $o->po_date ?: $o->order_date; @endphp
+                                        @if($orderDate)
+                                            {{ \Carbon\Carbon::parse($orderDate)->format('M d, Y') }}
                                         @else
                                             —
                                         @endif
                                     </td>
                                     <td><span class="badge bg-secondary">{{ $o->status }}</span></td>
                                     <td><code>{{ $o->sku }}</code></td>
-                                    <td>{{ Str::limit($o->display_title ?? '—', 40) }}</td>
-                                    <td>{{ $o->stock ?? 1 }}</td>
+                                    <td>{{ Str::limit($o->display_title ?? $o->sku ?? '—', 40) }}</td>
+                                    <td>{{ $o->quantity ?? $o->stock ?? 1 }}</td>
                                     <td>{{ is_numeric($o->amount) ? number_format((float)$o->amount, 2) : '—' }}</td>
                                     <td>
                                         @if($o->shopify_order_id)
@@ -93,8 +94,8 @@
                                                 @else
                                                     <button type="button" class="btn btn-sm btn-warning btn-push-order" data-id="{{ $o->id }}">Push to Shopify</button>
                                                 @endif
-                                                <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Mark as already imported / entered manually">Already imported</button>
-                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->order_id }}" title="Remove from ready-for-import">Delete</button>
+                                                <button type="button" class="btn btn-sm btn-outline-success btn-mark-imported" data-id="{{ $o->id }}" data-order-id="{{ $o->po_number ?: $o->order_id }}" title="Mark as already imported / entered manually">Already imported</button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-ready-order" data-id="{{ $o->id }}" data-order-id="{{ $o->po_number ?: $o->order_id }}" title="Remove from ready-for-import">Delete</button>
                                             </div>
                                         @endif
                                     </td>

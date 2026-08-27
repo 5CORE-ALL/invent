@@ -278,6 +278,7 @@ class FetchWayfairDailyData extends Command
             'event_name' => $event['name'] ?? null,
             
             'packing_slip_url' => $po['packingSlipUrl'] ?? null,
+            'raw_payload' => json_encode($po),
             'updated_at' => now(),
             'created_at' => now(),
         ];

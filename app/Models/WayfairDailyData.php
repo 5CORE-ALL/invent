@@ -51,4 +51,40 @@ class WayfairDailyData extends Model
         'pushed_to_shopify_at' => 'datetime',
         'raw_payload' => 'array',
     ];
+
+    public function getOrderIdAttribute(): ?string
+    {
+        $po = $this->attributes['po_number'] ?? null;
+
+        return $po !== null && $po !== '' ? (string) $po : null;
+    }
+
+    public function getOrderDateAttribute()
+    {
+        return $this->po_date;
+    }
+
+    public function getAmountAttribute()
+    {
+        if ($this->total_price !== null) {
+            return $this->total_price;
+        }
+        if ($this->unit_price !== null) {
+            return (float) $this->unit_price * max(1, (int) ($this->quantity ?? 1));
+        }
+
+        return null;
+    }
+
+    public function getDisplayTitleAttribute(): string
+    {
+        $sku = trim((string) ($this->attributes['sku'] ?? ''));
+
+        return $sku !== '' ? $sku : 'Wayfair item';
+    }
+
+    public function getStockAttribute(): int
+    {
+        return max(1, (int) ($this->attributes['quantity'] ?? 1));
+    }
 }
