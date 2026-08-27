@@ -4416,7 +4416,11 @@
             let prmt = 12;
             for (let min = 0; min < 24; min += 3) {
                 const max = min + 3;
-                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: prmt });
+                rules.push({
+                    key: min + '-' + max,
+                    label: min === 0 ? '0.01–3%' : (min + '–' + max + '%'),
+                    prmt: prmt
+                });
                 prmt -= 1;
             }
             rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
@@ -4425,7 +4429,7 @@
 
     function pefDilSlabKey(dil) {
         const n = Number(dil);
-        if (!isFinite(n) || n < 0) return 'none';
+        if (!isFinite(n) || n < 0.01) return 'none';
         if (n > 25) return 'gt-25';
         if (n >= 24) return '24-25';
         if (n >= 21) return '21-24';
@@ -4615,7 +4619,11 @@
         const forced = [];
         let prmt = 12;
         for (let min = 0; min < 24; min += 3) {
-            forced.push([min + '-' + (min + 3), min + '–' + (min + 3) + '%', prmt]);
+            forced.push([
+                min + '-' + (min + 3),
+                min === 0 ? '0.01–3%' : (min + '–' + (min + 3) + '%'),
+                prmt
+            ]);
             prmt -= 1;
         }
         forced.push(['24-25', '24–25%', 1]);
@@ -4623,7 +4631,7 @@
             return { key: t[0], label: t[1], prmt: t[2] };
         });
         renderDilPrmtModalTable();
-        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0–3 … 24–25). Save to persist.');
+        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0.01–3 … 24–25). Save to persist.');
     });
     $('#pef-dil-prmt-save-btn').on('click', saveDilPrmtRules);
     $('#pef-dil-prmt-apply-selected-btn').on('click', function() {

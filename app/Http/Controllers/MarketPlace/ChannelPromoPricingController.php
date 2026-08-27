@@ -1500,7 +1500,7 @@ class ChannelPromoPricingController extends Controller
 
     /**
      * Shared Dil vs PRMT slabs for every marketplace page:
-     * 0–3, 3–6, … 21–24, 24–25 (last slab also applies above 25%). First slab is 0–3 (no 0–0).
+     * 0.01–3, 3–6, … 21–24, 24–25 (last slab also applies above 25%). Dil &lt; 0.01 gets no PRMT.
      *
      * @return list<array{key:string,label:string,prmt:float|int}>
      */
@@ -1512,7 +1512,7 @@ class ChannelPromoPricingController extends Controller
             $max = $min + 3;
             $rules[] = [
                 'key' => $min.'-'.$max,
-                'label' => $min.'–'.$max.'%',
+                'label' => $min === 0 ? '0.01–3%' : ($min.'–'.$max.'%'),
                 'prmt' => $prmt,
             ];
             $prmt--;
@@ -1524,8 +1524,8 @@ class ChannelPromoPricingController extends Controller
 
     public static function sharedDilPrmtSlabKey(float $dil): string
     {
-        // Lower-inclusive slabs: 0–3, 3–6, …, 21–24, 24–25. Dil > 25 or invalid → no rule.
-        if (! is_finite($dil) || $dil < 0) {
+        // Lower-inclusive slabs: 0.01–3, 3–6, …, 21–24, 24–25. Dil < 0.01 or > 25 → no rule.
+        if (! is_finite($dil) || $dil < 0.01) {
             return 'none';
         }
         if ($dil > 25) {

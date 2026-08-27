@@ -89,7 +89,32 @@
                     console.log(type, msg);
                 }
             }
+            function chPushSpriceCancelQueued() {
+                if (!confirm('Cancel remaining S PRC pushes? Already-queued SKUs that finished stay on the marketplace.')) return;
+                $.ajax({
+                    url: CH_PUSH_SPRICE_URL + '/cancel',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                    data: { _token: chPushSpriceCsrf() },
+                }).done(function(resp) {
+                    chPushSpriceToast('success', (resp && resp.message) || 'S PRC push cancelled');
+                    pollChannelPushSpriceStatus();
+                }).fail(function(xhr) {
+                    chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed');
+                });
+            }
+            function chPushSpriceHasInlineProgress() {
+                return !!document.getElementById('ch-promo-reload-push-progress');
+            }
+            function chPushSpriceBindCancel(id) {
+                const el = document.getElementById(id);
+                if (!el || el.dataset.bound === '1') return;
+                el.dataset.bound = '1';
+                el.addEventListener('click', chPushSpriceCancelQueued);
+            }
             function chPushSpriceEnsureBox() {
+                chPushSpriceBindCancel('ch-promo-reload-push-progress-cancel');
+                if (chPushSpriceHasInlineProgress()) return;
                 if (document.getElementById('ch-promo-push-sprice-progress')) return;
                 const style = document.createElement('style');
                 style.textContent = ''
@@ -118,25 +143,11 @@
                     + ' style="display:none;font-size:11px;line-height:1.2;">Cancel</button></div>'
                     + '<div class="bar"><span id="ch-promo-push-sprice-bar"></span></div>';
                 document.body.appendChild(box);
-                document.getElementById('ch-promo-push-sprice-cancel').addEventListener('click', function() {
-                    if (!confirm('Cancel remaining S PRC pushes? Already-queued SKUs that finished stay on the marketplace.')) return;
-                    $.ajax({
-                        url: CH_PUSH_SPRICE_URL + '/cancel',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                        data: { _token: chPushSpriceCsrf() },
-                    }).done(function(resp) {
-                        chPushSpriceToast('success', (resp && resp.message) || 'S PRC push cancelled');
-                        pollChannelPushSpriceStatus();
-                    }).fail(function(xhr) {
-                        chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed');
-                    });
-                });
+                chPushSpriceBindCancel('ch-promo-push-sprice-cancel');
             }
             function setChannelPushSpriceProgress(opts) {
                 opts = opts || {};
                 chPushSpriceEnsureBox();
-                const $box = $('#ch-promo-push-sprice-progress');
                 const total = Number(opts.total) || 0;
                 const done = Number(opts.done) || 0;
                 const ok = Number(opts.ok) || 0;
@@ -146,14 +157,6 @@
                     ? Math.min(100, Number(opts.pct) || 0)
                     : (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
                 const finished = !active && total > 0 && (done >= total || pct >= 100);
-                if (active || finished) $box.addClass('active');
-                else $box.removeClass('active');
-                $box.toggleClass('done', finished || (!active && pct >= 100));
-                $box.toggleClass('has-fail', fail > 0);
-                $('#ch-promo-push-sprice-title').text(opts.title || (finished ? (fail && !ok ? 'S PRC failed' : 'S PRC pushed') : 'S PRC queue'));
-                $('#ch-promo-push-sprice-pct').text(pct + '%');
-                $('#ch-promo-push-sprice-bar').css('width', pct + '%');
-                $('#ch-promo-push-sprice-cancel').toggle(!!active);
                 let msg;
                 if (active) {
                     msg = total ? (done + ' / ' + total) : 'Starting…';
@@ -164,6 +167,36 @@
                 } else {
                     msg = opts.msg || 'Ready';
                 }
+                const $inline = $('#ch-promo-reload-push-progress');
+                if ($inline.length) {
+                    $inline.toggleClass('is-busy', !!active);
+                    $inline.toggleClass('is-done', finished || (!active && pct >= 100));
+                    $inline.toggleClass('is-fail', fail > 0);
+                    $('#ch-promo-reload-push-progress-pct').text(pct + '%');
+                    $('#ch-promo-reload-push-progress-bar').css('width', pct + '%');
+                    $('#ch-promo-reload-push-progress-msg').text(msg);
+                    if (finished) {
+                        clearTimeout(setChannelPushSpriceProgress._inlineHideTimer);
+                        setChannelPushSpriceProgress._inlineHideTimer = setTimeout(function() {
+                            if (!$inline.hasClass('is-done')) return;
+                            $inline.removeClass('is-busy is-done is-fail');
+                            $('#ch-promo-reload-push-progress-pct').text('0%');
+                            $('#ch-promo-reload-push-progress-bar').css('width', '0%');
+                            $('#ch-promo-reload-push-progress-msg').text('Ready');
+                        }, 10000);
+                    }
+                    return;
+                }
+                const $box = $('#ch-promo-push-sprice-progress');
+                if (!$box.length) return;
+                if (active || finished) $box.addClass('active');
+                else $box.removeClass('active');
+                $box.toggleClass('done', finished || (!active && pct >= 100));
+                $box.toggleClass('has-fail', fail > 0);
+                $('#ch-promo-push-sprice-title').text(opts.title || (finished ? (fail && !ok ? 'S PRC failed' : 'S PRC pushed') : 'S PRC queue'));
+                $('#ch-promo-push-sprice-pct').text(pct + '%');
+                $('#ch-promo-push-sprice-bar').css('width', pct + '%');
+                $('#ch-promo-push-sprice-cancel').toggle(!!active);
                 $('#ch-promo-push-sprice-msg').text(msg);
                 if (finished) {
                     clearTimeout(setChannelPushSpriceProgress._hideTimer);

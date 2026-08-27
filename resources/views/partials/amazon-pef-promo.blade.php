@@ -421,8 +421,8 @@
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2">
                         Shared Dil vs PRMT for <strong>all marketplaces</strong>:
-                        <strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
-                        (no 0–0 slab). Save here updates eBay, Shopify, and every other Dil vs PRMT page.
+                        <strong>0.01–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
+                        (Dil 0% gets no PRMT). Save here updates eBay, Shopify, and every other Dil vs PRMT page.
                         If <strong>INV = 0</strong>, PRMT% is forced to <strong>0</strong>.
                     </p>
                     <div class="table-responsive">
@@ -458,7 +458,11 @@
             let prmt = 12;
             for (let min = 0; min < 24; min += 3) {
                 const max = min + 3;
-                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: prmt });
+                rules.push({
+                    key: min + '-' + max,
+                    label: min === 0 ? '0.01–3%' : (min + '–' + max + '%'),
+                    prmt: prmt
+                });
                 prmt -= 1;
             }
             rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
@@ -646,7 +650,7 @@
 
         function pefDilSlabKey(dil) {
             const n = Number(dil);
-            if (!isFinite(n) || n < 0) return 'none';
+            if (!isFinite(n) || n < 0.01) return 'none';
             if (n > 25) return 'gt-25';
             if (n >= 24) return '24-25';
             if (n >= 21) return '21-24';
@@ -942,7 +946,7 @@
                 }
                 renderDilPrmtModalTable();
                 $('#pef-dil-prmt-status').text(res && res.is_default
-                    ? 'Using first-time defaults (0–3 … 21–24, 24–25). Save applies to all marketplaces.'
+                    ? 'Using first-time defaults (0.01–3 … 21–24, 24–25). Save applies to all marketplaces.'
                     : 'Loaded shared Dil vs PRMT rules (all marketplaces).');
             } catch (e) {
                 renderDilPrmtModalTable();

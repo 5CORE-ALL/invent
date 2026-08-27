@@ -272,6 +272,99 @@
         .ch-promo-reload-push-switch > input[type="checkbox"]:checked::after {
             left: 18px;
         }
+        .ch-promo-reload-push-cluster {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 100%;
+        }
+        .ch-promo-reload-push-progress {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 180px;
+            min-width: 160px;
+            max-width: 320px;
+            padding: 4px 10px;
+            border: 1px solid #bfdbfe;
+            border-radius: 999px;
+            background: #eff6ff;
+            font-size: 11px;
+            font-weight: 700;
+            color: #1d4ed8;
+            line-height: 1.2;
+        }
+        .ch-promo-reload-push-progress.is-busy {
+            border-color: #93c5fd;
+        }
+        .ch-promo-reload-push-progress.is-done {
+            border-color: #86efac;
+            background: #f0fdf4;
+            color: #15803d;
+        }
+        .ch-promo-reload-push-progress.is-fail {
+            border-color: #fcd34d;
+            background: #fffbeb;
+            color: #b45309;
+        }
+        .ch-promo-reload-push-progress-track {
+            flex: 1 1 72px;
+            height: 8px;
+            min-width: 64px;
+            border-radius: 999px;
+            background: #bfdbfe;
+            overflow: hidden;
+        }
+        .ch-promo-reload-push-progress-track > span {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: #3b82f6;
+            border-radius: 999px;
+            transition: width .25s ease;
+        }
+        .ch-promo-reload-push-progress.is-done .ch-promo-reload-push-progress-track > span {
+            background: #22c55e;
+        }
+        .ch-promo-reload-push-progress.is-fail .ch-promo-reload-push-progress-track > span {
+            background: linear-gradient(90deg, #22c55e 70%, #f59e0b 100%);
+        }
+        .ch-promo-reload-push-progress-pct {
+            flex: 0 0 auto;
+            min-width: 2.4em;
+            text-align: right;
+        }
+        .ch-promo-reload-push-progress-msg {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 9.5rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 600;
+            color: #64748b;
+        }
+        .ch-promo-reload-push-progress.is-done .ch-promo-reload-push-progress-msg {
+            color: #15803d;
+        }
+        .ch-promo-reload-push-progress-cancel {
+            display: none;
+            flex: 0 0 auto;
+            padding: 0 6px;
+            border: 1px solid #fca5a5;
+            border-radius: 999px;
+            background: #fff;
+            color: #dc2626;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 16px;
+            cursor: pointer;
+        }
+        .ch-promo-reload-push-progress.is-busy .ch-promo-reload-push-progress-cancel {
+            display: inline-block;
+        }
         #ch-promo-sprice-vs-tpromo-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -447,16 +540,27 @@
         }
         @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
         @push('page-title-after')
-            <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
-                id="ch-promo-reload-push-wrap"
-                title="When ON, changing a price auto-pushes only those edited SKUs. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
-                <span class="ch-promo-reload-push-text">
-                    Push on reload
-                    <span class="ch-promo-reload-push-state" id="ch-promo-reload-push-label">{{ $channelPromoPageReloadPushEnabled ? 'On' : 'Off' }}</span>
-                </span>
-                <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
-                    {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
-            </label>
+            <div class="ch-promo-reload-push-cluster" id="ch-promo-reload-push-cluster">
+                <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
+                    id="ch-promo-reload-push-wrap"
+                    title="When ON, changing a price auto-pushes only those edited SKUs. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
+                    <span class="ch-promo-reload-push-text">
+                        Push on reload
+                        <span class="ch-promo-reload-push-state" id="ch-promo-reload-push-label">{{ $channelPromoPageReloadPushEnabled ? 'On' : 'Off' }}</span>
+                    </span>
+                    <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
+                        {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
+                </label>
+                <div id="ch-promo-reload-push-progress" class="ch-promo-reload-push-progress"
+                    aria-live="polite" title="S PRC push progress">
+                    <div class="ch-promo-reload-push-progress-track">
+                        <span id="ch-promo-reload-push-progress-bar"></span>
+                    </div>
+                    <span class="ch-promo-reload-push-progress-pct" id="ch-promo-reload-push-progress-pct">0%</span>
+                    <span class="ch-promo-reload-push-progress-msg" id="ch-promo-reload-push-progress-msg">Ready</span>
+                    <button type="button" class="ch-promo-reload-push-progress-cancel" id="ch-promo-reload-push-progress-cancel">Cancel</button>
+                </div>
+            </div>
         @endpush
 @endif
 
@@ -465,7 +569,7 @@
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
-                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: shared Dil vs PRMT (0–3 → 12 … 24–25 → 1). Auto-fills B2B disc; Apply writes PRMT%.' : 'Shared Dil vs PRMT (0–3 … 21–24, 24–25). Save on any page updates all marketplaces.' }}">
+                            title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: shared Dil vs PRMT (0.01–3 → 12 … 24–25 → 1). Auto-fills B2B disc; Apply writes PRMT%.' : 'Shared Dil vs PRMT (0.01–3 … 21–24, 24–25). Save on any page updates all marketplaces.' }}">
                             <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : ($channelPromoChannel === 'aliexpress' ? 'PRMT%' : 'Prmt%') }}
                         </button>
                         @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
@@ -660,8 +764,8 @@
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="ch-promo-dil-prmt-help">
                         Shared Dil vs PRMT for <strong>all marketplaces</strong>:
-                        <strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
-                        (no 0–0 slab). Save on any page updates every page.
+                        <strong>0.01–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>
+                        (Dil 0% gets no PRMT). Save on any page updates every page.
                         Changing any slab fills <strong>PRMT %</strong>.
                         If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
                         @if($channelPromoChannel === 'shopify_b2c')
@@ -2788,7 +2892,11 @@
             let prmt = 12;
             for (let min = 0; min < 24; min += 3) {
                 const max = min + 3;
-                rules.push({ key: min + '-' + max, label: min + '–' + max + '%', prmt: prmt });
+                rules.push({
+                    key: min + '-' + max,
+                    label: min === 0 ? '0.01–3%' : (min + '–' + max + '%'),
+                    prmt: prmt
+                });
                 prmt -= 1;
             }
             rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
@@ -3773,7 +3881,7 @@
                 if (CHANNEL_PROMO_CHANNEL === 'reverb' && n < 0.1) return 'lt-0.1';
                 return '0-20';
             }
-            if (!isFinite(n) || n < 0) return 'none';
+            if (!isFinite(n) || n < 0.01) return 'none';
             if (n > 25) return 'gt-25';
             if (n >= 24) return '24-25';
             if (n >= 21) return '21-24';
@@ -3794,7 +3902,7 @@
         function chPromoPrmtForDil(dil) {
             return chPromoPrmtForRuleKey(chPromoDilSlabKey(dil));
         }
-        /** Canonical B2B discount from Dil% (0–3 → 12, then −1 each 3% slab, 24–25 → 1). */
+        /** Canonical B2B discount from Dil% (0.01–3 → 12, then −1 each 3% slab, 24–25 → 1). */
         function chPromoB2bDiscDefaultForKey(key) {
             const def = CH_PEF_DIL_PRMT_DEFAULTS_EBAY.find(function(r) { return r.key === key; });
             return def ? Math.max(0, Number(def.prmt) || 0) : 0;
@@ -4394,7 +4502,7 @@
                         ? ('<td class="text-end">'
                             + '<input type="number" class="form-control form-control-sm ch-promo-b2b-disc-input" '
                             + 'readonly tabindex="-1" value="' + b2bDisc + '" '
-                            + 'title="Auto from Dil% rule: 0–3% → 12, then −1 each 3% slab (min 0)">'
+                            + 'title="Auto from Dil% rule: 0.01–3% → 12, then −1 each 3% slab (min 0)">'
                             + '</td>')
                         : '')
                     + '<td class="text-end">'
@@ -4471,7 +4579,7 @@
                 }
                 renderChPromoDilPrmtModalTable();
                 renderChPromoZeroSoldPrmtModalTable();
-                const defaultMsg = 'Using first-time defaults (0–3 … 21–24, 24–25). Save applies to all marketplaces.';
+                const defaultMsg = 'Using first-time defaults (0.01–3 … 21–24, 24–25). Save applies to all marketplaces.';
                 $('#ch-promo-dil-prmt-status').text(res && res.is_default
                     ? defaultMsg
                     : 'Loaded shared Dil vs PRMT rules (all marketplaces).');
@@ -7707,7 +7815,7 @@
                 hozAlign: 'center',
                 vertAlign: 'middle',
                 headerSort: true,
-                headerTooltip: 'Auto from Dil% (0–3% → 12, then −1 each 3% slab, 24–25% → 1). INV = 0 → 0. Same shared Dil vs PRMT table as all marketplaces.',
+                headerTooltip: 'Auto from Dil% (0.01–3% → 12, then −1 each 3% slab, 24–25% → 1). INV = 0 → 0. Same shared Dil vs PRMT table as all marketplaces.',
                 formatter: function(cell) {
                     const d = cell.getRow().getData() || {};
                     if (d.is_parent_summary || !chPromoIsChildRow(d)) return '';
@@ -7800,7 +7908,7 @@
                         return chPromoIsChildRow(cell.getRow().getData());
                     },
                     editor: 'input',
-                    headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
+                    headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0.01–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
                         + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                             ? ' If discounted S PRC is below Amz, S PRC is raised to A Price (Amz label).'
                             : ' Same table on every marketplace page.')
@@ -8264,8 +8372,8 @@
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
                         help.innerHTML = 'Shared Dil vs PRMT (<strong>all marketplaces</strong>): '
-                            + '<strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong> '
-                            + '(no 0–0 slab). Save on this page updates every marketplace. '
+                            + '<strong>0.01–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong> '
+                            + '(Dil 0% gets no PRMT). Save on this page updates every marketplace. '
                             + 'On eBay, Dil is <strong>listing-wise</strong> '
                             + '(Σ OV L30 ÷ Σ INV by variation item id). Changing <strong>any</strong> slab number '
                             + 'immediately fills the <strong>PRMT %</strong> column. <strong>Apply</strong> writes PRMT% '
@@ -8276,7 +8384,7 @@
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
                         help.innerHTML = 'Shared Dil vs PRMT (<strong>all marketplaces</strong>): '
-                            + '<strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>. '
+                            + '<strong>0.01–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>. '
                             + 'Save on this page updates every marketplace. Dil is <strong>SKU-wise</strong> (OV L30 ÷ INV). '
                             + '<strong>Save and Apply</strong> writes PRMT% on selected rows, or all visible SKUs. '
                             + 'If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.'
@@ -8321,7 +8429,7 @@
                 } else if (CHANNEL_PROMO_CHANNEL === 'reverb') {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
-                        help.innerHTML = 'Shared Dil vs PRMT (<strong>0–3%</strong> … <strong>24–25%</strong>) — same table as /ebay-tabulator-view. '
+                        help.innerHTML = 'Shared Dil vs PRMT (<strong>0.01–3%</strong> … <strong>24–25%</strong>) — same table as /ebay-tabulator-view. '
                             + 'Dil is SKU-wise (OV L30 ÷ INV). <strong>Apply</strong> writes <strong>PRMT %</strong> '
                             + 'only on selected or visible SKUs with <strong>RV L30 &gt; 0</strong>. '
                             + 'S PRC = Std × (1 − (PRMT% + cvr%)/100), then auto-pushes when it differs from Price. '
@@ -8331,7 +8439,7 @@
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
                         help.innerHTML = '<strong>B2B disc</strong> auto-fills from the shared Dil vs PRMT table '
-                            + '(<strong>0–3% → 12</strong>, then −1 each 3% slab, <strong>24–25% → 1</strong>). <strong>Save Rule</strong> stores PRMT% for all marketplaces. '
+                            + '(<strong>0.01–3% → 12</strong>, then −1 each 3% slab, <strong>24–25% → 1</strong>). <strong>Save Rule</strong> stores PRMT% for all marketplaces. '
                             + '<strong>Apply</strong> fills <strong>PRMT %</strong> from each row’s Dil% / discounts S PRC. '
                             + 'If <strong>INV = 0</strong>, B2B disc and PRMT% are forced to <strong>0</strong>.';
                     }
