@@ -1138,6 +1138,42 @@
         if (!isFinite(push)) return null;
         return +push.toFixed(2);
     }
+    function temuExportRowSprice(row) {
+        if (typeof temuDisplayedSprice === 'function') {
+            const shown = temuDisplayedSprice(row);
+            if (shown > 0) return shown;
+        }
+        return parseFloat(row && row.sprice) || 0;
+    }
+    function temuExportSuggBPrice(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const push = temuPushBaseFromSprice(temuExportRowSprice(row));
+        return push == null ? '' : push;
+    }
+    function temuExportSgroi(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const lp = parseFloat(row.lp) || 0;
+        const sprice = temuExportRowSprice(row);
+        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(row, sprice) : null;
+        if (spft == null || !(lp > 0)) return '';
+        return Math.round((spft / lp) * 100);
+    }
+    function temuExportSgpft(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const sprice = temuExportRowSprice(row);
+        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(row, sprice) : null;
+        if (!(sprice > 0) || spft == null) return '';
+        return Math.round((spft / sprice) * 100);
+    }
+    /** SPRICE used for push + inverse Temu base (same as old /temu-decrease Push Prc). */
+    function temuPushSpriceAndBase(row) {
+        const sprice = temuExportRowSprice(row);
+        const pushBase = temuPushBaseFromSprice(sprice);
+        return {
+            sprice: sprice,
+            pushBase: (pushBase != null && pushBase > 0) ? pushBase : null
+        };
+    }
     function temu2FormatMoney(amount, opts) {
         const n = parseFloat(amount);
         if (!isFinite(n)) return '';
@@ -3978,38 +4014,44 @@
                     }
                 },
                 {
-                    title: "Queue",
+                    title: "Push Prc",
                     field: "_push",
-                    width: 55,
+                    minWidth: 88,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Push base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)",
+                    download: true,
+                    downloadTitle: "Push Prc",
+                    accessorDownload: function(value, data) {
+                        const cap = temuPushSpriceAndBase(data);
+                        return cap.pushBase == null ? '' : cap.pushBase;
+                    },
+                    headerTooltip: "Push Temu base = inverse of Temu Price from SPRICE (undo +$2.99 if applied, then ÷ 1.1364).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (rowData.is_parent) return '';
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (window.SpriceLmpCap
-                                ? SpriceLmpCap.prepare(rowData, parseFloat(rowData.sprice) || 0)
-                                : (parseFloat(rowData.sprice) || 0));
-                        const pushBase = temuPushBaseFromSprice(sprice);
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
+                        const cap = temuPushSpriceAndBase(rowData);
+                        const pushBase = cap.pushBase;
+                        const sprice = cap.sprice;
                         const pushStatus = rowData.push_status || null;
-                        if (sprice <= 0 || pushBase == null || pushBase <= 0) return '';
+                        if (!(sprice > 0) || pushBase == null) return '';
 
                         const sku = rowData.sku || '';
                         const goodsId = rowData.goods_id || '';
                         const skuId = rowData.sku_id || '';
+                        const priceHtml = '<span style="font-weight:600;">$' + pushBase.toFixed(2) + '</span>';
+                        const title = 'Push Temu base $' + pushBase.toFixed(2)
+                            + ' (inverse of Temu Price from SPRICE $' + sprice.toFixed(2) + ')';
 
                         if (pushStatus === 'pushing') {
-                            return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu2..."></i>';
+                            return priceHtml + ' <i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu..."></i>';
                         }
                         if (pushStatus === 'pushed') {
-                            return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu2"></i>';
+                            return priceHtml + ' <i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu"></i>';
                         }
                         if (pushStatus === 'error') {
-                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
+                            return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
                         }
-                        return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push base $${pushBase.toFixed(2)} to Temu2"><i class="fas fa-upload"></i></button>`;
+                        return priceHtml + ` <button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="${title}"><i class="fas fa-upload"></i></button>`;
                     }
                 },
            
@@ -4018,12 +4060,17 @@
                     field: "stemu_price",
                     hozAlign: "center",
                     sorter: "number",
+                    download: true,
+                    downloadTitle: "Sugg B Price",
+                    accessorDownload: function(value, data) {
+                        return temuExportSuggBPrice(data);
+                    },
                     headerTooltip: "Push base = inverse of Temu Price: undo +$2.99 (if applied) then ÷ 1.1364. Matches Base Price when SPRICE = Temu Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const pushBase = temuPushBaseFromSprice(rowData['sprice']);
-                        if (pushBase == null) return '';
-                        return temu2FormatMoney(pushBase);
+                        const cap = temuPushSpriceAndBase(rowData);
+                        if (cap.pushBase == null) return '';
+                        return temu2FormatMoney(cap.pushBase);
                     }
                 },
                 {
@@ -4031,6 +4078,11 @@
                     field: "sgroi_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    download: true,
+                    downloadTitle: "SGROI",
+                    accessorDownload: function(value, data) {
+                        return temuExportSgroi(data);
+                    },
                     headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4063,6 +4115,11 @@
                     field: "sgprft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    download: true,
+                    downloadTitle: "SGPFT",
+                    accessorDownload: function(value, data) {
+                        return temuExportSgpft(data);
+                    },
                     headerTooltip: "SGPRFT% = SPFT / S PRC. SPFT = (S R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -5608,13 +5665,13 @@
         // Export L30 / L7 from icon dropdown — loads period data if needed, then restores current view
         function exportPeriodCsv(period) {
             const isL7 = period === 'L7';
-            const filename = isL7 ? 'temu2_decrease_data_l7.csv' : 'temu2_decrease_data_l30.csv';
+            const filename = isL7 ? 'temu1_data_l7.csv' : 'temu1_data_l30.csv';
             const endpoint = isL7 ? '/temu-decrease-data-l7' : '/temu-decrease-data';
             const $btn = $('#export-btn');
             const originalHtml = $btn.html();
 
             if (currentCampaignPeriod === period) {
-                table.download("csv", filename);
+                table.download("csv", filename, {}, "active");
                 return;
             }
 
@@ -5623,7 +5680,7 @@
             suppressDataLoadedHandler = true;
             table.setData(endpoint).then(function() {
                 applyFilters();
-                table.download("csv", filename);
+                table.download("csv", filename, {}, "active");
                 suppressDataLoadedHandler = false;
                 return table.setData(restoreEndpoint);
             }).then(function() {
@@ -5722,15 +5779,15 @@
 
         updateCampaignPeriodUi();
 
-        // --- Temu2 price push: SPRICE → base via inverse of Temu Price ---
+        // --- Temu price push: SPRICE → base via inverse of Temu Price ---
         function pushTemu2PriceForRow(row, price) {
             const data = row.getData();
             const sku = data.sku;
             const goodsId = data.goods_id || '';
             const skuId = data.sku_id || '';
-            const fromSprice = temuPushBaseFromSprice(data.sprice);
+            const cap = temuPushSpriceAndBase(data);
             const raw = parseFloat(price);
-            let pushPrice = fromSprice;
+            let pushPrice = cap.pushBase;
             if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
             if (!sku || !(pushPrice > 0)) {
                 return Promise.reject({ message: 'SKU and price required' });
@@ -5783,19 +5840,20 @@
                 return String(r.getData().sku || '') === String(sku);
             });
             if (!row) return;
-            const sprice = parseFloat(row.getData().sprice) || 0;
-            const pushBase = temuPushBaseFromSprice(sprice);
+            const cap = temuPushSpriceAndBase(row.getData());
+            const sprice = cap.sprice;
+            const pushBase = cap.pushBase;
             if (pushBase == null || pushBase <= 0) {
-                showToast('Cannot push — invalid or negative S Temu B Prc', 'error');
+                showToast('Cannot push — invalid or negative Push Prc', 'error');
                 return;
             }
             if (!confirm(
-                'Push Temu 1 base $' + pushBase.toFixed(2)
+                'Push Temu base $' + pushBase.toFixed(2)
                 + ' (inverse of Temu Price from SPRICE $' + sprice.toFixed(2) + ')'
                 + ' for SKU: ' + sku + '?'
             )) return;
 
-            pushTemu2PriceForRow(row, sprice).then(function() {
+            pushTemu2PriceForRow(row, pushBase).then(function() {
                 showToast('Price pushed to Temu 1', 'success');
                 if (typeof updateSummary === 'function') updateSummary();
             }).catch(function(err) {
@@ -5832,10 +5890,9 @@
             table.getRows('active').forEach(function(row) {
                 const d = row.getData();
                 if (d.is_parent) return;
-                const sprice = parseFloat(d.sprice) || 0;
-                const pushBase = temuPushBaseFromSprice(sprice);
-                if (sprice > 0 && pushBase != null && pushBase > 0 && d.push_status !== 'pushed') {
-                    items.push({ row: row, price: sprice, sku: d.sku, pushBase: pushBase });
+                const cap = temuPushSpriceAndBase(d);
+                if (cap.sprice > 0 && cap.pushBase != null && d.push_status !== 'pushed') {
+                    items.push({ row: row, price: cap.pushBase, sku: d.sku, pushBase: cap.pushBase });
                 }
             });
 
@@ -5845,8 +5902,8 @@
             }
 
             if (!confirm(
-                'Push Temu 1 base for ' + items.length + ' SKU(s)?\n'
-                + 'Base = inverse of Temu Price (÷ 1.1364, undo +$2.99 if applied)'
+                'Push Temu base for ' + items.length + ' SKU(s)?\n'
+                + 'Base = inverse of Temu Price from SPRICE (÷ 1.1364, undo +$2.99 if applied)'
             )) return;
 
             const $btn = $('#push-temu2-price-btn');
