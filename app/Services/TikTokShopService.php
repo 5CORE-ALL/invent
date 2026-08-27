@@ -65,6 +65,11 @@ class TikTokShopService
         // Get tokens from cache first, then fallback to env/config
         $this->accessToken = Cache::get($this->cachePrefix.'_access_token') ?? ($cfg['access_token'] ?? null);
         $this->refreshToken = Cache::get($this->cachePrefix.'_refresh_token') ?? ($cfg['refresh_token'] ?? null);
+        try {
+            $this->skipInventoryUpdateApi = (bool) Cache::get($this->cachePrefix.'_skip_inventory_update_api', false);
+        } catch (\Throwable $e) {
+            // ignore
+        }
 
         // Initialize the TikTok Shop client library (same as ship_hub).
         // Explicit timeouts — Guzzle defaults to 0 (wait forever), which freezes listings sync.
@@ -2129,8 +2134,8 @@ class TikTokShopService
                 return ['success' => false, 'message' => 'Access denied. Your IP address is not in the IP allow list configured for this app.'];
             }
 
-            // Skip inventorySearch here. That extra SDK call uses the same 45s
-            // Guzzle timeout and is enough by itself to 504 a mismatch batch.
+            // Partial Edit first (LIVE rejects Update Inventory with 12052901).
+            // Default warehouse first so we do not burn the request on inventorySearch.
             $warehouseId = $this->resolveDefaultWarehouseId();
             $result = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $warehouseId);
             if (! empty($result['success'])) {
@@ -2143,14 +2148,31 @@ class TikTokShopService
                 return ['success' => false, 'message' => $message];
             }
 
+            $skuWarehouses = $this->skuWarehouseInventoryRows($productId, $skuId);
+            if ($skuWarehouses !== []) {
+                $retry = $this->sendInventoryRows(
+                    $productId,
+                    $skuId,
+                    $this->inventoryRowsForPushQty($skuWarehouses, $quantity)
+                );
+                if (! empty($retry['success'])) {
+                    return $retry;
+                }
+                $message = (string) ($retry['message'] ?? $message);
+                $this->rememberIpAllowList($message);
+                if ($this->ipAllowListBlocked) {
+                    return ['success' => false, 'message' => $message];
+                }
+            }
+
             if (stripos($message, 'warehouse') !== false) {
                 $skuWarehouse = $this->warehouseIdFromProductSku($productId, $skuId);
                 if ($skuWarehouse !== null && $skuWarehouse !== '' && $skuWarehouse !== $warehouseId) {
-                    $retry = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $skuWarehouse);
-                    if (! empty($retry['success'])) {
-                        return $retry;
+                    $whRetry = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $skuWarehouse);
+                    if (! empty($whRetry['success'])) {
+                        return $whRetry;
                     }
-                    $message = (string) ($retry['message'] ?? $message);
+                    $message = (string) ($whRetry['message'] ?? $message);
                 }
             }
 
@@ -2195,11 +2217,23 @@ class TikTokShopService
     {
         $message = strtolower($message);
 
-        return str_contains($message, 'operation not allowed')
+        return str_contains($message, '12052901')
+            || str_contains($message, 'operation not allowed')
             || str_contains($message, 'must be in one of these statuses')
             || str_contains($message, 'precondition required')
             || str_contains($message, 'valid product status')
             || (str_contains($message, 'seller_deactivated') && str_contains($message, 'activate'));
+    }
+
+    protected function rememberSkipInventoryUpdateApi(): void
+    {
+        $this->skipInventoryUpdateApi = true;
+        $this->deadInventoryKeys['202309|inventory'] = true;
+        try {
+            Cache::put($this->cachePrefix.'_skip_inventory_update_api', true, now()->addHours(6));
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 
     protected function isSalesAttributesError(string $message): bool
@@ -2483,36 +2517,21 @@ class TikTokShopService
             return ['success' => false, 'message' => 'No TikTok warehouse rows to update.'];
         }
 
-        $inventoryParams = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
         $lastMessage = 'TikTok inventory update failed.';
 
-        if (! $this->skipInventoryUpdateApi && ! isset($this->deadInventoryKeys['202309|inventory'])) {
-            $result = $this->invokeSdkInventory($productId, $inventoryParams, '202309', 'inventory');
-            if (! empty($result['success'])) {
-                $this->workingInventoryPath = '202309|inventory';
-
-                return $result;
-            }
-            $lastMessage = (string) ($result['message'] ?? $lastMessage);
-            $this->rememberIpAllowList($lastMessage);
-            if ($this->ipAllowListBlocked) {
-                return ['success' => false, 'message' => $lastMessage];
-            }
-            if ($this->isProductStatusRestrictionError($lastMessage)
-                || $this->isNoSchemaError($lastMessage)
-                || $this->isInvalidApiVersionError($lastMessage)) {
-                $this->skipInventoryUpdateApi = true;
-                $this->deadInventoryKeys['202309|inventory'] = true;
-            } elseif (empty($result['retry'])) {
-                return ['success' => false, 'message' => $lastMessage];
-            }
-            Log::info('TikTok inventory update attempt failed', [
-                'product_id' => $productId,
-                'sku_id' => $skuId,
-                'version' => '202309',
-                'method' => 'inventory',
-                'error' => $lastMessage,
-            ]);
+        // LIVE listings reject 202309 Update Inventory (12052901). Partial Edit
+        // 202509 is the same Open API path Title Master uses for titles.
+        $openApi = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
+        if (! empty($openApi['success'])) {
+            return $openApi;
+        }
+        $lastMessage = (string) ($openApi['message'] ?? $lastMessage);
+        $this->rememberIpAllowList($lastMessage);
+        if ($this->ipAllowListBlocked) {
+            return ['success' => false, 'message' => $lastMessage];
+        }
+        if ($this->isProductStatusRestrictionError($lastMessage)) {
+            $this->rememberSkipInventoryUpdateApi();
         }
 
         $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
@@ -2541,15 +2560,31 @@ class TikTokShopService
                 return $retry;
             }
             $lastMessage = (string) ($retry['message'] ?? $lastMessage);
+            $openRetry = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
+            if (! empty($openRetry['success'])) {
+                return $openRetry;
+            }
+            $lastMessage = (string) ($openRetry['message'] ?? $lastMessage);
         }
 
-        $openApi = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
-        if (! empty($openApi['success'])) {
-            return $openApi;
-        }
-        $lastMessage = (string) ($openApi['message'] ?? $lastMessage);
+        if (! $this->skipInventoryUpdateApi && ! $this->isProductStatusRestrictionError($lastMessage)) {
+            $inventoryParams = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+            $inv = $this->invokeSdkInventory($productId, $inventoryParams, '202309', 'inventory');
+            if (! empty($inv['success'])) {
+                $this->workingInventoryPath = '202309|inventory';
 
-        if ($this->isProductStatusRestrictionError($lastMessage)
+                return $inv;
+            }
+            $invMsg = (string) ($inv['message'] ?? '');
+            $this->rememberIpAllowList($invMsg);
+            if ($this->isProductStatusRestrictionError($invMsg)) {
+                $this->rememberSkipInventoryUpdateApi();
+            } elseif ($invMsg !== '') {
+                $lastMessage = $invMsg;
+            }
+        }
+
+        if (str_contains(strtolower($lastMessage), 'seller_deactivated')
             && $this->activateProductForInventory($productId)) {
             $afterActivate = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
             if (! empty($afterActivate['success'])) {
@@ -2571,48 +2606,75 @@ class TikTokShopService
     protected function postInventoryUpdateViaOpenApi(string $productId, string $skuId, array $rows): array
     {
         $rows = $this->ensureWarehouseOnInventoryRows($rows);
-        $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
-        $inventoryParams = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
-
+        $minimal = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
         $host = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
-        $tries = $this->workingInventoryPath === '202309|inventory'
-            ? [
-                ['path' => "/product/202309/products/{$productId}/inventory/update", 'body' => $inventoryParams],
-                ['path' => "/product/202309/products/{$productId}/partial_edit", 'body' => $partialParams],
-            ]
-            : [
-                ['path' => "/product/202309/products/{$productId}/partial_edit", 'body' => $partialParams],
-                ['path' => "/product/202309/products/{$productId}/inventory/update", 'body' => $inventoryParams],
-            ];
+        $paths = [
+            "/product/202509/products/{$productId}/partial_edit",
+            "/product/202309/products/{$productId}/partial_edit",
+        ];
 
         $lastError = 'TikTok inventory update failed.';
-        foreach ($tries as $try) {
+        $triedEnriched = false;
+        foreach ($paths as $path) {
+            $bodies = [$minimal];
+            foreach ($bodies as $body) {
+                try {
+                    $this->tiktokOpenApi('POST', $path, [], $body, 20, false, $host);
+                    $this->workingInventoryPath = str_contains($path, '202509') ? '202509|partial' : '202309|partial';
+                    Log::info('TikTok inventory updated via Open API', [
+                        'product_id' => $productId,
+                        'sku_id' => $skuId,
+                        'path' => $path,
+                        'base' => $host,
+                    ]);
+
+                    return ['success' => true, 'message' => 'Inventory updated.'];
+                } catch (\Throwable $e) {
+                    $lastError = $e->getMessage();
+                    $this->rememberIpAllowList($lastError);
+                    if ($this->ipAllowListBlocked) {
+                        return ['success' => false, 'message' => $lastError];
+                    }
+                    Log::info('TikTok Open API inventory attempt failed', [
+                        'product_id' => $productId,
+                        'sku_id' => $skuId,
+                        'path' => $path,
+                        'base' => $host,
+                        'error' => $lastError,
+                    ]);
+                    if ($this->isProductStatusRestrictionError($lastError)) {
+                        $this->rememberSkipInventoryUpdateApi();
+                    }
+                    if (! $triedEnriched && $this->isSalesAttributesError($lastError)) {
+                        $triedEnriched = true;
+                        $bodies[] = $this->partialEditInventoryParams($productId, $skuId, $rows);
+                    }
+                }
+            }
+        }
+
+        if (! $this->skipInventoryUpdateApi && ! $this->isProductStatusRestrictionError($lastError)) {
             try {
-                $this->tiktokOpenApi('POST', $try['path'], [], $try['body'], 12, false, $host);
-                $this->workingInventoryPath = str_contains($try['path'], 'partial_edit')
-                    ? '202309|partial'
-                    : '202309|inventory';
-                Log::info('TikTok inventory updated via Open API', [
-                    'product_id' => $productId,
-                    'sku_id' => $skuId,
-                    'path' => $try['path'],
-                    'base' => $host,
-                ]);
+                $this->tiktokOpenApi(
+                    'POST',
+                    "/product/202309/products/{$productId}/inventory/update",
+                    [],
+                    $minimal,
+                    12,
+                    false,
+                    $host
+                );
+                $this->workingInventoryPath = '202309|inventory';
 
                 return ['success' => true, 'message' => 'Inventory updated.'];
             } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
-                $this->rememberIpAllowList($lastError);
-                if ($this->ipAllowListBlocked) {
-                    return ['success' => false, 'message' => $lastError];
+                $invError = $e->getMessage();
+                $this->rememberIpAllowList($invError);
+                if ($this->isProductStatusRestrictionError($invError)) {
+                    $this->rememberSkipInventoryUpdateApi();
+                } elseif ($invError !== '') {
+                    $lastError = $invError;
                 }
-                Log::info('TikTok Open API inventory attempt failed', [
-                    'product_id' => $productId,
-                    'sku_id' => $skuId,
-                    'path' => $try['path'],
-                    'base' => $host,
-                    'error' => $lastError,
-                ]);
             }
         }
 
@@ -2730,17 +2792,23 @@ class TikTokShopService
     {
         $bestWid = '';
         $bestQty = -1;
+        $defaultWid = trim((string) ($this->resolveDefaultWarehouseId() ?? ''));
         foreach ($warehouses as $row) {
             $wid = trim((string) ($row['warehouse_id'] ?? ''));
             if ($wid === '') {
                 continue;
             }
             $q = (int) ($row['quantity'] ?? 0);
-            if ($bestWid === '' || $q > $bestQty) {
+            $preferDefault = $q === $bestQty && $defaultWid !== '' && $wid === $defaultWid;
+            if ($bestWid === '' || $q > $bestQty || $preferDefault) {
                 $bestQty = $q;
                 $bestWid = $wid;
             }
         }
+
+        // All warehouses at 0: write the qty to every warehouse so a listing
+        // bound to a non-default warehouse still updates (e.g. LS 180-6 at 0).
+        $broadcast = $bestQty <= 0;
 
         $out = [];
         $seen = [];
@@ -2752,7 +2820,7 @@ class TikTokShopService
             $seen[$wid] = true;
             $out[] = [
                 'warehouse_id' => $wid,
-                'quantity' => $wid === $bestWid ? max(0, $quantity) : 0,
+                'quantity' => ($broadcast || $wid === $bestWid) ? max(0, $quantity) : 0,
             ];
         }
 

@@ -177,8 +177,9 @@ class Ebay2InventorySyncService
             ];
         }
 
-        $invResult = $this->pushInventoryRows($inventoryRows);
+        $invResult = $this->pushInventoryRows($inventoryRows, ! $exactShopifyQty);
         $pushedRows = $invResult['rows'] ?? [];
+        $skipped += (int) ($invResult['skipped'] ?? 0);
         if ($pushedRows !== []) {
             $this->updateLocalStock($pushedRows);
             $this->updateLocalPlatformQuantities($pushedRows);
@@ -454,12 +455,13 @@ class Ebay2InventorySyncService
 
     /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int, price?: float|null}>  $inventoryRows
-     * @return array{success: bool, pushed: int, failed: int, rate_limited: bool, message?: string, rows: array<int, array<string, mixed>>}
+     * @return array{success: bool, pushed: int, failed: int, skipped: int, rate_limited: bool, message?: string, rows: array<int, array<string, mixed>>}
      */
-    protected function pushInventoryRows(array $inventoryRows): array
+    protected function pushInventoryRows(array $inventoryRows, bool $allowRelist = true): array
     {
         $pushed = 0;
         $failed = 0;
+        $skipped = 0;
         $lastMessage = null;
         $pushedRows = [];
         $rateLimited = false;
@@ -533,7 +535,7 @@ class Ebay2InventorySyncService
                 } elseif ($index > 0) {
                     usleep(350000);
                 }
-                $one = $this->pushOneInventoryRow($row);
+                $one = $this->pushOneInventoryRow($row, $allowRelist);
                 $lastMessage = $one['message'] ?? $lastMessage;
                 if (! empty($one['rate_limited'])) {
                     $rateLimited = true;
@@ -543,6 +545,8 @@ class Ebay2InventorySyncService
                 if (! empty($one['ok'])) {
                     $pushedRows[] = $one['row'] ?? $row;
                     $pushed++;
+                } elseif (! empty($one['skipped'])) {
+                    $skipped++;
                 } else {
                     $failed++;
                 }
@@ -562,6 +566,7 @@ class Ebay2InventorySyncService
             'success' => $pushed > 0,
             'pushed' => $pushed,
             'failed' => $failed,
+            'skipped' => $skipped,
             'rate_limited' => $rateLimited,
             'message' => $message,
             'rows' => $pushedRows,
@@ -570,9 +575,9 @@ class Ebay2InventorySyncService
 
     /**
      * @param  array{product_id: string, sku_code: string, inventory: int, price?: float|null}  $row
-     * @return array{ok: bool, rate_limited: bool, row?: array, message?: string}
+     * @return array{ok: bool, rate_limited: bool, skipped?: bool, row?: array, message?: string}
      */
-    protected function pushOneInventoryRow(array $row): array
+    protected function pushOneInventoryRow(array $row, bool $allowRelist = true): array
     {
         $itemId = trim((string) ($row['product_id'] ?? ''));
         $sku = trim((string) ($row['sku_code'] ?? ''));
@@ -587,35 +592,37 @@ class Ebay2InventorySyncService
                 return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
             }
             if (empty($result['success']) && (! empty($result['ended']) || $this->ebay2Api->listingLooksEnded($msg))) {
-                $relist = $this->ebay2Api->relistFixedPriceItem($itemId, $sku, $qty);
-                $relistMsg = (string) ($relist['message'] ?? '');
-                if ($this->isEbayUsageLimit($relistMsg)) {
-                    return ['ok' => false, 'rate_limited' => true, 'message' => $relistMsg];
-                }
-                if (! empty($relist['success'])) {
-                    $newId = trim((string) ($relist['item_id'] ?? $itemId));
-                    if ($newId !== '' && $newId !== $itemId) {
-                        Ebay2Metric::query()->where('item_id', $itemId)->update(['item_id' => $newId]);
-                        $itemId = $newId;
-                        $row['product_id'] = $itemId;
+                if ($allowRelist) {
+                    $relist = $this->ebay2Api->relistFixedPriceItem($itemId, $sku, $qty);
+                    $relistMsg = (string) ($relist['message'] ?? '');
+                    if ($this->isEbayUsageLimit($relistMsg)) {
+                        return ['ok' => false, 'rate_limited' => true, 'message' => $relistMsg];
                     }
-                    $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
-                    $msg = (string) ($result['message'] ?? '');
-                    if ($this->isEbayUsageLimit($msg)) {
-                        return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
-                    }
-                } else {
-                    Log::warning('Ebay2InventorySyncService: relist failed', [
-                        'item_id' => $itemId,
-                        'sku' => $sku,
-                        'result' => $relist,
-                    ]);
+                    if (! empty($relist['success'])) {
+                        $newId = trim((string) ($relist['item_id'] ?? $itemId));
+                        if ($newId !== '' && $newId !== $itemId) {
+                            Ebay2Metric::query()->where('item_id', $itemId)->update(['item_id' => $newId]);
+                            $itemId = $newId;
+                            $row['product_id'] = $itemId;
+                        }
+                        $result = $this->ebay2Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
+                        $msg = (string) ($result['message'] ?? '');
+                        if ($this->isEbayUsageLimit($msg)) {
+                            return ['ok' => false, 'rate_limited' => true, 'message' => $msg];
+                        }
+                    } else {
+                        Log::warning('Ebay2InventorySyncService: relist failed', [
+                            'item_id' => $itemId,
+                            'sku' => $sku,
+                            'result' => $relist,
+                        ]);
 
-                    return [
-                        'ok' => false,
-                        'rate_limited' => false,
-                        'message' => (string) ($relist['message'] ?? ($result['message'] ?? 'Relist failed')),
-                    ];
+                        return [
+                            'ok' => false,
+                            'rate_limited' => false,
+                            'message' => (string) ($relist['message'] ?? ($result['message'] ?? 'Relist failed')),
+                        ];
+                    }
                 }
             }
             if (empty($result['success']) || (isset($result['quantity_confirmed']) && $result['quantity_confirmed'] === false)) {
@@ -655,6 +662,14 @@ class Ebay2InventorySyncService
             $lastMessage = (string) ($result['message'] ?? 'ReviseInventoryStatus failed');
             if ($this->isEbayUsageLimit($lastMessage)) {
                 return ['ok' => false, 'rate_limited' => true, 'message' => $lastMessage];
+            }
+            if (! $allowRelist && $this->ebay2Api->listingLooksEnded($lastMessage)) {
+                return [
+                    'ok' => false,
+                    'skipped' => true,
+                    'rate_limited' => false,
+                    'message' => 'Listing ended or inactive — mismatch sync updates live qty only (no Relist).',
+                ];
             }
             Log::warning('Ebay2InventorySyncService: revise inventory failed', [
                 'item_id' => $itemId,

@@ -42,27 +42,15 @@ class TikTok2InventorySyncService
         }
 
         $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
+        if ($exactShopifyQty) {
+            $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $skus);
+        }
         $metrics = $this->metricsForSkus($skus);
-
-        $foundWanted = $this->wantedSkuKeys(
-            $metrics->map(static fn ($metric) => trim((string) $metric->sku))->all()
-        );
 
         $updated = 0;
         $failed = 0;
         $skipped = 0;
         $errorSamples = [];
-
-        foreach ($skus as $requestedSku) {
-            if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($requestedSku)) {
-                $skipped++;
-                continue;
-            }
-            if (! $this->skuIsWanted($requestedSku, $foundWanted)) {
-                $failed++;
-                $errorSamples['No linked TikTok product/sku_id'] = ($errorSamples['No linked TikTok product/sku_id'] ?? 0) + 1;
-            }
-        }
 
         foreach ($metrics as $metric) {
             if ($this->tiktokApi->isIpAllowListBlocked()) {
@@ -75,6 +63,20 @@ class TikTok2InventorySyncService
             $skipped += $outcome['skipped'];
             if ($outcome['error'] !== null) {
                 $errorSamples[$outcome['error']] = ($errorSamples[$outcome['error']] ?? 0) + 1;
+            }
+        }
+
+        $covered = $this->wantedSkuKeys(
+            $metrics->map(static fn ($metric) => trim((string) $metric->sku))->all()
+        );
+        foreach ($skus as $requestedSku) {
+            if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($requestedSku)) {
+                $skipped++;
+                continue;
+            }
+            if (! $this->skuIsWanted($requestedSku, $covered)) {
+                $failed++;
+                $errorSamples['No linked TikTok product/sku_id'] = ($errorSamples['No linked TikTok product/sku_id'] ?? 0) + 1;
             }
         }
 
@@ -339,6 +341,10 @@ class TikTok2InventorySyncService
                 $wanted[$norm] = true;
                 $wanted[strtoupper($norm)] = true;
             }
+            $compact = ShopifySku::compactSkuForLookup($trim);
+            if ($compact !== '') {
+                $wanted[$compact] = true;
+            }
         }
 
         return $wanted;
@@ -357,8 +363,12 @@ class TikTok2InventorySyncService
             return true;
         }
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && (isset($wanted[$norm]) || isset($wanted[strtoupper($norm)]))) {
+            return true;
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
 
-        return $norm !== '' && (isset($wanted[$norm]) || isset($wanted[strtoupper($norm)]));
+        return $compact !== '' && isset($wanted[$compact]);
     }
 
     /**
@@ -427,11 +437,19 @@ class TikTok2InventorySyncService
             return (int) $shopifyQty[$norm];
         }
 
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        if ($compact !== '' && array_key_exists($compact, $shopifyQty)) {
+            return (int) $shopifyQty[$compact];
+        }
+
         foreach ($shopifyQty as $key => $qty) {
             if (strtoupper(trim((string) $key)) === $upper) {
                 return (int) $qty;
             }
             if ($norm !== '' && ShopifySku::normalizeSkuForShopifyLookup((string) $key) === $norm) {
+                return (int) $qty;
+            }
+            if ($compact !== '' && ShopifySku::compactSkuForLookup((string) $key) === $compact) {
                 return (int) $qty;
             }
         }
@@ -521,6 +539,10 @@ class TikTok2InventorySyncService
             $norm = ShopifySku::normalizeSkuForShopifyLookup($trim);
             if ($norm !== '') {
                 $keys[] = $norm;
+            }
+            $compact = ShopifySku::compactSkuForLookup($trim);
+            if ($compact !== '') {
+                $keys[] = $compact;
             }
         }
 

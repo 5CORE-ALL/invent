@@ -525,6 +525,10 @@ class TikTokListingsPageBuilder
                 $wanted[$norm] = true;
                 $wanted[strtoupper($norm)] = true;
             }
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '') {
+                $wanted[$compact] = true;
+            }
         }
 
         $map = [];
@@ -539,7 +543,10 @@ class TikTokListingsPageBuilder
                 }
                 $upper = strtoupper($sku);
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if (! isset($wanted[$upper]) && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))) {
+                $compact = ShopifySku::compactSkuForLookup($sku);
+                if (! isset($wanted[$upper])
+                    && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))
+                    && ($compact === '' || ! isset($wanted[$compact]))) {
                     return;
                 }
                 $map[$sku] = $row;
@@ -548,6 +555,9 @@ class TikTokListingsPageBuilder
                     $map[$norm] = $row;
                     $map[strtoupper($norm)] = $row;
                 }
+                if ($compact !== '') {
+                    $map[$compact] = $row;
+                }
             });
 
         $out = [];
@@ -555,6 +565,7 @@ class TikTokListingsPageBuilder
             $out[$sku] = $map[$sku]
                 ?? $map[strtoupper($sku)]
                 ?? $map[ShopifySku::normalizeSkuForShopifyLookup($sku)]
+                ?? $map[ShopifySku::compactSkuForLookup($sku)]
                 ?? null;
         }
 

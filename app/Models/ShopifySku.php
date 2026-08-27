@@ -64,6 +64,18 @@ class ShopifySku extends Model
     }
 
     /**
+     * Alphanumeric-only SKU key so "LS 180-6" and "LS180-6" match.
+     */
+    public static function compactSkuForLookup(?string $sku): string
+    {
+        if ($sku === null || $sku === '') {
+            return '';
+        }
+
+        return strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '', (string) $sku));
+    }
+
+    /**
      * @param  array<int, string>  $productSkus
      * @return array<string, self> normalized key => row (first wins)
      */
