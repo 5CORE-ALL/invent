@@ -311,6 +311,6 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 @include('marketplace._sync-mismatch-now', [
     'url' => route('marketplace.manager.tiktok.sync.mismatch.inventory'),
     'confirm' => "Sync Inv SKU Mismatch SKUs from live Shopify → TikTok Shop right now (batched, no queue)?",
-    'limit' => 5,
+    'limit' => 10,
 ])
 @endsection

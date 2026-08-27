@@ -847,14 +847,6 @@ class Ebay2SyncController extends Controller
         @set_time_limit(300);
 
         try {
-            $settings = MarketplaceSyncSettings::getFor('ebay2');
-            if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-                ], 422);
-            }
-
             if ($blocked = Ebay2InventorySyncService::tradingLimitMessage()) {
                 return response()->json([
                     'success' => true,
@@ -908,6 +900,11 @@ class Ebay2SyncController extends Controller
             $done = $nextOffset >= $total;
             if ($done) {
                 Cache::forget($cacheKey);
+                try {
+                    app(Ebay2LiveListingsService::class)->clearCache();
+                } catch (\Throwable $e) {
+                    // ignore
+                }
             }
 
             return response()->json([

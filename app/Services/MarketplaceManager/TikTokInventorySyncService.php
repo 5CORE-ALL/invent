@@ -44,10 +44,9 @@ class TikTokInventorySyncService
         $shopifyQty = $this->shopifyQtyForPush($skus, $shopifyConfig);
         $metrics = $this->metricsForSkus($skus);
 
-        $found = [];
-        foreach ($metrics as $metric) {
-            $found[strtoupper(trim((string) $metric->sku))] = true;
-        }
+        $foundWanted = $this->wantedSkuKeys(
+            $metrics->map(static fn ($metric) => trim((string) $metric->sku))->all()
+        );
 
         $updated = 0;
         $failed = 0;
@@ -59,7 +58,7 @@ class TikTokInventorySyncService
                 $skipped++;
                 continue;
             }
-            if (! isset($found[strtoupper(trim($requestedSku))])) {
+            if (! $this->skuIsWanted($requestedSku, $foundWanted)) {
                 $failed++;
                 $errorSamples['No linked TikTok product/sku_id'] = ($errorSamples['No linked TikTok product/sku_id'] ?? 0) + 1;
             }
@@ -310,7 +309,10 @@ class TikTokInventorySyncService
      */
     protected function metricsForSkus(array $skus)
     {
-        $keys = $this->expandSkuKeys($skus);
+        $wanted = $this->wantedSkuKeys($skus);
+        if ($wanted === []) {
+            return collect();
+        }
 
         return TikTokProduct::query()
             ->whereNotNull('product_id')
@@ -318,8 +320,49 @@ class TikTokInventorySyncService
             ->where('sku', '!=', '')
             ->where('product_id', '!=', '')
             ->where('sku_id', '!=', '')
-            ->whereIn('sku', $keys)
-            ->get();
+            ->get()
+            ->filter(fn (TikTokProduct $metric) => $this->skuIsWanted((string) $metric->sku, $wanted))
+            ->values();
+    }
+
+    /**
+     * @param  array<int, string>  $skus
+     * @return array<string, true>
+     */
+    protected function wantedSkuKeys(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $trim = trim((string) $sku);
+            if ($trim === '') {
+                continue;
+            }
+            $wanted[strtoupper($trim)] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($trim);
+            if ($norm !== '') {
+                $wanted[$norm] = true;
+                $wanted[strtoupper($norm)] = true;
+            }
+        }
+
+        return $wanted;
+    }
+
+    /**
+     * @param  array<string, true>  $wanted
+     */
+    protected function skuIsWanted(string $sku, array $wanted): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return false;
+        }
+        if (isset($wanted[strtoupper($sku)])) {
+            return true;
+        }
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return $norm !== '' && (isset($wanted[$norm]) || isset($wanted[strtoupper($norm)]));
     }
 
     /**
@@ -410,11 +453,15 @@ class TikTokInventorySyncService
         }
 
         if (Schema::hasTable('tiktok_products') && Schema::hasColumn('tiktok_products', 'stock')) {
+            $wanted = $this->wantedSkuKeys([$sku]);
             TikTokProduct::query()
-                ->where(function ($q) use ($sku) {
-                    $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
-                })
-                ->update(['stock' => $pushQty]);
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['id', 'sku'])
+                ->filter(fn ($row) => $this->skuIsWanted((string) $row->sku, $wanted))
+                ->each(function ($row) use ($pushQty) {
+                    TikTokProduct::query()->whereKey($row->id)->update(['stock' => $pushQty]);
+                });
         }
 
         if (! Schema::hasTable('product_stock_mappings')) {
@@ -436,9 +483,9 @@ class TikTokInventorySyncService
     protected function clearLiveCache(): void
     {
         try {
-            $service = app(TikTokLiveListingsService::class);
-            $service->clearCache();
-            $service->all(true);
+            // Drop the listings cache only. all(true) re-crawls the whole TikTok
+            // catalog and overwrites stock we just pushed with stale live qty.
+            app(TikTokLiveListingsService::class)->clearCache();
         } catch (\Throwable $e) {
             // ignore
         }

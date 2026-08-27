@@ -58,10 +58,13 @@ class Ebay2InventorySyncService
 
         $fetchSkus = $skus;
         $wantedNorms = [];
+        $wantedUppers = [];
         foreach ($skus as $sku) {
+            $wantedUppers[strtoupper(trim($sku))] = true;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm !== '') {
                 $wantedNorms[$norm] = true;
+                $wantedUppers[$norm] = true;
                 if ($norm !== $sku) {
                     $fetchSkus[] = $norm;
                 }
@@ -84,21 +87,13 @@ class Ebay2InventorySyncService
             ->whereNotNull('item_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'item_id')
-            ->where(function ($q) use ($skus, $wantedNorms) {
-                $q->whereIn('sku', $skus);
-                $normSkus = array_keys($wantedNorms);
-                if ($normSkus !== []) {
-                    // Normalized lookup covers hyphen/case variants stored differently than requested SKU.
-                    $q->orWhereIn('sku', $normSkus);
-                }
-            })
             ->get()
-            ->filter(function (Ebay2Metric $metric) use ($wantedNorms, $skus) {
+            ->filter(function (Ebay2Metric $metric) use ($wantedNorms, $wantedUppers, $skus) {
                 $raw = (string) $metric->sku;
                 if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($raw)) {
                     return false;
                 }
-                if (in_array($raw, $skus, true)) {
+                if (in_array($raw, $skus, true) || isset($wantedUppers[strtoupper(trim($raw))])) {
                     return true;
                 }
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
@@ -145,15 +140,19 @@ class Ebay2InventorySyncService
             );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-            $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
-            if ($currentMp !== null && $currentMp === $pushQty) {
-                $skipped++;
-                continue;
-            }
-            if ($shopifyStock !== null && $shopifyStock > 0
-                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp)) {
-                $skipped++;
-                continue;
+            // Mismatch button always pushes listings Shopify qty. Local ebay_stock can
+            // already equal that qty while the listings cache still shows the old eBay qty.
+            if (! $exactShopifyQty) {
+                $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
+                if ($currentMp !== null && $currentMp === $pushQty) {
+                    $skipped++;
+                    continue;
+                }
+                if ($shopifyStock !== null && $shopifyStock > 0
+                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp)) {
+                    $skipped++;
+                    continue;
+                }
             }
 
             $inventoryRows[] = [
@@ -161,7 +160,8 @@ class Ebay2InventorySyncService
                 'sku_code' => $sku,
                 'inventory' => $pushQty,
                 'shopify_qty' => $shopifyStock ?? 0,
-                'price' => $metric->ebay_price !== null ? (float) $metric->ebay_price : null,
+                // Qty-only on mismatch — StartPrice on variation listings fails ReviseInventoryStatus.
+                'price' => $exactShopifyQty ? null : ($metric->ebay_price !== null ? (float) $metric->ebay_price : null),
             ];
         }
 
@@ -637,8 +637,15 @@ class Ebay2InventorySyncService
             if (! empty($result['success'])) {
                 if (! ($result['quantity_confirmed'] ?? true)) {
                     $liveQty = $this->ebay2Api->variationAvailableQty($itemId, $sku);
-                    if ($liveQty !== null) {
+                    if ($liveQty !== null && (int) $liveQty === $qty) {
                         $row['inventory'] = $liveQty;
+                    } else {
+                        return [
+                            'ok' => false,
+                            'rate_limited' => false,
+                            'message' => 'eBay 2 did not confirm quantity '.$qty
+                                .($liveQty !== null ? ' (live '.$liveQty.')' : ''),
+                        ];
                     }
                 }
 
@@ -755,6 +762,10 @@ class Ebay2InventorySyncService
             $hasChild = Ebay2Metric::query()
                 ->where(function ($q) use ($sku) {
                     $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    if ($norm !== '' && $norm !== strtoupper($sku)) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
+                    }
                 })
                 ->whereNotNull('item_id')
                 ->where('item_id', '!=', '')
@@ -918,9 +929,18 @@ class Ebay2InventorySyncService
             }
             $qty = (int) $row['inventory'];
 
+            if ($itemId !== '') {
+                Ebay2Metric::query()->where('item_id', $itemId)->update(['ebay_stock' => $qty]);
+            }
+
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             Ebay2Metric::query()
-                ->where('sku', $sku)
-                ->when($itemId !== '', fn ($q) => $q->where('item_id', $itemId))
+                ->where(function ($q) use ($sku, $norm) {
+                    $q->where('sku', $sku)->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+                    if ($norm !== '' && $norm !== strtoupper(trim($sku))) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$norm]);
+                    }
+                })
                 ->update(['ebay_stock' => $qty]);
         }
     }

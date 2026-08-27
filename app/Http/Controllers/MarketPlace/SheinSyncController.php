@@ -811,14 +811,6 @@ class SheinSyncController extends Controller
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor('shein');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ], 422);
-        }
-
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(SheinLiveListingsService::class);
         $linkedSkus = $this->linkedSheinSkus();
@@ -855,6 +847,9 @@ class SheinSyncController extends Controller
         $result = app(SheinInventorySyncService::class)->syncSkusFromShopify($batch, null, true);
         $nextOffset = $offset + count($batch);
         $done = $nextOffset >= $total;
+        if ($done) {
+            $liveService->clearCache();
+        }
 
         return response()->json([
             'success' => true,

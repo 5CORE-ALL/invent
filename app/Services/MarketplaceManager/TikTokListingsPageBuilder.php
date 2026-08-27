@@ -344,9 +344,6 @@ class TikTokListingsPageBuilder
         $liveService = $this->liveService();
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $offset = max(0, (int) $request->input('offset', 0));
-        if ($offset === 0) {
-            $this->forgetMismatchSkuCache();
-        }
         $mismatch = $this->mismatchSkusForSync($scope);
         $limit = max(1, min(10, (int) $request->input('limit', 5)));
         $total = count($mismatch);
@@ -499,29 +496,37 @@ class TikTokListingsPageBuilder
             return [];
         }
 
-        $keys = [];
+        $wanted = [];
         foreach ($skus as $sku) {
-            $keys[] = $sku;
-            $keys[] = strtoupper($sku);
+            $upper = strtoupper($sku);
+            $wanted[$upper] = true;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm !== '') {
-                $keys[] = $norm;
+                $wanted[$norm] = true;
+                $wanted[strtoupper($norm)] = true;
             }
         }
-        $keys = array_values(array_unique($keys));
 
         $map = [];
         ($this->productModel())::query()
-            ->whereIn('sku', $keys)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->get()
-            ->each(function (Model $row) use (&$map) {
-                $sku = (string) $row->sku;
-                $map[$sku] = $row;
+            ->each(function (Model $row) use (&$map, $wanted) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '') {
+                    return;
+                }
                 $upper = strtoupper($sku);
-                $map[$upper] = $row;
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if (! isset($wanted[$upper]) && ($norm === '' || (! isset($wanted[$norm]) && ! isset($wanted[strtoupper($norm)])))) {
+                    return;
+                }
+                $map[$sku] = $row;
+                $map[$upper] = $row;
                 if ($norm !== '') {
                     $map[$norm] = $row;
+                    $map[strtoupper($norm)] = $row;
                 }
             });
 
@@ -663,7 +668,7 @@ class TikTokListingsPageBuilder
         $linkedSkus = $this->linkedSkus();
         $verified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
-            null,
+            $this->liveService()->peekCached(),
             $this->stockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];

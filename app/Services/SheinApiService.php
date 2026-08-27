@@ -2218,11 +2218,21 @@ class SheinApiService
             }
         }
         $spuList = array_keys($spus);
+        $spuMap = $spuBySku;
+        foreach ($metricSpus as $key => $spu) {
+            if (! isset($spuMap[$key])) {
+                $spuMap[$key] = $spu;
+            }
+        }
         if ($spuList !== []) {
-            $this->mergeStockHitsIntoSkuCodeMap($this->queryStockBySpuNames($spuList), $wanted, $out);
+            $spuRows = $this->queryStockBySpuNames($spuList);
+            $this->mergeStockHitsIntoSkuCodeMap($spuRows, $wanted, $out);
+            $this->bindSkuCodesByKnownSpu($spuMap, $spuRows, $wanted, $out);
             $skuCodesFromQuery = $this->querySkuCodesBySpuNames($spuList);
             if ($skuCodesFromQuery !== []) {
-                $this->mergeStockHitsIntoSkuCodeMap($this->safeGetStock($skuCodesFromQuery), $wanted, $out);
+                $detailRows = $this->safeGetStock($skuCodesFromQuery);
+                $this->mergeStockHitsIntoSkuCodeMap($detailRows, $wanted, $out);
+                $this->bindSkuCodesByKnownSpu($spuMap, $detailRows, $wanted, $out);
             }
             $this->mergeStockHitsIntoSkuCodeMap($this->safeGetStock($spuList), $wanted, $out);
         }
@@ -2234,6 +2244,7 @@ class SheinApiService
             if ($skuCodesFromSellerQuery !== []) {
                 $this->mergeStockHitsIntoSkuCodeMap($this->safeGetStock($skuCodesFromSellerQuery), $wanted, $out);
             }
+            $this->resolveMissingSkuCodesOneSpuAtATime($still, $spuMap, $wanted, $out);
         }
 
         $this->persistResolvedSheinSkuCodes($out);
@@ -2444,6 +2455,110 @@ class SheinApiService
                     'warehouse_code' => $warehouse !== '' ? $warehouse : null,
                 ]);
             }
+        }
+    }
+
+    /**
+     * When Shein returns a hash sellerSku, still bind the platform skuCode using the
+     * Seller Hub SPU we already know for that listing.
+     *
+     * @param  array<string, string>  $spuBySku
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, string>  $wanted
+     * @param  array<string, array{sku_code: string, seller_sku: string, warehouse_code?: string}>  $out
+     */
+    protected function bindSkuCodesByKnownSpu(array $spuBySku, array $rows, array $wanted, array &$out): void
+    {
+        $codesBySpu = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $spu = strtolower(trim((string) ($row['spu_name'] ?? $row['spuName'] ?? '')));
+            $code = trim((string) ($row['shein_sku_code'] ?? $row['sku_code'] ?? $row['skuCode'] ?? ''));
+            if ($spu === '' || ! $this->isPlatformSkuCode($code)) {
+                continue;
+            }
+            $codesBySpu[$spu][$code] = true;
+        }
+        if ($codesBySpu === []) {
+            return;
+        }
+
+        foreach ($spuBySku as $sellerSku => $spu) {
+            $sellerSku = trim((string) $sellerSku);
+            $spuKey = strtolower(trim((string) $spu));
+            if ($sellerSku === '' || $spuKey === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sellerSku);
+            $slot = $norm !== '' ? $norm : $sellerSku;
+            if (isset($out[$slot])) {
+                continue;
+            }
+            $codes = array_keys($codesBySpu[$spuKey] ?? []);
+            if (count($codes) !== 1) {
+                continue;
+            }
+            $req = $wanted[$slot] ?? $wanted[$sellerSku] ?? $sellerSku;
+            $out[$slot] = [
+                'sku_code' => $codes[0],
+                'seller_sku' => $req,
+            ];
+        }
+    }
+
+    /**
+     * Last resort: one SPU → one skuCode for Hub-listed SKUs Shein sellerSku does not match.
+     *
+     * @param  list<string>  $sellerSkus
+     * @param  array<string, string>  $spuBySku
+     * @param  array<string, string>  $wanted
+     * @param  array<string, array{sku_code: string, seller_sku: string, warehouse_code?: string}>  $out
+     */
+    protected function resolveMissingSkuCodesOneSpuAtATime(array $sellerSkus, array $spuBySku, array $wanted, array &$out): void
+    {
+        foreach ($sellerSkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if (($norm !== '' && isset($out[$norm])) || isset($out[$sku])) {
+                continue;
+            }
+            $spu = trim((string) ($spuBySku[$sku] ?? ''));
+            if ($spu === '' && $norm !== '') {
+                $spu = trim((string) ($spuBySku[$norm] ?? ''));
+            }
+            if ($spu === '') {
+                continue;
+            }
+            $rows = $this->queryStockBySpuNames([$spu]);
+            $this->mergeStockHitsIntoSkuCodeMap($rows, $wanted, $out);
+            $this->bindSkuCodesByKnownSpu([$sku => $spu, $norm => $spu], $rows, $wanted, $out);
+            if (($norm !== '' && isset($out[$norm])) || isset($out[$sku])) {
+                continue;
+            }
+            $codes = [];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $code = trim((string) ($row['shein_sku_code'] ?? $row['sku_code'] ?? ''));
+                if ($this->isPlatformSkuCode($code, $sku)) {
+                    $codes[$code] = true;
+                }
+            }
+            if (count($codes) !== 1) {
+                continue;
+            }
+            $req = $wanted[$norm] ?? $wanted[$sku] ?? $sku;
+            $slot = $norm !== '' ? $norm : $sku;
+            $out[$slot] = [
+                'sku_code' => (string) array_key_first($codes),
+                'seller_sku' => $req,
+            ];
         }
     }
 
@@ -2783,11 +2898,12 @@ class SheinApiService
      * @param  mixed  $node
      * @param  list<array<string, mixed>>  $out
      */
-    protected function flattenSheinStockRows(mixed $node, array &$out): void
+    protected function flattenSheinStockRows(mixed $node, array &$out, string $spuHint = ''): void
     {
         if (! is_array($node)) {
             return;
         }
+        $spu = trim((string) ($node['spuName'] ?? $node['spu_name'] ?? $node['spuCode'] ?? '')) ?: $spuHint;
         $code = trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? ''));
         if ($this->isPlatformSkuCode($code)) {
             $seller = trim((string) ($node['sellerSku'] ?? $node['seller_sku'] ?? $node['supplierSku'] ?? $node['sku'] ?? ''));
@@ -2796,13 +2912,14 @@ class SheinApiService
                 'shein_sku_code' => $code,
                 'seller_sku' => $seller,
                 'sku' => $seller,
+                'spu_name' => $spu,
                 'warehouse_code' => trim((string) ($node['warehouseCode'] ?? '')),
                 'quantity' => (int) ($node['inventoryQuantity'] ?? $node['usableInventory'] ?? 0),
             ];
         }
         foreach ($node as $value) {
             if (is_array($value)) {
-                $this->flattenSheinStockRows($value, $out);
+                $this->flattenSheinStockRows($value, $out, $spu);
             }
         }
     }
