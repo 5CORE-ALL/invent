@@ -350,7 +350,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="amz-cvr-disc-apply-btn"
-                        title="Save CVR Disc rules and refresh the CVR Disc. column">
+                        title="Save CVR Disc rules and write S PRC on matching SKUs (with PRMT, 0 Sold, CVR UP/DN)">
                         Apply
                     </button>
                 </div>
@@ -511,8 +511,11 @@
             return (ovl30 / inv) * 100;
         }
         function amzPefCvr(d) {
-            let cvr = Number(d.CVR_L30);
-            if (isFinite(cvr) && cvr >= 0) return cvr;
+            const stored = d && d.CVR_L30;
+            if (stored !== '' && stored != null) {
+                const cvr = Number(stored);
+                if (isFinite(cvr) && cvr >= 0) return cvr;
+            }
             const views = Number(d.Sess30) || 0;
             const l30 = Number(d['A_L30'] != null ? d['A_L30'] : d['L30']) || 0;
             return views > 0 ? amzPefRound2((l30 / views) * 100) : 0;
@@ -798,31 +801,12 @@
         }
         async function applyAmzZeroSoldToTargets(targets, label) {
             readAmzZeroSoldRulesFromModal();
-            if (!targets.length) {
-                amzPefToast('error', 'No 0 Sold rows (A L30 = 0, INV > 0, LP > 0) to price');
-                return;
-            }
-            let ok = 0;
-            let skipped = 0;
-            for (let i = 0; i < targets.length; i++) {
-                const item = targets[i];
-                const d = item.row.getData();
-                if (!amzIsZeroSoldRow(d)) { skipped++; continue; }
-                const roi = amzZeroSoldGroiForRow(d);
-                const sprice = amzSpriceFromTargetGroi(d, roi);
-                if (!(sprice > 0)) { skipped++; continue; }
-                item.row.update({ SPRICE: sprice, ZERO_SOLD_PRC_GROI: roi });
-                saveAmzSpriceFromPromo(item.row, sprice, true);
-                ok++;
-            }
-            if (table) {
-                try { table.redraw(true); } catch (e) { /* ignore */ }
-            }
-            amzPefToast(
-                ok ? 'success' : 'error',
-                '0 Sold (' + label + '): S PRC from Target GROI% → ' + ok + ' row(s)'
-                    + (skipped ? ('; skipped ' + skipped) : '') + '.'
-            );
+            applyAmzCombinedPlanToTargets(targets, label, {
+                toastLabel: '0 Sold',
+                match: function(d) {
+                    return amzIsZeroSoldRow(d) && (parseFloat(d.LP_productmaster) || 0) > 0;
+                },
+            });
         }
 
         function renderAmzCvrDiscModalTable() {
@@ -894,10 +878,20 @@
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
             try {
                 await saveAmzCvrDiscRules();
-                $('#amz-cvr-disc-status').text('Saved. CVR Disc. column updated.');
-                amzPefToast('success', 'CVR Disc rules saved');
-                if (table) {
-                    try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                const picked = collectAmzPromoApplyTargets('No rows to apply CVR Disc');
+                if (!picked.cancelled) {
+                    applyAmzCombinedPlanToTargets(picked.targets, picked.label, {
+                        toastLabel: 'CVR Disc',
+                        match: function(d) {
+                            return (Number(computeAmzCvrDiscountPct(d)) || 0) > 0;
+                        },
+                    });
+                    $('#amz-cvr-disc-status').text('Saved. Applied to matching SKUs.');
+                } else {
+                    $('#amz-cvr-disc-status').text('Saved. CVR Disc. column updated.');
+                    if (table) {
+                        try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
+                    }
                 }
                 const modalEl = document.getElementById('amzCvrDiscModal');
                 if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
@@ -1002,42 +996,11 @@
 
         async function applyDilPrmtToTargets(targets, label) {
             readDilPrmtRulesFromModal();
-            if (!targets.length) {
-                amzPefToast('error', 'No rows to apply');
-                return;
-            }
-            let ok = 0;
-            let skipped = 0;
-            for (let i = 0; i < targets.length; i++) {
-                const item = targets[i];
-                const d = item.row.getData();
-                if (!amzPefIsChildRow(d)) { skipped++; continue; }
-                const dil = amzPefDil(d);
-                const prmt = amzPefInv(d) === 0 ? 0 : pefPrmtForDil(dil);
-                if (!(prmt > 0)) {
-                    item.row.update({ prmt_pct: String(prmt), _prmt_pct_applied: 0 });
-                    saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: prmt });
-                    skipped++;
-                    continue;
-                }
-                const promo = { type: 'percent', value: prmt };
-                const base = getAmzDiscountBase(d, '_prmt_pct_applied');
-                const newPrice = applyAmzPromoToSpriceBase(base, promo);
-                if (!(base > 0) || !(newPrice > 0)) { skipped++; continue; }
-                item.row.update({
-                    prmt_pct: String(prmt),
-                    _prmt_pct_applied: prmt,
-                    SPRICE: newPrice,
-                });
-                saveAmzSpriceFromPromo(item.row, newPrice, true, { prmt_pct: prmt });
-                ok++;
-            }
-            amzPefToast(
-                (ok ? 'success' : 'error'),
-                'Dil vs PRMT (' + label + '): PRMT % → ' + ok + ' row(s)'
-                    + (skipped ? ('; skipped ' + skipped) : '') + '.'
-            );
-            if (table) table.redraw(true);
+            applyAmzCombinedPlanToTargets(targets, label, {
+                toastLabel: 'Dil vs PRMT',
+                writePrmtOnInvZero: true,
+                skipWhenNoSale: true,
+            });
         }
 
         function amzPefLmpDiffAmount(d) {
@@ -1284,7 +1247,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    headerTooltip: 'Push Prc: Your=Std; Sale=Std−T Discounts; T Discounts=PRMT%+CVR Disc.+CVR Up/Dn. Max=Std×1.10; Sale=Business=Min. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std. 0 Sold → Sale=GROI. Sold → Sale=Std−(PRMT+CVR Disc+CVR UP/DN). Min=Sale; Biz=Sale×0.95. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -1299,12 +1262,10 @@
                         }
                         let icon = '<i class="fas fa-upload"></i>';
                         let color = '#FF9900';
+                        const tipSale = plan.sale != null ? plan.sale : plan.std;
                         let tip = 'Your $' + plan.std.toFixed(2)
-                            + (plan.sale != null
-                                ? ('; · Sale $' + plan.sale.toFixed(2)
-                                    + ' [PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%'
-                                    + (plan.cvrUpDn ? (' + CVR Up/Dn ' + plan.cvrUpDn + '%') : '') + ']')
-                                : '')
+                            + ' · Sale $' + tipSale.toFixed(2)
+                            + formatAmzPushPrcDiscNote(plan)
                             + ' · Max $' + plan.max.toFixed(2)
                             + ' · Min $' + plan.min.toFixed(2)
                             + ' · Biz $' + plan.business.toFixed(2);
@@ -1364,36 +1325,73 @@
         }
 
         /**
-         * Push Prc plan:
-         *  1) Std → Amazon Your Price (our_price)
-         *  2) Sale = Std × (1 − (PRMT% + CVR Discount%)/100)
-         *  3) Maximum = Std × 1.10
-         *  4) Minimum = Sale − 0.01 (always strictly less than Sale)
-         *  5) Business = Sale × 0.95 — B2B our_price
-         *  6) Coupon API — not available via SP-API (skipped)
+         * Live rule stack for this SKU (not stale stored PRMT).
+         * PRMT = Dil slab (INV=0 or Dil>25 → 0)
+         * CVR Disc = CVR slab (INV=0 or CVR≤0 → 0)
+         * 0 Sold = A L30=0 and INV>0 → GROI target price
+         * CVR UP/DN = CVR 30 vs 45 (INV=0 → 0)
+         */
+        function computeAmzLivePrmtPct(d) {
+            if (!amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
+            if (typeof pefPrmtForDil !== 'function') return 0;
+            const n = Number(pefPrmtForDil(amzPefDil(d)));
+            return isFinite(n) && n > 0 ? n : 0;
+        }
+        function computeAmzRuleStack(d) {
+            const prmt = computeAmzLivePrmtPct(d);
+            const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
+            const cvrUpDn = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
+            const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
+            const zeroSoldGroi = zeroSold ? amzZeroSoldGroiForRow(d) : null;
+            const zeroSoldPrice = zeroSold ? amzSpriceFromTargetGroi(d, zeroSoldGroi) : null;
+            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(0, prmt + cvrDisc + cvrUpDn)));
+            return {
+                prmt: prmt,
+                cvrDisc: cvrDisc,
+                cvrUpDn: cvrUpDn,
+                zeroSold: !!zeroSold,
+                zeroSoldGroi: zeroSoldGroi,
+                zeroSoldPrice: (zeroSoldPrice > 0) ? zeroSoldPrice : null,
+                totalDisc: totalDisc,
+            };
+        }
+        function formatAmzPushPrcDiscNote(plan) {
+            const parts = [];
+            if (plan.zeroSold) {
+                parts.push('0 Sold GROI ' + (plan.zeroSoldGroi != null ? plan.zeroSoldGroi : '') + '%');
+                return parts.length ? ' (' + parts.join(' + ') + ')' : '';
+            }
+            if (plan.prmt) parts.push('PRMT ' + plan.prmt + '%');
+            if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
+            if (plan.cvrUpDn) parts.push('CVR UP/DN ' + (plan.cvrUpDn > 0 ? '+' : '') + plan.cvrUpDn + '%');
+            return parts.length ? ' (' + parts.join(' + ') + ')' : '';
+        }
+        /**
+         * Push Prc plan per SKU:
+         *  0 Sold → Sale = GROI target (0 Sold owns price; UP/DN does not stack)
+         *  Sold   → Sale = Std × (1 − (PRMT + CVR Disc + CVR UP/DN)/100)
+         *  Your = Std, Min = Sale, Biz = Sale × 0.95
          */
         function computeAmzTDiscountsPct(d) {
-            const prmt = Math.max(0, Number(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied)) || 0);
-            const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
-            const upDn = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
-            return amzPefRound2(Math.min(99.99, Math.max(0, prmt + cvrDisc + upDn)));
+            const stack = computeAmzRuleStack(d);
+            if (stack.zeroSold) return 0;
+            return stack.totalDisc;
         }
         function computeAmzPushPrcPlan(d) {
             const std = Number(d.STANDARD_PRICE) || 0;
             if (!(std > 0)) return null;
-            const prmt = Math.max(0, Number(d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied) || 0);
-            const cvrDiscRaw = computeAmzCvrDiscountPct(d);
-            const cvrDisc = Math.max(0, Number(cvrDiscRaw) || 0);
-            const cvrUpDn = (typeof computeCvrUpDnPct === 'function') ? (Number(computeCvrUpDnPct(d)) || 0) : 0;
-            const totalDisc = Math.min(99.99, Math.max(0, prmt + cvrDisc + cvrUpDn));
+            const stack = computeAmzRuleStack(d);
             let sale = null;
-            if (totalDisc > 0 && totalDisc < 100) {
-                sale = amzPefRound2(std * (1 - (totalDisc / 100)));
+            if (stack.zeroSold && stack.zeroSoldPrice != null) {
+                sale = stack.zeroSoldPrice;
+                if (!(sale >= 0.01)) sale = null;
+            } else if (stack.totalDisc > 0 && stack.totalDisc < 100) {
+                sale = amzPefRound2(std * (1 - (stack.totalDisc / 100)));
                 if (!(sale >= 0.01) || sale >= std) sale = null;
             }
             const saleBase = sale != null ? sale : amzPefRound2(std);
             const max = amzPefRound2(std * 1.10);
-            const min = amzPefRound2(Math.max(0.01, saleBase - 0.01));
+            const min = saleBase;
             const business = amzPefRound2(Math.max(0.01, saleBase * 0.95));
             const effective = sale != null ? sale : std;
             return {
@@ -1402,10 +1400,12 @@
                 max: max,
                 min: min,
                 business: business,
-                prmt: prmt,
-                cvrDisc: cvrDisc,
-                cvrUpDn: cvrUpDn,
-                totalDisc: totalDisc,
+                prmt: stack.prmt,
+                cvrDisc: stack.cvrDisc,
+                cvrUpDn: stack.cvrUpDn,
+                zeroSold: stack.zeroSold,
+                zeroSoldGroi: stack.zeroSoldGroi,
+                totalDisc: stack.totalDisc,
                 effective: effective,
             };
         }
@@ -1414,6 +1414,91 @@
             const plan = computeAmzPushPrcPlan(d);
             return plan ? plan.effective : null;
         }
+
+        function collectAmzPromoApplyTargets(emptyMsg) {
+            const selected = collectAmzPefSelectedRows();
+            if (selected.length) {
+                return { targets: selected, label: 'selected', cancelled: false };
+            }
+            const visible = collectAmzPefVisibleRows();
+            if (!visible.length) {
+                amzPefToast('error', emptyMsg || 'No rows to apply');
+                return { targets: [], label: 'all visible', cancelled: true };
+            }
+            if (!confirm('No rows selected — apply to all ' + visible.length + ' visible row(s)?')) {
+                return { targets: [], label: 'all visible', cancelled: true };
+            }
+            return { targets: visible, label: 'all visible', cancelled: false };
+        }
+
+        /**
+         * Write S PRC from the live Push Prc stack (PRMT + CVR Disc + 0 Sold + CVR UP/DN).
+         * Each SKU uses its own matching data. Local save only — no Amazon API.
+         */
+        function applyAmzCombinedPlanToTargets(targets, label, opts) {
+            opts = opts || {};
+            const matchFn = typeof opts.match === 'function' ? opts.match : null;
+            const toastLabel = opts.toastLabel || 'Rules';
+            let ok = 0;
+            let skipped = 0;
+            let unmatched = 0;
+            if (!targets.length) {
+                amzPefToast('error', toastLabel + ': no rows to apply');
+                return 0;
+            }
+            for (let i = 0; i < targets.length; i++) {
+                const item = targets[i];
+                const d = item.row.getData();
+                if (!amzPefIsChildRow(d)) { skipped++; continue; }
+                if (amzPefInv(d) === 0) {
+                    if (opts.writePrmtOnInvZero) {
+                        item.row.update({ prmt_pct: '0', _prmt_pct_applied: 0 });
+                        saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: 0 });
+                    }
+                    skipped++;
+                    continue;
+                }
+                if (matchFn && !matchFn(d)) { unmatched++; continue; }
+                const plan = computeAmzPushPrcPlan(d);
+                if (!plan || !(plan.effective > 0)) { skipped++; continue; }
+                if (opts.skipWhenNoSale && plan.sale == null) {
+                    item.row.update({
+                        prmt_pct: String(plan.prmt),
+                        _prmt_pct_applied: plan.prmt,
+                    });
+                    saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: plan.prmt });
+                    skipped++;
+                    continue;
+                }
+                applyAmzPushPrcToSpriceRow(item.row, plan, null);
+                saveAmzSpriceFromPromo(item.row, plan.effective, true, { prmt_pct: plan.prmt });
+                ok++;
+            }
+            if (table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+            amzPefToast(
+                ok ? 'success' : 'error',
+                toastLabel + ' (' + label + '): S PRC → ' + ok + ' matching SKU(s)'
+                    + (unmatched ? ('; ' + unmatched + ' no match') : '')
+                    + (skipped ? ('; skipped ' + skipped) : '') + '.'
+            );
+            return ok;
+        }
+
+        function applyCvrUpDnToMatchingSkus() {
+            const picked = collectAmzPromoApplyTargets('No rows to apply CVR UP/DN');
+            if (picked.cancelled) return;
+            applyAmzCombinedPlanToTargets(picked.targets, picked.label, {
+                toastLabel: 'CVR UP/DN',
+                match: function(d) {
+                    if (amzIsZeroSoldRow(d)) return false;
+                    return (typeof computeCvrUpDnPct === 'function')
+                        && (Number(computeCvrUpDnPct(d)) || 0) !== 0;
+                },
+            });
+        }
+        window.applyCvrUpDnToMatchingSkus = applyCvrUpDnToMatchingSkus;
 
         /** Apply result price to S PRC + margin columns (SGPFT / SGROI / SROI / Spft%). */
         function applyAmzPushPrcToSpriceRow(row, plan, saveRes) {
@@ -1424,6 +1509,9 @@
                 prmt_pct: String(plan.prmt),
                 _prmt_pct_applied: plan.prmt,
             };
+            if (plan.zeroSold && plan.zeroSoldGroi != null) {
+                updates.ZERO_SOLD_PRC_GROI = plan.zeroSoldGroi;
+            }
             if (saveRes && saveRes.sgpft_percent !== undefined) updates.SGPFT = saveRes.sgpft_percent;
             if (saveRes && saveRes.spft_percent !== undefined) updates['Spft%'] = saveRes.spft_percent;
             if (saveRes && saveRes.sroi_percent !== undefined) updates.SROI = saveRes.sroi_percent;
@@ -1486,8 +1574,9 @@
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
                 + '\n\nFormula (same as Push Prc, no Amazon push):\n'
-                + 'S PRC = Std × (1 − (PRMT% + CVR Disc%)/100)\n'
-                + 'If no discount → S PRC = Std'
+                + '0 Sold → GROI target\n'
+                + 'Sold → Std × (1 − (PRMT + CVR Disc + CVR UP/DN)/100)\n'
+                + 'If no rule → S PRC = Std'
             )) return;
 
             const $btn = $('#amz-sprice-recalc-btn');
@@ -1562,6 +1651,8 @@
                 prmt: plan.prmt,
                 cpn: 0,
                 cvr_disc: plan.cvrDisc,
+                cvr_up_dn: plan.cvrUpDn,
+                zero_sold: !!plan.zeroSold,
             };
         }
 
@@ -1778,12 +1869,12 @@
                 amzPefToast('error', 'Set Std Prc first (optional PRMT% / CVR Discount for Sale)');
                 return;
             }
+            const confirmSale = plan.sale != null ? plan.sale : plan.std;
             if (!confirm(
                 'Queue Push Prc for ' + sku + ' in background?\n\n'
                 + 'Your $' + plan.std.toFixed(2)
-                + (plan.sale != null
-                    ? (' · Sale $' + plan.sale.toFixed(2) + ' (PRMT ' + plan.prmt + '% + CVR Disc ' + plan.cvrDisc + '%)')
-                    : '')
+                + ' · Sale $' + confirmSale.toFixed(2)
+                + formatAmzPushPrcDiscNote(plan)
                 + '\nMax $' + plan.max.toFixed(2)
                 + ' · Min $' + plan.min.toFixed(2)
                 + ' · Biz $' + plan.business.toFixed(2)
@@ -1821,7 +1912,9 @@
             if (!confirm(
                 'Queue Push Prc for ' + ready.length + ' selected SKU(s) in background?'
                 + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
-                + '\n\nYour=Std; Sale=Std−(PRMT%+CVR Disc%); Max=Std×1.10; Sale=Business=Min'
+                + '\n\nEach SKU uses its own PRMT, CVR Disc, 0 Sold GROI, and CVR UP/DN.'
+                + '\nYour=Std; 0 Sold Sale=GROI; Sold Sale=Std−(PRMT+CVR Disc+UP/DN);'
+                + '\nMin=Sale; Biz=Sale×0.95'
                 + '\n\nSafe to refresh — progress continues. You can select more and queue again.'
             )) return;
 
@@ -2102,7 +2195,7 @@
                 }
             });
 
-            // Push Prc — Std + PRMT% + CVR Discount → Amazon Listings
+            // Push Prc — Std + PRMT + CVR Disc + 0 Sold + CVR UP/DN → Amazon Listings
             $(document).off('click.amzpef', '.amz-push-prc-btn').on('click.amzpef', '.amz-push-prc-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();

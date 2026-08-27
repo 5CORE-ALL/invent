@@ -80,7 +80,7 @@
 
 @if($cvrUpDnPart === 'buttons' || $cvrUpDnPart === 'all')
                     <button type="button" class="btn btn-sm" id="cvr-up-dn-btn"
-                        title="CVR 30 vs CVR 45: drop adds discount, up reduces discount. Fills CVR Up/Dn and T Discounts.">
+                        title="CVR 30 vs CVR 45: drop adds discount, up reduces discount. Apply writes S PRC on matching SKUs (with PRMT, CVR Disc, 0 Sold).">
                         CVR UP/DN
                     </button>
 @endif
@@ -105,6 +105,8 @@
                         <strong>UP is ignored</strong> when CVR 30 is
                         <span style="color:#a00211;font-weight:700;">Red (0–7%)</span>.
                         Add more rows for larger changes.
+                        <strong>Apply</strong> saves these rules, then writes <strong>S PRC</strong>
+                        on matching SKUs using that SKU’s PRMT, CVR Disc, 0 Sold GROI, and CVR UP/DN.
                     </p>
                     <div class="row g-2">
                         <div class="col-md-6">
@@ -152,7 +154,7 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="cvr-up-dn-apply-btn"
-                        title="Save CVR UP/DN rules and refresh CVR Up/Dn + T Discounts">
+                        title="Save CVR UP/DN rules and write S PRC on matching SKUs (PRMT + CVR Disc + 0 Sold + UP/DN)">
                         Apply
                     </button>
                 </div>
@@ -270,6 +272,9 @@
         function computeCvrUpDnDetail(d) {
             const empty = { pct: 0, recent: 0, prev: 0, delta: 0, dir: 'flat', tip: 'No CVR change' };
             if (!d || d.is_parent_summary) return empty;
+            if (cvrUpDnInv(d) <= 0) {
+                return { pct: 0, recent: 0, prev: 0, delta: 0, dir: 'flat', tip: 'INV = 0 — CVR UP/DN not applied' };
+            }
             const recent = cvrUpDnRound2(cvrUpDnRecent(d));
             const prev = cvrUpDnRound2(cvrUpDnPrev(d));
             const delta = cvrUpDnRound2(recent - prev);
@@ -425,10 +430,17 @@
             const html = $btn.html();
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying…');
             saveCvrUpDnRules(rules).done(function() {
-                $('#cvr-up-dn-status').text('Applied. CVR Up/Dn and T Discounts updated.');
-                cvrUpDnToast('success', 'CVR UP/DN applied');
-                const modalEl = document.getElementById('cvrUpDnModal');
-                if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                $('#cvr-up-dn-status').text('Rules saved. Applying to matching SKUs…');
+                if (typeof window.applyCvrUpDnToMatchingSkus === 'function') {
+                    Promise.resolve(window.applyCvrUpDnToMatchingSkus()).then(function() {
+                        const modalEl = document.getElementById('cvrUpDnModal');
+                        if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                    });
+                } else {
+                    cvrUpDnToast('success', 'CVR UP/DN rules saved');
+                    const modalEl = document.getElementById('cvrUpDnModal');
+                    if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                }
             }).fail(function() {
                 $('#cvr-up-dn-status').text('Rules applied on this page. Save to server failed.');
                 cvrUpDnToast('error', 'Applied on page, but save failed');
@@ -467,7 +479,7 @@
                 hozAlign: 'center',
                 vertAlign: 'middle',
                 headerSort: true,
-                headerTooltip: 'Total discount including CVR Up/Dn.',
+                headerTooltip: 'PRMT + CVR Disc + CVR UP/DN. 0 Sold Sale uses GROI, not this %.',
                 sorter: function(a, b, aRow, bRow) {
                     const fn = typeof totalFn === 'function' ? totalFn : function() { return 0; };
                     return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);

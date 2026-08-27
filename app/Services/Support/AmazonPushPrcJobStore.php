@@ -336,14 +336,17 @@ class AmazonPushPrcJobStore
                 continue;
             }
             $sale = isset($task['sale']) && is_numeric($task['sale']) ? round((float) $task['sale'], 2) : null;
-            if ($sale !== null && ($sale <= 0 || $sale >= $std)) {
+            $zeroSold = ! empty($task['zero_sold']);
+            if ($sale !== null && $sale <= 0) {
+                $sale = null;
+            } elseif ($sale !== null && ! $zeroSold && $sale >= $std) {
                 $sale = null;
             }
             $saleBase = $sale !== null ? $sale : $std;
             $max = isset($task['max']) && is_numeric($task['max'])
                 ? round((float) $task['max'], 2)
                 : round($std * 1.10, 2);
-            $min = max(0.01, round($saleBase - 0.01, 2));
+            $min = $saleBase;
             $business = max(0.01, round($saleBase * 0.95, 2));
             $effective = isset($task['effective']) && is_numeric($task['effective'])
                 ? round((float) $task['effective'], 2)
@@ -363,6 +366,8 @@ class AmazonPushPrcJobStore
                 'prmt' => isset($task['prmt']) ? max(0, round((float) $task['prmt'], 2)) : 0,
                 'cpn' => isset($task['cpn']) ? max(0, round((float) $task['cpn'], 2)) : 0,
                 'cvr_disc' => isset($task['cvr_disc']) ? max(0, round((float) $task['cvr_disc'], 2)) : 0,
+                'cvr_up_dn' => isset($task['cvr_up_dn']) ? round((float) $task['cvr_up_dn'], 2) : 0,
+                'zero_sold' => $zeroSold,
                 'status' => 'pending',
                 'attempts' => 0,
                 'error' => null,

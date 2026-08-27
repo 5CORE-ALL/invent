@@ -241,23 +241,18 @@ class AmazonSpApiService
 
     /**
      * Sale / Business / Min from the calculated Sale Price.
-     * Business = Sale × 0.95. Min = Sale − 0.01 (always strictly less than Sale).
+     * Min = Sale (same value). Business = Sale × 0.95.
      *
      * @return array{sale_price: float, business_price: float, min_price: float}
      */
     public static function computeSaleBusinessMin(float $salePrice): array
     {
         $sale = round($salePrice, 2);
-        $business = max(0.01, round($sale * 0.95, 2));
-        $min = max(0.01, round($sale - 0.01, 2));
-        if ((int) round($min * 100) >= (int) round($sale * 100)) {
-            $min = max(0.01, round($sale - 0.01, 2));
-        }
 
         return [
             'sale_price' => $sale,
-            'business_price' => $business,
-            'min_price' => $min,
+            'business_price' => max(0.01, round($sale * 0.95, 2)),
+            'min_price' => $sale,
         ];
     }
 
@@ -270,7 +265,7 @@ class AmazonSpApiService
     }
 
     /**
-     * Min Price = Sale − 0.01 (strictly less than Sale).
+     * Min Price = Sale Price (same value).
      */
     public function minPriceFromSalePrice(float $salePrice): float
     {
@@ -448,7 +443,7 @@ class AmazonSpApiService
      * @param  float|int|string  $price  Your Price (our_price)
      * @param  int  $maxRetries
      * @param  array|null  $extras  Optional:
-     *   - sale_price (float): calculated Sale Price. Business = Sale × 0.95, Min = Sale − 0.01.
+     *   - sale_price (float): calculated Sale Price. Business = Sale × 0.95, Min = Sale.
      *   - min_price / business_price: ignored — always derived from Sale.
      *   - max_price (float): maximum_seller_allowed_price (defaults to our_price × 1.10)
      *   - push_reason (string): optional log reason
@@ -505,10 +500,10 @@ class AmazonSpApiService
             $maxPrice = round($price * 1.10, 2);
         }
 
-        if ((int) round($minPrice * 100) >= (int) round($salePrice * 100) || $salePrice < 0.02) {
+        if ($salePrice < 0.01 || (int) round($minPrice * 100) > (int) round($salePrice * 100)) {
             Log::error('Amazon push failed', [
                 'sku' => $sku,
-                'error' => 'Min Price must be strictly less than Sale Price',
+                'error' => 'Min Price cannot be higher than Sale Price',
                 'sale_price' => $salePrice,
                 'business_price' => $businessPrice,
                 'min_price' => $minPrice,
@@ -518,7 +513,7 @@ class AmazonSpApiService
             return [
                 'errors' => [[
                     'code' => 'InvalidInput',
-                    'message' => 'Min Price must be strictly less than Sale Price.',
+                    'message' => 'Min Price cannot be higher than Sale Price.',
                 ]],
             ];
         }
