@@ -1389,17 +1389,18 @@ class ChannelMasterController extends Controller
             };
 
             $l30Sales = AmazonOrder::badgeTotalSalesByOrderDate($start, $endToday);
-            $l30Orders = (int) DB::table('amazon_orders as o')
-                ->where('o.order_date', '>=', $start)
-                ->where('o.order_date', '<=', $endToday)
-                ->where($active)
-                ->count(DB::raw('DISTINCT o.amazon_order_id'));
-            $qty = (int) (DB::table('amazon_orders as o')
-                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-                ->where('o.order_date', '>=', $start)
-                ->where('o.order_date', '<=', $endToday)
-                ->where($active)
-                ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
+            $l30Orders = (int) AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')->where($active),
+                $start,
+                $endToday
+            )->count(DB::raw('DISTINCT o.amazon_order_id'));
+            $qty = (int) (AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')
+                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                    ->where($active),
+                $start,
+                $endToday
+            )->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
                 ->value('total_qty') ?? 0);
             $l60Sales = AmazonOrder::badgeTotalSalesByOrderDate($l60Start, $l60End);
         } catch (\Throwable $e) {
@@ -7912,19 +7913,20 @@ class ChannelMasterController extends Controller
 
         // Sales + order count (same as Amazon Daily Sales: AMAZON_SALES_TOTAL_MODE + DAILY_SALES_WINDOW_DAYS, Pacific through yesterday)
         $l30SalesFromOrders = AmazonOrder::badgeTotalSalesByOrderDate($startAmazonWindow, $endToday);
-        $l30OrdersFromOrders = (int) DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $startAmazonWindow)
-            ->where('o.order_date', '<=', $endToday)
-            ->where($activeAmazonOrders)
-            ->count(DB::raw('DISTINCT o.amazon_order_id'));
+        $l30OrdersFromOrders = (int) AmazonOrder::constrainOrderDate(
+            DB::table('amazon_orders as o')->where($activeAmazonOrders),
+            $startAmazonWindow,
+            $endToday
+        )->count(DB::raw('DISTINCT o.amazon_order_id'));
 
         // Line quantities only (item join)
-        $qtyAgg = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $startAmazonWindow)
-            ->where('o.order_date', '<=', $endToday)
-            ->where($activeAmazonOrders)
-            ->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
+        $qtyAgg = AmazonOrder::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where($activeAmazonOrders),
+            $startAmazonWindow,
+            $endToday
+        )->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
             ->first();
 
         $totalQuantityFromOrders = (int) ($qtyAgg->total_qty ?? 0);
@@ -7939,11 +7941,11 @@ class ChannelMasterController extends Controller
         
         // L60 Sales (previous 30-day period: days 31-60)
         $l60Sales = AmazonOrder::badgeTotalSalesByOrderDate($sixtyDaysAgoPacific, $thirtyDaysAgoPacific);
-        $l60Orders = (int) DB::table('amazon_orders as o')
-            ->where('o.order_date', '>=', $sixtyDaysAgoPacific)
-            ->where('o.order_date', '<=', $thirtyDaysAgoPacific)
-            ->where($activeAmazonOrders)
-            ->count(DB::raw('DISTINCT o.amazon_order_id'));
+        $l60Orders = (int) AmazonOrder::constrainOrderDate(
+            DB::table('amazon_orders as o')->where($activeAmazonOrders),
+            $sixtyDaysAgoPacific,
+            $thirtyDaysAgoPacific
+        )->count(DB::raw('DISTINCT o.amazon_order_id'));
         
         // DISABLED: L60 data from ShipHub - now using date-based calculation from amazon_orders
         /*

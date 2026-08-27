@@ -1660,7 +1660,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
-                        headerTooltip: "Rolling sales per channel. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific — same formula as Amz Daily Sales (AMAZON_SALES_TOTAL_MODE; Canceled/Cancelled excluded).",
+                        headerTooltip: "Rolling sales per channel. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} complete Pacific days through yesterday — Seller Central Ordered product sales (ItemPrice − promo; shipping/gift/tax excluded; Canceled excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -1789,6 +1789,7 @@
                     {
                         title: "Y Sales",
                         field: "Y Sales",
+                        headerTooltip: "Yesterday Pacific. Amz = Seller Central Ordered product sales for that calendar day (shipping/gift/tax excluded).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,

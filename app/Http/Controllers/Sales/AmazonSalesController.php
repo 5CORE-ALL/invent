@@ -123,14 +123,16 @@ class AmazonSalesController extends Controller
         $lineRevExpr = AmazonOrder::lineRevenueSelectSql('i');
         $orderLinesSum = AmazonOrder::perOrderTotalForBadgeSelectSql('o');
 
-        $orderRows = DB::table('amazon_orders as o')
-            ->leftJoin('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $startWindow)
-            ->where('o.order_date', '<=', $endDate)
-            ->where(function ($q) {
-                $q->whereNull('o.status')
-                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-            })
+        $orderRows = AmazonOrder::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->leftJoin('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+            $startWindow,
+            $endDate
+        )
             ->select([
                 'o.amazon_order_id as order_id',
                 'o.order_date',

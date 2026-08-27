@@ -397,6 +397,9 @@ class FetchAmazonOrders extends Command
                                 $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
                             }
 
+                            // Stored price keeps ship/gift for order-total checks. Dashboard
+                            // Y Sales / L30 strip these via AmazonOrder::orderedProductSalesSql
+                            // so they match Seller Central "Ordered product sales".
                             if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
                                 $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
                             }

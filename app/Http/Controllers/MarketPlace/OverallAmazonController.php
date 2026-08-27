@@ -3089,15 +3089,16 @@ class OverallAmazonController extends Controller
         $unitsStart = $yesterdayPacific->copy()
             ->subDays(\App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS - 1)
             ->startOfDay();
-        $amazonUnitsSoldL30 = (int) (DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $unitsStart)
-            ->where('o.order_date', '<=', $unitsEnd)
-            ->where(function ($q) {
-                $q->whereNull('o.status')
-                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-            })
-            ->sum(DB::raw('COALESCE(i.quantity, 0)')));
+        $amazonUnitsSoldL30 = (int) (\App\Models\AmazonOrder::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+            $unitsStart,
+            $unitsEnd
+        )->sum(DB::raw('COALESCE(i.quantity, 0)')));
 
         // Authoritative 30-day sales from real Amazon orders — identical to the /amazon/daily-sales
         // "Total Sales" badge (AMAZON_SALES_TOTAL_MODE, default = Ordered Product Sales).

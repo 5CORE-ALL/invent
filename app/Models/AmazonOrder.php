@@ -154,6 +154,79 @@ class AmazonOrder extends Model
     }
 
     /**
+     * order_date is written from Amazon PurchaseDate (UTC). Format that instant as
+     * UTC clock time so MySQL DATETIME compares match the stored column.
+     * Passing a Pacific Carbon without this stores/filters as 00:00-23:59 PT wall
+     * clock and shifts the day by 7–8 hours vs Seller Central.
+     */
+    public static function storedOrderDateBound(DateTimeInterface $dt): string
+    {
+        return \Carbon\Carbon::parse($dt)->utc()->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @return \Illuminate\Database\Query\Builder
+     */
+    public static function constrainOrderDate($query, DateTimeInterface $start, DateTimeInterface $end, string $column = 'o.order_date')
+    {
+        return $query
+            ->where($column, '>=', self::storedOrderDateBound($start))
+            ->where($column, '<=', self::storedOrderDateBound($end));
+    }
+
+    /**
+     * JSON money field (Pascal or camel). Unwraps a double-encoded JSON string.
+     */
+    public static function jsonMoneyExtractSql(string $jsonExpr, string $pascalPath, string $camelPath): string
+    {
+        $payload = "CASE WHEN {$jsonExpr} IS NULL OR JSON_VALID({$jsonExpr}) = 0 THEN NULL WHEN JSON_TYPE({$jsonExpr}) = 'STRING' THEN JSON_UNQUOTE({$jsonExpr}) ELSE {$jsonExpr} END";
+        $pascal = "NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$payload}, '{$pascalPath}')), ''), 'null')";
+        $camel = "NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT({$payload}, '{$camelPath}')), ''), 'null')";
+
+        return "IF(COALESCE(JSON_VALID({$payload}), 0) = 1, GREATEST(
+            COALESCE(CAST({$pascal} AS DECIMAL(12,2)), 0),
+            COALESCE(CAST({$camel} AS DECIMAL(12,2)), 0)
+        ), 0)";
+    }
+
+    /**
+     * Seller Central "Ordered product sales": ItemPrice − PromotionDiscount.
+     * Stored amazon_order_items.price also adds ShippingPrice + GiftWrapPrice
+     * (see FetchAmazonOrders) — that is NOT Amazon's Sales tile and was inflating
+     * /all-marketplace-master Y Sales and L30.
+     */
+    public static function orderedProductSalesSql(string $itemsAlias = 'i'): string
+    {
+        $raw = $itemsAlias.'.raw_data';
+        $item = self::jsonMoneyExtractSql($raw, '$.ItemPrice.Amount', '$.itemPrice.amount');
+        $promo = self::jsonMoneyExtractSql($raw, '$.PromotionDiscount.Amount', '$.promotionDiscount.amount');
+        $ship = self::jsonMoneyExtractSql($raw, '$.ShippingPrice.Amount', '$.shippingPrice.amount');
+        $gift = self::jsonMoneyExtractSql($raw, '$.GiftWrapPrice.Amount', '$.giftWrapPrice.amount');
+        $stored = 'COALESCE('.$itemsAlias.'.price, 0)';
+
+        return "GREATEST(0, CASE WHEN ({$item}) > 0 THEN ({$item} - {$promo}) ELSE ({$stored} - {$ship} - {$gift}) END)";
+    }
+
+    /**
+     * PHP equivalent of orderedProductSalesSql (for diagnostics / fallback).
+     */
+    public static function orderedProductSalesFromItem(mixed $storedPrice, mixed $raw): float
+    {
+        $payload = self::decodeRawPayload($raw);
+        $itemPrice = (float) (data_get($payload, 'ItemPrice.Amount') ?? data_get($payload, 'itemPrice.amount') ?? 0);
+        $promo = (float) (data_get($payload, 'PromotionDiscount.Amount') ?? data_get($payload, 'promotionDiscount.amount') ?? 0);
+        if ($itemPrice > 0) {
+            return round(max(0, $itemPrice - $promo), 2);
+        }
+
+        $ship = (float) (data_get($payload, 'ShippingPrice.Amount') ?? data_get($payload, 'shippingPrice.amount') ?? 0);
+        $gift = (float) (data_get($payload, 'GiftWrapPrice.Amount') ?? data_get($payload, 'giftWrapPrice.amount') ?? 0);
+
+        return round(max(0, (float) $storedPrice - $ship - $gift), 2);
+    }
+
+    /**
      * SQL expression: use order total when Amazon provided it; otherwise sum line items.
      *
      * @param  string  $alias  Table alias for amazon_orders in the outer query (e.g. "o")
@@ -169,18 +242,18 @@ class AmazonOrder extends Model
         return '(COALESCE('.$itemsAlias.'.quantity, 0) * COALESCE('.$itemsAlias.'.price, 0))';
     }
 
-    /** Line revenue in grid: Amazon line total = `price` (do not multiply by qty except in legacy mode). */
+    /** Line revenue in grid: Ordered product sales (do not multiply by qty except in legacy mode). */
     public static function lineRevenueSelectSql(string $itemsAlias = 'i'): string
     {
         return self::salesTotalMode() === self::SALES_TOTAL_MODE_QTY_TIMES_PRICE
             ? self::orderItemQtyTimesPriceSql($itemsAlias)
-            : "COALESCE({$itemsAlias}.price, 0)";
+            : self::orderedProductSalesSql($itemsAlias);
     }
 
-    /** Sum of line prices only (subquery on order id). */
+    /** Sum of ordered product sales only (subquery on order id). */
     public static function orderSumLinePricesSubquery(string $orderAlias = 'o'): string
     {
-        return "(SELECT COALESCE(SUM(COALESCE(li.price, 0)), 0) FROM amazon_order_items li WHERE li.amazon_order_id = {$orderAlias}.id)";
+        return '(SELECT COALESCE(SUM('.self::orderedProductSalesSql('li').'), 0) FROM amazon_order_items li WHERE li.amazon_order_id = '.$orderAlias.'.id)';
     }
 
     /** OrderTotal from raw JSON (Pascal + camel), guarded. */
@@ -227,38 +300,57 @@ class AmazonOrder extends Model
         };
 
         return match (self::salesTotalMode()) {
-            self::SALES_TOTAL_MODE_LINES => (float) DB::table('amazon_orders as o')
-                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-                ->where('o.order_date', '>=', $start)
-                ->where('o.order_date', '<=', $end)
-                ->where($nonCancelled)
-                ->sum(DB::raw('COALESCE(i.price, 0)')),
+            self::SALES_TOTAL_MODE_LINES => (float) self::constrainOrderDate(
+                DB::table('amazon_orders as o')
+                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                    ->where($nonCancelled),
+                $start,
+                $end
+            )->sum(DB::raw(self::orderedProductSalesSql('i'))),
             self::SALES_TOTAL_MODE_QTY_TIMES_PRICE => self::revenueSumQtyTimesPriceByOrderDate($start, $end),
-            default => (float) (DB::table('amazon_orders as o')
-                ->where('o.order_date', '>=', $start)
-                ->where('o.order_date', '<=', $end)
-                ->where($nonCancelled)
-                ->selectRaw('SUM('.self::orderReportedRevenuePerOrderSql('o').') as revenue')
+            default => (float) (self::constrainOrderDate(
+                DB::table('amazon_orders as o')->where($nonCancelled),
+                $start,
+                $end
+            )->selectRaw('SUM('.self::orderReportedRevenuePerOrderSql('o').') as revenue')
                 ->value('revenue') ?? 0),
         };
     }
 
     /**
-     * Product sales (Σ line price, tax excluded) over a UTC order_date window.
-     * Closest match to Amazon Seller Central's "Sales" tile (ordered product sales).
-     * Pass Pacific-day boundaries already converted to UTC to match Amazon's day grouping.
+     * Product sales over a Pacific (or UTC) window — matches Seller Central
+     * "Ordered product sales" / Sales tile (tax, shipping, gift wrap excluded).
+     * Bounds are normalized to the UTC-stored order_date column.
      */
     public static function productSalesByOrderDate(DateTimeInterface $start, DateTimeInterface $end): float
     {
-        return (float) DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start)
-            ->where('o.order_date', '<=', $end)
-            ->where(function ($q) {
-                $q->whereNull('o.status')
-                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-            })
-            ->sum(DB::raw('COALESCE(i.price, 0)'));
+        return (float) self::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+            $start,
+            $end
+        )->sum(DB::raw(self::orderedProductSalesSql('i')));
+    }
+
+    /**
+     * Legacy stored-price sum (ItemPrice + shipping + gift − promo). For diagnostics only.
+     */
+    public static function storedLinePriceSumByOrderDate(DateTimeInterface $start, DateTimeInterface $end): float
+    {
+        return (float) self::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+            $start,
+            $end
+        )->sum(DB::raw('COALESCE(i.price, 0)'));
     }
 
     /**
@@ -268,15 +360,16 @@ class AmazonOrder extends Model
     {
         $expr = self::orderItemQtyTimesPriceSql('i');
 
-        return (float) DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $start)
-            ->where('o.order_date', '<=', $end)
-            ->where(function ($q) {
-                $q->whereNull('o.status')
-                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-            })
-            ->sum(DB::raw($expr));
+        return (float) self::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+            $start,
+            $end
+        )->sum(DB::raw($expr));
     }
 
     /** Per-order sum of (quantity × price) for SELECT (legacy grid). */

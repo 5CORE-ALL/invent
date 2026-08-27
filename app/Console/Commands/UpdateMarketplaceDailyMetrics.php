@@ -223,14 +223,16 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalRevenue = AmazonOrder::badgeTotalSalesByOrderDate($startOfDay, $endOfDay);
 
         // Get order rows for item-level metrics (COGS, profit, etc.)
-        $orderRows = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->where('o.order_date', '>=', $startOfDay)
-            ->where('o.order_date', '<=', $endOfDay)
-            ->where(function ($q) {
-                $q->whereNull('o.status')
-                    ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-            })
+        $orderRows = AmazonOrder::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+            $startOfDay,
+            $endOfDay
+        )
             ->select([
                 'o.amazon_order_id',
                 'i.sku',

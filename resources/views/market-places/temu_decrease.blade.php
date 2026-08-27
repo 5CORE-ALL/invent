@@ -1157,6 +1157,11 @@
                         aria-label="Export L30">
                         <i class="fas fa-file-export"></i>
                     </button>
+                    <button type="button" class="btn btn-sm btn-info" id="export-sprice-btn"
+                        title="Export S PRC with SGROI% and SPFT%"
+                        aria-label="Export S PRC">
+                        <i class="fas fa-file-csv"></i>
+                    </button>
                     <div class="d-inline-flex align-items-center gap-1 flex-shrink-0 border rounded px-2 py-1 bg-light ms-1" title="Ads API & sales period for this table">
                         <label for="campaign-period-select" class="mb-0 small fw-semibold text-nowrap text-dark">Campaign</label>
                         <select id="campaign-period-select" class="form-select form-select-sm" style="min-width: 88px;">
@@ -7723,6 +7728,70 @@
                 return;
             }
             table.download("csv", "temu_decrease_data_l30.csv");
+        });
+
+        function temuCsvEscape(val) {
+            const s = String(val == null ? '' : val);
+            if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+            return s;
+        }
+
+        function temuSpriceExportRoundPct(n) {
+            if (n == null || !isFinite(n)) return '';
+            return String(Math.round(n));
+        }
+
+        function exportTemuSpriceCsv() {
+            if (!table) {
+                showToast('Table is not ready', 'warning');
+                return;
+            }
+            const useSelected = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
+            const rows = table.getData('active') || [];
+            const lines = [['SKU', 'S PRC', 'SGROI%', 'SPFT%']];
+            rows.forEach(function(row) {
+                if (typeof isTemuParentRow === 'function' && isTemuParentRow(row)) return;
+                const sku = String(row.sku || '').trim();
+                if (!sku) return;
+                if (useSelected && !selectedSkus.has(sku)) return;
+                const sprice = typeof temuDisplayedSprice === 'function'
+                    ? temuDisplayedSprice(row)
+                    : (parseFloat(row.sprice) || 0);
+                if (!(sprice > 0)) return;
+                const p = typeof temuSpriceCalcParts === 'function'
+                    ? temuSpriceCalcParts(row)
+                    : {};
+                lines.push([
+                    sku,
+                    sprice.toFixed(2),
+                    temuSpriceExportRoundPct(p.sgroi),
+                    temuSpriceExportRoundPct(p.spft),
+                ]);
+            });
+            if (lines.length <= 1) {
+                showToast(useSelected
+                    ? 'No selected SKUs with S PRC to export'
+                    : 'No S PRC rows to export', 'info');
+                return;
+            }
+            const csv = '\uFEFF' + lines.map(function(r) {
+                return r.map(temuCsvEscape).join(',');
+            }).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            a.href = url;
+            a.download = 'temu_sprice_sgroi_spft_' + stamp + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Exported ' + (lines.length - 1) + ' S PRC row(s)', 'success');
+        }
+
+        $('#export-sprice-btn').on('click', function() {
+            exportTemuSpriceCsv();
         });
 
         if (window.TemuViewDataUpload) {
