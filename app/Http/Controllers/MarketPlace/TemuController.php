@@ -3144,9 +3144,7 @@ class TemuController extends Controller
                 }
             }
 
-            $amazonData = $isTemu2Pricing
-                ? collect()
-                : AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+            $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view).
             // Include Sku Link LMP siblings so a Temu SKU inherits the Amazon SP when the
@@ -3226,16 +3224,12 @@ class TemuController extends Controller
             $promoChannel = $isTemu2Pricing ? 'temu2' : 'temu';
             $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
 
-            $ebayData = $isTemu2Pricing
-                ? collect()
-                : EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
+            $ebayData = EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
 
             // eBay 2 listing price (from ebay_2_metrics.ebay_price). Same shape as $ebayData so
-            // the per-row lookup mirrors the eBay 1 path; loaded for Temu 1 only (Temu 2 pricing
-            // intentionally hides marketplace comparison columns, same as a_price / e_price).
-            $ebay2Data = $isTemu2Pricing
-                ? collect()
-                : Ebay2Metric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
+            // the per-row lookup mirrors the eBay 1 path. Used by Amz/EB S PRC cap badges
+            // on /temu1-data and /temu2-decrease.
+            $ebay2Data = Ebay2Metric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
 
             // Temu 1: temu_listing_statuses. Temu 2: same keys live in temu2_data_view JSON (value).
             $statusData = $isTemu2Pricing

@@ -196,13 +196,26 @@
             margin: 0;
             padding: 0;
             border-radius: 4px;
+            cursor: grab;
+        }
+        #column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
+        #column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
+        #column-dropdown-menu .col-vis-item.col-vis-drop-before {
+            box-shadow: inset 0 2px 0 #0d6efd;
+        }
+        #column-dropdown-menu .col-vis-item.col-vis-drop-after {
+            box-shadow: inset 0 -2px 0 #0d6efd;
+        }
+        #column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            outline: 2px dashed #0d6efd;
+            outline-offset: 1px;
         }
         #column-dropdown-menu .col-vis-item > label {
             display: flex;
             align-items: center;
             gap: 6px;
             padding: 3px 5px;
-            cursor: pointer;
+            cursor: grab;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -267,6 +280,14 @@
             justify-content: center;
             text-align: center;
             white-space: nowrap;
+        }
+        .temu-sprice-cap-lbl {
+            color: #fd7e14;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
         }
 
         /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
@@ -604,6 +625,14 @@
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'temu2-price-lt80-lmp-badge', 'pltChannelKey' => 'temu2', 'pltPriceField' => 'temu_price'])
                         <span class="badge fs-6 p-2" id="temu2-blue-triangle-badge" style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;" title="Blue triangle: S PRC ≠ Price.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="temu-amz-cap-badge"
+                            style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
+                            title="S PRC capped to Amazon. Click to show only Amz rows."
+                            aria-label="S PRC capped to Amazon">Amz 0</span>
+                        <span class="badge fs-6 p-2" id="temu-eb-cap-badge"
+                            style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
+                            title="S PRC capped to eBay. Click to show only EB rows."
+                            aria-label="S PRC capped to eBay">EB 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing M (listed, INV&gt;0, REQ, INV vs Temu Stock mismatch)">M M: 0</span>
@@ -1180,6 +1209,8 @@
     // Same shared DB persistence as /ebay-tabulator-view (channel_tabulator_column_settings)
     const TABULATOR_COLUMN_CHANNEL = 'temu2_decrease';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+    const TABULATOR_COLUMN_ORDER_URL = '/tabulator-column-order';
+    const TEMU2_COL_CAT_STORAGE = 'temu2_decrease_col_cats_v1';
     let table = null;
 
     /**
@@ -1741,15 +1772,108 @@
     }
     function temu2HasBlueTriangle(data) {
         if (isTemu2ParentRow(data)) return false;
-        const sprice = temu2RowSpriceForAlert(data);
+        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(data) : temu2RowSpriceForAlert(data);
         const price = parseFloat(data && data.temu_price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
+
+    function temuRawSprice(row) {
+        return temu2RowSpriceForAlert(row) || 0;
+    }
+
+    function temuAmzRefPrice(row) {
+        const n = parseFloat(row && (row.a_price != null ? row.a_price : (row['A Price'] != null ? row['A Price'] : row.amazon_price)));
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+
+    function temuEbayRefPrice(row) {
+        const e = parseFloat(row && row.e_price) || 0;
+        const e2 = parseFloat(row && row.e2_price) || 0;
+        if (e > 0 && e2 > 0) return Math.min(e, e2);
+        return e > 0 ? e : e2;
+    }
+
+    function temuLmpRefPrice(row) {
+        if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+            const n = parseFloat(SpriceLmpCap.lmpOf(row));
+            if (isFinite(n) && n > 0) return n;
+        }
+        const fallback = parseFloat(row && (row.lmp_price != null ? row.lmp_price : (row.lmp != null ? row.lmp : row.LMP)));
+        return (isFinite(fallback) && fallback > 0) ? fallback : 0;
+    }
+
+    /** Cap S PRC to Amz / eBay when above those prices, then to LMP. Same as /temu1-data. */
+    function temuSpriceCapResult(row, rawSprice, extra) {
+        extra = extra || {};
+        const raw = parseFloat(rawSprice);
+        if (!(raw > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: 0, ebay: 0, lmp: 0 };
+        const amz = temuAmzRefPrice(row);
+        const ebay = temuEbayRefPrice(row);
+        const fromStd = typeof chPromoSpriceFromStdTPromo === 'function'
+            ? (chPromoSpriceFromStdTPromo(row) || 0)
+            : 0;
+        const lmp = extra.skip_lmp_cap ? 0 : temuLmpRefPrice(row);
+        const candidates = [{ key: 'raw', price: +raw.toFixed(2) }];
+        if (amz > 0 && (raw > amz + 0.0001 || fromStd > amz + 0.0001)) {
+            candidates.push({ key: 'Amz', price: +amz.toFixed(2) });
+        }
+        if (ebay > 0 && (raw > ebay + 0.0001 || fromStd > ebay + 0.0001)) {
+            candidates.push({ key: 'EB', price: +ebay.toFixed(2) });
+        }
+        if (lmp > 0 && raw + 0.0001 >= lmp) candidates.push({ key: 'LMP', price: +lmp.toFixed(2) });
+        let minP = candidates[0].price;
+        candidates.forEach(function(c) { if (c.price < minP) minP = c.price; });
+        const labels = [];
+        let lmpAlert = false;
+        candidates.forEach(function(c) {
+            if (Math.abs(c.price - minP) > 0.015) return;
+            if (c.key === 'LMP') lmpAlert = true;
+            else if (c.key === 'Amz' || c.key === 'EB') labels.push(c.key);
+        });
+        return { sprice: +minP.toFixed(2), labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
+    }
+
+    function temuPrepareSpriceForSave(rowData, sprice) {
+        const cap = temuSpriceCapResult(rowData, sprice);
+        return cap.sprice > 0 ? cap.sprice : (parseFloat(sprice) || sprice);
+    }
+
+    function temuDisplayedSprice(row) {
+        return temuPrepareSpriceForSave(row, temuRawSprice(row)) || 0;
+    }
+
+    function temuSpriceCapLabels(row) {
+        if (!row || isTemu2ParentRow(row)) return [];
+        const raw = temuRawSprice(row);
+        if (!(raw > 0)) return [];
+        return temuSpriceCapResult(row, raw).labels || [];
+    }
+
+    function temuHasAmzCap(row) {
+        return temuSpriceCapLabels(row).indexOf('Amz') !== -1;
+    }
+
+    function temuHasEbCap(row) {
+        return temuSpriceCapLabels(row).indexOf('EB') !== -1;
+    }
+
     let blueTriangleFilterActive = false;
+    let amzCapFilterActive = false;
+    let ebCapFilterActive = false;
     function syncTemu2TriangleBadgeState() {
         $('#temu2-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
+        });
+    }
+    function syncTemuCapBadgeState() {
+        $('#temu-amz-cap-badge').css({
+            outline: amzCapFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: amzCapFilterActive ? '2px' : ''
+        });
+        $('#temu-eb-cap-badge').css({
+            outline: ebCapFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: ebCapFilterActive ? '2px' : ''
         });
     }
 
@@ -3185,13 +3309,20 @@
                 }
             }
             let blueTriangleCount = 0;
+            let amzCapCount = 0;
+            let ebCapCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (temu2HasBlueTriangle(row)) blueTriangleCount++;
+                if (typeof temuHasAmzCap === 'function' && temuHasAmzCap(row)) amzCapCount++;
+                if (typeof temuHasEbCap === 'function' && temuHasEbCap(row)) ebCapCount++;
             });
             $('#temu2-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncTemu2TriangleBadgeState === 'function') syncTemu2TriangleBadgeState();
+            $('#temu-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
+            $('#temu-eb-cap-badge').text('EB ' + ebCapCount.toLocaleString());
+            if (typeof syncTemuCapBadgeState === 'function') syncTemuCapBadgeState();
             $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
             // Legacy hidden IDs (if present) — avoid JS errors
@@ -3234,6 +3365,7 @@
             ajaxSorting: false,
             layout: "fitData",
             layoutColumnsOnNewData: true,
+            movableColumns: true,
             columnDefaults: {
                 hozAlign: "center",
                 headerHozAlign: "center",
@@ -3933,31 +4065,47 @@
                     hozAlign: "center",
                     minWidth: 88,
                     editor: "input",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC capped to Amz if above Amazon, to EB if above eBay (lower of eBay 1 / eBay 2), then to LMP. Orange Amz/EB = channel cap. Red triangle = LMP cap. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
-                        let value = parseFloat(cell.getValue() || 0);
+                        let rawSprice = parseFloat(cell.getValue() || 0);
                         if (typeof chPromoSpriceFromStdTPromo === 'function') {
                             const calc = chPromoSpriceFromStdTPromo(rowData);
-                            if (calc > 0) value = calc;
+                            if (calc > 0) rawSprice = calc;
                         }
-                        const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                        if (cap && cap.shown > 0) value = cap.shown;
+                        const cap = typeof temuSpriceCapResult === 'function'
+                            ? temuSpriceCapResult(rowData, rawSprice)
+                            : null;
+                        let value = (cap && cap.sprice > 0) ? cap.sprice : rawSprice;
+                        if (!(value > 0) && cap && window.SpriceLmpCap) {
+                            const lmpCap = SpriceLmpCap.apply(rowData, rawSprice);
+                            if (lmpCap && lmpCap.shown > 0) value = lmpCap.shown;
+                        }
                         const live = parseFloat(rowData.temu_price) || 0;
                         const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                        const overLmp = cap ? cap.lmpAlert : (lmp > 0 && value + 0.0001 >= lmp);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
                             : formatted;
-                        const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                        const redTri = overLmp
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                + Number(lmp || 0).toFixed(2) + '"></i>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        let capHtml = '';
+                        (cap && cap.labels ? cap.labels : []).forEach(function(lbl) {
+                            const ref = lbl === 'Amz' ? cap.amz : cap.ebay;
+                            const name = lbl === 'Amz' ? 'Amazon' : 'eBay';
+                            capHtml += '<span class="temu-sprice-cap-lbl" title="S PRC capped to ' + name + ' $'
+                                + Number(ref).toFixed(2) + '">' + lbl + '</span>';
+                        });
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${capHtml}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -4638,6 +4786,16 @@
                     return temu2HasBlueTriangle(data);
                 });
             }
+            if (amzCapFilterActive) {
+                table.addFilter(function(data) {
+                    return typeof temuHasAmzCap === 'function' && temuHasAmzCap(data);
+                });
+            }
+            if (ebCapFilterActive) {
+                table.addFilter(function(data) {
+                    return typeof temuHasEbCap === 'function' && temuHasEbCap(data);
+                });
+            }
 
             updateSummary();
             updateSelectAllCheckbox();
@@ -4665,6 +4823,8 @@
 
         function temu2ClearPriceGtLmpCompetingFilters() {
             blueTriangleFilterActive = false;
+            amzCapFilterActive = false;
+            ebCapFilterActive = false;
             priceLt80LmpFilterActive = false;
             missingMFilterActive = false;
             mapBadgeFilterActive = false;
@@ -4683,6 +4843,7 @@
                 PriceLt80LmpBadge.setOutline(document.getElementById('temu2-price-lt80-lmp-badge'), false);
             }
             if (typeof syncTemu2TriangleBadgeState === 'function') syncTemu2TriangleBadgeState();
+            if (typeof syncTemuCapBadgeState === 'function') syncTemuCapBadgeState();
         }
         if (window.PriceGtLmpBadge) {
             PriceGtLmpBadge.bind({
@@ -4719,7 +4880,11 @@
                 getActive: function() { return priceLt80LmpFilterActive; },
                 onToggle: function(on) {
                     priceLt80LmpFilterActive = on;
-                    if (on) blueTriangleFilterActive = false;
+                    if (on) {
+                        blueTriangleFilterActive = false;
+                        amzCapFilterActive = false;
+                        ebCapFilterActive = false;
+                    }
                     applyFilters();
                 }
             });
@@ -4729,6 +4894,36 @@
             if (blueTriangleFilterActive) {
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                amzCapFilterActive = false;
+                ebCapFilterActive = false;
+            }
+            applyFilters();
+        });
+        $('#temu-amz-cap-badge').on('click', function() {
+            amzCapFilterActive = !amzCapFilterActive;
+            if (amzCapFilterActive) {
+                ebCapFilterActive = false;
+                blueTriangleFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            if (amzCapFilterActive && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
+                stopPlayNavigation();
+                return;
+            }
+            applyFilters();
+        });
+        $('#temu-eb-cap-badge').on('click', function() {
+            ebCapFilterActive = !ebCapFilterActive;
+            if (ebCapFilterActive) {
+                amzCapFilterActive = false;
+                blueTriangleFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+            }
+            if (ebCapFilterActive && isPlayNavigationActive && typeof stopPlayNavigation === 'function') {
+                stopPlayNavigation();
+                return;
             }
             applyFilters();
         });
@@ -5236,8 +5431,8 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
-                /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc)\b/i.test(tl)
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgroi_percent|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc|_push)$/i.test(f) ||
+                /\b(cvr|price|prc|gpft|gprft|npft|sgroi|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc|queue)\b/i.test(tl)
             ) {
                 return 'pricing';
             }
@@ -5256,6 +5451,226 @@
             headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
         }
 
+        function loadTemu2ColCats() {
+            try {
+                const raw = localStorage.getItem(TEMU2_COL_CAT_STORAGE);
+                const parsed = raw ? JSON.parse(raw) : {};
+                return (parsed && typeof parsed === 'object') ? parsed : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        function saveTemu2ColCats(map) {
+            try { localStorage.setItem(TEMU2_COL_CAT_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+        }
+
+        let temu2ApplyingColumnOrder = false;
+        let temu2ColumnOrderSaveTimer = null;
+
+        function currentTemu2ColumnOrder() {
+            if (!table) return [];
+            return table.getColumns()
+                .map(function(col) { return col.getField(); })
+                .filter(function(f) { return !!f; });
+        }
+
+        function saveTemu2ColumnOrderToServer() {
+            if (!table || temu2ApplyingColumnOrder) return;
+            const order = currentTemu2ColumnOrder();
+            if (!order.length) return;
+            fetch(TABULATOR_COLUMN_ORDER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify({
+                    channel: TABULATOR_COLUMN_CHANNEL,
+                    order: order
+                })
+            }).catch(function(err) { console.error('Error saving column order:', err); });
+        }
+
+        function scheduleTemu2ColumnOrderSave() {
+            if (temu2ColumnOrderSaveTimer) clearTimeout(temu2ColumnOrderSaveTimer);
+            temu2ColumnOrderSaveTimer = setTimeout(saveTemu2ColumnOrderToServer, 350);
+        }
+
+        function applyTemu2ColumnOrder(order) {
+            if (!table || !Array.isArray(order) || !order.length) return;
+            const existing = currentTemu2ColumnOrder();
+            if (!existing.length) return;
+
+            const valid = [];
+            const seen = {};
+            order.forEach(function(f) {
+                if (!f || seen[f] || existing.indexOf(f) === -1) return;
+                seen[f] = true;
+                valid.push(f);
+            });
+            existing.forEach(function(f) {
+                if (seen[f]) return;
+                seen[f] = true;
+                let inserted = false;
+                const existingIdx = existing.indexOf(f);
+                for (let j = existingIdx - 1; j >= 0; j--) {
+                    const prevIdx = valid.indexOf(existing[j]);
+                    if (prevIdx !== -1) {
+                        valid.splice(prevIdx + 1, 0, f);
+                        inserted = true;
+                        break;
+                    }
+                }
+                if (!inserted) valid.unshift(f);
+            });
+
+            temu2ApplyingColumnOrder = true;
+            try {
+                for (let i = 0; i < valid.length; i++) {
+                    const field = valid[i];
+                    const cols = table.getColumns().filter(function(c) { return !!c.getField(); });
+                    const currentIdx = cols.findIndex(function(c) { return c.getField() === field; });
+                    if (currentIdx === i || currentIdx < 0) continue;
+                    if (i === 0) {
+                        const firstField = cols[0].getField();
+                        if (firstField && firstField !== field) {
+                            table.moveColumn(field, firstField, false);
+                        }
+                    } else if (valid[i - 1]) {
+                        table.moveColumn(field, valid[i - 1], true);
+                    }
+                }
+            } catch (err) {
+                console.error('Error applying column order:', err);
+            } finally {
+                temu2ApplyingColumnOrder = false;
+            }
+        }
+
+        function applyColumnOrderFromServer() {
+            return fetch(TABULATOR_COLUMN_ORDER_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(resp) {
+                    if (resp && resp.success && Array.isArray(resp.order) && resp.order.length) {
+                        applyTemu2ColumnOrder(resp.order);
+                    }
+                })
+                .catch(function(err) { console.error('Error loading column order:', err); });
+        }
+
+        function temu2ClearColVisDropHints() {
+            document.querySelectorAll('#column-dropdown-menu .col-vis-item').forEach(function(el) {
+                el.classList.remove('col-vis-drop-before', 'col-vis-drop-after');
+            });
+            document.querySelectorAll('#column-dropdown-menu .col-vis-group').forEach(function(el) {
+                el.classList.remove('col-vis-drop-over');
+            });
+        }
+
+        function temu2MoveColumnNextTo(field, neighborField, after) {
+            if (!table || !field || !neighborField || field === neighborField) return;
+            temu2ApplyingColumnOrder = true;
+            try {
+                table.moveColumn(field, neighborField, !!after);
+            } catch (e) {
+                console.error('Error moving column:', e);
+            } finally {
+                temu2ApplyingColumnOrder = false;
+            }
+            scheduleTemu2ColumnOrderSave();
+            if (typeof temu2AutofitColumns === 'function') temu2AutofitColumns();
+        }
+
+        function bindTemu2ColVisDrag(li) {
+            li.draggable = true;
+            li.addEventListener('dragstart', function(e) {
+                e.stopPropagation();
+                li.classList.add('col-vis-dragging');
+                e.dataTransfer.setData('text/plain', li.dataset.field || '');
+                e.dataTransfer.setData('text/col-vis-field', li.dataset.field || '');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            li.addEventListener('dragend', function() {
+                li.classList.remove('col-vis-dragging');
+                temu2ClearColVisDropHints();
+            });
+        }
+
+        function bindTemu2ColVisDropZone(group, list) {
+            function onDragOver(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'move';
+                group.classList.add('col-vis-drop-over');
+                const overItem = e.target.closest('.col-vis-item');
+                document.querySelectorAll('#column-dropdown-menu .col-vis-item').forEach(function(el) {
+                    el.classList.remove('col-vis-drop-before', 'col-vis-drop-after');
+                });
+                if (overItem && !overItem.classList.contains('col-vis-dragging')) {
+                    const rect = overItem.getBoundingClientRect();
+                    const before = (e.clientY - rect.top) < (rect.height / 2);
+                    overItem.classList.add(before ? 'col-vis-drop-before' : 'col-vis-drop-after');
+                }
+            }
+            function onDragLeave(e) {
+                if (!group.contains(e.relatedTarget)) group.classList.remove('col-vis-drop-over');
+            }
+            function onDrop(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const field = e.dataTransfer.getData('text/col-vis-field') || e.dataTransfer.getData('text/plain');
+                temu2ClearColVisDropHints();
+                if (!field) return;
+                const menu = document.getElementById('column-dropdown-menu');
+                const li = menu ? menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]') : null;
+                if (!li) return;
+                const nextCat = group.dataset.category;
+                const fromGroup = li.closest('.col-vis-group');
+                const targetItem = e.target.closest('.col-vis-item');
+                let neighborField = null;
+                let after = true;
+
+                if (targetItem && targetItem !== li) {
+                    const rect = targetItem.getBoundingClientRect();
+                    after = (e.clientY - rect.top) >= (rect.height / 2);
+                    if (after) list.insertBefore(li, targetItem.nextSibling);
+                    else list.insertBefore(li, targetItem);
+                    neighborField = targetItem.dataset.field;
+                } else {
+                    list.appendChild(li);
+                    const others = Array.prototype.filter.call(list.querySelectorAll('.col-vis-item'), function(el) {
+                        return el !== li;
+                    });
+                    const last = others[others.length - 1];
+                    if (last) {
+                        neighborField = last.dataset.field;
+                        after = true;
+                    }
+                }
+
+                li.dataset.group = nextCat;
+                const cb = li.querySelector('input[type="checkbox"]');
+                if (cb) cb.dataset.group = nextCat;
+                const cats = loadTemu2ColCats();
+                cats[field] = nextCat;
+                saveTemu2ColCats(cats);
+                syncGroupHeaderCheckbox(fromGroup);
+                syncGroupHeaderCheckbox(group);
+                if (neighborField) temu2MoveColumnNextTo(field, neighborField, after);
+            }
+            [group, list].forEach(function(zone) {
+                zone.addEventListener('dragover', onDragOver);
+                zone.addEventListener('dragleave', onDragLeave);
+                zone.addEventListener('drop', onDrop);
+            });
+        }
+
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
             if (!menu) return;
@@ -5271,6 +5686,8 @@
                 .then(response => response.json())
                 .then(savedVisibility => {
                     const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                    const catOverrides = loadTemu2ColCats();
+                    const tableOrder = currentTemu2ColumnOrder();
 
                     const showAllLi = document.createElement("li");
                     showAllLi.className = "col-vis-full";
@@ -5307,16 +5724,28 @@
                         groupsWrap.appendChild(group);
                         lists[cat] = list;
                         groupEls[cat] = group;
+                        bindTemu2ColVisDropZone(group, list);
                     });
 
-                    table.getColumns().forEach(col => {
+                    const cols = table.getColumns().slice().sort(function(a, b) {
+                        const af = a.getField() || '';
+                        const bf = b.getField() || '';
+                        const ai = tableOrder.indexOf(af);
+                        const bi = tableOrder.indexOf(bf);
+                        return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
+                    });
+
+                    cols.forEach(col => {
                         const def = col.getDefinition();
                         if (!def.field || def.field === '_select') return;
                         if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
-                        const cat = classifyTemu2Column(def.field, title);
+                        let cat = catOverrides[def.field];
+                        if (COL_VIS_CATEGORY_KEYS.indexOf(cat) === -1) {
+                            cat = classifyTemu2Column(def.field, title);
+                        }
 
                         const li = document.createElement("li");
                         li.className = "col-vis-item";
@@ -5333,8 +5762,9 @@
 
                         label.appendChild(checkbox);
                         label.appendChild(document.createTextNode(title));
-                        label.title = title;
+                        label.title = title + ' (drag to reorder or move group)';
                         li.appendChild(label);
+                        bindTemu2ColVisDrag(li);
                         lists[cat].appendChild(li);
                     });
 
@@ -5379,7 +5809,7 @@
         }
 
         function applyColumnVisibilityFromServer() {
-            fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+            return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -5409,10 +5839,20 @@
         }
 
         table.on('tableBuilt', function() {
-            applyColumnVisibilityFromServer();
+            Promise.resolve(applyColumnVisibilityFromServer())
+                .then(function() { return applyColumnOrderFromServer(); })
+                .finally(function() {
+                    buildColumnDropdown();
+                    try { table.showColumn('spend'); } catch (e) {}
+                    enforceAlwaysHiddenColumns();
+                    if (typeof temu2AutofitColumns === 'function') temu2AutofitColumns();
+                });
+        });
+
+        table.on('columnMoved', function() {
+            if (temu2ApplyingColumnOrder) return;
+            scheduleTemu2ColumnOrderSave();
             buildColumnDropdown();
-            try { table.showColumn('spend'); } catch (e) {}
-            enforceAlwaysHiddenColumns();
         });
 
         table.on('dataLoaded', function(data) {
