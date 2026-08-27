@@ -47,8 +47,8 @@ class AmazonAdsPauseRuleApplicator
 
         $rule = AmazonAdsPauseRule::resolvedRule();
         if (! AmazonAdsPauseRule::hasBands($rule)) {
-            $stats['errors'][] = 'No pause/activate bands configured — Amazon was not updated.';
-            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (no bands). Refusing to enable/pause campaigns.');
+            $stats['errors'][] = 'No pause/activate bands or PR Dil% rule configured — Amazon was not updated.';
+            Log::warning('amazon:ads-pause-rule skipped: empty pause rule (no bands / PR off). Refusing to enable/pause campaigns.');
 
             return $stats;
         }

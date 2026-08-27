@@ -2751,6 +2751,76 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Persist Dil% auto-pause threshold (PR button). When `apply` is true, pause matching SP+SB campaigns.
+     */
+    public function savePrRule(Request $request): JsonResponse
+    {
+        try {
+            AmazonAdsPauseRule::persistPr([
+                'enabled' => $request->boolean('enabled', true),
+                'dil_above' => $request->input('dil_above', 100),
+                'dil_enabled' => $request->boolean('dil_enabled', true),
+                'price_below' => $request->input('price_below', 20),
+                'price_enabled' => $request->boolean('price_enabled', true),
+            ]);
+            AmazonAdsPauseRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save PR Dil% pause rule.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        $freshRule = AmazonAdsPauseRule::resolvedRule();
+        $pr = $freshRule['pr'] ?? AmazonAdsPauseRule::defaultPr();
+        $parts = [];
+        if (! empty($pr['enabled'])) {
+            if (! empty($pr['dil_enabled'])) {
+                $th = rtrim(rtrim(number_format((float) ($pr['dil_above'] ?? 100), 2, '.', ''), '0'), '.');
+                $parts[] = 'Dil% ≥ '.$th.'%';
+            }
+            if (! empty($pr['price_enabled'])) {
+                $th = rtrim(rtrim(number_format((float) ($pr['price_below'] ?? 20), 2, '.', ''), '0'), '.');
+                $parts[] = 'Price < $'.$th;
+            }
+        }
+        $payload = [
+            'message' => ! empty($pr['enabled']) && $parts !== []
+                ? 'PR saved. Campaigns matching '.implode(' or ', $parts).' will be paused.'
+                : 'PR saved and turned off. Dil% / price will not auto-pause from this rule.',
+            'rule' => $freshRule,
+            'status' => 200,
+            'timestamp' => time(),
+        ];
+
+        if ($request->boolean('apply')) {
+            try {
+                $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyAll(false);
+                $payload['message'] = 'PR saved and applied to Amazon.'
+                    .($parts !== [] ? ' Paused campaigns where '.implode(' or ', $parts).'.' : '');
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => 'PR saved, but Amazon apply failed.',
+                    'error' => $e->getMessage(),
+                    'rule' => $freshRule,
+                    'status' => 500,
+                ], 500);
+            }
+        }
+
+        return response()->json($payload)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
+    /**
      * SQL CASE for U7% bucket labels (must match grid / {@see utilizationPercentValuesFromLSlice} thresholds 66 / 99).
      */
     private static function sqlU7BucketCaseExpression(): string

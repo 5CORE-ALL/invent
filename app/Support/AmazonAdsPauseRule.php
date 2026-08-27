@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsPauseRule
 {
-    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v1';
+    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v3';
 
     public const ACTION_PAUSED = 'PAUSED';
 
@@ -24,7 +24,8 @@ final class AmazonAdsPauseRule
      * @return array{
      *     pricing: list<array{from: float, to: float, action: string, label: string}>,
      *     dil: list<array{from: float, to: float, action: string, label: string}>,
-     *     acos: list<array{from: float, to: float, action: string, label: string}>
+     *     acos: list<array{from: float, to: float, action: string, label: string}>,
+     *     pr: array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool}
      * }
      */
     public static function defaults(): array
@@ -33,6 +34,21 @@ final class AmazonAdsPauseRule
             'pricing' => [],
             'dil' => [],
             'acos' => [],
+            'pr' => self::defaultPr(),
+        ];
+    }
+
+    /**
+     * @return array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool}
+     */
+    public static function defaultPr(): array
+    {
+        return [
+            'enabled' => false,
+            'dil_above' => 100.0,
+            'dil_enabled' => true,
+            'price_below' => 20.0,
+            'price_enabled' => true,
         ];
     }
 
@@ -43,9 +59,12 @@ final class AmazonAdsPauseRule
     {
         $r = $rule ?? [];
 
+        $pr = is_array($r['pr'] ?? null) ? $r['pr'] : [];
+
         return ($r['pricing'] ?? []) !== []
             || ($r['dil'] ?? []) !== []
-            || ($r['acos'] ?? []) !== [];
+            || ($r['acos'] ?? []) !== []
+            || ! empty($pr['enabled']);
     }
 
     /**
@@ -103,6 +122,7 @@ final class AmazonAdsPauseRule
             'pricing' => self::normalizeBands($input['pricing'] ?? []),
             'dil' => self::normalizeBands($input['dil'] ?? []),
             'acos' => self::normalizeBands($input['acos'] ?? []),
+            'pr' => self::normalizePr($input['pr'] ?? self::defaultPr()),
         ];
     }
 
@@ -115,6 +135,10 @@ final class AmazonAdsPauseRule
             throw new \RuntimeException('Table amazon_ads_pause_rule_settings does not exist. Run migrations.');
         }
         $normalized = self::normalizeRule($rule);
+        $existing = self::loadResolvedRule();
+        if (! array_key_exists('pr', $rule)) {
+            $normalized['pr'] = $existing['pr'] ?? self::defaultPr();
+        }
         $row = AmazonAdsPauseRuleSetting::query()->orderBy('id')->first();
         if ($row === null) {
             AmazonAdsPauseRuleSetting::query()->create(['rule' => $normalized]);
@@ -122,6 +146,16 @@ final class AmazonAdsPauseRule
             $row->update(['rule' => $normalized]);
         }
         self::forgetResolvedCache();
+    }
+
+    /**
+     * @param  array{enabled?: mixed, dil_above?: mixed, dil_enabled?: mixed, price_below?: mixed, price_enabled?: mixed}  $pr
+     */
+    public static function persistPr(array $pr): void
+    {
+        $current = self::loadResolvedRule();
+        $current['pr'] = self::normalizePr($pr);
+        self::persistRule($current);
     }
 
     /**
@@ -156,6 +190,36 @@ final class AmazonAdsPauseRule
         $acosHit = self::firstMatchingBand($r['acos'] ?? [], $metrics['acos'] ?? null, 'ACOS%', '%');
         if ($acosHit !== null) {
             $hits[] = $acosHit;
+        }
+
+        $pr = is_array($r['pr'] ?? null) ? $r['pr'] : self::defaultPr();
+        if (! empty($pr['enabled'])) {
+            if (! empty($pr['dil_enabled'])) {
+                $dilVal = $metrics['dil'] ?? null;
+                $threshold = (float) ($pr['dil_above'] ?? 100);
+                if ($dilVal !== null && $dilVal !== '' && is_finite((float) $dilVal) && is_finite($threshold)
+                    && (float) $dilVal >= $threshold) {
+                    $shown = rtrim(rtrim(number_format((float) $dilVal, 2, '.', ''), '0'), '.');
+                    $th = rtrim(rtrim(number_format($threshold, 2, '.', ''), '0'), '.');
+                    $hits[] = [
+                        'action' => self::ACTION_PAUSED,
+                        'reason' => 'PR Dil% '.$shown.'% ≥ '.$th.'%',
+                    ];
+                }
+            }
+            if (! empty($pr['price_enabled'])) {
+                $priceVal = $metrics['price'] ?? null;
+                $priceMax = (float) ($pr['price_below'] ?? 20);
+                if ($priceVal !== null && $priceVal !== '' && is_finite((float) $priceVal) && is_finite($priceMax)
+                    && (float) $priceVal < $priceMax) {
+                    $shown = rtrim(rtrim(number_format((float) $priceVal, 2, '.', ''), '0'), '.');
+                    $th = rtrim(rtrim(number_format($priceMax, 2, '.', ''), '0'), '.');
+                    $hits[] = [
+                        'action' => self::ACTION_PAUSED,
+                        'reason' => 'PR Price $'.$shown.' < $'.$th,
+                    ];
+                }
+            }
         }
 
         $pauseHits = array_values(array_filter($hits, static fn (array $h): bool => $h['action'] === self::ACTION_PAUSED));
@@ -252,5 +316,53 @@ final class AmazonAdsPauseRule
         }
 
         return $out;
+    }
+
+    /**
+     * @param  mixed  $pr
+     * @return array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool}
+     */
+    private static function normalizePr(mixed $pr): array
+    {
+        $base = self::defaultPr();
+        if (! is_array($pr)) {
+            return $base;
+        }
+        $dil = self::normalizePrNumber($pr['dil_above'] ?? $pr['dilAbove'] ?? $base['dil_above'], 'PR Dil%', 0, 100000);
+        $price = self::normalizePrNumber($pr['price_below'] ?? $pr['priceBelow'] ?? $base['price_below'], 'PR Price', 0, 1000000);
+        $hasPriceFlag = array_key_exists('price_enabled', $pr) || array_key_exists('priceEnabled', $pr);
+
+        return [
+            'enabled' => self::normalizePrBool($pr['enabled'] ?? false),
+            'dil_above' => $dil,
+            'dil_enabled' => self::normalizePrBool($pr['dil_enabled'] ?? $pr['dilEnabled'] ?? true),
+            'price_below' => $price,
+            // Existing Dil-only PR rows stay Dil-only until Price is saved from the modal.
+            'price_enabled' => $hasPriceFlag
+                ? self::normalizePrBool($pr['price_enabled'] ?? $pr['priceEnabled'] ?? false)
+                : false,
+        ];
+    }
+
+    private static function normalizePrBool(mixed $value): bool
+    {
+        if (is_string($value)) {
+            return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
+        }
+
+        return (bool) $value;
+    }
+
+    private static function normalizePrNumber(mixed $value, string $label, float $min, float $max): float
+    {
+        if (! is_numeric($value) || ! is_finite((float) $value)) {
+            throw new \InvalidArgumentException($label.' must be a number.');
+        }
+        $n = (float) $value;
+        if ($n < $min || $n > $max) {
+            throw new \InvalidArgumentException($label.' must be between '.$min.' and '.$max.'.');
+        }
+
+        return $n;
     }
 }
