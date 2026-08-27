@@ -1502,7 +1502,7 @@ class TikTokShopService
             $this->client->setShopCipher($this->shopCipher);
         }
 
-        $productId = $this->resolveTikTokProductIdForIdentifier(trim($identifier));
+        $productId = $this->findTikTokProductIdBySku(trim($identifier));
         if (! $productId) {
             return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id.'];
         }
@@ -1924,9 +1924,9 @@ class TikTokShopService
             return ['success' => false, 'message' => 'TikTok Shop access token not available.'];
         }
 
-        $productId = $this->resolveTikTokProductIdForIdentifier(trim($identifier));
+        $productId = $this->findTikTokProductIdBySku(trim($identifier));
         if (! $productId) {
-            return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id.'];
+            return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id. Sync TikTok listings first.'];
         }
 
         $this->client->setAccessToken($this->accessToken);
@@ -1983,15 +1983,197 @@ class TikTokShopService
      */
     public function updateImages(string $identifier, array $images, string $mode = 'replace'): array
     {
-        $images = array_values(array_filter(array_map('trim', $images), fn ($v) => $v !== ''));
+        $images = array_slice(array_values(array_unique(array_filter(array_map('trim', $images), fn ($v) => $v !== ''))), 0, 9);
         if ($images === []) {
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
 
-        return $this->updateTikTokProductFields($identifier, [
+        foreach ($images as $url) {
+            if (! preg_match('#^https?://#i', $url)) {
+                return ['success' => false, 'message' => 'Invalid image URL (must be http/https).'];
+            }
+        }
+
+        $productId = $this->findTikTokProductIdBySku(trim($identifier));
+        if ($productId === null || $productId === '') {
+            return ['success' => false, 'message' => 'TikTok product ID not found for this SKU. Sync TikTok listings first.'];
+        }
+
+        $uris = [];
+        $errors = [];
+        foreach ($images as $i => $url) {
+            $uri = $this->tiktokUploadImageFromUrl($url, 'MAIN_IMAGE');
+            if ($uri === null || $uri === '') {
+                $errors[] = 'Image '.($i + 1).' upload failed.';
+                continue;
+            }
+            $uris[] = ['uri' => $uri];
+        }
+        if ($uris === []) {
+            return [
+                'success' => false,
+                'message' => 'TikTok image upload failed.'.($errors !== [] ? ' '.implode(' ', $errors) : ''),
+            ];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+        $tries = [
+            ['path' => "/product/202509/products/{$productId}/partial_edit", 'query' => []],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
+            ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => []],
+        ];
+        $bodies = [
+            ['main_images' => $uris],
+            ['main_images' => $uris, 'images' => $uris],
+        ];
+
+        $lastError = '';
+        foreach ($hosts as $base) {
+            foreach ($tries as $try) {
+                foreach ($bodies as $body) {
+                    try {
+                        $this->tiktokOpenApi('POST', $try['path'], $try['query'], $body, 60, false, $base);
+
+                        return [
+                            'success' => true,
+                            'message' => 'TikTok Shop product images updated.',
+                            'normalized_urls' => $images,
+                        ];
+                    } catch (\Throwable $e) {
+                        $lastError = $e->getMessage();
+                    }
+                }
+            }
+        }
+
+        $fallback = $this->updateTikTokProductFields($identifier, [
             'images' => array_map(fn ($url) => ['url' => $url], $images),
             'main_image' => ['url' => $images[0]],
+            'main_images' => $uris,
         ]);
+        if ($fallback['success'] ?? false) {
+            $fallback['normalized_urls'] = $images;
+
+            return $fallback;
+        }
+
+        return [
+            'success' => false,
+            'message' => $lastError !== '' ? $lastError : (string) ($fallback['message'] ?? 'TikTok Shop image update failed.'),
+        ];
+    }
+
+    /**
+     * Upload a public image URL to TikTok Shop and return the file uri.
+     */
+    protected function tiktokUploadImageFromUrl(string $imageUrl, string $useCase = 'MAIN_IMAGE'): ?string
+    {
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '' || ! $this->accessToken) {
+            return null;
+        }
+
+        try {
+            $imgResp = Http::withoutVerifying()->timeout(90)->get($imageUrl);
+            if (! $imgResp->successful()) {
+                Log::warning('TikTok image download failed', [
+                    'channel' => $this->configKey,
+                    'url' => mb_substr($imageUrl, 0, 300),
+                    'status' => $imgResp->status(),
+                ]);
+
+                return null;
+            }
+            $bytes = $imgResp->body();
+            if ($bytes === '') {
+                return null;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok image download exception', [
+                'channel' => $this->configKey,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        $pathName = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: 'image.jpg');
+        $filename = basename($pathName);
+        if (! preg_match('/\.(jpe?g|png|webp|gif)$/i', $filename)) {
+            $filename = preg_replace('/\.[a-z0-9]+$/i', '', $filename) ?: 'image';
+            $filename .= '.jpg';
+        }
+
+        $this->ensureShopCipher();
+        $hosts = array_values(array_unique(array_filter([
+            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
+            'https://open-api.tiktokglobalshop.com',
+            'https://open-api-us.tiktokglobalshop.com',
+        ])));
+        $paths = [
+            '/product/202309/images/upload',
+            '/product/202502/images/upload',
+        ];
+
+        foreach ($hosts as $base) {
+            foreach ($paths as $path) {
+                $query = [
+                    'app_key' => (string) $this->clientKey,
+                    'timestamp' => (string) time(),
+                ];
+                if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+                    $query['shop_cipher'] = $this->shopCipher;
+                }
+                $query['sign'] = $this->signTikTokRequest($path, $query, '');
+
+                try {
+                    $response = Http::withoutVerifying()
+                        ->withHeaders(['x-tts-access-token' => (string) $this->accessToken])
+                        ->timeout(120)
+                        ->attach('data', $bytes, $filename)
+                        ->post($base.$path.'?'.http_build_query($query), [
+                            'use_case' => $useCase,
+                        ]);
+                    $json = $response->json() ?? [];
+                    if ((int) ($json['code'] ?? -1) === 0) {
+                        $uri = trim((string) (
+                            $json['data']['uri']
+                            ?? $json['data']['url']
+                            ?? $json['data']['image_uri']
+                            ?? ''
+                        ));
+                        if ($uri !== '') {
+                            return $uri;
+                        }
+                    }
+                    Log::info('TikTok image upload attempt failed', [
+                        'channel' => $this->configKey,
+                        'base' => $base,
+                        'path' => $path,
+                        'code' => $json['code'] ?? null,
+                        'message' => $json['message'] ?? $response->body(),
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::info('TikTok image upload exception', [
+                        'channel' => $this->configKey,
+                        'path' => $path,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\AlibabaMetric;
+
 /**
  * Alibaba.com Open Platform — same IOP/REST signing model as AliExpress.
  *
@@ -65,5 +67,32 @@ class AlibabaApiService extends AliExpressApiService
         }
 
         return parent::getPendingMessageCount();
+    }
+
+    protected function channelImageMetricsMarketplaceKey(): string
+    {
+        return 'alibaba';
+    }
+
+    /**
+     * @return object{sku?: mixed, product_id?: mixed}|null
+     */
+    protected function findChannelMetricRow(string $trim): ?object
+    {
+        $row = AlibabaMetric::query()
+            ->where('sku', $trim)
+            ->orWhere('sku', strtoupper($trim))
+            ->orWhere('sku', strtolower($trim))
+            ->first();
+        if ($row) {
+            return $row;
+        }
+
+        return AlibabaMetric::query()->where('product_id', $trim)->first();
+    }
+
+    protected function findChannelProductIdFromDataView(string $trim): ?string
+    {
+        return null;
     }
 }

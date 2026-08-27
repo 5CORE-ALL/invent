@@ -13,9 +13,9 @@ class MarketplaceMetricsTableResolver
      * @var array<string, list<string>>
      */
     private const CANDIDATES = [
-        'alibaba' => ['aliexpress_metrics', 'aliexpress_metric', 'alibaba_metrics'],
+        'alibaba' => ['alibaba_metrics', 'aliexpress_metrics', 'aliexpress_metric'],
         'purchasing_power' => ['purchasing_power_metrics'],
-        'faire' => ['faire_metrics'],
+        'faire' => ['faire_metrics', 'faire_metric'],
         'ebay2' => ['ebay_2_metrics', 'ebay2_metrics'],
         'ebay3' => ['ebay_3_metrics', 'ebay3_metrics'],
     ];

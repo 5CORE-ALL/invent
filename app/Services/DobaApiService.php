@@ -210,20 +210,26 @@ class DobaApiService
             return (string) $metric->item_id;
         }
 
-        $metric = DobaMetric::where('sku', $id)
-            ->orWhere('sku', strtoupper($id))
-            ->orWhere('sku', strtolower($id))
+        $metric = DobaMetric::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($id)])
             ->first();
-
         if ($metric && $metric->item_id) {
             return (string) $metric->item_id;
         }
 
-        $view = DobaDataView::where('sku', $id)
-            ->orWhere('sku', strtoupper($id))
-            ->orWhere('sku', strtolower($id))
-            ->first();
+        $compact = preg_replace('/\s+/', '', $id) ?: $id;
+        if ($compact !== $id) {
+            $metric = DobaMetric::query()
+                ->whereRaw("LOWER(REPLACE(TRIM(sku), ' ', '')) = ?", [mb_strtolower($compact)])
+                ->first();
+            if ($metric && $metric->item_id) {
+                return (string) $metric->item_id;
+            }
+        }
 
+        $view = DobaDataView::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($id)])
+            ->first();
         if ($view && isset($view->doba_product_id)) {
             return (string) $view->doba_product_id;
         }
@@ -1254,9 +1260,16 @@ class DobaApiService
                 'Content-Type' => 'application/x-www-form-urlencoded',
             ];
 
-            $picList = array_map(fn ($url) => ['picUrl' => $url, 'picType' => 1], $images);
+            $picList = [];
+            foreach ($images as $i => $url) {
+                $picList[] = [
+                    'picUrl' => $url,
+                    'picType' => $i === 0 ? 1 : 2,
+                ];
+            }
             $payloadAttempts = [
                 ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'productPicList' => json_encode($picList)],
+                ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($picList)],
                 ['itemNo' => (string) $itemNo, 'mainPic' => $images[0], 'picList' => json_encode($images)],
                 ['itemNo' => (string) $itemNo, 'productImageList' => json_encode($images)],
             ];

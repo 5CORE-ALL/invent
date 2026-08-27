@@ -94,6 +94,42 @@ class FaireService
     }
 
     /**
+     * @return list<string>
+     */
+    protected function faireMetricsTables(): array
+    {
+        $tables = [];
+        foreach (['faire_metrics', 'faire_metric'] as $table) {
+            if (Schema::hasTable($table)) {
+                $tables[] = $table;
+            }
+        }
+
+        return $tables;
+    }
+
+    protected function resolveFaireProductId(string $identifier): ?string
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return null;
+        }
+
+        foreach ($this->faireMetricsTables() as $table) {
+            $row = $this->findMetricRowBySkuOrAlternateIds($table, $identifier, ['product_id', 'faire_product_id']);
+            if (! $row) {
+                continue;
+            }
+            $id = trim((string) ($row->product_id ?? $row->faire_product_id ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return $this->getProductIdBySku($identifier) ?: null;
+    }
+
+    /**
      * @return array{success:bool,message:string,response?:mixed}
      */
     public function updateTitle(string $sku, string $title): array
@@ -109,7 +145,7 @@ class FaireService
             return ['success' => false, 'message' => 'Faire API token is missing'];
         }
 
-        $productId = $this->getProductIdBySku($sku);
+        $productId = $this->resolveFaireProductId($sku);
         if (! $productId) {
             Log::error('❌ Faire push failed', ['sku' => $sku, 'error' => 'Product not found by SKU']);
             return ['success' => false, 'message' => "Faire product not found for SKU {$sku}"];
@@ -166,18 +202,7 @@ class FaireService
             return ['success' => false, 'message' => 'SKU (or Faire product id) and bullet points are required.'];
         }
 
-        $productId = null;
-        if (Schema::hasTable('faire_metrics')) {
-            $row = $this->findMetricRowBySkuOrAlternateIds('faire_metrics', $identifier, ['product_id', 'faire_product_id']);
-            if ($row && ! empty($row->product_id)) {
-                $productId = (string) $row->product_id;
-            }
-        }
-
-        if (! $productId) {
-            $productId = $this->getProductIdBySku(trim($identifier));
-        }
-
+        $productId = $this->resolveFaireProductId($identifier);
         if (! $productId) {
             return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
         }
@@ -242,16 +267,7 @@ class FaireService
             return ['success' => false, 'message' => 'Faire API token is missing'];
         }
 
-        $productId = null;
-        if (Schema::hasTable('faire_metrics')) {
-            $row = $this->findMetricRowBySkuOrAlternateIds('faire_metrics', $identifier, ['product_id', 'faire_product_id']);
-            if ($row && ! empty($row->product_id)) {
-                $productId = (string) $row->product_id;
-            }
-        }
-        if (! $productId) {
-            $productId = $this->getProductIdBySku(trim($identifier));
-        }
+        $productId = $this->resolveFaireProductId($identifier);
         if (! $productId) {
             return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
         }
@@ -311,16 +327,7 @@ class FaireService
             return ['success' => false, 'message' => 'Faire API token is missing'];
         }
 
-        $productId = null;
-        if (Schema::hasTable('faire_metrics')) {
-            $row = $this->findMetricRowBySkuOrAlternateIds('faire_metrics', $identifier, ['product_id', 'faire_product_id']);
-            if ($row && ! empty($row->product_id)) {
-                $productId = (string) $row->product_id;
-            }
-        }
-        if (! $productId) {
-            $productId = $this->getProductIdBySku(trim($identifier));
-        }
+        $productId = $this->resolveFaireProductId($identifier);
         if (! $productId) {
             return ['success' => false, 'message' => 'Faire product not found for SKU or marketplace product id.'];
         }
@@ -331,8 +338,9 @@ class FaireService
             'Accept' => 'application/json',
         ];
         $payloadAttempts = [
-            ['image_url' => $images[0], 'image_urls' => $images, 'images' => $images],
             ['images' => array_map(fn ($url) => ['url' => $url], $images)],
+            ['image_url' => $images[0], 'images' => array_map(fn ($url) => ['url' => $url], $images)],
+            ['image_url' => $images[0], 'image_urls' => $images, 'images' => $images],
         ];
 
         $baseUrl = 'https://www.faire.com/external-api/v2';
@@ -341,8 +349,7 @@ class FaireService
             try {
                 $res = Http::withoutVerifying()->withHeaders($headers)->timeout(45)->patch("{$baseUrl}/products/{$productId}", $payload);
                 if ($res->successful()) {
-                    $sku = trim($identifier);
-                    $this->saveImageUrlsToMetricsRow('faire_metrics', $sku, $images);
+                    $this->saveFaireImageMetrics(trim($identifier), $images);
 
                     return ['success' => true, 'message' => 'Faire product images updated.', 'normalized_urls' => $images];
                 }
@@ -352,7 +359,32 @@ class FaireService
             }
         }
 
+        try {
+            $res = Http::withoutVerifying()->withHeaders($headers)->timeout(60)->post(
+                "{$baseUrl}/products/{$productId}/images",
+                ['images' => array_map(fn ($url) => ['url' => $url], $images)]
+            );
+            if ($res->successful()) {
+                $this->saveFaireImageMetrics(trim($identifier), $images);
+
+                return ['success' => true, 'message' => 'Faire product images updated.', 'normalized_urls' => $images];
+            }
+            $lastMessage = 'Faire update failed: '.$res->body();
+        } catch (\Throwable $e) {
+            $lastMessage = $e->getMessage();
+        }
+
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * @param  list<string>  $images
+     */
+    protected function saveFaireImageMetrics(string $sku, array $images): void
+    {
+        foreach ($this->faireMetricsTables() as $table) {
+            $this->saveImageUrlsToMetricsRow($table, $sku, $images);
+        }
     }
 
 }
