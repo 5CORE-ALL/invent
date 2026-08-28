@@ -15,6 +15,10 @@ class ProductRawImage extends Model
 
     public const KIND_BATCH_COO_AI = 'batch_coo_ai';
 
+    public const KIND_HERO_2 = 'hero_2';
+
+    public const KIND_HERO_2_AI = 'hero_2_ai';
+
     public const KIND_PKG = 'pkg';
 
     public const KIND_PKG_AI = 'pkg_ai';
@@ -23,6 +27,7 @@ class ProductRawImage extends Model
     {
         return match ($kind) {
             self::KIND_BATCH_COO, self::KIND_BATCH_COO_AI => self::KIND_BATCH_COO_AI,
+            self::KIND_HERO_2, self::KIND_HERO_2_AI => self::KIND_HERO_2_AI,
             self::KIND_PKG, self::KIND_PKG_AI => self::KIND_PKG_AI,
             default => self::KIND_RAW_AI,
         };
@@ -32,6 +37,7 @@ class ProductRawImage extends Model
     {
         return match ($kind) {
             self::KIND_BATCH_COO, self::KIND_BATCH_COO_AI => self::KIND_BATCH_COO,
+            self::KIND_HERO_2, self::KIND_HERO_2_AI => self::KIND_HERO_2,
             self::KIND_PKG, self::KIND_PKG_AI => self::KIND_PKG,
             default => self::KIND_RAW,
         };
@@ -39,7 +45,7 @@ class ProductRawImage extends Model
 
     public static function isAiKind(string $kind): bool
     {
-        return in_array($kind, [self::KIND_RAW_AI, self::KIND_BATCH_COO_AI, self::KIND_PKG_AI], true);
+        return in_array($kind, [self::KIND_RAW_AI, self::KIND_BATCH_COO_AI, self::KIND_HERO_2_AI, self::KIND_PKG_AI], true);
     }
 
     public function isAiGenerated(): bool

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\ProductMasterController as PMController;
 use App\Models\ProductMaster;
 use App\Models\ProductRawImage;
 use App\Models\ProductRawImageAiPrompt;
@@ -10,11 +11,13 @@ use App\Models\ShopifySku;
 use App\Services\RawImagesAiImageService;
 use App\Support\Badges\RawImagesBadgeCalculator;
 use App\Support\Badges\RawImagesBatchCooBadgeCalculator;
+use App\Support\Badges\RawImagesHero2BadgeCalculator;
 use App\Support\OpenAiRequest;
 use App\Support\VideoThumbnailUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -32,6 +35,8 @@ class RawImagesController extends Controller
 
     private const DEFAULT_AI_PROMPT = "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
 
+    private const DEFAULT_HERO_2_AI_PROMPT = "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
+
     private const DEFAULT_PKG_AI_PROMPT = "Make a raw packaging photo from the Hero image and put it in the Pkg Raw column.\nThe size should be 2000x2000px.\nShow the product as a realistic packaged / item-pkg raw shoot, natural lighting, no text, no watermark.\nIf the product is dark then use a light background or vice-versa.";
 
     public function index(Request $request): View
@@ -43,14 +48,9 @@ class RawImagesController extends Controller
     {
         $kind = $this->kindFromRequest($request);
 
-        $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
-
-        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
-            return $this->normalizeSku($item->sku);
-        });
+        $baseResponse = app(PMController::class)->getViewProductData($request);
+        $baseData = $baseResponse->getData(true);
+        $products = $baseData['data'] ?? [];
 
         $rawBySku = ProductRawImage::query()
             ->whereIn('kind', [$kind, ProductRawImage::aiKindFor($kind), ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI])
@@ -60,56 +60,40 @@ class RawImagesController extends Controller
 
         $hasBarcodeColumn = Schema::hasColumn('product_master', 'barcode');
 
+        $pmExtra = [];
+        if ($hasBarcodeColumn) {
+            $pmExtra = ProductMaster::query()
+                ->get(['sku', 'barcode'])
+                ->keyBy(fn (ProductMaster $p) => $this->normalizeSku($p->sku));
+        }
+
         $result = [];
-        foreach ($products as $product) {
-            $normalizedSku = $this->normalizeSku($product->sku);
-
-            $row = [
-                'id' => $product->id,
-                'Parent' => $product->parent,
-                'SKU' => $product->sku,
-            ];
-
-            if (is_array($product->Values)) {
-                $row = array_merge($row, $product->Values);
-            } elseif (is_string($product->Values)) {
-                $values = json_decode($product->Values, true);
-                if (is_array($values)) {
-                    $row = array_merge($row, $values);
-                }
+        foreach ($products as $row) {
+            if (! is_array($row)) {
+                $row = (array) $row;
             }
 
-            if (isset($shopifySkus[$normalizedSku])) {
-                $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
-                $row['ovl30'] = $row['shopify_quantity'];
+            $normalizedSku = $this->normalizeSku($row['SKU'] ?? null);
+            $inv = (float) ($row['shopify_inv'] ?? 0);
+            $ovl30 = (float) ($row['shopify_quantity'] ?? 0);
+            $row['ovl30'] = $ovl30;
+            $row['dil'] = ($inv > 0) ? round(($ovl30 / $inv) * 100, 2) : 0;
+            $row['image_path'] = $this->normalizePublicImageUrl($row['image_path'] ?? null);
 
-                $inv = $row['shopify_inv'];
-                $ovl30 = $row['shopify_quantity'];
-                $row['dil'] = ($inv > 0) ? round(($ovl30 / $inv) * 100, 2) : 0;
+            $heroImages = $this->collectHeroImagesFromRow($row);
+            $hero = $heroImages[0] ?? null;
+            $row['hero_image'] = $hero;
+            $row['hero_thumb'] = $this->localCachedThumbUrl($hero) ?: $hero;
+            $row['ebay_hero_images'] = array_map(function (string $url) {
+                $thumb = $this->localCachedThumbUrl($url) ?: $url;
 
-                $shopifyImage = $shopifyData->image_src ?? null;
-            } else {
-                $row['shopify_inv'] = 0;
-                $row['shopify_quantity'] = 0;
-                $row['ovl30'] = 0;
-                $row['dil'] = 0;
-                $shopifyImage = null;
-            }
+                return ['url' => $url, 'thumb_url' => $thumb];
+            }, $heroImages);
+            $row['ebay_hero_image'] = $hero;
+            $row['ebay_hero_thumb'] = $row['hero_thumb'];
+            $row['ebay_hero_image_count'] = count($heroImages);
 
-            $localImage = ! empty($row['image_path']) && $row['image_path'] !== '-'
-                ? $row['image_path']
-                : null;
-            $row['hero_image'] = $this->resolveHeroImageUrl($product, $row, $shopifyImage, $localImage);
-            $row['hero_thumb'] = $this->localCachedThumbUrl($row['hero_image']) ?: $row['hero_image'];
-            if ($shopifyImage) {
-                $row['image_path'] = $this->normalizePublicImageUrl($shopifyImage) ?: $row['hero_image'];
-            } elseif ($localImage) {
-                $row['image_path'] = $this->normalizePublicImageUrl($localImage) ?: $row['hero_image'];
-            } else {
-                $row['image_path'] = $row['hero_image'];
-            }
+            $extra = $pmExtra[$normalizedSku] ?? null;
 
             $images = $rawBySku[$normalizedSku] ?? collect();
             $pkgImages = $images->filter(fn (ProductRawImage $img) => in_array((string) $img->kind, [ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI], true))->values();
@@ -135,16 +119,13 @@ class RawImagesController extends Controller
             $row['has_pkg_ai_image'] = $pkgAiImages->isNotEmpty();
             $row['pkg_ai_image_url'] = $pkgAiImages->first()?->url;
 
-            $values = is_array($product->Values)
-                ? $product->Values
-                : (is_array(json_decode((string) $product->Values, true)) ? json_decode((string) $product->Values, true) : []);
-            $upc = $this->extractUpcFromValues($values);
+            $upc = $this->extractUpcFromValues($row);
             $storedBarcode = $hasBarcodeColumn
-                ? trim((string) ($product->barcode ?? ''))
-                : '';
+                ? trim((string) ($extra?->barcode ?? $row['barcode'] ?? ''))
+                : trim((string) ($row['barcode'] ?? ''));
             $row['upc'] = $upc;
             $row['barcode'] = $storedBarcode !== '' ? $storedBarcode : $upc;
-            $row['barcode_image'] = $this->normalizePublicImageUrl($values['barcode_image'] ?? null);
+            $row['barcode_image'] = $this->normalizePublicImageUrl($row['barcode_image'] ?? null);
 
             $result[] = $row;
         }
@@ -430,7 +411,7 @@ class RawImagesController extends Controller
             return response()->json(['success' => false, 'message' => 'Image files were missing on disk.'], 404);
         }
 
-        $fileName = 'raw-images-'.date('Y-m-d-His').'.zip';
+        $fileName = $this->zipFilePrefix($kind).'-'.date('Y-m-d-His').'.zip';
 
         return response()->streamDownload(function () use ($tmp) {
             readfile($tmp);
@@ -547,9 +528,11 @@ class RawImagesController extends Controller
             //
         }
 
-        return $kind === ProductRawImage::KIND_PKG
-            ? self::DEFAULT_PKG_AI_PROMPT
-            : self::DEFAULT_AI_PROMPT;
+        return match ($kind) {
+            ProductRawImage::KIND_PKG => self::DEFAULT_PKG_AI_PROMPT,
+            ProductRawImage::KIND_HERO_2 => self::DEFAULT_HERO_2_AI_PROMPT,
+            default => self::DEFAULT_AI_PROMPT,
+        };
     }
 
     private function persistAiPrompt(string $kind, string $prompt): void
@@ -863,9 +846,11 @@ class RawImagesController extends Controller
     {
         try {
             return (int) Cache::remember(self::sidebarCacheKey($kind), 300, function () use ($kind) {
-                $calculator = $kind === ProductRawImage::KIND_BATCH_COO
-                    ? RawImagesBatchCooBadgeCalculator::class
-                    : RawImagesBadgeCalculator::class;
+                $calculator = match ($kind) {
+                    ProductRawImage::KIND_BATCH_COO => RawImagesBatchCooBadgeCalculator::class,
+                    ProductRawImage::KIND_HERO_2 => RawImagesHero2BadgeCalculator::class,
+                    default => RawImagesBadgeCalculator::class,
+                };
 
                 return (int) ($calculator::calculate()['missing'] ?? 0);
             });
@@ -884,6 +869,7 @@ class RawImagesController extends Controller
 
         Cache::forget(self::sidebarCacheKey(ProductRawImage::KIND_RAW));
         Cache::forget(self::sidebarCacheKey(ProductRawImage::KIND_BATCH_COO));
+        Cache::forget(self::sidebarCacheKey(ProductRawImage::KIND_HERO_2));
     }
 
     /**
@@ -891,10 +877,27 @@ class RawImagesController extends Controller
      */
     private function pageConfig(string $kind): array
     {
+        $labels = $this->pageLabels($kind);
+
+        if ($kind === ProductRawImage::KIND_HERO_2) {
+            return array_merge($labels, [
+                'kind' => $kind,
+                'dataUrl' => route('raw.images.hero.2.data'),
+                'uploadUrl' => route('raw.images.hero.2.upload'),
+                'destroyBaseUrl' => url('/raw-images-hero-2'),
+                'bulkImportUrl' => route('raw.images.hero.2.bulk.import'),
+                'downloadUrl' => route('raw.images.hero.2.download'),
+                'templateUrl' => route('raw.images.hero.2.template'),
+                'aiPromptUrl' => route('raw.images.hero.2.ai.prompt'),
+                'aiPromptSaveUrl' => route('raw.images.hero.2.ai.prompt.save'),
+                'cachedImageUrl' => route('raw.images.cached.image'),
+                'savedAiPrompt' => $this->savedAiPrompt($kind),
+                'savedAiPkgPrompt' => $this->savedAiPrompt(ProductRawImage::KIND_PKG),
+            ]);
+        }
+
         if ($kind === ProductRawImage::KIND_BATCH_COO) {
-            return [
-                'pageTitle' => 'Raw Images (Batch +COO)',
-                'pageSubtitle' => 'Upload batch and COO raw image files by SKU',
+            return array_merge($labels, [
                 'kind' => $kind,
                 'dataUrl' => route('raw.images.batch.coo.data'),
                 'uploadUrl' => route('raw.images.batch.coo.upload'),
@@ -907,12 +910,10 @@ class RawImagesController extends Controller
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
                 'savedAiPkgPrompt' => $this->savedAiPrompt(ProductRawImage::KIND_PKG),
-            ];
+            ]);
         }
 
-        return [
-            'pageTitle' => 'Raw Images',
-            'pageSubtitle' => 'Upload original raw image files by SKU',
+        return array_merge($labels, [
             'kind' => ProductRawImage::KIND_RAW,
             'dataUrl' => route('raw.images.data'),
             'uploadUrl' => route('raw.images.upload'),
@@ -925,22 +926,80 @@ class RawImagesController extends Controller
             'cachedImageUrl' => route('raw.images.cached.image'),
             'savedAiPrompt' => $this->savedAiPrompt($kind),
             'savedAiPkgPrompt' => $this->savedAiPrompt(ProductRawImage::KIND_PKG),
+        ]);
+    }
+
+    /**
+     * @return array{pageTitle: string, pageSubtitle: string, manualColumnTitle: string, aiColumnTitle: string, missingBadgeLabel: string, zipFileName: string}
+     */
+    private function pageLabels(string $kind): array
+    {
+        if ($kind === ProductRawImage::KIND_HERO_2) {
+            return [
+                'pageTitle' => 'Hero Image 2',
+                'pageSubtitle' => 'Upload hero image 2 files by SKU',
+                'manualColumnTitle' => 'Hero Image 2',
+                'aiColumnTitle' => 'Hero Image 2 AI',
+                'missingBadgeLabel' => 'Missing Hero Image 2',
+                'zipFileName' => 'hero-image-2.zip',
+            ];
+        }
+
+        if ($kind === ProductRawImage::KIND_BATCH_COO) {
+            return [
+                'pageTitle' => 'Raw Images (Batch +COO)',
+                'pageSubtitle' => 'Upload batch and COO raw image files by SKU',
+                'manualColumnTitle' => 'Raw Images',
+                'aiColumnTitle' => 'Raw Images AI',
+                'missingBadgeLabel' => 'Missing Raw Images',
+                'zipFileName' => 'raw-images.zip',
+            ];
+        }
+
+        return [
+            'pageTitle' => 'Raw Images',
+            'pageSubtitle' => 'Upload original raw image files by SKU',
+            'manualColumnTitle' => 'Raw Images',
+            'aiColumnTitle' => 'Raw Images AI',
+            'missingBadgeLabel' => 'Missing Raw Images',
+            'zipFileName' => 'raw-images.zip',
         ];
     }
 
     private function kindFromRequest(Request $request): string
     {
         $name = (string) ($request->route()?->getName() ?? '');
+        if (str_contains($name, 'hero.2')) {
+            return ProductRawImage::KIND_HERO_2;
+        }
         if (str_contains($name, 'batch.coo')) {
             return ProductRawImage::KIND_BATCH_COO;
         }
 
         $kind = (string) $request->input('kind', '');
-        if (in_array($kind, [ProductRawImage::KIND_RAW, ProductRawImage::KIND_BATCH_COO], true)) {
+        if (in_array($kind, [ProductRawImage::KIND_RAW, ProductRawImage::KIND_BATCH_COO, ProductRawImage::KIND_HERO_2], true)) {
             return $kind;
         }
 
         return ProductRawImage::KIND_RAW;
+    }
+
+    private function zipFilePrefix(string $kind): string
+    {
+        return match ($kind) {
+            ProductRawImage::KIND_BATCH_COO => 'raw-images-batch-coo',
+            ProductRawImage::KIND_HERO_2 => 'hero-image-2',
+            default => 'raw-images',
+        };
+    }
+
+    private function pageShortName(string $kind): string
+    {
+        return match ($kind) {
+            ProductRawImage::KIND_BATCH_COO => 'Batch +COO raw images',
+            ProductRawImage::KIND_HERO_2 => 'hero image 2',
+            default => 'raw images',
+        };
     }
 
     private function imageKindFromRequest(Request $request): string
@@ -984,20 +1043,180 @@ class RawImagesController extends Controller
     }
 
     /**
+     * Every hero image on this row from the CP Master / Raw Images data table
+     * (main_image, image1–image20, image_path). Same source as the Hero Image column.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    private function collectHeroImagesFromRow(array $row): array
+    {
+        $urls = [];
+        $seen = [];
+        $add = function (mixed $value) use (&$urls, &$seen): void {
+            $url = $this->normalizePublicImageUrl($value);
+            if (! $url) {
+                return;
+            }
+            $key = strtolower($url);
+            if (isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $urls[] = $url;
+        };
+
+        $add($row['main_image'] ?? null);
+        for ($i = 1; $i <= 20; $i++) {
+            $add($row['image'.$i] ?? null);
+        }
+        $add($row['image_url'] ?? null);
+        $add($row['image_path'] ?? null);
+
+        return $urls;
+    }
+
+    /**
+     * Same source as Listing Manager / Image Master / CP Master: main_image, image1+, image_path.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function resolveHeroImageFromRow(array $row): ?string
+    {
+        $images = $this->collectHeroImagesFromRow($row);
+
+        return $images[0] ?? null;
+    }
+
+    /**
      * Same source as Listing Manager / Image Master: main_image, image1+, Values.image_path, Shopify.
      */
     private function resolveHeroImageUrl(ProductMaster $product, array $row, ?string $shopifyImage, ?string $localImage): ?string
     {
+        $merged = $row;
         foreach (['main_image', 'image_url', 'image1', 'image2', 'image3', 'image4', 'image5', 'image6'] as $field) {
-            $url = $this->normalizePublicImageUrl($product->{$field} ?? null)
-                ?: $this->normalizePublicImageUrl($row[$field] ?? null);
+            if (empty($merged[$field]) && ! empty($product->{$field})) {
+                $merged[$field] = $product->{$field};
+            }
+        }
+        if (empty($merged['image_path'])) {
+            $merged['image_path'] = $localImage ?: $shopifyImage;
+        }
+
+        return $this->resolveHeroImageFromRow($merged)
+            ?: $this->normalizePublicImageUrl($shopifyImage);
+    }
+
+    /**
+     * First gallery URL stored on eBay 1 (image_urls / image_master_json), keyed by normalized SKU.
+     *
+     * @return array<string, string>
+     */
+    private function ebayHeroImageBySku(): array
+    {
+        try {
+            if (! Schema::hasTable('ebay_metrics') || ! Schema::hasColumn('ebay_metrics', 'sku')) {
+                return [];
+            }
+
+            $select = ['sku'];
+            $hasUrls = Schema::hasColumn('ebay_metrics', 'image_urls');
+            $hasJson = Schema::hasColumn('ebay_metrics', 'image_master_json');
+            if ($hasUrls) {
+                $select[] = 'image_urls';
+            }
+            if ($hasJson) {
+                $select[] = 'image_master_json';
+            }
+            if (count($select) === 1) {
+                return [];
+            }
+
+            $map = [];
+            foreach (DB::table('ebay_metrics')->select($select)->whereNotNull('sku')->get() as $row) {
+                $sku = $this->normalizeSku($row->sku ?? null);
+                if ($sku === '' || isset($map[$sku])) {
+                    continue;
+                }
+                $url = $this->firstImageUrlFromPayload($hasUrls ? ($row->image_urls ?? null) : null)
+                    ?: $this->firstImageUrlFromPayload($hasJson ? ($row->image_master_json ?? null) : null);
+                if ($url) {
+                    $map[$sku] = $url;
+                }
+            }
+
+            return $map;
+        } catch (\Throwable $e) {
+            Log::warning('Raw images: load eBay hero images failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Image Master eBay main slot on CP Master, then the CP Master Images column.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function resolveEbayHeroFromRow(array $row, mixed $mainByMarketplaceJson = null): ?string
+    {
+        $images = [];
+        for ($i = 1; $i <= 20; $i++) {
+            $url = $this->normalizePublicImageUrl($row['image'.$i] ?? null);
             if ($url) {
-                return $url;
+                $images[] = $url;
+            }
+        }
+        $main = $this->normalizePublicImageUrl($row['main_image'] ?? null);
+        if ($main && ($images === [] || $images[0] !== $main)) {
+            array_unshift($images, $main);
+        }
+
+        $idx = 0;
+        $raw = trim((string) $mainByMarketplaceJson);
+        if ($raw !== '' && $raw !== '{}') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded) && isset($decoded['ebay'])) {
+                $idx = max(0, (int) $decoded['ebay']);
             }
         }
 
-        return $this->normalizePublicImageUrl($localImage)
-            ?: $this->normalizePublicImageUrl($shopifyImage);
+        return ($images[$idx] ?? $images[0] ?? null)
+            ?: $this->normalizePublicImageUrl($row['image_path'] ?? null);
+    }
+
+    private function firstImageUrlFromPayload(mixed $payload): ?string
+    {
+        if (is_array($payload)) {
+            foreach ($payload as $item) {
+                if (is_array($item)) {
+                    $nested = $this->firstImageUrlFromPayload($item['url'] ?? $item['src'] ?? $item['image'] ?? null);
+                    if ($nested) {
+                        return $nested;
+                    }
+
+                    continue;
+                }
+                $url = $this->normalizePublicImageUrl($item);
+                if ($url) {
+                    return $url;
+                }
+            }
+
+            return $this->firstImageUrlFromPayload($payload['urls'] ?? $payload['images'] ?? $payload['url'] ?? null);
+        }
+
+        $raw = trim((string) $payload);
+        if ($raw === '' || $raw === '[]' || $raw === '{}') {
+            return null;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return $this->firstImageUrlFromPayload($decoded);
+        }
+
+        return $this->normalizePublicImageUrl($raw);
     }
 
     /**
@@ -1470,7 +1689,7 @@ class RawImagesController extends Controller
     private function matchRawImagesPromptLocally(string $prompt, string $kind, array $selectedSkus): ?array
     {
         $text = strtolower($prompt);
-        $page = $kind === ProductRawImage::KIND_BATCH_COO ? 'Batch +COO raw images' : 'raw images';
+        $page = $this->pageShortName($kind);
 
         if (preg_match('/\b(dropbox|from dropbox)\b/', $text)) {
             return [
@@ -1544,7 +1763,7 @@ class RawImagesController extends Controller
             return null;
         }
 
-        $page = $kind === ProductRawImage::KIND_BATCH_COO ? 'Raw Images (Batch +COO)' : 'Raw Images';
+        $page = $this->pageLabels($kind)['pageTitle'];
         $schema = 'Return JSON only: {"reply":"short message","action":{"type":"filter_missing|filter_all|search|open_sheet|open_dropbox|download_selected|copy_skus|copy_urls|copy_missing|none","query":"","field":"general|sku|parent"}}';
 
         try {

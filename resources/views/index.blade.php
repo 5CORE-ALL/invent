@@ -299,6 +299,12 @@
     $riBatchRow = $riBatchPack['row'];
     $riBatch = $riBatchPack['data'];
 
+    $riHero2Pack = $loadPageBadges(\App\Support\Badges\RawImagesHero2BadgeCalculator::class, [
+        'sku_count' => 0, 'with_raw_image' => 0, 'missing' => 0,
+    ]);
+    $riHero2Row = $riHero2Pack['row'];
+    $riHero2 = $riHero2Pack['data'];
+
     $vamPack = $loadPageBadges(\App\Support\Badges\VideoAdsMasterBadgeCalculator::class, [
         'required' => 0, 'sku' => 0, 'parent' => 0, 'group' => 0, 'available' => 0, 'missing' => 0,
     ]);
@@ -360,6 +366,8 @@
         $kpi('MISSING RAW IMAGES:', 'raw-images', 'missing', $ri['missing'] ?? null, 'Missing Raw Images'),
         $kpi('BATCH+COO SKUS:', 'raw-images-batch-coo', 'sku_count', $riBatch['sku_count'] ?? null, 'Batch +COO SKUs'),
         $kpi('MISSING BATCH+COO:', 'raw-images-batch-coo', 'missing', $riBatch['missing'] ?? null, 'Missing Batch +COO'),
+        $kpi('HERO IMAGE 2 SKUS:', 'raw-images-hero-2', 'sku_count', $riHero2['sku_count'] ?? null, 'Hero Image 2 SKUs'),
+        $kpi('MISSING HERO IMAGE 2:', 'raw-images-hero-2', 'missing', $riHero2['missing'] ?? null, 'Missing Hero Image 2'),
         $kpi('REQUIRED:', 'video-ads-master', 'required', $vam['required'] ?? null, 'Required'),
         $kpi('SKU:', 'video-ads-master', 'sku', $vam['sku'] ?? null, 'SKU targets'),
         $kpi('PARENT:', 'video-ads-master', 'parent', $vam['parent'] ?? null, 'Parent targets'),
@@ -579,6 +587,8 @@
             <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('raw.images') }}'" role="button" title="SKUs missing a raw image">Missing Raw Images: {{ number_format((int) ($ri['missing'] ?? 0)) }}</span>
             <span class="badge fs-6 p-2" style="background-color:#b45309;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('raw.images.batch.coo') }}'" role="button" title="Raw Images (Batch +COO) — SKU count">Batch +COO SKUs: {{ number_format((int) ($riBatch['sku_count'] ?? 0)) }}</span>
             <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('raw.images.batch.coo') }}'" role="button" title="SKUs missing Batch +COO raw images">Missing Batch +COO: {{ number_format((int) ($riBatch['missing'] ?? 0)) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#0f766e;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ \Illuminate\Support\Facades\Route::has('raw.images.hero.2') ? route('raw.images.hero.2') : url('/raw-images-hero-2') }}'" role="button" title="Hero Image 2 — SKU count">Hero Image 2 SKUs: {{ number_format((int) ($riHero2['sku_count'] ?? 0)) }}</span>
+            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ \Illuminate\Support\Facades\Route::has('raw.images.hero.2') ? route('raw.images.hero.2') : url('/raw-images-hero-2') }}'" role="button" title="SKUs missing Hero Image 2">Missing Hero Image 2: {{ number_format((int) ($riHero2['missing'] ?? 0)) }}</span>
         </div>
     </div>
 </div>
