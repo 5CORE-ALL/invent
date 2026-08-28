@@ -59,6 +59,7 @@ class RawImagesController extends Controller
             ->groupBy(fn (ProductRawImage $img) => $this->normalizeSku($img->sku));
 
         $hasBarcodeColumn = Schema::hasColumn('product_master', 'barcode');
+        $ebayGalleryBySku = $this->ebayGalleryBySku();
 
         $pmExtra = [];
         if ($hasBarcodeColumn) {
@@ -84,14 +85,16 @@ class RawImagesController extends Controller
             $hero = $heroImages[0] ?? null;
             $row['hero_image'] = $hero;
             $row['hero_thumb'] = $this->localCachedThumbUrl($hero) ?: $hero;
+
+            $ebayUrls = $ebayGalleryBySku[$normalizedSku] ?? [];
             $row['ebay_hero_images'] = array_map(function (string $url) {
                 $thumb = $this->localCachedThumbUrl($url) ?: $url;
 
                 return ['url' => $url, 'thumb_url' => $thumb];
-            }, $heroImages);
-            $row['ebay_hero_image'] = $hero;
-            $row['ebay_hero_thumb'] = $row['hero_thumb'];
-            $row['ebay_hero_image_count'] = count($heroImages);
+            }, $ebayUrls);
+            $row['ebay_hero_image'] = $ebayUrls[0] ?? null;
+            $row['ebay_hero_thumb'] = $row['ebay_hero_images'][0]['thumb_url'] ?? null;
+            $row['ebay_hero_image_count'] = count($ebayUrls);
 
             $extra = $pmExtra[$normalizedSku] ?? null;
 
@@ -210,6 +213,50 @@ class RawImagesController extends Controller
             'message' => count($uploaded) === 1 ? 'Raw image uploaded.' : count($uploaded).' raw images uploaded.',
             'images' => $this->imagesForSku($sku, $kind),
         ]);
+    }
+
+    public function saveEbayHeroImages(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'images' => 'present|array|max:12',
+            'images.*' => 'nullable|string|max:2048',
+        ]);
+
+        $sku = $this->normalizeSku($validated['sku']);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $images = array_values(array_filter(array_map('trim', $validated['images']), fn ($s) => $s !== ''));
+        if ($images === []) {
+            return response()->json(['success' => false, 'message' => 'Add at least one image before saving to eBay.'], 422);
+        }
+
+        try {
+            $result = app(ImageMasterController::class)->runQueuedMarketplacePush(
+                $sku,
+                'ebay',
+                $images,
+                'replace'
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Raw images eBay hero save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $ok = (bool) ($result['success'] ?? false);
+
+        return response()->json([
+            'success' => $ok,
+            'message' => $result['message'] ?? ($ok ? 'eBay images saved.' : 'Could not save eBay images.'),
+            'images' => array_map(function (string $url) {
+                $thumb = $this->localCachedThumbUrl($url) ?: $url;
+
+                return ['url' => $url, 'thumb_url' => $thumb];
+            }, $images),
+        ], $ok ? 200 : 422);
     }
 
     public function destroy(Request $request, int $id): JsonResponse
@@ -1108,11 +1155,11 @@ class RawImagesController extends Controller
     }
 
     /**
-     * First gallery URL stored on eBay 1 (image_urls / image_master_json), keyed by normalized SKU.
+     * Stored eBay 1 gallery URLs from ebay_metrics, keyed by normalized SKU.
      *
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
-    private function ebayHeroImageBySku(): array
+    private function ebayGalleryBySku(): array
     {
         try {
             if (! Schema::hasTable('ebay_metrics') || ! Schema::hasColumn('ebay_metrics', 'sku')) {
@@ -1138,19 +1185,38 @@ class RawImagesController extends Controller
                 if ($sku === '' || isset($map[$sku])) {
                     continue;
                 }
-                $url = $this->firstImageUrlFromPayload($hasUrls ? ($row->image_urls ?? null) : null)
-                    ?: $this->firstImageUrlFromPayload($hasJson ? ($row->image_master_json ?? null) : null);
-                if ($url) {
-                    $map[$sku] = $url;
+                $urls = $this->imageUrlsFromPayload($hasUrls ? ($row->image_urls ?? null) : null);
+                if ($urls === []) {
+                    $urls = $this->imageUrlsFromPayload($hasJson ? ($row->image_master_json ?? null) : null);
+                }
+                if ($urls !== []) {
+                    $map[$sku] = $urls;
                 }
             }
 
             return $map;
         } catch (\Throwable $e) {
-            Log::warning('Raw images: load eBay hero images failed', ['error' => $e->getMessage()]);
+            Log::warning('Raw images: load eBay gallery failed', ['error' => $e->getMessage()]);
 
             return [];
         }
+    }
+
+    /**
+     * First gallery URL stored on eBay 1 (image_urls / image_master_json), keyed by normalized SKU.
+     *
+     * @return array<string, string>
+     */
+    private function ebayHeroImageBySku(): array
+    {
+        $out = [];
+        foreach ($this->ebayGalleryBySku() as $sku => $urls) {
+            if ($urls !== []) {
+                $out[$sku] = $urls[0];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1217,6 +1283,48 @@ class RawImagesController extends Controller
         }
 
         return $this->normalizePublicImageUrl($raw);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function imageUrlsFromPayload(mixed $payload): array
+    {
+        if (is_array($payload)) {
+            $out = [];
+            if (array_is_list($payload)) {
+                foreach ($payload as $item) {
+                    if (is_array($item)) {
+                        foreach ($this->imageUrlsFromPayload($item['url'] ?? $item['src'] ?? $item['image'] ?? $item) as $url) {
+                            $out[] = $url;
+                        }
+                    } else {
+                        $url = $this->normalizePublicImageUrl($item);
+                        if ($url) {
+                            $out[] = $url;
+                        }
+                    }
+                }
+
+                return array_values(array_unique($out));
+            }
+
+            return $this->imageUrlsFromPayload($payload['urls'] ?? $payload['images'] ?? $payload['url'] ?? null);
+        }
+
+        $raw = trim((string) $payload);
+        if ($raw === '' || $raw === '[]' || $raw === '{}') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return $this->imageUrlsFromPayload($decoded);
+        }
+
+        $url = $this->normalizePublicImageUrl($raw);
+
+        return $url ? [$url] : [];
     }
 
     /**

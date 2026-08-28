@@ -108,6 +108,59 @@
         font-size: 16px;
     }
 
+    .eh-card {
+        width: 112px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+        cursor: grab;
+        position: relative;
+    }
+    .eh-card.dragging { opacity: .4; }
+    .eh-card img { width: 112px; height: 88px; object-fit: cover; display: block; }
+    .eh-card-badge {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        background: #0f172a;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 8px;
+        padding: 1px 6px;
+    }
+    .eh-card-del {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 20px;
+        height: 20px;
+        border: 0;
+        border-radius: 50%;
+        background: #dc3545;
+        color: #fff;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .eh-add-tile {
+        width: 112px;
+        height: 88px;
+        border: 2px dashed #22c55e;
+        border-radius: 8px;
+        color: #22c55e;
+        background: #f0fdf4;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-weight: 700;
+        gap: 4px;
+    }
+    .eh-add-tile:hover { background: #dcfce7; }
+
     .ri-plus-tile {
         width: 160px;
         height: 160px;
@@ -445,15 +498,30 @@
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title">
-                        <i class="fas fa-image me-2"></i>eBay Hero Image — <span id="ebayHeroSkuLabel"></span>
+                        <i class="fas fa-image me-2"></i>Ebay H Img — <span id="ebayHeroSkuLabel"></span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="ebayHeroFetchBtn">
+                            <i class="fab fa-ebay me-1"></i> Fetch from eBay
+                        </button>
+                        <button type="button" class="btn btn-sm btn-success" id="ebayHeroAddBtn">
+                            <i class="fas fa-plus me-1"></i> Add images
+                        </button>
+                        <input type="file" id="ebayHeroFileInput" class="d-none" accept="image/jpeg,image/png,image/webp" multiple>
+                    </div>
+                    <div class="small text-muted mb-2">Drag cards to rearrange. First image is the eBay gallery lead.</div>
                     <div id="ebayHeroGrid" class="ri-modal-grid"></div>
+                    <div class="small text-success fw-semibold mt-2" id="ebayHeroMsg" style="display:none;"></div>
+                    <div class="small text-danger fw-semibold mt-2" id="ebayHeroErr" style="display:none;"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="ebayHeroSaveBtn">
+                        <i class="fas fa-save me-1"></i> Save to eBay
+                    </button>
                 </div>
             </div>
         </div>
@@ -582,6 +650,9 @@
         const rawImagesAiPromptUrl = @json($aiPromptUrl);
         const rawImagesAiPromptSaveUrl = @json($aiPromptSaveUrl);
         const rawImagesCachedImageUrl = @json($cachedImageUrl ?? route('raw.images.cached.image'));
+        const ebayHeroFetchUrl = @json(route('image.master.ebay.images'));
+        const ebayHeroUploadUrl = @json(route('image.master.upload'));
+        const ebayHeroSaveUrl = @json(route('raw.images.ebay.hero.save'));
         const rawImagesPageTitle = @json($pageTitle);
         const rawImagesManualColumnTitle = @json($manualColumnTitle);
         const rawImagesAiColumnTitle = @json($aiColumnTitle);
@@ -669,43 +740,291 @@
             if (row && Array.isArray(row.ebay_hero_images) && row.ebay_hero_images.length) {
                 return row.ebay_hero_images;
             }
-            const url = (row && (row.ebay_hero_image || row.hero_image)) || '';
+            const url = (row && row.ebay_hero_image) || '';
             if (!url) return [];
-            return [{ url: url, thumb_url: (row && (row.ebay_hero_thumb || row.hero_thumb)) || url }];
+            return [{ url: url, thumb_url: (row && row.ebay_hero_thumb) || url }];
         }
 
         function ebayHeroCellHtml(row) {
             const images = ebayHeroImages(row);
-            if (!images.length) return '<span class="text-muted">—</span>';
+            const sku = row.SKU || '';
+            if (!images.length) {
+                return '<button type="button" class="ri-cell-plus js-open-ebay-hero" data-sku="' + escapeHtml(sku) + '" title="Add Ebay H Img">+</button>';
+            }
             const first = images[0];
             const src = cachedImageSrc(first.url, first.thumb_url);
-            const sku = row.SKU || '';
             const count = images.length;
-            const inner = thumbHtml(src, 'eBay Hero');
+            const inner = thumbHtml(src, 'Ebay H Img');
             return '<button type="button" class="btn btn-link p-0 js-open-ebay-hero" data-sku="' + escapeHtml(sku) + '" title="'
-                + (count > 1 ? (count + ' hero images') : 'Hero image') + '" style="position:relative;display:inline-flex;">'
+                + (count > 1 ? (count + ' eBay images — drag to rearrange') : 'Open eBay images') + '" style="position:relative;display:inline-flex;">'
                 + inner
                 + (count > 1 ? '<span class="ri-cell-count">' + count + '</span>' : '')
                 + '</button>';
         }
 
-        function openEbayHeroGallery(sku) {
-            const item = tableData.find(function (d) { return d.SKU === sku; });
-            const images = ebayHeroImages(item || {});
-            document.getElementById('ebayHeroSkuLabel').textContent = sku || '';
+        let ebayHeroSku = '';
+        let ebayHeroUrls = [];
+        let ebayHeroDragFrom = null;
+        const ebayHeroMax = 12;
+
+        function setEbayHeroMsg(text) {
+            const el = document.getElementById('ebayHeroMsg');
+            if (!el) return;
+            el.style.display = text ? 'block' : 'none';
+            el.textContent = text || '';
+        }
+        function setEbayHeroErr(text) {
+            const el = document.getElementById('ebayHeroErr');
+            if (!el) return;
+            el.style.display = text ? 'block' : 'none';
+            el.textContent = text || '';
+        }
+
+        function uniqueEbayUrls(urls) {
+            const seen = {};
+            const out = [];
+            (urls || []).forEach(function (u) {
+                const url = String((typeof u === 'string' ? u : (u && (u.url || u.cdn_url))) || '').trim();
+                if (!url) return;
+                const key = url.toLowerCase();
+                if (seen[key]) return;
+                seen[key] = true;
+                out.push(url);
+            });
+            return out.slice(0, ebayHeroMax);
+        }
+
+        function renderEbayHeroGrid() {
             const grid = document.getElementById('ebayHeroGrid');
-            if (!images.length) {
-                grid.innerHTML = '<span class="text-muted">No hero images</span>';
-            } else {
-                grid.innerHTML = images.map(function (img, i) {
-                    const url = img.url || '';
-                    const src = cachedImageSrc(url, img.thumb_url);
-                    return '<a href="' + escapeHtml(url) + '" target="_blank" title="Hero ' + (i + 1) + '">'
-                        + '<img src="' + escapeHtml(src) + '" alt="Hero ' + (i + 1) + '" class="ri-cell-thumb" style="width:88px;height:88px;" loading="lazy">'
-                        + '</a>';
-                }).join('');
+            if (!grid) return;
+            const cards = ebayHeroUrls.map(function (url, idx) {
+                const src = cachedImageSrc(url);
+                return '<div class="eh-card" draggable="true" data-idx="' + idx + '">'
+                    + '<span class="eh-card-badge">' + (idx === 0 ? 'MAIN' : (idx + 1)) + '</span>'
+                    + '<button type="button" class="eh-card-del" data-i="' + idx + '" title="Remove">&times;</button>'
+                    + '<img src="' + escapeHtml(src) + '" alt="eBay ' + (idx + 1) + '" draggable="false">'
+                    + '</div>';
+            }).join('');
+            grid.innerHTML = cards
+                + (ebayHeroUrls.length < ebayHeroMax
+                    ? '<button type="button" class="eh-add-tile" id="ebayHeroAddTile"><span style="font-size:22px;">+</span><span class="small">Add image</span></button>'
+                    : '');
+
+            grid.querySelectorAll('.eh-card-del').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const i = parseInt(btn.getAttribute('data-i'), 10);
+                    ebayHeroUrls.splice(i, 1);
+                    renderEbayHeroGrid();
+                });
+            });
+            const addTile = document.getElementById('ebayHeroAddTile');
+            if (addTile) addTile.addEventListener('click', function () {
+                document.getElementById('ebayHeroFileInput').click();
+            });
+
+            ebayHeroDragFrom = null;
+            grid.querySelectorAll('.eh-card').forEach(function (card) {
+                card.addEventListener('dragstart', function (e) {
+                    ebayHeroDragFrom = parseInt(card.getAttribute('data-idx'), 10);
+                    card.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                card.addEventListener('dragend', function () {
+                    card.classList.remove('dragging');
+                    ebayHeroDragFrom = null;
+                });
+                card.addEventListener('dragover', function (e) { e.preventDefault(); });
+                card.addEventListener('drop', function (e) {
+                    e.preventDefault();
+                    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                        uploadEbayHeroFiles(e.dataTransfer.files);
+                        return;
+                    }
+                    const to = parseInt(card.getAttribute('data-idx'), 10);
+                    if (ebayHeroDragFrom === null || ebayHeroDragFrom === to) return;
+                    const moved = ebayHeroUrls.splice(ebayHeroDragFrom, 1)[0];
+                    ebayHeroUrls.splice(to, 0, moved);
+                    renderEbayHeroGrid();
+                });
+            });
+
+            grid.ondragover = function (e) {
+                if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') !== -1) {
+                    e.preventDefault();
+                }
+            };
+            grid.ondrop = function (e) {
+                if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+                e.preventDefault();
+                uploadEbayHeroFiles(e.dataTransfer.files);
+            };
+        }
+
+        function applyEbayHeroToSku(sku, images) {
+            const patch = {
+                ebay_hero_images: images,
+                ebay_hero_image: images.length ? images[0].url : null,
+                ebay_hero_thumb: images.length ? (images[0].thumb_url || images[0].url) : null,
+                ebay_hero_image_count: images.length
+            };
+            const item = tableData.find(function (d) { return d.SKU === sku; });
+            if (item) Object.assign(item, patch);
+            if (table) {
+                table.searchRows('SKU', '=', sku).forEach(function (row) { row.update(patch); });
             }
+        }
+
+        function openEbayHeroGallery(sku) {
+            ebayHeroSku = sku || '';
+            document.getElementById('ebayHeroSkuLabel').textContent = ebayHeroSku;
+            const item = tableData.find(function (d) { return d.SKU === ebayHeroSku; }) || {};
+            ebayHeroUrls = uniqueEbayUrls(ebayHeroImages(item).map(function (img) { return img.url; }));
+            setEbayHeroMsg('');
+            setEbayHeroErr('');
+            renderEbayHeroGrid();
             bootstrap.Modal.getOrCreateInstance(document.getElementById('ebayHeroGalleryModal')).show();
+            fetchEbayHeroImages(true);
+        }
+
+        function fetchEbayHeroImages(silent) {
+            if (!ebayHeroSku) return;
+            setEbayHeroErr('');
+            const fetchBtn = document.getElementById('ebayHeroFetchBtn');
+            if (fetchBtn) fetchBtn.disabled = true;
+            if (!silent) setEbayHeroMsg('Fetching from eBay…');
+            fetch(ebayHeroFetchUrl + '?sku=' + encodeURIComponent(ebayHeroSku) + '&account=ebay', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const urls = uniqueEbayUrls(result.data.images || []);
+                if (urls.length) {
+                    ebayHeroUrls = urls;
+                    renderEbayHeroGrid();
+                    applyEbayHeroToSku(ebayHeroSku, urls.map(function (url) { return { url: url, thumb_url: url }; }));
+                    setEbayHeroMsg('Loaded ' + urls.length + ' image' + (urls.length === 1 ? '' : 's') + ' from eBay.');
+                    setEbayHeroErr('');
+                    return;
+                }
+                if (!silent || !ebayHeroUrls.length) {
+                    setEbayHeroMsg('');
+                    setEbayHeroErr((result.data && result.data.message) || 'No eBay images for this SKU. Use Add images.');
+                }
+            })
+            .catch(function () {
+                if (!silent || !ebayHeroUrls.length) {
+                    setEbayHeroMsg('');
+                    setEbayHeroErr('Could not fetch eBay images.');
+                }
+            })
+            .finally(function () {
+                if (fetchBtn) fetchBtn.disabled = false;
+            });
+        }
+
+        function uploadEbayHeroFiles(fileList) {
+            if (!ebayHeroSku) {
+                setEbayHeroErr('SKU is missing.');
+                return;
+            }
+            const room = ebayHeroMax - ebayHeroUrls.length;
+            if (room <= 0) {
+                setEbayHeroErr('eBay allows 12 images. Remove one first.');
+                return;
+            }
+            const files = Array.from(fileList || []).slice(0, room);
+            if (!files.length) return;
+            const form = new FormData();
+            form.append('sku', ebayHeroSku);
+            files.forEach(function (file) { form.append('files[]', file); });
+            setEbayHeroMsg('Uploading…');
+            setEbayHeroErr('');
+            fetch(ebayHeroUploadUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: form
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                const uploaded = (result.data && (result.data.urls || result.data.images)) || [];
+                const urls = uniqueEbayUrls(uploaded.map(function (item) {
+                    return typeof item === 'string' ? item : (item && (item.url || item.cdn_url));
+                }));
+                if (!result.ok || !urls.length) {
+                    setEbayHeroMsg('');
+                    setEbayHeroErr((result.data && result.data.message) || 'Upload failed.');
+                    return;
+                }
+                ebayHeroUrls = uniqueEbayUrls(ebayHeroUrls.concat(urls));
+                renderEbayHeroGrid();
+                setEbayHeroMsg('Added ' + urls.length + ' image' + (urls.length === 1 ? '' : 's') + '. Drag to arrange, then Save to eBay.');
+                setEbayHeroErr('');
+            })
+            .catch(function () {
+                setEbayHeroMsg('');
+                setEbayHeroErr('Upload failed.');
+            });
+        }
+
+        function saveEbayHeroImages() {
+            if (!ebayHeroSku) return;
+            if (!ebayHeroUrls.length) {
+                setEbayHeroErr('Add at least one image first.');
+                return;
+            }
+            const btn = document.getElementById('ebayHeroSaveBtn');
+            if (btn) btn.disabled = true;
+            setEbayHeroMsg('Saving to eBay…');
+            setEbayHeroErr('');
+            fetch(ebayHeroSaveUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ sku: ebayHeroSku, images: ebayHeroUrls })
+            })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                if (!result.data.success) {
+                    setEbayHeroMsg('');
+                    setEbayHeroErr(result.data.message || 'Save failed.');
+                    return;
+                }
+                const images = result.data.images || ebayHeroUrls.map(function (url) { return { url: url, thumb_url: url }; });
+                applyEbayHeroToSku(ebayHeroSku, images);
+                setEbayHeroMsg(result.data.message || 'Saved to eBay.');
+                setEbayHeroErr('');
+            })
+            .catch(function () {
+                setEbayHeroMsg('');
+                setEbayHeroErr('Save failed.');
+            })
+            .finally(function () {
+                if (btn) btn.disabled = false;
+            });
+        }
+
+        function setupEbayHeroHandlers() {
+            const fetchBtn = document.getElementById('ebayHeroFetchBtn');
+            const addBtn = document.getElementById('ebayHeroAddBtn');
+            const fileInput = document.getElementById('ebayHeroFileInput');
+            const saveBtn = document.getElementById('ebayHeroSaveBtn');
+            if (fetchBtn) fetchBtn.addEventListener('click', function () { fetchEbayHeroImages(false); });
+            if (addBtn) addBtn.addEventListener('click', function () { fileInput && fileInput.click(); });
+            if (fileInput) fileInput.addEventListener('change', function () {
+                uploadEbayHeroFiles(fileInput.files);
+                fileInput.value = '';
+            });
+            if (saveBtn) saveBtn.addEventListener('click', saveEbayHeroImages);
         }
 
         function barcodeCellHtml(row) {
@@ -798,6 +1117,7 @@
             setupTableEvents();
             setupBulkHandlers();
             setupAiHandlers();
+            setupEbayHeroHandlers();
         });
 
         function initializeTabulator() {
@@ -961,7 +1281,7 @@
                         }
                     },
                     {
-                        title: 'eBay Hero Image',
+                        title: 'Ebay H Img',
                         field: 'ebay_hero_image',
                         width: 90,
                         hozAlign: 'center',
