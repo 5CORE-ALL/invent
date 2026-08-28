@@ -109,6 +109,7 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'aliexpress'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#aeLmpModal'])
     </style>
 @endsection
 
@@ -463,6 +464,7 @@
                                     <th style="width: 50px;">#</th>
                                     <th>Price</th>
                                     <th>Link</th>
+                                    <th class="text-center" style="width: 70px;" title="Ignore for L1">Ignore</th>
                                     <th style="width: 80px;">Actions</th>
                                 </tr>
                             </thead>
@@ -515,6 +517,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
@@ -2419,19 +2422,24 @@
                 tbody.empty();
                 const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
                 list.forEach(function(entry) {
-                    aeAppendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '');
+                    aeAppendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '', !!entry.ignored);
                 });
                 aeUpdateLmpLowestHighlight();
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aeLmpModal')).show();
             }
-            function aeAppendLmpTableRow(tbody, price, link) {
+            function aeAppendLmpTableRow(tbody, price, link, ignored) {
                 const tr = $('<tr class="ae-lmp-entry-row">' +
                     '<td class="ae-lmp-num text-center align-middle"></td>' +
                     '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm ae-lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="ae-lmp-lowest-badge"></span></td>' +
                     '<td class="align-middle"><input type="text" class="form-control form-control-sm ae-lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary ae-lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
+                    '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"></td>' +
                     '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger ae-lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
                 tr.find('.ae-lmp-price').val(price !== '' && price != null ? price : '');
                 tr.find('.ae-lmp-link').val(link || '');
+                if (ignored) {
+                    tr.addClass('lmp-ignored-row');
+                    tr.find('.lmp-ignore-cb').prop('checked', true);
+                }
                 tbody.append(tr);
                 tr.find('.ae-lmp-remove-row').on('click', function(e) {
                     e.preventDefault();
@@ -2450,6 +2458,10 @@
             function aeRenumberLmpRows() {
                 $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function(i) {
                     $(this).find('.ae-lmp-num').text(i + 1);
+                    $(this).find('.lmp-ignore-cb')
+                        .attr('data-id', 'aliexpress-' + (i + 1))
+                        .attr('data-marketplace', 'aliexpress')
+                        .attr('data-sku', aeLmpModalSku || '');
                 });
             }
             function aeUpdateLmpLowestHighlight() {
@@ -2457,8 +2469,11 @@
                 let minTr = null;
                 $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function() {
                     const tr = $(this);
+                    const ignored = tr.find('.lmp-ignore-cb').is(':checked');
+                    tr.toggleClass('lmp-ignored-row', ignored);
                     tr.removeClass('table-dark');
                     tr.find('.ae-lmp-lowest-badge').empty();
+                    if (ignored) return;
                     const val = tr.find('.ae-lmp-price').val();
                     const num = val !== '' && val != null ? parseFloat(val) : null;
                     if (num !== null && !isNaN(num)) {
@@ -2490,7 +2505,8 @@
                 $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function() {
                     const price = $(this).find('.ae-lmp-price').val();
                     const link = $(this).find('.ae-lmp-link').val();
-                    if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null });
+                    const ignored = $(this).find('.lmp-ignore-cb').is(':checked');
+                    if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null, ignored: ignored });
                 });
                 if (entries.length === 0) {
                     aeNotify('Add at least one price or link', 'warning');
@@ -2518,6 +2534,15 @@
                         $('#aeLmpModalSaveBtn').prop('disabled', false);
                     }
                 });
+            });
+            LmpIgnore.bind({
+                modal: '#aeLmpModal',
+                marketplace: 'aliexpress',
+                sku: function() { return aeLmpModalSku; },
+                onToggled: function() { aeUpdateLmpLowestHighlight(); }
+            });
+            $(document).on('change', '#aeLmpModal .lmp-ignore-cb', function() {
+                aeUpdateLmpLowestHighlight();
             });
 
             // ── Badge trend chart (line only — same as Shein / eBay 3) ──────

@@ -123,6 +123,7 @@
             width: 100%;
             max-width: 100%;
         }
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
 @section('script')
@@ -537,6 +538,7 @@
 
     @section('script-bottom')
         <script>
+            @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
             const COLUMN_VIS_KEY = "fba_tabulator_column_visibility";
             let table = null; // Global table reference
             let selectedSkus = new Set(); // Track selected SKUs across all pages
@@ -4166,29 +4168,25 @@
             });
 
             // Render LMP Competitors in Modal
+            let fbaCurrentLmp = { sku: '', competitors: [] };
             function renderLmpCompetitors(sku, competitors) {
-                if (!competitors || competitors.length === 0) {
+                competitors = Array.isArray(competitors) ? competitors : [];
+                fbaCurrentLmp = { sku: sku, competitors: competitors };
+                if (!competitors.length) {
                     $('#lmpDataList').html('<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>');
                     return;
                 }
-                
-                // Sort by price ascending
-                const sortedCompetitors = competitors.slice().sort((a, b) => {
-                    const priceA = parseFloat(a.price) || 0;
-                    const priceB = parseFloat(b.price) || 0;
-                    return priceA - priceB;
-                });
-                
-                const lowestPrice = sortedCompetitors.length > 0 ? parseFloat(sortedCompetitors[0].price) || 0 : 0;
+
+                const lowestPrice = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors, 'price') : 0;
                 
                 let html = '';
                 if (lowestPrice > 0) {
-                    html += '<div class="mb-3"><span class="badge" style="background-color: transparent; color: #ff9c00; font-weight: 600;">Lowest Price: $' + lowestPrice.toFixed(2) + '</span></div>';
+                    html += '<div class="mb-3"><span class="badge" style="background-color: transparent; color: #ff9c00; font-weight: 600;">L1 (lowest non-ignored): $' + lowestPrice.toFixed(2) + '</span></div>';
                 }
                 
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Price</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Link</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Price</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Link</th>' + LmpIgnore.header() + '</tr></thead><tbody>';
                 
-                sortedCompetitors.forEach(function(comp, i) {
+                competitors.forEach(function(comp, i) {
                     const sn = i + 1;
                     const price = parseFloat(comp.price) || 0;
                     const link = comp.product_link || comp.link || '';
@@ -4196,23 +4194,35 @@
                     const title = (comp.product_title || '').substring(0, 60) + ((comp.product_title || '').length > 60 ? '...' : '');
                     const rating = comp.rating != null ? parseFloat(comp.rating).toFixed(1) : '-';
                     const reviews = comp.reviews != null ? (parseInt(comp.reviews) || 0).toLocaleString() : '-';
-                    const isLowest = price > 0 && lowestPrice > 0 && Math.abs(price - lowestPrice) < 0.01;
-                    const rowClass = isLowest ? 'table-success' : '';
+                    const ignored = !!comp.ignored;
+                    const isLowest = !ignored && price > 0 && lowestPrice > 0 && Math.abs(price - lowestPrice) < 0.01;
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                     const imgHtml = image ? `<img src="${image.replace(/"/g, '&quot;')}" alt="Product" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
                     
                     html += `<tr class="${rowClass}">
                         <td>${sn}</td>
-                        <td><div class="d-flex align-items-center">${imgHtml}<span>${isLowest ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<strong>$${price.toFixed(2)}</strong></span></div></td>
+                        <td><div class="d-flex align-items-center">${imgHtml}<span>${isLowest ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<strong>$${price.toFixed(2)}</strong>${ignored ? ' <span class="badge bg-secondary">Ignored</span>' : ''}</span></div></td>
                         <td title="${(comp.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td>
                         <td>${rating !== '-' ? '<i class="fa fa-star text-warning"></i> ' + rating : '-'}</td>
                         <td>${reviews !== '-' ? reviews : '-'}</td>
                         <td>${link ? '<a href="' + link.replace(/"/g, '&quot;') + '" target="_blank" class="text-primary" title="Open product"><i class="fa fa-external-link"></i></a>' : '-'}</td>
+                        <td class="text-center align-middle">${LmpIgnore.checkbox(comp, 'amazon', sku)}</td>
                     </tr>`;
                 });
                 
                 html += '</tbody></table></div>';
                 $('#lmpDataList').html(html);
             }
+            LmpIgnore.bind({
+                marketplace: 'amazon',
+                sku: function() { return fbaCurrentLmp.sku; },
+                onToggled: function(id, ignored) {
+                    fbaCurrentLmp.competitors.forEach(function(c) {
+                        if (String(c.id) === String(id)) c.ignored = ignored;
+                    });
+                    renderLmpCompetitors(fbaCurrentLmp.sku, fbaCurrentLmp.competitors);
+                }
+            });
 
             // LMP Modal Function (for existing lmp-link)
             function openLmpModal(sku, data) {

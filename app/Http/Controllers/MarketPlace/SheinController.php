@@ -661,6 +661,9 @@ class SheinController extends Controller
                 $lmpPrice = null;
                 $lmpLink  = null;
                 foreach ($lmpEntries as $entry) {
+                    if (! empty($entry['ignored'])) {
+                        continue;
+                    }
                     if ($lmpPrice === null || $entry['price'] < $lmpPrice) {
                         $lmpPrice = $entry['price'];
                         $lmpLink  = $entry['link'];
@@ -1214,7 +1217,7 @@ class SheinController extends Controller
      * Build the LMP competitor entries (slot, price, link) from a shein_lmp row.
      * Only non-empty price slots are returned.
      *
-     * @return array<int, array{slot:int, price:float, link:string|null}>
+     * @return array<int, array{slot:int, price:float, link:string|null, ignored:bool}>
      */
     private function sheinLmpEntriesFrom($lmpRow): array
     {
@@ -1222,18 +1225,36 @@ class SheinController extends Controller
         if (! $lmpRow) {
             return $entries;
         }
+        $hasIgnored = Schema::hasColumn('shein_lmp', 'ignored_1');
         for ($i = 1; $i <= 4; $i++) {
             $p = $lmpRow->{'price_' . $i};
             $u = $lmpRow->{'url_' . $i};
             if ($p !== null && (float) $p > 0) {
                 $entries[] = [
-                    'slot'  => $i,
-                    'price' => round((float) $p, 2),
-                    'link'  => $u ?: null,
+                    'slot'    => $i,
+                    'price'   => round((float) $p, 2),
+                    'link'    => $u ?: null,
+                    'ignored' => $hasIgnored ? (bool) $lmpRow->{'ignored_' . $i} : false,
                 ];
             }
         }
         return $entries;
+    }
+
+    private function sheinLowestFromEntries(array $entries): ?float
+    {
+        $prices = [];
+        foreach ($entries as $e) {
+            if (! empty($e['ignored'])) {
+                continue;
+            }
+            $p = isset($e['price']) ? (float) $e['price'] : 0;
+            if ($p > 0) {
+                $prices[] = $p;
+            }
+        }
+
+        return $prices ? min($prices) : null;
     }
 
     /** Locate an existing shein_lmp row by normalized SKU. */
@@ -1290,7 +1311,7 @@ class SheinController extends Controller
         $row->save();
 
         $entries = $this->sheinLmpEntriesFrom($row->fresh());
-        $lowest  = collect($entries)->min('price');
+        $lowest  = $this->sheinLowestFromEntries($entries);
 
         return response()->json([
             'success'   => true,
@@ -1341,7 +1362,7 @@ class SheinController extends Controller
         $row->save();
 
         $entries = $this->sheinLmpEntriesFrom($row->fresh());
-        $lowest  = collect($entries)->min('price');
+        $lowest  = $this->sheinLowestFromEntries($entries);
 
         return response()->json([
             'success'   => true,
@@ -1372,6 +1393,9 @@ class SheinController extends Controller
 
         $row->{'price_' . $slot} = null;
         $row->{'url_' . $slot}   = null;
+        if (Schema::hasColumn('shein_lmp', 'ignored_' . $slot)) {
+            $row->{'ignored_' . $slot} = false;
+        }
 
         $hasPrice = false;
         for ($i = 1; $i <= 4; $i++) {
@@ -1384,7 +1408,7 @@ class SheinController extends Controller
         $row->save();
 
         $entries = $this->sheinLmpEntriesFrom($row->fresh());
-        $lowest  = collect($entries)->min('price');
+        $lowest  = $this->sheinLowestFromEntries($entries);
 
         return response()->json([
             'success'   => true,

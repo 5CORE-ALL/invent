@@ -38,6 +38,8 @@ use App\Models\DobaDataView;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokCampaignReport;
 use App\Models\TiktokSkuCompetitor;
+use App\Models\NeweggSkuCompetitor;
+use App\Models\SheinLmp;
 use App\Models\BestbuyUSADataView;
 use App\Models\MacyDataView;
 use App\Models\ReverbViewData;
@@ -10216,7 +10218,7 @@ class CvrMasterController extends Controller
         $id = $request->input('id');
         $sku = trim((string) $request->input('sku', ''));
 
-        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'aliexpress', 'tiktok'], true)) {
+        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'aliexpress', 'tiktok', 'newegg', 'shein'], true)) {
             return response()->json(['success' => false, 'error' => 'Invalid marketplace'], 400);
         }
 
@@ -10429,6 +10431,39 @@ class CvrMasterController extends Controller
                 return response()->json(['success' => true, 'ignored' => $ignored, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
             }
 
+            if ($marketplace === 'shein') {
+                if ($sku === '') {
+                    return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+                }
+                $slot = preg_match('/^shein-(\d+)$/i', (string) $id, $mm) ? (int) $mm[1] : (int) $id;
+                if ($slot < 1 || $slot > 4) {
+                    return response()->json(['success' => false, 'error' => 'Invalid Shein LMP slot'], 400);
+                }
+                if (! Schema::hasTable('shein_lmp')) {
+                    return response()->json(['success' => false, 'error' => 'Shein LMP table not available'], 404);
+                }
+                if (! Schema::hasColumn('shein_lmp', 'ignored_'.$slot)) {
+                    return response()->json(['success' => false, 'error' => 'Ignore column missing — run migrations'], 500);
+                }
+                $target = strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
+                $row = SheinLmp::whereRaw('UPPER(TRIM(sku)) = ?', [$target])->first()
+                    ?? SheinLmp::all()->first(function ($r) use ($target) {
+                        $s = strtoupper(trim(preg_replace('/\s+/', ' ', (string) $r->sku)));
+
+                        return $s === $target;
+                    });
+                if (! $row) {
+                    return response()->json(['success' => false, 'error' => 'Shein LMP entry not found'], 404);
+                }
+                if ($row->{'price_'.$slot} === null) {
+                    return response()->json(['success' => false, 'error' => 'Shein LMP slot is empty'], 404);
+                }
+                $row->{'ignored_'.$slot} = $ignored;
+                $row->save();
+
+                return response()->json(['success' => true, 'ignored' => $ignored, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+            }
+
             $model = match ($marketplace) {
                 'amazon' => AmazonSkuCompetitor::class,
                 'ebay' => EbaySkuCompetitor::class,
@@ -10437,6 +10472,7 @@ class CvrMasterController extends Controller
                 'macy' => MacySkuCompetitor::class,
                 'reverb' => ReverbSkuCompetitor::class,
                 'tiktok' => \App\Models\TiktokSkuCompetitor::class,
+                'newegg' => NeweggSkuCompetitor::class,
             };
             $table = (new $model)->getTable();
             if (!Schema::hasColumn($table, 'ignored')) {

@@ -98,8 +98,14 @@
             text-decoration: line-through;
             text-decoration-color: #adb5bd;
         }
-        #lmpModal tr.lmp-ignored-row td:last-child {
+        #lmpModal tr.lmp-ignored-row td:last-child,
+        #lmpModal tr.lmp-ignored-row .lmp-ignore-cb {
             text-decoration: none;
+        }
+        #lmpModal .lmp-ignore-cb {
+            cursor: pointer;
+            width: 1.1em;
+            height: 1.1em;
         }
 
         /* eBay-style color coding */
@@ -751,7 +757,8 @@
                                     <th style="width: 90px;" title="Price + Delivery (defaults Del $2.99 when Price &lt; $27)">Price+D</th>
                                     <th style="width: 80px;" title="(Price+D − S PRC) / Price+D. Same as the outer Diff column.">Diff</th>
                                     <th>Link</th>
-                                    <th style="width: 150px;">Actions</th>
+                                    <th class="text-center" style="width: 70px;" title="Ignore for L1">Ignore</th>
+                                    <th style="width: 80px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="lmpEntriesContainer"></tbody>
@@ -5453,13 +5460,13 @@
             return num + delivery;
         }
         function setLmpIgnoreButton($tr, ignored) {
-            const $btn = $tr.find('.lmp-ignore-row');
+            const $cb = $tr.find('.lmp-ignore-cb');
             if (ignored) {
                 $tr.addClass('lmp-ignored-row').data('ignored', 1);
-                $btn.removeClass('btn-outline-secondary').addClass('btn-secondary').text('Ignored').attr('title', 'Include in L1');
+                $cb.prop('checked', true).attr('title', 'Include in L1');
             } else {
                 $tr.removeClass('lmp-ignored-row').data('ignored', 0);
-                $btn.removeClass('btn-secondary').addClass('btn-outline-secondary').text('Ignore').attr('title', 'Ignore for L1');
+                $cb.prop('checked', false).attr('title', 'Ignore for L1');
             }
         }
         function appendLmpTableRow(tbody, price, delivery, link, ignored, sourceSku) {
@@ -5470,10 +5477,8 @@
                 '<td class="align-middle text-center"><span class="lmp-price-d text-muted">—</span></td>' +
                 '<td class="align-middle text-center"><span class="lmp-row-diff text-muted">—</span></td>' +
                 '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
-                '<td class="align-middle"><div class="d-flex gap-1">' +
-                '<button type="button" class="btn btn-sm btn-outline-secondary lmp-ignore-row" title="Ignore for L1">Ignore</button>' +
-                '<button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button>' +
-                '</div></td></tr>');
+                '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore-cb lmp-ignore-row" title="Ignore for L1"></td>' +
+                '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
@@ -5644,11 +5649,9 @@
             updateLmpLowestHighlight();
             saveLmpEntriesNow();
         });
-        $(document).off('click.templmp', '#lmpEntriesContainer .lmp-ignore-row').on('click.templmp', '#lmpEntriesContainer .lmp-ignore-row', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
+        $(document).off('change.templmp', '#lmpEntriesContainer .lmp-ignore-cb').on('change.templmp', '#lmpEntriesContainer .lmp-ignore-cb', function() {
             const $tr = $(this).closest('tr');
-            setLmpIgnoreButton($tr, !$tr.hasClass('lmp-ignored-row'));
+            setLmpIgnoreButton($tr, $(this).is(':checked'));
             updateLmpLowestHighlight();
             saveLmpEntriesNow();
         });

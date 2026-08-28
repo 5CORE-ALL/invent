@@ -140,6 +140,7 @@
         #amzCvrLmpModal .lmp-five-core-row:hover > td {
             background-color: #bfdbfe !important;
         }
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#amzCvrLmpModal'])
         #amzCvrLmpModal .lmp-five-core-row .lmp-five-core-price {
             font-size: 14px;
             font-weight: 700;
@@ -643,8 +644,10 @@
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let amz_cvr_issues = null;
         let amzCvrLmpCurrentSku = '';
+        let amzCvrCurrentCompetitors = [];
         let amzCvrMlFilterActive = false;
         let amzCvrSavedHistoryDate = null;
         const AMZ_CVR_COMPETITORS_URL = @json(route('amazon.competitors.get'));
@@ -1167,6 +1170,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
                     const comps = (res.success && Array.isArray(res.competitors)) ? res.competitors : [];
+                    amzCvrCurrentCompetitors = comps;
                     renderAmzCvrCompetitors(comps, res.lowest_price);
                     if (refresh && res.success && res.lowest_price != null && amz_cvr_issues) {
                         amz_cvr_issues.getRows().forEach(function(row) {
@@ -1249,12 +1253,16 @@
                 +   '<td class="text-center"><span class="badge bg-info text-dark">Ours</span></td>'
                 +   '<td class="text-center">' + linkBtn + '</td>'
                 +   '<td class="text-center text-muted small">—</td>'
+                +   '<td class="text-center text-muted small">—</td>'
                 + '</tr>';
         }
 
         function renderAmzCvrCompetitors(competitors, lowestPrice) {
             competitors = Array.isArray(competitors) ? competitors : [];
-            const lowest = parseFloat(lowestPrice) || 0;
+            amzCvrCurrentCompetitors = competitors;
+            const lowest = (window.LmpIgnore && LmpIgnore.l1)
+                ? (LmpIgnore.l1(competitors, 'price') || 0)
+                : (parseFloat(lowestPrice) || 0);
             const our = getAmzCvrLmpOurListing(amzCvrLmpCurrentSku);
             const fiveCoreHtml = buildAmzCvrLmpFiveCoreRowHtml(our);
 
@@ -1267,13 +1275,16 @@
             let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">';
             html += '<thead class="table-dark"><tr>'
                 + '<th>#</th><th>Image</th><th>ASIN</th><th>Title</th><th>Seller</th>'
-                + '<th>Price</th><th title="Competitor monthly units sold">L30</th><th>Rating</th><th>Reviews</th><th>Delivery</th><th>Link</th><th></th>'
+                + '<th>Price</th><th title="Competitor monthly units sold">L30</th><th>Rating</th><th>Reviews</th><th>Delivery</th><th>Link</th>'
+                + LmpIgnore.header()
+                + '<th></th>'
                 + '</tr></thead><tbody>';
 
             const rows = competitors.map(function(item, index) {
                 const price = parseFloat(item.price) || 0;
-                const isLowest = lowest > 0 && Math.abs(price - lowest) < 0.01;
-                const rowClass = isLowest ? 'table-success' : '';
+                const ignored = !!item.ignored;
+                const isLowest = !ignored && lowest > 0 && Math.abs(price - lowest) < 0.01;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 const img = item.image
                     ? '<img src="' + amzCvrEsc(item.image) + '" style="width:40px;height:40px;object-fit:contain;" alt="">'
                     : '<span class="text-muted">—</span>';
@@ -1307,7 +1318,7 @@
                 }
                 const priceBadge = isLowest
                     ? '<strong>$' + price.toFixed(2) + '</strong> <span class="badge bg-success ms-1">L1</span>'
-                    : '<strong>$' + price.toFixed(2) + '</strong>';
+                    : (ignored ? '<strong>$' + price.toFixed(2) + '</strong> <span class="badge bg-secondary ms-1">Ignored</span>' : '<strong>$' + price.toFixed(2) + '</strong>');
 
                 const rowHtml = ''
                     + '<tr class="' + rowClass + '">'
@@ -1322,6 +1333,7 @@
                     +   '<td class="text-center">' + reviews + '</td>'
                     +   '<td class="text-center" style="font-size:11px;">' + delivery + '</td>'
                     +   '<td class="text-center"><a href="' + amzCvrEsc(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info"><i class="fa fa-external-link"></i></a></td>'
+                    +   '<td class="text-center align-middle">' + LmpIgnore.checkbox(item, 'amazon', amzCvrLmpCurrentSku || '') + '</td>'
                     +   '<td class="text-center"><button type="button" class="btn btn-sm btn-danger amz-cvr-del-lmp" data-id="'
                     +     amzCvrEsc(item.id) + '" title="Delete"><i class="fa fa-trash"></i></button></td>'
                     + '</tr>';
@@ -1343,11 +1355,22 @@
 
             html += '</tbody></table></div>';
             if (lowest > 0) {
-                html = '<div class="mb-2 small text-muted">L1 (lowest): <strong>$'
+                html = '<div class="mb-2 small text-muted">L1 (lowest non-ignored): <strong>$'
                     + lowest.toFixed(2) + '</strong></div>' + html;
             }
             document.getElementById('amzCvrLmpDataList').innerHTML = html;
         }
+        LmpIgnore.bind({
+            modal: '#amzCvrLmpModal',
+            marketplace: 'amazon',
+            sku: function() { return amzCvrLmpCurrentSku; },
+            onToggled: function(id, ignored) {
+                amzCvrCurrentCompetitors.forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored;
+                });
+                renderAmzCvrCompetitors(amzCvrCurrentCompetitors, LmpIgnore.l1(amzCvrCurrentCompetitors, 'price'));
+            }
+        });
 
         function updateAmzCvrIssuesSelected() {
             const n = document.querySelectorAll('#amz_cvr_issues .row-select-checkbox:checked').length;

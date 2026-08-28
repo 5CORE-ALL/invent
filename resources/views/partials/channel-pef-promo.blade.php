@@ -31,6 +31,9 @@
             color: #64748b;
         }
         .ch-pef-promo-cell.has-val { color: #0f172a; }
+        .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"] {
+            cursor: default !important;
+        }
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="b2b_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="zero_sold_prmt"],
@@ -8977,15 +8980,12 @@
                         };
                         return valOf(aRow) - valOf(bRow);
                     },
-                    editable: function(cell) {
-                        return chPromoIsChildRow(cell.getRow().getData());
-                    },
-                    editor: 'input',
-                    headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0.01–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
+                    editable: false,
+                    headerTooltip: 'Read-only. % less on S PRC. Shared Dil vs PRMT: 0.01–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
                         + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                             ? ' If discounted S PRC is below Amz, S PRC is raised to A Price (Amz label).'
                             : ' Same table on every marketplace page.')
-                        + ' Dot = PDT daily history.',
+                        + ' Click the dot for PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
@@ -9029,9 +9029,6 @@
                             openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'prmt');
                         }
                         return false;
-                    },
-                    cellEdited: function(cell) {
-                        applyChPromoFromCell(cell, 'prmt');
                     },
                 },
                 ...(CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES && !chPromoZeroSoldUsesAmazonPrice() ? [{

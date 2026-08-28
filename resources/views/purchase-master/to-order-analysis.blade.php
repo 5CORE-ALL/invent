@@ -697,6 +697,7 @@
         .modal.show {
             background: transparent !important;
         }
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#toaLmpModal'])
     </style>
 @endsection
 @section('content')
@@ -1556,6 +1557,7 @@
         });
     </script>
     <script>
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         document.addEventListener("DOMContentLoaded", function() {
             document.body.style.zoom = "80%";
 
@@ -5517,23 +5519,29 @@
                 });
             });
 
+            let toaCurrentLmp = { sku: '', competitors: [] };
             function renderToaLmpCompetitorsList(competitors, lowestPrice) {
-                if (!competitors || competitors.length === 0) {
+                competitors = Array.isArray(competitors) ? competitors : [];
+                toaCurrentLmp.competitors = competitors;
+                if (!competitors.length) {
                     $("#toaLmpDataList").html(
                         '<div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>'
                     );
                     return;
                 }
 
+                const l1 = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors, 'price') : parseFloat(lowestPrice);
+
                 let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">';
                 html += `<thead class="table-light"><tr>
                     <th>#</th><th>Image</th><th>ASIN</th><th>Product Title</th><th>Seller</th>
-                    <th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>
+                    <th>Price</th><th>Rating</th><th>Reviews</th><th>Link</th>${LmpIgnore.header()}
                 </tr></thead><tbody>`;
 
                 competitors.forEach(function (item, index) {
-                    const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
-                    const rowClass = isLowest ? "table-success" : "";
+                    const ignored = !!item.ignored;
+                    const isLowest = !ignored && l1 != null && Math.abs(parseFloat(item.price) - l1) < 0.01;
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? "table-success" : "");
                     const priceFormatted = "$" + parseFloat(item.price).toFixed(2);
                     const productLink = item.link || item.product_link || "#";
                     const productTitle = item.title || item.product_title || "N/A";
@@ -5555,7 +5563,7 @@
                         <td><span class="text-primary fw-semibold" style="font-size:11px;">${escapeHtmlAttr(item.asin || "N/A")}</span></td>
                         <td style="font-size:11px;" title="${escapeHtmlAttr(productTitle)}">${escapeHtmlAttr(productTitle.length > 60 ? productTitle.substring(0, 60) + "…" : productTitle)}</td>
                         <td style="font-size:11px;">${escapeHtmlAttr(sellerName)}</td>
-                        <td><strong>${priceFormatted}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ""}</strong></td>
+                        <td><strong>${priceFormatted}${isLowest ? ' <i class="fa fa-trophy text-success"></i>' : ""}${ignored ? ' <span class="badge bg-secondary">Ignored</span>' : ''}</strong></td>
                         <td class="text-center">${rating}</td>
                         <td class="text-center">${reviews}</td>
                         <td class="text-center">
@@ -5563,14 +5571,27 @@
                                 <i class="fa fa-external-link"></i>
                             </a>
                         </td>
+                        <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'amazon', toaCurrentLmp.sku || '')}</td>
                     </tr>`;
                 });
 
                 html += "</tbody></table></div>";
                 $("#toaLmpDataList").html(html);
             }
+            LmpIgnore.bind({
+                modal: '#toaLmpModal',
+                marketplace: 'amazon',
+                sku: function() { return toaCurrentLmp.sku; },
+                onToggled: function(id, ignored) {
+                    toaCurrentLmp.competitors.forEach(function(c) {
+                        if (String(c.id) === String(id)) c.ignored = ignored;
+                    });
+                    renderToaLmpCompetitorsList(toaCurrentLmp.competitors, LmpIgnore.l1(toaCurrentLmp.competitors, 'price'));
+                }
+            });
 
             function loadToaLmpModal(sku) {
+                toaCurrentLmp.sku = sku || '';
                 $("#toaLmpSku").text(sku);
                 const modal = new bootstrap.Modal(document.getElementById("toaLmpModal"));
                 modal.show();

@@ -157,6 +157,9 @@
             color: #64748b;
         }
         .pef-promo-cell.has-val { color: #0f172a; }
+        .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"] {
+            cursor: default !important;
+        }
         .tabulator-row .tabulator-cell[tabulator-field="cpn_dollar"],
         .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
@@ -3251,9 +3254,8 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: false,
-                    editable: true,
-                    editor: 'input',
-                    headerTooltip: 'eBay1: live promotion API (5–80%, or 0 = pause). Other channels: % less on SPRICE. Also filled by Dil vs PRMT.',
+                    editable: false,
+                    headerTooltip: 'Read-only. Filled by Dil vs PRMT (and eBay1 live promotion %). Click does not edit.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         const base = fmtPefPromoCell(cell.getValue(), '%');
@@ -3267,9 +3269,6 @@
                         else if (st === 'syncing') badge = '<span class="text-primary ms-1" title="Syncing…">…</span>';
                         else if (st === 'error') badge = '<span class="text-danger ms-1" title="' + tip + '">!</span>';
                         return '<span class="d-inline-flex align-items-center">' + base + badge + '</span>';
-                    },
-                    cellEdited: function(cell) {
-                        applyPefPromoFromCell(cell, 'prmt', 'percent');
                     },
                 },
                 {

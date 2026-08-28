@@ -4883,9 +4883,10 @@
             });
         }
 
-        // Render Competitors List Function
+        // Render Competitors List — Ignore excludes the row from L1 / Lowest (same as eBay 2)
         function renderEbayCompetitorsList(competitors, lowestPrice) {
-            if (!competitors || competitors.length === 0) {
+            competitors = Array.isArray(competitors) ? competitors : [];
+            if (!competitors.length) {
                 $('#lmpDataList').html(`
                     <div class="alert alert-info">
                         <i class="fa fa-info-circle"></i> No competitors found for this SKU
@@ -4893,7 +4894,11 @@
                 `);
                 return;
             }
-            
+
+            let l1Price = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors) : null;
+            if (l1Price === null && lowestPrice != null) l1Price = parseFloat(lowestPrice);
+            const skuEsc = currentLmpData.sku || '';
+
             let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
             html += `
                 <thead class="table-dark">
@@ -4903,28 +4908,34 @@
                         <th>Shipping</th>
                         <th>Total</th>
                         <th>Title</th>
+                        ${LmpIgnore.header()}
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
             `;
-            
+
             competitors.forEach(function(item) {
-                const isLowest = item.total_price === lowestPrice;
-                const rowClass = isLowest ? 'table-success' : '';
-                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
+                const ignored = !!item.ignored;
+                const total = parseFloat(item.total_price) || 0;
+                const isLowest = !ignored && l1Price !== null && Math.abs(total - l1Price) < 0.005;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+                const badge = isLowest
+                    ? '<span class="badge bg-success ms-2">Lowest</span>'
+                    : (ignored ? '<span class="badge bg-secondary ms-2">Ignored</span>' : '');
                 const productLink = item.link || `https://www.ebay.com/itm/${item.item_id}`;
                 const imageCell = item.image
                     ? `<img src="${item.image}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
                     : '<span class="text-muted">—</span>';
-                
+
                 html += `
                     <tr class="${rowClass}">
                         <td>${imageCell}</td>
                         <td>$${parseFloat(item.price).toFixed(2)}</td>
                         <td>${parseFloat(item.shipping_cost) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
-                        <td><strong>$${parseFloat(item.total_price).toFixed(2)}</strong> ${badge}</td>
+                        <td><strong>$${total.toFixed(2)}</strong> ${badge}</td>
                         <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.title || 'N/A'}</td>
+                        <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'ebay', skuEsc)}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on eBay"><i class="fa fa-external-link"></i></a>
@@ -4934,10 +4945,24 @@
                     </tr>
                 `;
             });
-            
+
             html += '</tbody></table></div>';
+            if (l1Price !== null) {
+                html = `<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$${Number(l1Price).toFixed(2)}</strong></div>` + html;
+            }
             $('#lmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            marketplace: 'ebay',
+            sku: function() { return currentLmpData.sku || ''; },
+            onToggled: function(id, ignored) {
+                (currentLmpData.competitors || []).forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored;
+                });
+                currentLmpData.lowestPrice = LmpIgnore.l1(currentLmpData.competitors);
+                renderEbayCompetitorsList(currentLmpData.competitors, currentLmpData.lowestPrice);
+            }
+        });
 
         // View Competitors Modal Event Listener
         $(document).on('click', '.view-lmp-competitors', function(e) {
