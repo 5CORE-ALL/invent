@@ -831,8 +831,9 @@ class Ebay2SyncController extends Controller
         ]);
     }
 
-    public function syncInventoryNow(): JsonResponse
+    public function syncInventoryNow(Request $request): JsonResponse
     {
+        $this->persistEbay2InventoryRuleFromRequest($request);
         $settings = MarketplaceSyncSettings::getFor('ebay2');
         if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
             return response()->json([
@@ -841,12 +842,36 @@ class Ebay2SyncController extends Controller
             ], 422);
         }
 
+        $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
+        Ebay2InventorySyncService::setProgress([
+            'state' => 'queued',
+            'qty_percent' => $qtyPercent,
+            'message' => 'Saved Qty % '.$qtyPercent.'. Starting eBay 2 inventory sync…',
+            'updated' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+        ]);
+
         \App\Jobs\RunMarketplaceInventorySyncJob::dispatch('ebay2');
 
         return response()->json([
             'success' => true,
             'queued' => true,
-            'message' => 'Inventory sync queued. It runs in the background from live Shopify (usually a few minutes). Keep inventory sync ON — webhook + 15-min schedule also push automatically.',
+            'qty_percent' => $qtyPercent,
+            'message' => 'Syncing with the saved rule: '.$qtyPercent.'% of live Shopify. This stays in effect until you change Qty %.',
+        ]);
+    }
+
+    public function syncInventoryStatus(): JsonResponse
+    {
+        $progress = Ebay2InventorySyncService::progress();
+        $settings = MarketplaceSyncSettings::getFor('ebay2');
+        $progress['qty_percent'] = $progress['qty_percent']
+            ?? max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
+
+        return response()->json([
+            'success' => true,
+            'progress' => $progress,
         ]);
     }
 
@@ -1190,6 +1215,30 @@ class Ebay2SyncController extends Controller
         ]);
 
         return response()->json(['success' => true, 'message' => 'eBay 2 sync settings saved.']);
+    }
+
+    /**
+     * Persist Qty % / inventory_sync from the settings form so Sync now and the
+     * scheduler use the same saved rule until the user changes it.
+     */
+    protected function persistEbay2InventoryRuleFromRequest(Request $request): void
+    {
+        if (! $request->exists('inventory') && ! $request->exists('quantity_calc_percent')) {
+            return;
+        }
+
+        $current = MarketplaceSyncSettings::getFor('ebay2');
+        $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
+            'inventory_sync',
+        ]);
+        $pct = $request->input(
+            'inventory.quantity_calc_percent',
+            $request->input('quantity_calc_percent', $inventory['quantity_calc_percent'] ?? 100)
+        );
+        $inventory['quantity_calc_percent'] = max(0, min(100, (int) $pct));
+        $inventory['min_quantity'] = 0;
+        $current['inventory'] = $inventory;
+        MarketplaceSyncSettings::setFor('ebay2', $current);
     }
 
     /**
