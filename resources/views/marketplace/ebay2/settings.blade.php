@@ -7,6 +7,38 @@
     .settings-section-body { padding: 16px; }
     .sync-toggle-row { padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
     .sync-toggle-row:last-child { border-bottom: none; }
+    .ebay2-inv-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2050;
+        background: rgba(15, 23, 42, .48);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+    }
+    .ebay2-inv-overlay.is-on { display: flex; }
+    .ebay2-inv-overlay-card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 36px 44px;
+        text-align: center;
+        box-shadow: 0 18px 50px rgba(15, 23, 42, .28);
+        min-width: 280px;
+        max-width: 440px;
+    }
+    .ebay2-inv-overlay-title {
+        margin-top: 16px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #1e3a8a;
+    }
+    .ebay2-inv-overlay-sub {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #64748b;
+        line-height: 1.4;
+    }
 </style>
 @endsection
 
@@ -55,7 +87,7 @@
                             <input type="number" class="form-control form-control-sm" name="inventory[quantity_calc_percent]" value="{{ $settings['inventory']['quantity_calc_percent'] ?? 100 }}" min="0" max="100" style="width: 100px;">
                         </div>
                     </div>
-                    <div class="form-text mt-2">Always uses <strong>live Shopify</strong> stock. Shopify 0/− → marketplace <strong>0</strong> (never forced to 1). Draft / inactive / unpublished listings are never stocked or activated.</div>
+                    <div class="form-text mt-2">Every linked listing on this marketplace uses this %. Example: Shopify 100 with 20% → eBay 2 qty 20. Always uses <strong>live Shopify</strong> stock. Shopify 0/− → marketplace <strong>0</strong> (never forced to 1). Draft / inactive / unpublished listings are never stocked or activated.</div>
                     <input type="hidden" name="inventory[min_quantity]" value="0">
                 </div>
             </div>
@@ -167,6 +199,13 @@
             </button>
             <span id="save-status" class="ms-2 small"></span>
         </form>
+        <div id="ebay2InvSyncOverlay" class="ebay2-inv-overlay" aria-live="polite" aria-busy="true">
+            <div class="ebay2-inv-overlay-card">
+                <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                <div class="ebay2-inv-overlay-title" id="ebay2InvSyncTitle">Syncing inventory…</div>
+                <div class="ebay2-inv-overlay-sub" id="ebay2InvSyncText">Applying the saved Qty % of Shopify to eBay 2.</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -199,37 +238,114 @@ document.getElementById('ebay2-settings-form')?.addEventListener('submit', funct
     .finally(function () { btn.disabled = false; });
 });
 
-document.getElementById('btn-sync-inventory-now')?.addEventListener('click', function () {
-    var btn = this;
-    var status = document.getElementById('save-status');
-    btn.disabled = true;
-    status.textContent = 'Queueing inventory sync…';
-    status.className = 'ms-2 small text-muted';
-    fetch('{{ route('marketplace.manager.ebay2.sync.inventory') }}', {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-            'Accept': 'application/json',
-        },
-    })
-    .then(function (r) {
-        return r.json().then(function (data) {
-            return { ok: r.ok, status: r.status, data: data };
-        }).catch(function () {
-            return { ok: false, status: r.status, data: { message: 'Server returned non-JSON (often a timeout). Sync may still be running in the background.' } };
-        });
-    })
-    .then(function (res) {
-        var data = res.data || {};
-        status.textContent = data.message || (res.ok ? 'Queued.' : 'Failed');
-        status.className = 'ms-2 small ' + (res.ok && data.success !== false ? 'text-success' : 'text-danger');
-    })
-    .catch(function () {
-        status.textContent = 'Sync request failed (network). Check that the marketplace-manager queue worker is running.';
-        status.className = 'ms-2 small text-danger';
-    })
-    .finally(function () { btn.disabled = false; });
-});
+(function () {
+    var overlay = document.getElementById('ebay2InvSyncOverlay');
+    var titleEl = document.getElementById('ebay2InvSyncTitle');
+    var textEl = document.getElementById('ebay2InvSyncText');
+    var statusUrl = @json(\Illuminate\Support\Facades\Route::has('marketplace.manager.ebay2.sync.inventory.status') ? route('marketplace.manager.ebay2.sync.inventory.status') : url('/marketplace-manager/ebay2/sync-inventory/status'));
+    var pollTimer = null;
+    var pollCount = 0;
+
+    function setOverlay(on, title, text) {
+        if (titleEl && title) titleEl.textContent = title;
+        if (textEl && text) textEl.textContent = text;
+        if (overlay) overlay.classList.toggle('is-on', !!on);
+    }
+
+    function stopPoll() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    function pollStatus() {
+        pollCount += 1;
+        if (pollCount > 720) {
+            stopPoll();
+            setOverlay(false);
+            var stuck = document.getElementById('save-status');
+            if (stuck) {
+                stuck.textContent = 'Sync is still running in the background. Refresh later to confirm.';
+                stuck.className = 'ms-2 small text-muted';
+            }
+            return;
+        }
+        fetch(statusUrl, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var p = (data && data.progress) ? data.progress : {};
+            var state = String(p.state || 'idle');
+            var pct = p.qty_percent != null ? p.qty_percent : '';
+            var msg = p.message || '';
+            if (state === 'done' || state === 'failed') {
+                stopPoll();
+                setOverlay(false);
+                var status = document.getElementById('save-status');
+                if (status) {
+                    status.textContent = msg || (state === 'failed' ? 'Inventory sync failed.' : 'Inventory sync finished.');
+                    status.className = 'ms-2 small ' + (state === 'failed' ? 'text-danger' : 'text-success');
+                }
+                return;
+            }
+            setOverlay(true, 'Syncing inventory…', msg || ('Applying ' + pct + '% of live Shopify to eBay 2. Please wait.'));
+        })
+        .catch(function () {});
+    }
+
+    document.getElementById('btn-sync-inventory-now')?.addEventListener('click', function () {
+        var btn = this;
+        var status = document.getElementById('save-status');
+        var form = document.getElementById('ebay2-settings-form');
+        btn.disabled = true;
+        status.textContent = 'Saving inventory rule and starting sync…';
+        status.className = 'ms-2 small text-muted';
+        setOverlay(true, 'Syncing inventory…', 'Saving the Qty % rule, then matching eBay 2 to live Shopify.');
+        var formData = form ? new FormData(form) : new FormData();
+        fetch('{{ route('marketplace.manager.ebay2.sync.inventory') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+            },
+            body: formData,
+        })
+        .then(function (r) {
+            return r.json().then(function (data) {
+                return { ok: r.ok, data: data };
+            }).catch(function () {
+                return { ok: false, data: { message: 'Server returned non-JSON (often a timeout). Sync may still be running in the background.' } };
+            });
+        })
+        .then(function (res) {
+            var data = res.data || {};
+            if (!res.ok || data.success === false) {
+                stopPoll();
+                setOverlay(false);
+                status.textContent = data.message || 'Failed';
+                status.className = 'ms-2 small text-danger';
+                return;
+            }
+            var pct = data.qty_percent != null ? data.qty_percent : '';
+            setOverlay(true, 'Syncing inventory…', data.message || ('Applying ' + pct + '% of live Shopify to every linked listing.'));
+            status.textContent = data.message || 'Syncing…';
+            status.className = 'ms-2 small text-muted';
+            stopPoll();
+            pollCount = 0;
+            pollStatus();
+            pollTimer = setInterval(pollStatus, 2500);
+        })
+        .catch(function () {
+            stopPoll();
+            setOverlay(false);
+            status.textContent = 'Sync request failed (network). Check that the marketplace-manager queue worker is running.';
+            status.className = 'ms-2 small text-danger';
+        })
+        .finally(function () { btn.disabled = false; });
+    });
+})();
 
 document.getElementById('btn-sync-tracking-now')?.addEventListener('click', function () {
     var btn = this;

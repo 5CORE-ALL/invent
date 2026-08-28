@@ -236,7 +236,8 @@ final class ShopifyLiveVerifiedCatalogService
     public function classifyLinkedInventoryMatch(
         array $linkedSkus,
         array $marketplaceStockMap,
-        string $store = self::STORE_MAIN
+        string $store = self::STORE_MAIN,
+        ?string $marketplace = null
     ): ?array {
         if (! $this->tablesReady() || ! $this->hasAnyActive($store)) {
             return null;
@@ -293,7 +294,7 @@ final class ShopifyLiveVerifiedCatalogService
 
             if ($shopifyQty <= 0) {
                 $zero[] = $canonical;
-            } elseif ($mpQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty)) {
+            } elseif ($mpQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
                 $matched[] = $canonical;
             } else {
                 $mismatch[] = $canonical;
@@ -514,9 +515,9 @@ final class ShopifyLiveVerifiedCatalogService
      * @param  array<string, int>  $marketplaceStockMap
      * @return array{matched: int, mismatch: int, zero: int, unlinked: int, linked: int}|null
      */
-    public function listingCounts(array $linkedSkus, array $marketplaceStockMap = [], string $store = self::STORE_MAIN): ?array
+    public function listingCounts(array $linkedSkus, array $marketplaceStockMap = [], string $store = self::STORE_MAIN, ?string $marketplace = null): ?array
     {
-        $classified = $this->classifyLinkedInventoryMatch($linkedSkus, $marketplaceStockMap, $store);
+        $classified = $this->classifyLinkedInventoryMatch($linkedSkus, $marketplaceStockMap, $store, $marketplace);
 
         return $classified['counts'] ?? null;
     }

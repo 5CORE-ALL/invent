@@ -58,7 +58,7 @@ final class MarketplaceMismatchInventoryPass
         }
 
         $mpStock = $this->stockMap($channel, $catalog->filterLinkedToVerified($linked));
-        $classified = $catalog->classifyLinkedInventoryMatch($linked, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linked, $mpStock, marketplace: $channel);
         $mismatch = $classified['mismatch'] ?? [];
 
         if ($mismatch === []) {

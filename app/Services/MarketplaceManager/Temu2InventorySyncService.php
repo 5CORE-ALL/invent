@@ -117,9 +117,7 @@ class Temu2InventorySyncService
                 continue;
             }
 
-            $qty = $exactShopifyQty
-                ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $qty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $apiItems[] = [
                 'goods_id' => $goodsId,

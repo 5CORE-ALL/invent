@@ -121,7 +121,7 @@ class WayfairInventorySyncService
 
             $currentMp = $product->wayfair_stock !== null ? (int) $product->wayfair_stock : null;
             if ($shopifyStock > 0
-                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp)) {
+                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'wayfair')) {
                 $skipped++;
                 continue;
             }

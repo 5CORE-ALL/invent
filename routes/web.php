@@ -733,6 +733,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay2/refresh-products/status', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'refreshProductsStatus'])->name('ebay2.refresh.status');
         Route::post('/ebay2/fetch-orders', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'fetchOrders'])->name('ebay2.fetch.orders');
         Route::post('/ebay2/sync-inventory', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncInventoryNow'])->name('ebay2.sync.inventory');
+        Route::get('/ebay2/sync-inventory/status', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncInventoryStatus'])->name('ebay2.sync.inventory.status');
         Route::post('/ebay2/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncMismatchInventoryNow'])->name('ebay2.sync.mismatch.inventory');
         Route::post('/ebay2/sync-tracking', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncTrackingNow'])->name('ebay2.sync.tracking');
         Route::get('/ebay3/connect', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'connect'])->name('ebay3.connect');

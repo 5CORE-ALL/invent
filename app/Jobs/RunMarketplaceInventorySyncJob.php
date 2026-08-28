@@ -52,30 +52,40 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
         $slug = strtolower(trim($this->marketplace));
         Log::info('RunMarketplaceInventorySyncJob: start', ['marketplace' => $slug]);
 
-        $result = match ($slug) {
-            'reverb' => app(ReverbInventorySyncService::class)->syncFromShopify(false),
-            'aliexpress' => app(AliexpressInventorySyncService::class)->syncFromShopify(false),
-            'alibaba' => app(AlibabaInventorySyncService::class)->syncFromShopify(false),
-            'newegg' => app(NeweggInventorySyncService::class)->syncFromShopify(false),
-            'shein' => app(\App\Services\MarketplaceManager\SheinInventorySyncService::class)->syncFromShopify(false),
-            'faire' => app(FaireInventorySyncService::class)->syncFromShopify(false),
-            'amazon' => app(AmazonInventorySyncService::class)->syncFromShopify(false),
-            'wayfair' => app(WayfairInventorySyncService::class)->syncFromShopify(false),
-            'bestbuy' => app(BestBuyInventorySyncService::class)->syncFromShopify(false),
-            'macy' => app(MacyInventorySyncService::class)->syncFromShopify(false),
-            'doba' => app(\App\Services\MarketplaceManager\DobaInventorySyncService::class)->syncFromShopify(false),
-            'tiktok2' => app(TikTok2InventorySyncService::class)->syncFromShopify(false),
-            'tiktok' => app(TikTokInventorySyncService::class)->syncFromShopify(false),
-            'ebay1' => app(\App\Services\MarketplaceManager\Ebay1InventorySyncService::class)->syncFromShopify(false),
-            'ebay2' => app(\App\Services\MarketplaceManager\Ebay2InventorySyncService::class)->syncFromShopify(false),
-            'ebay3' => app(\App\Services\MarketplaceManager\Ebay3InventorySyncService::class)->syncFromShopify(false),
-            'temu' => app(\App\Services\MarketplaceManager\TemuInventorySyncService::class)->syncFromShopify(false),
-            'temu2' => app(\App\Services\MarketplaceManager\Temu2InventorySyncService::class)->syncFromShopify(false),
-            'topdawg' => app(\App\Services\MarketplaceManager\TopDawgInventorySyncService::class)->syncFromShopify(false),
-            'purchasingpower' => app(\App\Services\MarketplaceManager\PurchasingPowerInventorySyncService::class)->syncFromShopify(false),
-            'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class)->syncFromShopify(false),
-            default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
-        };
+        try {
+            $result = match ($slug) {
+                'reverb' => app(ReverbInventorySyncService::class)->syncFromShopify(false),
+                'aliexpress' => app(AliexpressInventorySyncService::class)->syncFromShopify(false),
+                'alibaba' => app(AlibabaInventorySyncService::class)->syncFromShopify(false),
+                'newegg' => app(NeweggInventorySyncService::class)->syncFromShopify(false),
+                'shein' => app(\App\Services\MarketplaceManager\SheinInventorySyncService::class)->syncFromShopify(false),
+                'faire' => app(FaireInventorySyncService::class)->syncFromShopify(false),
+                'amazon' => app(AmazonInventorySyncService::class)->syncFromShopify(false),
+                'wayfair' => app(WayfairInventorySyncService::class)->syncFromShopify(false),
+                'bestbuy' => app(BestBuyInventorySyncService::class)->syncFromShopify(false),
+                'macy' => app(MacyInventorySyncService::class)->syncFromShopify(false),
+                'doba' => app(\App\Services\MarketplaceManager\DobaInventorySyncService::class)->syncFromShopify(false),
+                'tiktok2' => app(TikTok2InventorySyncService::class)->syncFromShopify(false),
+                'tiktok' => app(TikTokInventorySyncService::class)->syncFromShopify(false),
+                'ebay1' => app(\App\Services\MarketplaceManager\Ebay1InventorySyncService::class)->syncFromShopify(false),
+                'ebay2' => app(\App\Services\MarketplaceManager\Ebay2InventorySyncService::class)->syncFromShopify(false),
+                'ebay3' => app(\App\Services\MarketplaceManager\Ebay3InventorySyncService::class)->syncFromShopify(false),
+                'temu' => app(\App\Services\MarketplaceManager\TemuInventorySyncService::class)->syncFromShopify(false),
+                'temu2' => app(\App\Services\MarketplaceManager\Temu2InventorySyncService::class)->syncFromShopify(false),
+                'topdawg' => app(\App\Services\MarketplaceManager\TopDawgInventorySyncService::class)->syncFromShopify(false),
+                'purchasingpower' => app(\App\Services\MarketplaceManager\PurchasingPowerInventorySyncService::class)->syncFromShopify(false),
+                'pls' => app(\App\Services\MarketplaceManager\PlsInventorySyncService::class)->syncFromShopify(false),
+                default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
+            };
+        } catch (\Throwable $e) {
+            if ($slug === 'ebay2') {
+                \App\Services\MarketplaceManager\Ebay2InventorySyncService::setProgress([
+                    'state' => 'failed',
+                    'message' => $e->getMessage(),
+                ]);
+            }
+            throw $e;
+        }
 
         Log::info('RunMarketplaceInventorySyncJob: done', [
             'marketplace' => $slug,

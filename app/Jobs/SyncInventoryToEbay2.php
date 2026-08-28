@@ -38,6 +38,10 @@ class SyncInventoryToEbay2 implements ShouldQueue, ShouldBeUnique
             Artisan::call('ebay2:sync-inventory-from-shopify');
             Log::info('SyncInventoryToEbay2: completed', ['output' => trim(Artisan::output())]);
         } catch (\Throwable $e) {
+            \App\Services\MarketplaceManager\Ebay2InventorySyncService::setProgress([
+                'state' => 'failed',
+                'message' => $e->getMessage(),
+            ]);
             Log::error('SyncInventoryToEbay2: failed', ['error' => $e->getMessage()]);
             throw $e;
         }

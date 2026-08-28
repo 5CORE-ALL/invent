@@ -127,9 +127,7 @@ class TopDawgInventorySyncService
                 continue;
             }
 
-            $pushQty = $exactShopifyQty
-                ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
-                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            $pushQty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,

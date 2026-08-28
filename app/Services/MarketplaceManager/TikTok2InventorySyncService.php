@@ -262,18 +262,16 @@ class TikTok2InventorySyncService
         );
         $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-        if (! $exactShopifyQty) {
-            if ($metric->stock !== null && (int) $metric->stock === $pushQty) {
-                $empty['skipped'] = 1;
+        if ($metric->stock !== null && (int) $metric->stock === $pushQty) {
+            $empty['skipped'] = 1;
 
-                return $empty;
-            }
-            if ($shopifyStock !== null && $shopifyStock > 0
-                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $metric->stock !== null ? (int) $metric->stock : null)) {
-                $empty['skipped'] = 1;
+            return $empty;
+        }
+        if ($shopifyStock !== null && $shopifyStock > 0
+            && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $metric->stock !== null ? (int) $metric->stock : null, 'tiktok2')) {
+            $empty['skipped'] = 1;
 
-                return $empty;
-            }
+            return $empty;
         }
 
         if ($dryRun) {

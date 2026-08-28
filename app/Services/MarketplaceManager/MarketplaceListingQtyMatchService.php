@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 final class MarketplaceListingQtyMatchService
 {
-    public const CACHE_PREFIX = 'mm_listing_mismatch_v3:';
+    public const CACHE_PREFIX = 'mm_listing_mismatch_v4:';
 
     /**
      * /map-issues slug → Marketplace Manager channel.
@@ -82,7 +82,7 @@ final class MarketplaceListingQtyMatchService
         foreach ($out as $sku) {
             $shopifyQty = MarketplaceListingStockResolver::qtyFromMap($shopify, (string) $sku);
             $mpQty = MarketplaceListingStockResolver::qtyFromMap($mp, (string) $sku);
-            if ($shopifyQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyQty, $mpQty)) {
+            if ($shopifyQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyQty, $mpQty, $mmChannel)) {
                 continue;
             }
             $real[] = (string) $sku;
@@ -367,7 +367,7 @@ final class MarketplaceListingQtyMatchService
             return $empty;
         }
 
-        $classified = $catalog->classifyLinkedInventoryMatch($linked, $mpStock) ?? $empty;
+        $classified = $catalog->classifyLinkedInventoryMatch($linked, $mpStock, marketplace: $mmChannel) ?? $empty;
         $matched = $classified['matched'] ?? [];
         $mismatch = $classified['mismatch'] ?? [];
         $zero = $classified['zero'] ?? [];
@@ -390,7 +390,8 @@ final class MarketplaceListingQtyMatchService
             $mismatch,
             $zero,
             $liveShopify,
-            $localMp
+            $localMp,
+            $mmChannel
         );
 
         return [

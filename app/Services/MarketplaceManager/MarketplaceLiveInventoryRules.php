@@ -2,6 +2,8 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\MarketplaceSyncSettings;
+
 /**
  * Hard rules for Marketplace Manager inventory (Shopify master):
  *
@@ -86,7 +88,33 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Mismatch-button qty: exact Shopify when requested, else settings percent/max.
+     * Qty % / max cap from that marketplace's Settings page.
+     *
+     * @return array{percent: int, maxQty: int|string|null}
+     */
+    public static function inventoryCapsForMarketplace(string $marketplace): array
+    {
+        $settings = MarketplaceSyncSettings::getFor(strtolower(trim($marketplace)));
+
+        return [
+            'percent' => max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100))),
+            'maxQty' => $settings['inventory']['max_quantity'] ?? null,
+        ];
+    }
+
+    /**
+     * Shopify qty after that marketplace's Qty % (and max) rule.
+     */
+    public static function expectedMarketplaceQty(?int $shopifyQty, string $marketplace): int
+    {
+        $caps = self::inventoryCapsForMarketplace($marketplace);
+
+        return self::qtyFromLiveShopify($shopifyQty, $caps['percent'], $caps['maxQty']);
+    }
+
+    /**
+     * Push qty always follows that marketplace's Qty % / max.
+     * $exactShopifyQty only selects the Shopify source (listings overlay); it never skips the %.
      *
      * @param  int|string|null  $maxQty
      */
@@ -96,9 +124,7 @@ final class MarketplaceLiveInventoryRules
             return self::qtyWhenMissingFromShopify();
         }
 
-        return $exactShopifyQty
-            ? self::pushQtyFromLiveShopify($shopifyStock)
-            : self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+        return self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
     }
 
     /**
@@ -244,13 +270,12 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Listings match rule (all marketplaces):
-     * 1. Shopify qty == marketplace qty → matched (Active / Inactive SKU).
-     * 2. Otherwise matched when abs(Shopify − marketplace) is at most
-     *    max(3 units, 3% of Shopify qty) — whichever is higher.
+     * Listings / skip rule:
+     * Compare marketplace qty to the target for that channel (Qty % of Shopify when $marketplace is set).
+     * Matched when equal, or abs(target − marketplace) ≤ max(3 units, 3% of target).
      * Missing marketplace qty is never treated as within tolerance.
      */
-    public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty): bool
+    public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty, ?string $marketplace = null): bool
     {
         if ($marketplaceQty === null) {
             return false;
@@ -259,12 +284,15 @@ final class MarketplaceLiveInventoryRules
         if ($shopifyQty <= 0) {
             return $marketplaceQty <= 0;
         }
-        if ($marketplaceQty === $shopifyQty) {
+        $target = $marketplace
+            ? self::expectedMarketplaceQty($shopifyQty, $marketplace)
+            : $shopifyQty;
+        if ($marketplaceQty === $target) {
             return true;
         }
 
-        $diff = abs($shopifyQty - $marketplaceQty);
-        $threshold = self::mismatchIgnoreThreshold($shopifyQty);
+        $diff = abs($target - $marketplaceQty);
+        $threshold = self::mismatchIgnoreThreshold($target);
 
         return $diff <= $threshold;
     }

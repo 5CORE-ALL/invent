@@ -17,6 +17,36 @@ class Ebay2InventorySyncService
 {
     public const TRADING_LIMIT_CACHE_KEY = 'mm.ebay2.trading.518.until';
 
+    public const PROGRESS_CACHE_KEY = 'mm.ebay2.inv.sync.progress';
+
+    /**
+     * @param  array{state?: string, qty_percent?: int, message?: string, updated?: int, failed?: int, skipped?: int}  $data
+     */
+    public static function setProgress(array $data): void
+    {
+        $current = self::progress();
+        Cache::put(self::PROGRESS_CACHE_KEY, array_merge($current, $data, [
+            'updated_at' => now()->toIso8601String(),
+        ]), now()->addHours(2));
+    }
+
+    /**
+     * @return array{state: string, qty_percent: int|null, message: string, updated: int, failed: int, skipped: int}
+     */
+    public static function progress(): array
+    {
+        $row = Cache::get(self::PROGRESS_CACHE_KEY);
+
+        return array_merge([
+            'state' => 'idle',
+            'qty_percent' => null,
+            'message' => '',
+            'updated' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+        ], is_array($row) ? $row : []);
+    }
+
     public function __construct(
         protected EbayTwoApiService $ebay2Api,
         protected ShopifyApiService $shopifyApi
@@ -140,19 +170,15 @@ class Ebay2InventorySyncService
             );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-            // Mismatch button always pushes listings Shopify qty. Local ebay_stock can
-            // already equal that qty while the listings cache still shows the old eBay qty.
-            if (! $exactShopifyQty) {
-                $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
-                if ($currentMp !== null && $currentMp === $pushQty) {
-                    $skipped++;
-                    continue;
-                }
-                if ($shopifyStock !== null && $shopifyStock > 0
-                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp)) {
-                    $skipped++;
-                    continue;
-                }
+            $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
+            if ($currentMp !== null && $currentMp === $pushQty) {
+                $skipped++;
+                continue;
+            }
+            if ($shopifyStock !== null && $shopifyStock > 0
+                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'ebay2')) {
+                $skipped++;
+                continue;
             }
 
             $inventoryRows[] = [
@@ -172,7 +198,7 @@ class Ebay2InventorySyncService
                 'skipped' => $skipped,
                 'rate_limited' => false,
                 'message' => $skipped > 0
-                    ? 'No eBay 2 SKUs needed a push (already within mismatch tolerance or already at Shopify qty).'
+                    ? 'No eBay 2 SKUs needed a push (already at this marketplace Qty % of Shopify).'
                     : 'No linked eBay 2 SKUs found for inventory sync.',
             ];
         }
@@ -211,45 +237,81 @@ class Ebay2InventorySyncService
     public function syncFromShopify(bool $dryRun = false): array
     {
         $settings = MarketplaceSyncSettings::getFor('ebay2');
+        $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
+        $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        Log::info('Ebay2InventorySyncService: loaded inventory rule', [
+            'qty_percent' => $qtyPercent,
+            'inventory_sync' => (bool) ($settings['inventory']['inventory_sync'] ?? false),
+            'dry_run' => $dryRun,
+        ]);
+
+        $finish = function (array $result) use ($dryRun, $qtyPercent): array {
+            if (! $dryRun) {
+                $failed = (int) ($result['failed'] ?? 0);
+                $updated = (int) ($result['updated'] ?? 0);
+                self::setProgress([
+                    'state' => ($failed > 0 && $updated === 0) ? 'failed' : 'done',
+                    'qty_percent' => $qtyPercent,
+                    'message' => (string) ($result['message'] ?? ''),
+                    'updated' => $updated,
+                    'failed' => $failed,
+                    'skipped' => (int) ($result['skipped'] ?? 0),
+                ]);
+            }
+
+            return $result;
+        };
+
+        if (! $dryRun) {
+            self::setProgress([
+                'state' => 'running',
+                'qty_percent' => $qtyPercent,
+                'message' => 'Using saved Qty % of Shopify ('.$qtyPercent.'%). Matching eBay 2 inventory…',
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+            ]);
+        }
+
         if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
-            return [
+            return $finish([
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
                 'message' => 'Inventory and price sync are disabled in settings.',
-            ];
+            ]);
         }
 
         if (! $this->ebay2Api->isConfigured()) {
-            return [
+            return $finish([
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
                 'message' => 'eBay 2 API credentials missing.',
-            ];
+            ]);
         }
 
         if ($blocked = self::tradingLimitMessage()) {
-            return [
+            return $finish([
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
                 'rate_limited' => true,
                 'message' => $blocked,
-            ];
+            ]);
         }
 
         if (! Schema::hasTable('ebay_2_metrics')) {
-            return [
+            return $finish([
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
                 'message' => 'ebay_2_metrics table missing. Run Sync link map on Listings first.',
-            ];
+            ]);
         }
 
         $this->ensureMetricsForSkus(
@@ -275,13 +337,13 @@ class Ebay2InventorySyncService
             ->values();
 
         if ($metrics->isEmpty()) {
-            return [
+            return $finish([
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => 0,
                 'price_updated' => 0,
                 'message' => 'No eBay 2 SKU mappings found. Run Sync link map on Listings first.',
-            ];
+            ]);
         }
 
         $skus = $metrics->pluck('sku')->unique()->values()->all();
@@ -310,21 +372,19 @@ class Ebay2InventorySyncService
         if (! $coverage['ok'] && ($settings['inventory']['inventory_sync'] ?? false) && ! $dryRun) {
             Log::error('Ebay2InventorySyncService: aborting inventory push — Shopify live coverage too low', $coverage);
 
-            return [
+            return $finish([
                 'updated' => 0,
                 'failed' => 0,
                 'skipped' => count($skus),
                 'price_updated' => 0,
                 'message' => $coverage['message'],
-            ];
+            ]);
         }
 
         $shopifyDetails = ($settings['pricing']['price_sync'] ?? false)
             ? $this->shopifyApi->getProductDetailsBySkuMap($skus)
             : [];
 
-        $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
-        $maxQty = $settings['inventory']['max_quantity'] ?? null;
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
         $inventoryRows = [];
@@ -366,7 +426,7 @@ class Ebay2InventorySyncService
                 $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
                 $alreadyOk = $currentMp !== null && $currentMp === $pushQty;
                 $withinTol = $shopifyStock !== null && $shopifyStock > 0
-                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp);
+                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'ebay2');
                 if ($alreadyOk || $withinTol) {
                     $skipped++;
                 } else {
@@ -388,13 +448,13 @@ class Ebay2InventorySyncService
         }
 
         if ($dryRun) {
-            return [
+            return $finish([
                 'updated' => count($inventoryRows),
                 'failed' => 0,
                 'skipped' => $skipped,
                 'price_updated' => count($priceRows),
                 'message' => '[dry-run] Would update '.count($inventoryRows).' inventory row(s), '.count($priceRows).' price-only row(s).',
-            ];
+            ]);
         }
 
         $updated = 0;
@@ -432,14 +492,14 @@ class Ebay2InventorySyncService
             }
         }
 
-        return [
+        return $finish([
             'updated' => $updated,
             'failed' => $failed,
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
             'message' => "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}."
                 .$this->appendMismatchPass(! $dryRun && ($settings['inventory']['inventory_sync'] ?? false)),
-        ];
+        ]);
     }
 
     protected function appendMismatchPass(bool $run): string
