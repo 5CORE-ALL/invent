@@ -77,11 +77,7 @@ class TemuController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        // Get percentage from cache or database
-        // $percentage = Cache::remember('temu_marketplace_percentage', now()->addDays(30), function () {
-        //     $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-        //     return $marketplaceData ? $marketplaceData->percentage : 100;
-        // });
+       
 
         $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
 

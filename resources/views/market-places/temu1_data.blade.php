@@ -690,6 +690,7 @@
                                     <th>Price</th>
                                     <th style="width: 90px;" title="Added to Price for LMP / L1">Delivery</th>
                                     <th style="width: 90px;" title="Price + Delivery (defaults Del $2.99 when Price &lt; $27)">Price+D</th>
+                                    <th style="width: 80px;" title="(Price+D − S PRC) / Price+D. Same as the outer Diff column.">Diff</th>
                                     <th>Link</th>
                                     <th style="width: 80px;">Actions</th>
                                 </tr>
@@ -1742,33 +1743,45 @@
         return +(p * 0.85).toFixed(2);
     }
 
-    /** Lowest non-ignored raw LMP from entries / lmp_raw (before Temu Recovery). */
-    function getTemu2RawLmp(row) {
-        if (!row) return null;
-        const rawField = temuParseMoney(row.lmp_raw);
-        if (rawField > 0) return rawField;
-        const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
-        const prices = entries
-            .filter(function(e) { return !e || !e.ignored; })
-            .map(function(e) {
-                if (!e || e.ignored) return null;
-                const base = temuParseMoney(e.price);
-                if (!(base > 0)) return null;
-                const d = parseFloat(e.delivery);
-                let delivery = (isFinite(d) && d > 0) ? d : 0;
-                if (delivery <= 0 && base < 27) delivery = 2.99;
-                return base + delivery;
-            })
-            .filter(function(p) { return p !== null && p > 0; });
-        if (prices.length > 0) return Math.min.apply(null, prices);
-        return null;
+    function temuLmpEntryEffective(entry) {
+        if (!entry || entry.ignored) return null;
+        const base = temuParseMoney(entry.price);
+        if (!(base > 0)) return null;
+        const dRaw = parseFloat(entry.delivery);
+        let delivery = (isFinite(dRaw) && dRaw > 0) ? dRaw : 0;
+        if (delivery <= 0 && base < 27) delivery = 2.99;
+        return { price: base, delivery: delivery, raw: +(base + delivery).toFixed(2) };
     }
 
-    /** Same dollar amount as the LMP column. */
+    /** Lowest modal LMP: Price + Delivery (Del defaults $2.99 when Price < $27). */
+    function getTemu2LowestLmpMeta(row) {
+        if (!row) return { raw: 0, delivery: 0, price: 0 };
+        let best = null;
+        (Array.isArray(row.lmp_entries) ? row.lmp_entries : []).forEach(function(e) {
+            const meta = temuLmpEntryEffective(e);
+            if (!meta) return;
+            if (!best || meta.raw < best.raw) best = meta;
+        });
+        if (best) return best;
+        const rawField = temuParseMoney(row.lmp_raw);
+        if (rawField > 0) return { raw: rawField, delivery: 0, price: rawField };
+        return { raw: 0, delivery: 0, price: 0 };
+    }
+
+    function getTemu2RawLmp(row) {
+        const raw = getTemu2LowestLmpMeta(row).raw;
+        return raw > 0 ? raw : null;
+    }
+
+    function getTemu2LowestDelivery(row) {
+        const d = getTemu2LowestLmpMeta(row).delivery;
+        return d > 0 ? d : 0;
+    }
+
+    /** Outer LMP column = lowest Price+D from the LMP modal. */
     function getTemu2DisplayLmp(row) {
-        const recovery = temuLmpRecovery(getTemu2RawLmp(row));
-        if (recovery != null && recovery > 0) return recovery;
-        return temuParseMoney(row && (row.lmp != null ? row.lmp : row.LMP));
+        const raw = getTemu2RawLmp(row);
+        return raw > 0 ? raw : 0;
     }
 
     function temuAmzRefPrice(row) {
@@ -1808,7 +1821,7 @@
     /**
      * S PRC starts as Discounted Price, then steps down:
      * if higher than eBay → eBay; if higher than Amz → Amz; if higher than LMP → LMP.
-     * LMP is the column value (Temu Recovery). Always the lowest of those prices.
+     * LMP is the lowest modal Price+D. Always the lowest of those prices.
      */
     function temuSpriceCapResult(row, rawSprice, extra) {
         extra = extra || {};
@@ -3910,19 +3923,19 @@
                     minWidth: 88,
                     sorter: "number",
                     headerSort: true,
-                    headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — same as /pricing-master-cvr; raw LMP stays in the modal",
+                    headerTooltip: "Lowest LMP from the modal: Price + Delivery (Del $2.99 when Price < $27). Same as the highlighted modal row.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        const rawLowest = getTemu2RawLmp(row);
-                        const recovery = temuLmpRecovery(rawLowest);
-                        const displayVal = recovery != null ? recovery : (parseFloat(cell.getValue()) || null);
+                        const meta = typeof getTemu2LowestLmpMeta === 'function' ? getTemu2LowestLmpMeta(row) : { raw: getTemu2RawLmp(row) || 0 };
+                        const displayVal = meta.raw > 0 ? meta.raw : null;
+                        const recovery = typeof temuLmpRecovery === 'function' ? temuLmpRecovery(displayVal) : null;
                         const display = displayVal != null
                             ? (displayVal % 1 === 0 ? displayVal.toLocaleString() : displayVal.toFixed(2))
                             : '-';
                         const count = (row.lmp_entries || []).length;
-                        const rawTip = rawLowest != null ? (' from raw $' + Number(rawLowest).toFixed(2)) : '';
+                        const recTip = recovery != null ? (' · Recovery $' + Number(recovery).toFixed(2)) : '';
                         const title = count > 0
-                            ? ('Temu Recovery $' + (displayVal != null ? Number(displayVal).toFixed(2) : '-') + rawTip + ' (' + count + ' entries) - click to edit')
+                            ? ('Lowest LMP $' + (displayVal != null ? Number(displayVal).toFixed(2) : '-') + recTip + ' (' + count + ' entries) - click to edit')
                             : 'Click eye to add LMP';
                         return '<span class="lmp-display" title="' + title.replace(/"/g, '&quot;') + '">' + (display !== '-' ? display : '<span style="color: #999;">-</span>') + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + (row.sku || '').replace(/"/g, '&quot;') + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
                     },
@@ -3935,12 +3948,29 @@
                     }
                 },
                 {
+                    title: "Delivery",
+                    field: "lmp_delivery",
+                    hozAlign: "center",
+                    width: 80,
+                    minWidth: 76,
+                    sorter: "number",
+                    headerSort: true,
+                    headerTooltip: "Delivery from the lowest LMP row in the modal. Defaults to $2.99 when Price < $27 and Delivery is blank.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row)) return '';
+                        const d = typeof getTemu2LowestDelivery === 'function' ? getTemu2LowestDelivery(row) : 0;
+                        if (!(d > 0)) return '<span style="color:#999;">—</span>';
+                        return '<span style="font-weight:600;">$' + d.toFixed(2) + '</span>';
+                    }
+                },
+                {
                     title: "Diff",
                     field: "lmp_diff_pct",
                     hozAlign: "center",
                     width: 84,
                     minWidth: 84,
-                    headerTooltip: "S PRC vs LMP: (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
+                    headerTooltip: "S PRC vs lowest LMP (Price+D): (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -3972,7 +4002,7 @@
                     hozAlign: "center",
                     minWidth: 88,
                     editor: "input",
-                    headerTooltip: "S PRC = Discounted Price. If Discounted is higher than eBay, Amazon, or LMP (the LMP column / Temu Recovery), S PRC becomes that lower price. Always the lowest. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC = Discounted Price. If Discounted is higher than eBay, Amazon, or LMP (lowest modal Price+D), S PRC becomes that lower price. Always the lowest. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4379,7 +4409,7 @@
         };
         const TEMU2_AUTOFIT_FLOOR = {
             s_profit: 88, temu_price: 86, base_price: 92,
-            roi_percent: 80, profit_percent: 80, lmp: 88, lmp_diff_pct: 84,
+            roi_percent: 80, profit_percent: 80, lmp: 88, lmp_delivery: 76, lmp_diff_pct: 84,
             STANDARD_PRICE: 88, sprice: 88, temu_price_display: 90
         };
         let temu2AutofitTimer = null;
@@ -4960,12 +4990,23 @@
 
         // LMP Modal: Add New form + table list; lowest row highlighted with LOWEST badge
         let lmpModalSku = '';
+        let lmpModalSprice = 0;
         function openLmpModal(sku, entries) {
             lmpModalSku = sku || '';
+            lmpModalSprice = 0;
             $('#lmpModalSku').text(lmpModalSku);
             $('#lmpNewPrice').val('');
             $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
+            if (typeof table !== 'undefined' && table && lmpModalSku) {
+                const rows = table.searchRows('sku', '=', lmpModalSku);
+                if (rows.length) {
+                    const d = rows[0].getData();
+                    lmpModalSprice = typeof temuDisplayedSprice === 'function'
+                        ? temuDisplayedSprice(d)
+                        : (parseFloat(d.sprice) || 0);
+                }
+            }
             const tbody = $('#lmpEntriesContainer');
             tbody.empty();
             const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
@@ -4997,6 +5038,7 @@
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" style="max-width:90px" placeholder="0.00" title="Added to Price for LMP"></td>' +
                 '<td class="align-middle text-center"><span class="lmp-price-d text-muted">—</span></td>' +
+                '<td class="align-middle text-center"><span class="lmp-row-diff text-muted">—</span></td>' +
                 '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
                 '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
@@ -5025,10 +5067,23 @@
             const $el = $(tr).find('.lmp-price-d');
             if (!$el.length) return;
             const total = getTemu2LmpEffectivePrice(tr);
+            const $diff = $(tr).find('.lmp-row-diff');
             if (total === null) {
                 $el.text('—').addClass('text-muted');
+                if ($diff.length) $diff.text('—').css('color', '#999').addClass('text-muted');
             } else {
                 $el.text('$' + Number(total).toFixed(2)).removeClass('text-muted');
+                if ($diff.length) {
+                    const sprice = parseFloat(lmpModalSprice) || 0;
+                    if (!(sprice > 0) || !(total > 0)) {
+                        $diff.text('—').css('color', '#999').addClass('text-muted');
+                    } else {
+                        const pct = ((total - sprice) / total) * 100;
+                        const color = pct < 0 ? '#dc3545' : '#28a745';
+                        const sign = pct > 0 ? '+' : '';
+                        $diff.text(sign + pct.toFixed(1) + '%').css({ color: color, fontWeight: '600' }).removeClass('text-muted');
+                    }
+                }
             }
         }
         function renumberLmpRows() {
