@@ -86,6 +86,18 @@
             color: #6c757d;
             font-weight: 700;
         }
+        .tabulator .tabulator-header .tabulator-col.tabulator-col-group {
+            background: #eef4fb;
+            text-align: center;
+        }
+        .tabulator .tabulator-header .tabulator-col.tabulator-col-group .tabulator-col-title {
+            font-weight: 700;
+            color: #6c2c2c;
+        }
+        .ml-inactive-count {
+            font-weight: 600;
+            text-decoration: none;
+        }
         .tabulator .tabulator-cell.tabulator-editing { padding: 2px 4px; }
 
         /* Metric history modal — same full-width layout as Active Channel */
@@ -224,6 +236,21 @@
 
     function fromSheetCell() {
         return '<span class="ml-from-sheet" title="Listing counts come from Sheet — not calculated here">From Sheet</span>';
+    }
+
+    function formatInactiveCount(cell, field) {
+        const v = Number(cell.getValue() || 0);
+        const row = cell.getRow().getData();
+        const url = String(row.inactive_listings_url || '').trim();
+        const color = v === 0 ? '#198754' : '#b45309';
+        const label = v.toLocaleString('en-US');
+        if (!url) {
+            return `<span class="ml-inactive-count" style="color:${color};">${label}</span>`;
+        }
+        const title = field === 'inactive_parent'
+            ? 'Open inactive parent listings'
+            : 'Open inactive child listings';
+        return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="ml-inactive-count" style="color:${color};" title="${title}">${label}</a>`;
     }
 
     function mlChartRangeLabel(days) {
@@ -713,6 +740,47 @@
                     bottomCalcFormatter: function(cell) {
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
+                },
+                {
+                    title: "Inactive Listing",
+                    headerHozAlign: "center",
+                    headerTooltip: "Seller-platform inactive listings: parent products vs child SKUs",
+                    columns: [
+                        {
+                            title: "Parent",
+                            field: "inactive_parent",
+                            width: 100,
+                            hozAlign: "center",
+                            sorter: "number",
+                            headerTooltip: "Inactive parent listings on the seller platform",
+                            formatter: function(cell) {
+                                return formatInactiveCount(cell, 'inactive_parent');
+                            },
+                            bottomCalc: function(values, data) {
+                                return (data || []).reduce((sum, row) => sum + Number(row.inactive_parent || 0), 0);
+                            },
+                            bottomCalcFormatter: function(cell) {
+                                return Number(cell.getValue() || 0).toLocaleString('en-US');
+                            },
+                        },
+                        {
+                            title: "Child",
+                            field: "inactive_child",
+                            width: 100,
+                            hozAlign: "center",
+                            sorter: "number",
+                            headerTooltip: "Inactive child / variation SKUs. If the channel has no parent listings, this is the full seller-platform inactive count.",
+                            formatter: function(cell) {
+                                return formatInactiveCount(cell, 'inactive_child');
+                            },
+                            bottomCalc: function(values, data) {
+                                return (data || []).reduce((sum, row) => sum + Number(row.inactive_child || 0), 0);
+                            },
+                            bottomCalcFormatter: function(cell) {
+                                return Number(cell.getValue() || 0).toLocaleString('en-US');
+                            },
+                        },
+                    ],
                 },
                 {
                     title: "Seller Portal",

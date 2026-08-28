@@ -8,6 +8,7 @@ use App\Models\ChannelMasterSummary;
 use App\Models\MissingListingDar;
 use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -71,6 +72,8 @@ class MissingListingController extends Controller
                     $isSheet = $dataSource === 'Sheet';
 
                     // Sheet: no listing numbers — UI shows "From Sheet"
+                    $inactive = ListingInactiveParentChildCounts::forChannel($channel);
+
                     if ($isSheet) {
                         return [
                             'id' => $master->id,
@@ -84,6 +87,9 @@ class MissingListingController extends Controller
                             'nrl' => null,
                             'listed' => null,
                             'missing_listing' => null,
+                            'inactive_parent' => (int) ($inactive['parent'] ?? 0),
+                            'inactive_child' => (int) ($inactive['child'] ?? 0),
+                            'inactive_listings_url' => $inactive['url'] ?? null,
                             'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
                         ];
                     }
@@ -103,6 +109,9 @@ class MissingListingController extends Controller
                         'nrl' => (int) ($listingCounts['NRL'] ?? 0),
                         'listed' => (int) ($listingCounts['Listed'] ?? 0),
                         'missing_listing' => (int) ($listingCounts['Pending'] ?? 0),
+                        'inactive_parent' => (int) ($inactive['parent'] ?? 0),
+                        'inactive_child' => (int) ($inactive['child'] ?? 0),
+                        'inactive_listings_url' => $inactive['url'] ?? null,
                         'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
                     ];
                 })
