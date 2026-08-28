@@ -1548,11 +1548,23 @@
         }
         function isEbay2TabulatorParentRow(data) {
             if (!data) return false;
-            if (data.is_parent_summary || data.is_parent_row) return true;
-            const sku = String(data['(Child) sku'] || data.sku || '').toUpperCase();
+            if (typeof window.isPmParentRowData === 'function' && window.isPmParentRowData(data)) return true;
+            if (data.is_parent_summary || data.is_parent_row || data.is_parent) return true;
+            const sku = String(data['(Child) sku'] || data.SKU || data.sku || '').toUpperCase();
             if (sku.includes('PARENT')) return true;
             const p = data.Parent;
             return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+        }
+        /** Slice the full dataset for ALL / Parents / SKU so PARENT rows cannot leak through SKU view. */
+        function ebay2RowsForViewMode(viewMode, rows) {
+            const list = Array.isArray(rows) ? rows : [];
+            if (viewMode === 'sku') {
+                return list.filter(function(d) { return !isEbay2TabulatorParentRow(d); });
+            }
+            if (viewMode === 'parent') {
+                return list.filter(function(d) { return isEbay2TabulatorParentRow(d); });
+            }
+            return list;
         }
         function ebay2RowSpriceForAlert(data) {
             if (typeof chPromoLiveSprice === 'function') return chPromoLiveSprice(data);
@@ -3082,6 +3094,8 @@
             // Event delegation for eye button clicks (add to SKU column formatter)
             let allTableData = []; // Store all unfiltered data
             let ebay2ExpandedParent = null; // parent key when triangle expand is active
+            let ebay2BoundViewMode = null; // last dataset slice: all | parent | sku | __expanded__
+            let ebay2SkipNextDataLoadedFilter = false;
             if (window.ParentExpand) {
                 ParentExpand.configure({
                     parentField: 'Parent',
@@ -3109,6 +3123,8 @@
                     parentRow._expanded = true;
                     displayData.push(parentRow);
                 }
+                ebay2BoundViewMode = '__expanded__';
+                ebay2SkipNextDataLoadedFilter = true;
                 table.clearFilter(true);
                 table.clearSort();
                 table.setData(displayData).then(function() {
@@ -3399,6 +3415,12 @@
                         field: "(Child) sku",
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
+                        headerFilterFunc: function(headerValue, rowValue, rowData) {
+                            if (headerValue == null || String(headerValue).trim() === '') return true;
+                            const viewMode = $('#view-mode-filter').val() || 'parent';
+                            if (viewMode !== 'parent' && isEbay2TabulatorParentRow(rowData)) return false;
+                            return String(rowValue || '').toUpperCase().includes(String(headerValue).trim().toUpperCase());
+                        },
                         cssClass: "text-primary fw-bold",
                         // Full SKU tooltip on hover — explicit so it works even when the SKU text
                         // is truncated by the narrower column width.
@@ -4347,12 +4369,9 @@
                 );
             });
 
-            // SKU Search functionality
+            // SKU / Parent search — go through applyFilters so view-mode (SKU vs Parents) is not wiped
             $('#sku-search, #parent-search').on('keyup', function() {
-                table.setFilter([
-                    { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
-                    { field: 'Parent', type: 'like', value: $('#parent-search').val() || '' }
-                ]);
+                applyFilters();
             });
 
             // NR/REQ dropdown change handler
@@ -4536,11 +4555,14 @@
                 const dilFilter = $('#dil-filter').val() || 'all';
                 const priceMin = parseFloat($('#price-min-filter').val());
                 const priceMax = parseFloat($('#price-max-filter').val());
+                const skuSearch = ($('#sku-search').val() || '').trim();
+                const parentSearch = ($('#parent-search').val() || '').trim();
 
                 function runEbay2Filters() {
                 table.clearFilter(true);
 
                 // View mode: ALL (Parent + SKU) · Parents · SKU
+                // Dataset is already sliced below; keep addFilter so PARENT rows cannot reappear.
                 if (viewModeFilter === 'parent') {
                     table.addFilter(function(data) {
                         return isEbay2TabulatorParentRow(data);
@@ -4548,6 +4570,23 @@
                 } else if (viewModeFilter === 'sku') {
                     table.addFilter(function(data) {
                         return !isEbay2TabulatorParentRow(data);
+                    });
+                }
+
+                if (skuSearch) {
+                    const skuQ = skuSearch.toUpperCase();
+                    table.addFilter(function(data) {
+                        if (viewModeFilter !== 'parent' && isEbay2TabulatorParentRow(data)) return false;
+                        const sku = String(data['(Child) sku'] || data.sku || '').toUpperCase();
+                        return sku.includes(skuQ);
+                    });
+                }
+                if (parentSearch) {
+                    const parentQ = parentSearch.toUpperCase();
+                    table.addFilter(function(data) {
+                        const p = String(data.Parent || '').toUpperCase();
+                        const key = ebay2NormalizeParentKey(data.Parent || data['(Child) sku'] || '').toUpperCase();
+                        return p.includes(parentQ) || key.includes(parentQ);
                     });
                 }
 
@@ -4769,10 +4808,28 @@
                 }, 100);
                 } // end runEbay2Filters
 
-                // Restore full dataset after parent-expand (setData replaced it with a subset)
-                if (allTableData && allTableData.length && table.getDataCount() !== allTableData.length) {
-                    table.setData(allTableData).then(runEbay2Filters);
+                if (!table) return;
+
+                // Bind the table to the ALL / Parents / SKU slice. Never restore the full
+                // dataset while SKU is selected — that was leaking PARENT rows back in.
+                const viewRows = ebay2RowsForViewMode(viewModeFilter, allTableData);
+                const needReplace = allTableData.length && (
+                    ebay2BoundViewMode !== viewModeFilter
+                    || ebay2BoundViewMode === '__expanded__'
+                    || table.getDataCount() !== viewRows.length
+                );
+                if (needReplace) {
+                    ebay2SkipNextDataLoadedFilter = true;
+                    table.setData(viewRows).then(function() {
+                        ebay2BoundViewMode = viewModeFilter;
+                        runEbay2Filters();
+                    }).catch(function() {
+                        ebay2SkipNextDataLoadedFilter = false;
+                        ebay2BoundViewMode = viewModeFilter;
+                        runEbay2Filters();
+                    });
                 } else {
+                    ebay2BoundViewMode = viewModeFilter;
                     runEbay2Filters();
                 }
             }
@@ -5159,6 +5216,11 @@
             });
 
             table.on('dataLoaded', function() {
+                if (ebay2SkipNextDataLoadedFilter) {
+                    ebay2SkipNextDataLoadedFilter = false;
+                } else if (allTableData.length) {
+                    applyFilters();
+                }
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 updateCalcValues();
                 updateSummary();
