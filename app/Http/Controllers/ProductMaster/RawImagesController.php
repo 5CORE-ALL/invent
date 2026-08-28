@@ -468,8 +468,17 @@ class RawImagesController extends Controller
 
     public function aiPrompt(Request $request): JsonResponse
     {
+        if (is_string($request->input('selected'))) {
+            $decoded = json_decode((string) $request->input('selected'), true);
+            if (is_array($decoded)) {
+                $request->merge(['selected' => $decoded]);
+            }
+        }
+
         $validated = $request->validate([
             'prompt' => 'required|string|min:2|max:8000',
+            'logos' => 'nullable|array|max:6',
+            'logos.*' => 'file|mimes:jpg,jpeg,png,webp,gif|max:4096',
         ]);
 
         $prompt = trim($validated['prompt']);
@@ -490,7 +499,8 @@ class RawImagesController extends Controller
 
         @set_time_limit(600);
         $this->persistAiPrompt($kind, $prompt);
-        $result = $this->generateRawImagesForSelected($rows, $kind, $prompt);
+        $logoBytes = $this->logoBytesFromRequest($request);
+        $result = $this->generateRawImagesForSelected($rows, $kind, $prompt, $logoBytes);
 
         if ($result['imported'] > 0) {
             self::forgetMissingSidebarCountCache($kind);
@@ -625,9 +635,10 @@ class RawImagesController extends Controller
 
     /**
      * @param  list<array{sku: string, hero_image: ?string}>  $rows
+     * @param  list<string>  $logoBytes
      * @return array{reply: string, imported: int, skipped: int, errors: list<string>, by_sku: array<string, list<array<string, mixed>>>}
      */
-    private function generateRawImagesForSelected(array $rows, string $kind, string $prompt): array
+    private function generateRawImagesForSelected(array $rows, string $kind, string $prompt, array $logoBytes = []): array
     {
         $imported = 0;
         $skipped = 0;
@@ -641,7 +652,7 @@ class RawImagesController extends Controller
                 if (! $heroUrl) {
                     throw new \RuntimeException('No hero image found.');
                 }
-                $bytes = $this->generateRawShootFromHero($heroUrl, $prompt, $sku);
+                $bytes = $this->generateRawShootFromHero($heroUrl, $prompt, $sku, $logoBytes);
                 $this->storeRawImageBytes($sku, ProductRawImage::aiKindFor($kind), $bytes, $sku.'_ai_raw_2000.jpg');
                 $imported++;
                 $bySku[$sku] = $this->imagesForSku($sku, $kind, true);
@@ -688,12 +699,35 @@ class RawImagesController extends Controller
         );
     }
 
-    private function generateRawShootFromHero(string $heroUrl, string $prompt, string $sku): string
+    private function generateRawShootFromHero(string $heroUrl, string $prompt, string $sku, array $logoBytes = []): string
     {
         $heroBytes = $this->downloadImageBytes($heroUrl);
         $this->storeRemoteImageCacheFromBytes($heroUrl, $heroBytes);
 
-        return app(RawImagesAiImageService::class)->generateFromHeroBytes($heroBytes, $prompt, $sku);
+        return app(RawImagesAiImageService::class)->generateFromHeroBytes($heroBytes, $prompt, $sku, $logoBytes);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function logoBytesFromRequest(Request $request): array
+    {
+        $out = [];
+        foreach ($request->file('logos', []) as $file) {
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
+            $bytes = (string) @file_get_contents($file->getRealPath());
+            if ($bytes === '' || @getimagesizefromstring($bytes) === false) {
+                continue;
+            }
+            $out[] = $bytes;
+            if (count($out) >= 6) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     private function downloadImageBytes(string $url): string

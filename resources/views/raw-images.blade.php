@@ -295,6 +295,73 @@
         line-height: 1.2;
         letter-spacing: .02em;
     }
+    .ri-ai-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2050;
+        background: rgba(15, 23, 42, .48);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+    }
+    .ri-ai-overlay-card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 36px 44px;
+        text-align: center;
+        box-shadow: 0 18px 50px rgba(15, 23, 42, .28);
+        min-width: 280px;
+        max-width: 420px;
+    }
+    .ri-ai-overlay-title {
+        margin-top: 16px;
+        font-size: 18px;
+        font-weight: 700;
+        color: #1e3a8a;
+    }
+    .ri-ai-overlay-sub {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #64748b;
+        line-height: 1.4;
+    }
+    .ri-ai-logo-preview {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .ri-ai-logo-chip {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+    }
+    .ri-ai-logo-chip img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        background: repeating-conic-gradient(#f1f5f9 0% 25%, #fff 0% 50%) 50% / 12px 12px;
+    }
+    .ri-ai-logo-chip button {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 18px;
+        height: 18px;
+        border: 0;
+        border-radius: 50%;
+        background: #dc3545;
+        color: #fff;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+    }
 
     #raw-images-table .tabulator-cell[tabulator-field="barcode"] {
         overflow: visible !important;
@@ -464,6 +531,16 @@
                     </div>
                     <div class="mt-2 fw-semibold text-primary">Loading {{ $pageTitle }}...</div>
                 </div>
+
+                <div id="riAiProcessLoader" class="ri-ai-overlay" aria-live="polite" aria-busy="true">
+                    <div class="ri-ai-overlay-card">
+                        <div class="spinner-border text-primary" role="status" style="width:2.5rem;height:2.5rem;">
+                            <span class="visually-hidden">Generating…</span>
+                        </div>
+                        <div class="ri-ai-overlay-title" id="riAiProcessLoaderTitle">Generating {{ $aiColumnTitle }}…</div>
+                        <div class="ri-ai-overlay-sub" id="riAiProcessLoaderText">Please wait. This can take a minute.</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -610,6 +687,15 @@
                     <label class="form-label fw-semibold" for="riAiPrompt">Prompt</label>
                     <textarea class="form-control" id="riAiPrompt" rows="8" maxlength="8000">{{ $savedAiPrompt }}</textarea>
                     <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : 'raw-shoot' }} image for selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
+                    <div class="mt-3">
+                        <label class="form-label fw-semibold mb-1" for="riAiLogoInput">Logos (optional)</label>
+                        <div class="small text-muted mb-2">Upload the logos you want in the AI image. They are used only for generation — not saved as a column.</div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="riAiLogoBtn">
+                            <i class="fas fa-upload me-1"></i> Upload logos
+                        </button>
+                        <input type="file" id="riAiLogoInput" class="d-none" accept="image/png,image/jpeg,image/webp,image/gif" multiple>
+                        <div id="riAiLogoPreview" class="ri-ai-logo-preview mt-2"></div>
+                    </div>
                     <div id="riAiSelectedHint" class="small mt-2 text-muted"></div>
                     <div id="riAiResult" class="small mt-3"></div>
                 </div>
@@ -1091,6 +1177,7 @@
         let riAiLastSaved = @json($savedAiPrompt);
         let riAiTarget = 'raw';
         const riAiLoadingSkus = new Set();
+        let riAiLogoFiles = [];
         let tableData = [];
         let table;
         let rawImageModal;
@@ -1684,6 +1771,25 @@
             if (loader) loader.style.display = 'none';
         }
 
+        function showAiProcessLoader(skus) {
+            const el = document.getElementById('riAiProcessLoader');
+            const titleEl = document.getElementById('riAiProcessLoaderTitle');
+            const textEl = document.getElementById('riAiProcessLoaderText');
+            const n = (skus || []).length;
+            if (titleEl) titleEl.textContent = 'Generating ' + rawImagesAiColumnTitle + '…';
+            if (textEl) {
+                textEl.textContent = n
+                    ? ('Working on ' + n + ' SKU' + (n === 1 ? '' : 's') + '. Please wait — this can take a minute.')
+                    : 'Please wait. This can take a minute.';
+            }
+            if (el) el.style.display = 'flex';
+        }
+
+        function hideAiProcessLoader() {
+            const el = document.getElementById('riAiProcessLoader');
+            if (el) el.style.display = 'none';
+        }
+
         function setupBulkHandlers() {
             document.getElementById('bulkFromSheetBtn').addEventListener('click', function (e) {
                 e.preventDefault();
@@ -1781,6 +1887,35 @@
             setTimeout(function () { promptEl.focus(); }, 200);
         }
 
+        function renderAiLogoPreview() {
+            const wrap = document.getElementById('riAiLogoPreview');
+            if (!wrap) return;
+            wrap.innerHTML = riAiLogoFiles.map(function (file, idx) {
+                const url = URL.createObjectURL(file);
+                return '<div class="ri-ai-logo-chip">'
+                    + '<img src="' + url + '" alt="Logo ' + (idx + 1) + '">'
+                    + '<button type="button" data-i="' + idx + '" title="Remove">&times;</button>'
+                    + '</div>';
+            }).join('');
+            wrap.querySelectorAll('button').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const i = parseInt(btn.getAttribute('data-i'), 10);
+                    riAiLogoFiles.splice(i, 1);
+                    renderAiLogoPreview();
+                });
+            });
+        }
+
+        function addAiLogoFiles(fileList) {
+            const room = 6 - riAiLogoFiles.length;
+            if (room <= 0) return;
+            Array.from(fileList || []).slice(0, room).forEach(function (file) {
+                if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
+                riAiLogoFiles.push(file);
+            });
+            renderAiLogoPreview();
+        }
+
         function setupAiHandlers() {
             const promptEl = document.getElementById('riAiPrompt');
             const resultEl = document.getElementById('riAiResult');
@@ -1789,6 +1924,15 @@
             document.getElementById('riAiBtn').addEventListener('click', function () {
                 openAiPromptModal('raw');
             });
+            const logoBtn = document.getElementById('riAiLogoBtn');
+            const logoInput = document.getElementById('riAiLogoInput');
+            if (logoBtn && logoInput) {
+                logoBtn.addEventListener('click', function () { logoInput.click(); });
+                logoInput.addEventListener('change', function () {
+                    addAiLogoFiles(logoInput.files);
+                    logoInput.value = '';
+                });
+            }
 
             promptEl.addEventListener('input', function () {
                 clearTimeout(riAiSaveTimer);
@@ -1823,7 +1967,10 @@
                 }
 
                 submitBtn.disabled = true;
-                resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Saving…</div>';
+                resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Starting…</div>';
+                if (selected.length) {
+                    showAiProcessLoader(selected.map(function (row) { return row.sku; }));
+                }
 
                 saveAiPrompt(prompt, true)
                     .catch(function () {})
@@ -1831,11 +1978,13 @@
                         resultEl.innerHTML = '';
                         riAiModal.hide();
                         if (!selected.length) {
+                            hideAiProcessLoader();
                             return;
                         }
                         return runAiOnSelected(selected, prompt);
                     })
                     .catch(function (err) {
+                        hideAiProcessLoader();
                         resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(err.message || 'AI request failed.') + '</div>';
                     })
                     .finally(function () {
@@ -1878,24 +2027,25 @@
             const target = 'raw';
             const skus = (selected || []).map(function (row) { return row.sku; }).filter(Boolean);
             const aiBtn = document.getElementById('riAiBtn');
+            showAiProcessLoader(skus);
             setAiGenerating(skus, true, target);
             if (aiBtn) aiBtn.disabled = true;
-            const body = {
-                prompt: prompt,
-                selected: selected
-            };
+            const form = new FormData();
+            form.append('prompt', prompt);
+            form.append('selected', JSON.stringify(selected));
+            riAiLogoFiles.forEach(function (file) { form.append('logos[]', file); });
             return fetch(rawImagesAiPromptUrl, {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': csrfToken,
                     'Accept': 'application/json',
-                    'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify(body)
+                body: form
             })
             .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
             .then(function (result) {
+                hideAiProcessLoader();
                 const d = result.data || {};
                 applyAiBySku(d.by_sku, target);
                 const errors = Array.isArray(d.errors) ? d.errors : [];
@@ -1913,11 +2063,13 @@
                 }
             })
             .catch(function (err) {
+                hideAiProcessLoader();
                 alert(err.message || 'AI request failed.');
             })
             .finally(function () {
                 setAiGenerating(skus, false, target);
                 if (aiBtn) aiBtn.disabled = false;
+                hideAiProcessLoader();
             });
         }
 

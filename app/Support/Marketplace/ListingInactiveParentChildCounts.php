@@ -14,10 +14,17 @@ use Illuminate\Support\Facades\Schema;
  * Inactive parent vs child counts for /missing-listing.
  *
  * Source of truth is the same seller-platform inactive SKU list as /inactive-listings.
+ * Zero-inventory SKUs (shopify_skus.inv null / empty / 0) are excluded from both columns.
  * If a channel has no parent / variation listings, the full inactive count goes in Child.
  */
 class ListingInactiveParentChildCounts
 {
+    /** @var array<string, true>|null */
+    private static ?array $positiveInvKeys = null;
+
+    /** @var array<string, list<string>>|null uppercase parent sku => child sku keys */
+    private static ?array $childrenByParent = null;
+
     /**
      * @return array{parent: int, child: int, url: ?string}
      */
@@ -57,9 +64,13 @@ class ListingInactiveParentChildCounts
             $key = strtoupper($sku);
             if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
                 $parent[$key] = true;
-            } else {
-                $child[$key] = true;
+
+                continue;
             }
+            if (! self::skuHasPositiveInv($sku)) {
+                continue;
+            }
+            $child[$key] = true;
         }
 
         // No parent / variation listings on this seller → all inactive counts in Child.
@@ -67,10 +78,26 @@ class ListingInactiveParentChildCounts
             $child = [];
             foreach ($skus as $sku) {
                 $sku = trim((string) $sku);
-                if ($sku === '') {
+                if ($sku === '' || ! self::skuHasPositiveInv($sku)) {
                     continue;
                 }
                 $child[strtoupper($sku)] = true;
+            }
+        } else {
+            foreach (array_keys($parent) as $parentKey) {
+                if (self::skuHasPositiveInv($parentKey)) {
+                    continue;
+                }
+                $keep = false;
+                foreach (self::childKeysForParent($parentKey) as $childKey) {
+                    if (isset($child[$childKey])) {
+                        $keep = true;
+                        break;
+                    }
+                }
+                if (! $keep) {
+                    unset($parent[$parentKey]);
+                }
             }
         }
 
@@ -117,14 +144,14 @@ class ListingInactiveParentChildCounts
                     if (MarketplacePortalStatusTabs::bucket((string) ($row->status ?? '')) !== 'inactive') {
                         continue;
                     }
-                    $parent['p:'.(int) $row->product_pk] = true;
                     $sku = trim((string) ($row->sku ?? ''));
-                    if ($sku === '') {
+                    if ($sku === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
                         continue;
                     }
-                    if (MarketplaceLiveInventoryRules::isParentPlaceholderSku($sku)) {
+                    if (! self::skuHasPositiveInv($sku)) {
                         continue;
                     }
+                    $parent['p:'.(int) $row->product_pk] = true;
                     $child[strtoupper($sku)] = true;
                 }
             } else {
@@ -158,6 +185,109 @@ class ListingInactiveParentChildCounts
             'child' => count($child),
             'url' => $url,
         ];
+    }
+
+    /**
+     * True when shopify_skus.inv is a positive number (same 0 Inv rule as CP Master).
+     */
+    protected static function skuHasPositiveInv(string $sku): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return false;
+        }
+        $keys = self::positiveInvKeys();
+        $upper = strtoupper($sku);
+        if (isset($keys[$upper])) {
+            return true;
+        }
+        $norm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+
+        return $norm !== '' && isset($keys[$norm]);
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected static function positiveInvKeys(): array
+    {
+        if (self::$positiveInvKeys !== null) {
+            return self::$positiveInvKeys;
+        }
+
+        self::$positiveInvKeys = [];
+        try {
+            if (! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'inv')) {
+                return self::$positiveInvKeys;
+            }
+            foreach (DB::table('shopify_skus')->select(['sku', 'inv'])->whereNotNull('sku')->cursor() as $row) {
+                $inv = $row->inv ?? null;
+                if ($inv === null || $inv === '' || ! is_numeric($inv) || (float) $inv <= 0) {
+                    continue;
+                }
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                self::$positiveInvKeys[strtoupper($sku)] = true;
+                $norm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '') {
+                    self::$positiveInvKeys[$norm] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingInactiveParentChildCounts: load inv failed: '.$e->getMessage());
+        }
+
+        return self::$positiveInvKeys;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function childKeysForParent(string $parentKey): array
+    {
+        $map = self::childrenByParent();
+        $parentKey = strtoupper(trim($parentKey));
+
+        return $map[$parentKey] ?? [];
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected static function childrenByParent(): array
+    {
+        if (self::$childrenByParent !== null) {
+            return self::$childrenByParent;
+        }
+
+        self::$childrenByParent = [];
+        try {
+            if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'sku')) {
+                return self::$childrenByParent;
+            }
+            $q = DB::table('product_master')->whereNotNull('sku')->where('sku', '!=', '');
+            if (Schema::hasColumn('product_master', 'deleted_at')) {
+                $q->whereNull('deleted_at');
+            }
+            $select = ['sku'];
+            if (Schema::hasColumn('product_master', 'parent')) {
+                $select[] = 'parent';
+            }
+            foreach ($q->get($select) as $row) {
+                $child = strtoupper(trim((string) ($row->sku ?? '')));
+                $parent = strtoupper(trim((string) ($row->parent ?? '')));
+                if ($child === '' || $parent === '' || MarketplaceLiveInventoryRules::isParentPlaceholderSku($child)) {
+                    continue;
+                }
+                self::$childrenByParent[$parent][] = $child;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ListingInactiveParentChildCounts: load parent map failed: '.$e->getMessage());
+        }
+
+        return self::$childrenByParent;
     }
 
     /**

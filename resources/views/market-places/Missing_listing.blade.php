@@ -744,7 +744,7 @@
                 {
                     title: "Inactive Listing",
                     headerHozAlign: "center",
-                    headerTooltip: "Seller-platform inactive listings: parent products vs child SKUs",
+                    headerTooltip: "Seller-platform inactive listings with inventory (0 Inv SKUs excluded): parent products vs child SKUs",
                     columns: [
                         {
                             title: "Parent",
@@ -752,7 +752,7 @@
                             width: 100,
                             hozAlign: "center",
                             sorter: "number",
-                            headerTooltip: "Inactive parent listings on the seller platform",
+                            headerTooltip: "Inactive parent listings on the seller platform, excluding 0 Inv SKUs",
                             formatter: function(cell) {
                                 return formatInactiveCount(cell, 'inactive_parent');
                             },
@@ -769,7 +769,7 @@
                             width: 100,
                             hozAlign: "center",
                             sorter: "number",
-                            headerTooltip: "Inactive child / variation SKUs. If the channel has no parent listings, this is the full seller-platform inactive count.",
+                            headerTooltip: "Inactive child / variation SKUs with inventory. 0 Inv is excluded. If the channel has no parent listings, this is the full in-stock seller-platform inactive count.",
                             formatter: function(cell) {
                                 return formatInactiveCount(cell, 'inactive_child');
                             },

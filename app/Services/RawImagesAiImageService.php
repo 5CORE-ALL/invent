@@ -12,14 +12,17 @@ use Illuminate\Support\Facades\Log;
  */
 class RawImagesAiImageService
 {
-    public function generateFromHeroBytes(string $heroBytes, string $prompt, string $sku): string
+    /**
+     * @param  list<string>  $logoBytes
+     */
+    public function generateFromHeroBytes(string $heroBytes, string $prompt, string $sku, array $logoBytes = []): string
     {
         $analysis = $this->analyzeHeroWithClaude($heroBytes, $sku);
-        $fullPrompt = $this->buildGenerationPrompt($prompt, $analysis, $sku);
+        $fullPrompt = $this->buildGenerationPrompt($prompt, $analysis, $sku, $logoBytes !== []);
 
         $gemini = $this->geminiKey();
         if ($gemini !== null) {
-            $bytes = $this->editWithGemini($heroBytes, $fullPrompt, $gemini);
+            $bytes = $this->editWithGemini($heroBytes, $fullPrompt, $gemini, $logoBytes);
             if (is_string($bytes) && $bytes !== '') {
                 return $this->resizeToSquareJpeg($bytes, 2000);
             }
@@ -123,7 +126,7 @@ class RawImagesAiImageService
     /**
      * @param  array<string, mixed>  $analysis
      */
-    private function buildGenerationPrompt(string $userPrompt, array $analysis, string $sku): string
+    private function buildGenerationPrompt(string $userPrompt, array $analysis, string $sku, bool $hasLogos = false): string
     {
         $parts = [trim($userPrompt)];
         $product = trim((string) ($analysis['product'] ?? ''));
@@ -150,8 +153,15 @@ class RawImagesAiImageService
             $parts[] = 'Lighting: '.$lighting.'.';
         }
 
+        if ($hasLogos) {
+            $parts[] = 'After the product photo are logo reference images uploaded by the user. '
+                .'Place those exact logos on the generated image (same artwork, colors, and lettering — do not invent a different logo). '
+                .'Follow the user prompt for logo size and position. Keep the product photoreal.';
+        }
+
         $parts[] = 'Keep the same product from the reference image (SKU '.$sku.'). '
-            .'Photoreal raw-shoot, square 2000x2000, natural lighting, no text, no watermark, no logo overlay, no mannequin hands, no extra products.';
+            .'Photoreal raw-shoot, square 2000x2000, natural lighting, no watermark, no mannequin hands, no extra products.'
+            .($hasLogos ? '' : ' No text, no logo overlay.');
 
         return trim(implode("\n", array_filter($parts)));
     }
@@ -279,18 +289,28 @@ class RawImagesAiImageService
         return $key !== '' ? $key : null;
     }
 
-    private function editWithGemini(string $heroBytes, string $prompt, string $key): ?string
+    private function editWithGemini(string $heroBytes, string $prompt, string $key, array $logoBytes = []): ?string
     {
         $jpeg = $this->bytesToJpeg($heroBytes, 1600);
         if ($jpeg === '') {
             return null;
+        }
+        $logoJpegs = [];
+        foreach ($logoBytes as $logo) {
+            if (! is_string($logo) || $logo === '') {
+                continue;
+            }
+            $logoJpeg = $this->bytesToJpeg($logo, 800);
+            if ($logoJpeg !== '') {
+                $logoJpegs[] = $logoJpeg;
+            }
         }
 
         $model = (string) config('services.raw_images_ai.gemini_model', 'gemini-3.1-flash-image-preview');
         $tried = [];
 
         try {
-            $bytes = $this->geminiGenerateContent($key, $model, $jpeg, $prompt);
+            $bytes = $this->geminiGenerateContent($key, $model, $jpeg, $prompt, $logoJpegs);
             if (is_string($bytes) && $bytes !== '') {
                 return $bytes;
             }
@@ -301,7 +321,7 @@ class RawImagesAiImageService
                 $suggested = trim($m[1]);
                 if ($suggested !== '' && ! isset($tried[$suggested])) {
                     try {
-                        $bytes = $this->geminiGenerateContent($key, $suggested, $jpeg, $prompt);
+                        $bytes = $this->geminiGenerateContent($key, $suggested, $jpeg, $prompt, $logoJpegs);
                         if (is_string($bytes) && $bytes !== '') {
                             return $bytes;
                         }
@@ -352,7 +372,10 @@ class RawImagesAiImageService
         return $first !== '' ? $first : 'Gemini image request failed.';
     }
 
-    private function geminiGenerateContent(string $key, string $model, string $jpeg, string $prompt): ?string
+    /**
+     * @param  list<string>  $extraJpegs
+     */
+    private function geminiGenerateContent(string $key, string $model, string $jpeg, string $prompt, array $extraJpegs = []): ?string
     {
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/'.$model.':generateContent';
         $generationConfig = [
@@ -365,6 +388,26 @@ class RawImagesAiImageService
             $generationConfig['imageConfig']['imageSize'] = '2K';
         }
 
+        $parts = [
+            ['text' => $prompt],
+            [
+                'inline_data' => [
+                    'mime_type' => 'image/jpeg',
+                    'data' => base64_encode($jpeg),
+                ],
+            ],
+        ];
+        foreach (array_values($extraJpegs) as $i => $logoJpeg) {
+            $n = $i + 1;
+            $parts[] = ['text' => 'Logo '.$n.' — use this exact logo artwork. Do not redraw or invent a different logo.'];
+            $parts[] = [
+                'inline_data' => [
+                    'mime_type' => 'image/jpeg',
+                    'data' => base64_encode($logoJpeg),
+                ],
+            ];
+        }
+
         $response = Http::timeout(180)
             ->withHeaders([
                 'x-goog-api-key' => $key,
@@ -373,15 +416,7 @@ class RawImagesAiImageService
             ->post($url, [
                 'contents' => [[
                     'role' => 'user',
-                    'parts' => [
-                        ['text' => $prompt],
-                        [
-                            'inline_data' => [
-                                'mime_type' => 'image/jpeg',
-                                'data' => base64_encode($jpeg),
-                            ],
-                        ],
-                    ],
+                    'parts' => $parts,
                 ]],
                 'generationConfig' => $generationConfig,
             ]);
