@@ -1223,6 +1223,33 @@
         if (!isFinite(push)) return null;
         return +push.toFixed(2);
     }
+    function temuExportRowSprice(row) {
+        if (typeof temuDisplayedSprice === 'function') {
+            const shown = temuDisplayedSprice(row);
+            if (shown > 0) return shown;
+        }
+        return parseFloat(row && row.sprice) || 0;
+    }
+    function temuExportSuggBPrice(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const push = temuPushBaseFromSprice(temuExportRowSprice(row));
+        return push == null ? '' : push;
+    }
+    function temuExportSgroi(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const lp = parseFloat(row.lp) || 0;
+        const sprice = temuExportRowSprice(row);
+        const spft = typeof temu2SpftDollars === 'function' ? temu2SpftDollars(row, sprice) : null;
+        if (spft == null || !(lp > 0)) return '';
+        return Math.round((spft / lp) * 100);
+    }
+    function temuExportSpft(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const sprice = temuExportRowSprice(row);
+        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(row, sprice) : null;
+        if (!(sprice > 0) || snpft == null) return '';
+        return Math.round((snpft / sprice) * 100);
+    }
     function temu2FormatMoney(amount, opts) {
         const n = parseFloat(amount);
         if (!isFinite(n)) return '';
@@ -4171,6 +4198,11 @@
                     field: "stemu_price",
                     hozAlign: "center",
                     sorter: "number",
+                    download: true,
+                    downloadTitle: "Temu S B Prc",
+                    accessorDownload: function(value, data) {
+                        return temuExportSuggBPrice(data);
+                    },
                     headerTooltip: "Push base = inverse of Temu Price: undo +$2.99 (if applied) then ÷ 1.1364. Matches Base Price when SPRICE = Temu Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4184,6 +4216,11 @@
                     field: "sgroi_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    download: true,
+                    downloadTitle: "SGROI%",
+                    accessorDownload: function(value, data) {
+                        return temuExportSgroi(data);
+                    },
                     headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4232,6 +4269,11 @@
                     field: "spft_percent",
                     hozAlign: "center",
                     sorter: "number",
+                    download: true,
+                    downloadTitle: "SPFT%",
+                    accessorDownload: function(value, data) {
+                        return temuExportSpft(data);
+                    },
                     headerTooltip: "SPFT% = SNPFT / S PRC. SNPFT = SPFT − (S PRC × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
