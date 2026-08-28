@@ -559,6 +559,13 @@
             max-width: 100%;
             height: auto !important;
         }
+        #lmpModal #lmpDataList .table-responsive {
+            overflow-x: hidden;
+        }
+        #lmpModal #lmpDataList table {
+            width: 100%;
+            table-layout: auto;
+        }
         #lmpModal .lmp-text-preview-btn {
             flex-shrink: 0;
             color: #0d6efd;
@@ -567,6 +574,7 @@
             border: 0;
             background: none;
             cursor: pointer;
+            font-size: 14px;
         }
         #lmpModal .lmp-text-preview-btn:hover { color: #0a58ca; }
         .lmp-text-preview-overlay {
@@ -2564,14 +2572,31 @@
         };
 
         function getAmazonTabulatorRowDataBySku(sku) {
-            if (typeof table === 'undefined' || !table || !sku) return null;
+            if (!sku) return null;
             const target = amazonNormalizeSkuKey(sku);
-            const rows = table.getRows() || [];
-            for (let i = 0; i < rows.length; i++) {
-                const d = rows[i].getData();
-                if (!d || d.is_parent_summary) continue;
-                const rowSku = amazonNormalizeSkuKey(d['(Child) sku'] || d.SKU || d.sku);
-                if (rowSku === target) return d;
+            const matchRow = function(d) {
+                if (!d || d.is_parent_summary) return false;
+                return amazonNormalizeSkuKey(d['(Child) sku'] || d.SKU || d.sku) === target;
+            };
+            if (typeof table !== 'undefined' && table && table.getRows) {
+                try {
+                    const rows = table.getRows('all') || table.getRows() || [];
+                    for (let i = 0; i < rows.length; i++) {
+                        const d = rows[i].getData();
+                        if (matchRow(d)) return d;
+                    }
+                } catch (e) {
+                    const rows = table.getRows() || [];
+                    for (let i = 0; i < rows.length; i++) {
+                        const d = rows[i].getData();
+                        if (matchRow(d)) return d;
+                    }
+                }
+            }
+            if (Array.isArray(allTableData)) {
+                for (let i = 0; i < allTableData.length; i++) {
+                    if (matchRow(allTableData[i])) return allTableData[i];
+                }
             }
             return null;
         }
@@ -7815,26 +7840,44 @@
                 $('#addCompPrice').val('');
                 $('#addCompLink').val('');
 
+                const rowData = getAmazonTabulatorRowDataBySku(sku);
+                if ((!linkedLmpSkus || !linkedLmpSkus.length) && rowData && Array.isArray(rowData.linked_lmp_skus)) {
+                    linkedLmpSkus = rowData.linked_lmp_skus;
+                }
+
                 currentLmpData.sku = sku;
                 currentLmpData.linkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
                 initLmpModalSpFromSku(sku);
+
+                const cachedEntries = (rowData && Array.isArray(rowData.lmp_entries)) ? rowData.lmp_entries.slice() : [];
+                const cachedIds = cachedEntries.map(function(e) { return e && e.id; }).filter(Boolean);
                 
                 $('#lmpModal').modal('show');
-                
-                // Show loading state
-                $('#lmpDataList').html(`
-                    <div class="text-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
+
+                // Same (N) list the LMP column already counted — show immediately
+                if (cachedEntries.length && !refreshFromApi) {
+                    currentLmpData.competitors = cachedEntries;
+                    const cachedL1 = amazonL1FromCompetitors(cachedEntries);
+                    currentLmpData.lowestPrice = cachedL1.l1;
+                    renderCompetitorsList(cachedEntries, cachedL1.l1);
+                } else {
+                    $('#lmpDataList').html(`
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amz API...' : 'Loading competitors...'}</p>
                         </div>
-                        <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amz API...' : 'Loading competitors...'}</p>
-                    </div>
-                `);
+                    `);
+                }
 
                 const reqData = {
                     sku: sku,
                     linked_lmp_skus: currentLmpData.linkedLmpSkus,
                 };
+                if (cachedIds.length) {
+                    reqData.ids = cachedIds;
+                }
                 if (refreshFromApi) {
                     reqData.refresh = 1;
                 }
@@ -7865,6 +7908,10 @@
                             if (refreshFromApi) {
                                 showToast('Pulled live LMP prices + shipping for ' + sku, 'success');
                             }
+                        } else if (cachedEntries.length) {
+                            if (refreshFromApi) {
+                                showToast('Live pull returned no rows; showing saved LMP list', 'warning');
+                            }
                         } else {
                             $('#lmpDataList').html(`
                                 <div class="alert alert-warning">
@@ -7878,6 +7925,13 @@
                     },
                     error: function(xhr) {
                         console.error('Error loading competitors:', xhr);
+                        if (cachedEntries.length) {
+                            if (refreshFromApi) {
+                                const apiMsg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || '';
+                                showToast(apiMsg || 'Failed to pull Amz LMP data', 'error');
+                            }
+                            return;
+                        }
                         const apiMsg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || '';
                         $('#lmpDataList').html(`
                             <div class="alert alert-danger">
@@ -7972,18 +8026,14 @@
                 });
             }
 
-            function lmpTextPreviewCell(label, text, maxChars) {
+            function lmpTextPreviewCell(label, text) {
                 const raw = (text == null) ? '' : String(text).trim();
                 if (!raw || raw === '—' || raw === 'N/A') {
                     return '<span style="color:#999;">—</span>';
                 }
-                const limit = maxChars || 80;
-                const short = raw.length > limit ? (raw.substring(0, limit) + '…') : raw;
-                return '<span class="d-inline-flex align-items-center gap-1" style="max-width:100%;">'
-                    + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escAttr(short) + '</span>'
-                    + '<button type="button" class="lmp-text-preview-btn" title="View full ' + escAttr(label) + '"'
+                return '<button type="button" class="lmp-text-preview-btn" title="View full ' + escAttr(label) + '"'
                     + ' data-label="' + escAttr(label) + '" data-text="' + escAttr(raw) + '">'
-                    + '<i class="fa fa-search"></i></button></span>';
+                    + '<i class="fa fa-search"></i></button>';
             }
             function openLmpTextPreview(label, text) {
                 $('#lmpTextPreviewTitle').text(label || 'Details');
@@ -8021,8 +8071,8 @@
                             <th style="width: 30px;">#</th>
                             <th style="width: 60px;">Image</th>
                             <th style="width: 100px;">ASIN</th>
-                            <th style="width: 750px; min-width: 750px;">Product Title</th>
-                            <th>Seller</th>
+                            <th class="text-center" style="width: 44px;" title="Product Title">Title</th>
+                            <th class="text-center" style="width: 44px;" title="Seller">Seller</th>
                             <th style="width: 80px;">Price</th>
                             <th style="width: 70px;" title="Std Prc from top input">Std Prc</th>
                             <th style="width: 70px;" title="GROI% at top SP — same formula as Sroi">GROI %</th>
@@ -8085,8 +8135,8 @@
                     const productLink = item.link || item.product_link || '#';
                     const productTitle = item.title || item.product_title || 'N/A';
                     const sellerName = item.seller_name || '—';
-                    const titleCell = lmpTextPreviewCell('Product Title', productTitle, 80);
-                    const sellerCell = lmpTextPreviewCell('Seller', sellerName, 28);
+                    const titleCell = lmpTextPreviewCell('Product Title', productTitle);
+                    const sellerCell = lmpTextPreviewCell('Seller', sellerName);
                     const imageUrl = item.image || '';
                     const imageHtml = imageUrl ? `<img src="${imageUrl}" style="width: 50px; height: 50px; object-fit: contain;" />` : '<span style="color: #999;">—</span>';
                     
@@ -8143,8 +8193,8 @@
                             <td>
                                 <span class="text-primary" style="font-weight: 600; font-size: 11px;">${item.asin || 'N/A'}</span>
                             </td>
-                            <td style="font-size: 11px; width: 750px; min-width: 360px; max-width: 750px;">${titleCell}</td>
-                            <td style="font-size: 11px; max-width: 180px;">${sellerCell}</td>
+                            <td class="text-center" style="width: 44px;">${titleCell}</td>
+                            <td class="text-center" style="width: 44px;">${sellerCell}</td>
                             <td><strong>${priceBadge}</strong></td>
                             <td class="text-center fw-bold lmp-sp-cell">${modalSpText}</td>
                             <td class="text-center lmp-groi-cell">${modalGroiHtml}</td>
@@ -8262,10 +8312,16 @@
             // View Competitors Modal Event Listener
             $(document).on('click', '.view-lmp-competitors', function(e) {
                 e.preventDefault();
-                const sku = $(this).data('sku');
-                let linkedSkus = $(this).data('linked-skus') || [];
+                const sku = $(this).data('sku') || $(this).attr('data-sku');
+                let linkedSkus = $(this).data('linked-skus') || $(this).attr('data-linked-skus') || [];
                 if (typeof linkedSkus === 'string') {
                     try { linkedSkus = JSON.parse(linkedSkus) || []; } catch (err) { linkedSkus = []; }
+                }
+                if (!Array.isArray(linkedSkus) || !linkedSkus.length) {
+                    const row = getAmazonTabulatorRowDataBySku(sku);
+                    if (row && Array.isArray(row.linked_lmp_skus)) {
+                        linkedSkus = row.linked_lmp_skus;
+                    }
                 }
                 loadCompetitorsModal(sku, linkedSkus);
             });

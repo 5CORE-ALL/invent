@@ -46,7 +46,13 @@ class AmazonSkuCompetitor extends Model
 
     public static function normalizeSkuKey(?string $sku): string
     {
-        return strtoupper(preg_replace('/\s+/', ' ', trim((string) $sku)));
+        $s = str_replace("\xC2\xA0", ' ', (string) $sku);
+        $collapsed = preg_replace('/\s+/u', ' ', trim($s));
+        if ($collapsed === null) {
+            $collapsed = preg_replace('/\s+/', ' ', trim($s)) ?? trim($s);
+        }
+
+        return strtoupper($collapsed);
     }
 
     public function scopeWherePositivePrice($query)
@@ -243,13 +249,7 @@ class AmazonSkuCompetitor extends Model
      */
     public static function getCompetitorsForSku($sku, $marketplace = 'amazon')
     {
-        $normalizedSku = self::normalizeSkuKey($sku);
-
-        return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
-            ->forMarketplace($marketplace)
-            ->wherePositivePrice()
-            ->orderByNumericPrice('asc')
-            ->get();
+        return self::getCompetitorsForSkus([(string) $sku], $marketplace);
     }
 
     /**
@@ -278,10 +278,28 @@ class AmazonSkuCompetitor extends Model
      */
     public static function getCompetitorsForSkus(array $skus, string $marketplace = 'amazon'): \Illuminate\Support\Collection
     {
-        $competitors = collect();
+        $keys = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => self::normalizeSkuKey((string) $sku),
+            $skus
+        ))));
 
-        foreach ($skus as $sku) {
-            $competitors = $competitors->merge(self::getCompetitorsForSku($sku, $marketplace));
+        if ($keys === []) {
+            return collect();
+        }
+
+        // Same grouping as the analytics grid (normalizeSkuKey), not SQL REPLACE
+        // which misses 3+ spaces / NBSP and can return an empty modal for a (N) count.
+        $details = self::buildGroupedLookup($marketplace)['details'];
+        $competitors = collect();
+        foreach ($keys as $key) {
+            $group = $details instanceof \Illuminate\Support\Collection
+                ? $details->get($key)
+                : ($details[$key] ?? null);
+            if ($group instanceof \Illuminate\Support\Collection) {
+                $competitors = $competitors->merge($group);
+            } elseif (is_array($group)) {
+                $competitors = $competitors->merge($group);
+            }
         }
 
         return self::dedupeByAsin($competitors);

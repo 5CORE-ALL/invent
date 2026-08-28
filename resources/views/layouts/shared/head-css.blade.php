@@ -183,6 +183,8 @@
     img[style*="max-width:350px"],
     img[style*="max-width: 350px"],
     #image-hover-preview img,
+    #skuImageTooltip img,
+    .sku-tooltip img,
     #global-img-hover-preview,
     .product-image-enlarged {
         width: auto !important;

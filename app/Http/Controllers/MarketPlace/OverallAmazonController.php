@@ -4501,7 +4501,10 @@ class OverallAmazonController extends Controller
                 return response()->json(['error' => 'SKU is required'], 400);
             }
 
-            if (! is_array($linkedSkus)) {
+            // jQuery traditional:true sends a single-item array as a string
+            if (is_string($linkedSkus) && trim($linkedSkus) !== '') {
+                $linkedSkus = [trim($linkedSkus)];
+            } elseif (! is_array($linkedSkus)) {
                 $linkedSkus = [];
             }
 
@@ -4510,7 +4513,23 @@ class OverallAmazonController extends Controller
                 array_merge([$sku], $linkedSkus)
             ))));
 
+            $ids = $request->input('ids', []);
+            if (is_string($ids) && trim($ids) !== '') {
+                $ids = [trim($ids)];
+            } elseif (! is_array($ids)) {
+                $ids = [];
+            }
+            $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+
             $competitors = AmazonSkuCompetitor::getCompetitorsForSkus($groupSkus, 'amazon');
+
+            if ($ids !== []) {
+                $byIds = AmazonSkuCompetitor::query()
+                    ->whereIn('id', $ids)
+                    ->wherePositivePrice()
+                    ->get();
+                $competitors = AmazonSkuCompetitor::dedupeByAsin($competitors->merge($byIds));
+            }
 
             // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so the modal
             // opens quickly. Background `amazon:update-sku-prices` also keeps prices fresh.

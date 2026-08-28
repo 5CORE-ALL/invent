@@ -489,8 +489,8 @@
 
         /* Add to your CSS section */
         .sku-tooltip {
-            position: absolute;
-            z-index: 9999;
+            position: fixed;
+            z-index: 200050;
             background: #fff;
             border: 1px solid #ddd;
             border-radius: 8px;
@@ -1943,7 +1943,7 @@
                             switch (col) {
                                 case "Image":
                                     cell.innerHTML = item.image_path 
-                                        ? `<span class="image-hover" data-image="${item.image_path}"><img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`
+                                        ? `<span class="image-hover" data-image="${item.image_path}"><img class="no-img-hover" src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`
                                         : '-';
                                     break;
                                 case "Parent":
@@ -2147,7 +2147,7 @@
                                 break;
                             case "Image":
                                 isMissing = isDataMissing(item.image_path);
-                                cellContent = isMissing ? '' : `<span class="image-hover" data-image="${item.image_path}"><img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`;
+                                cellContent = isMissing ? '' : `<span class="image-hover" data-image="${item.image_path}"><img class="no-img-hover" src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`;
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'image_path', 'Image');
                                 break;
                             case "Parent":
@@ -2759,7 +2759,7 @@
                     if (cell) {
                         // Update cell content based on field type
                         if (field === 'image_path') {
-                            cell.innerHTML = `<span class="image-hover" data-image="${savedValue}"><img src="${savedValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`;
+                            cell.innerHTML = `<span class="image-hover" data-image="${savedValue}"><img class="no-img-hover" src="${savedValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>`;
                         } else if (field === 'l2_url') {
                             cell.className = 'text-center';
                             cell.innerHTML = `<a href="${escapeHtml(savedValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>`;
@@ -7102,7 +7102,7 @@
                 const isNumeric = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'].includes(fieldName);
                 
                 if (fieldName === 'image_path') {
-                    cell.innerHTML = newValue ? `<span class="image-hover" data-image="${newValue}"><img src="${newValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>` : '<span class="missing-data-indicator" title="Missing Data">M</span>';
+                    cell.innerHTML = newValue ? `<span class="image-hover" data-image="${newValue}"><img class="no-img-hover" src="${newValue}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></span>` : '<span class="missing-data-indicator" title="Missing Data">M</span>';
                 } else if (fieldName === 'l2_url') {
                     cell.className = 'text-center';
                     cell.innerHTML = newValue ? `<a href="${escapeHtml(newValue)}" target="_blank"><i class="fas fa-external-link-alt"></i></a>` : createMissingDataButton(sku, 'l2_url', 'Url');
@@ -7440,10 +7440,30 @@
             }
 
             const tooltipEl = document.getElementById('skuImageTooltip');
+            if (tooltipEl && tooltipEl.parentElement !== document.documentElement) {
+                // Keep it outside body so 75% body zoom does not offset position:fixed
+                document.documentElement.appendChild(tooltipEl);
+            }
             let tooltipRAF = null;
             let lastTooltipImageUrl = null;
             function getHoverImageTarget(eventTarget) {
-                return eventTarget.closest('.image-hover');
+                return eventTarget && eventTarget.closest ? eventTarget.closest('.image-hover') : null;
+            }
+            function placeSkuTooltip(e) {
+                if (!tooltipEl || tooltipEl.style.display !== 'block') return;
+                const pad = 16;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                const pw = tooltipEl.offsetWidth || 320;
+                const ph = tooltipEl.offsetHeight || 320;
+                let x = e.clientX + pad;
+                let y = e.clientY + pad;
+                if (x + pw > vw - 8) x = e.clientX - pw - pad;
+                if (y + ph > vh - 8) y = e.clientY - ph - pad;
+                if (x < 8) x = 8;
+                if (y < 8) y = 8;
+                tooltipEl.style.left = x + 'px';
+                tooltipEl.style.top = y + 'px';
             }
             document.addEventListener('mouseover', function(e) {
                 const target = getHoverImageTarget(e.target);
@@ -7452,9 +7472,10 @@
                     if (image) {
                         if (lastTooltipImageUrl !== image) {
                             lastTooltipImageUrl = image;
-                            tooltipEl.innerHTML = `<img src="${image}" alt="Product Image">`;
+                            tooltipEl.innerHTML = `<img src="${image}" alt="Product Image" class="no-img-hover">`;
                         }
                         tooltipEl.style.display = 'block';
+                        placeSkuTooltip(e);
                     } else {
                         lastTooltipImageUrl = null;
                         tooltipEl.style.display = 'none';
@@ -7465,8 +7486,7 @@
                 if (!tooltipEl || tooltipEl.style.display !== 'block') return;
                 if (tooltipRAF) cancelAnimationFrame(tooltipRAF);
                 tooltipRAF = requestAnimationFrame(function() {
-                    tooltipEl.style.left = (e.pageX + 20) + 'px';
-                    tooltipEl.style.top = (e.pageY + 10) + 'px';
+                    placeSkuTooltip(e);
                     tooltipRAF = null;
                 });
             });
