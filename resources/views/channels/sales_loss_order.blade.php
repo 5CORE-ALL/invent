@@ -592,7 +592,7 @@
                                        autocomplete="off"
                                        title="Filter orders by Channel, Order ID, SKU, Status">
                             </div>
-                            <div id="slo-date-filter-hint">Dates shown as 1 Apr · time EST only</div>
+                            <div id="slo-date-filter-hint">Dates shown as 1 Apr · time EDT only</div>
                         </div>
                     </div>
                     <p class="small text-muted mb-2">All marketplace orders — every status. Defaults to the last 30 days, same as Sales Order Fulfillment → All Order.</p>
@@ -680,7 +680,7 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 (function () {
-    const SLO_TZ = 'America/Los_Angeles';
+    const SLO_TZ = 'America/New_York';
     const sloChannelSlugByLabel = {};
     @foreach(($sloChannels ?? []) as $chOpt)
         @if(($chOpt['slug'] ?? '') !== '' && ($chOpt['label'] ?? '') !== '')
@@ -732,9 +732,9 @@
         const hint = document.getElementById('slo-date-filter-hint');
         if (!hint) return;
         if (!p.date_from && !p.date_to) {
-            hint.textContent = 'Last 30 days · display EST';
+            hint.textContent = 'Last 30 days · display EDT';
         } else {
-            hint.textContent = 'Filter: ' + (p.date_from || '…') + ' → ' + (p.date_to || 'today') + ' · display EST';
+            hint.textContent = 'Filter: ' + (p.date_from || '…') + ' → ' + (p.date_to || 'today') + ' · display EDT';
         }
     }
 
@@ -831,7 +831,7 @@
         const month = (dateParts.find(function (p) { return p.type === 'month'; }) || {}).value || '';
         const dateLabel = (day + ' ' + month).trim();
         if (dateOnly) {
-            return { date: dateLabel, time: '', title: dateLabel + ' EST' };
+            return { date: dateLabel, time: '', title: dateLabel + ' EDT' };
         }
         const time = new Intl.DateTimeFormat('en-US', {
             timeZone: SLO_DISPLAY_TZ,
@@ -848,8 +848,8 @@
             minute: '2-digit',
             second: '2-digit',
             hour12: true,
-        }).format(d) + ' EST';
-        return { date: dateLabel, time: time + ' EST', title: title };
+        }).format(d) + ' EDT';
+        return { date: dateLabel, time: time + ' EDT', title: title };
     }
 
     function sloFormatEstDateCell(cell) {
@@ -1197,7 +1197,7 @@
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sloDateSorter,
-                headerTooltip: 'Latest orders on top · 1 Apr · time EST only',
+                headerTooltip: 'Latest orders on top · 1 Apr · time EDT only',
                 formatter: sloFormatEstDateCell,
             },
             {

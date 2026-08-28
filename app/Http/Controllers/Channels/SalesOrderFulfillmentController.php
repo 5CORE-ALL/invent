@@ -64,6 +64,20 @@ class SalesOrderFulfillmentController extends Controller
     /** Stop HTTP Pull Tracking after this many seconds and return partial results. */
     protected const HTTP_PULL_DEADLINE_SECONDS = 16.0;
 
+    /** Calendar and display timezone for this page (EST/EDT). */
+    public const SOF_TIMEZONE = 'America/New_York';
+
+    protected function sofTimezone(): string
+    {
+        return self::SOF_TIMEZONE;
+    }
+
+    /** Naive DB datetimes follow the app timezone (Pacific). */
+    protected function sofStorageTimezone(): string
+    {
+        return (string) (config('app.timezone') ?: 'America/Los_Angeles');
+    }
+
     /** @var list<array<string, mixed>>|null */
     protected ?array $cachedLabelCreatedRows = null;
 
@@ -200,6 +214,7 @@ class SalesOrderFulfillmentController extends Controller
                 'scan_done_24h' => 0,
                 'in_transit_total' => 0,
                 'in_received_total' => 0,
+                'received_by_carrier_total' => 0,
                 'invoiced_total' => 0,
                 'delivered_total' => 0,
                 'all_order_total' => 0,
@@ -260,15 +275,12 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Shipped/Received — status Shipped / Received, last 30 days.
+     * Received by carrier — Shipped/Received + In Received, last 30 days.
      */
     public function scanDoneData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->scanDoneOrdersQuery($slug), $slug),
-                true
-            );
+            $rows = $this->receivedByCarrierOrderRows();
 
             return response()->json([
                 'success' => true,
@@ -278,7 +290,7 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load Shipped/Received orders.',
+                'message' => 'Failed to load Received by carrier orders.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -291,25 +303,9 @@ class SalesOrderFulfillmentController extends Controller
     public function inTransitData(): JsonResponse
     {
         try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug),
-                true
+            $rows = $this->annotateInTransitScanPendingAlerts(
+                $this->excludeCarrierDeliveredRows($this->inTransitOrderRows())
             );
-            $fromCarrier = array_values(array_filter(
-                $this->labelCreatedOrderRows(),
-                function (array $r) {
-                    $s = (string) ($r['shipment_status'] ?? '');
-
-                    return in_array($s, [
-                        ShipmentTrackingService::STATUS_IN_TRANSIT,
-                        ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
-                        ShipmentTrackingService::STATUS_PICKUP,
-                    ], true);
-                }
-            ));
-            $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
-            $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
-            $rows = $this->mergeOrderRowsById($rows, $fromOlderLabels);
 
             return response()->json([
                 'success' => true,
@@ -327,29 +323,11 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * In Received — last 30 days.
+     * Alias of scanDoneData() — In Received is merged into Received by carrier.
      */
     public function inReceivedData(): JsonResponse
     {
-        try {
-            $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->scopedToLast30Days($this->inReceivedOrdersQuery($slug), $slug),
-                true
-            );
-
-            return response()->json([
-                'success' => true,
-                'data' => $rows,
-                'count' => count($rows),
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to load In Received orders.',
-                'data' => [],
-                'count' => 0,
-            ], 500);
-        }
+        return $this->scanDoneData();
     }
 
     /**
@@ -393,6 +371,10 @@ class SalesOrderFulfillmentController extends Controller
                 fn (array $r) => ($r['shipment_status'] ?? null) === ShipmentTrackingService::STATUS_DELIVERED
             ));
             $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
+            $rows = $this->mergeOrderRowsById(
+                $rows,
+                $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
+            );
 
             return response()->json([
                 'success' => true,
@@ -548,6 +530,7 @@ class SalesOrderFulfillmentController extends Controller
                     'gpft_pct' => $profitPctBySlug[$slug]['gpft_pct'] ?? null,
                     'import_status' => (string) ($n['import_status'] ?? ''),
                     'shopify_order_id' => (string) ($n['shopify_order_id'] ?? ''),
+                    'is_cancelled' => $this->normalizedOrderIsCancelled($slug, $n),
                     'ch_orders_link' => $meta['ch_orders_link'],
                     'orders_url' => $ordersUrl,
                     'show_id' => $showId,
@@ -577,6 +560,7 @@ class SalesOrderFulfillmentController extends Controller
         $rows = $this->attachTemuSitesTrackingToOrderRows($rows);
         $rows = $this->attachShopifyTrackingToOrderRows($rows);
         $rows = $this->attachShipmentStatusToOrderRows($rows);
+        $rows = $this->attachSofShipmentOverridesToOrderRows($rows);
 
         return $this->fillCarrierFromTrackingNumbers($rows);
     }
@@ -933,8 +917,8 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * True when the order date is within the last 24 hours (Pacific).
-     * Date-only values are treated as the start of that California day.
+     * True when the order date is within the last 24 hours (Eastern).
+     * Date-only values are treated as the start of that EST/EDT day.
      *
      * @param  array<string, mixed>  $row
      */
@@ -949,7 +933,7 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         try {
-            $tz = 'America/Los_Angeles';
+            $tz = $this->sofTimezone();
             $dt = preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1
                 ? Carbon::createFromFormat('Y-m-d', $raw, $tz)->startOfDay()
                 : Carbon::parse($raw, $tz)->timezone($tz);
@@ -958,6 +942,62 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable) {
             return true;
         }
+    }
+
+    /**
+     * True when the order date (else updated_at) is older than $hours (Eastern).
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function rowIsOlderThanHours(array $row, int $hours): bool
+    {
+        $raw = trim((string) ($row['order_date'] ?? ''));
+        if ($raw === '') {
+            $raw = trim((string) ($row['updated_at'] ?? ''));
+        }
+        if ($raw === '') {
+            return false;
+        }
+
+        try {
+            $tz = $this->sofTimezone();
+            $dt = preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1
+                ? Carbon::createFromFormat('Y-m-d', $raw, $tz)->startOfDay()
+                : Carbon::parse($raw, $tz)->timezone($tz);
+
+            return $dt->lt(now($tz)->subHours($hours));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * In Transit: scan-pending (no carrier scan) for more than 36 hours — flag and pin to top.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function annotateInTransitScanPendingAlerts(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $scanPending = ! $this->carrierStatusHasLeftLabelCreated($row['shipment_status'] ?? null);
+            $row['scan_pending_over_36h'] = ($scanPending && $this->rowIsOlderThanHours($row, 36)) ? 1 : 0;
+        }
+        unset($row);
+
+        usort($rows, static function (array $a, array $b): int {
+            $aLate = (int) ($a['scan_pending_over_36h'] ?? 0);
+            $bLate = (int) ($b['scan_pending_over_36h'] ?? 0);
+            if ($aLate !== $bLate) {
+                return $bLate <=> $aLate;
+            }
+            $ak = (string) ($a['updated_at'] ?? $a['order_date'] ?? '');
+            $bk = (string) ($b['updated_at'] ?? $b['order_date'] ?? '');
+
+            return strcmp($bk, $ak);
+        });
+
+        return array_values($rows);
     }
 
     /**
@@ -1167,6 +1207,241 @@ class SalesOrderFulfillmentController extends Controller
         return false;
     }
 
+    public const SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG = '_system';
+
+    public const SOF_ONE_TIME_NO_TRACKING_SENTINEL_KEY = 'in_transit_no_tracking_v1';
+
+    /**
+     * Overlay one-time / manual SOF shipment statuses (including orders with no tracking).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function attachSofShipmentOverridesToOrderRows(array $rows): array
+    {
+        if ($rows === [] || ! Schema::hasTable('sof_shipment_status_overrides')) {
+            return $rows;
+        }
+
+        $keys = [];
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($id !== '') {
+                $keys[$id] = true;
+            }
+        }
+        if ($keys === []) {
+            return $rows;
+        }
+
+        $byKey = [];
+        try {
+            foreach (array_chunk(array_keys($keys), 500) as $chunk) {
+                $query = DB::table('sof_shipment_status_overrides')
+                    ->whereIn('order_key', $chunk)
+                    ->where('mm_slug', '!=', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG);
+                foreach ($query->get() as $orow) {
+                    $key = trim((string) ($orow->order_key ?? ''));
+                    if ($key === '') {
+                        continue;
+                    }
+                    $byKey[$key] = $orow;
+                }
+            }
+        } catch (\Throwable) {
+            return $rows;
+        }
+
+        if ($byKey === []) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = trim((string) ($row['id'] ?? ''));
+            $orow = $byKey[$key] ?? null;
+            if ($orow === null) {
+                continue;
+            }
+            $status = trim((string) ($orow->shipment_status ?? ''));
+            if ($status === '') {
+                continue;
+            }
+            $row['shipment_status'] = $status;
+            $detail = trim((string) ($orow->shipment_status_detail ?? ''));
+            if ($detail !== '') {
+                $row['shipment_status_detail'] = $detail;
+            }
+            $carrierLabel = $this->carrierShipmentStatusLabel($status);
+            if ($carrierLabel !== null) {
+                $row['status_label'] = $carrierLabel;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function excludeCarrierDeliveredRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ($r['shipment_status'] ?? '') !== ShipmentTrackingService::STATUS_DELIVERED
+        ));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function onlyCarrierDeliveredRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $r) => ($r['shipment_status'] ?? '') === ShipmentTrackingService::STATUS_DELIVERED
+        ));
+    }
+
+    /**
+     * Marketplace In Transit query rows (Doba / PP / Macy / Best Buy), last 30 days.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function inTransitMarketplaceOrderRows(): array
+    {
+        return $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug),
+            true
+        );
+    }
+
+    /**
+     * Full In Transit tab membership before Delivered-override filtering.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function inTransitOrderRows(): array
+    {
+        $rows = $this->inTransitMarketplaceOrderRows();
+        $fromCarrier = array_values(array_filter(
+            $this->labelCreatedOrderRows(),
+            function (array $r) {
+                $s = (string) ($r['shipment_status'] ?? '');
+
+                return in_array($s, [
+                    ShipmentTrackingService::STATUS_IN_TRANSIT,
+                    ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+                    ShipmentTrackingService::STATUS_PICKUP,
+                ], true);
+            }
+        ));
+        $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
+
+        return $this->mergeOrderRowsById(
+            $this->mergeOrderRowsById($rows, $fromCarrier),
+            $fromOlderLabels
+        );
+    }
+
+    /**
+     * ONE-TIME: persist Delivered for current In Transit rows that have no tracking ID.
+     *
+     * @return array{success: bool, message: string, matched?: int, written?: int, dry_run?: bool}
+     */
+    public function markInTransitNoTrackingDeliveredOnce(bool $dryRun = false, bool $force = false): array
+    {
+        if (! Schema::hasTable('sof_shipment_status_overrides')) {
+            return [
+                'success' => false,
+                'message' => 'sof_shipment_status_overrides table missing — run migrations.',
+            ];
+        }
+
+        $already = DB::table('sof_shipment_status_overrides')
+            ->where('mm_slug', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG)
+            ->where('order_key', self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_KEY)
+            ->exists();
+        if ($already && ! $force) {
+            return [
+                'success' => false,
+                'message' => 'Already ran once. In Transit rows without tracking were marked Delivered. Use --force only if you intend to mark the current set again.',
+                'matched' => 0,
+                'written' => 0,
+            ];
+        }
+
+        $this->forgetSofOrderRowCaches();
+        $rows = $this->inTransitOrderRows();
+        $targets = [];
+        foreach ($rows as $row) {
+            if (trim((string) ($row['tracking_number'] ?? '')) !== '') {
+                continue;
+            }
+            $key = trim((string) ($row['id'] ?? ''));
+            $slug = trim((string) ($row['mm_slug'] ?? ''));
+            if ($key === '' || $slug === '') {
+                continue;
+            }
+            $targets[] = $row;
+        }
+
+        if ($dryRun) {
+            return [
+                'success' => true,
+                'message' => 'Dry run: '.count($targets).' In Transit row(s) with no tracking would be marked Delivered.',
+                'matched' => count($targets),
+                'written' => 0,
+                'dry_run' => true,
+            ];
+        }
+
+        $now = now();
+        $written = 0;
+        foreach ($targets as $row) {
+            DB::table('sof_shipment_status_overrides')->updateOrInsert(
+                [
+                    'mm_slug' => (string) $row['mm_slug'],
+                    'order_key' => (string) $row['id'],
+                ],
+                [
+                    'order_id' => mb_substr((string) ($row['order_id'] ?? $row['order_id_api'] ?? ''), 0, 128) ?: null,
+                    'shipment_status' => ShipmentTrackingService::STATUS_DELIVERED,
+                    'shipment_status_detail' => 'One-time: In Transit with no tracking → Delivered',
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+            $written++;
+        }
+
+        DB::table('sof_shipment_status_overrides')->updateOrInsert(
+            [
+                'mm_slug' => self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_SLUG,
+                'order_key' => self::SOF_ONE_TIME_NO_TRACKING_SENTINEL_KEY,
+            ],
+            [
+                'order_id' => null,
+                'shipment_status' => ShipmentTrackingService::STATUS_DELIVERED,
+                'shipment_status_detail' => 'Sentinel: one-time In Transit no-tracking mark completed ('.$written.' rows).',
+                'updated_at' => $now,
+                'created_at' => $now,
+            ]
+        );
+
+        $this->forgetSofOrderRowCaches();
+
+        return [
+            'success' => true,
+            'message' => 'Marked '.$written.' In Transit order(s) with no tracking as Delivered. This will not run again.',
+            'matched' => count($targets),
+            'written' => $written,
+            'dry_run' => false,
+        ];
+    }
+
     /**
      * Marketplace-status pending rows (UNSHIPPED / NOT_STARTED / …) with tracking overlay.
      *
@@ -1222,6 +1497,92 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * True when marketplace status / payload says the order was cancelled (or voided).
+     *
+     * @param  array<string, mixed>  $normalized
+     */
+    protected function normalizedOrderIsCancelled(string $slug, array $normalized): bool
+    {
+        foreach (['status', 'import_status'] as $key) {
+            if ($this->statusTextLooksCancelled((string) ($normalized[$key] ?? ''))) {
+                return true;
+            }
+        }
+
+        return $this->payloadLooksCancelled($normalized['raw_payload'] ?? null);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function orderRowIsCancelled(array $row): bool
+    {
+        if (! empty($row['is_cancelled'])) {
+            return true;
+        }
+
+        foreach (['status', 'status_label', 'import_status'] as $key) {
+            if ($this->statusTextLooksCancelled((string) ($row[$key] ?? ''))) {
+                return true;
+            }
+        }
+
+        return $this->payloadLooksCancelled($row['raw_payload'] ?? null);
+    }
+
+    protected function statusTextLooksCancelled(string $raw): bool
+    {
+        $u = strtoupper(str_replace(['-', ' '], '_', trim($raw)));
+        if ($u === '') {
+            return false;
+        }
+        if (in_array($u, ['CANCELED', 'CANCELLED', 'CANCEL_REQUESTED', 'CANCELLATION_REQUESTED', 'VOID', 'VOIDED', 'INVALID'], true)) {
+            return true;
+        }
+
+        return str_contains($u, 'CANCEL');
+    }
+
+    protected function payloadLooksCancelled(mixed $payload): bool
+    {
+        $payload = AmazonOrder::decodeRawPayload($payload);
+        if ($payload === []) {
+            return false;
+        }
+
+        $cancelStatus = is_array($payload['cancelStatus'] ?? null) ? $payload['cancelStatus'] : [];
+        $cancelStatusAlt = is_array($payload['cancel_status'] ?? null) ? $payload['cancel_status'] : [];
+        $cancelState = $cancelStatus['cancelState']
+            ?? $cancelStatusAlt['cancel_state']
+            ?? $payload['cancelState']
+            ?? $payload['cancel_state']
+            ?? '';
+        if ($this->statusTextLooksCancelled((string) $cancelState)) {
+            return true;
+        }
+
+        $paymentSummary = is_array($payload['paymentSummary'] ?? null) ? $payload['paymentSummary'] : [];
+        $payment = (string) (
+            $payload['orderPaymentStatus']
+            ?? $paymentSummary['paymentStatus']
+            ?? $payload['payment_status']
+            ?? ''
+        );
+        $payU = strtoupper($payment);
+        if (str_contains($payU, 'FULLY_REFUNDED') || $payU === 'REFUNDED') {
+            return true;
+        }
+
+        foreach (['OrderStatus', 'orderStatus', 'order_status', 'orderFulfillmentStatus'] as $key) {
+            if (isset($payload[$key]) && $this->statusTextLooksCancelled((string) $payload[$key])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Still waiting on the warehouse — marketplace unfulfilled and no tracking number yet.
      *
      * @return list<array<string, mixed>>
@@ -1230,7 +1591,7 @@ class SalesOrderFulfillmentController extends Controller
     {
         return array_values(array_filter(
             $this->pendingMarketplaceOrderRows(),
-            fn (array $r) => ! $this->rowHasLabelTracking($r)
+            fn (array $r) => ! $this->rowHasLabelTracking($r) && ! $this->orderRowIsCancelled($r)
         ));
     }
 
@@ -1488,11 +1849,12 @@ class SalesOrderFulfillmentController extends Controller
             return null;
         }
 
-        $tz = 'America/Los_Angeles';
+        $displayTz = $this->sofTimezone();
+        $storageTz = $this->sofStorageTimezone();
 
         try {
             if ($value instanceof \DateTimeInterface) {
-                return Carbon::parse($value)->timezone($tz)->format('Y-m-d H:i:s');
+                return Carbon::parse($value)->timezone($displayTz)->format('Y-m-d H:i:s');
             }
 
             $raw = trim((string) $value);
@@ -1500,12 +1862,16 @@ class SalesOrderFulfillmentController extends Controller
                 return null;
             }
 
-            // Date-only values are already Pacific calendar days — keep as midnight LA.
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1) {
-                return Carbon::createFromFormat('Y-m-d', $raw, $tz)->startOfDay()->format('Y-m-d H:i:s');
+                return Carbon::createFromFormat('Y-m-d', $raw, $displayTz)->startOfDay()->format('Y-m-d H:i:s');
             }
 
-            return Carbon::parse($raw, $tz)->timezone($tz)->format('Y-m-d H:i:s');
+            $hasOffset = (bool) preg_match('/(?:[zZ]|[+-]\d{2}:?\d{2})$/', $raw);
+            $dt = $hasOffset
+                ? Carbon::parse($raw)
+                : Carbon::parse($raw, $storageTz);
+
+            return $dt->timezone($displayTz)->format('Y-m-d H:i:s');
         } catch (\Throwable) {
             return trim((string) $value) !== '' ? trim((string) $value) : null;
         }
@@ -2935,8 +3301,8 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Count of Shipped/Received orders in the last 30 days.
-     * JSON key remains scan_done_24h for frontend compatibility.
+     * Shipped/Received marketplace statuses (Received is counted separately).
+     * JSON key remains scan_done_24h for snapshot compatibility.
      */
     protected function scanDoneLast24HoursCount(): int
     {
@@ -2946,33 +3312,55 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Combined Shipped/Received + In Received (one "Received by carrier" tab).
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function receivedByCarrierOrderRows(): array
+    {
+        $shipped = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->scanDoneOrdersQuery($slug), $slug),
+            true
+        );
+        $received = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->inReceivedOrdersQuery($slug), $slug),
+            true
+        );
+
+        return $this->mergeOrderRowsById($shipped, $received);
+    }
+
+    protected function receivedByCarrierCount(): int
+    {
+        return $this->scanDoneLast24HoursCount() + $this->inReceivedOrdersCount();
+    }
+
+    /**
      * Count of In Transit orders in the last 30 days.
      * Same membership as inTransitData() — marketplace + carrier progress from Label Created.
      */
     protected function inTransitOrdersCount(): int
     {
+        return count($this->excludeCarrierDeliveredRows($this->inTransitOrderRows()));
+    }
+
+    protected function deliveredOrdersCount(): int
+    {
         $rows = $this->collectOrderRows(
-            fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug),
+            fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
             true
         );
         $fromCarrier = array_values(array_filter(
             $this->labelCreatedOrderRows(),
-            function (array $r) {
-                $s = (string) ($r['shipment_status'] ?? '');
-
-                return in_array($s, [
-                    ShipmentTrackingService::STATUS_IN_TRANSIT,
-                    ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
-                    ShipmentTrackingService::STATUS_PICKUP,
-                ], true);
-            }
+            fn (array $r) => ($r['shipment_status'] ?? null) === ShipmentTrackingService::STATUS_DELIVERED
         ));
-        $fromOlderLabels = $this->labelCreatedAssumedScannedRows();
+        $rows = $this->mergeOrderRowsById($rows, $fromCarrier);
+        $rows = $this->mergeOrderRowsById(
+            $rows,
+            $this->onlyCarrierDeliveredRows($this->inTransitOrderRows())
+        );
 
-        return count($this->mergeOrderRowsById(
-            $this->mergeOrderRowsById($rows, $fromCarrier),
-            $fromOlderLabels
-        ));
+        return count($rows);
     }
 
     /**
@@ -2993,24 +3381,6 @@ class SalesOrderFulfillmentController extends Controller
         return $this->countAllOrders(
             fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug)
         );
-    }
-
-    /**
-     * Count of Delivered orders in the last 30 days.
-     * Same membership as deliveredData() — marketplace + carrier Delivered from Label Created.
-     */
-    protected function deliveredOrdersCount(): int
-    {
-        $rows = $this->collectOrderRows(
-            fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
-            true
-        );
-        $fromCarrier = array_values(array_filter(
-            $this->labelCreatedOrderRows(),
-            fn (array $r) => ($r['shipment_status'] ?? null) === ShipmentTrackingService::STATUS_DELIVERED
-        ));
-
-        return count($this->mergeOrderRowsById($rows, $fromCarrier));
     }
 
     /**
@@ -3038,14 +3408,14 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Resolve the active order date window in California (America/Los_Angeles).
-     * Request date_from / date_to are treated as Pacific calendar dates (YYYY-MM-DD).
+     * Resolve the active order date window in Eastern (America/New_York).
+     * Request date_from / date_to are treated as EST/EDT calendar dates (YYYY-MM-DD).
      *
      * @return array{0: Carbon, 1: Carbon}
      */
     protected function resolveOrderDateRange(): array
     {
-        $tz = 'America/Los_Angeles';
+        $tz = $this->sofTimezone();
         $fromRaw = trim((string) request()->input('date_from', ''));
         $toRaw = trim((string) request()->input('date_to', ''));
 
@@ -3060,18 +3430,17 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Parse YYYY-MM-DD (or datetime) as a California calendar bound.
+     * Parse YYYY-MM-DD (or datetime) as an Eastern calendar bound.
      */
     protected function parseCaliforniaDateInput(string $raw, Carbon $fallback, bool $endOfDay = false): Carbon
     {
-        $tz = 'America/Los_Angeles';
+        $tz = $this->sofTimezone();
         $raw = trim($raw);
         if ($raw === '') {
             return $fallback->copy()->timezone($tz);
         }
 
         try {
-            // Prefer strict calendar date so browser TZ never shifts the Pacific day.
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1) {
                 $dt = Carbon::createFromFormat('Y-m-d', $raw, $tz);
             } else {
@@ -3085,27 +3454,32 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Pacific wall-clock strings for SQL comparisons (app stores naive LA datetimes).
+     * SQL bounds: date columns use Eastern calendar days; datetime columns use
+     * app-storage wall clocks (naive Pacific) covering the same EST/EDT window.
      *
      * @return array{from: Carbon, to: Carbon, from_date: string, to_date: string, from_dt: string, to_dt: string}
      */
     protected function californiaSqlBounds(Carbon $from, Carbon $to): array
     {
-        $from = $from->copy()->timezone('America/Los_Angeles')->startOfDay();
-        $to = $to->copy()->timezone('America/Los_Angeles')->endOfDay();
+        $displayTz = $this->sofTimezone();
+        $storageTz = $this->sofStorageTimezone();
+        $fromEst = $from->copy()->timezone($displayTz)->startOfDay();
+        $toEst = $to->copy()->timezone($displayTz)->endOfDay();
+        $fromStored = $fromEst->copy()->timezone($storageTz);
+        $toStored = $toEst->copy()->timezone($storageTz);
 
         return [
-            'from' => $from,
-            'to' => $to,
-            'from_date' => $from->toDateString(),
-            'to_date' => $to->toDateString(),
-            'from_dt' => $from->format('Y-m-d H:i:s'),
-            'to_dt' => $to->format('Y-m-d H:i:s'),
+            'from' => $fromEst,
+            'to' => $toEst,
+            'from_date' => $fromEst->toDateString(),
+            'to_date' => $toEst->toDateString(),
+            'from_dt' => $fromStored->format('Y-m-d H:i:s'),
+            'to_dt' => $toStored->format('Y-m-d H:i:s'),
         ];
     }
 
     /**
-     * Restrict by channel order-date column to [from, to] inclusive (California days).
+     * Restrict by channel order-date column to [from, to] inclusive (Eastern days).
      */
     protected function applyOrderDateRangeFilter(Builder $query, Carbon $from, Carbon $to, string $slug): Builder
     {
@@ -3160,7 +3534,7 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function applyLast30DaysFilter(Builder $query, mixed $since, string $slug): Builder
     {
-        $tz = 'America/Los_Angeles';
+        $tz = $this->sofTimezone();
         $from = $since instanceof Carbon
             ? $since->copy()->timezone($tz)->startOfDay()
             : Carbon::parse((string) $since, $tz)->startOfDay();
@@ -3329,7 +3703,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Shipped/Received tab — status Shipped (Received → In Received tab).
+     * Shipped/Received tab statuses (Received → same Received by carrier tab via inReceivedOrdersQuery).
      */
     protected function scanDoneOrdersQuery(string $slug): ?Builder
     {
@@ -3390,7 +3764,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Delivered — delivered / completed across MM channels (Received → In Received tab).
+     * Delivered — delivered / completed across MM channels (Received → Received by carrier tab).
      */
     protected function deliveredOrdersQuery(string $slug): ?Builder
     {
@@ -3401,7 +3775,7 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'faire' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['DELIVERED']),
-            // Shein / Reverb / Purchasing Power Received → In Received tab
+            // Shein / Reverb / Purchasing Power Received → Received by carrier tab
             'shein', 'reverb', 'purchasingpower' => null,
             'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon' => null,
             'aliexpress', 'alibaba' => $base->whereRaw(
@@ -3465,7 +3839,7 @@ class SalesOrderFulfillmentController extends Controller
             return null;
         }
 
-        return match ($slug) {
+        $query = match ($slug) {
             'ebay1', 'ebay2', 'ebay3' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['NOT_STARTED']),
             'shein' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['pending', 'to be shipped'])
                 // Shein-fulfilled lines are not warehouse pending.
@@ -3521,6 +3895,58 @@ class SalesOrderFulfillmentController extends Controller
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED']),
             default => null,
         };
+
+        return $this->excludeCancelledOrdersFromPendingQuery($query, $slug);
+    }
+
+    /**
+     * Drop cancelled / voided marketplace statuses from the Pending query.
+     */
+    protected function excludeCancelledOrdersFromPendingQuery(?Builder $query, string $slug): ?Builder
+    {
+        if ($query === null) {
+            return null;
+        }
+
+        $table = $query->getModel()->getTable();
+        $cols = match ($slug) {
+            'doba' => ['order_status'],
+            'temu', 'temu2' => ['parent_order_status_text', 'order_status_text'],
+            default => ['status'],
+        };
+        foreach ($cols as $col) {
+            if (! Schema::hasColumn($table, $col)) {
+                continue;
+            }
+            $query->whereRaw("UPPER(TRIM(COALESCE(`{$col}`, ''))) NOT LIKE ?", ['%CANCEL%']);
+        }
+
+        if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) && Schema::hasColumn($table, 'raw_payload')) {
+            $query->where(function (Builder $q) {
+                $q->whereNull('raw_payload')
+                    ->orWhere(function (Builder $inner) {
+                        $inner->whereRaw(
+                            "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.cancelStatus.cancelState')), ''))) NOT IN (?, ?, ?, ?)",
+                            ['CANCELED', 'CANCELLED', 'CANCEL_REQUESTED', 'CANCELLATION_REQUESTED']
+                        )->whereRaw(
+                            "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.orderPaymentStatus')), JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.paymentSummary.paymentStatus')), ''))) NOT IN (?, ?)",
+                            ['FULLY_REFUNDED', 'REFUNDED']
+                        );
+                    });
+            });
+        }
+
+        if ($slug === 'amazon' && Schema::hasColumn($table, 'raw_data')) {
+            $query->where(function (Builder $q) {
+                $q->whereNull('raw_data')
+                    ->orWhereRaw(
+                        "UPPER(TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_data, '$.OrderStatus')), ''))) NOT IN (?, ?)",
+                        ['CANCELED', 'CANCELLED']
+                    );
+            });
+        }
+
+        return $query;
     }
 
     /**
@@ -4045,22 +4471,26 @@ class SalesOrderFulfillmentController extends Controller
             $pendingTotal = (int) array_sum($this->pendingOrderCountsBySlug());
         }
 
+        $scanDone = $this->scanDoneLast24HoursCount();
+        $inReceived = $this->inReceivedOrdersCount();
+
         return [
             'channel_count' => (int) $channelCount,
             'pending_total' => $pendingTotal,
             'fulfilled_24h' => $this->fulfilledLast24HoursCount(),
-            'scan_done_24h' => $this->scanDoneLast24HoursCount(),
+            'scan_done_24h' => $scanDone,
             'in_transit_total' => $this->inTransitOrdersCount(),
-            'in_received_total' => $this->inReceivedOrdersCount(),
+            'in_received_total' => $inReceived,
+            'received_by_carrier_total' => $scanDone + $inReceived,
             'invoiced_total' => $this->invoicedOrdersCount(),
             'delivered_total' => $this->deliveredOrdersCount(),
             'all_order_total' => $this->allOrdersCount(),
-            'calculated_at' => now('America/Los_Angeles')->toDateTimeString(),
+            'calculated_at' => now($this->sofTimezone())->toDateTimeString(),
         ];
     }
 
     /**
-     * Upsert one Pacific-day history row (used by sof:snapshot-daily at 00:00 PST).
+     * Upsert one Eastern-day history row (used by sof:snapshot-daily at 00:00 EST/EDT).
      * Always writes a row for that date — even when every metric is unchanged vs the prior day.
      *
      * @param  bool  $onlyIfMissing  When true, skip update if the day already has a row (catch-up safe).
@@ -4071,7 +4501,7 @@ class SalesOrderFulfillmentController extends Controller
             throw new \RuntimeException('sales_order_fulfillment_daily_data table missing — run migrations.');
         }
 
-        $date = $snapshotDate ?: now('America/Los_Angeles')->subDay()->toDateString();
+        $date = $snapshotDate ?: now($this->sofTimezone())->subDay()->toDateString();
 
         $existing = SalesOrderFulfillmentDailySummary::query()
             ->whereDate('snapshot_date', $date)
@@ -4083,7 +4513,7 @@ class SalesOrderFulfillmentController extends Controller
 
         $summary = $this->collectSummaryTotals();
         // Stamp every write so identical counts still produce a fresh daily record.
-        $summary['recorded_at'] = now('America/Los_Angeles')->toIso8601String();
+        $summary['recorded_at'] = now($this->sofTimezone())->toIso8601String();
         $summary['unchanged_ok'] = true;
 
         $prev = SalesOrderFulfillmentDailySummary::query()
@@ -4106,11 +4536,35 @@ class SalesOrderFulfillmentController extends Controller
         $row->summary_data = $summary;
         $row->notes = $sameAsPrev
             ? 'Daily SOF snapshot (no metric change vs prior day — still recorded)'
-            : 'Daily SOF snapshot (Pacific day)';
+            : 'Daily SOF snapshot (Eastern day)';
         $row->updated_at = now();
         $row->save();
 
         return $row->fresh();
+    }
+
+    /**
+     * Read a history metric from a daily summary_data blob.
+     * Received by carrier = stored combined total, else Shipped/Received + In Received.
+     */
+    protected function historyMetricValue(array $sd, string $metric): ?float
+    {
+        if ($metric === 'received_by_carrier_total') {
+            if (array_key_exists('received_by_carrier_total', $sd)) {
+                return (float) $sd['received_by_carrier_total'];
+            }
+            if (array_key_exists('scan_done_24h', $sd) || array_key_exists('in_received_total', $sd)) {
+                return (float) ($sd['scan_done_24h'] ?? 0) + (float) ($sd['in_received_total'] ?? 0);
+            }
+
+            return null;
+        }
+
+        if (! array_key_exists($metric, $sd)) {
+            return null;
+        }
+
+        return (float) $sd[$metric];
     }
 
     /** Metric keys used by history dots / charts (badge → summary_data key). */
@@ -4120,9 +4574,8 @@ class SalesOrderFulfillmentController extends Controller
             'channel_count' => 'Channels',
             'pending_total' => 'Pending',
             'fulfilled_24h' => 'Label Created / No Scan',
-            'scan_done_24h' => 'Shipped/Received',
+            'received_by_carrier_total' => 'Received by carrier',
             'in_transit_total' => 'In Transit',
-            'in_received_total' => 'In Received',
             'invoiced_total' => 'Invoiced',
             'delivered_total' => 'Delivered',
             'all_order_total' => 'All Order',
@@ -4155,9 +4608,10 @@ class SalesOrderFulfillmentController extends Controller
                 $newer = $rows->get(0)->summary_data ?? [];
                 $older = $rows->get(1)->summary_data ?? [];
                 foreach (array_keys(self::historyMetricKeys()) as $key) {
-                    $v2 = array_key_exists($key, $newer) ? (float) $newer[$key] : null;
-                    $v1 = array_key_exists($key, $older) ? (float) $older[$key] : null;
-                    $metrics[$key] = [$v1, $v2];
+                    $metrics[$key] = [
+                        $this->historyMetricValue($older, $key),
+                        $this->historyMetricValue($newer, $key),
+                    ];
                 }
             }
 
@@ -4193,19 +4647,20 @@ class SalesOrderFulfillmentController extends Controller
 
             $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
             if ($days > 0) {
-                $start = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $start = now($this->sofTimezone())->subDays($days)->toDateString();
                 $query->where('snapshot_date', '>=', $start);
             }
 
             $chartData = [];
             foreach ($query->get() as $row) {
                 $sd = $row->summary_data ?? [];
-                if (! array_key_exists($metric, $sd)) {
+                $value = $this->historyMetricValue($sd, $metric);
+                if ($value === null) {
                     continue;
                 }
                 $chartData[] = [
-                    'date' => Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->format('M d'),
-                    'value' => (float) $sd[$metric],
+                    'date' => Carbon::parse($row->snapshot_date, $this->sofTimezone())->format('M d'),
+                    'value' => $value,
                     'snapshot_date' => Carbon::parse($row->snapshot_date)->toDateString(),
                 ];
             }
