@@ -3052,9 +3052,27 @@
             if (!table) return;
             try { table.redraw(true); } catch (e) { /* ignore */ }
         }
+        function temuQueueSpricePushAfterSave(sku, sprice, row) {
+            if (typeof chPushSpriceAutoPushAllowed === 'function' && !chPushSpriceAutoPushAllowed()) {
+                return false;
+            }
+            if (typeof chPromoPageReloadPushAllowed === 'function' && !chPromoPageReloadPushAllowed()) {
+                return false;
+            }
+            if (typeof enqueueChannelPushSpriceAfterSave !== 'function') return false;
+            let price = parseFloat(sprice);
+            const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+            if (typeof temuDisplayedSprice === 'function') {
+                const shown = parseFloat(temuDisplayedSprice(d));
+                if (shown > 0) price = shown;
+            }
+            if (!sku || !(price > 0)) return false;
+            return enqueueChannelPushSpriceAfterSave(sku, price, row) !== false;
+        }
         window.temuFindTableRowBySku = temuFindTableRowBySku;
         window.temuSyncSpriceUi = temuSyncSpriceUi;
         window.temuRedrawPricingNow = temuRedrawPricingNow;
+        window.temuQueueSpricePushAfterSave = temuQueueSpricePushAfterSave;
 
         // Retry function for saving SPRICE
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
@@ -3081,6 +3099,7 @@
                         if (targetRow) {
                             try { targetRow.reformat(); } catch (e) { /* ignore */ }
                         }
+                        temuQueueSpricePushAfterSave(sku, newPriceNum, targetRow || row);
                         resolve(response);
                     },
                     error: function(xhr) {
@@ -5771,6 +5790,9 @@
                     },
                     success: function(response) {
                         showToast('SPRICE saved successfully', 'success');
+                        if (typeof temuQueueSpricePushAfterSave === 'function') {
+                            temuQueueSpricePushAfterSave(data['sku'], newSprice, row);
+                        }
                     },
                     error: function(xhr) {
                         showToast('Failed to save SPRICE', 'error');

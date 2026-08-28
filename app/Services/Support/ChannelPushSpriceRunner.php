@@ -329,9 +329,17 @@ class ChannelPushSpriceRunner
 
     private function pushPrice(string $sku, float $price)
     {
+        $pushPrice = $price;
+        if (in_array($this->channel, ['temu', 'temu2'], true)) {
+            $base = \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
+            if ($base !== null && $base > 0) {
+                $pushPrice = $base;
+            }
+        }
+
         $req = Request::create('/channel-push-sprice-push', 'POST', [
             'sku' => $sku,
-            'price' => $price,
+            'price' => $pushPrice,
         ]);
 
         $cvrMarket = [
@@ -358,7 +366,7 @@ class ChannelPushSpriceRunner
         if ($cvrMarket) {
             return app(CvrMasterController::class)->pushPriceToAmazon(Request::create('/cvr-master-push-price', 'POST', [
                 'sku' => $sku,
-                'price' => $price,
+                'price' => $pushPrice,
                 'marketplace' => $cvrMarket,
             ]));
         }
