@@ -5563,6 +5563,7 @@
             try {
                 const extra = {
                     skip_push: true,
+                    queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
                     skip_lmp_cap: true,
                     prmt_pct: job.prmt,
                     cpn_pct: job.cpn,
@@ -5816,6 +5817,7 @@
                 try {
                     const extra = {
                         skip_push: true,
+                        queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
                         skip_lmp_cap: true,
                         prmt_pct: job.prmt,
                         cpn_pct: job.cpn,
@@ -7874,26 +7876,48 @@
                 data: { _token: chPromoCsrf(), enabled: enabled ? 1 : 0 },
             });
         }
+        function chPromoSafeTable() {
+            try {
+                if (typeof table !== 'undefined' && table) return table;
+            } catch (e) { /* TDZ before let table */ }
+            return (typeof window !== 'undefined' && window.table) ? window.table : null;
+        }
+        function chPromoQueueReloadSpricePush(opts) {
+            opts = opts || {};
+            if (!chPromoPageReloadPushAllowed()) return;
+            if (typeof scanAndQueueChannelPushSprice !== 'function') return;
+            const delay = opts.delay != null ? opts.delay : 0;
+            const run = function() {
+                scanAndQueueChannelPushSprice(chPromoSafeTable(), { once: false, silent: false });
+            };
+            if (delay > 0) setTimeout(run, delay);
+            else run();
+        }
         function chPromoTryQueueAfterSlabs() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
             if (!chPromoEbaySpriceSlabsReady()) return;
             if (window._chPushSpriceSlabsQueued) return;
-            if (typeof table === 'undefined' || !table) {
+            const tbl = chPromoSafeTable();
+            if (!tbl) {
                 setTimeout(chPromoTryQueueAfterSlabs, 400);
                 return;
             }
-            const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
-            const extraN = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
-                ? window.allTableData.length
-                : ((typeof allTableData !== 'undefined' && Array.isArray(allTableData))
-                    ? allTableData.length
-                    : 0);
+            const n = (typeof tbl.getDataCount === 'function') ? tbl.getDataCount() : 0;
+            let extraN = 0;
+            try {
+                extraN = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
+                    ? window.allTableData.length
+                    : ((typeof allTableData !== 'undefined' && Array.isArray(allTableData))
+                        ? allTableData.length
+                        : 0);
+            } catch (e) {
+                extraN = 0;
+            }
             if (!(n > 0) && !(extraN > 0)) {
                 setTimeout(chPromoTryQueueAfterSlabs, 400);
                 return;
             }
             window._chPushSpriceSlabsQueued = true;
-            window._chPushSpricePageChecked = true;
             if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {
                 chPromoSyncEbayPrmtColumnFromSlabs();
             }
@@ -7919,16 +7943,17 @@
                 return;
             }
             if (!chPromoPageReloadPushAllowed()) return;
-            // Other channels: Autopush is after-save on the edited row only.
+            chPromoQueueReloadSpricePush({ delay: 700 });
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
-            if (typeof table === 'undefined' || !table || !table.on) {
+            const tbl = chPromoSafeTable();
+            if (!tbl || !tbl.on) {
                 setTimeout(bindEbaySpriceAutofill, 400);
                 return;
             }
-            if (table._chPromoSpriceAutofillBound) return;
-            table._chPromoSpriceAutofillBound = true;
+            if (tbl._chPromoSpriceAutofillBound) return;
+            tbl._chPromoSpriceAutofillBound = true;
             function runPageLoadSpriceQueue() {
                 // Wait for Dil vs PRMT / CVR vs CPN slabs — otherwise fill = Std and the
                 // blue-triangle SKUs (Std − slabs) are never queued.
@@ -7938,7 +7963,7 @@
                 }
                 chPromoTryQueueAfterSlabs();
             }
-            table.on('dataLoaded', function() {
+            tbl.on('dataLoaded', function() {
                 chPromoSyncEbayPrmtColumnFromSlabs();
                 chPromoSyncEbayCpnColumnFromSlabs();
                 if (typeof chPromoScheduleCvrCpnAutoApply === 'function') {
@@ -7950,7 +7975,7 @@
                 runPageLoadSpriceQueue();
             });
             try {
-                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
+                if ((typeof tbl.getDataCount === 'function' ? tbl.getDataCount() : 0) > 0) {
                     chPromoSyncEbayPrmtColumnFromSlabs();
                     chPromoSyncEbayCpnColumnFromSlabs();
                     if (typeof chPromoScheduleCvrCpnAutoApply === 'function') {
@@ -8889,14 +8914,16 @@
                 saveChPromoPageReloadPush(on)
                     .done(function() {
                         if (on && chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                            scanAndQueueTemuListingPush(typeof table !== 'undefined' ? table : null);
+                            scanAndQueueTemuListingPush(chPromoSafeTable());
+                        } else if (on) {
+                            chPromoQueueReloadSpricePush();
                         }
                         chPromoToast(
                             'success',
                             on
                                 ? (chPromoIsTemuPromoChannel()
                                     ? 'Auto-push on — Temu listing price updates through the Temu API.'
-                                    : 'Auto-push on — only the SKUs you change will be queued. Cron is unchanged.')
+                                    : 'Auto-push on — SKUs whose S PRC differs from Price are queued now.')
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
                     })

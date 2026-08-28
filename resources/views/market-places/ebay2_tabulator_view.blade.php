@@ -4361,6 +4361,7 @@
                     }
                 ]
             });
+            window.table = table;
 
             $(document).on('change', '#ebay2-table .nrp-nr-select', function() {
                 const $el = $(this);

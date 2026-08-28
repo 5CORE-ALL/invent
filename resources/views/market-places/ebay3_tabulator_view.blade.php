@@ -3437,6 +3437,7 @@
                 },
             ]
         });
+        window.table = table;
 
         /** Tabulator dataTree always draws parent before children; move each parent row after its last visible descendant. */
         function reorderEbay3ParentRowsBelowSkus() {

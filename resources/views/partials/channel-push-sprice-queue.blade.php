@@ -414,6 +414,12 @@
             }
             function enqueueChannelPushSprice(items, opts) {
                 opts = opts || {};
+                if (!CH_PUSH_SPRICE_LIVE) {
+                    if (!opts.silent) {
+                        chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
+                    }
+                    return;
+                }
                 if (opts.exclusive) chPushSpriceExclusive = true;
                 if (!items || !items.length) return;
                 items.forEach(function(item) {
@@ -501,44 +507,120 @@
                 }
                 rows.forEach(walk);
             }
+            function chPushSpriceDatasetRows() {
+                let raw = [];
+                try {
+                    if (Array.isArray(global.allTableData) && global.allTableData.length) {
+                        raw = global.allTableData;
+                    }
+                } catch (e) { /* ignore */ }
+                if (!raw.length) {
+                    try {
+                        if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
+                            raw = allTableData;
+                        }
+                    } catch (e) { /* TDZ before let allTableData */ }
+                }
+                if (!raw.length) return [];
+                const flat = [];
+                const seen = new Set();
+                function walk(d) {
+                    if (!d || typeof d !== 'object') return;
+                    const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
+                    if (sku) {
+                        if (seen.has(sku)) return;
+                        seen.add(sku);
+                    }
+                    flat.push(d);
+                    const kids = d._children;
+                    if (Array.isArray(kids) && kids.length) {
+                        kids.forEach(walk);
+                    }
+                }
+                raw.forEach(walk);
+                return flat;
+            }
+            function chPushSpriceLiveFromRow(d) {
+                if (!d) return 0;
+                const raw = d[CH_PUSH_SPRICE_PRICE_FIELD] != null && d[CH_PUSH_SPRICE_PRICE_FIELD] !== ''
+                    ? d[CH_PUSH_SPRICE_PRICE_FIELD]
+                    : (d.ebay_price != null && d.ebay_price !== ''
+                        ? d.ebay_price
+                        : (d.Price != null ? d.Price : 0));
+                return chPushSpriceRound2(raw);
+            }
+            function chPushSpriceFillFromRow(d) {
+                let fill = 0;
+                if (typeof chPromoLiveSprice === 'function') {
+                    fill = chPushSpriceRound2(chPromoLiveSprice(d));
+                } else if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                    fill = chPushSpriceRound2(chPromoSpriceFromStdTPromo(d));
+                }
+                if (fill > 0) return fill;
+                return chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
+            }
             function scanAndQueueChannelPushSprice(tbl, opts) {
                 opts = opts || {};
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
-                tbl = tbl || (typeof table !== 'undefined' ? table : null);
-                if (!tbl) return;
+                if (!chPushSpriceAutoPushAllowed()) return;
+                if (!CH_PUSH_SPRICE_LIVE) {
+                    if (!opts.silent) {
+                        chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
+                    }
+                    return;
+                }
+                if (!tbl) {
+                    try {
+                        if (typeof table !== 'undefined' && table) tbl = table;
+                    } catch (e) { /* TDZ */ }
+                }
+                const extra = chPushSpriceDatasetRows();
+                if (!tbl && !extra.length) return;
                 const persistMissing = opts.persistMissing !== false;
                 const jobs = [];
                 const saves = [];
-                chPushSpriceWalkRows(tbl, function(row, d) {
+                const seen = new Set();
+                function consider(row, d) {
                     if (!chPushSpriceIsChild(d)) return;
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return;
                     const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
-                    if (!sku) return;
-                    let fill = 0;
-                    if (typeof chPromoLiveSprice === 'function') {
-                        fill = chPushSpriceRound2(chPromoLiveSprice(d));
-                    } else if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                        fill = chPushSpriceRound2(chPromoSpriceFromStdTPromo(d));
-                    }
+                    const key = sku.toUpperCase();
+                    if (!sku || seen.has(key)) return;
+                    seen.add(key);
+                    const fill = chPushSpriceFillFromRow(d);
                     if (!(fill > 0)) return;
-                    const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
+                    const live = chPushSpriceLiveFromRow(d);
                     if (!(live > 0) || chPushSpriceNearlyEqual(fill, live)) return;
-                    const current = chPushSpriceRound2(d.SPRICE);
+                    const current = chPushSpriceRound2(d.SPRICE != null ? d.SPRICE : d.sprice);
                     if (persistMissing && CH_PUSH_SPRICE_SAVE && (!(current > 0) || !chPushSpriceNearlyEqual(current, fill))) {
-                        try { row.update({ SPRICE: fill, SPRICE_STATUS: 'queued' }); } catch (e) { /* ignore */ }
+                        if (row && typeof row.update === 'function') {
+                            try { row.update({ SPRICE: fill, sprice: fill, SPRICE_STATUS: 'queued' }); } catch (e) { /* ignore */ }
+                        } else if (d) {
+                            d.SPRICE = fill;
+                            d.sprice = fill;
+                            d.SPRICE_STATUS = 'queued';
+                        }
                         saves.push({ sku: sku, price: fill });
                     }
                     jobs.push({ sku: sku, price: fill });
-                });
-                if (!jobs.length) return;
-                const persistThenQueue = function() {
-                    enqueueChannelPushSprice(jobs, { silent: !!opts.silent });
-                };
-                if (!saves.length) {
-                    persistThenQueue();
+                }
+                if (tbl) chPushSpriceWalkRows(tbl, consider);
+                extra.forEach(function(d) { if (d) consider(null, d); });
+                if (!jobs.length) {
+                    if (!opts.silent) {
+                        setChannelPushSpriceProgress({
+                            active: false,
+                            done: 0,
+                            total: 0,
+                            pct: 0,
+                            msg: 'No S PRC to push',
+                        });
+                    }
                     return;
                 }
+                enqueueChannelPushSprice(jobs, { silent: !!opts.silent });
+                if (!saves.length || !CH_PUSH_SPRICE_SAVE) return;
                 let idx = 0;
                 let inflight = 0;
                 const max = 8;
@@ -553,8 +635,7 @@
                             data: { sku: job.sku, sprice: job.price, skip_push: 1, _token: chPushSpriceCsrf() },
                         }).always(function() {
                             inflight--;
-                            if (idx >= saves.length && inflight === 0) persistThenQueue();
-                            else pump();
+                            if (idx < saves.length || inflight > 0) pump();
                         });
                     }
                 }

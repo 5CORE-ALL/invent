@@ -5107,6 +5107,7 @@
                     }
                 ]
             });
+            window.table = table;
 
             if (window.ParentExpand) {
                 ParentExpand.configure({
