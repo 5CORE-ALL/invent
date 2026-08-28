@@ -1939,7 +1939,6 @@
         const passed = parseFloat(candidate);
         if (row && typeof row.update === 'function') {
             row.update({ sprice: null, SPRICE: null });
-            try { row.reformat(); } catch (e) { /* ignore */ }
         }
         const data = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
         const start = (isFinite(passed) && passed > 0) ? passed : 0;
@@ -1950,12 +1949,36 @@
     window.temuPrepareSpriceForSave = temuPrepareSpriceForSave;
     window.temuClearAndPrepareSprice = temuClearAndPrepareSprice;
 
-    function temuDisplayedSprice(row) {
-        const stored = parseFloat(row && (row.sprice != null ? row.sprice : row.SPRICE)) || 0;
-        if (stored > 0) {
-            return temuPrepareSpriceForSave(row, stored, { use_passed_as_discounted: true }) || 0;
+    function temuSpriceCellModel(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) {
+            return { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
         }
-        return temuPrepareSpriceForSave(row, temuRawSprice(row)) || 0;
+        const stored = parseFloat(row.sprice != null ? row.sprice : row.SPRICE) || 0;
+        const live = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(row) : 0;
+        const start = stored > 0 ? stored : live;
+        const extra = stored > 0 ? { use_passed_as_discounted: true } : {};
+        const cap = typeof temuSpriceCapResult === 'function'
+            ? temuSpriceCapResult(row, start, extra)
+            : { sprice: start, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
+        const labelCap = (live > 0 && typeof temuSpriceCapResult === 'function')
+            ? temuSpriceCapResult(row, live)
+            : cap;
+        let value = (cap && cap.sprice > 0) ? cap.sprice : start;
+        value = temuClampSpriceBand2699(value);
+        return {
+            value: value > 0 ? +Number(value).toFixed(2) : 0,
+            labels: (labelCap && labelCap.labels) || [],
+            lmpAlert: !!(labelCap && labelCap.lmpAlert),
+            lmp: (labelCap && labelCap.lmp) || (cap && cap.lmp) || 0,
+            amz: (labelCap && labelCap.amz) || (cap && cap.amz) || 0,
+            ebay: (labelCap && labelCap.ebay) || (cap && cap.ebay) || 0,
+        };
+    }
+    window.temuSpriceCellModel = temuSpriceCellModel;
+
+    function temuDisplayedSprice(row) {
+        const model = temuSpriceCellModel(row);
+        return model.value || 0;
     }
 
     function temuSpriceCapLabels(row) {
@@ -2893,6 +2916,70 @@
             return +(roundedDollar - 0.51).toFixed(2);
         }
 
+        function temuFindTableRowBySku(sku) {
+            if (!table || !sku) return null;
+            const want = String(sku).trim();
+            try {
+                const found = table.searchRows('sku', '=', want);
+                if (found && found.length) return found[0];
+            } catch (e) { /* ignore */ }
+            const pools = [];
+            try { pools.push(table.getRows('all') || []); } catch (e) { /* ignore */ }
+            try { pools.push(table.getRows() || []); } catch (e) { /* ignore */ }
+            for (let p = 0; p < pools.length; p++) {
+                for (let i = 0; i < pools[p].length; i++) {
+                    const d = pools[p][i].getData() || {};
+                    if (String(d.sku || '').trim() === want) return pools[p][i];
+                }
+            }
+            return null;
+        }
+        function temuPatchLoadedSprice(sku, sprice, extra) {
+            extra = extra || {};
+            const want = String(sku || '').trim();
+            const n = parseFloat(sprice);
+            const val = n > 0 ? +n.toFixed(2) : null;
+            const walk = function(arr) {
+                if (!Array.isArray(arr)) return;
+                for (let i = 0; i < arr.length; i++) {
+                    const d = arr[i];
+                    if (!d) continue;
+                    if (String(d.sku || '').trim() === want) {
+                        d.sprice = val;
+                        d.SPRICE = val;
+                        if (extra.sgprft_percent != null) d.sgprft_percent = extra.sgprft_percent;
+                        if (extra.sroi_percent != null) d.sroi_percent = extra.sroi_percent;
+                    }
+                    if (Array.isArray(d._children)) walk(d._children);
+                }
+            };
+            walk(typeof fullDataset !== 'undefined' ? fullDataset : null);
+        }
+        function temuSyncSpriceUi(sku, sprice, row, extra) {
+            extra = extra || {};
+            const n = parseFloat(sprice);
+            const val = n > 0 ? +n.toFixed(2) : null;
+            let tableRow = (row && typeof row.update === 'function') ? row : temuFindTableRowBySku(sku);
+            if (!tableRow) tableRow = temuFindTableRowBySku(sku);
+            if (tableRow) {
+                const patch = { sprice: val, SPRICE: val };
+                if (extra.sprice_status) patch.sprice_status = extra.sprice_status;
+                if (extra.sgprft_percent != null) patch.sgprft_percent = extra.sgprft_percent;
+                if (extra.sroi_percent != null) patch.sroi_percent = extra.sroi_percent;
+                tableRow.update(patch);
+                try { tableRow.reformat(); } catch (e) { /* ignore */ }
+            }
+            temuPatchLoadedSprice(sku, val, extra);
+            return tableRow;
+        }
+        function temuRedrawPricingNow() {
+            if (!table) return;
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+        }
+        window.temuFindTableRowBySku = temuFindTableRowBySku;
+        window.temuSyncSpriceUi = temuSyncSpriceUi;
+        window.temuRedrawPricingNow = temuRedrawPricingNow;
+
         // Retry function for saving SPRICE
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
             return new Promise((resolve, reject) => {
@@ -2910,19 +2997,13 @@
                     },
                     success: function(response) {
                         const newPriceNum = typeof sprice === 'number' ? sprice : parseFloat(sprice);
-                        let targetRow = row;
-                        if (table) {
-                            const found = table.getRows().find(r => (r.getData().sku || '') === sku);
-                            if (found) targetRow = found;
-                        }
+                        const targetRow = temuSyncSpriceUi(sku, newPriceNum, row, {
+                            sprice_status: 'saved',
+                            sgprft_percent: response.sgprft_percent,
+                            sroi_percent: response.sroi_percent,
+                        });
                         if (targetRow) {
-                            targetRow.update({
-                                sprice: newPriceNum,
-                                sgprft_percent: response.sgprft_percent,
-                                sroi_percent: response.sroi_percent,
-                                sprice_status: 'saved'
-                            });
-                            targetRow.reformat();
+                            try { targetRow.reformat(); } catch (e) { /* ignore */ }
                         }
                         resolve(response);
                     },
@@ -3012,10 +3093,7 @@
                         
                         const originalSPrice = parseFloat(row['sprice']) || 0;
                         
-                        const tableRow = table.getRows().find(r => {
-                            const rowData = r.getData();
-                            return rowData['sku'] === sku;
-                        });
+                        const tableRow = temuFindTableRowBySku(sku);
 
                         let ruled = newPriceNum;
                         if (typeof temuClearAndPrepareSprice === 'function') {
@@ -3028,21 +3106,14 @@
                             if (isFinite(v) && v > 0) ruled = v;
                         }
                         ruled = parseFloat(Number(ruled).toFixed(2));
-                        
-                        if (tableRow) {
-                            tableRow.update({ 
-                                sprice: ruled,
-                                SPRICE: ruled,
-                                sprice_status: 'processing'
-                            });
-                            tableRow.reformat();
-                        }
+                        temuSyncSpriceUi(sku, ruled, tableRow, { sprice_status: 'processing' });
                         
                         const actionLabel = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
                         saveSpriceWithRetry(sku, ruled, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
+                                    temuRedrawPricingNow();
                                     if (errorCount === 0) {
                                         showToast(`${actionLabel} applied to ${updatedCount} SKU(s)`, 'success');
                                     } else {
@@ -3057,13 +3128,15 @@
                                     tableRow.reformat();
                                 }
                                 if (updatedCount + errorCount === totalSkus) {
+                                    temuRedrawPricingNow();
                                     showToast(`${actionLabel} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
                                 }
                             });
                     }
                 }
             });
-            
+
+            temuRedrawPricingNow();
             $('#discount-percentage-input').val('');
         }
 
@@ -4217,25 +4290,23 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
-                        const discounted = typeof temuDiscountedPrice === 'function'
-                            ? temuDiscountedPrice(rowData)
-                            : (parseFloat(cell.getValue() || 0) || 0);
-                        const cap = typeof temuSpriceCapResult === 'function'
-                            ? temuSpriceCapResult(rowData, discounted)
-                            : null;
-                        let value = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : ((cap && cap.sprice > 0) ? cap.sprice : discounted);
+                        const model = typeof temuSpriceCellModel === 'function'
+                            ? temuSpriceCellModel(rowData)
+                            : { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
+                        let value = model.value;
                         if (!(value > 0) && window.SpriceLmpCap) {
+                            const discounted = typeof temuDiscountedPrice === 'function'
+                                ? temuDiscountedPrice(rowData)
+                                : (parseFloat(cell.getValue() || 0) || 0);
                             const lmpCap = SpriceLmpCap.apply(rowData, discounted);
                             if (lmpCap && lmpCap.shown > 0) value = lmpCap.shown;
                         }
                         value = temuClampSpriceBand2699(value);
                         const live = parseFloat(rowData.temu_price) || 0;
-                        const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
+                        const lmp = model.lmp || (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = cap ? cap.lmpAlert : (lmp > 0 && value + 0.0001 >= lmp);
+                        const overLmp = model.lmpAlert || (lmp > 0 && value + 0.0001 >= lmp);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
                             : formatted;
@@ -4248,8 +4319,8 @@
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         let capHtml = '';
-                        (cap && cap.labels ? cap.labels : []).forEach(function(lbl) {
-                            const ref = lbl === 'Amz' ? cap.amz : cap.ebay;
+                        (model.labels || []).forEach(function(lbl) {
+                            const ref = lbl === 'Amz' ? model.amz : model.ebay;
                             const name = lbl === 'Amz' ? 'Amazon' : 'eBay';
                             capHtml += '<span class="temu-sprice-cap-lbl" title="S PRC capped to ' + name + ' $'
                                 + Number(ref).toFixed(2) + '">' + lbl + '</span>';

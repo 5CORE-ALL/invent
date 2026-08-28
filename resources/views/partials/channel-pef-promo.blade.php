@@ -3689,6 +3689,10 @@
             if (!sku) return Promise.resolve(null);
             if (val > 0) {
                 row.update(chPromoSpricePatch(val));
+                try { row.reformat(); } catch (e) { /* ignore */ }
+                if (typeof window.temuSyncSpriceUi === 'function') {
+                    window.temuSyncSpriceUi(sku, val, row);
+                }
             }
             const promoFields = {};
             if (extra.prmt_pct !== undefined && extra.prmt_pct !== null) {
@@ -5954,6 +5958,11 @@
                         ? ' (S PRC = Std − (PRMT% + 0 Sold PRMT%))'
                         : '') + '.'
             );
+            if (typeof window.temuRedrawPricingNow === 'function') {
+                window.temuRedrawPricingNow();
+            } else if (typeof table !== 'undefined' && table) {
+                table.redraw(true);
+            }
         }
 
         async function applyChPromoCvrCpnToTargets(targets, label) {
@@ -6328,7 +6337,11 @@
                 ok ? 'success' : 'error',
                 fieldMeta.label + ' → ' + ok + ' row(s)' + (skipped ? ('; skipped ' + skipped) : '')
             );
-            if (typeof table !== 'undefined' && table) table.redraw(true);
+            if (typeof window.temuRedrawPricingNow === 'function') {
+                window.temuRedrawPricingNow();
+            } else if (typeof table !== 'undefined' && table) {
+                table.redraw(true);
+            }
         }
 
         function computeChannelPushPrcPlan(d) {
