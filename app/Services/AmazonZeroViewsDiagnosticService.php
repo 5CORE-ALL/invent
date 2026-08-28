@@ -7,11 +7,13 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonListingRaw;
 use App\Models\AmazonListingStatus;
+use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonZeroViewDiagnostic;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\AmazonListingStatusHelper;
+use App\Services\AmazonSpApiService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -156,16 +158,6 @@ class AmazonZeroViewsDiagnosticService
         );
 
         $checkpoints[] = $this->checkpoint(
-            'search_index',
-            'Search Indexed',
-            'na',
-            'Not Verified',
-            'Not Available via Current API',
-            $now,
-            'Amazon SP-API in this app does not provide a reliable search-index check. SerpApi raw searches are not used as a per-ASIN index verdict.'
-        );
-
-        $checkpoints[] = $this->checkpoint(
             'category',
             'Category',
             $hasCategory ? 'pass' : 'fail',
@@ -176,17 +168,6 @@ class AmazonZeroViewsDiagnosticService
                 ? 'Product type/category is present.'
                 : 'Category/product classification is missing.'
         );
-
-        $checkpoints[] = $this->checkpoint(
-            'browse_node',
-            'Browse Node',
-            'na',
-            'Not Available via Current API',
-            'Not stored in current Amazon tables',
-            $now,
-            'Browse node is not persisted from the current Amazon sync. This is flagged for review only and does not block the listing.'
-        );
-        $flags[] = 'BROWSE NODE ISSUE';
 
         $checkpoints[] = $this->checkpoint(
             'main_image',
@@ -209,19 +190,24 @@ class AmazonZeroViewsDiagnosticService
         );
 
         $featuredLabel = $featuredWinner === true ? 'Yes' : ($featuredWinner === false ? 'No' : 'Not Available');
-        $featuredPct = 'Not Available via Current API';
+        $featuredPctNum = AmazonDatasheet::normalizeBuyBoxPercentage(
+            $facts['featured_offer_percentage'] ?? $facts['buy_box_percentage'] ?? null
+        );
+        $featuredPct = $featuredPctNum !== null ? rtrim(rtrim(number_format($featuredPctNum, 1, '.', ''), '0'), '.').'%' : '—';
         $checkpoints[] = $this->checkpoint(
             'featured_offer',
             'Featured Offer / Buy Box',
             $featuredWinner === true ? 'pass' : ($featuredWinner === false ? 'warn' : 'na'),
             $featuredLabel.' · Featured Offer %: '.$featuredPct,
-            'amazon_buybox_data.is_buy_box_winner',
+            'GET_SALES_AND_TRAFFIC_REPORT trafficByAsin.buyBoxPercentage',
             $facts['buybox_checked_at'] ?? $now,
-            $featuredWinner === false
-                ? 'This offer is not the Buy Box winner. That can affect exposure and conversion, but it is not necessarily the reason for zero page views. Featured Offer % is not stored by the current SP-API pull.'
-                : ($featuredWinner === true
-                    ? 'This offer currently holds the Buy Box. Featured Offer % is not available from the current API integration.'
-                    : 'Buy Box / featured-offer data has not been pulled for this SKU.')
+            $featuredPctNum !== null
+                ? 'L30 Featured Offer % from Amazon Sales & Traffic (buyBoxPercentage).'
+                : ($featuredWinner === false
+                    ? 'This offer is not the Buy Box winner. Featured Offer % has not been synced yet — run diagnostic to pull Sales & Traffic.'
+                    : ($featuredWinner === true
+                        ? 'This offer currently holds the Buy Box. Featured Offer % has not been synced yet — run diagnostic to pull Sales & Traffic.'
+                        : 'Buy Box / Featured Offer % has not been pulled for this SKU.'))
         );
         if ($featuredWinner === false) {
             $flags[] = 'LOW FEATURED OFFER';
@@ -260,10 +246,14 @@ class AmazonZeroViewsDiagnosticService
             default => 'gray',
         };
 
-        return [
+        $row = [
             'sku' => trim((string) ($facts['sku'] ?? '')),
             'parent' => trim((string) ($facts['parent'] ?? '')),
             'asin' => $asin !== '' ? $asin : null,
+            'buyer_link' => $asin !== '' ? 'https://www.amazon.com/dp/'.$asin : null,
+            'seller_link' => $asin !== ''
+                ? 'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin='.$asin
+                : null,
             'product_name' => $hasTitle ? $title : (trim((string) ($facts['product_name'] ?? '')) ?: null),
             'marketplace' => $this->marketplaceLabel(),
             'account' => $this->accountLabel(),
@@ -281,7 +271,6 @@ class AmazonZeroViewsDiagnosticService
             'l30_sessions' => $l30Sessions,
             'search_indexed' => 'Not Verified',
             'category' => $hasCategory ? $category : null,
-            'browse_node' => 'Not Available via Current API',
             'main_image' => $hasImage ? $image : null,
             'main_image_status' => $hasImage ? 'Present' : 'Missing',
             'title_status' => $hasTitle ? 'Present' : 'Missing',
@@ -296,8 +285,9 @@ class AmazonZeroViewsDiagnosticService
             'color' => $color,
             'last_checked_at' => $facts['last_checked_at'] ?? null,
             'run_status' => $facts['run_status'] ?? null,
-            'traffic_note' => 'This app syncs Amazon Business Report sessions into amazon_datsheets.sessions_l* and uses them as views. Separate pageViews are not stored.',
         ];
+
+        return array_merge($row, $this->standardAmazonFields($facts, $row));
     }
 
     /**
@@ -307,21 +297,28 @@ class AmazonZeroViewsDiagnosticService
     public function paginate(array $filters): array
     {
         $page = max(1, (int) ($filters['page'] ?? 1));
-        $size = min(200, max(1, (int) ($filters['size'] ?? 50)));
+        $rawSize = $filters['size'] ?? 50;
+        $wantAll = in_array(strtolower(trim((string) $rawSize)), ['all', 'true'], true)
+            || (int) $rawSize === 0;
 
         $universe = $this->cachedTextMatched($filters);
-        $evaluated = array_values(array_filter(
+        $summaryRows = array_values(array_filter(
             $universe,
+            fn (array $row) => $this->matchesComputedFilters($row, $this->filtersForSummary($filters))
+        ));
+        $evaluated = array_values(array_filter(
+            $summaryRows,
             fn (array $row) => $this->matchesComputedFilters($row, $filters)
         ));
         $total = count($evaluated);
+        $size = $wantAll ? max(1, $total) : min(20000, max(1, (int) $rawSize));
         $slice = array_slice($evaluated, ($page - 1) * $size, $size);
 
         return [
             'data' => $slice,
             'last_page' => max(1, (int) ceil($total / max(1, $size))),
             'total' => $total,
-            'summary' => $this->summarizeEvaluated($universe),
+            'summary' => $this->summarizeEvaluated($summaryRows),
             'page' => $page,
             'size' => $size,
         ];
@@ -346,7 +343,7 @@ class AmazonZeroViewsDiagnosticService
     private function cachedTextMatched(array $filters): array
     {
         $version = (int) Cache::get(self::CACHE_SUMMARY_KEY.'.version', 1);
-        $key = self::CACHE_SUMMARY_KEY.'.'.$version.'.'.md5(json_encode([
+        $key = self::CACHE_SUMMARY_KEY.'.'.$version.'.fo1.'.md5(json_encode([
             $filters['sku'] ?? '',
             $filters['asin'] ?? '',
             $filters['brand'] ?? '',
@@ -401,9 +398,10 @@ class AmazonZeroViewsDiagnosticService
         $products = ProductMaster::query()
             ->whereNull('deleted_at')
             ->whereIn('sku', $skus)
-            ->get(['id', 'parent', 'sku', 'main_image']);
+            ->get(['id', 'parent', 'sku', 'main_image', 'Values']);
 
         $bySku = $products->keyBy(fn ($p) => strtoupper(trim((string) $p->sku)));
+        $this->refreshFeaturedOfferPercentages();
         $maps = $this->loadRelatedMaps($skus);
 
         foreach ($skus as $index => $sku) {
@@ -411,7 +409,7 @@ class AmazonZeroViewsDiagnosticService
             try {
                 $product = $bySku[strtoupper($sku)] ?? null;
                 if (! $product) {
-                    $product = (object) ['sku' => $sku, 'parent' => '', 'main_image' => null];
+                    $product = (object) ['sku' => $sku, 'parent' => '', 'main_image' => null, 'Values' => []];
                 }
                 $facts = $this->factsForProduct($product, $maps);
                 $result = $this->evaluate($facts);
@@ -446,7 +444,6 @@ class AmazonZeroViewsDiagnosticService
                         'l30_sessions' => null,
                         'search_indexed' => 'Not Verified',
                         'category' => null,
-                        'browse_node' => 'Not Available via Current API',
                         'main_image_status' => 'Missing',
                         'title_status' => 'Missing',
                         'diagnostic_status' => 'NEEDS REVIEW',
@@ -508,6 +505,53 @@ class AmazonZeroViewsDiagnosticService
     }
 
     /**
+     * Pull L30 Featured Offer % from GET_SALES_AND_TRAFFIC_REPORT and store on amazon_datsheets.
+     */
+    public function refreshFeaturedOfferPercentages(): int
+    {
+        if (! Schema::hasTable('amazon_datsheets') || ! Schema::hasColumn('amazon_datsheets', 'buy_box_percentage')) {
+            return 0;
+        }
+
+        self::writeStatus([
+            'running' => true,
+            'status' => 'Running',
+            'message' => 'Pulling Featured Offer % from Amazon Sales & Traffic…',
+        ]);
+
+        try {
+            $result = (new AmazonSpApiService())->fetchL30BuyBoxPercentagesByAsin();
+        } catch (\Throwable $e) {
+            Log::warning('AmazonZeroViewsDiagnostic: Featured Offer % pull failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
+
+        if (! ($result['success'] ?? false)) {
+            Log::warning('AmazonZeroViewsDiagnostic: Featured Offer % pull unsuccessful', [
+                'error' => $result['error'] ?? 'unknown',
+            ]);
+
+            return 0;
+        }
+
+        $updated = 0;
+        foreach ($result['by_asin'] ?? [] as $asin => $pct) {
+            $asin = strtoupper(trim((string) $asin));
+            if ($asin === '' || ! is_numeric($pct)) {
+                continue;
+            }
+            $updated += AmazonDatasheet::query()
+                ->whereRaw('UPPER(TRIM(asin)) = ?', [$asin])
+                ->update(['buy_box_percentage' => (float) $pct]);
+        }
+
+        return $updated;
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>  $meta
      */
@@ -541,7 +585,7 @@ class AmazonZeroViewsDiagnosticService
                 'l30_sessions' => $row['l30_sessions'] ?? null,
                 'search_index_status' => $row['search_indexed'] ?? 'Not Verified',
                 'category_status' => ! empty($row['category']) ? 'Present' : 'Missing',
-                'browse_node_status' => $row['browse_node'] ?? 'Not Available via Current API',
+                'browse_node_status' => null,
                 'main_image_status' => $row['main_image_status'] ?? null,
                 'title_status' => $row['title_status'] ?? null,
                 'diagnostic_status' => $row['diagnostic_status'] ?? null,
@@ -726,7 +770,7 @@ class AmazonZeroViewsDiagnosticService
         return $query
             ->orderBy('parent')
             ->orderBy('sku')
-            ->get(['id', 'parent', 'sku', 'main_image']);
+            ->get(['id', 'parent', 'sku', 'main_image', 'Values']);
     }
 
     /**
@@ -741,33 +785,34 @@ class AmazonZeroViewsDiagnosticService
         ))));
 
         $shopify = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
-        $datasheets = [];
+        $datasheetsGrouped = collect();
         $listingRaw = [];
         $listingStatus = [];
         $buybox = [];
         $dataView = [];
         $stock = [];
         $diagnostics = [];
+        $lmpLowest = collect();
+        $lmpDetails = collect();
+
+        if (Schema::hasTable('amazon_datsheets')) {
+            $datasheetsGrouped = AmazonDatasheet::groupedByNormalizedSku();
+        }
+
+        if (Schema::hasTable('amazon_sku_competitors')) {
+            try {
+                $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+                $lmpLowest = $lmpLookups['lowest'] ?? collect();
+                $lmpDetails = $lmpLookups['details'] ?? collect();
+            } catch (\Throwable $e) {
+                Log::warning('AmazonZeroViewsDiagnostic: LMP lookup failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         if ($skus !== []) {
             foreach (array_chunk($skus, 400) as $chunk) {
-                $sheetCols = ['id', 'sku', 'asin', 'amazon_title', 'price', 'sessions_l7', 'sessions_l30', 'updated_at'];
-                if (Schema::hasColumn('amazon_datsheets', 'listing_status')) {
-                    $sheetCols[] = 'listing_status';
-                }
-                AmazonDatasheet::query()
-                    ->whereIn('sku', $chunk)
-                    ->select($sheetCols)
-                    ->orderBy('id')
-                    ->get()
-                    ->each(function ($row) use (&$datasheets) {
-                        $key = strtoupper(trim((string) $row->sku));
-                        if ($key === '' || isset($datasheets[$key])) {
-                            return;
-                        }
-                        $datasheets[$key] = $row;
-                    });
-
                 if (Schema::hasTable('amazon_listings_raw')) {
                     $rawCols = ['id', 'seller_sku', 'asin1', 'item_name'];
                     foreach (['thumbnail_image', 'product_type', 'item_type_keyword', 'brand', 'quantity', 'your_price'] as $col) {
@@ -854,7 +899,9 @@ class AmazonZeroViewsDiagnosticService
 
         return [
             'shopify' => $shopify,
-            'datasheets' => $datasheets,
+            'datasheets_grouped' => $datasheetsGrouped,
+            'lmp_lowest' => $lmpLowest,
+            'lmp_details' => $lmpDetails,
             'listing_raw' => $listingRaw,
             'listing_status' => $listingStatus,
             'buybox' => $buybox,
@@ -873,7 +920,17 @@ class AmazonZeroViewsDiagnosticService
     {
         $sku = trim((string) ($product->sku ?? ''));
         $key = strtoupper($sku);
-        $sheet = $maps['datasheets'][$key] ?? null;
+        $skuClean = strtoupper(str_replace("\xC2\xA0", ' ', $sku));
+        $skuLookupKey = str_replace(' ', '', $skuClean);
+        $amazonSheetKey = AmazonDatasheet::normalizeSkuForLookup($sku);
+        $grouped = $maps['datasheets_grouped'] ?? collect();
+        $sheet = AmazonDatasheet::pickBestForProductSku(
+            $sku,
+            $grouped->get($amazonSheetKey)
+                ?? $grouped->get($skuLookupKey)
+                ?? $grouped->get($skuClean)
+                ?? $grouped->get($key)
+        );
         $raw = $maps['listing_raw'][$key] ?? null;
         $statusRow = $maps['listing_status'][$key] ?? null;
         $buybox = $maps['buybox'][$key] ?? null;
@@ -939,6 +996,28 @@ class AmazonZeroViewsDiagnosticService
 
         $sessionsL7 = (int) ($sheet?->sessions_l7 ?? 0);
         $sessionsL30 = (int) ($sheet?->sessions_l30 ?? 0);
+        $unitsL30 = (int) ($sheet?->units_ordered_l30 ?? 0);
+        $ovL30 = (int) ($shopify?->quantity ?? 0);
+
+        $values = $this->decodeProductValues($product->Values ?? null);
+        $lp = 0.0;
+        foreach ($values as $k => $v) {
+            if (strtolower((string) $k) === 'lp') {
+                $lp = (float) $v;
+                break;
+            }
+        }
+        $ship = isset($values['ship']) ? (float) $values['ship'] : 0.0;
+
+        $lmpKey = AmazonSkuCompetitor::normalizeSkuKey($sku);
+        $lowestLmp = ($maps['lmp_lowest'] ?? collect())->get($lmpKey);
+        $lmpPrice = ($lowestLmp && isset($lowestLmp->price) && is_numeric($lowestLmp->price))
+            ? (float) $lowestLmp->price
+            : null;
+        $lmpEntries = ($maps['lmp_details'] ?? collect())->get($lmpKey);
+        $lmpEntriesTotal = $lmpEntries instanceof Collection
+            ? $lmpEntries->count()
+            : (is_countable($lmpEntries) ? count($lmpEntries) : 0);
 
         $fulfillment = 'Unknown';
         if ($buybox && $buybox->is_fulfilled_by_amazon === true) {
@@ -994,7 +1073,21 @@ class AmazonZeroViewsDiagnosticService
             'l30_views' => $sessionsL30,
             'l7_sessions' => $sessionsL7,
             'l30_sessions' => $sessionsL30,
+            'ov_l30' => $ovL30,
+            'a_l30' => $unitsL30,
+            'lp' => $lp,
+            'ship' => $ship,
+            'lmp_price' => $lmpPrice,
+            'lmp_entries_total' => $lmpEntriesTotal,
+            'std_price' => $this->numeric($sheet?->price) ?? 0,
+            'is_missing_amazon' => $sheet ? false : true,
             'featured_offer_winner' => $buybox?->is_buy_box_winner,
+            'buy_box_percentage' => Schema::hasColumn('amazon_datsheets', 'buy_box_percentage')
+                ? $this->numeric($sheet?->buy_box_percentage)
+                : null,
+            'featured_offer_percentage' => Schema::hasColumn('amazon_datsheets', 'buy_box_percentage')
+                ? $this->numeric($sheet?->buy_box_percentage)
+                : null,
             'buybox_checked_at' => $this->formatTs($buybox?->fetched_at),
             'fulfillment' => $fulfillment,
             'sales_rank' => $buybox?->sales_rank,
@@ -1066,7 +1159,7 @@ class AmazonZeroViewsDiagnosticService
      */
     private function matchesComputedFilters(array $row, array $filters): bool
     {
-        $zeroOnly = $this->truthy($filters['zero_only'] ?? true);
+        $zeroOnly = $this->truthy($filters['zero_only'] ?? false);
         $l30Filter = trim((string) ($filters['l30_views'] ?? ''));
         if ($l30Filter === '0' || ($zeroOnly && $l30Filter === '')) {
             if ((int) ($row['l30_views'] ?? 0) !== 0) {
@@ -1074,6 +1167,18 @@ class AmazonZeroViewsDiagnosticService
             }
         } elseif ($l30Filter === 'gt0' || $l30Filter === '>0') {
             if ((int) ($row['l30_views'] ?? 0) <= 0) {
+                return false;
+            }
+        }
+
+        $invFilter = strtolower(trim((string) ($filters['inv'] ?? '')));
+        $inv = (float) ($row['INV'] ?? $row['inventory'] ?? 0);
+        if ($invFilter === 'zero') {
+            if ($inv > 0) {
+                return false;
+            }
+        } elseif ($invFilter === 'more' || $invFilter === 'gt0' || $invFilter === '>0') {
+            if ($inv <= 0) {
                 return false;
             }
         }
@@ -1087,7 +1192,7 @@ class AmazonZeroViewsDiagnosticService
         $card = strtolower(trim((string) ($filters['card'] ?? '')));
         if ($card !== '' && $card !== 'total' && $card !== 'zero_views') {
             $cardMap = [
-                'blocked' => 'BLOCKED',
+                'blocked' => '__blocked__',
                 'suppressed' => '__suppressed__',
                 'out_of_stock' => 'INVENTORY ISSUE',
                 'not_buyable' => 'BUYABILITY ISSUE',
@@ -1103,11 +1208,32 @@ class AmazonZeroViewsDiagnosticService
         if ($result === '__suppressed__') {
             return strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') === 0;
         }
+        if ($result === '__blocked__') {
+            return strtoupper((string) ($row['diagnostic_status'] ?? '')) === 'BLOCKED'
+                && strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') !== 0;
+        }
         if ($result !== '' && strtoupper((string) ($row['diagnostic_status'] ?? '')) !== $result) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Card totals follow INV / L30 / status filters, but ignore the selected card
+     * so clicking Blocked does not zero the other cards.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    private function filtersForSummary(array $filters): array
+    {
+        $out = $filters;
+        $out['card'] = '';
+        $out['diagnostic_result'] = '';
+        $out['diagnostic_status'] = '';
+
+        return $out;
     }
 
     /**
@@ -1134,16 +1260,17 @@ class AmazonZeroViewsDiagnosticService
                 $summary['zero_views']++;
             }
             $status = (string) ($row['diagnostic_status'] ?? '');
-            if ($status === 'BLOCKED') {
-                $summary['blocked']++;
-            }
-            if (strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') === 0) {
+            $suppressed = strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') === 0;
+            if ($suppressed) {
                 $summary['suppressed']++;
+            }
+            if ($status === 'BLOCKED' && ! $suppressed) {
+                $summary['blocked']++;
             }
             if ($status === 'INVENTORY ISSUE') {
                 $summary['out_of_stock']++;
             }
-            if ($status === 'BUYABILITY ISSUE' || ($row['buyable'] ?? '') === 'No') {
+            if ($status === 'BUYABILITY ISSUE') {
                 $summary['not_buyable']++;
             }
             if ($status === 'INDEXING ISSUE') {
@@ -1161,6 +1288,70 @@ class AmazonZeroViewsDiagnosticService
         }
 
         return $summary;
+    }
+
+    /**
+     * Same field names / formulas as Analytics Amz and Amz CVR Issues.
+     *
+     * @param  array<string, mixed>  $facts
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function standardAmazonFields(array $facts, array $row): array
+    {
+        $sku = trim((string) ($facts['sku'] ?? $row['sku'] ?? ''));
+        $parent = trim((string) ($facts['parent'] ?? $row['parent'] ?? ''));
+        $inv = $this->numeric($row['inventory'] ?? $facts['inventory'] ?? 0) ?? 0;
+        $ovL30 = (int) ($facts['ov_l30'] ?? $row['L30'] ?? 0);
+        $aL30 = (int) ($facts['a_l30'] ?? $row['A_L30'] ?? 0);
+        $sess30 = (int) ($row['l30_views'] ?? $facts['l30_views'] ?? 0);
+        $sess7 = (int) ($row['l7_views'] ?? $facts['l7_views'] ?? 0);
+        $stdPrice = $this->numeric($facts['std_price'] ?? $facts['price'] ?? $row['price'] ?? null) ?? 0;
+        $lp = (float) ($facts['lp'] ?? 0);
+        $ship = (float) ($facts['ship'] ?? 0);
+        $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
+        $cvr = $sess30 > 0 ? round(($aL30 / $sess30) * 100, 2) : 0.0;
+        $groi = $lp > 0 ? round((($stdPrice * 0.80 - $ship - $lp) / $lp) * 100, 2) : 0.0;
+        $lmp = $facts['lmp_price'] ?? null;
+
+        return [
+            'Parent' => $parent,
+            '(Child) sku' => $sku,
+            'image_path' => $row['main_image'] ?? $facts['main_image'] ?? null,
+            'INV' => $inv,
+            'INV_AMZ' => $this->numeric($facts['amazon_inventory'] ?? $row['amazon_inventory'] ?? null) ?? 0,
+            'L30' => $ovL30,
+            'A_L30' => $aL30,
+            'Sess30' => $sess30,
+            'Sess7' => $sess7,
+            'CVR_L30' => $cvr,
+            'E Dil%' => $dil,
+            'GROI%' => $groi,
+            'lmp_price' => is_numeric($lmp) ? (float) $lmp : null,
+            'lmp_entries_total' => (int) ($facts['lmp_entries_total'] ?? 0),
+            'lp' => $lp,
+            'ship' => $ship,
+            'std_price' => $stdPrice,
+            'price' => $stdPrice,
+            'is_missing_amazon' => (bool) ($facts['is_missing_amazon'] ?? false),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeProductValues(mixed $values): array
+    {
+        if (is_array($values)) {
+            return $values;
+        }
+        if (is_string($values) && $values !== '') {
+            $decoded = json_decode($values, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
     }
 
     /**
@@ -1287,7 +1478,7 @@ class AmazonZeroViewsDiagnosticService
             ],
             'INDEXING ISSUE' => [
                 'problem' => 'ASIN appears not to be discoverable through Amazon search.',
-                'recommended' => 'Review title, product type, category, browse node, keywords, attributes and listing status.',
+                'recommended' => 'Review title, product type, category, keywords, attributes and listing status.',
             ],
             'LOW TRAFFIC' => [
                 'problem' => 'No technical listing block was found, but L30 views are 0.',

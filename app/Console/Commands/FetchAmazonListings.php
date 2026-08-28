@@ -10,6 +10,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSbCampaignReport;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class FetchAmazonListings extends Command
@@ -364,6 +365,14 @@ class FetchAmazonListings extends Command
                     "units_ordered_{$key}" => $unitsOrdered,
                     "sessions_{$key}"      => $sessions,
                 ];
+                if ($key === 'l30' && Schema::hasColumn('amazon_datsheets', 'buy_box_percentage')) {
+                    $bbPct = AmazonDatasheet::normalizeBuyBoxPercentage(
+                        $asinData['trafficByAsin']['buyBoxPercentage'] ?? null
+                    );
+                    if ($bbPct !== null) {
+                        $updateData['buy_box_percentage'] = $bbPct;
+                    }
+                }
                 if ($key === 'l1') {
                     $updateData['sessions_l1'] = intval($sessions);
                     unset($updateData['units_ordered_l1']);

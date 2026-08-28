@@ -22,9 +22,9 @@ class AmazonDatasheet extends Model
         'sessions_l7',
         'sessions_l15',
         'sessions_l30',
-        
         'sessions_l60',
-        'sessions_l90',        
+        'sessions_l90',
+        'buy_box_percentage',
         'asin',
         'amazon_title',
         'sku',
@@ -112,6 +112,25 @@ class AmazonDatasheet extends Model
 
             return sprintf('%d-%020d-%d', $hasPrice, $ts, (int) ($row->id ?? 0));
         })->first();
+    }
+
+    /**
+     * Sales & Traffic buyBoxPercentage is usually 0–100. Some payloads send 0–1.
+     */
+    public static function normalizeBuyBoxPercentage(mixed $raw): ?float
+    {
+        if (! is_numeric($raw)) {
+            return null;
+        }
+        $n = (float) $raw;
+        if ($n < 0) {
+            return null;
+        }
+        if ($n > 0 && $n < 1) {
+            $n *= 100;
+        }
+
+        return round(min($n, 100), 2);
     }
 
     /**

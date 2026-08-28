@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Models\ShopifySku;
-use App\Models\Shopifyb2cDataView;
 use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
@@ -17,7 +16,6 @@ use App\Services\Support\AmazonPushPrcJobStore;
 use App\Models\MarketplacePercentage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
-use App\Models\JungleScoutProductData;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Jobs\UpdateAmazonSPriceJob;
@@ -40,12 +38,10 @@ use App\Models\AmazonSeoAuditHistory;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonCompetitorAsin;
 use App\Models\FbaPrice;
-use App\Models\FbaTable;
 use App\Services\AmazonCvrCpnAutoPushService;
 use App\Services\AmazonDilPrmtAutoPushService;
 use App\Services\AmazonLivePriceFetcher;
 use App\Services\AmazonPushedPricePullService;
-use App\Services\FbaInventoryService;
 use App\Services\LmpSkuGroupService;
 
 class OverallAmazonController extends Controller
@@ -148,6 +144,9 @@ class OverallAmazonController extends Controller
 
     public function getViewAmazonData(Request $request)
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
         // Channel Ads% (same as /all-marketplace-master Amazon row) — used for
         // PFT% = GPFT% − Ads% and SPFT = SGPFT − Ads% on every row.
         $amazonAdsPercent = (float) (\App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
@@ -250,37 +249,6 @@ class OverallAmazonController extends Controller
             ]);
         }
 
-        // Forecast Analysis NRP (forecast_analysis.nr) — same source as /forecast.analysis NRP column.
-        $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
-        $forecastNrpBySku = [];
-        $pmKeysForFa = collect($skus)->map(fn ($s) => $normalizeSkuFa($s))->unique()->filter(fn ($s) => $s !== '')->values();
-        if ($pmKeysForFa->isNotEmpty()) {
-            $faRows = DB::table('forecast_analysis')
-                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $pmKeysForFa->all())
-                ->get(['sku', 'parent', 'nr', 'stage']);
-            foreach ($faRows->groupBy(fn ($r) => $normalizeSkuFa($r->sku)) as $k => $group) {
-                $withStage = $group->first(function ($r) {
-                    return $r->stage !== null && trim((string) $r->stage) !== '';
-                });
-                if ($withStage) {
-                    $forecastNrpBySku[$k] = $withStage;
-
-                    continue;
-                }
-                $withNr = $group->first(function ($r) {
-                    return $r->nr !== null && trim((string) $r->nr) !== '';
-                });
-                $forecastNrpBySku[$k] = $withNr ?? $group->first();
-            }
-        }
-
-        // Last Shopify B2C price push status (CVR / UpdatePriceApiController persist into shopifyb2c_data_view.value)
-        $shopifyB2cDataBySku = [];
-        foreach (Shopifyb2cDataView::whereIn('sku', $skus)->get() as $b2cRow) {
-            $k = strtoupper(str_replace("\xC2\xA0", ' ', trim((string) ($b2cRow->sku ?? ''))));
-            $shopifyB2cDataBySku[$k] = $b2cRow;
-        }
-
         // FBA price by SKU (seller_sku like "ABC FBA" -> key "ABC")
         $fbaPriceBySku = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
             ->get()
@@ -289,124 +257,12 @@ class OverallAmazonController extends Controller
                 return strtoupper(str_replace(' ', '', trim($base)));
             });
 
-        // FBA INV: shared resolver (same rules as FbaInventoryService / FBA Analytics base key).
-        $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
-        $fbaInventoryService = FbaInventoryService::fromFbaRows($fbaTableFbaRows);
-
-        Log::debug('Amazon tabulator getViewAmazonData: FBA inventory map loaded', [
-            'fba_table_rows' => $fbaTableFbaRows->count(),
-            'fba_analytics_key_count' => $fbaInventoryService->distinctAnalyticsKeyCount(),
-            'product_master_skus' => count($skus),
-        ]);
-
-        if (filter_var(env('FBA_INVENTORY_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
-            foreach (['CAPO AL BLK', 'CAPO AL BLK FBA', 'ET 10FT BLU FBA', 'ET 6FT BLU fba'] as $probeSku) {
-                $hit = $fbaInventoryService->resolve($probeSku);
-                Log::channel('amazon_debug')->info('Amazon FBM FBA inventory probe', [
-                    'product_sku' => $probeSku,
-                    'matched_seller_sku' => $hit?->seller_sku,
-                    'fba_quantity' => $hit ? (int) ($hit->quantity_available ?? 0) : null,
-                ]);
-            }
-        }
-
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
             ->get()
             ->keyBy('sku');
 
         $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
-
-        // Load SEO Audit History from dedicated table with user names
-        $seoAuditHistory = AmazonSeoAuditHistory::whereIn('sku', $skus)
-            ->leftJoin('users', 'amazon_seo_audit_history.user_id', '=', 'users.id')
-            ->select('amazon_seo_audit_history.*', 'users.name as user_name')
-            ->orderBy('amazon_seo_audit_history.created_at', 'desc')
-            ->get()
-            ->groupBy('sku')
-            ->map(function($entries) {
-                return $entries->map(function($entry) {
-                    return [
-                        'id' => $entry->id,
-                        'text' => $entry->checklist_text,
-                        'user_name' => $entry->user_name ?? 'Guest',
-                        'timestamp' => $entry->created_at ? $entry->created_at->format('Y-m-d H:i:s') : 'N/A'
-                    ];
-                })->values()->toArray();
-            });
-        
-        Log::info('SEO Audit History loaded', ['count' => $seoAuditHistory->count()]);
-
-        // Get all JungleScout data - group by SKU first, then also by ASIN for fallback
-        $allJungleScoutData = JungleScoutProductData::all();
-        
-        // Group by SKU (case-insensitive) - for products with SKU in Jungle Scout
-        $jungleScoutBySku = $allJungleScoutData
-            ->filter(function ($item) {
-                return !empty($item->sku);
-            })
-            ->groupBy(function ($item) {
-                return strtoupper(trim($item->sku));
-            })
-            ->map(function ($group) {
-                $validPrices = $group->filter(function ($item) {
-                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                    $price = $data['price'] ?? null;
-                    return is_numeric($price) && $price > 0;
-                })->map(function ($item) {
-                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                    return $data['price'];
-                });
-
-                return [
-                    'scout_parent' => $group->first()->parent,
-                    'min_price' => $validPrices->isNotEmpty() ? $validPrices->min() : null,
-                    'product_count' => $group->count(),
-                    'all_data' => $group->map(function ($item) {
-                        $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                        if (isset($data['price'])) {
-                            $data['price'] = is_numeric($data['price']) ? (float) $data['price'] : null;
-                        }
-                        return $data;
-                    })->toArray()
-                ];
-            });
-        
-        // Group by ASIN (from data->id field) - for fallback when SKU doesn't match
-        $jungleScoutByAsin = $allJungleScoutData
-            ->filter(function ($item) {
-                $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                return isset($data['id']) && !empty($data['id']);
-            })
-            ->groupBy(function ($item) {
-                $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                $id = $data['id'] ?? '';
-                $asin = str_replace('us/', '', $id);
-                return strtoupper(trim($asin));
-            })
-            ->map(function ($group) {
-                $validPrices = $group->filter(function ($item) {
-                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                    $price = $data['price'] ?? null;
-                    return is_numeric($price) && $price > 0;
-                })->map(function ($item) {
-                    $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                    return $data['price'];
-                });
-
-                return [
-                    'scout_parent' => $group->first()->parent,
-                    'min_price' => $validPrices->isNotEmpty() ? $validPrices->min() : null,
-                    'product_count' => $group->count(),
-                    'all_data' => $group->map(function ($item) {
-                        $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                        if (isset($data['price'])) {
-                            $data['price'] = is_numeric($data['price']) ? (float) $data['price'] : null;
-                        }
-                        return $data;
-                    })->toArray()
-                ];
-            });
 
         // Load NR values from AmazonListingStatus model instead of AmazonDataView
         $nrListingStatuses = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -444,7 +300,6 @@ class OverallAmazonController extends Controller
             $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
             $lmpDetailsLookup = $lmpLookups['details'];
             $lmpLowestLookup = $lmpLookups['lowest'];
-            $lmpIgnoredIds = AmazonSkuCompetitor::ignoredIdSet();
         } catch (\Exception $e) {
             Log::warning('Could not fetch LMP data from amazon_sku_competitors: ' . $e->getMessage());
         }
@@ -541,10 +396,6 @@ class OverallAmazonController extends Controller
             $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
             $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
-            $fbaInvRecord = $fbaInventoryService->resolve((string) $pm->sku);
-            $row['FBA_Quantity'] = $fbaInvRecord ? (int) ($fbaInvRecord->quantity_available ?? 0) : 0;
-            $row['FBA_SKU'] = $fbaInvRecord ? ($fbaInvRecord->seller_sku ?? null) : null;
-
             $row['INV'] = $shopify->inv ?? 0;
             
             // Get Amazon inventory from stock mappings (null-safe, handle string values)
@@ -593,13 +444,6 @@ class OverallAmazonController extends Controller
             $row['T_COGS'] = round($lp * $units_ordered_l30, 2);
             $row['ad_updates'] = $adUpdates;
 
-            $parentKey = strtoupper($parent);
-            if (!empty($parentKey) && $jungleScoutBySku->has($parentKey)) {
-                $row['scout_data'] = $jungleScoutBySku[$parentKey];
-            } elseif (!empty($parentKey) && $jungleScoutByAsin->has($parentKey)) {
-                $row['scout_data'] = $jungleScoutByAsin[$parentKey];
-            }
-
             $row['percentage'] = $percentage;
             $row['LP_productmaster'] = $lp;
             $row['Ship_productmaster'] = $ship;
@@ -639,7 +483,7 @@ class OverallAmazonController extends Controller
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
 
             $row['lmp_entries'] = $allLmpEntries
-                ->map(fn ($entry) => $this->mapAmazonLmpEntry($entry, $lmpIgnoredIds))
+                ->map(fn ($entry) => $this->mapAmazonLmpEntry($entry, $lmpIgnoredIds, false))
                 ->values()
                 ->all();
             $row['lmp_entries_total'] = count($row['lmp_entries']);
@@ -795,18 +639,6 @@ class OverallAmazonController extends Controller
             }
             
             // Load SEO audit history from dedicated table
-            $historyForSku = $seoAuditHistory->get($pm->sku) ?? [];
-            $row['seo_audit_history'] = $historyForSku;
-            
-            // Debug log for first few SKUs with history
-            if (!empty($historyForSku) && rand(1, 100) <= 5) {
-                Log::info('SEO History for SKU', [
-                    'sku' => $pm->sku,
-                    'history_count' => count($historyForSku),
-                    'history' => $historyForSku
-                ]);
-            }
-            
             // Fallback to AmazonListingStatus if NR not set from AmazonDataView
             if (!isset($row['NR']) || $row['NR'] === null) {
                 $listingStatus = $nrListingStatuses->get($pm->sku);
@@ -862,38 +694,8 @@ class OverallAmazonController extends Controller
 
             $row['image_path'] = $shopify->image_src ?? ($values['image_path'] ?? null);
 
-            // Shopify B2C push status for tabulator "S st" column (pushed / error; null = never pushed / unknown)
-            $b2cDv = $shopifyB2cDataBySku[$skuClean] ?? $shopifyB2cDataBySku[$sku] ?? null;
-            $row['S_STATUS'] = null;
-            if ($b2cDv && is_array($b2cDv->value)) {
-                $b2cSt = $b2cDv->value['SPRICE_STATUS'] ?? null;
-                if (in_array($b2cSt, ['pushed', 'error'], true)) {
-                    $row['S_STATUS'] = $b2cSt;
-                }
-            }
-
-            $this->applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay($row);
-
-            $faRecNrp = $forecastNrpBySku[$normalizeSkuFa($pm->sku)] ?? null;
-            $nrpOut = '';
-            if ($faRecNrp && $faRecNrp->nr !== null && trim((string) $faRecNrp->nr) !== '') {
-                $nrpOut = strtoupper(trim((string) $faRecNrp->nr));
-                if (! in_array($nrpOut, ['REQ', 'NR', 'LATER'], true)) {
-                    $nrpOut = 'REQ';
-                }
-            }
-            $row['nrp'] = $nrpOut;
-
             $result[] = (object) $row;
         }
-
-        $fbaInvPositiveCount = collect($result)->filter(function ($r) {
-            return (int) ($r->FBA_Quantity ?? 0) > 0;
-        })->count();
-        Log::debug('Amazon tabulator getViewAmazonData: FBA_Quantity snapshot (product rows, before parent summaries)', [
-            'rows_with_fba_inv_gt_0' => $fbaInvPositiveCount,
-            'product_rows' => count($result),
-        ]);
 
         // Parent-wise grouping
         $groupedByParent = collect($result)->groupBy('Parent');
@@ -939,21 +741,6 @@ class OverallAmazonController extends Controller
                     $val = $row->INV_AMZ ?? 0;
                     return is_numeric($val) ? (int)$val : 0;
                 }),
-                'FBA_Quantity' => $rows->sum(function ($row) {
-                    $v = $row->FBA_Quantity ?? 0;
-                    return is_numeric($v) ? (int) $v : 0;
-                }),
-                'FBA_SKU' => (function () use ($rows) {
-                    foreach ($rows as $row) {
-                        $childSku = strtoupper((string) ($row->{'(Child) sku'} ?? ''));
-                        $fbaSku = strtoupper((string) ($row->FBA_SKU ?? ''));
-                        if (str_contains($childSku, 'FBA') || str_contains($fbaSku, 'FBA')) {
-                            $seller = (string) ($row->FBA_SKU ?? '');
-                            return $seller !== '' ? $seller : 'FBA';
-                        }
-                    }
-                    return '';
-                })(),
                 'is_missing_amazon' => false, // Parent rows are never missing
                 'L30' => $rows->sum('L30'),
                 'price' => '',
@@ -1000,7 +787,6 @@ class OverallAmazonController extends Controller
                 'PFT_percentage' => '',
                 'ROI_percentage' => '',
                 'T_COGS' => round($rows->sum('T_COGS'), 2),
-                'scout_data' => null,
                 'percentage' => $percentage,
                 'LP_productmaster' => '',
                 'Ship_productmaster' => '',
@@ -3147,27 +2933,35 @@ class OverallAmazonController extends Controller
 
     public function amazonDataJson(Request $request)
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
         try {
             $response = $this->getViewAmazonData($request);
-            $data = json_decode($response->getContent(), true);
+            $today = now()->toDateString();
+            $hasTodaySummary = AmazonChannelSummary::where('channel', 'amazon')
+                ->where('snapshot_date', $today)
+                ->exists();
+            if (! $hasTodaySummary) {
+                $data = json_decode($response->getContent(), true);
+                $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+                unset($data);
+            }
 
-            // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
-
-            // Prevent browser/proxy from caching LMP (and other live grid fields).
-            // Without this, two users on the same server can see different LMP after a
-            // normal refresh because GET /amazon-data-json was served from disk cache.
-            return response()->json([
-                'data' => $data['data'] ?? []
-            ])->withHeaders([
+            // Reuse the already-encoded payload. A second json_encode of ~1k fat
+            // rows was exhausting the default 128MB limit (FatalError → 500).
+            // Tabulator reads response.data; extra message/status keys are fine.
+            return $response->withHeaders([
                 'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma' => 'no-cache',
                 'Expires' => '0',
                 'Surrogate-Control' => 'no-store',
                 'Vary' => '*',
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage(), [
+                'exception' => $e::class,
+            ]);
             return response()->json(['error' => 'Failed to fetch data'], 500)
                 ->withHeaders([
                     'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
@@ -4459,57 +4253,69 @@ class OverallAmazonController extends Controller
     /**
      * One competitor shape for the Outer LMP column and the LMP Model (modal).
      * ignored is always 0/1 from the DB column (plus ignoredIdSet backup).
+     * Grid ($full=false) stays lean so /amazon-data-json does not exhaust memory.
      *
      * @param  array<int, true>  $ignoredIds
      * @return array<string, mixed>
      */
-    private function mapAmazonLmpEntry($entry, array $ignoredIds = []): array
+    private function mapAmazonLmpEntry($entry, array $ignoredIds = [], bool $full = false): array
     {
         $id = (int) ($entry->id ?? 0);
         $ignored = ($id > 0 && isset($ignoredIds[$id])) || AmazonSkuCompetitor::isIgnored($entry);
         $landed = AmazonSkuCompetitor::landedPrice($entry);
         $delivery = $this->normalizeDeliveryText($entry->delivery ?? null);
         $asin = $entry->asin ?? null;
-        $image = $entry->image ?? (
-            $asin ? 'https://m.media-amazon.com/images/P/' . $asin . '._AC_SL1000_.jpg' : null
-        );
         $link = $entry->product_link ?? null;
         $title = $entry->product_title ?? null;
+        $salesAt = $entry->sales_data_updated_at ?? null;
+        if ($salesAt instanceof \DateTimeInterface) {
+            $salesAt = $salesAt->format('Y-m-d H:i:s');
+        } elseif ($salesAt !== null) {
+            $salesAt = (string) $salesAt;
+        }
 
-        return [
+        $row = [
             'id' => $id > 0 ? $id : null,
-            'sku' => $entry->sku ?? null,
             'asin' => $asin,
-            'marketplace' => $entry->marketplace ?? 'US',
-            'image' => $image,
+            'price' => is_numeric($entry->price ?? null) ? floatval($entry->price) : null,
+            'landed_price' => $landed,
+            'ignored' => $ignored ? 1 : 0,
+            'delivery' => $delivery,
             'product_link' => $link,
             'link' => $link,
             'product_title' => $title,
             'title' => $title,
             'seller_name' => $entry->seller_name ?? null,
-            'price' => is_numeric($entry->price ?? null) ? floatval($entry->price) : null,
-            'landed_price' => $landed,
-            'ignored' => $ignored ? 1 : 0,
-            'rating' => isset($entry->rating) && $entry->rating !== null ? floatval($entry->rating) : null,
-            'reviews' => isset($entry->reviews) && $entry->reviews !== null ? (int) $entry->reviews : null,
-            'extracted_old_price' => isset($entry->extracted_old_price) && $entry->extracted_old_price !== null
-                ? floatval($entry->extracted_old_price)
-                : null,
-            'delivery' => $delivery,
-            'stock' => $entry->stock ?? null,
-            'stock_quantity' => isset($entry->stock_quantity) && $entry->stock_quantity !== null
-                ? (int) $entry->stock_quantity
-                : null,
-            'monthly_revenue' => (isset($entry->monthly_revenue) && is_numeric($entry->monthly_revenue))
-                ? floatval($entry->monthly_revenue)
-                : null,
-            'monthly_units_sold' => isset($entry->monthly_units_sold) && $entry->monthly_units_sold !== null
-                ? (int) $entry->monthly_units_sold
-                : null,
-            'buy_box_owner' => $entry->buy_box_owner ?? null,
-            'seller_type' => $entry->seller_type_js ?? null,
-            'sales_data_updated_at' => $entry->sales_data_updated_at ?? null,
+            'image' => $entry->image ?? null,
         ];
+
+        if ($full) {
+            $row['sku'] = $entry->sku ?? null;
+            $row['marketplace'] = $entry->marketplace ?? 'US';
+            $row['rating'] = isset($entry->rating) && $entry->rating !== null ? floatval($entry->rating) : null;
+            $row['reviews'] = isset($entry->reviews) && $entry->reviews !== null ? (int) $entry->reviews : null;
+            $row['stock'] = $entry->stock ?? null;
+            $row['stock_quantity'] = isset($entry->stock_quantity) && $entry->stock_quantity !== null
+                ? (int) $entry->stock_quantity
+                : null;
+            $row['monthly_revenue'] = (isset($entry->monthly_revenue) && is_numeric($entry->monthly_revenue))
+                ? floatval($entry->monthly_revenue)
+                : null;
+            $row['monthly_units_sold'] = isset($entry->monthly_units_sold) && $entry->monthly_units_sold !== null
+                ? (int) $entry->monthly_units_sold
+                : null;
+            $row['buy_box_owner'] = $entry->buy_box_owner ?? null;
+            $row['seller_type'] = $entry->seller_type_js ?? null;
+            $row['extracted_old_price'] = isset($entry->extracted_old_price) && $entry->extracted_old_price !== null
+                ? floatval($entry->extracted_old_price)
+                : null;
+            $row['sales_data_updated_at'] = $salesAt;
+            if (empty($row['image']) && $asin) {
+                $row['image'] = 'https://m.media-amazon.com/images/P/' . $asin . '._AC_SL1000_.jpg';
+            }
+        }
+
+        return $row;
     }
 
     /**
@@ -4528,8 +4334,7 @@ class OverallAmazonController extends Controller
             $competitors = AmazonSkuCompetitor::dedupeByAsin($competitors->merge($byIds));
         }
         $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
-        $ignoredIds = AmazonSkuCompetitor::ignoredIdSet();
-        $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, $ignoredIds))->values();
+        $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, [], true))->values();
         $lowest = null;
         foreach ($mapped as $row) {
             if (! empty($row['ignored'])) {
@@ -4695,9 +4500,8 @@ class OverallAmazonController extends Controller
             }
 
             // Same mapped rows the Outer LMP column uses (ignored from DB).
-            $ignoredIds = AmazonSkuCompetitor::ignoredIdSet();
             $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
-            $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, $ignoredIds))->values();
+            $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, [], true))->values();
             $lowest = null;
             foreach ($mapped as $row) {
                 if (! empty($row['ignored'])) {
@@ -4738,12 +4542,6 @@ class OverallAmazonController extends Controller
         $id = (int) $request->input('id');
         $ignored = filter_var($request->input('ignored'), FILTER_VALIDATE_BOOLEAN);
         $sku = trim((string) $request->input('sku', ''));
-        $linkedSkus = $request->input('linked_lmp_skus', []);
-        if (is_string($linkedSkus) && trim($linkedSkus) !== '') {
-            $linkedSkus = [trim($linkedSkus)];
-        } elseif (! is_array($linkedSkus)) {
-            $linkedSkus = [];
-        }
 
         if ($id < 1) {
             return response()->json(['success' => false, 'error' => 'Valid ID is required'], 400);
@@ -4752,24 +4550,12 @@ class OverallAmazonController extends Controller
             return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
         }
 
-        $groupSkus = array_values(array_unique(array_filter(array_map(
-            static fn ($value) => trim((string) $value),
-            array_merge($sku !== '' ? [$sku] : [], $linkedSkus)
-        ))));
-        $payload = $groupSkus !== []
-            ? $this->amazonLmpMappedCompetitors($groupSkus)
-            : ['competitors' => collect(), 'lowest' => null];
-        $lowest = $payload['lowest'];
-
         return response()->json([
             'success' => true,
             'ignored' => $ignored ? 1 : 0,
             'message' => $ignored ? 'Ignored for L1' : 'Included in L1',
             'sku' => $sku,
-            'competitors' => $payload['competitors'],
-            'lowest_price' => is_array($lowest) ? ($lowest['landed_price'] ?? $lowest['price'] ?? null) : null,
-            'lowest_delivery' => is_array($lowest) ? ($lowest['delivery'] ?? null) : null,
-            'total_count' => $payload['competitors']->count(),
+            'id' => $id,
         ]);
     }
 
@@ -6026,32 +5812,6 @@ class OverallAmazonController extends Controller
         } catch (\Exception $e) {
             Log::error('getAmazonKwLastSbidChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching KW Last SBID chart data'], 500);
-        }
-    }
-
-    /**
-     * Child SKUs ending in "FBA" with no FBA inventory: treat KW/PT/HL campaign status as PAUSED in the Amazon tabulator.
-     */
-    private function applyAmazonTabulatorFbaSuffixZeroFbaInvAdPauseOverlay(array &$row): void
-    {
-        $child = isset($row['(Child) sku']) ? (string) $row['(Child) sku'] : '';
-        if (! FbaInventoryService::childSkuHasFbaSuffix($child)) {
-            return;
-        }
-        if ((int) ($row['FBA_Quantity'] ?? 0) > 0) {
-            return;
-        }
-        if (isset($row['kw_campaign_status']) && (string) $row['kw_campaign_status'] !== '') {
-            $row['kw_campaign_status'] = 'PAUSED';
-        }
-        if (! empty($row['campaign_id']) || ! empty($row['campaignName'])) {
-            $row['campaignStatus'] = 'PAUSED';
-        }
-        if (isset($row['pt_campaign_status']) && (string) $row['pt_campaign_status'] !== '') {
-            $row['pt_campaign_status'] = 'PAUSED';
-        }
-        if (isset($row['hl_campaign_status']) && (string) $row['hl_campaign_status'] !== '') {
-            $row['hl_campaign_status'] = 'PAUSED';
         }
     }
 

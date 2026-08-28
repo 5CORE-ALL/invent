@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingRaw;
 use App\Models\ProductStockMapping;
 use App\Services\Support\AplusContentDocumentParser;
@@ -6043,6 +6044,124 @@ class AmazonSpApiService
             ]);
 
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * L30 Featured Offer % from GET_SALES_AND_TRAFFIC_REPORT (trafficByAsin.buyBoxPercentage).
+     *
+     * @return array{success: bool, by_asin: array<string, float>, error?: string, count?: int}
+     */
+    public function fetchL30BuyBoxPercentagesByAsin(): array
+    {
+        $accessToken = $this->getAccessToken();
+        if (! $accessToken) {
+            return ['success' => false, 'by_asin' => [], 'error' => 'Unable to obtain SP-API access token'];
+        }
+
+        $marketplaceId = $this->marketplaceId ?: 'ATVPDKIKX0DER';
+        $end = \Illuminate\Support\Carbon::today()->copy()->subDay()->endOfDay();
+        $start = $end->copy()->subDays(30)->startOfDay();
+
+        try {
+            $create = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders(['x-amz-access-token' => $accessToken])
+                ->post($this->endpoint.'/reports/2021-06-30/reports', [
+                    'reportType' => 'GET_SALES_AND_TRAFFIC_REPORT',
+                    'marketplaceIds' => [$marketplaceId],
+                    'dataStartTime' => $start->toIso8601ZuluString(),
+                    'dataEndTime' => $end->toIso8601ZuluString(),
+                    'reportOptions' => ['asinGranularity' => 'CHILD'],
+                ]);
+
+            $reportId = $create['reportId'] ?? null;
+            if (! $reportId) {
+                return [
+                    'success' => false,
+                    'by_asin' => [],
+                    'error' => 'Failed to create GET_SALES_AND_TRAFFIC_REPORT',
+                ];
+            }
+
+            $status = [];
+            $processing = 'UNKNOWN';
+            for ($i = 0; $i < 24; $i++) {
+                sleep(15);
+                $status = Http::withoutVerifying()
+                    ->timeout(45)
+                    ->withHeaders(['x-amz-access-token' => $accessToken])
+                    ->get($this->endpoint.'/reports/2021-06-30/reports/'.$reportId)
+                    ->json() ?? [];
+                $processing = (string) ($status['processingStatus'] ?? 'UNKNOWN');
+                if (in_array($processing, ['DONE', 'CANCELLED', 'FATAL'], true)) {
+                    break;
+                }
+            }
+
+            if ($processing !== 'DONE') {
+                return [
+                    'success' => false,
+                    'by_asin' => [],
+                    'error' => 'Sales & Traffic report not ready ('.$processing.')',
+                ];
+            }
+
+            $documentId = $status['reportDocumentId'] ?? null;
+            if (! $documentId) {
+                return ['success' => false, 'by_asin' => [], 'error' => 'No report document id'];
+            }
+
+            $doc = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders(['x-amz-access-token' => $accessToken])
+                ->get($this->endpoint.'/reports/2021-06-30/documents/'.$documentId)
+                ->json() ?? [];
+
+            $url = $doc['url'] ?? null;
+            if (! $url) {
+                return ['success' => false, 'by_asin' => [], 'error' => 'No report document URL'];
+            }
+
+            $bin = Http::withoutVerifying()->timeout(120)->get($url)->body();
+            $compression = strtoupper((string) ($doc['compressionAlgorithm'] ?? 'GZIP'));
+            if ($compression === 'GZIP' && $bin !== '') {
+                $decoded = @gzdecode($bin);
+                $bin = $decoded !== false ? $decoded : $bin;
+            }
+
+            $payload = json_decode($bin, true);
+            if (! is_array($payload)) {
+                $firstLine = explode("\n", trim((string) $bin), 2)[0] ?? '';
+                $payload = json_decode($firstLine, true);
+            }
+            $rows = is_array($payload) ? ($payload['salesAndTrafficByAsin'] ?? []) : [];
+            if (! is_array($rows)) {
+                return ['success' => false, 'by_asin' => [], 'error' => 'Empty salesAndTrafficByAsin'];
+            }
+
+            $byAsin = [];
+            foreach ($rows as $asinData) {
+                if (! is_array($asinData)) {
+                    continue;
+                }
+                $asin = strtoupper(trim((string) ($asinData['childAsin'] ?? '')));
+                $pct = AmazonDatasheet::normalizeBuyBoxPercentage(
+                    $asinData['trafficByAsin']['buyBoxPercentage'] ?? null
+                );
+                if ($asin === '' || $pct === null) {
+                    continue;
+                }
+                $byAsin[$asin] = $pct;
+            }
+
+            return ['success' => true, 'by_asin' => $byAsin, 'count' => count($byAsin)];
+        } catch (\Throwable $e) {
+            Log::error('Amazon fetchL30BuyBoxPercentagesByAsin failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'by_asin' => [], 'error' => $e->getMessage()];
         }
     }
 }

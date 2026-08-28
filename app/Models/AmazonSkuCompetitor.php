@@ -186,20 +186,20 @@ class AmazonSkuCompetitor extends Model
      */
     public static function persistIgnored(int $id, bool $ignored): bool
     {
-        $table = (new static)->getTable();
-        if ($id < 1 || ! \Illuminate\Support\Facades\Schema::hasColumn($table, 'ignored')) {
-            return false;
-        }
-        if (! \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists()) {
+        if ($id < 1) {
             return false;
         }
 
-        \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->update([
+        $table = (new static)->getTable();
+        $updated = \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->update([
             'ignored' => $ignored ? 1 : 0,
             'updated_at' => now(),
         ]);
+        if ($updated > 0) {
+            return true;
+        }
 
-        return true;
+        return \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists();
     }
 
     public static function lowestFromCollection($items)
@@ -300,29 +300,41 @@ class AmazonSkuCompetitor extends Model
      */
     public static function getCompetitorsForSkus(array $skus, string $marketplace = 'amazon'): \Illuminate\Support\Collection
     {
-        $keys = array_values(array_unique(array_filter(array_map(
-            static fn ($sku) => self::normalizeSkuKey((string) $sku),
+        $rawSkus = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
             $skus
+        ))));
+        $keys = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => self::normalizeSkuKey($sku),
+            $rawSkus
         ))));
 
         if ($keys === []) {
             return collect();
         }
 
-        // Same grouping as the analytics grid (normalizeSkuKey), not SQL REPLACE
-        // which misses 3+ spaces / NBSP and can return an empty modal for a (N) count.
-        $details = self::buildGroupedLookup($marketplace)['details'];
-        $competitors = collect();
-        foreach ($keys as $key) {
-            $group = $details instanceof \Illuminate\Support\Collection
-                ? $details->get($key)
-                : ($details[$key] ?? null);
-            if ($group instanceof \Illuminate\Support\Collection) {
-                $competitors = $competitors->merge($group);
-            } elseif (is_array($group)) {
-                $competitors = $competitors->merge($group);
-            }
-        }
+        $keySet = array_fill_keys($keys, true);
+
+        $competitors = self::query()
+            ->forMarketplace($marketplace)
+            ->wherePositivePrice()
+            ->where(function ($q) use ($rawSkus, $keys) {
+                foreach ($rawSkus as $sku) {
+                    $q->orWhere('sku', $sku);
+                }
+                foreach ($keys as $key) {
+                    $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+                    if (str_contains($key, ' ')) {
+                        $token = explode(' ', $key, 2)[0];
+                        if (strlen($token) >= 3) {
+                            $q->orWhere('sku', 'like', $token.'%');
+                        }
+                    }
+                }
+            })
+            ->get()
+            ->filter(static fn ($item) => isset($keySet[self::normalizeSkuKey($item->sku ?? '')]))
+            ->values();
 
         return self::dedupeByAsin($competitors);
     }

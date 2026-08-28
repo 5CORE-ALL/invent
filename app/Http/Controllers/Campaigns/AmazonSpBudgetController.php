@@ -5455,7 +5455,7 @@ class AmazonSpBudgetController extends Controller
 
         $keys = [
             'A_L30', 'A_L15', 'A_L7', 'Sess30', 'Sess7', 'sessions_l60', 'units_ordered_l60',
-            'INV_AMZ', 'FBA_Quantity', 'FBA_SKU', 'is_missing_amazon',
+            'INV_AMZ', 'is_missing_amazon',
             'rating', 'reviews', 'l2_spend',
             'INV', 'L30', 'price', 'price_lmpa',
         ];

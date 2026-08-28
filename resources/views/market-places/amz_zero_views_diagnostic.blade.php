@@ -5,10 +5,16 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        #amz-zvd-table-card {
+            margin-bottom: 0;
+        }
+        #amz-zvd-table-card .card-body {
+            padding: 0;
+        }
         #amz-zvd-wrap {
             display: flex;
             flex-direction: column;
-            min-height: 280px;
+            min-height: 360px;
             overflow: hidden;
         }
         #amz-zvd-table {
@@ -20,14 +26,59 @@
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 12px;
-            height: 100% !important;
         }
-        #amz-zvd-wrap .tabulator .tabulator-header { background: #f8f9fa; }
+        #amz-zvd-wrap .tabulator .tabulator-header {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 8 !important;
+            background: #dbeafe !important;
+        }
+        #amz-zvd-wrap .tabulator .tabulator-tableholder {
+            overflow-y: auto !important;
+        }
         #amz-zvd-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             white-space: normal !important; font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; padding: 4px 2px;
         }
+        #amz-zvd-wrap .amz-zvd-inv-header {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 3px;
+            padding: 2px 0;
+        }
+        #amz-zvd-wrap .amz-zvd-inv-header select {
+            width: 100%;
+            height: 22px;
+            font-size: 11px;
+            padding: 0 2px;
+        }
         #amz-zvd-wrap .tabulator .tabulator-cell { padding: 3px 4px !important; }
         #amz-zvd-wrap .tabulator-row.tabulator-selected { background: #e7f1ff !important; }
+        #amz-zvd-wrap .amz-zvd-title-btn {
+            border: 1px solid #2f9e44;
+            background: #fff;
+            color: #2f9e44;
+            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            line-height: 1;
+            cursor: pointer;
+        }
+        #amz-zvd-wrap .amz-zvd-title-btn:hover { background: #ebfbee; }
+        #amz-zvd-wrap .amz-zvd-title-btn:disabled {
+            border-color: #ced4da;
+            color: #adb5bd;
+            cursor: default;
+        }
+        #amz-zvd-wrap .tabulator .tabulator-cell.tabulator-frozen,
+        #amz-zvd-wrap .tabulator .tabulator-col.tabulator-frozen {
+            background: #fff;
+            z-index: 2;
+        }
+        #amz-zvd-wrap .tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            background: #dbeafe !important;
+        }
         .amz-zvd-thumb { width: 36px; height: 36px; object-fit: contain; border-radius: 4px; background: #fff; }
         .amz-zvd-card { cursor: pointer; border: 1px solid #e5e7eb; transition: box-shadow .15s, border-color .15s; }
         .amz-zvd-card:hover, .amz-zvd-card.active { border-color: #0d6efd; box-shadow: 0 0 0 2px rgba(13,110,253,.15); }
@@ -42,6 +93,9 @@
         .amz-zvd-check-warn { color: #fd7e14; }
         .amz-zvd-check-na { color: #6c757d; }
         .amz-zvd-subtitle { color: #6c757d; max-width: 920px; }
+        #amz-zvd-detail-body .amz-zvd-panel {
+            min-height: 220px;
+        }
     </style>
 @endsection
 
@@ -84,37 +138,12 @@
         <div class="card-body py-3">
             <form id="amz-zvd-filters" class="row g-2 align-items-end">
                 <div class="col-6 col-md-3 col-xl-2">
-                    <label class="form-label small mb-1">Marketplace</label>
-                    <select name="marketplace" class="form-select form-select-sm">
-                        @foreach(($filterOptions['marketplaces'] ?? []) as $opt)
-                            <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-6 col-md-3 col-xl-2">
-                    <label class="form-label small mb-1">Account</label>
-                    <select name="account" class="form-select form-select-sm">
-                        @foreach(($filterOptions['accounts'] ?? []) as $opt)
-                            <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-6 col-md-3 col-xl-2">
                     <label class="form-label small mb-1">SKU</label>
                     <input type="text" name="sku" class="form-control form-control-sm" placeholder="SKU">
                 </div>
                 <div class="col-6 col-md-3 col-xl-2">
                     <label class="form-label small mb-1">ASIN</label>
                     <input type="text" name="asin" class="form-control form-control-sm" placeholder="ASIN">
-                </div>
-                <div class="col-6 col-md-3 col-xl-2">
-                    <label class="form-label small mb-1">Brand</label>
-                    <input list="amz-zvd-brands" name="brand" class="form-control form-control-sm" placeholder="Brand">
-                    <datalist id="amz-zvd-brands">
-                        @foreach(($filterOptions['brands'] ?? []) as $brand)
-                            <option value="{{ $brand }}"></option>
-                        @endforeach
-                    </datalist>
                 </div>
                 <div class="col-6 col-md-3 col-xl-2">
                     <label class="form-label small mb-1">Category</label>
@@ -144,24 +173,24 @@
                     </select>
                 </div>
                 <div class="col-6 col-md-3 col-xl-2">
-                    <label class="form-label small mb-1">L30 Views</label>
-                    <select name="l30_views" class="form-select form-select-sm">
-                        <option value="0">L30 Views = 0</option>
-                        <option value="gt0">L30 Views &gt; 0</option>
-                        <option value="all">All</option>
+                    <label class="form-label small mb-1">INV</label>
+                    <select name="inv" class="form-select form-select-sm">
+                        <option value="all" selected>INV</option>
+                        <option value="zero">Zero</option>
+                        <option value="more">More</option>
                     </select>
                 </div>
                 <div class="col-6 col-md-3 col-xl-2">
-                    <label class="form-label small mb-1">Date From</label>
-                    <input type="date" name="date_from" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-md-3 col-xl-2">
-                    <label class="form-label small mb-1">Date To</label>
-                    <input type="date" name="date_to" class="form-control form-control-sm">
+                    <label class="form-label small mb-1">L30 Views</label>
+                    <select name="l30_views" class="form-select form-select-sm">
+                        <option value="all" selected>All SKUs</option>
+                        <option value="0">L30 Views = 0</option>
+                        <option value="gt0">L30 Views &gt; 0</option>
+                    </select>
                 </div>
                 <div class="col-12 col-xl-4 d-flex flex-wrap gap-2 align-items-center">
                     <div class="form-check mb-0">
-                        <input class="form-check-input" type="checkbox" id="amz-zvd-zero-only" checked>
+                        <input class="form-check-input" type="checkbox" id="amz-zvd-zero-only">
                         <label class="form-check-label small" for="amz-zvd-zero-only">
                             Show Only Products With 0 L30 Views
                         </label>
@@ -185,7 +214,7 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="amz-zvd-table-card">
         <div class="card-body">
             <div id="amz-zvd-wrap">
                 <div id="amz-zvd-table"></div>
@@ -207,6 +236,23 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="amz-zvd-title-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-0">Title</h5>
+                        <div class="small text-muted" id="amz-zvd-title-sub"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="amz-zvd-title-full" style="font-size:16px;line-height:1.5;word-break:break-word;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -220,7 +266,7 @@
         const CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         let amzZvdTable = null;
-        let activeCard = 'zero_views';
+        let activeCard = 'total';
         let pollTimer = null;
 
         function amzZvdEsc(s) {
@@ -243,6 +289,58 @@
             const q = new URLSearchParams(amzZvdFilters());
             Object.entries(extra || {}).forEach(([k, v]) => q.set(k, v));
             return q.toString();
+        }
+
+        function amzZvdReload() {
+            if (!amzZvdTable) return;
+            try {
+                if (amzZvdTable.getPage() !== 1) {
+                    amzZvdTable.setPage(1);
+                    return;
+                }
+            } catch (e) {}
+            amzZvdTable.replaceData();
+        }
+
+        function amzZvdInvValue() {
+            const formInv = document.querySelector('#amz-zvd-filters [name="inv"]');
+            return formInv ? formInv.value : 'all';
+        }
+
+        function amzZvdSetInv(value, reload) {
+            const next = value || 'all';
+            const formInv = document.querySelector('#amz-zvd-filters [name="inv"]');
+            if (formInv) formInv.value = next;
+            const headerInv = document.getElementById('amz-zvd-inv-header-filter');
+            if (headerInv) headerInv.value = next;
+            if (reload) amzZvdReload();
+        }
+
+        function amzZvdInvHeaderFilter() {
+            const select = document.createElement('select');
+            select.id = 'amz-zvd-inv-header-filter';
+            select.className = 'form-select form-select-sm';
+            select.title = 'Filter inventory';
+            select.innerHTML = '<option value="all">INV</option><option value="zero">Zero</option><option value="more">More</option>';
+            select.value = amzZvdInvValue();
+            select.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+            select.addEventListener('click', function (e) { e.stopPropagation(); });
+            select.addEventListener('change', function () {
+                amzZvdSetInv(this.value, true);
+            });
+            return select;
+        }
+
+        function amzZvdAsin(row) {
+            return String((row && (row.asin || '')) || '').trim();
+        }
+
+        function amzZvdBuyerHref(asin) {
+            return 'https://www.amazon.com/dp/' + encodeURIComponent(asin);
+        }
+
+        function amzZvdSellerHref(asin) {
+            return 'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(asin);
         }
 
         function amzZvdBadge(status, color) {
@@ -296,6 +394,16 @@
             }, 2500);
         }
 
+        function openProductNameModal(row) {
+            const name = String((row && row.product_name) || '').trim();
+            const sku = String((row && row.sku) || '').trim();
+            const asin = String((row && row.asin) || '').trim();
+            document.getElementById('amz-zvd-title-sub').textContent =
+                [sku ? ('SKU ' + sku) : '', asin ? ('ASIN ' + asin) : ''].filter(Boolean).join(' · ');
+            document.getElementById('amz-zvd-title-full').textContent = name || '—';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('amz-zvd-title-modal')).show();
+        }
+
         function openDiagnostic(sku, asin) {
             const url = AMZ_ZVD_DETAIL_URL + '?' + new URLSearchParams({
                 sku: sku || '',
@@ -337,32 +445,30 @@
                 '<div class="mb-3">' + amzZvdBadge(row.diagnostic_status, row.color) +
                 ' <span class="ms-2">' + amzZvdEsc(row.problem || '') + '</span></div>' +
                 '<p class="small text-muted">' + amzZvdEsc(row.recommended_action || '') + '</p>' +
-                '<div class="row g-3 mb-3">' +
+                '<div class="row g-3 mb-3 align-items-stretch">' +
                     section('TRAFFIC', [
                         ['L7 Views', row.l7_views],
                         ['L30 Views', row.l30_views],
-                        ['L7 Sessions', row.l7_sessions],
-                        ['L30 Sessions', row.l30_sessions],
-                    ], row.traffic_note) +
+                        ['A L30', row.A_L30],
+                        ['CVR L30', amzZvdPct(row.CVR_L30)],
+                        ['OV L30', row.L30],
+                        ['Dil %', amzZvdPct(row['E Dil%'])],
+                    ]) +
                     section('LISTING', [
                         ['Listing Status', row.listing_status],
                         ['Suppression', row.suppression],
                         ['Category', row.category],
-                        ['Browse Node', row.browse_node],
                         ['Title', row.product_name],
                         ['Main Image', row.main_image_status],
                     ]) +
                     section('SELLING', [
-                        ['Price', row.price != null ? ('$' + row.price) : '—'],
+                        ['Price', row.price != null ? ('$' + Number(row.price).toFixed(2)) : '—'],
+                        ['LMP', row.lmp_price != null ? ('$' + Number(row.lmp_price).toFixed(2)) : '—'],
                         ['Inventory', row.inventory],
                         ['Buyable', row.buyable],
                         ['Fulfillment', row.fulfillment],
                         ['Featured Offer %', row.featured_offer_percentage],
-                    ]) +
-                    section('SEARCH', [
-                        ['Search Indexed', row.search_indexed],
-                        ['Indexing Verification Status', 'Not Verified'],
-                        ['Relevant Search Attributes', 'Not Available via Current API'],
+                        ['GROI %', amzZvdPct(row['GROI%'])],
                     ]) +
                 '</div>' +
                 '<h6>DIAGNOSTIC</h6>' +
@@ -378,14 +484,21 @@
             }
         }
 
-        function section(title, rows, note) {
-            const body = rows.map(([k, v]) =>
-                '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">' +
-                amzZvdEsc(k) + '</span><span>' + amzZvdEsc(v ?? '—') + '</span></div>'
+        function amzZvdPct(v) {
+            if (v == null || v === '') return '—';
+            const n = Number(v);
+            if (Number.isNaN(n)) return String(v);
+            return n.toFixed(2) + '%';
+        }
+
+        function section(title, rows) {
+            const body = rows.map(([k, v], i) =>
+                '<div class="d-flex justify-content-between py-1' + (i < rows.length - 1 ? ' border-bottom' : '') +
+                '"><span class="text-muted">' +
+                amzZvdEsc(k) + '</span><span class="text-end ms-2">' + amzZvdEsc(v ?? '—') + '</span></div>'
             ).join('');
-            return '<div class="col-md-6 col-xl-3"><div class="border rounded p-2 h-100"><div class="fw-semibold mb-2">' +
+            return '<div class="col-12 col-md-4"><div class="border rounded p-2 h-100 amz-zvd-panel"><div class="fw-semibold mb-2">' +
                 amzZvdEsc(title) + '</div>' + body +
-                (note ? '<div class="small text-muted mt-2">' + amzZvdEsc(note) + '</div>' : '') +
                 '</div></div>';
         }
 
@@ -407,13 +520,24 @@
                 .catch(() => alert('Retry Required'));
         }
 
+        function amzZvdViewportHeight() {
+            const wrap = document.getElementById('amz-zvd-wrap');
+            if (!wrap) return 360;
+            const footer = document.querySelector('.footer');
+            const footerH = footer ? footer.offsetHeight : 36;
+            const top = wrap.getBoundingClientRect().top;
+            return Math.max(360, Math.floor(window.innerHeight - top - footerH - 8));
+        }
+
         function amzZvdFillHeight() {
             const wrap = document.getElementById('amz-zvd-wrap');
             if (!wrap) return;
-            const top = wrap.getBoundingClientRect().top;
-            const h = Math.max(280, window.innerHeight - top - 16);
+            const h = amzZvdViewportHeight();
             wrap.style.height = h + 'px';
-            if (amzZvdTable) amzZvdTable.redraw();
+            wrap.style.maxHeight = h + 'px';
+            if (amzZvdTable) {
+                amzZvdTable.setHeight(h);
+            }
         }
 
         function buildTable() {
@@ -421,14 +545,18 @@
                 ajaxURL: AMZ_ZVD_DATA_URL,
                 ajaxConfig: 'GET',
                 ajaxURLGenerator: function (url, config, params) {
+                    const size = (params.size === true || params.size === 'true' || params.size === 'all')
+                        ? 'all'
+                        : (params.size || 50);
                     return url + '?' + amzZvdQuery({
                         page: params.page || 1,
-                        size: params.size || 50,
+                        size: size,
                     });
                 },
                 ajaxResponse: function (url, params, response) {
                     amzZvdUpdateSummary(response.summary || {});
                     amzZvdUpdateRun(response.run || {});
+                    requestAnimationFrame(amzZvdFillHeight);
                     return {
                         data: response.data || [],
                         last_page: response.last_page || 1,
@@ -438,16 +566,17 @@
                 paginationMode: 'remote',
                 filterMode: 'remote',
                 paginationSize: 50,
-                paginationSizeSelector: [25, 50, 100, 200],
+                paginationSizeSelector: [25, 50, 100, 200, true],
                 layout: 'fitDataStretch',
-                height: '100%',
-                placeholder: 'No diagnostic rows match the current filters',
+                height: amzZvdViewportHeight(),
+                placeholder: 'No SKUs match the current filters',
                 selectableRows: true,
                 columns: [
-                    { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 40 },
-                    { title: 'Status', field: 'diagnostic_status', width: 130, hozAlign: 'center',
-                      formatter: c => amzZvdBadge(c.getValue(), c.getRow().getData().color) },
-                    { title: 'SKU', field: 'sku', width: 140 },
+                    { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 40, frozen: true },
+                    { title: 'Parent', field: 'Parent', width: 110, frozen: true, cssClass: 'text-primary',
+                      formatter: c => amzZvdEsc(c.getValue() || c.getRow().getData().parent || '—') },
+                    { title: 'SKU', field: 'sku', width: 160, frozen: true,
+                      formatter: c => amzZvdEsc(c.getValue() || c.getRow().getData()['(Child) sku'] || '') },
                     { title: 'ASIN', field: 'asin', width: 110,
                       formatter: c => {
                           const v = c.getValue();
@@ -455,21 +584,74 @@
                           return '<a href="#" class="amz-zvd-asin" data-asin="' + amzZvdEsc(v) + '" data-sku="' +
                               amzZvdEsc(c.getRow().getData().sku) + '">' + amzZvdEsc(v) + '</a>';
                       } },
-                    { title: 'Product Name', field: 'product_name', width: 220, formatter: c => amzZvdEsc(c.getValue() || '—') },
-                    { title: 'Marketplace', field: 'marketplace', width: 110 },
-                    { title: 'Inventory', field: 'inventory', width: 80, hozAlign: 'right' },
+                    { title: 'Links', field: 'links_column', width: 55, hozAlign: 'center', headerSort: false,
+                      headerTooltip: 'S = Seller Central · B = Amazon buyer page (same as Analytics Amz)',
+                      formatter: c => {
+                          const row = c.getRow().getData();
+                          const asin = amzZvdAsin(row);
+                          const sellerHref = row.seller_link || (asin ? amzZvdSellerHref(asin) : '');
+                          const buyerHref = row.buyer_link || (asin ? amzZvdBuyerHref(asin) : '');
+                          if (!sellerHref && !buyerHref) {
+                              return '<span class="text-muted" style="font-size:12px;">-</span>';
+                          }
+                          let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;align-items:center;">';
+                          if (sellerHref) {
+                              html += '<a class="amz-zvd-ext-link text-info" href="' + amzZvdEsc(sellerHref) + '"'
+                                  + ' target="_blank" rel="noopener noreferrer" title="Seller Central — ' + amzZvdEsc(asin) + '"'
+                                  + ' style="font-size:11px;text-decoration:none;"><i class="fa fa-link"></i> S</a>';
+                          }
+                          if (buyerHref) {
+                              html += '<a class="amz-zvd-ext-link text-success" href="' + amzZvdEsc(buyerHref) + '"'
+                                  + ' target="_blank" rel="noopener noreferrer" title="Buyer page — ' + amzZvdEsc(asin) + '"'
+                                  + ' style="font-size:11px;text-decoration:none;"><i class="fa fa-link"></i> B</a>';
+                          }
+                          html += '</div>';
+                          return html;
+                      } },
+                    { title: 'Title', field: 'product_name', width: 70, hozAlign: 'center', headerSort: false,
+                      headerTooltip: 'Click the magnifying glass to view the full title',
+                      formatter: c => {
+                          const row = c.getRow().getData();
+                          const name = String(c.getValue() || '').trim();
+                          if (!name) return '<span class="text-muted">—</span>';
+                          return '<button type="button" class="amz-zvd-title-btn" title="View full title"'
+                              + ' data-name="' + amzZvdEsc(name) + '"'
+                              + ' data-sku="' + amzZvdEsc(row.sku || '') + '"'
+                              + ' data-asin="' + amzZvdEsc(row.asin || '') + '">'
+                              + '<i class="fas fa-search"></i></button>';
+                      } },
+                    { title: 'Inventory', field: 'inventory', width: 96, hozAlign: 'right',
+                      headerTooltip: 'INV filter: all SKUs, inventory = 0, or inventory > 0',
+                      titleFormatter: function () {
+                          const wrap = document.createElement('div');
+                          wrap.className = 'amz-zvd-inv-header';
+                          const label = document.createElement('div');
+                          label.textContent = 'Inventory';
+                          wrap.appendChild(label);
+                          wrap.appendChild(amzZvdInvHeaderFilter());
+                          return wrap;
+                      } },
                     { title: 'Listing Status', field: 'listing_status', width: 110, hozAlign: 'center' },
                     { title: 'Suppression', field: 'suppression', width: 110, hozAlign: 'center' },
                     { title: 'Buyable', field: 'buyable', width: 80, hozAlign: 'center' },
                     { title: 'Price', field: 'price', width: 80, hozAlign: 'right',
                       formatter: c => c.getValue() == null ? '—' : '$' + Number(c.getValue()).toFixed(2) },
-                    { title: 'Featured Offer %', field: 'featured_offer_percentage', width: 130 },
+                    { title: 'Featured Offer %', field: 'featured_offer_percentage', width: 90, hozAlign: 'center',
+                      headerTooltip: 'L30 Featured Offer % from GET_SALES_AND_TRAFFIC_REPORT (buyBoxPercentage)',
+                      formatter: c => {
+                          const v = c.getValue();
+                          if (v == null || v === '' || v === '—' || v === 'Not Available via Current API') {
+                              return '<span class="text-muted">—</span>';
+                          }
+                          const num = parseFloat(v);
+                          if (!isNaN(num) && String(v).indexOf('%') === -1) {
+                              return num.toFixed(1) + '%';
+                          }
+                          return amzZvdEsc(v);
+                      } },
                     { title: 'L7 Views', field: 'l7_views', width: 80, hozAlign: 'right' },
                     { title: 'L30 Views', field: 'l30_views', width: 80, hozAlign: 'right' },
-                    { title: 'L30 Sessions', field: 'l30_sessions', width: 100, hozAlign: 'right' },
-                    { title: 'Search Indexed', field: 'search_indexed', width: 120 },
                     { title: 'Category', field: 'category', width: 140, formatter: c => amzZvdEsc(c.getValue() || '—') },
-                    { title: 'Browse Node', field: 'browse_node', width: 160 },
                     { title: 'Main Image', field: 'main_image', width: 80, hozAlign: 'center',
                       formatter: c => {
                           const url = c.getValue();
@@ -481,7 +663,7 @@
                     { title: 'Problem', field: 'problem', width: 220, formatter: c => amzZvdEsc(c.getValue() || '') },
                     { title: 'Recommended Action', field: 'recommended_action', width: 240, formatter: c => amzZvdEsc(c.getValue() || '') },
                     { title: 'Last Checked', field: 'last_checked_at', width: 120 },
-                    { title: 'Actions', field: 'sku', width: 160, headerSort: false,
+                    { title: 'Actions', field: '_actions', width: 160, headerSort: false,
                       formatter: c => {
                           const d = c.getRow().getData();
                           return '<button type="button" class="btn btn-sm btn-outline-primary amz-zvd-view" data-sku="' +
@@ -494,6 +676,21 @@
             });
 
             document.getElementById('amz-zvd-table').addEventListener('click', function (e) {
+                if (e.target.closest('.amz-zvd-ext-link')) {
+                    e.stopPropagation();
+                    return;
+                }
+                const titleBtn = e.target.closest('.amz-zvd-title-btn');
+                if (titleBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openProductNameModal({
+                        product_name: titleBtn.dataset.name || '',
+                        sku: titleBtn.dataset.sku || '',
+                        asin: titleBtn.dataset.asin || '',
+                    });
+                    return;
+                }
                 const view = e.target.closest('.amz-zvd-view, .amz-zvd-asin');
                 if (view) {
                     e.preventDefault();
@@ -510,16 +707,17 @@
 
         document.getElementById('amz-zvd-filters').addEventListener('submit', function (e) {
             e.preventDefault();
-            if (amzZvdTable) amzZvdTable.setPage(1);
+            amzZvdReload();
         });
 
         document.getElementById('amz-zvd-reset-btn').addEventListener('click', function () {
             document.getElementById('amz-zvd-filters').reset();
-            document.getElementById('amz-zvd-zero-only').checked = true;
-            document.querySelector('#amz-zvd-filters [name="l30_views"]').value = '0';
-            activeCard = 'zero_views';
+            document.getElementById('amz-zvd-zero-only').checked = false;
+            document.querySelector('#amz-zvd-filters [name="l30_views"]').value = 'all';
+            amzZvdSetInv('all', false);
+            activeCard = 'total';
             document.querySelectorAll('.amz-zvd-card').forEach(el => el.classList.toggle('active', el.dataset.card === activeCard));
-            if (amzZvdTable) amzZvdTable.setPage(1);
+            amzZvdReload();
         });
 
         document.getElementById('amz-zvd-zero-only').addEventListener('change', function () {
@@ -531,11 +729,22 @@
                 l30.value = 'all';
                 if (activeCard === 'zero_views') activeCard = 'total';
             }
-            if (amzZvdTable) amzZvdTable.setPage(1);
+            amzZvdReload();
         });
 
-        document.querySelector('#amz-zvd-filters [name="l30_views"]').addEventListener('change', function () {
-            document.getElementById('amz-zvd-zero-only').checked = this.value === '0';
+        ['inv', 'l30_views', 'status', 'diagnostic_result'].forEach(function (name) {
+            const el = document.querySelector('#amz-zvd-filters [name="' + name + '"]');
+            if (!el) return;
+            el.addEventListener('change', function () {
+                if (name === 'l30_views') {
+                    document.getElementById('amz-zvd-zero-only').checked = this.value === '0';
+                }
+                if (name === 'inv') {
+                    amzZvdSetInv(this.value, true);
+                    return;
+                }
+                amzZvdReload();
+            });
         });
 
         document.getElementById('amz-zvd-run-btn').addEventListener('click', function () {
@@ -567,16 +776,24 @@
                     zeroOnly.checked = false;
                     l30.value = 'all';
                 }
-                if (amzZvdTable) amzZvdTable.setPage(1);
+                amzZvdReload();
             });
         });
-        document.querySelector('.amz-zvd-card[data-card="zero_views"]')?.classList.add('active');
+        document.querySelector('.amz-zvd-card[data-card="total"]')?.classList.add('active');
 
-        document.addEventListener('DOMContentLoaded', function () {
+        function amzZvdInit() {
+            if (amzZvdTable) return;
             amzZvdFillHeight();
             buildTable();
             amzZvdUpdateRun(@json($runStatus ?? []));
+            requestAnimationFrame(amzZvdFillHeight);
+            setTimeout(amzZvdFillHeight, 80);
             window.addEventListener('resize', amzZvdFillHeight);
-        });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', amzZvdInit);
+        } else {
+            amzZvdInit();
+        }
     </script>
 @endsection

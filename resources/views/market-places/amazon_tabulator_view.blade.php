@@ -1,10 +1,11 @@
-@extends('layouts.vertical', ['title' => 'Amz Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amz Analytics', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         /* Compact filter dropdowns — size each to its own content */
         #amazon-filter-bar .form-select {
@@ -420,15 +421,6 @@
             cursor: not-allowed !important;
         }
 
-        .kw-cell-wrapper {
-            display: flex !important;
-            align-items: center !important;
-            gap: 6px;
-        }
-        .tabulator-cell .kw-cell-wrapper {
-            overflow: visible;
-        }
-
         .tabulator .tabulator-cell.linked-sku-col .linked-sku-badge:hover {
             background-color: #cffafe !important;
         }
@@ -477,17 +469,6 @@
             font-size: 14px;
             color: #64748b;
         }
-
-        /* Forecast NRP (REQ / 2BDC / LATER) — shared with Forecast Analysis */
-        .nrp-dot-cell { min-height: 0; min-width: 44px; }
-        .nrp-dot-cell .nrp-status-dot {
-            display: inline-block; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid rgba(0,0,0,.12); flex-shrink: 0;
-        }
-        .nrp-dot-cell .nrp-nr-select {
-            opacity: 0; cursor: pointer; font-size: 11px; padding: 0; border: 0; background: transparent;
-        }
-        .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
 
         /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
         #skuMetricsModal.modal,
@@ -617,9 +598,7 @@
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 @endsection
 
 @section('content')
@@ -649,13 +628,6 @@
                         <option value="all">Sold</option>
                         <option value="zero">=0</option>
                         <option value="sold">&gt;0</option>
-                    </select>
-
-                    <select id="nrl-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">ALL</option>
-                        <option value="nr">NRL</option>
-                        <option value="req" selected>RL</option>
                     </select>
 
                     <select id="gpft-filter" class="form-select form-select-sm"
@@ -808,18 +780,6 @@
                                         Amz
                                     </label>
                                 </div>
-                                <div class="form-check">
-                                    <input class="form-check-input bulk-push-checkbox" type="checkbox" value="shopify" id="bulkPushShopify" checked>
-                                    <label class="form-check-label" for="bulkPushShopify" style="color: #96bf48; font-weight: 500;">
-                                        Shopify
-                                    </label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input bulk-push-checkbox" type="checkbox" value="pls" id="bulkPushPls" checked>
-                                    <label class="form-check-label" for="bulkPushPls" style="color: #5C6AC4; font-weight: 500;">
-                                        ProLightSounds
-                                    </label>
-                                </div>
                                 <button class="btn btn-sm btn-primary w-100 mt-2" id="executeBulkPush">
                                     <i class="fas fa-paper-plane"></i> Push Selected
                                 </button>
@@ -838,13 +798,6 @@
                             <!-- Populated dynamically: Basic / Price / Ads / Other -->
                         </ul>
                     </div>
-
-                    {{-- <span class="me-3 px-3 py-1" style="background-color: #e3f2fd; border-radius: 5px;">
-                        <strong>PFT%:</strong> <span id="pft-calc">0.00%</span>
-                    </span>
-                    <span class="me-3 px-3 py-1" style="background-color: #e8f5e9; border-radius: 5px;">
-                        <strong>ROI%:</strong> <span id="roi-calc">0.00%</span>
-                    </span> --}}
 
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Export">
@@ -875,8 +828,6 @@
                         title="Clear SPRICE for selected SKUs (use the left checkbox column)">
                         <i class="fas fa-eraser"></i> Sprice
                     </button>
-
-                    <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
 
                 </div>
 
@@ -1212,10 +1163,12 @@
 
 @section('script-bottom')
     <script>
-        const COLUMN_VIS_KEY = "amazon_tabulator_column_visibility";
         /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as ebay2/ebay3/mfrg tabulators). */
         const TABULATOR_COLUMN_CHANNEL = 'amazon_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const AMAZON_REMOVED_COL_FIELDS = {
+            NR: true, nrp: true, NRL: true, FBA_Quantity: true, S_STATUS: true, PLS_STATUS: true
+        };
         const TABULATOR_COLUMN_ORDER_URL = '/tabulator-column-order';
         let amazonApplyingColumnOrder = false;
         let amazonColumnOrderSaveTimer = null;
@@ -1231,10 +1184,6 @@
         // Single selection set for the leftmost row_select column (Prc Mode + bulk actions)
         let selectedRows = new Set();
         let selectedSkus = selectedRows; // alias — keep older call sites working
-        let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
-        let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
-        let missingAmazonFbaFilterActive = false;    // Track Missing L FBA filter
-        let missingAmazonNonFbaFilterActive = false; // Track Missing M FBM (non-FBA listing) filter
         let lmpMissingFilterActive = false;
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
@@ -1247,30 +1196,6 @@
         }
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
-
-        /** POST to forecast_analysis via same endpoint as Forecast Analysis (column NR → nr). */
-        function amazonUpdateForecastNrp(data, onSuccess, onFail) {
-            onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
-            onFail = typeof onFail === 'function' ? onFail : function() {};
-            $.post('{{ route("update.forecast.data") }}', {
-                sku: data.sku,
-                parent: data.parent != null ? String(data.parent) : '',
-                column: 'NR',
-                value: data.value,
-                _token: $('meta[name="csrf-token"]').attr('content')
-            }).done(function(res) {
-                if (res.success) {
-                    onSuccess();
-                } else {
-                    console.warn('NRP not saved:', res.message);
-                    onFail();
-                }
-            }).fail(function(err) {
-                console.error('NRP save failed:', err);
-                if (typeof showToast === 'function') showToast('error', 'Error saving NRP.');
-                onFail();
-            });
-        }
 
         function amazonNormalizeSkuKey(sku) {
             return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
@@ -1453,12 +1378,6 @@
             return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
 
-        function amazonModalFmtPct(v) {
-            if (v == null || v === '') return '—';
-            const n = parseFloat(v);
-            if (isNaN(n)) return '—';
-            return n.toFixed(2) + '%';
-        }
         function amazonModalFmtL30(v) {
             const n = parseFloat(v);
             if (isNaN(n)) return '—';
@@ -1468,14 +1387,6 @@
             const n = parseFloat(v);
             if (isNaN(n) || n <= 0) return '—';
             return '$' + n.toFixed(2);
-        }
-        /** GPFT % / PFT % — MetricPctColors (pass kind: gpft|npft) */
-        function amazonModalGpftPftColor(percent, kind) {
-            kind = kind || 'gpft';
-            if (window.MetricPctColors) {
-                return MetricPctColors.colorFor(kind, percent) || '#dc3545';
-            }
-            return '#dc3545';
         }
         function amazonModalGpftPftColoredHtml(fieldVal, kind) {
             kind = kind || 'gpft';
@@ -1616,18 +1527,15 @@
             }
             return '<input type="number" class="form-control form-control-sm text-end parent-modal-sprice-input" inputmode="decimal" data-sku="' + escAttr(sku) + '" value="' + escAttr(val) + '" step="0.01" min="0.01" placeholder="' + escAttr(ph) + '" title="Enter S PRC — blur or Enter to save" style="max-width: 6.75rem; margin-left: auto;" />';
         }
-        /** Accept / push from the parent pricing modal (AMZ / SFY / PLS). */
+        /** Accept / push from the parent pricing modal (Amazon only). */
         function amazonModalAcceptPushHtml(row) {
             const sku = row['(Child) sku'] || '';
             const sprice = parseFloat(row.SPRICE) || 0;
             const amazonStatus = row.SPRICE_STATUS || null;
-            const shopifyStatus = row.S_STATUS || null;
-            const plsStatus = row.PLS_STATUS || null;
             if (!sku || !sprice || sprice <= 0) {
                 return '<span class="text-muted">N/A</span>';
             }
-            
-            // Amazon button
+
             let amazonIcon = '<i class="fas fa-check"></i>';
             let amazonColor = '#28a745';
             let amazonTitle = 'Push to Amz';
@@ -1646,48 +1554,10 @@
                 amazonColor = '#ffc107';
                 amazonTitle = 'Pushing to Amz...';
             }
-            
-            // Shopify button
-            let shopifyIcon = '<i class="fas fa-check"></i>';
-            let shopifyColor = '#0d6efd';
-            let shopifyTitle = 'Push to Shopify';
-            if (shopifyStatus === 'pushed') {
-                shopifyIcon = '<i class="fa-solid fa-check-double"></i>';
-                shopifyColor = '#28a745';
-                shopifyTitle = 'Price pushed to Shopify';
-            } else if (shopifyStatus === 'error') {
-                shopifyIcon = '<i class="fa-solid fa-x"></i>';
-                shopifyColor = '#dc3545';
-                shopifyTitle = 'Error pushing to Shopify';
-            } else if (shopifyStatus === 'processing') {
-                shopifyIcon = '<i class="fas fa-spinner fa-spin"></i>';
-                shopifyColor = '#ffc107';
-                shopifyTitle = 'Pushing to Shopify...';
-            }
-            
-            // PLS button
-            let plsIcon = '<i class="fas fa-check"></i>';
-            let plsColor = '#ff8c00';
-            let plsTitle = 'Push to ProLightSounds';
-            if (plsStatus === 'pushed') {
-                plsIcon = '<i class="fa-solid fa-check-double"></i>';
-                plsColor = '#28a745';
-                plsTitle = 'Price pushed to ProLightSounds';
-            } else if (plsStatus === 'error') {
-                plsIcon = '<i class="fa-solid fa-x"></i>';
-                plsColor = '#dc3545';
-                plsTitle = 'Error pushing to ProLightSounds';
-            } else if (plsStatus === 'processing') {
-                plsIcon = '<i class="fas fa-spinner fa-spin"></i>';
-                plsColor = '#ffc107';
-                plsTitle = 'Pushing to ProLightSounds...';
-            }
-            
+
             const asinVal = (row.asin != null && String(row.asin).trim() !== '') ? escAttr(String(row.asin).trim()) : '';
             return '<div style="display: flex; gap: 8px; align-items: center; justify-content: center;">' +
                 '<button type="button" class="btn btn-sm parent-pricing-modal-apply-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-asin="' + asinVal + '" data-status="' + escAttr(amazonStatus || '') + '" title="' + escAttr(amazonTitle) + '" style="border: none; background: none; color: ' + amazonColor + '; padding: 0; cursor: pointer;">' + amazonIcon + '</button>' +
-                '<button type="button" class="btn btn-sm parent-pricing-modal-shopify-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(shopifyStatus || '') + '" title="' + escAttr(shopifyTitle) + '" style="border: none; background: none; color: ' + shopifyColor + '; padding: 0; cursor: pointer;">' + shopifyIcon + '</button>' +
-                '<button type="button" class="btn btn-sm parent-pricing-modal-pls-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(plsStatus || '') + '" title="' + escAttr(plsTitle) + '" style="border: none; background: none; color: ' + plsColor + '; padding: 0; cursor: pointer;">' + plsIcon + '</button>' +
                 '</div>';
         }
         /** S PFT % — NPFT schema via MetricPctColors */
@@ -1711,15 +1581,6 @@
             if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
             if (window.MetricPctColors) {
                 return MetricPctColors.htmlFor('nroi', percent, { decimals: 0 });
-            }
-            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(percent) + '%</span>';
-        }
-        /** Sroi (gross) — GROI schema via MetricPctColors */
-        function amazonModalSgroiColoredHtml(row) {
-            const percent = amazonComputeSroi(row);
-            if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
-            if (window.MetricPctColors) {
-                return MetricPctColors.htmlFor('groi', percent, { decimals: 0 });
             }
             return '<span style="color:#dc3545;font-weight:600;">' + Math.round(percent) + '%</span>';
         }
@@ -1774,6 +1635,27 @@
         let isProductNavigationActive = false;
         let currentProductParentIndex = -1;
 
+        // Chart.js is loaded only when a chart modal opens (PEF promo also calls window.loadChartJs).
+        let chartJsLoadPromise = null;
+        function loadChartJs() {
+            if (typeof Chart !== 'undefined') return Promise.resolve();
+            if (chartJsLoadPromise) return chartJsLoadPromise;
+            chartJsLoadPromise = new Promise(function(resolve, reject) {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+                s.onload = function() { resolve(); };
+                s.onerror = reject;
+                document.head.appendChild(s);
+            });
+            return chartJsLoadPromise;
+        }
+        window.loadChartJs = loadChartJs;
+        function withChartJs(fn) {
+            loadChartJs().then(fn).catch(function() {
+                if (typeof showToast === 'function') showToast('error', 'Could not load chart library');
+            });
+        }
+
         // === Amazon Metric Trend Chart ===
         let amzChartInstance = null;
         let amzChartDays = 30;
@@ -1809,69 +1691,6 @@
         const amzBadgeInvertMetrics = { tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true };
         let amzBadgePrevDay = null;
         let amzBadgePrevDayLoaded = false;
-
-        /** Set false to silence [amazon-tabulator] browser console debug lines */
-        const AMAZON_TABULATOR_DEBUG_LOG = true;
-        function amazonTabulatorDebug(label, payload) {
-            if (!AMAZON_TABULATOR_DEBUG_LOG || typeof console === 'undefined' || !console.debug) return;
-            console.debug('[amazon-tabulator] ' + label, payload || {});
-        }
-
-        /** Normalize SKU-ish strings: trim, NBSP → space, uppercase */
-        function normalizeFbaSkuToken(v) {
-            if (v == null || v === '') return '';
-            return String(v).replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
-        }
-
-        function isParentSummaryRow(rowData) {
-            const f = rowData.is_parent_summary;
-            return f === true || f === 1 || f === '1' || f === 'true';
-        }
-
-        /**
-         * True when "FBA" appears in relevant identifiers (case-insensitive).
-         * Parent summaries: ONLY (Child) sku, SKU, Parent, parent — NOT FBA_SKU.
-         *   (Inherited FBA_SKU from children is always Amazon seller_sku like "… FBA" and forced 0 to display as "0".)
-         * Child rows: also check FBA_SKU so base SKUs without "FBA" in the name still show FBA inventory when linked.
-         */
-        function rowHasFbaSkuFields(rowData) {
-            const tokens = [
-                normalizeFbaSkuToken(rowData['(Child) sku']),
-                normalizeFbaSkuToken(rowData.SKU),
-                normalizeFbaSkuToken(rowData.Parent),
-                normalizeFbaSkuToken(rowData.parent),
-            ];
-            const hasInDisplay = tokens.some(function(s) { return s && s.includes('FBA'); });
-            if (isParentSummaryRow(rowData)) {
-                return hasInDisplay;
-            }
-            const fbaSku = normalizeFbaSkuToken(rowData.FBA_SKU);
-            return hasInDisplay || (fbaSku && fbaSku.includes('FBA'));
-        }
-
-        /** FBA INV: dash when row is not FBA-relevant; never show 0 for those rows */
-        function formatFbaQuantityDisplay(rowData) {
-            const value = rowData.FBA_Quantity;
-            const num = parseFloat(value);
-            if (!rowHasFbaSkuFields(rowData)) {
-                return '-';
-            }
-            if (isParentSummaryRow(rowData)) {
-                if (isNaN(num)) return '-';
-                return Math.round(num).toLocaleString();
-            }
-            if (isNaN(num)) return '0';
-            return Math.round(num).toLocaleString();
-        }
-
-        /** tier 1 = dash rows (sort last); tier 0 = numeric FBA rows */
-        function fbaQuantitySortKey(rowData) {
-            const num = parseFloat(rowData.FBA_Quantity);
-            if (!rowHasFbaSkuFields(rowData)) {
-                return { tier: 1, v: 0 };
-            }
-            return { tier: 0, v: isNaN(num) ? 0 : Math.round(num) };
-        }
 
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
@@ -2056,9 +1875,11 @@
             const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
             $('#amzChartModalTitle').text(`Amz - ${label} (${suffix})`);
-            const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
-            modal.show();
-            loadAmzMetricChart();
+            withChartJs(function() {
+                const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
+                modal.show();
+                loadAmzMetricChart();
+            });
         }
 
         function loadAmzMetricChart() {
@@ -2370,8 +2191,11 @@
             $('#skuChartLoading').show();
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
-            loadSkuMetricsData(sku, 30);
-            $('#skuMetricsModal').modal('show');
+            withChartJs(function() {
+                if (!skuMetricsChart) initSkuMetricsChart();
+                loadSkuMetricsData(sku, 30);
+                $('#skuMetricsModal').modal('show');
+            });
         }
 
         function loadSkuMetricsData(sku, days = 30) {
@@ -3105,9 +2929,6 @@
         }
 
         $(document).ready(function() {
-            // Initialize charts
-            initSkuMetricsChart();
-
             // Dil vs PRMT / CVR vs CPN — same rules store as /pricing-errors-fix
             if (typeof initAmazonPefPromoUi === 'function') {
                 initAmazonPefPromoUi();
@@ -3274,398 +3095,7 @@
                         ? '(' + selectedCount + ' SKU' + (selectedCount > 1 ? 's' : '') + ' selected)'
                         : '(select SKUs in table)'
                 );
-                updateApplyAllButton();
             }
-
-            // Update Apply All button count and state
-            function updateApplyAllButton() {
-                const selectedCount = selectedSkus.size;
-                const $btn = $('.apply-all-prices-btn');
-                const $count = $('.apply-all-count');
-                
-                if ($count.length) {
-                    $count.text(selectedCount);
-                }
-                
-                if ($btn.length) {
-                    if (selectedCount === 0) {
-                        $btn.prop('disabled', true).addClass('disabled');
-                    } else {
-                        $btn.prop('disabled', false).removeClass('disabled');
-                    }
-                }
-            }
-
-            function showAmazonShopifyPushMessage(sku, price, response) {
-                const base = `Amz pushed $${Number(price).toFixed(2)} for SKU: ${sku}`;
-                const shopify = response && response.shopify_push ? response.shopify_push : null;
-                if (!shopify) {
-                    if (response && (response.S_STATUS === 'pushed' || response.S_STATUS === 'error')) {
-                        showToast(response.S_STATUS === 'pushed' ? 'success' : 'warning', `${base} | Shopify: ${response.S_STATUS === 'pushed' ? 'pushed' : 'failed'}`);
-                    } else {
-                        showToast('success', `${base} | Shopify status not available`);
-                    }
-                    return;
-                }
-                if (shopify.ok) {
-                    const msg = shopify.message || 'Shopify B2C pushed successfully';
-                    showToast('success', `${base} | Shopify: ${msg}`);
-                } else {
-                    const msg = shopify.message || 'Shopify B2C push failed';
-                    // Do not use "success" styling when Shopify did not update (Amazon may still be OK).
-                    showToast('error', `${base} | Shopify NOT updated: ${msg}`);
-                }
-            }
-
-            function sStatusFromApiResponse(res) {
-                if (!res) {
-                    return null;
-                }
-                if (res.S_STATUS === 'pushed' || res.S_STATUS === 'error') {
-                    return res.S_STATUS;
-                }
-                if (res.shopify_push) {
-                    return res.shopify_push.ok ? 'pushed' : 'error';
-                }
-                return null;
-            }
-
-            function updateTabulatorRowShopifyStatus(sku, res) {
-                if (!table || !sku) {
-                    return;
-                }
-                const s = sStatusFromApiResponse(res);
-                if (!s) {
-                    return;
-                }
-                const tabRow = table.getRows().find(function(r) {
-                    return (r.getData()['(Child) sku'] || '') === sku;
-                });
-                if (!tabRow) {
-                    return;
-                }
-                const d = tabRow.getData();
-                d.S_STATUS = s;
-                tabRow.update(d);
-            }
-
-            /** True for timeout, no connection, rate limit, or gateway errors — safe to retry the HTTP call. */
-            function isRetryableTransportError(xhr, textStatus) {
-                if (textStatus === 'timeout') {
-                    return true;
-                }
-                if (textStatus === 'abort') {
-                    return false;
-                }
-                const s = (xhr && typeof xhr.status === 'number') ? xhr.status : 0;
-                if (s === 0) {
-                    return true;
-                }
-                if (s === 429 || s === 502 || s === 503 || s === 504) {
-                    return true;
-                }
-                if (s >= 500) {
-                    return true;
-                }
-                return false;
-            }
-
-            /**
-             * After Amazon succeeds, if Shopify B2C failed (e.g. 429, timeout), retry in the background
-             * so the user is not blocked. Updates row + toast on success.
-             */
-            function backgroundRetryShopifyB2C(sku, price, maxAttempts, delayMs) {
-                return new Promise(function(resolve) {
-                    var attempt = 0;
-
-                    function run() {
-                        attempt++;
-                        $.ajax({
-                            url: '/cvr-master-push-price',
-                            method: 'POST',
-                            timeout: 120000,
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: { sku: sku, price: price, marketplace: 'shopifyb2c' },
-                            success: function(resp) {
-                                if (resp && resp.success) {
-                                    resolve({ ok: true, message: resp.message || 'Shopify B2C OK', attempt: attempt });
-                                    return;
-                                }
-                                if (attempt < maxAttempts) {
-                                    console.log('Background Shopify retry ' + attempt + '/' + maxAttempts + ' for ' + sku + ' (API said fail)');
-                                    setTimeout(run, delayMs * attempt);
-                                } else {
-                                    resolve({ ok: false, message: (resp && resp.message) ? resp.message : 'Shopify B2C failed', attempt: attempt });
-                                }
-                            },
-                            error: function(xhr, textStatus) {
-                                if (attempt < maxAttempts) {
-                                    var wait = delayMs * attempt;
-                                    if (isRetryableTransportError(xhr, textStatus)) {
-                                        wait = Math.max(wait, 2000);
-                                    }
-                                    console.log('Background Shopify retry ' + attempt + '/' + maxAttempts + ' for ' + sku + ' (' + (textStatus || 'error') + ')');
-                                    setTimeout(run, wait);
-                                } else {
-                                    var em = (xhr && xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : (textStatus || 'error');
-                                    resolve({ ok: false, message: em, attempt: attempt });
-                                }
-                            }
-                        });
-                    }
-
-                    setTimeout(run, 0);
-                });
-            }
-
-            // Retry function for applying price with up to 5 attempts
-            // NOTE: Backend now includes automatic verification and retry (2 attempts with fresh token)
-            // This frontend retry is for network errors, timeouts, or persistent failures
-            function applyPriceWithRetry(sku, price, cell, maxRetries = 5, delay = 5000, asin = null, pushShopify = false) {
-                return new Promise((resolve, reject) => {
-                    let attempt = 0;
-                    
-                    function attemptApply() {
-                        attempt++;
-                        // Always push minimum seller allowed price with the listing price
-                        const post = {
-                            sku: sku,
-                            price: price,
-                            push_shopify: pushShopify,
-                            update_amazon_min_price: true
-                        };
-                        if (asin) {
-                            post.asin = asin;
-                        }
-                        
-                        $.ajax({
-                            url: '/apply-amazon-price',
-                            method: 'POST',
-                            timeout: 120000,
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: post,
-                            success: function(response) {
-                                // Check for errors in response
-                                if (response.errors && response.errors.length > 0) {
-                                    const errorMsg = response.errors[0].message || 'Unknown error';
-                                    console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
-                                    
-                                    // Check if it's an authentication error - don't retry immediately
-                                    if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || errorMsg.includes('Client authentication failed')) {
-                                        // For auth errors, wait longer before retry (10 seconds)
-                                        if (attempt < maxRetries) {
-                                            console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
-                                            setTimeout(attemptApply, 10000);
-                                        } else {
-                                            console.error(`Max retries reached for SKU ${sku} due to auth error`);
-                                            reject({ error: true, response: response, isAuthError: true });
-                                        }
-                                    } else {
-                                        // For other errors, retry with normal delay
-                                        if (attempt < maxRetries) {
-                                            console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                            setTimeout(attemptApply, delay);
-                                        } else {
-                                            console.error(`Max retries reached for SKU ${sku}`);
-                                            reject({ error: true, response: response });
-                                        }
-                                    }
-                                } else {
-                                    // Amazon OK — optional background retries if Shopify B2C failed
-                                    if (response && response.shopify_push && response.shopify_push.ok === false) {
-                                        setTimeout(function() {
-                                            backgroundRetryShopifyB2C(sku, price, 5, 4000).then(function(bg) {
-                                                if (bg && bg.ok) {
-                                                    response.shopify_push = { ok: true, message: bg.message || 'Shopify B2C OK' };
-                                                    response.S_STATUS = 'pushed';
-                                                    showToast('success', 'Shopify B2C updated (background retry ' + bg.attempt + '): ' + (bg.message || ''));
-                                                    updateTabulatorRowShopifyStatus(sku, response);
-                                                }
-                                            });
-                                        }, 0);
-                                    }
-                                    // Success (backend may also include Shopify push result)
-                                    resolve({
-                                        success: true,
-                                        response: response,
-                                        shopify_push: response && response.shopify_push ? response.shopify_push : null
-                                    });
-                                }
-                            },
-                            error: function(xhr, textStatus) {
-                                const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
-                                console.error(`Attempt ${attempt} for SKU ${sku} failed:`, textStatus, errorMsg);
-
-                                if (isRetryableTransportError(xhr, textStatus) && attempt < maxRetries) {
-                                    var waitT = (textStatus === 'timeout' ? Math.max(delay, 3000) : delay);
-                                    console.log(`Transport/timeout — retry in ${waitT/1000}s (attempt ${attempt} for ${sku})`);
-                                    setTimeout(attemptApply, waitT);
-                                    return;
-                                }
-
-                                if ((xhr.status === 400 || xhr.status === 404 || xhr.status === 422) && xhr.responseJSON) {
-                                    reject({ error: true, xhr: xhr, notRetryable: true });
-                                    return;
-                                }
-                                
-                                // Check if it's an authentication error
-                                if (errorMsg.includes('authentication') || errorMsg.includes('invalid_client') || errorMsg.includes('401') || xhr.status === 401 || errorMsg.includes('Client authentication failed')) {
-                                    // For auth errors, wait longer before retry
-                                    if (attempt < maxRetries) {
-                                        console.log(`Auth error - waiting longer before retry ${attempt} for SKU ${sku}...`);
-                                        setTimeout(attemptApply, 10000);
-                                    } else {
-                                        console.error(`Max retries reached for SKU ${sku} due to auth error`);
-                                        reject({ error: true, xhr: xhr, isAuthError: true });
-                                    }
-                                } else {
-                                    // For other errors, retry with normal delay
-                                    if (attempt < maxRetries) {
-                                        console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
-                                        setTimeout(attemptApply, delay);
-                                    } else {
-                                        console.error(`Max retries reached for SKU ${sku}`);
-                                        reject({ error: true, xhr: xhr });
-                                    }
-                                }
-                            }
-                        });
-                    }
-                    
-                    attemptApply();
-                });
-            }
-
-            // Global function to apply all selected prices (can be called from button)
-            window.applyAllSelectedPrices = function() {
-                if (selectedSkus.size === 0) {
-                    showToast('error', 'Please select at least one SKU to apply prices');
-                    return;
-                }
-                
-                const $btn = $('.apply-all-prices-btn');
-                if ($btn.length === 0) {
-                    showToast('error', 'Apply All button not found');
-                    return;
-                }
-                
-                if ($btn.prop('disabled')) {
-                    return;
-                }
-                
-                const originalHtml = $btn.html();
-                
-                // Disable button and show loading state
-                $btn.prop('disabled', true);
-                $btn.html('<i class="fas fa-spinner fa-spin"></i> Applying...');
-                
-                // Get all table data to find SPRICE for selected SKUs
-                const tableData = table.getData('all');
-                const skusToProcess = [];
-                
-                // Build list of SKUs with their prices
-                selectedSkus.forEach(sku => {
-                    const row = tableData.find(r => r['(Child) sku'] === sku);
-                    if (row) {
-                        const sprice = amazonCapSpriceToLmp(row, parseFloat(row.SPRICE) || 0);
-                        if (sprice > 0 && !amazonListingPriceEqualsSprice(row, sprice)) {
-                            const asin = (row.asin != null && String(row.asin).trim() !== '') ? String(row.asin).trim() : null;
-                            skusToProcess.push({ sku: sku, price: sprice, asin: asin });
-                        }
-                    }
-                });
-                
-                if (skusToProcess.length === 0) {
-                    $btn.prop('disabled', false);
-                    $btn.html(originalHtml);
-                    showToast('success', 'Price already equals S PRC for selected SKUs — left unchanged');
-                    return;
-                }
-                
-                let successCount = 0;
-                let errorCount = 0;
-                let currentIndex = 0;
-                
-                // Process SKUs sequentially (one by one) with delay to avoid rate limiting
-                function processNextSku() {
-                    if (currentIndex >= skusToProcess.length) {
-                        // All SKUs processed
-                        $btn.prop('disabled', false);
-                        
-                        if (errorCount === 0) {
-                            // All successful
-                            $btn.removeClass('btn-primary').addClass('btn-success');
-                            const selectedCount = selectedSkus.size;
-                            $btn.html(`<i class="fas fa-check-double" style="color: black; font-weight: bold;"></i> Applied (<span class="apply-all-count">${selectedCount}</span>)`);
-                            showToast('success', `Amz: ${successCount} SKU${successCount > 1 ? 's' : ''} pushed.`);
-                            
-                            // Reset to original state after 3 seconds
-                            setTimeout(() => {
-                                $btn.removeClass('btn-success').addClass('btn-primary');
-                                $btn.html(originalHtml);
-                                updateApplyAllButton();
-                            }, 3000);
-                        } else {
-                            $btn.html(originalHtml);
-                            showToast('error', `Amz: Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
-                        }
-                        return;
-                    }
-                    
-                    const { sku, price, asin } = skusToProcess[currentIndex];
-                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                    
-                    // Use retry function to apply price to Amazon only (optional ASIN → seller SKU via amazon_datsheets on server)
-                    applyPriceWithRetry(sku, price, null, 5, 5000, asin || null, false)
-                        .then((result) => {
-                            successCount++;
-                            const resp = result && result.response ? result.response : null;
-                            const minPush = resp && resp.min_price_push;
-                            if (minPush && minPush.ok === false) {
-                                const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
-                                showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
-                            } else {
-                                showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
-                            }
-                            
-                            // Update row data with pushed status instantly
-                            if (row) {
-                                const rowData = row.getData();
-                                rowData.SPRICE_STATUS = 'pushed';
-                                row.update(rowData);
-                            }
-                            
-                            // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
-                            currentIndex++;
-                            setTimeout(() => {
-                                processNextSku();
-                            }, 2000);
-                        })
-                        .catch((error) => {
-                            errorCount++;
-                            
-                            // Update row data with error status
-                            if (row) {
-                                const rowData = row.getData();
-                                rowData.SPRICE_STATUS = 'error';
-                                row.update(rowData);
-                            }
-                            
-                            // Process next SKU with delay to avoid rate limiting
-                            currentIndex++;
-                            setTimeout(() => {
-                                processNextSku();
-                            }, 2000);
-                        });
-                }
-                
-                // Start processing
-                processNextSku();
-            };
 
             // Clear SPRICE button
             $('#clear-sprice-btn').on('click', function() {
@@ -3699,8 +3129,6 @@
                             SROI: 0,
                             SGROI: 0,
                             SPRICE_STATUS: null,
-                            S_STATUS: null,
-                            PLS_STATUS: null,
                             has_custom_sprice: false
                         });
 
@@ -4280,172 +3708,6 @@
                     }
                 });
             });
-            
-            // Parent pricing modal: push SPRICE to Shopify only
-            $(document).on('click', '.parent-pricing-modal-shopify-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const $btn = $(this);
-                if ($btn.prop('disabled')) return;
-                const sku = $btn.attr('data-sku');
-                const price = parseFloat($btn.attr('data-price'));
-                if (!sku || !price || price <= 0 || isNaN(price)) {
-                    showToast('error', 'Invalid SKU or price');
-                    return;
-                }
-                $btn.prop('disabled', true);
-                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-                
-                // Push to Shopify only
-                $.ajax({
-                    url: '/push-shopify-b2c-price',
-                    method: 'POST',
-                    timeout: 120000,
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        sku: sku,
-                        price: price
-                    },
-                    success: function(response) {
-                        if (response.errors && response.errors.length > 0) {
-                            const errorMsg = response.errors[0].message || 'Unknown error';
-                            showToast('error', `Shopify push failed: ${errorMsg}`);
-                            const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
-                            if (pk) {
-                                showParentPricingBreakdownModal(pk);
-                            }
-                            return;
-                        }
-                        
-                        if (table) {
-                            const tabRow = table.getRows().find(function(r) {
-                                return (r.getData()['(Child) sku'] || '') === sku;
-                            });
-                            if (tabRow) {
-                                const rowData = tabRow.getData();
-                                const shopifyPush = response.shopify_push || {};
-                                rowData.S_STATUS = shopifyPush.ok ? 'pushed' : 'error';
-                                tabRow.update(rowData);
-                            }
-                        }
-                        const shopifyPush = response.shopify_push || {};
-                        if (shopifyPush.ok) {
-                            const msg = shopifyPush.message || 'Shopify B2C pushed successfully';
-                            showToast('success', `Shopify: ${msg} for SKU: ${sku}`);
-                        } else {
-                            const msg = shopifyPush.message || 'Shopify B2C push failed';
-                            showToast('error', `Shopify: ${msg}`);
-                        }
-                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
-                        if (pk) {
-                            showParentPricingBreakdownModal(pk);
-                        }
-                    },
-                    error: function(xhr) {
-                        if (table) {
-                            const tabRow = table.getRows().find(function(r) {
-                                return (r.getData()['(Child) sku'] || '') === sku;
-                            });
-                            if (tabRow) {
-                                const rowData = tabRow.getData();
-                                rowData.S_STATUS = 'error';
-                                tabRow.update(rowData);
-                            }
-                        }
-                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                        showToast('error', `Shopify push failed: ${errorMsg}`);
-                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
-                        if (pk) {
-                            showParentPricingBreakdownModal(pk);
-                        }
-                    }
-                });
-            });
-
-            // Handle PLS modal button click
-            $(document).on('click', '.parent-pricing-modal-pls-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const $btn = $(this);
-                if ($btn.prop('disabled')) return;
-                const sku = $btn.attr('data-sku');
-                const price = parseFloat($btn.attr('data-price'));
-                if (!sku || !price || price <= 0 || isNaN(price)) {
-                    showToast('error', 'Invalid SKU or price');
-                    return;
-                }
-                $btn.prop('disabled', true);
-                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-                
-                // Push to ProLightSounds only
-                $.ajax({
-                    url: '/push-pls-price',
-                    method: 'POST',
-                    timeout: 120000,
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        sku: sku,
-                        price: price
-                    },
-                    success: function(response) {
-                        if (response.errors && response.errors.length > 0) {
-                            const errorMsg = response.errors[0].message || 'Unknown error';
-                            showToast('error', `ProLightSounds push failed: ${errorMsg}`);
-                            const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
-                            if (pk) {
-                                showParentPricingBreakdownModal(pk);
-                            }
-                            return;
-                        }
-                        
-                        if (table) {
-                            const tabRow = table.getRows().find(function(r) {
-                                return (r.getData()['(Child) sku'] || '') === sku;
-                            });
-                            if (tabRow) {
-                                const rowData = tabRow.getData();
-                                const plsPush = response.pls_push || {};
-                                rowData.PLS_STATUS = plsPush.ok ? 'pushed' : 'error';
-                                tabRow.update(rowData);
-                            }
-                        }
-                        const plsPush = response.pls_push || {};
-                        if (plsPush.ok) {
-                            const msg = plsPush.message || 'ProLightSounds pushed successfully';
-                            showToast('success', `PLS: ${msg} for SKU: ${sku}`);
-                        } else {
-                            const msg = plsPush.message || 'ProLightSounds push failed';
-                            showToast('error', `PLS: ${msg}`);
-                        }
-                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
-                        if (pk) {
-                            showParentPricingBreakdownModal(pk);
-                        }
-                    },
-                    error: function(xhr) {
-                        if (table) {
-                            const tabRow = table.getRows().find(function(r) {
-                                return (r.getData()['(Child) sku'] || '') === sku;
-                            });
-                            if (tabRow) {
-                                const rowData = tabRow.getData();
-                                rowData.PLS_STATUS = 'error';
-                                tabRow.update(rowData);
-                            }
-                        }
-                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                        showToast('error', `ProLightSounds push failed: ${errorMsg}`);
-                        const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
-                        if (pk) {
-                            showParentPricingBreakdownModal(pk);
-                        }
-                    }
-                });
-            });
 
             $(document).on('dblclick', '.parent-pricing-modal-apply-btn', function(e) {
                 e.preventDefault();
@@ -4579,22 +3841,6 @@
                 e.stopPropagation();
             });
 
-            // Apply All Prices button - delegated event handler
-            $(document).on('click', '.apply-all-prices-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                console.log('Apply All button clicked via delegated handler'); // Debug log
-                
-                // Call the global function
-                if (typeof applyAllSelectedPrices === 'function') {
-                    applyAllSelectedPrices();
-                } else {
-                    console.error('applyAllSelectedPrices function not found');
-                    showToast('error', 'Apply All function not available');
-                }
-            });
-
             // SKU chart days filter
             $('#sku-chart-days-filter').on('change', function() {
                 const days = $(this).val();
@@ -4603,7 +3849,12 @@
                 const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                 $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ')');
-                if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
+                if (currentSku) {
+                    withChartJs(function() {
+                        if (!skuMetricsChart) initSkuMetricsChart();
+                        loadSkuMetricsData(currentSku, daysNum || 0);
+                    });
+                }
             });
             // ---- Image column hover preview ----
             let amzImagePreviewHideTimer = null;
@@ -4729,21 +3980,6 @@
                         payload.forEach(function(row) { amazonApplyL1FromEntries(row); });
                         allTableData = payload;
                         if (window.ParentExpand) ParentExpand.captureDataset(payload);
-                        var withFba = 0, sumFba = 0, childN = 0;
-                        payload.forEach(function(row) {
-                            if (!row || row.is_parent_summary) return;
-                            childN++;
-                            var q = parseInt(row.FBA_Quantity, 10) || 0;
-                            if (q > 0) withFba++;
-                            sumFba += q;
-                        });
-                        amazonTabulatorDebug('ajax data loaded', {
-                            url: url,
-                            totalRows: payload.length,
-                            childRows: childN,
-                            childRowsWithFbaInvGt0: withFba,
-                            sumFbaQuantityNonParent: sumFba
-                        });
                     }
                     return payload;
                 },
@@ -4923,88 +4159,6 @@
                         width: 78
                     },
                     {
-                        title: "NR/RL <span class='nr-header-red-dot' style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc3545;cursor:pointer;margin-left:3px;vertical-align:middle;' title='Show only red (NRL) rows'></span>",
-                        field: "NR",
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-
-                            // Empty for parent rows
-                            if (row.is_parent_summary) return '';
-
-                            const nrl = row['NR'] || '';
-                            const sku = row['(Child) sku'] || '';
-
-                            // Backend stores REQ or NRL; display NR = NRL
-                            const value = (nrl === 'NR') ? 'NRL' : 'REQ';
-
-                            return `<select class="form-select form-select-sm editable-select" data-sku="${escAttr(sku)}" data-field="NRL"
-                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px; color: black; font-weight: bold;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="color: black;">🟢</option>
-                                <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="color: black;">🔴</option>
-                            </select>`;
-                        },
-                        cellClick: function(e, cell) {
-                            e.stopPropagation();
-                        },
-                        width: 60
-                    },
-                    {
-                        title: "NRP",
-                        field: "nrp",
-                        hozAlign: "center",
-                        sorter: "string",
-                        headerSort: true,
-                        width: 56,
-                        minWidth: 52,
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) {
-                                return '<span style="color: #999;">-</span>';
-                            }
-                            let value = cell.getValue();
-                            if (value === null || value === undefined || value === '') {
-                                value = rowData.nrp;
-                            }
-                            if (value === null || value === undefined) {
-                                value = '';
-                            } else {
-                                value = String(value).trim().toUpperCase();
-                            }
-                            if (!value || value === '') {
-                                value = 'REQ';
-                            }
-                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
-                                value = 'REQ';
-                            }
-                            const sku = String(rowData['(Child) sku'] || '');
-                            const parent = rowData.Parent != null ? String(rowData.Parent) : '';
-                            let dotColor = '#22c55e';
-                            let tip = 'REQ';
-                            if (value === 'NR') {
-                                dotColor = '#dc3545';
-                                tip = '2BDC';
-                            } else if (value === 'LATER') {
-                                dotColor = '#facc15';
-                                tip = 'LATER';
-                            }
-                            return (
-                                '<div class="nrp-dot-cell position-relative d-flex justify-content-center align-items-center w-100" title="' +
-                                escAttr(tip + ' (click to change)') + '">' +
-                                '<span class="nrp-status-dot" style="background-color:' + dotColor + ';" aria-hidden="true"></span>' +
-                                '<select class="form-select form-select-sm nrp-nr-select position-absolute top-0 start-0 w-100 h-100" ' +
-                                'data-sku="' + escAttr(sku) + '" data-parent="' + escAttr(parent) + '" ' +
-                                'aria-label="NRP: ' + escAttr(tip) + '">' +
-                                '<option value="REQ"' + (value === 'REQ' ? ' selected' : '') + '>REQ</option>' +
-                                '<option value="NR"' + (value === 'NR' ? ' selected' : '') + '>2BDC</option>' +
-                                '<option value="LATER"' + (value === 'LATER' ? ' selected' : '') + '>LATER</option>' +
-                                '</select></div>'
-                            );
-                        },
-                        cellClick: function(e, cell) { e.stopPropagation(); }
-                    },
-                    {
                         title: "Reviews",
                         field: "amz_avg_rating",
                         hozAlign: "center",
@@ -5129,29 +4283,6 @@
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span> ${dotBtn}`.trim();
                         }
                     },
-
-                    {
-                        title: "FBA <br> INV",
-                        field: "FBA_Quantity",
-                        hozAlign: "center",
-                        width: 64,
-                        topCalc: false,
-                        bottomCalc: false,
-                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
-                            const ka = fbaQuantitySortKey(aRow.getData());
-                            const kb = fbaQuantitySortKey(bRow.getData());
-                            if (ka.tier !== kb.tier) {
-                                return ka.tier - kb.tier;
-                            }
-                            const diff = ka.v - kb.v;
-                            return (dir === 'desc') ? -diff : diff;
-                        },
-                        sorterParams: { alignEmptyValues: "bottom" },
-                        formatter: function(cell) {
-                            return formatFbaQuantityDisplay(cell.getRow().getData());
-                        }
-                    },
-
                     {
                         title: "OV L30",
                         field: "L30",
@@ -5242,28 +4373,6 @@
                             return '<span style="color: #6c757d;">0%</span>';
                         }
                     },
-                    {
-                        title: "NRL",
-                        field: "NRL",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const row = cell.getRow();
-                            const sku = row.getData()['(Child) sku'];
-                            const value = cell.getValue() || "REQ";
-
-                            return `
-                                <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${escAttr(sku)}" 
-                                        data-field="NRL"
-                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
-                                </select>
-                            `;
-                        }
-                    },
-
                     {
                         title: "View L30",
                         field: "Sess30",
@@ -5708,50 +4817,6 @@
                         }
                     },
                     {
-                        title: "S st",
-                        field: "S_STATUS",
-                        hozAlign: "center",
-                        headerSort: false,
-                        tooltip: "Shopify B2C push: ✓✓ pushed, ✗ failed, — not pushed",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) {
-                                return '';
-                            }
-                            const st = rowData.S_STATUS;
-                            if (st === 'pushed') {
-                                return '<span style="color:#28a745;" title="Shopify B2C: price pushed"><i class="fa-solid fa-check-double"></i></span>';
-                            }
-                            if (st === 'error') {
-                                return '<span style="color:#dc3545;" title="Shopify B2C: push failed"><i class="fa-solid fa-xmark"></i></span>';
-                            }
-                            return '<span style="color:#adb5bd;" title="Shopify: not pushed">—</span>';
-                        },
-                        width: 44
-                    },
-                    {
-                        title: "PLS st",
-                        field: "PLS_STATUS",
-                        hozAlign: "center",
-                        headerSort: false,
-                        tooltip: "ProLightSounds push: ✓✓ pushed, ✗ failed, — not pushed",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) {
-                                return '';
-                            }
-                            const st = rowData.PLS_STATUS;
-                            if (st === 'pushed') {
-                                return '<span style="color:#28a745;" title="ProLightSounds: price pushed"><i class="fa-solid fa-check-double"></i></span>';
-                            }
-                            if (st === 'error') {
-                                return '<span style="color:#dc3545;" title="ProLightSounds: push failed"><i class="fa-solid fa-xmark"></i></span>';
-                            }
-                            return '<span style="color:#adb5bd;" title="ProLightSounds: not pushed">—</span>';
-                        },
-                        width: 44
-                    },
-                    {
                         title: "SGROI",
                         field: "SGROI",
                         hozAlign: "center",
@@ -5885,7 +4950,6 @@
                     getDataset: () => allTableData,
                     onAfterExpand: () => {
                         if (typeof updateSummary === 'function') updateSummary();
-                        if (typeof updateCalcValues === 'function') updateCalcValues();
                     },
                     onCollapse: () => {
                         if (typeof applyFilters === 'function') applyFilters();
@@ -5893,59 +4957,6 @@
                 });
                 ParentExpand.bind();
             }
-
-            $(document).on('change', '#amazon-table .nrp-nr-select', function() {
-                const $el = $(this);
-                const newValue = String($el.val() || '').trim();
-                const sku = $el.data('sku');
-                const parent = $el.data('parent');
-                if (!sku || !table) return;
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                const row = rows && rows.length ? rows[0] : null;
-                const prevRaw = row ? String(row.getData().nrp ?? '').trim().toUpperCase() : '';
-                const prevSelect = (prevRaw === 'NR' || prevRaw === 'LATER') ? prevRaw : 'REQ';
-                amazonUpdateForecastNrp(
-                    { sku: sku, parent: parent, value: newValue },
-                    function() {
-                        if (row) {
-                            row.update({ nrp: newValue }, true);
-                            const nrCell = row.getCells().find(function(c) { return c.getField() === 'nrp'; });
-                            if (nrCell) nrCell.reformat();
-                        }
-                        if (typeof showToast === 'function') showToast('success', 'NRP saved');
-                    },
-                    function() {
-                        $el.val(prevSelect);
-                    }
-                );
-            });
-
-            // NR select change handler
-            $(document).on('change', '.nr-select', function() {
-                const $select = $(this);
-                const value = $select.val();
-                const sku = $select.data('sku');
-
-                // Save to database
-                $.ajax({
-                    url: '/listing_amazon/save-status',
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        sku: sku,
-                        nr_req: value
-                    },
-                    success: function(response) {
-                        const message = response.message || 'NR updated successfully';
-                        showToast('success', message);
-                    },
-                    error: function(xhr) {
-                        showToast('error', 'Failed to update NR');
-                    }
-                });
-            });
 
             // SKU Search: use applyFilters() so it stacks with Sold, A L30 range, and all other filters
             $('#sku-search').on('keyup', function() {
@@ -6194,7 +5205,6 @@
                 }
 
                 const inventoryFilter = $('#inventory-filter').val();
-                const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const roiFilter = $('#roi-filter').val();
                 const diffFilter = $('#diff-filter').val();
@@ -6228,7 +5238,6 @@
                             return p === currentKey || p === ('PARENT ' + currentKey);
                         });
                     }
-                    updateCalcValues();
                     updateSummary();
                     amazonTabulatorFinalizeFilterApply(sortSnapshot);
                     return;
@@ -6244,32 +5253,6 @@
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         return parseFloat(data.INV) > 0;
                     });
-                }
-
-                if (nrlFilter !== 'all') {
-                    if (nrlFilter === 'req') {
-                        // Show only RL (REQ) - exclude NRL; use NR or derive from NRL for parent rows
-                        table.addFilter(function(data) {
-                            if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                            var nr = (data.NR || '').toString().trim();
-                            if (!nr) {
-                                var nrl = (data.NRL || 'REQ').toString().trim();
-                                nr = (nrl === 'NRL') ? 'NR' : 'REQ';
-                            }
-                            return nr !== 'NR';
-                        });
-                    } else if (nrlFilter === 'nr') {
-                        // Show only NRL (red dot)
-                        table.addFilter(function(data) {
-                            if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                            var nr = (data.NR || '').toString().trim();
-                            if (!nr) {
-                                var nrl = (data.NRL || 'REQ').toString().trim();
-                                nr = (nrl === 'NRL') ? 'NR' : 'REQ';
-                            }
-                            return nr === 'NR';
-                        });
-                    }
                 }
 
                 if (gpftFilter !== 'all') {
@@ -6484,63 +5467,6 @@
                     });
                 }
 
-                // Map filter (INV vs INV_AMZ) - for inventory sync
-                if (mapFilterActive !== 'all') {
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        
-                        const inv = parseFloat(data.INV) || 0;
-                        const nrValue = data.NR || '';
-                        const isMissingAmazon = data.is_missing_amazon || false;
-                        const price = parseFloat(data.price || 0);
-                        
-                        // Only apply to INV > 0, NR = REQ, not missing from Amazon, and has valid price
-                        if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon || price <= 0) return false;
-                        
-                        const invAmz = parseFloat(data.INV_AMZ) || 0;
-                        // Same as /map-issues: both sides must have stock to be Map / N Map.
-                        if (invAmz <= 0) return false;
-                        
-                        if (mapFilterActive === 'mapped') {
-                            return amazonInvWithinMapTolerance(inv, invAmz);
-                        } else if (mapFilterActive === 'nmapped') {
-                            return !amazonRowIsFba(data) && !amazonInvWithinMapTolerance(inv, invAmz);
-                        }
-                        return true;
-                    });
-                }
-
-                // Helper: treat as FBA if fba flag is set OR SKU/product name contains "FBA"
-                function rowIsFba(data) {
-                    if (!data) return false;
-                    const fbaFlag = data.fba;
-                    if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
-                    const sku = (data['(Child) sku'] || data['Parent'] || '').toUpperCase();
-                    return sku.indexOf('FBA') !== -1;
-                }
-                // Helper: true if row is a parent summary row (exclude from Missing L results)
-                function isParentRow(data) {
-                    if (!data) return false;
-                    if (data.is_parent_summary === true || data.is_parent_summary === 1) return true;
-                    const sku = String(data['(Child) sku'] || data['Parent'] || '').trim().toUpperCase();
-                    return sku.indexOf('PARENT ') === 0 || sku === 'PARENT';
-                }
-                // Missing L FBA: not listed on Amazon and row is FBA (by flag or SKU). Exclude parent rows.
-                if (missingAmazonFbaFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return false;
-                        const nr = data.NR || '';
-                        return !!(data.is_missing_amazon && rowIsFba(data) && nr !== 'NR');
-                    });
-                }
-                // Missing M FBM (non-FBA): not listed on Amazon and row is not FBA. Exclude parent rows.
-                if (missingAmazonNonFbaFilterActive) {
-                    table.addFilter(function(data) {
-                        if (isParentRow(data)) return false;
-                        const nr = data.NR || '';
-                        return !!(data.is_missing_amazon && !rowIsFba(data) && nr !== 'NR');
-                    });
-                }
                 if (lmpMissingFilterActive && window.LmpMissingBadge) {
                     table.addFilter(function(data) {
                         return !LmpMissingBadge.isParentRow(data) && !LmpMissingBadge.hasLmp(data);
@@ -6562,7 +5488,6 @@
                         return amazonHasBlueTriangle(data);
                     });
                 }
-                updateCalcValues();
                 updateSummary();
                 amazonTabulatorFinalizeFilterApply(sortSnapshot);
                 setTimeout(function() {
@@ -6570,58 +5495,9 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #diff-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
+            $('#inventory-filter, #gpft-filter, #roi-filter, #diff-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
-
-            // NR/RL header red dot: click to show only red (NRL) rows; click again to show all
-            $(document).on('click', '.nr-header-red-dot', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                var current = $('#nrl-filter').val();
-                $('#nrl-filter').val(current === 'nr' ? 'all' : 'nr');
-                applyFilters();
-            });
-
-            // Update PFT% and ROI% calc values (only for INV > 0)
-            function updateCalcValues() {
-                const data = table.getData("active");
-                let totalSales = 0;
-                let totalProfit = 0;
-                let totalCogs = 0;
-                
-                data.forEach(row => {
-                    if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
-                        const price = parseFloat(row['price']) || 0;
-                        const aL30 = parseFloat(row['A_L30']) || 0;
-                        const lp = parseFloat(row['LP_productmaster']) || 0;
-                        const ship = parseFloat(row['Ship_productmaster']) || 0;
-                        
-                        // Only process rows with sales
-                        if (aL30 > 0 && price > 0) {
-                            // Profit per unit = (price * 0.80) - ship - lp
-                            const profitPerUnit = (price * 0.80) - ship - lp;
-                            // Total profit for this row = profitPerUnit * L30
-                            const profitTotal = profitPerUnit * aL30;
-                            const salesL30 = price * aL30;
-                            const cogs = lp * aL30;
-                            
-                            totalProfit += profitTotal;
-                            totalSales += salesL30;
-                            totalCogs += cogs;
-                        }
-                    }
-                });
-
-                // TOP PFT% = (total profit sum / total sales) * 100
-                const avgPft = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-                // TOP ROI% = (total profit sum / total COGS) * 100
-                const avgRoi = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
-
-                $('#pft-calc').text(Math.round(avgPft) + '%');
-                $('#roi-calc').text(Math.round(avgRoi) + '%');
-                $('#avg-pft-badge').text('AVG PFT: ' + Math.round(avgPft) + '%');
-            }
 
             // Update summary badges for INV > 0
             function updateSummary() {
@@ -6631,10 +5507,6 @@
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
-                let totalAmazonInv = 0;
-                let totalAmazonL30 = 0;
-                let totalDilPercent = 0;
-                let dilCount = 0;
                 let totalSkuCount = 0;
                 let totalSoldCount = 0;
                 let zeroSoldCount = 0;
@@ -6643,107 +5515,65 @@
                 let missingCount = 0;
                 let missingAmazonFbaCount = 0;
                 let missingAmazonNonFbaCount = 0;
-                let missingLAmzCount = 0;
-                let variationCount = 0;
-                
-                // Variation count (NRL / red dot rows - all rows including parents)
-                data.forEach(row => {
-                    if (row['NR'] === 'NR') variationCount++;
-                });
+                let totalViews = 0;
 
-                // Second pass: Process INV > 0 rows for other metrics
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalSkuCount++;
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
-                        totalAmazonInv += parseFloat(row['INV'] || 0);
-                        
+                        totalViews += parseFloat(row['Sess30'] || 0);
+
                         const aL30 = parseFloat(row['A_L30'] || 0);
-                        totalAmazonL30 += aL30;
-                        
-                        // Count sold and 0-sold
                         if (aL30 > 0) {
                             totalSoldCount++;
                         } else {
                             zeroSoldCount++;
                         }
-                        
-                        // Count Prc > LMP
+
                         const price = parseFloat(row['price'] || 0);
                         const lmpPrice = parseFloat(row['lmp_price'] || 0);
                         if (lmpPrice > 0 && price > lmpPrice) {
                             prcGtLmpCount++;
                         }
-                        
-                        // Count Missing L (not listed on Amazon), Map, Missing M (mismatch)
+
                         const inv = parseFloat(row['INV'] || 0);
                         const nrValue = row['NR'] || '';
                         const isMissingAmazon = row['is_missing_amazon'] || false;
-                        const rowPrice = parseFloat(row['price'] || 0);
-                        
-                        // Missing L: exclude NR and FBA from datasheet-missing counts (aligns with filters)
+
                         if (isMissingAmazon && nrValue !== 'NR' && !amazonRowIsFba(row)) {
                             missingAmazonNonFbaCount++;
                         }
-                        
-                        // Map / Missing M: REQ, listed, price > 0, Amazon stock > 0 (same as /map-issues);
-                        // FBA rows excluded from mismatch count only
-                        if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && rowPrice > 0) {
+
+                        if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && price > 0) {
                             const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
                             if (invAmzNum > 0) {
                                 if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
                                     mapCount++;
                                 } else if (!amazonRowIsFba(row)) {
-                                    missingCount++; // Inventory mismatch beyond tolerance (non-FBA only)
+                                    missingCount++;
                                 }
                             }
                         }
-                        
-                        const dil = parseFloat(row['E Dil%'] || 0);
-                        if (!isNaN(dil)) {
-                            totalDilPercent += dil;
-                            dilCount++;
-                        }
-                        
                     }
                 });
 
-                let totalWeightedPrice = 0;
-                let totalL30 = 0;
-                data.forEach(row => {
-                    if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
-                        const price = parseFloat(row['price'] || 0);
-                        const l30 = parseFloat(row['A_L30'] || 0);
-                        totalWeightedPrice += price * l30;
-                        totalL30 += l30;
-                    }
-                });
-                // Real-orders 30-day sales + units (server-computed, same source as /amazon/daily-sales).
                 const SERVER_AMZ_SALES_L30 = {{ (float) ($amazonSalesL30 ?? 0) }};
                 const SERVER_AMZ_QTY_L30 = {{ (int) ($amazonUnitsSoldL30 ?? 0) }};
 
-                // Avg Price = orders Sales ÷ orders Qty (matches the daily-sales basis).
                 const avgPrice = SERVER_AMZ_QTY_L30 > 0 ? (SERVER_AMZ_SALES_L30 / SERVER_AMZ_QTY_L30) : 0;
                 setAmzSummaryBadge($('#avg-price-badge'), 'Price: $' + avgPrice.toFixed(2));
 
-                let totalViews = 0;
-                data.forEach(row => {
-                    if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
-                        totalViews += parseFloat(row['Sess30'] || 0);
-                    }
-                });
-                // Store-wide views (full dataset) so CVR pairs with the global orders Qty.
                 let totalViewsAll = 0;
+                let blueTriangleCount = 0;
                 allData.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalViewsAll += parseFloat(row['Sess30'] || 0);
                     }
+                    if (amazonHasBlueTriangle(row)) blueTriangleCount++;
                 });
-                // CVR = orders Qty ÷ store views × 100.
                 const avgCVR = totalViewsAll > 0 ? (SERVER_AMZ_QTY_L30 / totalViewsAll * 100) : 0;
-                const avgViews = totalSkuCount > 0 ? Math.round(totalViews / totalSkuCount) : 0;
                 setAmzSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%');
                 setAmzSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString());
                 // Qty Sold badge is driven from real Amazon orders (server-computed, same source as
@@ -6763,10 +5593,6 @@
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');
                 }
-                let blueTriangleCount = 0;
-                allData.forEach(function(row) {
-                    if (amazonHasBlueTriangle(row)) blueTriangleCount++;
-                });
                 $('#amazon-blue-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
@@ -6875,16 +5701,16 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
-                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
                 }
 
                 // Basic — identity, CVR, inventory, listing links, dil/views
                 if (
-                    /^(row_select|parent|image_path|\(child\) sku|cvr_l30|nr|nrp|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30|sess7)$/i.test(f) ||
-                    /\b(parent|image|sku|cvr|nr\/?rl|nrp|miss|reviews?|buyer|seller|inv|fba|ov\s*l30|dil|a\s*l30|nrl|view)\b/i.test(t)
+                    /^(row_select|parent|image_path|\(child\) sku|cvr_l30|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|l30|e dil%|a_l30|a dil %|sess30|sess7)$/i.test(f) ||
+                    /\b(parent|image|sku|cvr|miss|reviews?|buyer|seller|inv|ov\s*l30|dil|a\s*l30|view)\b/i.test(t)
                 ) {
                     return 'basic';
                 }
@@ -6898,7 +5724,7 @@
                 }
 
                 // Fallback by field list so nothing is dropped
-                if (fl.includes('cvr') || fl.includes('inv') || fl.includes('sku') || fl.includes('parent') || fl.includes('dil') || fl.includes('nr')) {
+                if (fl.includes('cvr') || fl.includes('inv') || fl.includes('sku') || fl.includes('parent') || fl.includes('dil')) {
                     return 'basic';
                 }
                 if (fl.includes('price') || fl.includes('lmp') || fl.includes('sprice') || fl.includes('gpft') || fl.includes('groi') || fl.includes('roi') || fl.includes('pft')) {
@@ -7044,7 +5870,10 @@
                             if (COL_VIS_CATEGORY_KEYS.indexOf(cat) === -1) {
                                 cat = classifyAmazonColumn(field, title);
                             }
-                            const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
+                            if (field === '__schema' || AMAZON_REMOVED_COL_FIELDS[field]) return;
+                            const isVisible = amazonVisibilityIsStale(map)
+                                ? (def.visible !== false)
+                                : (map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible());
 
                             const li = document.createElement("li");
                             li.className = "col-vis-item";
@@ -7078,11 +5907,27 @@
                     .catch(err => console.error('Error loading column visibility:', err));
             }
 
+            function amazonVisibilityIsStale(map) {
+                if (!map || typeof map !== 'object') return false;
+                return Object.keys(AMAZON_REMOVED_COL_FIELDS).some(function(f) {
+                    return Object.prototype.hasOwnProperty.call(map, f);
+                });
+            }
+
+            function applyAmazonColumnDefinitionDefaults() {
+                table.getColumns().forEach(function(col) {
+                    const def = col.getDefinition();
+                    if (!def.field || def.field === '__schema') return;
+                    if (def.visible === false) col.hide();
+                    else col.show();
+                });
+            }
+
             function saveColumnVisibilityToServer() {
                 const visibility = {};
                 table.getColumns().forEach(col => {
                     const field = col.getDefinition().field;
-                    if (field) {
+                    if (field && !AMAZON_REMOVED_COL_FIELDS[field]) {
                         visibility[field] = col.isVisible();
                     }
                 });
@@ -7110,16 +5955,17 @@
                     })
                     .then(res => res.json())
                     .then(savedVisibility => {
-                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
+                        if (!savedVisibility || typeof savedVisibility !== 'object' || amazonVisibilityIsStale(savedVisibility)) {
+                            applyAmazonColumnDefinitionDefaults();
+                            saveColumnVisibilityToServer();
+                            return;
+                        }
                         table.getColumns().forEach(col => {
                             const field = col.getDefinition().field;
-                            if (field && savedVisibility.hasOwnProperty(field)) {
-                                if (savedVisibility[field]) {
-                                    col.show();
-                                } else {
-                                    col.hide();
-                                }
-                            }
+                            if (!field || AMAZON_REMOVED_COL_FIELDS[field]) return;
+                            if (!savedVisibility.hasOwnProperty(field)) return;
+                            if (savedVisibility[field]) col.show();
+                            else col.hide();
                         });
                     })
                     .catch(err => console.error('Error applying column visibility:', err));
@@ -7239,7 +6085,6 @@
                         .then(function() { return applyColumnOrderFromServer(); })
                         .finally(function() {
                             buildColumnDropdown();
-                            updateApplyAllButton();
                         });
                 });
             });
@@ -7265,7 +6110,6 @@
                 parents.sort(function(a, b) { return String(a).localeCompare(String(b)); });
                 productUniqueParents = parents.slice(0);
                 initProductPlaybackControls();
-                updateCalcValues();
                 updateSummary();
                 requestAnimationFrame(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
@@ -7275,31 +6119,11 @@
                     });
                     updateRowSelectAllCheckbox();
                     updateSelectedCount();
-                    updateApplyAllButton();
                 });
 
             });
 
             table.on('renderComplete', function() {
-                // Update row counter above table
-                try {
-                    var totalRows = table.getDataCount('active');
-                    var pageSize = table.getPageSize();
-                    // Tabulator "All" option uses true (or a size >= total)
-                    var showAll = pageSize === true || pageSize === 'true'
-                        || (typeof pageSize === 'number' && pageSize >= totalRows && totalRows > 0);
-                    if (totalRows === 0) {
-                        $('#table-row-counter').text('No rows');
-                    } else if (showAll) {
-                        $('#table-row-counter').text('Showing all ' + totalRows + ' rows');
-                    } else {
-                        var currentPage = table.getPage() || 1;
-                        var start = (currentPage - 1) * pageSize + 1;
-                        var end = Math.min(currentPage * pageSize, totalRows);
-                        $('#table-row-counter').text('Showing ' + start + '-' + end + ' of ' + totalRows + ' rows');
-                    }
-                } catch(e) {}
-
                 setTimeout(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
                     $('.row-select-checkbox').each(function() {
@@ -7482,34 +6306,24 @@
                     });
             });
 
-            // Bulk Push Actions - Execute button handler
+            // Bulk Push Actions - Amazon only
             $(document).on('click', '#executeBulkPush', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                // Get selected marketplaces
-                var selectedMarketplaces = [];
-                $('.bulk-push-checkbox:checked').each(function() {
-                    selectedMarketplaces.push($(this).val());
-                });
-                
-                if (selectedMarketplaces.length === 0) {
-                    alert('Please select at least one marketplace');
+
+                if (!$('#bulkPushAmazon').is(':checked')) {
+                    alert('Please select Amz');
                     return;
                 }
-                
+
                 var selectedSkusList = getSelectedSkus();
-                
+
                 if (selectedSkusList.length === 0) {
                     alert('Please select at least one row');
                     return;
                 }
-                
-                var marketplaceNames = selectedMarketplaces.map(function(m) {
-                    return m === 'amazon' ? 'Amz' : (m === 'shopify' ? 'Shopify' : 'PLS');
-                }).join(', ');
-                
-                if (!confirm('Push ' + selectedSkusList.length + ' price(s) to ' + marketplaceNames + '?')) {
+
+                if (!confirm('Push ' + selectedSkusList.length + ' price(s) to Amz?')) {
                     return;
                 }
                 
@@ -7553,52 +6367,34 @@
                         return;
                     }
                     
-                    // Push to each selected marketplace
-                    selectedMarketplaces.forEach(function(marketplace) {
-                        var pushUrl;
-                        if (marketplace === 'amazon') {
-                            pushUrl = "{{ route('apply.amazon.price') }}";
-                        } else if (marketplace === 'shopify') {
-                            pushUrl = "{{ route('push.shopify.b2c.price') }}";
-                        } else if (marketplace === 'pls') {
-                            pushUrl = "{{ route('push.pls.price') }}";
-                        }
-                        
-                        // Build request body
-                        var requestBody = {
+                    var promise = fetch("{{ route('apply.amazon.price') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
                             sku: sku,
-                            price: spriceRaw
-                        };
-                        
-                        // For Amazon, also update the competitive price constraint (minimum price)
-                        if (marketplace === 'amazon') {
-                            requestBody.update_amazon_min_price = true;
-                        }
-                        
-                        var promise = fetch(pushUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: JSON.stringify(requestBody)
-                        }).then(function(res) {
-                            if (!res.ok) {
-                                return res.text().then(function(text) {
-                                    var msg = res.status === 419 ? 'Session expired.' : (text || 'Push failed (' + res.status + ')');
-                                    return { ok: false, sku: sku, marketplace: marketplace, error: msg };
-                                });
-                            }
-                            return res.json().then(function(data) {
-                                return { ok: data.success !== false, sku: sku, marketplace: marketplace, data: data };
+                            price: spriceRaw,
+                            push_shopify: false,
+                            update_amazon_min_price: true
+                        })
+                    }).then(function(res) {
+                        if (!res.ok) {
+                            return res.text().then(function(text) {
+                                var msg = res.status === 419 ? 'Session expired.' : (text || 'Push failed (' + res.status + ')');
+                                return { ok: false, sku: sku, marketplace: 'amazon', error: msg };
                             });
-                        }).catch(function(err) {
-                            return { ok: false, sku: sku, marketplace: marketplace, error: err.message || 'Network error' };
+                        }
+                        return res.json().then(function(data) {
+                            return { ok: data.success !== false, sku: sku, marketplace: 'amazon', data: data };
                         });
-                        
-                        allPromises.push(promise);
+                    }).catch(function(err) {
+                        return { ok: false, sku: sku, marketplace: 'amazon', error: err.message || 'Network error' };
                     });
+
+                    allPromises.push(promise);
                 });
                 
                 Promise.all(allPromises).then(function(results) {
@@ -7615,37 +6411,27 @@
                             }
                             skusToUpdate[r.sku][r.marketplace] = 'pushed';
                         } else {
-                            var marketplaceName = r.marketplace === 'amazon' ? 'AMZ' : (r.marketplace === 'shopify' ? 'SFY' : 'PLS');
-                            failed.push(r.sku + ' (' + marketplaceName + ')' + (r.error ? ': ' + r.error : ''));
+                            failed.push(r.sku + (r.error ? ': ' + r.error : ''));
                         }
                     });
-                    
-                    // Update row statuses
+
                     Object.keys(skusToUpdate).forEach(function(sku) {
                         var rows = table.getRows().filter(function(row) {
                             return row.getData()['(Child) sku'] === sku;
                         });
                         rows.forEach(function(row) {
-                            var updateData = {};
                             if (skusToUpdate[sku]['amazon']) {
-                                updateData.STATUS = 'pushed';
+                                row.update({ STATUS: 'pushed', SPRICE_STATUS: 'pushed' });
+                                row.reformat();
                             }
-                            if (skusToUpdate[sku]['shopify']) {
-                                updateData.S_STATUS = 'pushed';
-                            }
-                            if (skusToUpdate[sku]['pls']) {
-                                updateData.PLS_STATUS = 'pushed';
-                            }
-                            row.update(updateData);
-                            row.reformat();
                         });
                     });
-                    
+
                     if (failed.length > 0) {
                         showToast('warning', succeeded + ' pushed, ' + failed.length + ' failed. ' + (failed[0].length > 80 ? failed[0].substring(0, 80) + '…' : failed[0]));
                         if (failed.length > 1) console.error('Bulk push failures:', failed);
                     } else {
-                        showToast('success', succeeded + ' price(s) pushed to ' + marketplaceNames);
+                        showToast('success', succeeded + ' price(s) pushed to Amz');
                     }
                     clearRowSelections();
                     $btn.html(originalText).prop('disabled', false);
@@ -7867,16 +6653,17 @@
                     const cachedL1 = amazonL1FromCompetitors(cachedEntries);
                     currentLmpData.lowestPrice = cachedL1.l1;
                     renderCompetitorsList(cachedEntries, cachedL1.l1);
-                } else {
-                    $('#lmpDataList').html(`
-                        <div class="text-center py-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amz API...' : 'Loading competitors...'}</p>
-                        </div>
-                    `);
+                    return;
                 }
+
+                $('#lmpDataList').html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amz API...' : 'Loading competitors...'}</p>
+                    </div>
+                `);
 
                 const reqData = {
                     sku: sku,
@@ -8260,12 +7047,27 @@
                 closeLmpTextPreview();
             });
 
+            function applyAmazonLmpIgnoreLocal(id, ignored) {
+                (currentLmpData.competitors || []).forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored ? 1 : 0;
+                });
+                const l1Info = amazonL1FromCompetitors(currentLmpData.competitors);
+                currentLmpData.lowestPrice = l1Info.l1;
+                renderCompetitorsList(currentLmpData.competitors, l1Info.l1);
+                patchAmazonGridLmp(
+                    l1Info.l1,
+                    l1Info.winner ? (l1Info.winner.delivery || null) : null,
+                    currentLmpData.competitors
+                );
+            }
+
             $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
                 const $cb = $(this);
                 const id = $cb.attr('data-id') || $cb.data('id');
                 const sku = $cb.attr('data-sku') || $cb.data('sku') || currentLmpData.sku || '';
                 const ignored = $cb.is(':checked');
-                $cb.prop('disabled', true);
+                applyAmazonLmpIgnoreLocal(id, ignored);
+                $('#lmpModal .lmp-ignore-cb[data-id="' + id + '"]').prop('disabled', true);
 
                 $.ajax({
                     url: '/amazon/lmp/ignore',
@@ -8277,43 +7079,19 @@
                     data: {
                         id: id,
                         sku: sku,
-                        ignored: ignored ? 1 : 0,
-                        linked_lmp_skus: currentLmpData.linkedLmpSkus || []
+                        ignored: ignored ? 1 : 0
                     },
-                    traditional: true,
                     success: function(res) {
-                        $cb.prop('disabled', false);
+                        $('#lmpModal .lmp-ignore-cb[data-id="' + id + '"]').prop('disabled', false);
                         if (res && res.success) {
-                            const fromDb = Array.isArray(res.competitors) ? res.competitors : null;
-                            if (fromDb) {
-                                currentLmpData.competitors = fromDb;
-                            } else {
-                                (currentLmpData.competitors || []).forEach(function(c) {
-                                    if (String(c.id) === String(id)) c.ignored = res.ignored ? 1 : 0;
-                                });
-                            }
-                            const l1Info = amazonL1FromCompetitors(currentLmpData.competitors);
-                            const l1 = (res.lowest_price != null && res.lowest_price !== '')
-                                ? parseFloat(res.lowest_price)
-                                : l1Info.l1;
-                            currentLmpData.lowestPrice = l1;
-                            renderCompetitorsList(currentLmpData.competitors, l1);
-                            patchAmazonGridLmp(
-                                l1,
-                                res.lowest_delivery != null
-                                    ? res.lowest_delivery
-                                    : (l1Info.winner ? (l1Info.winner.delivery || null) : null),
-                                currentLmpData.competitors
-                            );
                             showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
                         } else {
-                            $cb.prop('checked', !ignored);
+                            applyAmazonLmpIgnoreLocal(id, !ignored);
                             showToast((res && res.error) || 'Failed to update ignore', 'error');
                         }
                     },
                     error: function(xhr) {
-                        $cb.prop('disabled', false);
-                        $cb.prop('checked', !ignored);
+                        applyAmazonLmpIgnoreLocal(id, !ignored);
                         const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to update ignore';
                         showToast(msg, 'error');
                     }
@@ -8632,7 +7410,7 @@
             }
             
             const columnsToExport = [
-                '(Child) sku', 'price', 'INV', 'FBA_Quantity', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
+                '(Child) sku', 'price', 'INV', 'L30', 'A_L30', 'GPFT%', 'GROI%', 'PFT%',
                 'ROI_percentage', 'NRL', 'NRA', 'amz_avg_rating', 'amz_review_count', 'lmp_price'
             ];
             
@@ -8646,9 +7424,6 @@
             data.forEach(row => {
                 const values = columnsToExport.map(col => {
                     let value = row[col];
-                    if (col === 'FBA_Quantity') {
-                        value = formatFbaQuantityDisplay(row);
-                    }
                     if (value === null || value === undefined) value = '';
                     // Escape commas and quotes
                     value = String(value).replace(/"/g, '""');
