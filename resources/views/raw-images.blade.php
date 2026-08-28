@@ -17,9 +17,8 @@
     $missingBadgeLabel = $missingBadgeLabel ?? ($isHero2 ? 'Missing Hero Image 2' : 'Missing Raw Images');
     $zipFileName = $zipFileName ?? ($isHero2 ? 'hero-image-2.zip' : 'raw-images.zip');
     $savedAiPrompt = $savedAiPrompt ?? ($isHero2
-        ? "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa."
+        ? "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 AI column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa."
         : "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.");
-    $savedAiPkgPrompt = $savedAiPkgPrompt ?? "Make a raw packaging photo from the Hero image and put it in the Pkg Raw column.\nThe size should be 2000x2000px.\nShow the product as a realistic packaged / item-pkg raw shoot, natural lighting, no text, no watermark.\nIf the product is dark then use a light background or vice-versa.";
 @endphp
 @extends('layouts.vertical', ['title' => $pageTitle, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
@@ -289,6 +288,13 @@
         color: #fff !important;
     }
     .ri-ai-btn:hover, .ri-ai-btn:focus { filter: brightness(1.08); }
+    .ri-cell-ai {
+        padding: 4px 8px !important;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.2;
+        letter-spacing: .02em;
+    }
 
     #raw-images-table .tabulator-cell[tabulator-field="barcode"] {
         overflow: visible !important;
@@ -376,11 +382,8 @@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="card-title mb-0">{{ $pageTitle }}</h4>
                     <div class="d-flex align-items-center flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="Ask AI">
+                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="{{ $isHero2 ? 'Add prompt for Hero Image 2 AI' : 'Ask AI' }}">
                             <i class="fas fa-wand-magic-sparkles me-1"></i> AI
-                        </button>
-                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiPkgBtn" title="Ask AI for Pkg Raw">
-                            <i class="fas fa-wand-magic-sparkles me-1"></i> AI Raw Pkg
                         </button>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-warning dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -606,7 +609,7 @@
                 <div class="modal-body">
                     <label class="form-label fw-semibold" for="riAiPrompt">Prompt</label>
                     <textarea class="form-control" id="riAiPrompt" rows="8" maxlength="8000">{{ $savedAiPrompt }}</textarea>
-                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a raw-shoot image for selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
+                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : 'raw-shoot' }} image for selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
                     <div id="riAiSelectedHint" class="small mt-2 text-muted"></div>
                     <div id="riAiResult" class="small mt-3"></div>
                 </div>
@@ -656,6 +659,7 @@
         const rawImagesPageTitle = @json($pageTitle);
         const rawImagesManualColumnTitle = @json($manualColumnTitle);
         const rawImagesAiColumnTitle = @json($aiColumnTitle);
+        const rawImagesIsHero2 = @json((bool) $isHero2);
         const rawImagesZipFileName = @json($zipFileName);
         const riImageWarm = new Set();
 
@@ -681,38 +685,31 @@
 
         function rawImageSourceImages(row, source) {
             if (source === 'ai') return Array.isArray(row.raw_ai_images) ? row.raw_ai_images : [];
-            if (source === 'pkg_ai') return Array.isArray(row.pkg_ai_images) ? row.pkg_ai_images : [];
-            if (source === 'pkg') return Array.isArray(row.pkg_raw_images) ? row.pkg_raw_images : [];
             return Array.isArray(row.raw_images) ? row.raw_images : [];
         }
 
         function rawImageCellHtml(row, source) {
             const sku = row.SKU || '';
-            const isAi = source === 'ai' || source === 'pkg_ai';
-            const isPkg = source === 'pkg';
+            const isAi = source === 'ai';
             const images = rawImageSourceImages(row, source);
             const titles = {
                 ai: 'View ' + rawImagesAiColumnTitle,
-                pkg_ai: 'View Pkg Raw Image AI',
-                pkg: 'View / add pkg raw images',
                 manual: 'View / add ' + rawImagesManualColumnTitle.toLowerCase()
             };
             const title = titles[source] || titles.manual;
             if (source === 'ai' && (row.ai_generating || riAiLoadingSkus.has(sku))) {
                 return '<span class="ri-ai-loading" title="Generating AI image…"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></span>';
             }
-            if (source === 'pkg_ai' && (row.pkg_ai_generating || riPkgAiLoadingSkus.has(sku))) {
-                return '<span class="ri-ai-loading" title="Generating pkg raw image…"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></span>';
-            }
             if (!images.length) {
                 if (isAi) {
-                    return '<span class="text-muted" title="' + (source === 'pkg_ai' ? 'Generate with the AI Raw Pkg button' : 'Generate with the AI button') + '">—</span>';
+                    return '<button type="button" class="btn btn-sm ri-ai-btn ri-cell-ai js-open-ai-prompt" data-sku="' + escapeHtml(sku) + '" title="Add prompt for ' + escapeHtml(rawImagesAiColumnTitle) + '">'
+                        + '<i class="fas fa-wand-magic-sparkles me-1"></i> AI</button>';
                 }
-                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + (isPkg ? 'pkg' : 'manual') + '" title="' + (isPkg ? 'Add pkg raw image' : 'Add ' + rawImagesManualColumnTitle) + '">+</button>';
+                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="manual" title="Add ' + rawImagesManualColumnTitle + '">+</button>';
             }
             const first = images[0];
             const count = images.length;
-            const alt = source === 'pkg_ai' ? 'Pkg Raw AI' : (source === 'ai' ? 'Raw AI' : (isPkg ? 'Pkg Raw' : 'Raw'));
+            const alt = source === 'ai' ? 'Raw AI' : 'Raw';
             let inner;
             if (first.previewable && (first.thumb_url || first.url)) {
                 inner = thumbHtml(cachedImageSrc(first.url, first.thumb_url), alt);
@@ -1092,10 +1089,8 @@
         }
         let riAiSaveTimer = null;
         let riAiLastSaved = @json($savedAiPrompt);
-        let riPkgAiLastSaved = @json($savedAiPkgPrompt);
         let riAiTarget = 'raw';
         const riAiLoadingSkus = new Set();
-        const riPkgAiLoadingSkus = new Set();
         let tableData = [];
         let table;
         let rawImageModal;
@@ -1309,26 +1304,6 @@
                         formatter: function (cell) {
                             return rawImageCellHtml(cell.getData(), 'manual');
                         }
-                    },
-                    {
-                        title: 'Pkg Raw Image AI',
-                        field: 'has_pkg_ai_image',
-                        width: 110,
-                        hozAlign: 'center',
-                        headerSort: false,
-                        formatter: function (cell) {
-                            return rawImageCellHtml(cell.getData(), 'pkg_ai');
-                        }
-                    },
-                    {
-                        title: 'Pkg Raw',
-                        field: 'has_pkg_raw_image',
-                        width: 90,
-                        hozAlign: 'center',
-                        headerSort: false,
-                        formatter: function (cell) {
-                            return rawImageCellHtml(cell.getData(), 'pkg');
-                        }
                     }
                 ]
             });
@@ -1373,6 +1348,13 @@
                 if (ebayHeroBtn) {
                     e.preventDefault();
                     openEbayHeroGallery(ebayHeroBtn.getAttribute('data-sku') || '');
+                    return;
+                }
+                const aiPromptBtn = e.target.closest('.js-open-ai-prompt');
+                if (aiPromptBtn) {
+                    e.preventDefault();
+                    selectSkuForAi(aiPromptBtn.getAttribute('data-sku') || '');
+                    openAiPromptModal('raw');
                 }
             });
         }
@@ -1452,12 +1434,12 @@
         }
 
         function resolveModalSource(source) {
-            if (source === 'ai' || source === 'pkg_ai' || source === 'pkg') return source;
+            if (source === 'ai') return source;
             return 'manual';
         }
 
         function isAiModalSource(source) {
-            return source === 'ai' || source === 'pkg_ai';
+            return source === 'ai';
         }
 
         function openRawImageModal(sku, source) {
@@ -1470,20 +1452,13 @@
             document.getElementById('modalParentText').textContent = (item && item.Parent) ? item.Parent : '—';
             const kindLabel = document.getElementById('modalKindLabel');
             if (kindLabel) {
-                const labels = {
-                    ai: rawImagesAiColumnTitle,
-                    pkg_ai: 'Pkg Raw Image AI',
-                    pkg: 'Pkg Raw'
-                };
-                kindLabel.textContent = labels[currentModalSource] || rawImagesPageTitle;
+                kindLabel.textContent = currentModalSource === 'ai' ? rawImagesAiColumnTitle : rawImagesPageTitle;
             }
             const hint = document.getElementById('rawUploadHint');
             if (hint) {
                 hint.textContent = currentModalSource === 'ai'
                     ? 'These images are created by the AI button on selected rows.'
-                    : (currentModalSource === 'pkg_ai'
-                        ? 'These images are created by the AI Raw Pkg button on selected rows.'
-                        : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.');
+                    : 'JPG, PNG, WEBP, or camera RAW files. Max 50 MB each.';
             }
             renderModalGrid(images);
             setUploadMsg('');
@@ -1516,7 +1491,7 @@
 
             if (!isAiModalSource(currentModalSource)) {
                 const plusClass = list.length ? 'ri-plus-tile ri-plus-tile-sm' : 'ri-plus-tile';
-                const plusLabel = list.length ? 'Add more' : (currentModalSource === 'pkg' ? 'Add pkg raw image' : 'Add ' + rawImagesManualColumnTitle);
+                const plusLabel = list.length ? 'Add more' : 'Add ' + rawImagesManualColumnTitle;
                 html += '<div class="' + plusClass + '" title="' + plusLabel + '">'
                     + '<span class="ri-plus-icon">+</span>'
                     + '<span class="small fw-semibold">' + plusLabel + '</span>'
@@ -1528,9 +1503,7 @@
 
         function uploadRawFiles(fileList) {
             if (isAiModalSource(currentModalSource)) {
-                setUploadErr(currentModalSource === 'pkg_ai'
-                    ? 'Pkg AI images are created with the AI Raw Pkg button.'
-                    : 'AI images are created with the AI button.');
+                setUploadErr('AI images are created with the AI button.');
                 return;
             }
             const sku = document.getElementById('modalSku').value;
@@ -1541,9 +1514,6 @@
 
             const form = new FormData();
             form.append('sku', sku);
-            if (currentModalSource === 'pkg') {
-                form.append('image_kind', 'pkg');
-            }
             Array.from(fileList).forEach(function (file) {
                 form.append('files[]', file);
             });
@@ -1569,7 +1539,7 @@
                 }
                 setUploadErr('');
                 setUploadMsg(result.data.message || 'Uploaded.');
-                applyImagesToSku(sku, result.data.images || [], currentModalSource === 'pkg' ? 'pkg' : 'manual');
+                applyImagesToSku(sku, result.data.images || [], 'manual');
             })
             .catch(function (err) {
                 setUploadMsg('');
@@ -1613,18 +1583,6 @@
                     raw_ai_image_count: images.length,
                     has_raw_ai_image: images.length > 0,
                     raw_ai_image_url: images.length ? images[0].url : null
-                },
-                pkg_ai: {
-                    pkg_ai_images: images,
-                    pkg_ai_image_count: images.length,
-                    has_pkg_ai_image: images.length > 0,
-                    pkg_ai_image_url: images.length ? images[0].url : null
-                },
-                pkg: {
-                    pkg_raw_images: images,
-                    pkg_raw_image_count: images.length,
-                    has_pkg_raw_image: images.length > 0,
-                    pkg_raw_image_url: images.length ? images[0].url : null
                 },
                 manual: {
                     raw_images: images,
@@ -1789,10 +1747,19 @@
 
         function applyAiBySku(bySku, target) {
             if (!bySku || typeof bySku !== 'object') return;
-            const source = target === 'pkg' ? 'pkg_ai' : 'ai';
             Object.keys(bySku).forEach(function (sku) {
-                applyImagesToSku(sku, bySku[sku] || [], source);
+                applyImagesToSku(sku, bySku[sku] || [], 'ai');
             });
+        }
+
+        function selectSkuForAi(sku) {
+            if (!sku) return;
+            document.querySelectorAll('.ri-row-select').forEach(function (cb) {
+                if ((cb.getAttribute('data-sku') || '') === sku) {
+                    cb.checked = true;
+                }
+            });
+            updateSelectedCount();
         }
 
         function openAiPromptModal(target) {
@@ -1800,14 +1767,14 @@
             const resultEl = document.getElementById('riAiResult');
             const titleEl = document.getElementById('riAiModalTitle');
             const hintEl = document.getElementById('riAiFormHint');
-            riAiTarget = target === 'pkg' ? 'pkg' : 'raw';
-            if (titleEl) titleEl.textContent = riAiTarget === 'pkg' ? 'AI Raw Pkg' : 'AI prompt';
+            riAiTarget = 'raw';
+            if (titleEl) titleEl.textContent = rawImagesIsHero2 ? 'Hero Image 2 AI prompt' : 'AI prompt';
             if (hintEl) {
-                hintEl.textContent = riAiTarget === 'pkg'
-                    ? 'Edits are saved automatically. Gemini generates a pkg raw image for selected rows only. Ctrl / ⌘ + Enter to save and close.'
+                hintEl.textContent = rawImagesIsHero2
+                    ? 'Edits are saved automatically. Gemini generates a Hero Image 2 AI image for selected rows only. Ctrl / ⌘ + Enter to save and close.'
                     : 'Edits are saved automatically. Gemini generates a raw-shoot image for selected rows only. Ctrl / ⌘ + Enter to save and close.';
             }
-            promptEl.value = riAiTarget === 'pkg' ? riPkgAiLastSaved : riAiLastSaved;
+            promptEl.value = riAiLastSaved;
             if (resultEl) resultEl.innerHTML = '';
             updateAiSelectionHint();
             riAiModal.show();
@@ -1821,9 +1788,6 @@
 
             document.getElementById('riAiBtn').addEventListener('click', function () {
                 openAiPromptModal('raw');
-            });
-            document.getElementById('riAiPkgBtn').addEventListener('click', function () {
-                openAiPromptModal('pkg');
             });
 
             promptEl.addEventListener('input', function () {
@@ -1881,9 +1845,8 @@
         }
 
         function setAiGenerating(skus, loading, target) {
-            const isPkg = target === 'pkg';
-            const loadingSet = isPkg ? riPkgAiLoadingSkus : riAiLoadingSkus;
-            const field = isPkg ? 'pkg_ai_generating' : 'ai_generating';
+            const loadingSet = riAiLoadingSkus;
+            const field = 'ai_generating';
             (skus || []).forEach(function (sku) {
                 if (!sku) return;
                 if (loading) {
@@ -1912,20 +1875,15 @@
         }
 
         function runAiOnSelected(selected, prompt) {
-            const target = riAiTarget === 'pkg' ? 'pkg' : 'raw';
+            const target = 'raw';
             const skus = (selected || []).map(function (row) { return row.sku; }).filter(Boolean);
             const aiBtn = document.getElementById('riAiBtn');
-            const pkgBtn = document.getElementById('riAiPkgBtn');
             setAiGenerating(skus, true, target);
             if (aiBtn) aiBtn.disabled = true;
-            if (pkgBtn) pkgBtn.disabled = true;
             const body = {
                 prompt: prompt,
                 selected: selected
             };
-            if (target === 'pkg') {
-                body.image_kind = 'pkg';
-            }
             return fetch(rawImagesAiPromptUrl, {
                 method: 'POST',
                 headers: {
@@ -1960,26 +1918,16 @@
             .finally(function () {
                 setAiGenerating(skus, false, target);
                 if (aiBtn) aiBtn.disabled = false;
-                if (pkgBtn) pkgBtn.disabled = false;
             });
         }
 
         function saveAiPrompt(prompt, force) {
             const next = String(prompt || '');
-            const isPkg = riAiTarget === 'pkg';
-            const last = isPkg ? riPkgAiLastSaved : riAiLastSaved;
-            if (!force && next === last) {
+            if (!force && next === riAiLastSaved) {
                 return Promise.resolve();
             }
-            if (isPkg) {
-                riPkgAiLastSaved = next;
-            } else {
-                riAiLastSaved = next;
-            }
+            riAiLastSaved = next;
             const body = { prompt: next };
-            if (isPkg) {
-                body.image_kind = 'pkg';
-            }
             return fetch(rawImagesAiPromptSaveUrl, {
                 method: 'POST',
                 headers: {

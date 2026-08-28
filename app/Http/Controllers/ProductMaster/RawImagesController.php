@@ -35,9 +35,7 @@ class RawImagesController extends Controller
 
     private const DEFAULT_AI_PROMPT = "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
 
-    private const DEFAULT_HERO_2_AI_PROMPT = "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
-
-    private const DEFAULT_PKG_AI_PROMPT = "Make a raw packaging photo from the Hero image and put it in the Pkg Raw column.\nThe size should be 2000x2000px.\nShow the product as a realistic packaged / item-pkg raw shoot, natural lighting, no text, no watermark.\nIf the product is dark then use a light background or vice-versa.";
+    private const DEFAULT_HERO_2_AI_PROMPT = "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 AI column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
 
     public function index(Request $request): View
     {
@@ -53,7 +51,7 @@ class RawImagesController extends Controller
         $products = $baseData['data'] ?? [];
 
         $rawBySku = ProductRawImage::query()
-            ->whereIn('kind', [$kind, ProductRawImage::aiKindFor($kind), ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI])
+            ->whereIn('kind', [$kind, ProductRawImage::aiKindFor($kind)])
             ->orderBy('id')
             ->get()
             ->groupBy(fn (ProductRawImage $img) => $this->normalizeSku($img->sku));
@@ -99,12 +97,8 @@ class RawImagesController extends Controller
             $extra = $pmExtra[$normalizedSku] ?? null;
 
             $images = $rawBySku[$normalizedSku] ?? collect();
-            $pkgImages = $images->filter(fn (ProductRawImage $img) => in_array((string) $img->kind, [ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI], true))->values();
-            $pageImages = $images->reject(fn (ProductRawImage $img) => in_array((string) $img->kind, [ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI], true))->values();
-            $aiImages = $pageImages->filter(fn (ProductRawImage $img) => $img->isAiGenerated())->values();
-            $manualImages = $pageImages->reject(fn (ProductRawImage $img) => $img->isAiGenerated())->values();
-            $pkgAiImages = $pkgImages->filter(fn (ProductRawImage $img) => $img->isAiGenerated() || (string) $img->kind === ProductRawImage::KIND_PKG_AI)->values();
-            $pkgManualImages = $pkgImages->reject(fn (ProductRawImage $img) => $img->isAiGenerated() || (string) $img->kind === ProductRawImage::KIND_PKG_AI)->values();
+            $aiImages = $images->filter(fn (ProductRawImage $img) => $img->isAiGenerated())->values();
+            $manualImages = $images->reject(fn (ProductRawImage $img) => $img->isAiGenerated())->values();
             $row['raw_images'] = $manualImages->map(fn (ProductRawImage $img) => $img->toUiArray())->values()->all();
             $row['raw_image_count'] = $manualImages->count();
             $row['has_raw_image'] = $manualImages->isNotEmpty();
@@ -113,14 +107,6 @@ class RawImagesController extends Controller
             $row['raw_ai_image_count'] = $aiImages->count();
             $row['has_raw_ai_image'] = $aiImages->isNotEmpty();
             $row['raw_ai_image_url'] = $aiImages->first()?->url;
-            $row['pkg_raw_images'] = $pkgManualImages->map(fn (ProductRawImage $img) => $img->toUiArray())->values()->all();
-            $row['pkg_raw_image_count'] = $pkgManualImages->count();
-            $row['has_pkg_raw_image'] = $pkgManualImages->isNotEmpty();
-            $row['pkg_raw_image_url'] = $pkgManualImages->first()?->url;
-            $row['pkg_ai_images'] = $pkgAiImages->map(fn (ProductRawImage $img) => $img->toUiArray())->values()->all();
-            $row['pkg_ai_image_count'] = $pkgAiImages->count();
-            $row['has_pkg_ai_image'] = $pkgAiImages->isNotEmpty();
-            $row['pkg_ai_image_url'] = $pkgAiImages->first()?->url;
 
             $upc = $this->extractUpcFromValues($row);
             $storedBarcode = $hasBarcodeColumn
@@ -267,7 +253,7 @@ class RawImagesController extends Controller
     {
         $kind = $this->kindFromRequest($request);
         $image = ProductRawImage::query()
-            ->whereIn('kind', [$kind, ProductRawImage::aiKindFor($kind), ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI])
+            ->whereIn('kind', [$kind, ProductRawImage::aiKindFor($kind)])
             ->find($id);
         if (! $image) {
             return response()->json(['success' => false, 'message' => 'Raw image not found.'], 404);
@@ -292,16 +278,14 @@ class RawImagesController extends Controller
         }
 
         $wasAi = $image->isAiGenerated();
-        $isPkg = in_array((string) $image->kind, [ProductRawImage::KIND_PKG, ProductRawImage::KIND_PKG_AI], true);
-        $imageKind = $isPkg ? ProductRawImage::KIND_PKG : $kind;
         $image->delete();
         self::forgetMissingSidebarCountCache($kind);
 
         return response()->json([
             'success' => true,
             'message' => 'Raw image removed.',
-            'source' => $isPkg ? ($wasAi ? 'pkg_ai' : 'pkg') : ($wasAi ? 'ai' : 'manual'),
-            'images' => $this->imagesForSku($sku, $imageKind, $wasAi),
+            'source' => $wasAi ? 'ai' : 'manual',
+            'images' => $this->imagesForSku($sku, $kind, $wasAi),
         ]);
     }
 
@@ -580,7 +564,6 @@ class RawImagesController extends Controller
         }
 
         return match ($kind) {
-            ProductRawImage::KIND_PKG => self::DEFAULT_PKG_AI_PROMPT,
             ProductRawImage::KIND_HERO_2 => self::DEFAULT_HERO_2_AI_PROMPT,
             default => self::DEFAULT_AI_PROMPT,
         };
@@ -943,7 +926,6 @@ class RawImagesController extends Controller
                 'aiPromptSaveUrl' => route('raw.images.hero.2.ai.prompt.save'),
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
-                'savedAiPkgPrompt' => $this->savedAiPrompt(ProductRawImage::KIND_PKG),
             ]);
         }
 
@@ -960,7 +942,6 @@ class RawImagesController extends Controller
                 'aiPromptSaveUrl' => route('raw.images.batch.coo.ai.prompt.save'),
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
-                'savedAiPkgPrompt' => $this->savedAiPrompt(ProductRawImage::KIND_PKG),
             ]);
         }
 
@@ -976,7 +957,6 @@ class RawImagesController extends Controller
             'aiPromptSaveUrl' => route('raw.images.ai.prompt.save'),
             'cachedImageUrl' => route('raw.images.cached.image'),
             'savedAiPrompt' => $this->savedAiPrompt($kind),
-            'savedAiPkgPrompt' => $this->savedAiPrompt(ProductRawImage::KIND_PKG),
         ]);
     }
 
@@ -1055,11 +1035,6 @@ class RawImagesController extends Controller
 
     private function imageKindFromRequest(Request $request): string
     {
-        $source = strtolower(trim((string) $request->input('image_kind', $request->input('source', ''))));
-        if (in_array($source, ['pkg', 'pkg_raw', 'package'], true)) {
-            return ProductRawImage::KIND_PKG;
-        }
-
         return $this->kindFromRequest($request);
     }
 
