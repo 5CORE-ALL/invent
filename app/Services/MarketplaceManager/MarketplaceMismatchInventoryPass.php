@@ -95,18 +95,27 @@ final class MarketplaceMismatchInventoryPass
             default => $empty,
         };
 
+        $updated = (int) ($result['updated'] ?? 0);
+        $failed = (int) ($result['failed'] ?? 0);
+        $skipped = (int) ($result['skipped'] ?? 0);
+        $detail = trim((string) ($result['message'] ?? ''));
+        $message = sprintf(
+            'Mismatch pass: attempted %d, updated %d, failed %d, skipped %d.',
+            count($mismatch),
+            $updated,
+            $failed,
+            $skipped
+        );
+        if ($detail !== '' && ($updated === 0 || ! empty($result['rate_limited']))) {
+            $message .= ' '.$detail;
+        }
+
         return [
             'attempted' => count($mismatch),
-            'updated' => (int) ($result['updated'] ?? 0),
-            'failed' => (int) ($result['failed'] ?? 0),
-            'skipped' => (int) ($result['skipped'] ?? 0),
-            'message' => sprintf(
-                'Mismatch pass: attempted %d, updated %d, failed %d, skipped %d.',
-                count($mismatch),
-                (int) ($result['updated'] ?? 0),
-                (int) ($result['failed'] ?? 0),
-                (int) ($result['skipped'] ?? 0)
-            ),
+            'updated' => $updated,
+            'failed' => $failed,
+            'skipped' => $skipped,
+            'message' => $message,
         ];
     }
 
