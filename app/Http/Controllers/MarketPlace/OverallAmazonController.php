@@ -4586,7 +4586,7 @@ class OverallAmazonController extends Controller
 
             // L1 = lowest non-ignored by landed (price + paid delivery; FREE does not add)
             $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
-            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored));
+            $lowest = $competitors->first(fn ($comp) => ! AmazonSkuCompetitor::isIgnored($comp));
             
             return response()->json([
                 'success' => true,

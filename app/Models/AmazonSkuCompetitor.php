@@ -120,10 +120,27 @@ class AmazonSkuCompetitor extends Model
         return round($price, 2);
     }
 
+    /**
+     * Whether a competitor is excluded from L1. Handles model/array and 1/"1"/true.
+     * Do not use empty($item->ignored) — Eloquent __isset makes that unreliable.
+     */
+    public static function isIgnored($item): bool
+    {
+        $v = is_array($item) ? ($item['ignored'] ?? false) : (is_object($item) ? ($item->ignored ?? false) : false);
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_numeric($v)) {
+            return (int) $v !== 0;
+        }
+
+        return in_array(strtolower(trim((string) $v)), ['1', 'true', 'yes', 'on'], true);
+    }
+
     public static function lowestFromCollection($items)
     {
         // L1 = lowest non-ignored by landed (price + paid delivery; FREE = no add)
-        $active = collect($items)->filter(fn ($item) => empty($item->ignored));
+        $active = collect($items)->filter(fn ($item) => ! self::isIgnored($item));
         $pool = $active->isNotEmpty() ? $active : collect();
 
         return $pool->sortBy(fn ($item) => self::landedPrice($item) ?? PHP_FLOAT_MAX)->first();
