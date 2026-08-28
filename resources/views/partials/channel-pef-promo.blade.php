@@ -3218,7 +3218,7 @@
         /** Live S PRC from Dil/cvr rules only. Never uses stored SPRICE or live Price. */
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
-            return chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0);
+            return chPromoResolveTemuSprice(d, chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0));
         }
         function chPromoSpricePatch(val) {
             const n = Number(val);
@@ -3515,6 +3515,14 @@
         }
         function chPromoIsTemuPromoChannel() {
             return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+        }
+        /** Temu: S PRC = min(Discounted, eBay, Amz, displayed LMP). */
+        function chPromoResolveTemuSprice(d, sprice) {
+            if (d && typeof temuPrepareSpriceForSave === 'function' && chPromoIsTemuPromoChannel()) {
+                const v = Number(temuPrepareSpriceForSave(d, sprice));
+                if (v > 0) return chPromoRound2(v);
+            }
+            return chPromoRound2(sprice);
         }
         /** Temu 0 Sold Dil→Target GROI% owns S PRC. Dil/PRMT/CPN must not overwrite it. */
         function chPromoTemuZeroSoldOwnsSprice(d) {
@@ -6869,7 +6877,7 @@
                 const rowData = item.row.getData();
                 const plan = computeChannelPushPrcPlan(rowData);
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
-                const fill = chPromoFloorShopifySpriceToAmz(rowData, (chPromoTemuZeroSoldOwnsSprice(rowData) || chPromoKeepZeroSoldPrcSprice(rowData))
+                const fill = chPromoResolveTemuSprice(rowData, chPromoFloorShopifySpriceToAmz(rowData, (chPromoTemuZeroSoldOwnsSprice(rowData) || chPromoKeepZeroSoldPrcSprice(rowData))
                     ? (chPromoZeroSoldTargetPrice(rowData) || chPromoGetSprice(rowData) || 0)
                     : (chPromoPrmtCpnComboEnabled()
                         ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
@@ -6877,7 +6885,7 @@
                             ? (chPromoReverbSpriceFromStdBothPrmt(rowData) || 0)
                             : (chPromoEbayStdMinusPrmtCpnEnabled()
                                 ? (chPromoSpriceFromStdTPromo(rowData) || 0)
-                                : chPromoPlanSaleSprice(plan)))));
+                                : chPromoPlanSaleSprice(plan))))));
                 if (!plan || !(fill > 0)) {
                     fail++;
                     next();
@@ -7045,10 +7053,7 @@
             if (!chPromoEbayStdMinusPrmtCpnEnabled() || !row) return null;
             const d = row.getData();
             if (!chPromoIsChildRow(d)) return null;
-            let fill = chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
-            if (typeof temuPrepareSpriceForSave === 'function' && chPromoIsTemuPromoChannel()) {
-                fill = temuPrepareSpriceForSave(d, fill);
-            }
+            let fill = chPromoResolveTemuSprice(d, chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d)));
             const sku = chPromoSku(d);
             if (!sku || !(fill > 0)) return null;
             const current = chPromoRound2(chPromoGetSprice(d));
@@ -7109,7 +7114,7 @@
                 const sku = chPromoSku(d);
                 const key = chPromoSkuKey(sku);
                 if (!sku || !key || queuedKeys.has(key)) return;
-                const fill = chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
+                const fill = chPromoResolveTemuSprice(d, chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d)));
                 if (!(fill > 0)) return;
                 const current = chPromoGetSprice(d);
                 const live = chPromoLivePrice(d);
@@ -7404,7 +7409,7 @@
                 }
                 const item = ready[i++];
                 const rowData = item.row.getData();
-                const fill = chPromoFloorShopifySpriceToAmz(rowData, chPromoSpriceFromStdTPromo(rowData));
+                const fill = chPromoResolveTemuSprice(rowData, chPromoFloorShopifySpriceToAmz(rowData, chPromoSpriceFromStdTPromo(rowData)));
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
                 if (!(fill > 0)) {
                     fail++;

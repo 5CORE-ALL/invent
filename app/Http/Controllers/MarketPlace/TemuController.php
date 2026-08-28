@@ -3616,12 +3616,10 @@ class TemuController extends Controller
                     $lmp_link = $temuLmpRow->lmp_link;
                 }
 
-                // Temu 2 (same as /pricing-master-cvr): expose Temu Recovery as LMP
+                // Temu 1 & Temu 2: LMP column is Temu Recovery.
                 // ≤$27 → (Price × 0.85) + 2.99; >$27 → Price × 0.85. Keep raw for modal / LMP-15%.
                 $lmpRaw = $lmp !== null && $lmp !== '' && is_numeric($lmp) ? (float) $lmp : null;
-                if ($isTemu2Pricing) {
-                    $lmp = $this->temuLmpRecoveryPrice($lmpRaw);
-                }
+                $lmp = $this->temuLmpRecoveryPrice($lmpRaw);
 
                 // Std Prc — shared amazon_data_view.STANDARD_PRICE; inherit from Sku Link LMP siblings
                 $stdPrc = $lookupStdPrc($sku);
