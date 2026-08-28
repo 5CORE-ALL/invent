@@ -559,6 +559,52 @@
             max-width: 100%;
             height: auto !important;
         }
+        #lmpModal .lmp-text-preview-btn {
+            flex-shrink: 0;
+            color: #0d6efd;
+            line-height: 1;
+            padding: 0 2px;
+            border: 0;
+            background: none;
+            cursor: pointer;
+        }
+        #lmpModal .lmp-text-preview-btn:hover { color: #0a58ca; }
+        .lmp-text-preview-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.45);
+            padding: 1.5rem;
+        }
+        .lmp-text-preview-overlay.is-open { display: flex; }
+        .lmp-text-preview-card {
+            width: min(640px, 100%);
+            max-height: 80vh;
+            overflow: auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.28);
+        }
+        .lmp-text-preview-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #334155;
+            color: #fff;
+            border-radius: 10px 10px 0 0;
+        }
+        .lmp-text-preview-body {
+            padding: 16px 18px 18px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
     </style>
 @endsection
 
@@ -1011,6 +1057,16 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="lmpTextPreviewOverlay" class="lmp-text-preview-overlay" hidden>
+        <div class="lmp-text-preview-card" role="dialog" aria-modal="true">
+            <div class="lmp-text-preview-head">
+                <strong id="lmpTextPreviewTitle">Details</strong>
+                <button type="button" class="btn-close btn-close-white" id="lmpTextPreviewClose" aria-label="Close"></button>
+            </div>
+            <div class="lmp-text-preview-body" id="lmpTextPreviewBody"></div>
         </div>
     </div>
 
@@ -7847,6 +7903,28 @@
                 });
             }
 
+            function lmpTextPreviewCell(label, text, maxChars) {
+                const raw = (text == null) ? '' : String(text).trim();
+                if (!raw || raw === '—' || raw === 'N/A') {
+                    return '<span style="color:#999;">—</span>';
+                }
+                const limit = maxChars || 80;
+                const short = raw.length > limit ? (raw.substring(0, limit) + '…') : raw;
+                return '<span class="d-inline-flex align-items-center gap-1" style="max-width:100%;">'
+                    + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escAttr(short) + '</span>'
+                    + '<button type="button" class="lmp-text-preview-btn" title="View full ' + escAttr(label) + '"'
+                    + ' data-label="' + escAttr(label) + '" data-text="' + escAttr(raw) + '">'
+                    + '<i class="fa fa-search"></i></button></span>';
+            }
+            function openLmpTextPreview(label, text) {
+                $('#lmpTextPreviewTitle').text(label || 'Details');
+                $('#lmpTextPreviewBody').text(text || '');
+                $('#lmpTextPreviewOverlay').prop('hidden', false).addClass('is-open');
+            }
+            function closeLmpTextPreview() {
+                $('#lmpTextPreviewOverlay').removeClass('is-open').prop('hidden', true);
+            }
+
             // Render Competitors List Function
             function renderCompetitorsList(competitors, lowestPrice) {
                 if (!competitors || competitors.length === 0) {
@@ -7938,6 +8016,8 @@
                     const productLink = item.link || item.product_link || '#';
                     const productTitle = item.title || item.product_title || 'N/A';
                     const sellerName = item.seller_name || '—';
+                    const titleCell = lmpTextPreviewCell('Product Title', productTitle, 80);
+                    const sellerCell = lmpTextPreviewCell('Seller', sellerName, 28);
                     const imageUrl = item.image || '';
                     const imageHtml = imageUrl ? `<img src="${imageUrl}" style="width: 50px; height: 50px; object-fit: contain;" />` : '<span style="color: #999;">—</span>';
                     
@@ -7994,8 +8074,8 @@
                             <td>
                                 <span class="text-primary" style="font-weight: 600; font-size: 11px;">${item.asin || 'N/A'}</span>
                             </td>
-                            <td style="font-size: 11px; width: 750px; min-width: 750px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escAttr(productTitle)}">${productTitle.substring(0, 180)}${productTitle.length > 180 ? '...' : ''}</td>
-                            <td style="font-size: 11px;">${sellerName}</td>
+                            <td style="font-size: 11px; width: 750px; min-width: 360px; max-width: 750px;">${titleCell}</td>
+                            <td style="font-size: 11px; max-width: 180px;">${sellerCell}</td>
                             <td><strong>${priceBadge}</strong></td>
                             <td class="text-center fw-bold lmp-sp-cell">${modalSpText}</td>
                             <td class="text-center lmp-groi-cell">${modalGroiHtml}</td>
@@ -8035,6 +8115,25 @@
             }
 
             // Live SP → GROI% / NROI% in modal; blur/Enter saves to grid SP column
+            $(document).on('click', '#lmpModal .lmp-text-preview-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openLmpTextPreview($(this).attr('data-label'), $(this).attr('data-text'));
+            });
+            $(document).on('click', '#lmpTextPreviewClose, #lmpTextPreviewOverlay', function(e) {
+                if (e.target === this || e.target.id === 'lmpTextPreviewClose') {
+                    closeLmpTextPreview();
+                }
+            });
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && $('#lmpTextPreviewOverlay').hasClass('is-open')) {
+                    closeLmpTextPreview();
+                }
+            });
+            $('#lmpModal').on('hidden.bs.modal', function() {
+                closeLmpTextPreview();
+            });
+
             $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
                 const $cb = $(this);
                 const id = $cb.attr('data-id') || $cb.data('id');

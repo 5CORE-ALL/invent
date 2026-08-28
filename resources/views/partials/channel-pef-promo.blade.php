@@ -3263,6 +3263,13 @@
                 if (st === 'processing') chPromoRefreshPushCell(row, field, btn, statusKey, title);
             });
         }
+        function chPromoEbayStockQty(d) {
+            const raw = d && (d['eBay Stock'] != null && d['eBay Stock'] !== ''
+                ? d['eBay Stock']
+                : d['E Stock']);
+            const n = Number(raw);
+            return isFinite(n) && n > 0 ? n : 0;
+        }
         function chPromoInv(d) {
             return Number(d[chPromoCfg.invField || 'INV']) || Number(d.INV) || Number(d.inventory) || Number(d.inv) || 0;
         }
@@ -4235,8 +4242,13 @@
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
             raw = Number(d && d.percentage);
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
-            if (typeof EBAY2_TAKEHOME !== 'undefined') {
-                const t = Number(EBAY2_TAKEHOME);
+            const globals = [];
+            if (typeof EBAY_TAKEHOME !== 'undefined') globals.push(EBAY_TAKEHOME);
+            if (typeof EBAY2_TAKEHOME !== 'undefined') globals.push(EBAY2_TAKEHOME);
+            if (typeof EBAY3_TAKEHOME !== 'undefined') globals.push(EBAY3_TAKEHOME);
+            if (typeof EBAY2OP_TAKEHOME !== 'undefined') globals.push(EBAY2OP_TAKEHOME);
+            for (let i = 0; i < globals.length; i++) {
+                const t = Number(globals[i]);
                 if (isFinite(t) && t > 0) return t > 1 ? (t / 100) : t;
             }
             return 1;
@@ -4261,7 +4273,6 @@
         function chPromoZeroSoldRuleSprice(d) {
             if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) return 0;
             if (!d || typeof chPromoIsZeroSoldRow !== 'function' || !chPromoIsZeroSoldRow(d)) return 0;
-            if (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d)) return 0;
             if (!(chPromoLp(d) > 0)) return 0;
             const roi = typeof chPromoZeroSoldGroiForRow === 'function'
                 ? chPromoZeroSoldGroiForRow(d)
@@ -4462,9 +4473,13 @@
         }
         function chPromoIsZeroSoldRow(d) {
             if (!d || d.is_parent_summary || !chPromoIsChildRow(d) || d.is_parent) return false;
-            if (!(chPromoInv(d) > 0)) return false;
-            if (chPromoIsEbayChannel()
-                || CHANNEL_PROMO_CHANNEL === 'aliexpress'
+            const inv = chPromoInv(d);
+            const ebayStock = chPromoIsEbayChannel() ? chPromoEbayStockQty(d) : 0;
+            if (!(inv > 0) && !(ebayStock > 0)) return false;
+            if (chPromoIsEbayChannel()) {
+                return !(chPromoEbaySaleQty(d) > 0);
+            }
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress'
                 || CHANNEL_PROMO_CHANNEL === 'shein'
                 || (chPromoCfg && chPromoCfg.soldField)) {
                 return !chPromoHasSaleQty(d);
@@ -5462,6 +5477,9 @@
             if (!$formula.length) return;
             if (chPromoIsTemuPromoChannel()) {
                 $formula.text('SGROI = (S R Price × 0.95 − Temu Ship − LP) / LP; Apply back-solves S PRC so SGROI = Target');
+            } else if (chPromoIsEbayChannel()) {
+                const m = chPromoTakehomeMargin({});
+                $formula.text('S PRC = (LP × (1 + GROI%/100) + Ship) / ' + (m > 0 ? m.toFixed(2) : 'margin'));
             }
         }
         const CH_ZS_BANDS = [
@@ -5814,7 +5832,6 @@
             const ready = targets.filter(function(t) {
                 const d = (t.d || (t.row && t.row.getData())) || {};
                 if (!chPromoIsZeroSoldRow(d)
-                    || (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d))
                     || !(chPromoLp(d) > 0)
                     || (CHANNEL_PROMO_CHANNEL === 'aliexpress' && !(chPromoStdBase(d) > 0))) {
                     return false;
@@ -5928,7 +5945,6 @@
         }
         function chPromoZeroSoldDilEligible(d) {
             if (!d || !chPromoIsZeroSoldRow(d)) return false;
-            if (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d)) return false;
             if (!(chPromoLp(d) > 0)) return false;
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && !(chPromoStdBase(d) > 0)) return false;
             return true;
@@ -6044,8 +6060,7 @@
                 for (let i = 0; i < targets.length; i++) {
                     const item = targets[i];
                     const d = item.row.getData();
-                    if (!chPromoIsZeroSoldRow(d)
-                        || (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d))) {
+                    if (!chPromoIsZeroSoldRow(d)) {
                         skipped++;
                         continue;
                     }
