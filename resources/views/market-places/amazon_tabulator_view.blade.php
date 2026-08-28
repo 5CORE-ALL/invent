@@ -1167,7 +1167,7 @@
         const TABULATOR_COLUMN_CHANNEL = 'amazon_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         const AMAZON_REMOVED_COL_FIELDS = {
-            NR: true, nrp: true, NRL: true, FBA_Quantity: true, S_STATUS: true, PLS_STATUS: true
+            NR: true, nrp: true, NRL: true, FBA_Quantity: true, FBA: true, fba: true, fba_price: true, S_STATUS: true, PLS_STATUS: true
         };
         const TABULATOR_COLUMN_ORDER_URL = '/tabulator-column-order';
         let amazonApplyingColumnOrder = false;
@@ -1308,15 +1308,6 @@
                 isNotMap = Math.round((diff / invNum) * 100) > 3;
             }
             return !isNotMap;
-        }
-
-        /** FBA row: fba flag or SKU/Parent contains "FBA" (aligns with rowIsFba in filters). */
-        function amazonRowIsFba(rowData) {
-            if (!rowData) return false;
-            const fbaFlag = rowData.fba;
-            if (fbaFlag === 1 || fbaFlag === '1' || fbaFlag === true) return true;
-            const sku = String(rowData['(Child) sku'] || rowData['Parent'] || '').toUpperCase();
-            return sku.indexOf('FBA') !== -1;
         }
 
         /** Parent group key: Parent/parent field, or "PARENT xxx" pseudo-SKU on summary rows (matches table filters). */
@@ -1950,7 +1941,7 @@
 
         // Hover-to-chart for badges (500ms delay). Filter badges: no hover chart so click = filter only.
         let amzHoverTimer = null;
-        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge, .missing-amz-fba-filter-badge, .missing-amz-nonfba-filter-badge';
+        var amzHoverChartFilterBadgeSelector = '.sold-filter-badge, .map-filter-badge';
         $(document).on('mouseenter', '.amz-hover-chart', function() {
             if ($(this).is(amzHoverChartFilterBadgeSelector)) return; // filter badges: click applies filter, never open chart on hover
             const metric = $(this).data('metric');
@@ -4635,28 +4626,6 @@
                     ...amazonPefPromoColumns(),
 
                     {
-                        title: "FBA<br> prc",
-                        field: "fba_price",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const val = cell.getValue();
-                            const price = parseFloat(val);
-                            if (val == null || val === '' || (price === 0 && val !== 0)) return '';
-                            const lmpPrice = parseFloat(rowData.lmp_price || 0);
-                            let color = '';
-                            if (lmpPrice > 0) {
-                                if (price > lmpPrice) color = 'color: #dc3545; font-weight: 600;';
-                                else if (price < lmpPrice) color = 'color: darkgreen;';
-                            }
-                            return `<span style="${color}">${Number(price).toFixed(2)}</span>`;
-                        },
-                        sorter: "number",
-                        width: 65
-                    },
-
-                    {
                         title: "LP",
                         field: "LP_productmaster",
                         hozAlign: "center",
@@ -5513,8 +5482,7 @@
                 let prcGtLmpCount = 0;
                 let mapCount = 0;
                 let missingCount = 0;
-                let missingAmazonFbaCount = 0;
-                let missingAmazonNonFbaCount = 0;
+                let missingAmazonCount = 0;
                 let totalViews = 0;
 
                 data.forEach(row => {
@@ -5542,8 +5510,8 @@
                         const nrValue = row['NR'] || '';
                         const isMissingAmazon = row['is_missing_amazon'] || false;
 
-                        if (isMissingAmazon && nrValue !== 'NR' && !amazonRowIsFba(row)) {
-                            missingAmazonNonFbaCount++;
+                        if (isMissingAmazon && nrValue !== 'NR') {
+                            missingAmazonCount++;
                         }
 
                         if (inv > 0 && nrValue === 'REQ' && !isMissingAmazon && price > 0) {
@@ -5551,7 +5519,7 @@
                             if (invAmzNum > 0) {
                                 if (amazonInvWithinMapTolerance(inv, invAmzNum)) {
                                     mapCount++;
-                                } else if (!amazonRowIsFba(row)) {
+                                } else {
                                     missingCount++;
                                 }
                             }
@@ -5644,9 +5612,9 @@
                         zero_sold_count: zeroSoldCount,
                         map_count: mapCount,
                         nmap_count: missingCount,
-                        missing_count: missingAmazonFbaCount + missingAmazonNonFbaCount,
-                        missing_fba_count: missingAmazonFbaCount,
-                        missing_nonfba_count: missingAmazonNonFbaCount,
+                        missing_count: missingAmazonCount,
+                        missing_fba_count: 0,
+                        missing_nonfba_count: missingAmazonCount,
                         prc_gt_lmp_count: prcGtLmpCount,
                         total_pft: Math.round(totalPftAmt),
                         total_sales: Math.round(SERVER_AMZ_SALES_L30),
@@ -5701,7 +5669,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';

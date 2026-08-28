@@ -37,7 +37,6 @@ use App\Models\AmazonChannelSummary;
 use App\Models\AmazonSeoAuditHistory;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonCompetitorAsin;
-use App\Models\FbaPrice;
 use App\Services\AmazonCvrCpnAutoPushService;
 use App\Services\AmazonDilPrmtAutoPushService;
 use App\Services\AmazonLivePriceFetcher;
@@ -249,14 +248,6 @@ class OverallAmazonController extends Controller
             ]);
         }
 
-        // FBA price by SKU (seller_sku like "ABC FBA" -> key "ABC")
-        $fbaPriceBySku = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->get()
-            ->keyBy(function ($item) {
-                $base = preg_replace('/\s*FBA\s*/i', '', $item->seller_sku ?? '');
-                return strtoupper(str_replace(' ', '', trim($base)));
-            });
-
         // Get Amazon inventory from product_stock_mappings table
         $stockMappings = ProductStockMapping::whereIn('sku', $skus)
             ->get()
@@ -391,10 +382,6 @@ class OverallAmazonController extends Controller
             $row['cvr_prev_views'] = $prevHit !== null ? (int) $prevHit['views'] : null;
             $row['cvr_prev_a_l30'] = $prevHit !== null ? (int) $prevHit['a_l30'] : null;
             $row['cvr_prev_date'] = $cvrPrevDate;
-
-            // FBA price for same SKU (from FbaPrice table)
-            $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
-            $row['fba_price'] = $fbaPriceRecord ? round(floatval($fbaPriceRecord->price ?? 0), 2) : null;
 
             $row['INV'] = $shopify->inv ?? 0;
             
