@@ -3522,7 +3522,12 @@
                 const v = Number(temuPrepareSpriceForSave(d, sprice));
                 if (v > 0) return chPromoRound2(v);
             }
-            return chPromoRound2(sprice);
+            const n = chPromoRound2(sprice);
+            if (typeof temuClampSpriceBand2699 === 'function') {
+                const clamped = Number(temuClampSpriceBand2699(n));
+                if (clamped > 0) return chPromoRound2(clamped);
+            }
+            return n;
         }
         /** Temu 0 Sold Dil→Target GROI% owns S PRC. Dil/PRMT/CPN must not overwrite it. */
         function chPromoTemuZeroSoldOwnsSprice(d) {
@@ -4172,7 +4177,11 @@
                 if (g < roi) lo = mid;
                 else hi = mid;
             }
-            return (isFinite(best) && best > 0) ? chPromoRound2(best) : 0;
+            let out = (isFinite(best) && best > 0) ? chPromoRound2(best) : 0;
+            if (out > 0 && typeof temuClampSpriceBand2699 === 'function') {
+                out = chPromoRound2(temuClampSpriceBand2699(out));
+            }
+            return out;
         }
         /** GROI back-solve: (sprice×margin − ship − lp) / lp × 100 = Target. Temu uses S R Price × 0.95. */
         function chPromoSpriceFromTargetRoi(d, roiPct) {
@@ -7854,7 +7863,11 @@
         function chPromoZeroSoldTargetPrice(d) {
             const roi = chPromoZeroSoldGroiForRow(d);
             if (roi == null) return 0;
-            return chPromoSpriceFromTargetRoi(d, roi);
+            let price = chPromoSpriceFromTargetRoi(d, roi);
+            if (typeof temuClampSpriceBand2699 === 'function') {
+                price = Number(temuClampSpriceBand2699(price)) || price;
+            }
+            return price;
         }
         function chPromoZeroSoldCellHtml(d) {
             if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) {
@@ -7864,7 +7877,7 @@
                 return '<span style="color:#999;">N/A</span>';
             }
             const roi = chPromoZeroSoldGroiForRow(d);
-            const price = chPromoSpriceFromTargetRoi(d, roi);
+            let price = chPromoZeroSoldTargetPrice(d);
             if (!(price > 0) || roi == null) {
                 return '<span style="color:#999;">N/A</span>';
             }

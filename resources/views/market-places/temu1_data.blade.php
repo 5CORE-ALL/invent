@@ -85,6 +85,23 @@
             margin-right: 5px;
         }
 
+        #lmpModal tr.lmp-lowest-row,
+        #lmpModal tr.lmp-lowest-row > td {
+            background-color: #dbeafe !important;
+        }
+        #lmpModal tr.lmp-ignored-row,
+        #lmpModal tr.lmp-ignored-row > td {
+            opacity: 0.7;
+            background: #f1f3f5 !important;
+        }
+        #lmpModal tr.lmp-ignored-row td {
+            text-decoration: line-through;
+            text-decoration-color: #adb5bd;
+        }
+        #lmpModal tr.lmp-ignored-row td:last-child {
+            text-decoration: none;
+        }
+
         /* eBay-style color coding */
         .dil-percent-value {
             font-weight: bold;
@@ -711,7 +728,7 @@
                                     <th style="width: 90px;" title="Price + Delivery (defaults Del $2.99 when Price &lt; $27)">Price+D</th>
                                     <th style="width: 80px;" title="(Price+D − S PRC) / Price+D. Same as the outer Diff column.">Diff</th>
                                     <th>Link</th>
-                                    <th style="width: 80px;">Actions</th>
+                                    <th style="width: 150px;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="lmpEntriesContainer"></tbody>
@@ -719,8 +736,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="lmpModalSaveBtn"><i class="fas fa-save me-1"></i> Save</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1022,6 +1038,13 @@
         return (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
     }
     const TEMU_FULL_PRICE_MULT = 1.1364;
+    function temuClampSpriceBand2699(sprice) {
+        const n = parseFloat(sprice);
+        if (!isFinite(n) || !(n > 0)) return n > 0 ? n : 0;
+        if (n >= 26.99 - 0.001 && n <= 30.99 + 0.001) return 26.99;
+        return +n.toFixed(2);
+    }
+    window.temuClampSpriceBand2699 = temuClampSpriceBand2699;
     function temu2RPriceFromRow(rowData) {
         const basePrice = parseFloat(rowData && rowData.base_price) || 0;
         if (basePrice > 0) return basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
@@ -1875,6 +1898,8 @@
 
         if (passed > 0 && passed + 0.0001 < sprice) sprice = +passed.toFixed(2);
 
+        sprice = temuClampSpriceBand2699(sprice);
+
         const labels = [];
         if (ebay > 0 && Math.abs(sprice - ebay) <= 0.015 && discounted > ebay + 0.0001) labels.push('EB');
         if (amz > 0 && Math.abs(sprice - amz) <= 0.015 && discounted > amz + 0.0001) labels.push('Amz');
@@ -1884,7 +1909,8 @@
 
     function temuPrepareSpriceForSave(rowData, sprice) {
         const cap = temuSpriceCapResult(rowData, sprice);
-        return cap.sprice > 0 ? cap.sprice : (parseFloat(sprice) || sprice);
+        const out = cap.sprice > 0 ? cap.sprice : (parseFloat(sprice) || sprice);
+        return temuClampSpriceBand2699(out);
     }
 
     function temuDisplayedSprice(row) {
@@ -4144,11 +4170,14 @@
                         const cap = typeof temuSpriceCapResult === 'function'
                             ? temuSpriceCapResult(rowData, discounted)
                             : null;
-                        let value = (cap && cap.sprice > 0) ? cap.sprice : discounted;
+                        let value = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : ((cap && cap.sprice > 0) ? cap.sprice : discounted);
                         if (!(value > 0) && window.SpriceLmpCap) {
                             const lmpCap = SpriceLmpCap.apply(rowData, discounted);
                             if (lmpCap && lmpCap.shown > 0) value = lmpCap.shown;
                         }
+                        value = temuClampSpriceBand2699(value);
                         const live = parseFloat(rowData.temu_price) || 0;
                         const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                         if (!(value > 0)) return '';
@@ -5134,6 +5163,9 @@
         // LMP Modal: Add New form + table list; lowest row highlighted with LOWEST badge
         let lmpModalSku = '';
         let lmpModalSprice = 0;
+        let lmpSaveTimer = null;
+        let lmpSaveInFlight = false;
+        let lmpSaveQueued = false;
         function openLmpModal(sku, entries) {
             lmpModalSku = sku || '';
             lmpModalSprice = 0;
@@ -5158,7 +5190,9 @@
                     tbody,
                     entry.price !== undefined && entry.price !== null ? entry.price : '',
                     entry.delivery !== undefined && entry.delivery !== null ? entry.delivery : '',
-                    entry.link || ''
+                    entry.link || '',
+                    !!entry.ignored,
+                    entry.source_sku || ''
                 );
             });
             updateLmpLowestHighlight();
@@ -5175,7 +5209,17 @@
             if (delivery <= 0 && num < 27) delivery = 2.99;
             return num + delivery;
         }
-        function appendLmpTableRow(tbody, price, delivery, link) {
+        function setLmpIgnoreButton($tr, ignored) {
+            const $btn = $tr.find('.lmp-ignore-row');
+            if (ignored) {
+                $tr.addClass('lmp-ignored-row').data('ignored', 1);
+                $btn.removeClass('btn-outline-secondary').addClass('btn-secondary').text('Ignored').attr('title', 'Include in L1');
+            } else {
+                $tr.removeClass('lmp-ignored-row').data('ignored', 0);
+                $btn.removeClass('btn-secondary').addClass('btn-outline-secondary').text('Ignore').attr('title', 'Ignore for L1');
+            }
+        }
+        function appendLmpTableRow(tbody, price, delivery, link, ignored, sourceSku) {
             const tr = $('<tr class="lmp-entry-row">' +
                 '<td class="lmp-num text-center align-middle"></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
@@ -5183,28 +5227,124 @@
                 '<td class="align-middle text-center"><span class="lmp-price-d text-muted">—</span></td>' +
                 '<td class="align-middle text-center"><span class="lmp-row-diff text-muted">—</span></td>' +
                 '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
-                '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+                '<td class="align-middle"><div class="d-flex gap-1">' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary lmp-ignore-row" title="Ignore for L1">Ignore</button>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button>' +
+                '</div></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
+            tr.data('source-sku', sourceSku || lmpModalSku || '');
+            setLmpIgnoreButton(tr, !!ignored);
             tbody.append(tr);
             updateTemu2LmpPriceD(tr);
-            tr.find('.lmp-remove-row').on('click', function(e) {
-                e.preventDefault();
-                tr.remove();
-                renumberLmpRows();
-                updateLmpLowestHighlight();
-            });
-            tr.find('.lmp-price, .lmp-delivery, .lmp-link').on('input', function() {
-                updateTemu2LmpPriceD(tr);
-                updateLmpLowestHighlight();
-            });
-            tr.find('.lmp-open-link').on('click', function(e) {
-                e.preventDefault();
-                const href = (tr.find('.lmp-link').val() || '').trim();
-                if (href && (href.startsWith('http://') || href.startsWith('https://'))) window.open(href, '_blank');
-            });
             renumberLmpRows();
+        }
+        function collectLmpModalEntries() {
+            const entries = [];
+            $('#lmpEntriesContainer .lmp-entry-row').each(function() {
+                const $tr = $(this);
+                const price = $tr.find('.lmp-price').val();
+                const delivery = $tr.find('.lmp-delivery').val();
+                const link = $tr.find('.lmp-link').val();
+                if (!price && !link && !delivery) return;
+                const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
+                entries.push({
+                    price: price ? parseFloat(price) : null,
+                    delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
+                    link: link ? String(link).trim() : null,
+                    ignored: $tr.hasClass('lmp-ignored-row') || $tr.data('ignored') == 1,
+                    source_sku: $tr.data('source-sku') || lmpModalSku
+                });
+            });
+            return entries;
+        }
+        function syncLmpModalToTable(entries) {
+            if (typeof table === 'undefined' || !table || !lmpModalSku) return;
+            const meta = typeof getTemu2LowestLmpMeta === 'function'
+                ? getTemu2LowestLmpMeta({ lmp_entries: entries })
+                : { raw: 0 };
+            const raw = meta.raw > 0 ? meta.raw : null;
+            const recovery = (raw != null && typeof temuLmpRecovery === 'function') ? temuLmpRecovery(raw) : raw;
+            let lowestLink = null;
+            (entries || []).forEach(function(e) {
+                if (e.ignored) return;
+                const eff = typeof temuLmpEntryEffective === 'function' ? temuLmpEntryEffective(e) : null;
+                if (eff && raw != null && Math.abs(eff.raw - raw) < 0.00001 && !lowestLink) {
+                    lowestLink = e.link || null;
+                }
+            });
+            const targets = {};
+            targets[String(lmpModalSku)] = true;
+            try {
+                table.getRows().forEach(function(row) {
+                    const d = row.getData() || {};
+                    const sku = String(d.sku || '');
+                    const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                    if (targets[sku] || linked.indexOf(lmpModalSku) !== -1 || linked.some(function(s) { return targets[String(s)]; })) {
+                        targets[sku] = true;
+                        linked.forEach(function(s) { if (s) targets[String(s)] = true; });
+                    }
+                });
+            } catch (e) { /* ignore */ }
+            try {
+                table.getRows().forEach(function(row) {
+                    const d = row.getData() || {};
+                    if (!targets[String(d.sku || '')]) return;
+                    row.update({
+                        lmp_entries: entries,
+                        lmp_raw: raw,
+                        lmp: recovery,
+                        lmp_link: lowestLink
+                    });
+                    row.reformat();
+                });
+            } catch (e) { /* ignore */ }
+        }
+        function saveLmpEntriesNow() {
+            if (!lmpModalSku) return;
+            if (lmpSaveInFlight) {
+                lmpSaveQueued = true;
+                return;
+            }
+            const entries = collectLmpModalEntries();
+            lmpSaveInFlight = true;
+            $.ajax({
+                url: '{{ route("temu.lmp.save") }}',
+                method: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                data: JSON.stringify({
+                    sku: lmpModalSku,
+                    lmp_entries: entries
+                }),
+                success: function(response) {
+                    if (response && response.success) {
+                        syncLmpModalToTable(entries);
+                    } else {
+                        showToast((response && (response.message || response.error)) || 'Failed to save LMP', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || 'Failed to save LMP';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    lmpSaveInFlight = false;
+                    if (lmpSaveQueued) {
+                        lmpSaveQueued = false;
+                        saveLmpEntriesNow();
+                    }
+                }
+            });
+        }
+        function scheduleLmpAutosave() {
+            clearTimeout(lmpSaveTimer);
+            lmpSaveTimer = setTimeout(saveLmpEntriesNow, 400);
         }
         function updateTemu2LmpPriceD(tr) {
             const $el = $(tr).find('.lmp-price-d');
@@ -5239,19 +5379,48 @@
             let minTr = null;
             $('#lmpEntriesContainer .lmp-entry-row').each(function() {
                 const tr = $(this);
-                tr.removeClass('table-dark');
+                tr.removeClass('table-dark lmp-lowest-row');
                 tr.find('.lmp-lowest-badge').empty();
                 updateTemu2LmpPriceD(tr);
+                if (tr.hasClass('lmp-ignored-row')) return;
                 const num = getTemu2LmpEffectivePrice(tr);
                 if (num !== null) {
                     if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
                 }
             });
             if (minTr && minVal !== null) {
-                minTr.addClass('table-dark');
+                minTr.addClass('lmp-lowest-row');
                 minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">LOWEST</span>');
             }
         }
+        $(document).off('click.templmp', '#lmpEntriesContainer .lmp-remove-row').on('click.templmp', '#lmpEntriesContainer .lmp-remove-row', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).closest('tr').remove();
+            renumberLmpRows();
+            updateLmpLowestHighlight();
+            saveLmpEntriesNow();
+        });
+        $(document).off('click.templmp', '#lmpEntriesContainer .lmp-ignore-row').on('click.templmp', '#lmpEntriesContainer .lmp-ignore-row', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $tr = $(this).closest('tr');
+            setLmpIgnoreButton($tr, !$tr.hasClass('lmp-ignored-row'));
+            updateLmpLowestHighlight();
+            saveLmpEntriesNow();
+        });
+        $(document).off('input.templmp', '#lmpEntriesContainer .lmp-price, #lmpEntriesContainer .lmp-delivery, #lmpEntriesContainer .lmp-link')
+            .on('input.templmp', '#lmpEntriesContainer .lmp-price, #lmpEntriesContainer .lmp-delivery, #lmpEntriesContainer .lmp-link', function() {
+                const $tr = $(this).closest('tr');
+                updateTemu2LmpPriceD($tr);
+                updateLmpLowestHighlight();
+                scheduleLmpAutosave();
+            });
+        $(document).off('click.templmp', '#lmpEntriesContainer .lmp-open-link').on('click.templmp', '#lmpEntriesContainer .lmp-open-link', function(e) {
+            e.preventDefault();
+            const href = ($(this).closest('tr').find('.lmp-link').val() || '').trim();
+            if (href && (href.startsWith('http://') || href.startsWith('https://'))) window.open(href, '_blank');
+        });
         $('#lmpAddRowBtn').on('click', function() {
             const price = $('#lmpNewPrice').val();
             const delivery = $('#lmpNewDelivery').val();
@@ -5260,70 +5429,17 @@
                 showToast('Enter Price or Link', 'warning');
                 return;
             }
-            appendLmpTableRow($('#lmpEntriesContainer'), price || '', delivery || '', link || '');
+            appendLmpTableRow($('#lmpEntriesContainer'), price || '', delivery || '', link || '', false, lmpModalSku);
+            updateLmpLowestHighlight();
             $('#lmpNewPrice').val('');
             $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
+            saveLmpEntriesNow();
         });
         $('#lmpClearFormBtn').on('click', function() {
             $('#lmpNewPrice').val('');
             $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
-        });
-        $('#lmpModalSaveBtn').on('click', function() {
-            const entries = [];
-            $('#lmpEntriesContainer .lmp-entry-row').each(function() {
-                const price = $(this).find('.lmp-price').val();
-                const delivery = $(this).find('.lmp-delivery').val();
-                const link = $(this).find('.lmp-link').val();
-                if (price || link || delivery) {
-                    const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
-                    entries.push({
-                        price: price ? parseFloat(price) : null,
-                        delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
-                        link: link ? link.trim() : null
-                    });
-                }
-            });
-            if (entries.length === 0) {
-                showToast('Add at least one price or link', 'warning');
-                return;
-            }
-            if (!lmpModalSku) {
-                showToast('Missing SKU — reopen the LMP modal', 'error');
-                return;
-            }
-            $(this).prop('disabled', true);
-            $.ajax({
-                url: '{{ route("temu.lmp.save") }}',
-                method: 'POST',
-                contentType: 'application/json',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                },
-                data: JSON.stringify({
-                    sku: lmpModalSku,
-                    lmp_entries: entries
-                }),
-                success: function(response) {
-                    if (response && response.success) {
-                        showToast(response.message || 'LMP saved successfully', 'success');
-                        $('#lmpModal').modal('hide');
-                        if (table) table.replaceData();
-                    } else {
-                        showToast((response && (response.message || response.error)) || 'Failed to save LMP', 'error');
-                    }
-                },
-                error: function(xhr) {
-                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
-                        || 'Failed to save LMP';
-                    showToast(msg, 'error');
-                },
-                complete: function() {
-                    $('#lmpModalSaveBtn').prop('disabled', false);
-                }
-            });
         });
 
         $('#parent-filter, #inventory-filter, #tl30-filter, #growth-sign-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
