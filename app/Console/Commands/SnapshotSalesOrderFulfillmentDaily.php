@@ -9,30 +9,30 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Capture Sales Order Fulfillment summary-bar counts once per Pacific day (00:00 PST/PDT).
+ * Capture Sales Order Fulfillment summary-bar counts once per Eastern day (00:00 EST/EDT).
  * Always stores a row for that day — even when totals are unchanged vs the previous day.
  */
 class SnapshotSalesOrderFulfillmentDaily extends Command
 {
     protected $signature = 'sof:snapshot-daily
-        {--date= : Pacific Y-m-d to store (default: previous Pacific day)}
-        {--catch-up : Only create the row if that Pacific day is still missing}
-        {--backfill=0 : Also ensure the last N Pacific days each have a row}';
+        {--date= : Eastern Y-m-d to store (default: previous Eastern day)}
+        {--catch-up : Only create the row if that Eastern day is still missing}
+        {--backfill=0 : Also ensure the last N Eastern days each have a row}';
 
-    protected $description = 'Save SOF summary history for a Pacific calendar day (always records, even if no change)';
+    protected $description = 'Save SOF summary history for an Eastern calendar day (always records, even if no change)';
 
     public function handle(SalesOrderFulfillmentController $controller): int
     {
         $dateOpt = trim((string) $this->option('date'));
         $catchUp = (bool) $this->option('catch-up');
         $backfill = max(0, (int) $this->option('backfill'));
-        $pacific = now('America/Los_Angeles');
+        $eastern = now(SalesOrderFulfillmentController::SOF_TIMEZONE);
 
         if ($dateOpt !== '') {
             $snapshotDate = $dateOpt;
         } else {
-            // Cron at 00:00 Pacific → store the day that just ended.
-            $snapshotDate = $pacific->copy()->subDay()->toDateString();
+            // Cron at 00:00 Eastern → store the day that just ended.
+            $snapshotDate = $eastern->copy()->subDay()->toDateString();
         }
 
         try {
@@ -42,10 +42,10 @@ class SnapshotSalesOrderFulfillmentDaily extends Command
                 return self::FAILURE;
             }
 
-            // Always include target day; --backfill=N also ensures N older Pacific days exist.
+            // Always include target day; --backfill=N also ensures N older Eastern days exist.
             $dates = [$snapshotDate];
             if ($backfill > 0) {
-                $anchor = Carbon\Carbon::parse($snapshotDate, 'America/Los_Angeles')->startOfDay();
+                $anchor = Carbon\Carbon::parse($snapshotDate, SalesOrderFulfillmentController::SOF_TIMEZONE)->startOfDay();
                 for ($i = 1; $i <= $backfill; $i++) {
                     $dates[] = $anchor->copy()->subDays($i)->toDateString();
                 }

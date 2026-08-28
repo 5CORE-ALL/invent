@@ -35,7 +35,7 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             ->values()
             ->all();
 
-        $tz = 'America/Los_Angeles';
+        $tz = self::SOF_TIMEZONE;
 
         return view('channels.sales_loss_order', [
             'sloChannels' => $sloChannels,
@@ -164,7 +164,7 @@ class SalesLossOrderController extends SalesOrderFulfillmentController
             return $query;
         }
 
-        $tz = 'America/Los_Angeles';
+        $tz = self::SOF_TIMEZONE;
         $from = $fromRaw !== ''
             ? $this->parseCaliforniaDateInput($fromRaw, now($tz)->subDays(30)->startOfDay())
             : now($tz)->subYears(20)->startOfDay();

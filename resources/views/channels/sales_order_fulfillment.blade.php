@@ -353,6 +353,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 4px;
+            vertical-align: middle;
         }
         .sof-order-id-dot {
             display: inline-block;
@@ -417,15 +419,16 @@
             border: none;
             background: #f1f5f9;
             color: #475569;
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             flex-shrink: 0;
             padding: 0;
+            font-size: 0.7rem;
         }
         .sof-order-id-copy:hover {
             background: #e2e8f0;
@@ -821,6 +824,25 @@
         .sof-date-late-alert i {
             color: #dc3545;
         }
+        #sof-in-transit-table .tabulator-row.sof-scan-pending-late .tabulator-cell {
+            background-color: #f8d7da !important;
+            color: #842029;
+        }
+        #sof-in-transit-table .tabulator-row.sof-scan-pending-late.tabulator-selected .tabulator-cell {
+            background-color: #f1aeb5 !important;
+        }
+        .sof-in-transit-late-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 50rem;
+            border: 1px solid #b02a37;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
         .sof-label-badge {
             display: inline-block;
             font-weight: 600;
@@ -1037,14 +1059,11 @@
                             <span class="badge sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; border:1px solid #a3cfbb;" title="Label Created / No Scan (last 24 hours) — click for history graph">
                                 Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                             </span>
-                            <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="scan_done_24h" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Shipped/Received — click for history graph">
-                                Shipped/Received: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="scan_done_24h" style="background:#6c757d;" title="History trend"></i>
+                            <span class="badge sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="received_by_carrier_total" style="background:#cfe2ff; color:#084298; border:1px solid #9ec5fe;" title="Received by carrier — click for history graph">
+                                Received by carrier: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="received_by_carrier_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; border:1px solid #fdba74;" title="In Transit — click for history graph">
                                 In Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
-                            </span>
-                            <span class="badge sof-summary-badge" id="sof-in-received-badge" data-sof-metric="in_received_total" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7;" title="In Received — click for history graph">
-                                In Received: <span id="sof-in-received-total">0</span><i class="sof-hist-dot" data-sof-metric="in_received_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
                             <span class="badge sof-summary-badge" id="sof-invoiced-badge" data-sof-metric="invoiced_total" style="background:#e2d9f3; color:#432874; border:1px solid #c5b3e6;" title="Invoiced — click for history graph">
                                 Invoiced: <span id="sof-invoiced-total">0</span><i class="sof-hist-dot" data-sof-metric="invoiced_total" style="background:#6c757d;" title="History trend"></i>
@@ -1099,11 +1118,11 @@
                         <div id="sof-toolbar-row2">
                             <div class="sof-filter-field">
                                 <label class="visually-hidden" for="sof-date-from">From</label>
-                                <input type="date" id="sof-date-from" class="form-control form-control-sm" style="width:140px;" title="From date (California)">
+                                <input type="date" id="sof-date-from" class="form-control form-control-sm" style="width:140px;" title="From date (Eastern / EDT)">
                             </div>
                             <div class="sof-filter-field">
                                 <label class="visually-hidden" for="sof-date-to">To</label>
-                                <input type="date" id="sof-date-to" class="form-control form-control-sm" style="width:140px;" title="To date (California)">
+                                <input type="date" id="sof-date-to" class="form-control form-control-sm" style="width:140px;" title="To date (Eastern / EDT)">
                             </div>
                             <div class="sof-filter-field">
                                 <label class="visually-hidden" for="sof-carrier-filter">Carrier</label>
@@ -1175,7 +1194,7 @@
                                 <i class="mdi mdi-pencil-box-multiple-outline me-1"></i>
                                 Edit (<span id="sof-bulk-edit-count">0</span>)
                             </button>
-                            <div id="sof-date-filter-hint" title="Active filters">California dates (default: last 30 days PT)</div>
+                            <div id="sof-date-filter-hint" title="Active filters">Eastern dates (default: last 30 days EDT)</div>
                         </div>
                     </div>
                     <ul class="nav nav-tabs mb-3" id="sof-tabs" role="tablist">
@@ -1211,7 +1230,7 @@
                             <button class="nav-link" id="sof-scan-done-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-scan-done-pane" type="button" role="tab"
                                     aria-controls="sof-scan-done-pane" aria-selected="false">
-                                Shipped/Received <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
+                                Received by carrier <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -1219,13 +1238,6 @@
                                     data-bs-target="#sof-in-transit-pane" type="button" role="tab"
                                     aria-controls="sof-in-transit-pane" aria-selected="false">
                                 In Transit <span class="badge ms-1" id="sof-in-transit-tab-count" style="background:#ffe5d0;color:#9a3412;border:1px solid #fdba74;">0</span>
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="sof-in-received-tab" data-bs-toggle="tab"
-                                    data-bs-target="#sof-in-received-pane" type="button" role="tab"
-                                    aria-controls="sof-in-received-pane" aria-selected="false">
-                                In Received <span class="badge ms-1" id="sof-in-received-tab-count" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -1263,7 +1275,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-pending-pane" role="tabpanel" aria-labelledby="sof-pending-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range. Red triangle = not shipped for more than 25 hours.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1273,18 +1285,13 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-scan-done-pane" role="tabpanel" aria-labelledby="sof-scan-done-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Shipped/Received orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Received by carrier (Shipped / Received) in the selected date range.</p>
                             <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range. Scan pending more than 36 hours are in red at the top.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
-                        </div>
-
-                        <div class="tab-pane fade" id="sof-in-received-pane" role="tabpanel" aria-labelledby="sof-in-received-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">In Received orders in the selected date range.</p>
-                            <div id="sof-in-received-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-invoiced-pane" role="tabpanel" aria-labelledby="sof-invoiced-tab">
@@ -1293,7 +1300,7 @@
                         </div>
 
                         <div class="tab-pane fade" id="sof-delivered-pane" role="tabpanel" aria-labelledby="sof-delivered-tab">
-                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered / Received in the selected date range (Faire DELIVERED, Shein &amp; Reverb Received, etc.).</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range.</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
                         </div>
                     </div>
@@ -1736,8 +1743,8 @@
         },
     });
 
-    /** California (America/Los_Angeles) calendar helpers — never use browser local TZ. */
-    const SOF_TZ = 'America/Los_Angeles';
+    /** Eastern (America/New_York) calendar helpers — never use browser local TZ. */
+    const SOF_TZ = 'America/New_York';
 
     function sofCaliforniaTodayYmd() {
         try {
@@ -1896,6 +1903,7 @@
             || String(data.order_id || '').toLowerCase().includes(q)
             || String(data.sku || '').toLowerCase().includes(q)
             || String(data.status_label || data.status || '').toLowerCase().includes(q)
+            || String(sofDisplayStatusLabel(data.status_label || data.status || '')).toLowerCase().includes(q)
             || String(data.tracking_number || '').toLowerCase().includes(q)
             || String(data.tracking_company || '').toLowerCase().includes(q)
             || String(data.display_title || '').toLowerCase().includes(q);
@@ -1960,7 +1968,6 @@
             ['#sof-fulfilled-tab', '#sof-fulfilled-pane', function () { return fulfilledRows; }],
             ['#sof-scan-done-tab', '#sof-scan-done-pane', function () { return scanDoneRows; }],
             ['#sof-in-transit-tab', '#sof-in-transit-pane', function () { return inTransitRows; }],
-            ['#sof-in-received-tab', '#sof-in-received-pane', function () { return inReceivedRows; }],
             ['#sof-invoiced-tab', '#sof-invoiced-pane', function () { return invoicedRows; }],
             ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
             ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
@@ -2038,8 +2045,8 @@
         const hint = document.getElementById('sof-date-filter-hint');
         if (!hint) return;
         let text = (p.date_from && p.date_to)
-            ? ('California dates ' + p.date_from + ' → ' + p.date_to)
-            : 'Order date range (California, default: last 30 days)';
+            ? ('Eastern dates ' + p.date_from + ' → ' + p.date_to)
+            : 'Order date range (Eastern / EDT, default: last 30 days)';
         text += ' · ' + carrierLabel + ' · ' + trackingLabel + ' · ' + channelLabel;
         hint.textContent = text;
     }
@@ -2077,9 +2084,9 @@
         $('#sof-date-to').val(to);
         if (from > to) {
             if (typeof Swal !== 'undefined') {
-                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date (California).' });
+                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date (Eastern / EDT).' });
             } else {
-                alert('From date must be on or before To date (California).');
+                alert('From date must be on or before To date (Eastern / EDT).');
             }
             return;
         }
@@ -2117,7 +2124,6 @@
             ['#sof-fulfilled-tab', '#sof-fulfilled-pane', fulfilledTable],
             ['#sof-scan-done-tab', '#sof-scan-done-pane', scanDoneTable],
             ['#sof-in-transit-tab', '#sof-in-transit-pane', inTransitTable],
-            ['#sof-in-received-tab', '#sof-in-received-pane', inReceivedTable],
             ['#sof-invoiced-tab', '#sof-invoiced-pane', invoicedTable],
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
@@ -2395,10 +2401,10 @@
         if (aEmpty && bEmpty) return 0;
         if (aEmpty) return -1;
         if (bEmpty) return 1;
-        const at = Date.parse(String(a).replace(' ', 'T'));
-        const bt = Date.parse(String(b).replace(' ', 'T'));
-        const aOk = !isNaN(at);
-        const bOk = !isNaN(bt);
+        const at = sofWallClockToUtcMs(a, SOF_TZ);
+        const bt = sofWallClockToUtcMs(b, SOF_TZ);
+        const aOk = at != null;
+        const bOk = bt != null;
         if (!aOk && !bOk) return sofStringSorter(a, b);
         if (!aOk) return -1;
         if (!bOk) return 1;
@@ -2417,19 +2423,42 @@
         return rows;
     }
 
+    function sofEasternAbbrev(ms) {
+        try {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: SOF_TZ,
+                timeZoneName: 'short',
+            }).formatToParts(new Date(ms != null ? ms : Date.now()));
+            for (let i = 0; i < parts.length; i++) {
+                if (parts[i].type === 'timeZoneName') {
+                    const name = parts[i].value;
+                    if (name === 'GMT-4' || name === 'UTC-4') return 'EDT';
+                    if (name === 'GMT-5' || name === 'UTC-5') return 'EST';
+                    return name || 'EDT';
+                }
+            }
+        } catch (e) {}
+        return 'EDT';
+    }
+
     function sofFormatDateCell(cell) {
         const v = cell.getValue();
         if (!v) return '—';
+        const ms = sofWallClockToUtcMs(v, SOF_TZ);
+        if (ms == null) return escapeHtml(String(v));
         try {
-            const d = new Date(String(v).replace(' ', 'T'));
-            if (!isNaN(d.getTime())) {
-                return d.toLocaleString(undefined, {
-                    month: 'short', day: '2-digit',
-                    hour: '2-digit', minute: '2-digit',
-                });
-            }
-        } catch (e) {}
-        return escapeHtml(v);
+            const formatted = new Intl.DateTimeFormat('en-US', {
+                timeZone: SOF_TZ,
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+            }).format(new Date(ms));
+            return formatted + ' ' + sofEasternAbbrev(ms);
+        } catch (e) {
+            return escapeHtml(String(v));
+        }
     }
 
     /** Wall-clock Y-m-d H:i:s in `timeZone` → UTC epoch ms. */
@@ -2497,20 +2526,99 @@
         const v = cell.getValue();
         const text = sofFormatDateCell(cell);
         if (!v || text === '—') return text;
+        const row = (cell.getRow && cell.getRow()) ? (cell.getRow().getData() || {}) : {};
         const wrap = document.createElement('span');
         wrap.className = 'sof-date-cell';
         const label = document.createElement('span');
         label.textContent = text;
         wrap.appendChild(label);
-        if (sofOrderDatePastYesterday3pmEt(v)) {
+        const tableEl = (cell.getTable && cell.getTable()) ? cell.getTable().element : null;
+        const onPending = !!(tableEl && tableEl.id === 'sof-pending-table');
+        const onInTransit = !!(tableEl && tableEl.id === 'sof-in-transit-table');
+        const pendingLate = onPending && sofIsUnshippedOver25h(row);
+        const scanLate = onInTransit && sofIsScanPendingOver36h(row);
+        const dateLate = !onPending && sofOrderDatePastYesterday3pmEt(v);
+        if (pendingLate || scanLate || dateLate) {
             const alert = document.createElement('span');
             alert.className = 'sof-date-late-alert';
-            alert.title = 'Alert: Date is before yesterday 3:00 PM ET';
-            alert.setAttribute('aria-label', 'Older than yesterday 3:00 PM Eastern');
+            alert.title = pendingLate
+                ? 'Not shipped for more than 25 hours'
+                : (scanLate
+                    ? 'Scan pending more than 36 hours'
+                    : 'Alert: Date is before yesterday 3:00 PM ET');
+            alert.setAttribute('aria-label', pendingLate
+                ? 'Not shipped for more than 25 hours'
+                : (scanLate
+                    ? 'Scan pending more than 36 hours'
+                    : 'Older than yesterday 3:00 PM Eastern'));
             alert.innerHTML = '<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>';
             wrap.appendChild(alert);
         }
         return wrap;
+    }
+
+    function sofIsUnshippedOver25h(row) {
+        if (!row || typeof row !== 'object') return false;
+        const raw = String(row.order_date || row.updated_at || '').trim();
+        const ms = sofWallClockToUtcMs(raw, SOF_TZ);
+        if (ms == null) return false;
+        return (Date.now() - ms) > (25 * 60 * 60 * 1000);
+    }
+
+    function sofCarrierHasLeftLabelCreated(shipmentStatus) {
+        return ['InTransit', 'OutForDelivery', 'AvailableForPickup', 'Delivered'].indexOf(String(shipmentStatus || '').trim()) !== -1;
+    }
+
+    function sofIsScanPendingOver36h(row) {
+        if (!row || typeof row !== 'object') return false;
+        if (row.scan_pending_over_36h === 1 || row.scan_pending_over_36h === true || row.scan_pending_over_36h === '1') {
+            return true;
+        }
+        if (row.scan_pending_over_36h === 0 || row.scan_pending_over_36h === false || row.scan_pending_over_36h === '0') {
+            return false;
+        }
+        if (sofCarrierHasLeftLabelCreated(row.shipment_status)) {
+            return false;
+        }
+        const raw = String(row.order_date || row.updated_at || '').trim();
+        const ms = sofWallClockToUtcMs(raw, SOF_TZ);
+        if (ms == null) return false;
+        return (Date.now() - ms) > (36 * 60 * 60 * 1000);
+    }
+
+    function sofAnnotateInTransitScanPending(rows) {
+        if (!Array.isArray(rows)) return [];
+        return rows.map(function (row) {
+            const next = Object.assign({}, row);
+            next.scan_pending_over_36h = sofIsScanPendingOver36h(next) ? 1 : 0;
+            return next;
+        });
+    }
+
+    function sofPinInTransitScanPendingLate(table) {
+        if (!table || table._sofPinningLate) return;
+        let sorters = [];
+        try {
+            sorters = table.getSorters() || [];
+        } catch (e) {
+            sorters = [];
+        }
+        const first = sorters[0];
+        if (first && (first.field === 'scan_pending_over_36h') && String(first.dir).toLowerCase() === 'desc') {
+            return;
+        }
+        const rest = sorters.filter(function (s) { return s && s.field !== 'scan_pending_over_36h'; });
+        table._sofPinningLate = true;
+        try {
+            const next = [{ column: 'scan_pending_over_36h', dir: 'desc' }].concat(rest.map(function (s) {
+                return { column: s.field, dir: s.dir };
+            }));
+            if (!rest.length) {
+                next.push({ column: 'updated_at', dir: 'desc' });
+            }
+            table.setSort(next);
+        } catch (e2) {}
+        table._sofPinningLate = false;
     }
 
     /** Updated + Tracking + Carrier columns inserted after Date on order tabs. */
@@ -2519,7 +2627,7 @@
             {
                 title: 'Updated',
                 field: 'updated_at',
-                minWidth: 140,
+                minWidth: 160,
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofDateSorter,
@@ -2878,13 +2986,7 @@
     }
 
     function switchToInReceivedTab() {
-        const tabBtn = document.getElementById('sof-in-received-tab');
-        if (tabBtn && typeof bootstrap !== 'undefined') {
-            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
-        } else if (tabBtn) {
-            tabBtn.click();
-        }
-        ensureInReceivedTable();
+        switchToScanDoneTab();
     }
 
     function switchToInvoicedTab() {
@@ -3182,6 +3284,14 @@
         return `<span class="sof-inv-cell">${escapeHtml(label)}</span>`;
     }
 
+    function sofDisplayStatusLabel(raw) {
+        const label = String(raw || '').trim();
+        if (label === 'Label Created' || label === 'Label Created / No Scan') {
+            return 'Created';
+        }
+        return label || '—';
+    }
+
     function orderListColumns(statusBadgeClass) {
         return [
             {
@@ -3237,12 +3347,13 @@
             {
                 title: 'Order ID',
                 field: 'order_id',
-                minWidth: 70,
+                minWidth: 96,
+                width: 96,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofStringSorter,
-                headerTooltip: 'Hover green dot to see full Order ID and copy',
+                headerTooltip: 'Green dot = Order ID. Click copy to copy the ID.',
                 formatter: function (cell) {
                     const row = cell.getRow().getData();
                     const orderId = (cell.getValue() || '').toString().trim();
@@ -3256,7 +3367,8 @@
 
                     const dot = document.createElement('span');
                     dot.className = 'sof-order-id-dot';
-                    dot.setAttribute('aria-label', 'Order ID');
+                    dot.title = orderId;
+                    dot.setAttribute('aria-label', 'Order ID ' + orderId);
                     wrap.appendChild(dot);
 
                     const pop = document.createElement('span');
@@ -3276,34 +3388,20 @@
                         text.textContent = orderId;
                     }
                     pop.appendChild(text);
+                    wrap.appendChild(pop);
 
                     const copyBtn = document.createElement('button');
                     copyBtn.type = 'button';
                     copyBtn.className = 'sof-order-id-copy';
                     copyBtn.title = 'Copy Order ID';
+                    copyBtn.setAttribute('aria-label', 'Copy Order ID ' + orderId);
                     copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
                     copyBtn.addEventListener('click', function (ev) {
                         ev.preventDefault();
                         ev.stopPropagation();
-                        const done = function () {
-                            copyBtn.classList.add('copied');
-                            copyBtn.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
-                            setTimeout(function () {
-                                copyBtn.classList.remove('copied');
-                                copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
-                            }, 1200);
-                        };
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(orderId).then(done).catch(function () {
-                                window.prompt('Copy Order ID:', orderId);
-                            });
-                        } else {
-                            window.prompt('Copy Order ID:', orderId);
-                            done();
-                        }
+                        copyTextToClipboard(orderId, copyBtn);
                     });
-                    pop.appendChild(copyBtn);
-                    wrap.appendChild(pop);
+                    wrap.appendChild(copyBtn);
 
                     return wrap;
                 },
@@ -3311,7 +3409,7 @@
             {
                 title: 'Date',
                 field: 'order_date',
-                minWidth: 128,
+                minWidth: 148,
                 headerHozAlign: 'center',
                 headerSort: true,
                 sorter: sofDateSorter,
@@ -3327,7 +3425,8 @@
                 headerSort: true,
                 sorter: sofStringSorter,
                 formatter: function (cell) {
-                    const label = escapeHtml(cell.getValue() || cell.getRow().getData().status || '—');
+                    const raw = cell.getValue() || cell.getRow().getData().status || '—';
+                    const label = escapeHtml(sofDisplayStatusLabel(raw));
                     return `<span class="${statusBadgeClass}">${label}</span>`;
                 },
             },
@@ -3592,14 +3691,12 @@
             const fulfilled24h = (response && response.fulfilled_24h != null)
                 ? Number(response.fulfilled_24h)
                 : 0;
-            const scanDone24h = (response && response.scan_done_24h != null)
-                ? Number(response.scan_done_24h)
-                : 0;
+            const scanDone24h = (response && response.received_by_carrier_total != null)
+                ? Number(response.received_by_carrier_total)
+                : ((response && response.scan_done_24h != null ? Number(response.scan_done_24h) : 0)
+                    + (response && response.in_received_total != null ? Number(response.in_received_total) : 0));
             const inTransitTotal = (response && response.in_transit_total != null)
                 ? Number(response.in_transit_total)
-                : 0;
-            const inReceivedTotal = (response && response.in_received_total != null)
-                ? Number(response.in_received_total)
                 : 0;
             const invoicedTotal = (response && response.invoiced_total != null)
                 ? Number(response.invoiced_total)
@@ -3616,7 +3713,6 @@
             const fulfilledEl = document.getElementById('sof-fulfilled-24h');
             const scanDoneEl = document.getElementById('sof-scan-done-24h');
             const inTransitEl = document.getElementById('sof-in-transit-total');
-            const inReceivedEl = document.getElementById('sof-in-received-total');
             const invoicedEl = document.getElementById('sof-invoiced-total');
             const deliveredEl = document.getElementById('sof-delivered-total');
             const allOrderEl = document.getElementById('sof-all-order-total');
@@ -3625,7 +3721,6 @@
             if (fulfilledEl) fulfilledEl.textContent = fulfilled24h.toLocaleString();
             if (scanDoneEl) scanDoneEl.textContent = scanDone24h.toLocaleString();
             if (inTransitEl) inTransitEl.textContent = inTransitTotal.toLocaleString();
-            if (inReceivedEl) inReceivedEl.textContent = inReceivedTotal.toLocaleString();
             if (invoicedEl) invoicedEl.textContent = invoicedTotal.toLocaleString();
             if (deliveredEl) deliveredEl.textContent = deliveredTotal.toLocaleString();
             if (allOrderEl) allOrderEl.textContent = allOrderTotal.toLocaleString();
@@ -3645,10 +3740,6 @@
             const inTransitTabCount = document.getElementById('sof-in-transit-tab-count');
             if (inTransitTabCount && !inTransitTableLoaded) {
                 inTransitTabCount.textContent = inTransitTotal.toLocaleString();
-            }
-            const inReceivedTabCount = document.getElementById('sof-in-received-tab-count');
-            if (inReceivedTabCount && !inReceivedTableLoaded) {
-                inReceivedTabCount.textContent = inReceivedTotal.toLocaleString();
             }
             const invoicedTabCount = document.getElementById('sof-invoiced-tab-count');
             if (invoicedTabCount && !invoicedTableLoaded) {
@@ -4108,7 +4199,15 @@
                 applyPendingFilters();
                 sofAutoFillMissingLabelTracking(pendingRows, 0);
             },
-            columns: orderListColumns('sof-pending-badge'),
+            columns: (function () {
+                const cols = orderListColumns('sof-pending-badge');
+                cols.forEach(function (c) {
+                    if (c.field === 'order_date') {
+                        c.headerTooltip = 'Red triangle = not shipped for more than 25 hours';
+                    }
+                });
+                return cols;
+            })(),
         }));
         sofWireOrderTable(pendingTable);
     }
@@ -4189,8 +4288,8 @@
                 const cols = orderListColumns('sof-fulfilled-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Label Created / No Scan';
-                        c.headerTooltip = 'Label Created / No Scan status';
+                        c.title = 'Created';
+                        c.headerTooltip = 'Label Created / No Scan';
                     }
                 });
                 // After Date (index 3 after Channel, Ch Orders, Order ID, Date) insert Updated + Tracking
@@ -4218,7 +4317,7 @@
 
         scanDoneTable = new Tabulator('#sof-scan-done-table', Object.assign({}, sofOrderTableOpts, {
             layout: 'fitColumns',
-            placeholder: 'Loading Shipped/Received orders…',
+            placeholder: 'Loading Received by carrier orders…',
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -4261,8 +4360,8 @@
                 const cols = orderListColumns('sof-scan-done-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Shipped/Received';
-                        c.headerTooltip = 'Shipped / Received status';
+                        c.title = 'Received by carrier';
+                        c.headerTooltip = 'Shipped / Received by carrier';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -4291,8 +4390,14 @@
             layout: 'fitColumns',
             placeholder: 'Loading In Transit orders…',
             initialSort: [
+                { column: 'scan_pending_over_36h', dir: 'desc' },
                 { column: 'updated_at', dir: 'desc' },
             ],
+            rowFormatter: function (row) {
+                const el = row.getElement();
+                const data = row.getData() || {};
+                el.classList.toggle('sof-scan-pending-late', sofIsScanPendingOver36h(data));
+            },
             ajaxURL: '{{ route("sales.order.fulfillment.in.transit.data") }}',
             ajaxConfig: 'GET',
             ajaxParams: sofDateParams,
@@ -4309,9 +4414,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                inTransitRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                inTransitRows = sofAnnotateInTransitScanPending(sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : []);
+                    : []));
                 inTransitTableLoaded = true;
                 inTransitTableLoading = false;
                 const count = (response && response.count != null)
@@ -4327,13 +4432,32 @@
             dataLoaded: function () {
                 sofUpdateTrackingFilterCounts(inTransitRows);
                 applyInTransitFilters();
+                sofPinInTransitScanPendingLate(inTransitTable);
+            },
+            dataSorted: function () {
+                sofPinInTransitScanPendingLate(inTransitTable);
             },
             columns: (function () {
                 const cols = orderListColumns('sof-in-transit-badge');
+                cols.unshift({
+                    field: 'scan_pending_over_36h',
+                    visible: false,
+                    headerSort: false,
+                    sorter: 'number',
+                });
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
                         c.title = 'In Transit';
-                        c.headerTooltip = 'In Transit status';
+                        c.headerTooltip = 'In Transit status. Red = scan pending more than 36 hours.';
+                        c.formatter = function (cell) {
+                            const row = cell.getRow().getData() || {};
+                            const label = escapeHtml(sofDisplayStatusLabel(cell.getValue() || row.status || '—'));
+                            const cls = sofIsScanPendingOver36h(row) ? 'sof-in-transit-late-badge' : 'sof-in-transit-badge';
+                            return '<span class="' + cls + '">' + label + '</span>';
+                        };
+                    }
+                    if (c.field === 'order_date') {
+                        c.headerTooltip = 'Red triangle = scan pending more than 36 hours (In Transit)';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -4350,70 +4474,7 @@
     }
 
     function ensureInReceivedTable() {
-        if (inReceivedTable || inReceivedTableLoading) {
-            if (inReceivedTable) {
-                setTimeout(function () { inReceivedTable.redraw(true); }, 50);
-            }
-            return;
-        }
-        inReceivedTableLoading = true;
-
-        inReceivedTable = new Tabulator('#sof-in-received-table', Object.assign({}, sofOrderTableOpts, {
-            layout: 'fitColumns',
-            placeholder: 'Loading In Received orders…',
-            initialSort: [
-                { column: 'updated_at', dir: 'desc' },
-            ],
-            ajaxURL: '{{ route("sales.order.fulfillment.in.received.data") }}',
-            ajaxConfig: 'GET',
-            ajaxParams: sofDateParams,
-            ajaxRequestFunc: function (url, config, params) {
-                return new Promise(function (resolve, reject) {
-                    $.ajax({
-                        url: url,
-                        type: 'GET',
-                        data: Object.assign({}, params || {}, sofDateParams()),
-                        timeout: 0,
-                        success: resolve,
-                        error: reject,
-                    });
-                });
-            },
-            ajaxResponse: function (url, params, response) {
-                inReceivedRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
-                    ? response.data
-                    : []);
-                inReceivedTableLoaded = true;
-                inReceivedTableLoading = false;
-                const count = (response && response.count != null)
-                    ? Number(response.count)
-                    : inReceivedRows.length;
-                const tabCount = document.getElementById('sof-in-received-tab-count');
-                if (tabCount) tabCount.textContent = count.toLocaleString();
-                const inReceivedEl = document.getElementById('sof-in-received-total');
-                if (inReceivedEl) inReceivedEl.textContent = count.toLocaleString();
-                sofUpdateTrackingFilterCounts(inReceivedRows);
-                return inReceivedRows;
-            },
-            dataLoaded: function () {
-                sofUpdateTrackingFilterCounts(inReceivedRows);
-                applyInReceivedFilters();
-            },
-            columns: (function () {
-                const cols = orderListColumns('sof-in-received-badge');
-                cols.forEach(function (c) {
-                    if (c.field === 'status_label') {
-                        c.title = 'In Received';
-                        c.headerTooltip = 'Received status';
-                    }
-                });
-                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
-                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0, ...sofTrackingColumns());
-                return cols;
-            })(),
-        }));
-        sofWireOrderTable(inReceivedTable);
+        ensureScanDoneTable();
     }
 
     function applyInvoicedFilters() {
@@ -4662,9 +4723,6 @@
     document.getElementById('sof-in-transit-tab')?.addEventListener('shown.bs.tab', function () {
         ensureInTransitTable();
     });
-    document.getElementById('sof-in-received-tab')?.addEventListener('shown.bs.tab', function () {
-        ensureInReceivedTable();
-    });
     document.getElementById('sof-invoiced-tab')?.addEventListener('shown.bs.tab', function () {
         ensureInvoicedTable();
     });
@@ -4683,9 +4741,6 @@
     });
     document.getElementById('sof-in-transit-badge')?.addEventListener('click', function () {
         switchToInTransitTab();
-    });
-    document.getElementById('sof-in-received-badge')?.addEventListener('click', function () {
-        switchToInReceivedTab();
     });
     document.getElementById('sof-invoiced-badge')?.addEventListener('click', function () {
         switchToInvoicedTab();
@@ -5101,9 +5156,8 @@
         channel_count: 'Channels',
         pending_total: 'Pending',
         fulfilled_24h: 'Label Created / No Scan',
-        scan_done_24h: 'Shipped/Received',
+        received_by_carrier_total: 'Received by carrier',
         in_transit_total: 'In Transit',
-        in_received_total: 'In Received',
         invoiced_total: 'Invoiced',
         delivered_total: 'Delivered',
         all_order_total: 'All Order',
@@ -5143,7 +5197,7 @@
         sofHistoryMetric = metric || 'pending_total';
         const label = sofHistoryLabels[sofHistoryMetric] || sofHistoryMetric;
         const rangeLabel = sofHistoryDays > 0 ? (sofHistoryDays + ' Days') : 'All';
-        $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Pacific day)');
+        $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Eastern day)');
         $('#sofHistoryChartRange').val(String(sofHistoryDays));
         const modalEl = document.getElementById('sofHistoryChartModal');
         if (modalEl && typeof bootstrap !== 'undefined') {
@@ -5242,7 +5296,7 @@
         if (isNaN(sofHistoryDays)) sofHistoryDays = 30;
         const label = sofHistoryLabels[sofHistoryMetric] || sofHistoryMetric;
         const rangeLabel = sofHistoryDays > 0 ? (sofHistoryDays + ' Days') : 'All';
-        $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Pacific day)');
+        $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Eastern day)');
         loadSofHistoryChart();
     });
 
