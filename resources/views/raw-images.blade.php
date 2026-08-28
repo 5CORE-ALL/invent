@@ -19,6 +19,7 @@
     $savedAiPrompt = $savedAiPrompt ?? ($isHero2
         ? "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 AI column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa."
         : "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.");
+    $savedAiLogos = $savedAiLogos ?? [];
 @endphp
 @extends('layouts.vertical', ['title' => $pageTitle, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
@@ -689,7 +690,7 @@
                     <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : 'raw-shoot' }} image for selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
                     <div class="mt-3">
                         <label class="form-label fw-semibold mb-1" for="riAiLogoInput">Logos (optional)</label>
-                        <div class="small text-muted mb-2">Upload the logos you want in the AI image. They are used only for generation — not saved as a column.</div>
+                        <div class="small text-muted mb-2">Upload logos to include in every AI image. They stay saved for everyone until someone removes or replaces them.</div>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="riAiLogoBtn">
                             <i class="fas fa-upload me-1"></i> Upload logos
                         </button>
@@ -1178,6 +1179,10 @@
         let riAiTarget = 'raw';
         const riAiLoadingSkus = new Set();
         let riAiLogoFiles = [];
+        let riAiSavedLogos = @json($savedAiLogos);
+        if (!Array.isArray(riAiSavedLogos)) riAiSavedLogos = [];
+        let riAiLogoPersist = Promise.resolve();
+        let riAiLogoPersistAgain = false;
         let tableData = [];
         let table;
         let rawImageModal;
@@ -1200,6 +1205,7 @@
             setupBulkHandlers();
             setupAiHandlers();
             setupEbayHeroHandlers();
+            renderAiLogoPreview();
         });
 
         function initializeTabulator() {
@@ -1909,38 +1915,102 @@
             }
             promptEl.value = riAiLastSaved;
             if (resultEl) resultEl.innerHTML = '';
+            renderAiLogoPreview();
             updateAiSelectionHint();
             riAiModal.show();
             setTimeout(function () { promptEl.focus(); }, 200);
         }
 
+        function applySavedAiLogos(logos) {
+            if (!Array.isArray(logos)) return;
+            riAiSavedLogos = logos.map(function (item) {
+                return {
+                    path: String(item.path || ''),
+                    url: String(item.url || ''),
+                    name: String(item.name || '')
+                };
+            }).filter(function (item) { return item.path !== ''; });
+        }
+
         function renderAiLogoPreview() {
             const wrap = document.getElementById('riAiLogoPreview');
             if (!wrap) return;
-            wrap.innerHTML = riAiLogoFiles.map(function (file, idx) {
+            const savedHtml = (riAiSavedLogos || []).map(function (logo, idx) {
+                return '<div class="ri-ai-logo-chip">'
+                    + '<img src="' + escapeHtml(logo.url) + '" alt="' + escapeHtml(logo.name || ('Logo ' + (idx + 1))) + '">'
+                    + '<button type="button" data-saved="' + idx + '" title="Remove">&times;</button>'
+                    + '</div>';
+            }).join('');
+            const pendingHtml = riAiLogoFiles.map(function (file, idx) {
                 const url = URL.createObjectURL(file);
                 return '<div class="ri-ai-logo-chip">'
                     + '<img src="' + url + '" alt="Logo ' + (idx + 1) + '">'
-                    + '<button type="button" data-i="' + idx + '" title="Remove">&times;</button>'
+                    + '<button type="button" data-pending="' + idx + '" title="Remove">&times;</button>'
                     + '</div>';
             }).join('');
-            wrap.querySelectorAll('button').forEach(function (btn) {
+            wrap.innerHTML = savedHtml + pendingHtml;
+            wrap.querySelectorAll('button[data-saved]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
-                    const i = parseInt(btn.getAttribute('data-i'), 10);
-                    riAiLogoFiles.splice(i, 1);
+                    const i = parseInt(btn.getAttribute('data-saved'), 10);
+                    if (!isNaN(i)) riAiSavedLogos.splice(i, 1);
                     renderAiLogoPreview();
+                    persistAiLogos();
+                });
+            });
+            wrap.querySelectorAll('button[data-pending]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const i = parseInt(btn.getAttribute('data-pending'), 10);
+                    if (!isNaN(i)) riAiLogoFiles.splice(i, 1);
+                    renderAiLogoPreview();
+                    persistAiLogos();
                 });
             });
         }
 
         function addAiLogoFiles(fileList) {
-            const room = 6 - riAiLogoFiles.length;
+            const room = 6 - (riAiSavedLogos.length + riAiLogoFiles.length);
             if (room <= 0) return;
             Array.from(fileList || []).slice(0, room).forEach(function (file) {
                 if (!file || !file.type || file.type.indexOf('image/') !== 0) return;
                 riAiLogoFiles.push(file);
             });
             renderAiLogoPreview();
+            persistAiLogos();
+        }
+
+        function persistAiLogos() {
+            riAiLogoPersistAgain = true;
+            riAiLogoPersist = riAiLogoPersist.then(function run() {
+                if (!riAiLogoPersistAgain) return;
+                riAiLogoPersistAgain = false;
+                const promptEl = document.getElementById('riAiPrompt');
+                const sentFiles = riAiLogoFiles.slice();
+                const form = new FormData();
+                form.append('prompt', (promptEl && promptEl.value) ? promptEl.value : riAiLastSaved);
+                form.append('keep_logo_paths', JSON.stringify((riAiSavedLogos || []).map(function (logo) { return logo.path; })));
+                sentFiles.forEach(function (file) { form.append('logos[]', file); });
+                return fetch(rawImagesAiPromptSaveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: form
+                })
+                .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+                .then(function (result) {
+                    if (!result.ok || !result.data || !result.data.success) return;
+                    applySavedAiLogos(result.data.logos);
+                    riAiLogoFiles = riAiLogoFiles.filter(function (file) { return sentFiles.indexOf(file) === -1; });
+                    renderAiLogoPreview();
+                })
+                .catch(function () {})
+                .then(function () {
+                    if (riAiLogoPersistAgain) return run();
+                });
+            });
+            return riAiLogoPersist;
         }
 
         function setupAiHandlers() {
@@ -2001,6 +2071,7 @@
 
                 saveAiPrompt(prompt, true)
                     .catch(function () {})
+                    .then(function () { return persistAiLogos(); })
                     .then(function () {
                         resultEl.innerHTML = '';
                         riAiModal.hide();
@@ -2058,6 +2129,7 @@
             const form = new FormData();
             form.append('prompt', prompt);
             form.append('selected', JSON.stringify(selected));
+            form.append('keep_logo_paths', JSON.stringify((riAiSavedLogos || []).map(function (logo) { return logo.path; })));
             riAiLogoFiles.forEach(function (file) { form.append('logos[]', file); });
             return fetch(rawImagesAiPromptUrl, {
                 method: 'POST',
@@ -2071,6 +2143,11 @@
             .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
             .then(function (result) {
                 const d = result.data || {};
+                if (Array.isArray(d.logos)) {
+                    applySavedAiLogos(d.logos);
+                    riAiLogoFiles = [];
+                    renderAiLogoPreview();
+                }
                 setAiGenerating(skus, false, target);
                 applyAiBySku(d.by_sku, target);
                 hideAiProcessLoader();

@@ -499,7 +499,11 @@ class RawImagesController extends Controller
 
         @set_time_limit(600);
         $this->persistAiPrompt($kind, $prompt);
-        $logoBytes = $this->logoBytesFromRequest($request);
+        $this->persistAiLogosFromRequest($kind, $request);
+        $logoBytes = $this->savedAiLogoBytes($kind);
+        if ($logoBytes === []) {
+            $logoBytes = $this->logoBytesFromRequest($request);
+        }
         $result = $this->generateRawImagesForSelected($rows, $kind, $prompt, $logoBytes);
 
         if ($result['imported'] > 0) {
@@ -515,6 +519,7 @@ class RawImagesController extends Controller
             'skipped' => $result['skipped'],
             'errors' => $result['errors'],
             'by_sku' => $result['by_sku'],
+            'logos' => $this->savedAiLogos($kind),
         ], $result['imported'] > 0 ? 200 : 422);
     }
 
@@ -529,9 +534,15 @@ class RawImagesController extends Controller
             $this->persistAiPrompt($this->imageKindFromRequest($request), $prompt);
         }
 
+        $kind = $this->imageKindFromRequest($request);
+        if ($request->hasFile('logos') || $request->exists('keep_logo_paths')) {
+            $this->persistAiLogosFromRequest($kind, $request);
+        }
+
         return response()->json([
             'success' => true,
             'prompt' => $prompt,
+            'logos' => $this->savedAiLogos($kind),
         ]);
     }
 
@@ -728,6 +739,113 @@ class RawImagesController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * @return list<array{path: string, url: string, name: string}>
+     */
+    private function savedAiLogos(string $kind): array
+    {
+        try {
+            $folder = $this->aiLogoFolder($kind);
+            if (! Storage::disk('public')->exists($folder)) {
+                return [];
+            }
+            $out = [];
+            foreach (Storage::disk('public')->files($folder) as $path) {
+                $out[] = [
+                    'path' => $path,
+                    'url' => asset('storage/'.$path),
+                    'name' => basename($path),
+                ];
+            }
+            usort($out, fn ($a, $b) => strcmp($a['name'], $b['name']));
+
+            return array_values($out);
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function savedAiLogoBytes(string $kind): array
+    {
+        $bytes = [];
+        foreach ($this->savedAiLogos($kind) as $logo) {
+            $path = (string) ($logo['path'] ?? '');
+            if ($path === '' || ! Storage::disk('public')->exists($path)) {
+                continue;
+            }
+            $data = Storage::disk('public')->get($path);
+            if (is_string($data) && $data !== '') {
+                $bytes[] = $data;
+            }
+        }
+
+        return $bytes;
+    }
+
+    private function aiLogoFolder(string $kind): string
+    {
+        $safe = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $kind) ?: 'raw';
+
+        return 'raw-images/ai-logos/'.$safe;
+    }
+
+    private function persistAiLogosFromRequest(string $kind, Request $request): void
+    {
+        $folder = $this->aiLogoFolder($kind);
+        try {
+            Storage::disk('public')->makeDirectory($folder);
+            $existing = Storage::disk('public')->files($folder);
+
+            $keepRaw = $request->input('keep_logo_paths', null);
+            if (is_string($keepRaw)) {
+                $decoded = json_decode($keepRaw, true);
+                $keepRaw = is_array($decoded) ? $decoded : [];
+            }
+            if (is_array($keepRaw)) {
+                $keep = [];
+                foreach ($keepRaw as $path) {
+                    $path = ltrim(str_replace('\\', '/', trim((string) $path)), '/');
+                    if ($path === '' || str_contains($path, '..') || ! str_starts_with($path, $folder.'/')) {
+                        continue;
+                    }
+                    $keep[$path] = true;
+                }
+                foreach ($existing as $path) {
+                    if (! isset($keep[$path])) {
+                        Storage::disk('public')->delete($path);
+                    }
+                }
+                $existing = array_values(array_filter($existing, fn ($path) => isset($keep[$path])));
+            }
+
+            $count = count($existing);
+            foreach ($request->file('logos', []) as $file) {
+                if ($count >= 6 || ! $file || ! $file->isValid()) {
+                    continue;
+                }
+                $bytes = (string) @file_get_contents($file->getRealPath());
+                if ($bytes === '' || @getimagesizefromstring($bytes) === false) {
+                    continue;
+                }
+                $ext = strtolower($file->getClientOriginalExtension() ?: 'png');
+                if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+                    $ext = 'png';
+                }
+                $name = 'logo_'.now()->format('YmdHis').'_'.($count + 1).'_'.substr(uniqid('', true), -6).'.'.$ext;
+                Storage::disk('public')->put($folder.'/'.$name, $bytes);
+                $count++;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Raw images AI logos persist failed', [
+                'kind' => $kind,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function downloadImageBytes(string $url): string
@@ -960,6 +1078,7 @@ class RawImagesController extends Controller
                 'aiPromptSaveUrl' => route('raw.images.hero.2.ai.prompt.save'),
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
+                'savedAiLogos' => $this->savedAiLogos($kind),
             ]);
         }
 
@@ -976,6 +1095,7 @@ class RawImagesController extends Controller
                 'aiPromptSaveUrl' => route('raw.images.batch.coo.ai.prompt.save'),
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
+                'savedAiLogos' => $this->savedAiLogos($kind),
             ]);
         }
 
@@ -991,6 +1111,7 @@ class RawImagesController extends Controller
             'aiPromptSaveUrl' => route('raw.images.ai.prompt.save'),
             'cachedImageUrl' => route('raw.images.cached.image'),
             'savedAiPrompt' => $this->savedAiPrompt($kind),
+            'savedAiLogos' => $this->savedAiLogos($kind),
         ]);
     }
 
