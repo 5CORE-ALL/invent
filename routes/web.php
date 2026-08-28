@@ -4499,6 +4499,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
     Route::get('/amazon/competitors', [OverallAmazonController::class, 'getAmazonCompetitors'])->name('amazon.competitors.get');
+    Route::post('/amazon/lmp/ignore', [OverallAmazonController::class, 'toggleAmazonLmpIgnored'])->name('amazon.lmp.ignore');
     Route::post('/amazon/lmp/add', [OverallAmazonController::class, 'addAmazonLmp'])->name('amazon.lmp.add');
     Route::post('/amazon/lmp/update', [OverallAmazonController::class, 'updateAmazonLmp'])->name('amazon.lmp.update');
     Route::post('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete.post');

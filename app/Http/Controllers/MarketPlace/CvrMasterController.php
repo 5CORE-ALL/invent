@@ -10481,6 +10481,13 @@ class CvrMasterController extends Controller
             if (!$id || !is_numeric($id)) {
                 return response()->json(['success' => false, 'error' => 'Valid ID is required'], 400);
             }
+            if ($marketplace === 'amazon') {
+                if (! AmazonSkuCompetitor::persistIgnored((int) $id, $ignored)) {
+                    return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
+                }
+
+                return response()->json(['success' => true, 'ignored' => $ignored ? 1 : 0, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+            }
             $comp = $model::find((int) $id);
             if (!$comp) {
                 return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);

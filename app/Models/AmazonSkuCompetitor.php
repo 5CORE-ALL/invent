@@ -180,6 +180,28 @@ class AmazonSkuCompetitor extends Model
         );
     }
 
+    /**
+     * Write ignored to the DB column (tinyint 0/1). Avoids Eloquent boolean-cast
+     * dirty-checks that can skip the UPDATE so Ignore looks saved until refresh.
+     */
+    public static function persistIgnored(int $id, bool $ignored): bool
+    {
+        $table = (new static)->getTable();
+        if ($id < 1 || ! \Illuminate\Support\Facades\Schema::hasColumn($table, 'ignored')) {
+            return false;
+        }
+        if (! \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists()) {
+            return false;
+        }
+
+        \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->update([
+            'ignored' => $ignored ? 1 : 0,
+            'updated_at' => now(),
+        ]);
+
+        return true;
+    }
+
     public static function lowestFromCollection($items)
     {
         // L1 = lowest non-ignored by landed (price + paid delivery; FREE = no add)

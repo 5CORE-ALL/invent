@@ -1318,26 +1318,33 @@
 
         function amazonApplyL1FromEntries(row) {
             if (!row || row.is_parent_summary) return row;
-            const info = amazonL1FromCompetitors(row.lmp_entries || []);
-            if (info.l1 != null) {
-                row.lmp_price = info.l1;
-                if (info.winner) {
-                    if (info.winner.delivery != null) row.lmp_delivery = info.winner.delivery;
-                    if (info.winner.asin) row.lmp_asin = info.winner.asin;
-                    if (info.winner.link || info.winner.product_link) {
-                        row.lmp_link = info.winner.product_link || info.winner.link;
-                    }
+            const entries = row.lmp_entries || [];
+            if (!entries.length) return row;
+            const info = amazonL1FromCompetitors(entries);
+            row.lmp_price = info.l1;
+            if (info.winner) {
+                if (info.winner.delivery != null) row.lmp_delivery = info.winner.delivery;
+                if (info.winner.asin) row.lmp_asin = info.winner.asin;
+                if (info.winner.link || info.winner.product_link) {
+                    row.lmp_link = info.winner.product_link || info.winner.link;
                 }
+            } else {
+                row.lmp_delivery = null;
+                row.lmp_asin = null;
+                row.lmp_link = null;
             }
             return row;
         }
 
-        // Outer LMP = lowest non-ignored competitor (same as modal L1).
+        // Outer LMP = Model L1 from the same lmp_entries (DB ignored flags).
         // Used by the LMP column, Diff column, S PRC cap, and Diff filter.
         function lmpWithShipping(rowData) {
             if (!rowData) return 0;
-            const fromEntries = amazonL1FromCompetitors(rowData.lmp_entries || []);
-            if (fromEntries.l1 != null && fromEntries.l1 > 0) return fromEntries.l1;
+            const entries = rowData.lmp_entries || [];
+            if (entries.length) {
+                const fromEntries = amazonL1FromCompetitors(entries);
+                return fromEntries.l1 != null && fromEntries.l1 > 0 ? fromEntries.l1 : 0;
+            }
             const base = parseFloat(rowData.lmp_price || 0) || 0;
             if (!base || base <= 0) return base;
             let shipCost = 0;
@@ -8256,28 +8263,46 @@
             $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
                 const $cb = $(this);
                 const id = $cb.attr('data-id') || $cb.data('id');
-                const marketplace = ($cb.attr('data-marketplace') || $cb.data('marketplace') || 'amazon').toLowerCase();
                 const sku = $cb.attr('data-sku') || $cb.data('sku') || currentLmpData.sku || '';
                 const ignored = $cb.is(':checked');
                 $cb.prop('disabled', true);
 
                 $.ajax({
-                    url: '/cvr-master-lmp-ignore',
+                    url: '/amazon/lmp/ignore',
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: { id: id, marketplace: marketplace, sku: sku, ignored: ignored ? 1 : 0 },
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json'
+                    },
+                    data: {
+                        id: id,
+                        sku: sku,
+                        ignored: ignored ? 1 : 0,
+                        linked_lmp_skus: currentLmpData.linkedLmpSkus || []
+                    },
+                    traditional: true,
                     success: function(res) {
                         $cb.prop('disabled', false);
                         if (res && res.success) {
-                            (currentLmpData.competitors || []).forEach(function(c) {
-                                if (String(c.id) === String(id)) c.ignored = ignored;
-                            });
+                            const fromDb = Array.isArray(res.competitors) ? res.competitors : null;
+                            if (fromDb) {
+                                currentLmpData.competitors = fromDb;
+                            } else {
+                                (currentLmpData.competitors || []).forEach(function(c) {
+                                    if (String(c.id) === String(id)) c.ignored = res.ignored ? 1 : 0;
+                                });
+                            }
                             const l1Info = amazonL1FromCompetitors(currentLmpData.competitors);
-                            currentLmpData.lowestPrice = l1Info.l1;
-                            renderCompetitorsList(currentLmpData.competitors, l1Info.l1);
+                            const l1 = (res.lowest_price != null && res.lowest_price !== '')
+                                ? parseFloat(res.lowest_price)
+                                : l1Info.l1;
+                            currentLmpData.lowestPrice = l1;
+                            renderCompetitorsList(currentLmpData.competitors, l1);
                             patchAmazonGridLmp(
-                                l1Info.l1,
-                                l1Info.winner ? (l1Info.winner.delivery || null) : null,
+                                l1,
+                                res.lowest_delivery != null
+                                    ? res.lowest_delivery
+                                    : (l1Info.winner ? (l1Info.winner.delivery || null) : null),
                                 currentLmpData.competitors
                             );
                             showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');

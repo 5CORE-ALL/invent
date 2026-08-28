@@ -639,37 +639,7 @@ class OverallAmazonController extends Controller
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
 
             $row['lmp_entries'] = $allLmpEntries
-                ->map(function ($entry) use ($lmpIgnoredIds) {
-                    $ignored = isset($lmpIgnoredIds[(int) $entry->id]) || AmazonSkuCompetitor::isIgnored($entry);
-                    $landed = AmazonSkuCompetitor::landedPrice($entry);
-
-                    return [
-                        'id' => $entry->id,
-                        'asin' => $entry->asin ?? null,
-                        'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
-                        'landed_price' => $landed,
-                        'delivery' => $this->normalizeDeliveryText($entry->delivery ?? null),
-                        'link' => $entry->product_link ?? null,
-                        'product_link' => $entry->product_link ?? null,
-                        'title' => $entry->product_title ?? null,
-                        'product_title' => $entry->product_title ?? null,
-                        'image' => $entry->image ?? null,
-                        'seller_name' => $entry->seller_name ?? null,
-                        'marketplace' => $entry->marketplace ?? 'US',
-                        'rating' => $entry->rating ?? null,
-                        'reviews' => $entry->reviews ?? null,
-                        'monthly_revenue' => ($entry->monthly_revenue && is_numeric($entry->monthly_revenue)) 
-                            ? floatval($entry->monthly_revenue) 
-                            : null,
-                        'monthly_units_sold' => ($entry->monthly_units_sold) 
-                            ? intval($entry->monthly_units_sold) 
-                            : null,
-                        'buy_box_owner' => $entry->buy_box_owner ?? null,
-                        'seller_type' => $entry->seller_type_js ?? null,
-                        'ignored' => $ignored ? 1 : 0,
-                        'sales_data_updated_at' => $entry->sales_data_updated_at ?? null,
-                    ];
-                })
+                ->map(fn ($entry) => $this->mapAmazonLmpEntry($entry, $lmpIgnoredIds))
                 ->values()
                 ->all();
             $row['lmp_entries_total'] = count($row['lmp_entries']);
@@ -4487,6 +4457,94 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * One competitor shape for the Outer LMP column and the LMP Model (modal).
+     * ignored is always 0/1 from the DB column (plus ignoredIdSet backup).
+     *
+     * @param  array<int, true>  $ignoredIds
+     * @return array<string, mixed>
+     */
+    private function mapAmazonLmpEntry($entry, array $ignoredIds = []): array
+    {
+        $id = (int) ($entry->id ?? 0);
+        $ignored = ($id > 0 && isset($ignoredIds[$id])) || AmazonSkuCompetitor::isIgnored($entry);
+        $landed = AmazonSkuCompetitor::landedPrice($entry);
+        $delivery = $this->normalizeDeliveryText($entry->delivery ?? null);
+        $asin = $entry->asin ?? null;
+        $image = $entry->image ?? (
+            $asin ? 'https://m.media-amazon.com/images/P/' . $asin . '._AC_SL1000_.jpg' : null
+        );
+        $link = $entry->product_link ?? null;
+        $title = $entry->product_title ?? null;
+
+        return [
+            'id' => $id > 0 ? $id : null,
+            'sku' => $entry->sku ?? null,
+            'asin' => $asin,
+            'marketplace' => $entry->marketplace ?? 'US',
+            'image' => $image,
+            'product_link' => $link,
+            'link' => $link,
+            'product_title' => $title,
+            'title' => $title,
+            'seller_name' => $entry->seller_name ?? null,
+            'price' => is_numeric($entry->price ?? null) ? floatval($entry->price) : null,
+            'landed_price' => $landed,
+            'ignored' => $ignored ? 1 : 0,
+            'rating' => isset($entry->rating) && $entry->rating !== null ? floatval($entry->rating) : null,
+            'reviews' => isset($entry->reviews) && $entry->reviews !== null ? (int) $entry->reviews : null,
+            'extracted_old_price' => isset($entry->extracted_old_price) && $entry->extracted_old_price !== null
+                ? floatval($entry->extracted_old_price)
+                : null,
+            'delivery' => $delivery,
+            'stock' => $entry->stock ?? null,
+            'stock_quantity' => isset($entry->stock_quantity) && $entry->stock_quantity !== null
+                ? (int) $entry->stock_quantity
+                : null,
+            'monthly_revenue' => (isset($entry->monthly_revenue) && is_numeric($entry->monthly_revenue))
+                ? floatval($entry->monthly_revenue)
+                : null,
+            'monthly_units_sold' => isset($entry->monthly_units_sold) && $entry->monthly_units_sold !== null
+                ? (int) $entry->monthly_units_sold
+                : null,
+            'buy_box_owner' => $entry->buy_box_owner ?? null,
+            'seller_type' => $entry->seller_type_js ?? null,
+            'sales_data_updated_at' => $entry->sales_data_updated_at ?? null,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $groupSkus
+     * @param  list<int>  $ids
+     * @return array{competitors: \Illuminate\Support\Collection<int, array<string, mixed>>, lowest: ?array<string, mixed>}
+     */
+    private function amazonLmpMappedCompetitors(array $groupSkus, array $ids = []): array
+    {
+        $competitors = AmazonSkuCompetitor::getCompetitorsForSkus($groupSkus, 'amazon');
+        if ($ids !== []) {
+            $byIds = AmazonSkuCompetitor::query()
+                ->whereIn('id', $ids)
+                ->wherePositivePrice()
+                ->get();
+            $competitors = AmazonSkuCompetitor::dedupeByAsin($competitors->merge($byIds));
+        }
+        $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
+        $ignoredIds = AmazonSkuCompetitor::ignoredIdSet();
+        $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, $ignoredIds))->values();
+        $lowest = null;
+        foreach ($mapped as $row) {
+            if (! empty($row['ignored'])) {
+                continue;
+            }
+            $landed = isset($row['landed_price']) ? (float) $row['landed_price'] : (float) ($row['price'] ?? 0);
+            if ($landed > 0 && ($lowest === null || $landed < (float) ($lowest['landed_price'] ?? $lowest['price'] ?? PHP_INT_MAX))) {
+                $lowest = $row;
+            }
+        }
+
+        return ['competitors' => $mapped, 'lowest' => $lowest];
+    }
+
+    /**
      * Get all competitors for a SKU (for modal display).
      * Opt-in live SerpApi refresh via ?refresh=1 (same pattern as eBay GET /ebay-lmp-data).
      * On refresh, updates price + delivery (ship) into amazon_sku_competitors.
@@ -4636,54 +4694,28 @@ class OverallAmazonController extends Controller
                     ->values();
             }
 
-            // L1 = lowest non-ignored by landed (price + paid delivery; FREE does not add)
+            // Same mapped rows the Outer LMP column uses (ignored from DB).
+            $ignoredIds = AmazonSkuCompetitor::ignoredIdSet();
             $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
-            $lowest = $competitors->first(fn ($comp) => ! AmazonSkuCompetitor::isIgnored($comp));
-            
+            $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, $ignoredIds))->values();
+            $lowest = null;
+            foreach ($mapped as $row) {
+                if (! empty($row['ignored'])) {
+                    continue;
+                }
+                $landed = isset($row['landed_price']) ? (float) $row['landed_price'] : (float) ($row['price'] ?? 0);
+                if ($landed > 0 && ($lowest === null || $landed < (float) ($lowest['landed_price'] ?? PHP_INT_MAX))) {
+                    $lowest = $row;
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'sku' => $sku,
-                'competitors' => $competitors->map(function($comp) {
-                    // Use stored image or construct from ASIN (Amazon image URL pattern)
-                    $image = $comp->image ?? (
-                        $comp->asin
-                            ? 'https://m.media-amazon.com/images/P/' . $comp->asin . '._AC_SL1000_.jpg'
-                            : null
-                    );
-                    $delivery = $this->normalizeDeliveryText($comp->delivery);
-                    $landed = AmazonSkuCompetitor::landedPrice($comp);
-                    return [
-                        'id' => $comp->id,
-                        'sku' => $comp->sku,
-                        'asin' => $comp->asin,
-                        'marketplace' => $comp->marketplace,
-                        'image' => $image,
-                        'product_link' => $comp->product_link,
-                        'link' => $comp->product_link,
-                        'product_title' => $comp->product_title,
-                        'title' => $comp->product_title,
-                        'seller_name' => $comp->seller_name,
-                        'price' => floatval($comp->price),
-                        'landed_price' => $landed,
-                        'ignored' => AmazonSkuCompetitor::isIgnored($comp) ? 1 : 0,
-                        'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
-                        'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
-                        'extracted_old_price' => $comp->extracted_old_price !== null ? floatval($comp->extracted_old_price) : null,
-                        'delivery' => $delivery,
-                        'stock' => $comp->stock,
-                        'stock_quantity' => $comp->stock_quantity !== null ? (int) $comp->stock_quantity : null,
-                        'monthly_revenue' => $comp->monthly_revenue !== null ? floatval($comp->monthly_revenue) : null,
-                        'monthly_units_sold' => $comp->monthly_units_sold !== null ? (int) $comp->monthly_units_sold : null,
-                        'buy_box_owner' => $comp->buy_box_owner,
-                        'seller_type' => $comp->seller_type_js,
-                        'sales_data_updated_at' => $comp->sales_data_updated_at ? $comp->sales_data_updated_at->format('Y-m-d H:i:s') : null,
-                        'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
-                        'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
-                    ];
-                }),
-                'lowest_price' => $lowest ? AmazonSkuCompetitor::landedPrice($lowest) : null,
-                'lowest_delivery' => $lowest ? $this->normalizeDeliveryText($lowest->delivery ?? null) : null,
-                'total_count' => $competitors->count()
+                'competitors' => $mapped,
+                'lowest_price' => is_array($lowest) ? ($lowest['landed_price'] ?? $lowest['price'] ?? null) : null,
+                'lowest_delivery' => is_array($lowest) ? ($lowest['delivery'] ?? null) : null,
+                'total_count' => $mapped->count(),
             ]);
             
         } catch (\Exception $e) {
@@ -4696,6 +4728,49 @@ class OverallAmazonController extends Controller
                 'error' => 'Failed to fetch competitors: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Persist LMP Ignore on amazon_sku_competitors.ignored (DB is source of truth).
+     */
+    public function toggleAmazonLmpIgnored(Request $request)
+    {
+        $id = (int) $request->input('id');
+        $ignored = filter_var($request->input('ignored'), FILTER_VALIDATE_BOOLEAN);
+        $sku = trim((string) $request->input('sku', ''));
+        $linkedSkus = $request->input('linked_lmp_skus', []);
+        if (is_string($linkedSkus) && trim($linkedSkus) !== '') {
+            $linkedSkus = [trim($linkedSkus)];
+        } elseif (! is_array($linkedSkus)) {
+            $linkedSkus = [];
+        }
+
+        if ($id < 1) {
+            return response()->json(['success' => false, 'error' => 'Valid ID is required'], 400);
+        }
+        if (! AmazonSkuCompetitor::persistIgnored($id, $ignored)) {
+            return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
+        }
+
+        $groupSkus = array_values(array_unique(array_filter(array_map(
+            static fn ($value) => trim((string) $value),
+            array_merge($sku !== '' ? [$sku] : [], $linkedSkus)
+        ))));
+        $payload = $groupSkus !== []
+            ? $this->amazonLmpMappedCompetitors($groupSkus)
+            : ['competitors' => collect(), 'lowest' => null];
+        $lowest = $payload['lowest'];
+
+        return response()->json([
+            'success' => true,
+            'ignored' => $ignored ? 1 : 0,
+            'message' => $ignored ? 'Ignored for L1' : 'Included in L1',
+            'sku' => $sku,
+            'competitors' => $payload['competitors'],
+            'lowest_price' => is_array($lowest) ? ($lowest['landed_price'] ?? $lowest['price'] ?? null) : null,
+            'lowest_delivery' => is_array($lowest) ? ($lowest['delivery'] ?? null) : null,
+            'total_count' => $payload['competitors']->count(),
+        ]);
     }
 
     /**
