@@ -167,8 +167,8 @@ class ChannelPushSpriceJobStore
 
     /**
      * Price-edit queue: only the SKUs just changed.
-     * Appends onto another after-save job; replaces a leftover daily/reload job
-     * so a 3-SKU edit does not wait behind hundreds of leftover listings.
+     * Always appends onto a running job (daily / reload / after-save).
+     * Never replaces a catalog job with one SKU — that left the rest stuck on Push.
      *
      * @param  list<array<string, mixed>>  $tasks
      * @return array{state: array, mode: string}
@@ -181,7 +181,7 @@ class ChannelPushSpriceJobStore
             $current = $this->load();
         }
 
-        if ($this->isActive($current) && ($current['source'] ?? '') === 'after_save') {
+        if ($this->isActive($current)) {
             $state = $this->append($tasks);
 
             return ['state' => $state, 'mode' => 'append'];

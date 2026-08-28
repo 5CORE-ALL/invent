@@ -8313,7 +8313,11 @@
             if (typeof scanAndQueueChannelPushSprice !== 'function') return;
             const delay = opts.delay != null ? opts.delay : 0;
             const run = function() {
-                scanAndQueueChannelPushSprice(chPromoSafeTable(), { once: false, silent: false });
+                scanAndQueueChannelPushSprice(chPromoSafeTable(), {
+                    once: false,
+                    silent: false,
+                    catalog: true,
+                });
             };
             if (delay > 0) setTimeout(run, delay);
             else run();
@@ -8378,14 +8382,21 @@
                 chPromoSyncCvrDiscColumnFromSlabs();
             }
             const clearOnce = chPromoShouldClearStoredOnce();
+            const livePushOn = chPromoPageReloadPushAllowed();
             autopopulateEbaySpriceFromStdPrmtCpn({
                 overwrite: true,
                 persist: true,
                 silent: true,
                 force: clearOnce,
-                skip_push: true,
+                skip_push: !livePushOn,
             });
             if (clearOnce) chPromoMarkStoredClearedOnce();
+            if (!livePushOn) return;
+            if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
+                scanAndQueueTemuListingPush(tbl);
+            } else {
+                chPromoQueueReloadSpricePush({ delay: 500 });
+            }
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -9352,9 +9363,17 @@
                         chPromoToast(
                             'success',
                             on
-                                ? 'Auto-push on — changing a price pushes only that SKU, then pulls its live Price.'
+                                ? 'Auto-push on — S PRC ≠ Price listings are queued (same as Temu).'
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
+                        if (!on) return;
+                        if (typeof chPromoIsTemuPromoChannel === 'function'
+                            && chPromoIsTemuPromoChannel()
+                            && typeof scanAndQueueTemuListingPush === 'function') {
+                            scanAndQueueTemuListingPush(chPromoSafeTable());
+                        } else {
+                            chPromoQueueReloadSpricePush({ delay: 0 });
+                        }
                     })
                     .fail(function(xhr) {
                         chPromoPageReloadPushEnabled = prev;
