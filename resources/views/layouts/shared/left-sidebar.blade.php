@@ -2560,7 +2560,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('raw.images.hero.2') }}">
+                            <a href="{{ \Illuminate\Support\Facades\Route::has('raw.images.hero.2') ? route('raw.images.hero.2') : url('/raw-images-hero-2') }}">
                                 PM Hero Image 2
                                 @php $rawImagesHero2MissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(\App\Models\ProductRawImage::KIND_HERO_2); @endphp
                                 @if($rawImagesHero2MissingCount > 0)
