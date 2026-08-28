@@ -11,7 +11,7 @@
     $templateUrl = $templateUrl ?? ($isHero2 ? route('raw.images.hero.2.template') : ($isBatchCoo ? route('raw.images.batch.coo.template') : route('raw.images.template')));
     $aiPromptUrl = $aiPromptUrl ?? ($isHero2 ? route('raw.images.hero.2.ai.prompt') : ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt') : route('raw.images.ai.prompt')));
     $aiPromptSaveUrl = $aiPromptSaveUrl ?? ($isHero2 ? route('raw.images.hero.2.ai.prompt.save') : ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt.save') : route('raw.images.ai.prompt.save')));
-    $cachedImageUrl = $cachedImageUrl ?? route('raw.images.cached.image');
+    $cachedImageUrl = $cachedImageUrl ?? (\Illuminate\Support\Facades\Route::has('raw.images.cached.image') ? route('raw.images.cached.image') : url('/raw-images/cached-image'));
     $manualColumnTitle = $manualColumnTitle ?? ($isHero2 ? 'Hero Image 2' : 'Raw Images');
     $aiColumnTitle = $aiColumnTitle ?? ($isHero2 ? 'Hero Image 2 AI' : 'Raw Images AI');
     $missingBadgeLabel = $missingBadgeLabel ?? ($isHero2 ? 'Missing Hero Image 2' : 'Missing Raw Images');
@@ -649,10 +649,10 @@
         const rawImagesDownloadUrl = @json($downloadUrl);
         const rawImagesAiPromptUrl = @json($aiPromptUrl);
         const rawImagesAiPromptSaveUrl = @json($aiPromptSaveUrl);
-        const rawImagesCachedImageUrl = @json($cachedImageUrl ?? route('raw.images.cached.image'));
-        const ebayHeroFetchUrl = @json(route('image.master.ebay.images'));
-        const ebayHeroUploadUrl = @json(route('image.master.upload'));
-        const ebayHeroSaveUrl = @json(route('raw.images.ebay.hero.save'));
+        const rawImagesCachedImageUrl = @json($cachedImageUrl ?? (\Illuminate\Support\Facades\Route::has('raw.images.cached.image') ? route('raw.images.cached.image') : url('/raw-images/cached-image')));
+        const ebayHeroFetchUrl = @json(\Illuminate\Support\Facades\Route::has('image.master.ebay.images') ? route('image.master.ebay.images') : url('/image-master/ebay-images'));
+        const ebayHeroUploadUrl = @json(\Illuminate\Support\Facades\Route::has('image.master.upload') ? route('image.master.upload') : url('/image-master/upload'));
+        const ebayHeroSaveUrl = @json(\Illuminate\Support\Facades\Route::has('raw.images.ebay.hero.save') ? route('raw.images.ebay.hero.save') : $uploadUrl);
         const rawImagesPageTitle = @json($pageTitle);
         const rawImagesManualColumnTitle = @json($manualColumnTitle);
         const rawImagesAiColumnTitle = @json($aiColumnTitle);
@@ -990,7 +990,7 @@
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ sku: ebayHeroSku, images: ebayHeroUrls })
+                body: JSON.stringify({ sku: ebayHeroSku, images: ebayHeroUrls, ebay_hero: true })
             })
             .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
             .then(function (result) {
