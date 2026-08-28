@@ -299,9 +299,7 @@ class ChannelPushSpriceRunner
             return;
         }
         try {
-            $row = $class::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
-                ->first();
+            $row = \App\Support\Marketplace\EbayListingEnded::preferredRow($class, $sku);
             if (! $row) {
                 return;
             }

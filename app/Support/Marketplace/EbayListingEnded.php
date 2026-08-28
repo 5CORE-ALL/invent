@@ -48,4 +48,61 @@ final class EbayListingEnded
             || str_contains($blob, 'ended listing')
             || str_contains($blob, 'revise ended');
     }
+
+    /**
+     * A child SKU can exist on an old ended item_id and a newer live relist.
+     * Prefer the live row so the tabulator / price push do not follow the ended one.
+     *
+     * @param  iterable<int, object>  $metrics
+     */
+    public static function preferLiveMetric(iterable $metrics): ?object
+    {
+        $best = null;
+        $bestEnded = null;
+        $bestId = null;
+
+        foreach ($metrics as $metric) {
+            if (! is_object($metric)) {
+                continue;
+            }
+            $itemId = trim((string) ($metric->item_id ?? ''));
+            if ($itemId === '') {
+                continue;
+            }
+            $ended = self::isEnded($metric->listing_status ?? null);
+            $id = (int) ($metric->id ?? 0);
+            if ($best === null
+                || ($bestEnded && ! $ended)
+                || ($ended === $bestEnded && $id > $bestId)
+            ) {
+                $best = $metric;
+                $bestEnded = $ended;
+                $bestId = $id;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * @param  class-string  $metricClass
+     */
+    public static function preferredRow(string $metricClass, string $sku): ?object
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! class_exists($metricClass)) {
+            return null;
+        }
+
+        try {
+            $rows = $metricClass::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->orderBy('id')
+                ->get();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return self::preferLiveMetric($rows);
+    }
 }

@@ -27,7 +27,6 @@ use App\Models\AmazonDataView;
 use App\Models\EbaySkuCompetitor;
 use App\Services\ChannelPromoPricingService;
 use App\Services\LmpSkuGroupService;
-use App\Services\PefEbayPricePullService;
 use App\Support\Marketplace\EbayListingEnded;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -205,12 +204,17 @@ class EbayTwoController extends Controller
         // non-breaking spaces (U+00A0) while product_masters.sku uses normal spaces, which
         // otherwise breaks the lookup (item_id/price missing → row wrongly shows as Missing L).
         $ebayMetrics = Ebay2Metric::select(EbayListingEnded::withStatusColumn('ebay_2_metrics', [
-            'sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock',
+            'id', 'sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'l7_views', 'item_id', 'ebay_stock',
         ]))
+            ->orderBy('id')
             ->get()
-            ->keyBy(function ($metric) {
+            ->groupBy(function ($metric) {
                 return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
-            });
+            })
+            ->map(function ($group) {
+                return EbayListingEnded::preferLiveMetric($group);
+            })
+            ->filter();
 
         // Prior-day Price / INV / OV L30 (California) for green/red/gray trend dots.
         $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
@@ -2351,15 +2355,20 @@ class EbayTwoController extends Controller
         $priceFloat = round($priceFloat, 2);
 
         try {
-            $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
-            if (! $ebayMetric) {
-                $ebayMetric = Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-            }
+            $ebayMetric = EbayListingEnded::preferredRow(Ebay2Metric::class, $sku);
 
             if (!$ebayMetric || !$ebayMetric->item_id) {
                 $this->saveSpriceStatus($sku, 'failed');
                 Log::error('[EbayTwoController] eBay2 item_id not found', ['sku' => $sku]);
                 return response()->json(['success' => false, 'message' => 'Item ID not found for SKU: ' . $sku], 404);
+            }
+
+            if (EbayListingEnded::isEnded($ebayMetric->listing_status ?? null)) {
+                $this->saveSpriceStatus($sku, 'failed');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Listing is ended — skipped eBay revise',
+                ], 422);
             }
 
             $current = round((float) ($ebayMetric->ebay_price ?? 0), 2);
@@ -2384,23 +2393,23 @@ class EbayTwoController extends Controller
             );
 
             if (isset($result['success']) && $result['success']) {
-                $live = $this->ebay2PullLivePrice($sku, $priceFloat);
-                $ebayMetric->ebay_price = $live;
+                // Trust ReviseItem — a follow-up GetItem doubles eBay Trading calls.
+                $ebayMetric->ebay_price = $priceFloat;
                 $ebayMetric->save();
 
                 $this->saveSpriceStatus($sku, 'pushed');
-                Log::info('[EbayTwoController] eBay2 price push successful and live price pulled', [
+                Log::info('[EbayTwoController] eBay2 price push successful', [
                     'sku'     => $sku,
                     'price'   => $priceFloat,
-                    'ebay_price' => $live,
+                    'ebay_price' => $priceFloat,
                     'item_id' => $ebayMetric->item_id,
                 ]);
                 return response()->json([
                     'success'   => true,
                     'message'   => 'Price updated successfully on eBay2',
-                    'new_price' => $live,
-                    'price'     => $live,
-                    'ebay_price'=> $live,
+                    'new_price' => $priceFloat,
+                    'price'     => $priceFloat,
+                    'ebay_price'=> $priceFloat,
                 ]);
             }
 
@@ -2442,28 +2451,6 @@ class EbayTwoController extends Controller
             ]);
             return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
-    }
-
-    private function ebay2PullLivePrice(string $sku, float $fallback): float
-    {
-        try {
-            $pulled = app(PefEbayPricePullService::class)->pullOne($sku, 'ebay2');
-            $live = isset($pulled['price']) ? (float) $pulled['price'] : 0;
-            if (! empty($pulled['success']) && $live > 0) {
-                return round($live, 2);
-            }
-            Log::warning('[EbayTwoController] GetItem after S PRC push failed', [
-                'sku' => $sku,
-                'message' => $pulled['message'] ?? 'pull failed',
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('[EbayTwoController] GetItem after S PRC push exception', [
-                'sku' => $sku,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return round($fallback, 2);
     }
 
     private function saveSpriceStatus($sku, $status)

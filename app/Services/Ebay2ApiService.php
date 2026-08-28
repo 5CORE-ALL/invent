@@ -37,6 +37,9 @@ class Ebay2ApiService
     /** @var array{shipping: string, payment: string, return: string}|null */
     protected ?array $ebay2PolicyIds = null;
 
+    /** @var array<string, array{token: string, expires_at: int}> */
+    protected static array $bearerMemo = [];
+
     public function __construct()
     {
         $this->appId       = config('services.ebay2.app_id');
@@ -100,11 +103,23 @@ class Ebay2ApiService
         }
 
         $cacheKey = 'ebay2_bearer_token_' . md5((string) $clientId);
+        $memo = self::$bearerMemo[$cacheKey] ?? null;
+        if (is_array($memo) && ! empty($memo['token']) && (int) ($memo['expires_at'] ?? 0) > time() + 30) {
+            return $memo['token'];
+        }
         if (Cache::has($cacheKey)) {
             $cached = Cache::get($cacheKey);
             if (!empty($cached)) {
+                self::$bearerMemo[$cacheKey] = ['token' => $cached, 'expires_at' => time() + 300];
                 return $cached;
             }
+        }
+        $durable = $this->readDurableBearerToken($cacheKey);
+        if ($durable !== null) {
+            Cache::put($cacheKey, $durable['token'], now()->addSeconds(max(60, $durable['expires_at'] - time() - 10)));
+            self::$bearerMemo[$cacheKey] = $durable;
+
+            return $durable['token'];
         }
 
         // IMPORTANT: When using refresh_token, omit the `scope` parameter.
@@ -158,8 +173,61 @@ class Ebay2ApiService
 
         $ttlSeconds = max(0, $expiresIn - 60);
         Cache::put($cacheKey, $accessToken, now()->addSeconds($ttlSeconds));
+        $this->writeDurableBearerToken($cacheKey, $accessToken, time() + $ttlSeconds);
+        self::$bearerMemo[$cacheKey] = ['token' => $accessToken, 'expires_at' => time() + $ttlSeconds];
 
         return $accessToken;
+    }
+
+    /**
+     * Survives artisan cache:clear / deploy so we do not mint a new eBay access token every wipe.
+     *
+     * @return array{token: string, expires_at: int}|null
+     */
+    private function readDurableBearerToken(string $cacheKey): ?array
+    {
+        $path = $this->durableBearerTokenPath();
+        if (! is_file($path)) {
+            return null;
+        }
+        try {
+            $raw = json_decode((string) file_get_contents($path), true);
+        } catch (\Throwable) {
+            return null;
+        }
+        if (! is_array($raw) || ($raw['key'] ?? '') !== $cacheKey) {
+            return null;
+        }
+        $token = trim((string) ($raw['token'] ?? ''));
+        $expiresAt = (int) ($raw['expires_at'] ?? 0);
+        if ($token === '' || $expiresAt <= time() + 30) {
+            return null;
+        }
+
+        return ['token' => $token, 'expires_at' => $expiresAt];
+    }
+
+    private function writeDurableBearerToken(string $cacheKey, string $token, int $expiresAt): void
+    {
+        try {
+            $path = $this->durableBearerTokenPath();
+            $dir = dirname($path);
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            @file_put_contents($path, json_encode([
+                'key' => $cacheKey,
+                'token' => $token,
+                'expires_at' => $expiresAt,
+            ], JSON_UNESCAPED_SLASHES));
+        } catch (\Throwable) {
+            // Best-effort — Cache still holds the token for this process.
+        }
+    }
+
+    private function durableBearerTokenPath(): string
+    {
+        return storage_path('app/ebay2-oauth-token.json');
     }
 
 

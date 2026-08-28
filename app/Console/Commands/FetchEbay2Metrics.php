@@ -93,14 +93,21 @@ class FetchEbay2Metrics extends Command
 
             // Keep every item_id+sku pair. The same child SKU can be listed on
             // two eBay items; deleting the "other" item_id left that listing stuck.
+            $payload = [
+                'ebay_price' => $row['price'] ?? null,
+                'ebay_stock' => $row['quantity'] ?? null,
+                'ebay_title' => $row['title'] ?? null,
+                'report_range' => now()->toDateString(),
+            ];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
+                $payload['listing_status'] = 'ACTIVE';
+                if (\Illuminate\Support\Facades\Schema::hasColumn('ebay_2_metrics', 'inactive_reason')) {
+                    $payload['inactive_reason'] = null;
+                }
+            }
             Ebay2Metric::updateOrCreate(
                 ['item_id' => $itemId, 'sku' => $sku],
-                [
-                    'ebay_price' => $row['price'] ?? null,
-                    'ebay_stock' => $row['quantity'] ?? null,
-                    'ebay_title' => $row['title'] ?? null,
-                    'report_range' => now()->toDateString(),
-                ]
+                $payload
             );
         }
         
@@ -181,54 +188,13 @@ class FetchEbay2Metrics extends Command
 
     private function getToken()
     {
-        $id = config('services.ebay2.app_id');
-        $secret = config('services.ebay2.cert_id');
-        $rtoken = config('services.ebay2.refresh_token');
+        try {
+            return app(\App\Services\Ebay2ApiService::class)->generateBearerToken();
+        } catch (\Throwable $e) {
+            $this->error('EBAY TOKEN EXCEPTION: ' . $e->getMessage());
 
-        $maxRetries = 3;
-        $attempt = 0;
-
-        while ($attempt < $maxRetries) {
-            $attempt++;
-            
-            try {
-                $response = Http::asForm()
-                    ->withBasicAuth($id, $secret)
-                    ->timeout(30)
-                    ->connectTimeout(15)
-                    ->retry(2, 1000)
-                    ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                        'grant_type' => 'refresh_token',
-                        'refresh_token' => $rtoken,
-                    ]);
-
-                if (! $response->successful()) {
-                    if ($attempt < $maxRetries) {
-                        $this->warn("⚠️  Token request failed (attempt {$attempt}/{$maxRetries}), retrying...");
-                        sleep(2);
-                        continue;
-                    }
-                    $this->error('❌ TOKEN FAILED: '.json_encode($response->json()));
-                    return null;
-                }
-
-                return $response->json()['access_token'] ?? null;
-
-            } catch (\Throwable $e) {
-                if ($attempt < $maxRetries) {
-                    $this->warn("⚠️  Token request exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
-                    $this->warn('EBAY TOKEN EXCEPTION (retrying) - Attempt: ' . $attempt . ', Message: ' . $e->getMessage());
-                    sleep(2);
-                    continue;
-                }
-                
-                $this->error('EBAY TOKEN EXCEPTION: ' . $e->getMessage());
-
-                return null;
-            }
+            return null;
         }
-
-        return null;
     }
 
     private function getInventoryTaskId($token)

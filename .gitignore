@@ -18,6 +18,7 @@ id_ed25519
 
 # Ignore Google credentials
 /storage/app/google-credentials.json
+/storage/app/ebay2-oauth-token.json
 
 # Ignore vendor and node_modules
 /vendor

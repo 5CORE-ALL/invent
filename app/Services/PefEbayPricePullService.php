@@ -131,6 +131,10 @@ class PefEbayPricePullService
     private function resolveChannel(string $sku, string $marketplace): array
     {
         $find = static function (string $modelClass) use ($sku) {
+            $preferred = \App\Support\Marketplace\EbayListingEnded::preferredRow($modelClass, $sku);
+            if ($preferred) {
+                return $preferred;
+            }
             $m = $modelClass::query()->where('sku', $sku)->first();
             if ($m) {
                 return $m;
