@@ -4128,6 +4128,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/raw-images/download', [RawImagesController::class, 'downloadSelected'])->name('raw.images.download');
     Route::get('/raw-images/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.template');
     Route::get('/raw-images/cached-image', [RawImagesController::class, 'cachedImage'])->name('raw.images.cached.image');
+    Route::post('/raw-images/ebay-hero/save', [RawImagesController::class, 'saveEbayHeroImages'])->name('raw.images.ebay.hero.save');
     Route::post('/raw-images/ai-prompt', [RawImagesController::class, 'aiPrompt'])->name('raw.images.ai.prompt');
     Route::post('/raw-images/ai-prompt/save', [RawImagesController::class, 'saveAiPrompt'])->name('raw.images.ai.prompt.save');
     Route::delete('/raw-images/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.destroy');
