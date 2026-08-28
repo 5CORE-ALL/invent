@@ -22,6 +22,7 @@ class BadgeCalculatorRegistry
             VideosMasterBadgeCalculator::class,
             RawImagesBadgeCalculator::class,
             RawImagesBatchCooBadgeCalculator::class,
+            RawImagesHero2BadgeCalculator::class,
             VideoAdsMasterBadgeCalculator::class,
             CustomerCareBadgeCalculator::class,
             AccountHealthBadgeCalculator::class,

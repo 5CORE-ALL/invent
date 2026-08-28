@@ -104,6 +104,7 @@ return [
     'image.master' => 'sidebar_product',
     'raw.images' => 'sidebar_product',
     'raw.images.batch.coo' => 'sidebar_product',
+    'raw.images.hero.2' => 'sidebar_product',
     'raw.images.*' => 'sidebar_product',
     'bullet.points' => 'sidebar_product',
     'videos.master' => 'sidebar_product',

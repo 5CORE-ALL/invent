@@ -22,6 +22,7 @@ class BadgeDataCatalog
             'videos-master' => 'Videos',
             'raw-images' => 'Raw Images',
             'raw-images-batch-coo' => 'Raw Images (Batch +COO)',
+            'raw-images-hero-2' => 'Hero Image 2',
             'video-ads-master' => 'Video Request & Check',
             'customer-care' => 'Customer Care',
             'account-health' => 'Account Health',
@@ -113,6 +114,12 @@ class BadgeDataCatalog
                 'with_raw_image' => 'With raw image',
                 'image' => 'Image',
                 'missing' => 'Missing Raw Images',
+            ],
+            'raw-images-hero-2' => [
+                'sku_count' => 'SKUs',
+                'with_raw_image' => 'With hero image 2',
+                'image' => 'Image',
+                'missing' => 'Missing Hero Image 2',
             ],
             'video-ads-master' => [
                 'required' => 'Required',

@@ -4142,6 +4142,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/raw-images-batch-coo/ai-prompt/save', [RawImagesController::class, 'saveAiPrompt'])->name('raw.images.batch.coo.ai.prompt.save');
     Route::delete('/raw-images-batch-coo/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.batch.coo.destroy');
 
+    Route::get('/raw-images-hero-2', [RawImagesController::class, 'index'])->name('raw.images.hero.2');
+    Route::get('/raw-images-hero-2-data', [RawImagesController::class, 'getData'])->name('raw.images.hero.2.data');
+    Route::post('/raw-images-hero-2/upload', [RawImagesController::class, 'upload'])->name('raw.images.hero.2.upload');
+    Route::post('/raw-images-hero-2/bulk-import', [RawImagesController::class, 'bulkImport'])->name('raw.images.hero.2.bulk.import');
+    Route::post('/raw-images-hero-2/download', [RawImagesController::class, 'downloadSelected'])->name('raw.images.hero.2.download');
+    Route::get('/raw-images-hero-2/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.hero.2.template');
+    Route::post('/raw-images-hero-2/ai-prompt', [RawImagesController::class, 'aiPrompt'])->name('raw.images.hero.2.ai.prompt');
+    Route::post('/raw-images-hero-2/ai-prompt/save', [RawImagesController::class, 'saveAiPrompt'])->name('raw.images.hero.2.ai.prompt.save');
+    Route::delete('/raw-images-hero-2/{id}', [RawImagesController::class, 'destroy'])->name('raw.images.hero.2.destroy');
+
     Route::get('/video-master', [VideoMasterController::class, 'index'])->name('video.master');
     Route::get('/video-master-data', [VideoMasterController::class, 'getData'])->name('video.master.data');
     Route::post('/video-master/push', [VideoMasterController::class, 'pushToMarketplace'])->name('video.master.push');

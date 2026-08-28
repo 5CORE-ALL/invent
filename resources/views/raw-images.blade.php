@@ -1,17 +1,24 @@
 @php
     $isBatchCoo = ($kind ?? '') === \App\Models\ProductRawImage::KIND_BATCH_COO;
-    $pageTitle = $pageTitle ?? ($isBatchCoo ? 'Raw Images (Batch +COO)' : 'Raw Images');
-    $pageSubtitle = $pageSubtitle ?? ($isBatchCoo ? 'Upload batch and COO raw image files by SKU' : 'Upload original raw image files by SKU');
-    $dataUrl = $dataUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.data') : route('raw.images.data'));
-    $uploadUrl = $uploadUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.upload') : route('raw.images.upload'));
-    $destroyBaseUrl = $destroyBaseUrl ?? ($isBatchCoo ? url('/raw-images-batch-coo') : url('/raw-images'));
-    $bulkImportUrl = $bulkImportUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.bulk.import') : route('raw.images.bulk.import'));
-    $downloadUrl = $downloadUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.download') : route('raw.images.download'));
-    $templateUrl = $templateUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.template') : route('raw.images.template'));
-    $aiPromptUrl = $aiPromptUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt') : route('raw.images.ai.prompt'));
-    $aiPromptSaveUrl = $aiPromptSaveUrl ?? ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt.save') : route('raw.images.ai.prompt.save'));
+    $isHero2 = ($kind ?? '') === \App\Models\ProductRawImage::KIND_HERO_2;
+    $pageTitle = $pageTitle ?? ($isHero2 ? 'Hero Image 2' : ($isBatchCoo ? 'Raw Images (Batch +COO)' : 'Raw Images'));
+    $pageSubtitle = $pageSubtitle ?? ($isHero2 ? 'Upload hero image 2 files by SKU' : ($isBatchCoo ? 'Upload batch and COO raw image files by SKU' : 'Upload original raw image files by SKU'));
+    $dataUrl = $dataUrl ?? ($isHero2 ? route('raw.images.hero.2.data') : ($isBatchCoo ? route('raw.images.batch.coo.data') : route('raw.images.data')));
+    $uploadUrl = $uploadUrl ?? ($isHero2 ? route('raw.images.hero.2.upload') : ($isBatchCoo ? route('raw.images.batch.coo.upload') : route('raw.images.upload')));
+    $destroyBaseUrl = $destroyBaseUrl ?? ($isHero2 ? url('/raw-images-hero-2') : ($isBatchCoo ? url('/raw-images-batch-coo') : url('/raw-images')));
+    $bulkImportUrl = $bulkImportUrl ?? ($isHero2 ? route('raw.images.hero.2.bulk.import') : ($isBatchCoo ? route('raw.images.batch.coo.bulk.import') : route('raw.images.bulk.import')));
+    $downloadUrl = $downloadUrl ?? ($isHero2 ? route('raw.images.hero.2.download') : ($isBatchCoo ? route('raw.images.batch.coo.download') : route('raw.images.download')));
+    $templateUrl = $templateUrl ?? ($isHero2 ? route('raw.images.hero.2.template') : ($isBatchCoo ? route('raw.images.batch.coo.template') : route('raw.images.template')));
+    $aiPromptUrl = $aiPromptUrl ?? ($isHero2 ? route('raw.images.hero.2.ai.prompt') : ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt') : route('raw.images.ai.prompt')));
+    $aiPromptSaveUrl = $aiPromptSaveUrl ?? ($isHero2 ? route('raw.images.hero.2.ai.prompt.save') : ($isBatchCoo ? route('raw.images.batch.coo.ai.prompt.save') : route('raw.images.ai.prompt.save')));
     $cachedImageUrl = $cachedImageUrl ?? route('raw.images.cached.image');
-    $savedAiPrompt = $savedAiPrompt ?? "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.";
+    $manualColumnTitle = $manualColumnTitle ?? ($isHero2 ? 'Hero Image 2' : 'Raw Images');
+    $aiColumnTitle = $aiColumnTitle ?? ($isHero2 ? 'Hero Image 2 AI' : 'Raw Images AI');
+    $missingBadgeLabel = $missingBadgeLabel ?? ($isHero2 ? 'Missing Hero Image 2' : 'Missing Raw Images');
+    $zipFileName = $zipFileName ?? ($isHero2 ? 'hero-image-2.zip' : 'raw-images.zip');
+    $savedAiPrompt = $savedAiPrompt ?? ($isHero2
+        ? "Make a hero image 2 from the image in the Hero image column and paste it in the Hero Image 2 column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa."
+        : "Make a raw shoot image background for the image in Hero image column and paste it in raw image column.\nThe size should be  2000x2000px.\nmake it realistic and Natural so that AI can not Detect.\nif product is dark then use light Background or vice-versa.");
     $savedAiPkgPrompt = $savedAiPkgPrompt ?? "Make a raw packaging photo from the Hero image and put it in the Pkg Raw column.\nThe size should be 2000x2000px.\nShow the product as a realistic packaged / item-pkg raw shoot, natural lighting, no text, no watermark.\nIf the product is dark then use a light background or vice-versa.";
 @endphp
 @extends('layouts.vertical', ['title' => $pageTitle, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
@@ -339,7 +346,7 @@
                                 </li>
                             </ul>
                         </div>
-                        <button type="button" class="btn btn-sm btn-primary" id="downloadSelectedBtn" title="Download raw images for selected SKUs">
+                        <button type="button" class="btn btn-sm btn-primary" id="downloadSelectedBtn" title="Download {{ strtolower($pageTitle) }} for selected SKUs">
                             <i class="fas fa-download"></i> Download
                         </button>
                         <div class="dropdown">
@@ -360,11 +367,11 @@
                             </ul>
                         </div>
                         <span class="badge bg-secondary fs-6 p-2" id="selectedCountBadge">Selected: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="available-images-badge" title="Click to show SKUs that have a raw or AI image">
+                        <span class="badge bg-success fs-6 p-2" id="available-images-badge" title="Click to show SKUs that have a {{ strtolower($manualColumnTitle) }} or AI image">
                             Image: <span id="availableImagesCount">0</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="Click to show SKUs with inventory that are missing a raw image (0 INV excluded)">
-                            Missing Raw Images: <span id="missingRawImagesCount">0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="Click to show SKUs with inventory that are missing {{ $manualColumnTitle }} (0 INV excluded)">
+                            {{ $missingBadgeLabel }}: <span id="missingRawImagesCount">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2">
                             SKUs: <span id="skuCountBadge">0</span>
@@ -425,6 +432,25 @@
                     </div>
                     <div class="small text-success fw-semibold mt-1" id="rawUploadMsg" style="display:none;"></div>
                     <div class="small text-danger fw-semibold mt-1" id="rawUploadErr" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ebayHeroGalleryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title">
+                        <i class="fas fa-image me-2"></i>eBay Hero Image — <span id="ebayHeroSkuLabel"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="ebayHeroGrid" class="ri-modal-grid"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -557,6 +583,9 @@
         const rawImagesAiPromptSaveUrl = @json($aiPromptSaveUrl);
         const rawImagesCachedImageUrl = @json($cachedImageUrl ?? route('raw.images.cached.image'));
         const rawImagesPageTitle = @json($pageTitle);
+        const rawImagesManualColumnTitle = @json($manualColumnTitle);
+        const rawImagesAiColumnTitle = @json($aiColumnTitle);
+        const rawImagesZipFileName = @json($zipFileName);
         const riImageWarm = new Set();
 
         function isParentRow(item) {
@@ -592,10 +621,10 @@
             const isPkg = source === 'pkg';
             const images = rawImageSourceImages(row, source);
             const titles = {
-                ai: 'View AI raw images',
+                ai: 'View ' + rawImagesAiColumnTitle,
                 pkg_ai: 'View Pkg Raw Image AI',
                 pkg: 'View / add pkg raw images',
-                manual: 'View / add raw images'
+                manual: 'View / add ' + rawImagesManualColumnTitle.toLowerCase()
             };
             const title = titles[source] || titles.manual;
             if (source === 'ai' && (row.ai_generating || riAiLoadingSkus.has(sku))) {
@@ -608,7 +637,7 @@
                 if (isAi) {
                     return '<span class="text-muted" title="' + (source === 'pkg_ai' ? 'Generate with the AI Raw Pkg button' : 'Generate with the AI button') + '">—</span>';
                 }
-                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + (isPkg ? 'pkg' : 'manual') + '" title="' + (isPkg ? 'Add pkg raw image' : 'Add raw image') + '">+</button>';
+                return '<button type="button" class="ri-cell-plus js-open-raw-modal" data-sku="' + escapeHtml(sku) + '" data-source="' + (isPkg ? 'pkg' : 'manual') + '" title="' + (isPkg ? 'Add pkg raw image' : 'Add ' + rawImagesManualColumnTitle) + '">+</button>';
             }
             const first = images[0];
             const count = images.length;
@@ -634,6 +663,49 @@
                 + ' onerror="if(this.dataset.fallback){ var f=this.dataset.fallback; this.dataset.fallback=\'\'; this.src=f; } else { this.style.visibility=\'hidden\'; }">';
             if (!href) return img;
             return '<a href="' + escapeHtml(href) + '" target="_blank" title="Image Master / Images tab">' + img + '</a>';
+        }
+
+        function ebayHeroImages(row) {
+            if (row && Array.isArray(row.ebay_hero_images) && row.ebay_hero_images.length) {
+                return row.ebay_hero_images;
+            }
+            const url = (row && (row.ebay_hero_image || row.hero_image)) || '';
+            if (!url) return [];
+            return [{ url: url, thumb_url: (row && (row.ebay_hero_thumb || row.hero_thumb)) || url }];
+        }
+
+        function ebayHeroCellHtml(row) {
+            const images = ebayHeroImages(row);
+            if (!images.length) return '<span class="text-muted">—</span>';
+            const first = images[0];
+            const src = cachedImageSrc(first.url, first.thumb_url);
+            const sku = row.SKU || '';
+            const count = images.length;
+            const inner = thumbHtml(src, 'eBay Hero');
+            return '<button type="button" class="btn btn-link p-0 js-open-ebay-hero" data-sku="' + escapeHtml(sku) + '" title="'
+                + (count > 1 ? (count + ' hero images') : 'Hero image') + '" style="position:relative;display:inline-flex;">'
+                + inner
+                + (count > 1 ? '<span class="ri-cell-count">' + count + '</span>' : '')
+                + '</button>';
+        }
+
+        function openEbayHeroGallery(sku) {
+            const item = tableData.find(function (d) { return d.SKU === sku; });
+            const images = ebayHeroImages(item || {});
+            document.getElementById('ebayHeroSkuLabel').textContent = sku || '';
+            const grid = document.getElementById('ebayHeroGrid');
+            if (!images.length) {
+                grid.innerHTML = '<span class="text-muted">No hero images</span>';
+            } else {
+                grid.innerHTML = images.map(function (img, i) {
+                    const url = img.url || '';
+                    const src = cachedImageSrc(url, img.thumb_url);
+                    return '<a href="' + escapeHtml(url) + '" target="_blank" title="Hero ' + (i + 1) + '">'
+                        + '<img src="' + escapeHtml(src) + '" alt="Hero ' + (i + 1) + '" class="ri-cell-thumb" style="width:88px;height:88px;" loading="lazy">'
+                        + '</a>';
+                }).join('');
+            }
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('ebayHeroGalleryModal')).show();
         }
 
         function barcodeCellHtml(row) {
@@ -889,7 +961,17 @@
                         }
                     },
                     {
-                        title: 'Raw Images AI',
+                        title: 'eBay Hero Image',
+                        field: 'ebay_hero_image',
+                        width: 90,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            return ebayHeroCellHtml(cell.getData());
+                        }
+                    },
+                    {
+                        title: rawImagesAiColumnTitle,
                         field: 'has_raw_ai_image',
                         width: 100,
                         hozAlign: 'center',
@@ -899,7 +981,7 @@
                         }
                     },
                     {
-                        title: 'Raw Images',
+                        title: rawImagesManualColumnTitle,
                         field: 'has_raw_image',
                         width: 90,
                         hozAlign: 'center',
@@ -965,6 +1047,12 @@
                 if (openBtn) {
                     e.preventDefault();
                     openRawImageModal(openBtn.getAttribute('data-sku'), openBtn.getAttribute('data-source') || 'manual');
+                    return;
+                }
+                const ebayHeroBtn = e.target.closest('.js-open-ebay-hero');
+                if (ebayHeroBtn) {
+                    e.preventDefault();
+                    openEbayHeroGallery(ebayHeroBtn.getAttribute('data-sku') || '');
                 }
             });
         }
@@ -1063,7 +1151,7 @@
             const kindLabel = document.getElementById('modalKindLabel');
             if (kindLabel) {
                 const labels = {
-                    ai: 'Raw Images AI',
+                    ai: rawImagesAiColumnTitle,
                     pkg_ai: 'Pkg Raw Image AI',
                     pkg: 'Pkg Raw'
                 };
@@ -1108,7 +1196,7 @@
 
             if (!isAiModalSource(currentModalSource)) {
                 const plusClass = list.length ? 'ri-plus-tile ri-plus-tile-sm' : 'ri-plus-tile';
-                const plusLabel = list.length ? 'Add more' : (currentModalSource === 'pkg' ? 'Add pkg raw image' : 'Add raw image');
+                const plusLabel = list.length ? 'Add more' : (currentModalSource === 'pkg' ? 'Add pkg raw image' : 'Add ' + rawImagesManualColumnTitle);
                 html += '<div class="' + plusClass + '" title="' + plusLabel + '">'
                     + '<span class="ri-plus-icon">+</span>'
                     + '<span class="small fw-semibold">' + plusLabel + '</span>'
@@ -1755,7 +1843,7 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'raw-images.zip';
+                a.download = rawImagesZipFileName;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
