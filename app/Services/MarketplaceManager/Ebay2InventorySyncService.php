@@ -76,7 +76,7 @@ class Ebay2InventorySyncService
             return [
                 'updated' => 0,
                 'failed' => 0,
-                'skipped' => 0,
+                'skipped' => count($skus),
                 'rate_limited' => true,
                 'message' => $blocked,
             ];
@@ -132,6 +132,7 @@ class Ebay2InventorySyncService
             })
             ->values();
 
+        $liveMpQty = $this->ebay2QtyMapForSkip($metrics->pluck('sku')->all());
         $inventoryRows = [];
         $skipped = 0;
 
@@ -170,13 +171,10 @@ class Ebay2InventorySyncService
             );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-            $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
-            if ($currentMp !== null && $currentMp === $pushQty) {
-                $skipped++;
-                continue;
-            }
-            if ($shopifyStock !== null && $shopifyStock > 0
-                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'ebay2')) {
+            // Mismatch pass already classified live eBay vs the % target — always push.
+            // Full SKU sync: skip only when listings qty already equals the exact % target.
+            if (! $exactShopifyQty
+                && $this->marketplaceQtyAlreadyAtTarget($liveMpQty, $sku, $pushQty)) {
                 $skipped++;
                 continue;
             }
@@ -387,6 +385,7 @@ class Ebay2InventorySyncService
 
         $useSalePrice = (bool) ($settings['pricing']['use_sale_price'] ?? false);
 
+        $liveMpQty = $this->ebay2QtyMapForSkip($skus);
         $inventoryRows = [];
         $priceRows = [];
         $skipped = 0;
@@ -423,11 +422,10 @@ class Ebay2InventorySyncService
 
             if ($pushQty !== null) {
                 $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
-                $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
-                $alreadyOk = $currentMp !== null && $currentMp === $pushQty;
-                $withinTol = $shopifyStock !== null && $shopifyStock > 0
-                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'ebay2');
-                if ($alreadyOk || $withinTol) {
+                // Skip only when listings qty already equals the exact % target.
+                // Do not use ebay_stock or the 3-unit match bar — those hid 20% pushes
+                // while live eBay still had full Shopify qty.
+                if ($this->marketplaceQtyAlreadyAtTarget($liveMpQty, $sku, $pushQty)) {
                     $skipped++;
                 } else {
                     $inventoryRows[] = [
@@ -447,6 +445,12 @@ class Ebay2InventorySyncService
             }
         }
 
+        Log::info('Ebay2InventorySyncService: inventory rows queued', [
+            'qty_percent' => $qtyPercent,
+            'queued' => count($inventoryRows),
+            'skipped_already_at_target' => $skipped,
+        ]);
+
         if ($dryRun) {
             return $finish([
                 'updated' => count($inventoryRows),
@@ -460,17 +464,22 @@ class Ebay2InventorySyncService
         $updated = 0;
         $failed = 0;
         $priceUpdated = 0;
+        $rateLimited = false;
+        $invNote = '';
 
         if ($inventoryRows !== []) {
             $invResult = $this->pushInventoryRows($inventoryRows);
             $updated = (int) ($invResult['pushed'] ?? 0);
             $failed = (int) ($invResult['failed'] ?? 0);
+            $skipped += (int) ($invResult['skipped'] ?? 0);
+            $rateLimited = ! empty($invResult['rate_limited']);
+            $invNote = trim((string) ($invResult['message'] ?? ''));
             $pushedRows = $invResult['rows'] ?? [];
             if ($pushedRows !== []) {
                 $this->updateLocalStock($pushedRows);
                 $this->updateLocalPlatformQuantities($pushedRows);
                 app(Ebay2LiveListingsService::class)->clearCache();
-            } elseif ($failed > 0) {
+            } elseif ($failed > 0 || $rateLimited) {
                 Log::warning('Ebay2InventorySyncService: inventory push failed', $invResult);
             }
         }
@@ -492,25 +501,37 @@ class Ebay2InventorySyncService
             }
         }
 
+        $message = "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}.";
+        if ($invNote !== '' && ($updated === 0 || $failed > 0 || $rateLimited)) {
+            $message .= ' '.$invNote;
+        }
+        $message .= $this->appendMismatchPass(
+            ! $dryRun && ($settings['inventory']['inventory_sync'] ?? false),
+            $rateLimited
+        );
+
         return $finish([
             'updated' => $updated,
             'failed' => $failed,
             'skipped' => $skipped,
             'price_updated' => $priceUpdated,
-            'message' => "Updated {$updated} inventory, {$priceUpdated} price(s); failed {$failed}; skipped {$skipped}."
-                .$this->appendMismatchPass(! $dryRun && ($settings['inventory']['inventory_sync'] ?? false)),
+            'rate_limited' => $rateLimited,
+            'message' => $message,
         ]);
     }
 
-    protected function appendMismatchPass(bool $run): string
+    protected function appendMismatchPass(bool $run, bool $rateLimited = false): string
     {
+        if ($rateLimited) {
+            return ' Mismatch pass skipped (eBay 2 API usage limit).';
+        }
         if (! $run) {
             return '';
         }
 
         $pass = app(MarketplaceMismatchInventoryPass::class)->run('ebay2');
 
-        return ' '.$pass['message'];
+        return ' '.trim((string) ($pass['message'] ?? ''));
     }
 
     /**
@@ -616,6 +637,7 @@ class Ebay2InventorySyncService
         $remaining = max(0, count($valid) - $attempted);
         $message = $lastMessage;
         if ($rateLimited) {
+            $skipped += $remaining;
             $until = self::tradingLimitMessage() ?: 'wait until after midnight Pacific (~12:50 PM IST)';
             $message = 'eBay 2 hit API usage limit (518) after '.$pushed.' update(s). '
                 .$remaining.' SKU(s) left unattempted. '.$until
@@ -925,6 +947,36 @@ class Ebay2InventorySyncService
 
             return [];
         }
+    }
+
+    /**
+     * Same listings qty the mismatch pass uses (live cache + pricing/mappings).
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int>
+     */
+    protected function ebay2QtyMapForSkip(array $skus): array
+    {
+        $liveRows = app(Ebay2LiveListingsService::class)->peekCached();
+        $local = MarketplaceListingStockResolver::stockMapForSkus(
+            MarketplaceListingStockResolver::CHANNEL_EBAY2,
+            $skus
+        );
+
+        return MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal($liveRows, $local);
+    }
+
+    /**
+     * Skip only when listings already show the exact % target. Never treat
+     * stale ebay_2_metrics.ebay_stock or the 3-unit match bar as "already pushed".
+     *
+     * @param  array<string, int>  $liveMpQty
+     */
+    protected function marketplaceQtyAlreadyAtTarget(array $liveMpQty, string $sku, int $pushQty): bool
+    {
+        $current = MarketplaceListingStockResolver::qtyFromMap($liveMpQty, $sku);
+
+        return $current !== null && (int) $current === $pushQty;
     }
 
     /**
