@@ -160,6 +160,25 @@
             z-index: 1060 !important;
         }
 
+        /* LMP ignore: dim ignored competitors; they don't count toward L1 (same as Temu / eBay1) */
+        #lmpModal tr.lmp-ignored-row {
+            opacity: 0.55;
+            background: #f1f3f5 !important;
+        }
+        #lmpModal tr.lmp-ignored-row td {
+            text-decoration: line-through;
+            text-decoration-color: #adb5bd;
+        }
+        #lmpModal tr.lmp-ignored-row td:last-child,
+        #lmpModal tr.lmp-ignored-row .lmp-ignore-cb {
+            text-decoration: none;
+        }
+        #lmpModal .lmp-ignore-cb {
+            cursor: pointer;
+            width: 1.1em;
+            height: 1.1em;
+        }
+
         body.modal-open .modal-backdrop {
             position: fixed !important;
             inset: 0 !important;
@@ -5626,9 +5645,10 @@
             });
         }
 
-        // Render Competitors List Function
+        // Render Competitors List — Ignore excludes the row from L1 / Lowest (same as Temu LMP)
         function renderEbayCompetitorsList(competitors, lowestPrice) {
-            if (!competitors || competitors.length === 0) {
+            competitors = Array.isArray(competitors) ? competitors : [];
+            if (!competitors.length) {
                 $('#lmpDataList').html(`
                     <div class="alert alert-info">
                         <i class="fa fa-info-circle"></i> No competitors found for this SKU
@@ -5636,7 +5656,18 @@
                 `);
                 return;
             }
-            
+
+            let l1Price = null;
+            competitors.forEach(function(item) {
+                if (item.ignored) return;
+                const tp = parseFloat(item.total_price) || 0;
+                if (tp > 0 && (l1Price === null || tp < l1Price)) l1Price = tp;
+            });
+            if (l1Price === null && lowestPrice != null) {
+                l1Price = parseFloat(lowestPrice);
+            }
+
+            const skuEsc = String(currentLmpData.sku || '').replace(/"/g, '&quot;');
             let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
             html += `
                 <thead class="table-dark">
@@ -5646,30 +5677,39 @@
                         <th>Shipping</th>
                         <th>Total</th>
                         <th>Title</th>
+                        <th class="text-center" title="Ignore for L1">Ignore</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
             `;
-            
+
             competitors.forEach(function(item) {
-                const isLowest = item.total_price === lowestPrice;
-                const rowClass = isLowest ? 'table-success' : '';
-                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
+                const ignored = !!item.ignored;
+                const total = parseFloat(item.total_price) || 0;
+                const isLowest = !ignored && l1Price !== null && Math.abs(total - l1Price) < 0.005;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+                const badge = isLowest
+                    ? '<span class="badge bg-success ms-2">Lowest</span>'
+                    : (ignored ? '<span class="badge bg-secondary ms-2">Ignored</span>' : '');
                 const productLink = item.link || `https://www.ebay.com/itm/${item.item_id}`;
                 const imageCell = item.image
                     ? `<img src="${item.image}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
                     : '<span class="text-muted">—</span>';
-                
+                const ignoreCb = `<input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"`
+                    + (ignored ? ' checked' : '')
+                    + ` data-id="${item.id}" data-marketplace="ebay" data-sku="${skuEsc}">`;
+
                 html += `
                     <tr class="${rowClass}">
                         <td>${imageCell}</td>
                         <td>$${parseFloat(item.price).toFixed(2)}</td>
                         <td>${parseFloat(item.shipping_cost) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
-                        <td><strong>$${parseFloat(item.total_price).toFixed(2)}</strong> ${badge}</td>
+                        <td><strong>$${total.toFixed(2)}</strong> ${badge}</td>
                         <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             ${item.title || 'N/A'}
                         </td>
+                        <td class="text-center align-middle">${ignoreCb}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on eBay">
@@ -5687,10 +5727,56 @@
                     </tr>
                 `;
             });
-            
+
             html += '</tbody></table></div>';
+            if (l1Price !== null) {
+                html = `<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$${Number(l1Price).toFixed(2)}</strong></div>` + html;
+            }
             $('#lmpDataList').html(html);
         }
+
+        $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
+            const $cb = $(this);
+            const id = $cb.attr('data-id') || $cb.data('id');
+            const marketplace = ($cb.attr('data-marketplace') || $cb.data('marketplace') || 'ebay').toLowerCase();
+            const sku = $cb.attr('data-sku') || $cb.data('sku') || currentLmpData.sku || '';
+            const ignored = $cb.is(':checked');
+            $cb.prop('disabled', true);
+
+            $.ajax({
+                url: '/cvr-master-lmp-ignore',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { id: id, marketplace: marketplace, sku: sku, ignored: ignored ? 1 : 0 },
+                success: function(res) {
+                    $cb.prop('disabled', false);
+                    if (res && res.success) {
+                        (currentLmpData.competitors || []).forEach(function(c) {
+                            if (String(c.id) === String(id)) c.ignored = ignored;
+                        });
+                        let l1 = null;
+                        (currentLmpData.competitors || []).forEach(function(c) {
+                            if (c.ignored) return;
+                            const tp = parseFloat(c.total_price) || 0;
+                            if (tp > 0 && (l1 === null || tp < l1)) l1 = tp;
+                        });
+                        currentLmpData.lowestPrice = l1;
+                        renderEbayCompetitorsList(currentLmpData.competitors, l1);
+                        showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
+                        refreshEbay2TableData();
+                    } else {
+                        $cb.prop('checked', !ignored);
+                        showToast((res && res.error) || 'Failed to update ignore', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    $cb.prop('disabled', false);
+                    $cb.prop('checked', !ignored);
+                    const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to update ignore';
+                    showToast(msg, 'error');
+                }
+            });
+        });
 
         // View Competitors Modal Event Listener
         $(document).on('click', '.view-lmp-competitors', function(e) {

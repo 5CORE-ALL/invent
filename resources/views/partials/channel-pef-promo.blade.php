@@ -824,7 +824,6 @@
                         <strong style="color:#28a745;">Green 25–50% → 60</strong>,
                         <strong style="color:#e83e8c;">Pink 50%+ → 70</strong> first time).
                         This page has its own rule table.
-                        The <strong>0 Sold</strong> column shows the target on 0-sold SKUs.
                         If a SKU is <strong>0 sold</strong>, <strong>S PRC autofills from this rule</strong>
                         (<code>S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>).
                         It also re-applies when Dil color changes (Red / Green / Pink).
@@ -7454,7 +7453,7 @@
                 const plan = computeChannelPushPrcPlan(rowData);
                 $btn.html('<i class="fas fa-spinner fa-spin"></i> ' + i + '/' + ready.length);
                 const fill = chPromoResolveTemuSprice(rowData, chPromoFloorShopifySpriceToAmz(rowData, (chPromoTemuZeroSoldOwnsSprice(rowData) || chPromoKeepZeroSoldPrcSprice(rowData))
-                    ? (chPromoZeroSoldTargetPrice(rowData) || chPromoGetSprice(rowData) || 0)
+                    ? (chPromoZeroSoldRuleSprice(rowData) || chPromoGetSprice(rowData) || 0)
                     : (chPromoPrmtCpnComboEnabled()
                         ? (chPromoTemuSpriceFromStdPrmtCpn(rowData) || 0)
                         : (chPromoReverbComboEnabled()
@@ -8486,56 +8485,6 @@
                 },
             };
         }
-        function chPromoZeroSoldTargetPrice(d) {
-            const roi = chPromoZeroSoldGroiForRow(d);
-            if (roi == null) return 0;
-            let price = chPromoSpriceFromTargetRoi(d, roi);
-            if (typeof temuClampSpriceBand2699 === 'function') {
-                price = Number(temuClampSpriceBand2699(price)) || price;
-            }
-            return price;
-        }
-        function chPromoZeroSoldCellHtml(d) {
-            if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) {
-                return '';
-            }
-            if (!chPromoIsZeroSoldRow(d) || !(chPromoLp(d) > 0)) {
-                return '<span style="color:#999;">N/A</span>';
-            }
-            const roi = chPromoZeroSoldGroiForRow(d);
-            let price = chPromoZeroSoldTargetPrice(d);
-            if (!(price > 0) || roi == null) {
-                return '<span style="color:#999;">N/A</span>';
-            }
-            const band = chPromoDilColorBand(chPromoDil(d));
-            const hex = chPromoDilColorHex(band);
-            const label = band === 'red' ? 'Red' : (band === 'green' ? 'Green' : 'Pink');
-            return '<div class="d-flex flex-column align-items-center justify-content-center" '
-                + 'style="gap:1px;line-height:1.1;" title="0 Sold · '
-                + label + ' Dil → $' + price.toFixed(2) + ' at ' + roi + '% GROI">'
-                + '<span style="color:' + hex + ';font-weight:600;font-size:14px;">$' + price.toFixed(2) + '</span>'
-                + '<span style="color:#007bff;font-weight:600;">(' + Math.round(roi) + ')</span>'
-                + '</div>';
-        }
-        function channelPromoZeroSoldColumn() {
-            return {
-                title: '0 Sold',
-                field: 'zero_sold',
-                width: 100,
-                hozAlign: 'center',
-                vertAlign: 'middle',
-                headerSort: true,
-                headerTooltip: '0 Sold target price from Dil color → GROI% (Red 50 / Green 60 / Pink 70). Format: $price (GROI). N/A when sold > 0 or no LP.',
-                sorter: function(a, b, aRow, bRow) {
-                    const av = chPromoZeroSoldTargetPrice(aRow.getData() || {});
-                    const bv = chPromoZeroSoldTargetPrice(bRow.getData() || {});
-                    return (av || 0) - (bv || 0);
-                },
-                formatter: function(cell) {
-                    return chPromoZeroSoldCellHtml(cell.getRow().getData() || {});
-                },
-            };
-        }
         function channelPromoPricingColumns() {
             return [
                 ...(CHANNEL_PROMO_CHANNEL === 'shopify_b2b' ? [channelPromoB2bDiscountColumn()] : []),
@@ -8806,7 +8755,6 @@
                         applyChPromoFromCell(cell, 'cpn');
                     },
                 }]),
-                channelPromoZeroSoldColumn(),
                 ...(chPromoCvrUpDnEnabled() && typeof cvrUpDnColumn === 'function' ? [cvrUpDnColumn()] : []),
                 ...(chPromoCvrUpDnEnabled() && typeof tDiscountsColumn === 'function'
                     ? [tDiscountsColumn(function(d) { return chPromoTPromoPct(d); })]
