@@ -151,7 +151,7 @@ class PlsInventorySyncService
             app(PlsLiveListingsService::class)->peekCached(),
             $builder->stockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'pls') ?? [];
         $mismatch = $classified['mismatch'] ?? [];
 
         if ($dryRun) {

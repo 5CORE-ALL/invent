@@ -179,7 +179,7 @@ class Ebay1SyncController extends Controller
             $liveService->peekCached(),
             $this->ebay1StockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'ebay1');
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -233,7 +233,8 @@ class Ebay1SyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                $liveMpByUpper,
+                'ebay1'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -950,7 +951,7 @@ class Ebay1SyncController extends Controller
             $liveService->peekCached(),
             $this->ebay1StockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'ebay1');
         $mismatchQty = $classified['mismatch'] ?? [];
 
         return in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)

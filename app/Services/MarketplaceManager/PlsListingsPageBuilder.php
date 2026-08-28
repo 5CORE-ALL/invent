@@ -79,7 +79,7 @@ class PlsListingsPageBuilder
             $liveService->peekCached(),
             $this->stockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'pls') ?? [];
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -104,7 +104,8 @@ class PlsListingsPageBuilder
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                $liveMpByUpper,
+                'pls'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -734,7 +735,7 @@ class PlsListingsPageBuilder
             $this->liveService()->peekCached(),
             $this->stockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'pls') ?? [];
         $mismatch = array_values($classified['mismatch'] ?? []);
         $this->rememberMismatchSkus($mismatch);
 

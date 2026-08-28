@@ -160,7 +160,7 @@ class BestBuySyncController extends Controller
             $liveService->peekCached(),
             $this->bestbuyStockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'bestbuy');
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -214,7 +214,8 @@ class BestBuySyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                $liveMpByUpper,
+                'bestbuy'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -760,7 +761,7 @@ class BestBuySyncController extends Controller
             $liveService->peekCached(),
             $this->bestbuyStockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'bestbuy');
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)

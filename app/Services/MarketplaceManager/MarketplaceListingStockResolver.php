@@ -684,7 +684,8 @@ final class MarketplaceListingStockResolver
         array $mismatch,
         array $zero,
         array $liveShopifyByUpper,
-        array $liveMpByUpper
+        array $liveMpByUpper,
+        ?string $marketplace = null
     ): array {
         if ($mismatch === [] || ($liveShopifyByUpper === [] && $liveMpByUpper === [])) {
             return [
@@ -724,7 +725,7 @@ final class MarketplaceListingStockResolver
 
             if ($shopifyQty <= 0) {
                 $addZero[] = $sku;
-            } elseif (MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty)) {
+            } elseif (MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
                 $addMatched[] = $sku;
             } else {
                 $stillMismatch[] = $sku;

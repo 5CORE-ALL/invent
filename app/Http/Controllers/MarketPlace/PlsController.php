@@ -505,7 +505,7 @@ class PlsController extends Controller
             return false;
         }
 
-        return ! MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($inv, $plsInv);
+        return ! MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($inv, $plsInv, 'pls');
     }
 
     /**

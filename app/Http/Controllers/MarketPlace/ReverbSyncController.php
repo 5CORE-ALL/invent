@@ -221,7 +221,7 @@ class ReverbSyncController extends Controller
         if (($liveRows === null || $liveRows === []) && ! $forceLive && ! $clearCache) {
             WarmReverbLiveListingsCache::dispatch();
         }
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'reverb');
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -272,7 +272,8 @@ class ReverbSyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                $liveMpByUpper,
+                'reverb'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -1562,7 +1563,7 @@ class ReverbSyncController extends Controller
             $liveService->peekCached(),
             $this->reverbStockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'reverb');
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
@@ -1896,7 +1897,7 @@ class ReverbSyncController extends Controller
     ): array {
         $catalog = $catalog ?? app(ShopifyLiveVerifiedCatalogService::class);
         $mpStock = $this->reverbStockMapForSkus($catalog->filterLinkedToVerified($linkedSkus));
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'reverb');
         if ($classified !== null) {
             return $classified['counts'];
         }

@@ -140,19 +140,15 @@ class Ebay2InventorySyncService
             );
             $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-            // Mismatch button always pushes listings Shopify qty. Local ebay_stock can
-            // already equal that qty while the listings cache still shows the old eBay qty.
-            if (! $exactShopifyQty) {
-                $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
-                if ($currentMp !== null && $currentMp === $pushQty) {
-                    $skipped++;
-                    continue;
-                }
-                if ($shopifyStock !== null && $shopifyStock > 0
-                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp)) {
-                    $skipped++;
-                    continue;
-                }
+            $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
+            if ($currentMp !== null && $currentMp === $pushQty) {
+                $skipped++;
+                continue;
+            }
+            if ($shopifyStock !== null && $shopifyStock > 0
+                && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'ebay2')) {
+                $skipped++;
+                continue;
             }
 
             $inventoryRows[] = [
@@ -172,7 +168,7 @@ class Ebay2InventorySyncService
                 'skipped' => $skipped,
                 'rate_limited' => false,
                 'message' => $skipped > 0
-                    ? 'No eBay 2 SKUs needed a push (already within mismatch tolerance or already at Shopify qty).'
+                    ? 'No eBay 2 SKUs needed a push (already at this marketplace Qty % of Shopify).'
                     : 'No linked eBay 2 SKUs found for inventory sync.',
             ];
         }
@@ -366,7 +362,7 @@ class Ebay2InventorySyncService
                 $currentMp = $metric->ebay_stock !== null ? (int) $metric->ebay_stock : null;
                 $alreadyOk = $currentMp !== null && $currentMp === $pushQty;
                 $withinTol = $shopifyStock !== null && $shopifyStock > 0
-                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp);
+                    && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $currentMp, 'ebay2');
                 if ($alreadyOk || $withinTol) {
                     $skipped++;
                 } else {

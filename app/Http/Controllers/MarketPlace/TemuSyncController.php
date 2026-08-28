@@ -164,7 +164,7 @@ class TemuSyncController extends Controller
             $liveService->peekCached(),
             $this->temuStockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'temu');
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -221,7 +221,8 @@ class TemuSyncController extends Controller
                 MarketplaceListingStockResolver::mergeLocalAndLiveStockMaps(
                     $liveMpByUpper,
                     $this->temuStockMapForSkus($mismatchQty)
-                )
+                ),
+                'temu'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -780,7 +781,7 @@ class TemuSyncController extends Controller
             $liveService->peekCached(),
             $this->temuStockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'temu');
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)

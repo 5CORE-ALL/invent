@@ -170,7 +170,7 @@ class SheinSyncController extends Controller
             $liveService->peekCached(),
             $this->sheinStockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'shein');
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -224,7 +224,8 @@ class SheinSyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                $liveMpByUpper,
+                'shein'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -1456,7 +1457,7 @@ class SheinSyncController extends Controller
             $liveService->peekCached(),
             $this->sheinStockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'shein');
 
         return array_values($classified['mismatch'] ?? []);
     }

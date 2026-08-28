@@ -250,7 +250,7 @@ class Temu2SyncController extends Controller
             $liveService->peekCached(),
             $this->temuStockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'temu2') ?? [];
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -306,7 +306,8 @@ class Temu2SyncController extends Controller
                 MarketplaceListingStockResolver::mergeLocalAndLiveStockMaps(
                     $liveMpByUpper,
                     $this->temuStockMapForSkus($mismatchQty)
-                )
+                ),
+                'temu2'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -1167,7 +1168,7 @@ class Temu2SyncController extends Controller
             $liveService->peekCached(),
             $this->temuStockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'temu2');
         $mismatchQty = $classified['mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         // Inv SKU Mismatch only — Active SKU / Inactive SKU tabs are Temu Seller Center status, not qty buckets.

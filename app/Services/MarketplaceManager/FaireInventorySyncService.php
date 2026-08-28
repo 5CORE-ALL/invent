@@ -128,9 +128,7 @@ class FaireInventorySyncService
             }
             $pushQty = $shopifyStock === null
                 ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
-                : ($exactShopifyQty
-                    ? MarketplaceLiveInventoryRules::pushQtyFromLiveShopify($shopifyStock)
-                    : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty));
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,

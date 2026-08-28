@@ -105,7 +105,7 @@ class TikTokListingsPageBuilder
             null,
             $this->stockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: $this->channel) ?? [];
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -702,7 +702,7 @@ class TikTokListingsPageBuilder
             $this->liveService()->peekCached(),
             $this->stockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock) ?? [];
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: $this->channel) ?? [];
         $mismatch = array_values($classified['mismatch'] ?? []);
         $this->rememberMismatchSkus($mismatch);
 

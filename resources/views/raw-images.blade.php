@@ -450,7 +450,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="card-title mb-0">{{ $pageTitle }}</h4>
                     <div class="d-flex align-items-center flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="{{ $isHero2 ? 'Add prompt for Hero Image 2 AI' : 'Ask AI' }}">
+                        <button type="button" class="btn btn-sm ri-ai-btn" id="riAiBtn" title="{{ $isHero2 ? 'Generate Hero Image 2 AI for all selected SKUs' : 'Generate AI images for all selected SKUs' }}">
                             <i class="fas fa-wand-magic-sparkles me-1"></i> AI
                         </button>
                         <div class="dropdown">
@@ -687,7 +687,7 @@
                 <div class="modal-body">
                     <label class="form-label fw-semibold" for="riAiPrompt">Prompt</label>
                     <textarea class="form-control" id="riAiPrompt" rows="8" maxlength="8000">{{ $savedAiPrompt }}</textarea>
-                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : 'raw-shoot' }} image for selected rows only. Ctrl / ⌘ + Enter to save and close.</div>
+                    <div class="form-text" id="riAiFormHint">Edits are saved automatically. Gemini generates a {{ $isHero2 ? 'Hero Image 2 AI' : 'raw-shoot' }} image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.</div>
                     <div class="mt-3">
                         <label class="form-label fw-semibold mb-1" for="riAiLogoInput">Logos (optional)</label>
                         <div class="small text-muted mb-2">Upload logos to include in every AI image. They stay saved for everyone until someone removes or replaces them.</div>
@@ -1183,6 +1183,7 @@
         if (!Array.isArray(riAiSavedLogos)) riAiSavedLogos = [];
         let riAiLogoPersist = Promise.resolve();
         let riAiLogoPersistAgain = false;
+        const riSelected = new Set();
         let tableData = [];
         let table;
         let rawImageModal;
@@ -1231,6 +1232,10 @@
                 },
                 renderComplete: function () {
                     paintBarcodeSvgs(document.getElementById('raw-images-table'));
+                    document.querySelectorAll('.ri-row-select').forEach(function (cb) {
+                        cb.checked = riSelected.has(skuKey(cb.getAttribute('data-sku')));
+                    });
+                    updateSelectedCount();
                 },
                 layout: 'fitData',
                 pagination: true,
@@ -1261,7 +1266,8 @@
                         frozen: true,
                         formatter: function (cell) {
                             const sku = cell.getData().SKU || '';
-                            return "<input type='checkbox' class='ri-row-select' data-sku='" + escapeHtml(sku) + "'>";
+                            const checked = riSelected.has(skuKey(sku)) ? ' checked' : '';
+                            return "<input type='checkbox' class='ri-row-select' data-sku='" + escapeHtml(sku) + "'" + checked + ">";
                         }
                     },
                     {
@@ -1407,13 +1413,21 @@
 
             wrap.addEventListener('change', function (e) {
                 if (e.target.id === 'ri-select-all') {
+                    const on = !!e.target.checked;
+                    currentPageSkus().forEach(function (sku) {
+                        if (on) riSelected.add(skuKey(sku));
+                        else riSelected.delete(skuKey(sku));
+                    });
                     wrap.querySelectorAll('.ri-row-select').forEach(function (cb) {
-                        cb.checked = e.target.checked;
+                        cb.checked = riSelected.has(skuKey(cb.getAttribute('data-sku')));
                     });
                     updateSelectedCount();
                     return;
                 }
                 if (e.target.classList.contains('ri-row-select')) {
+                    const sku = e.target.getAttribute('data-sku') || '';
+                    if (e.target.checked) riSelected.add(skuKey(sku));
+                    else riSelected.delete(skuKey(sku));
                     updateSelectedCount();
                 }
             });
@@ -1804,16 +1818,22 @@
             if (loader) loader.style.display = 'none';
         }
 
-        function showAiProcessLoader(skus) {
+        function showAiProcessLoader(skus, progress) {
             const el = document.getElementById('riAiProcessLoader');
             const titleEl = document.getElementById('riAiProcessLoaderTitle');
             const textEl = document.getElementById('riAiProcessLoaderText');
             const n = (skus || []).length;
+            const current = progress && progress.current ? progress.current : 0;
+            const sku = progress && progress.sku ? progress.sku : '';
             if (titleEl) titleEl.textContent = 'Generating ' + rawImagesAiColumnTitle + '…';
             if (textEl) {
-                textEl.textContent = n
-                    ? ('Working on ' + n + ' SKU' + (n === 1 ? '' : 's') + '. Please wait — this can take a minute.')
-                    : 'Please wait. This can take a minute.';
+                if (n > 1 && current) {
+                    textEl.textContent = 'SKU ' + current + ' of ' + n + (sku ? ' — ' + sku : '') + '. Please wait — this can take a minute each.';
+                } else if (n) {
+                    textEl.textContent = 'Working on ' + n + ' SKU' + (n === 1 ? '' : 's') + '. Please wait — this can take a minute.';
+                } else {
+                    textEl.textContent = 'Please wait. This can take a minute.';
+                }
             }
             if (el) el.style.display = 'flex';
         }
@@ -1881,7 +1901,7 @@
                 return;
             }
             hintEl.className = 'small mt-2 text-muted';
-            hintEl.textContent = 'This will run only on ' + n + ' selected image' + (n === 1 ? '' : 's') + '.';
+            hintEl.textContent = 'This will run on ' + n + ' selected SKU' + (n === 1 ? '' : 's') + '.';
         }
 
         function applyAiBySku(bySku, target) {
@@ -1893,8 +1913,9 @@
 
         function selectSkuForAi(sku) {
             if (!sku) return;
+            riSelected.add(skuKey(sku));
             document.querySelectorAll('.ri-row-select').forEach(function (cb) {
-                if ((cb.getAttribute('data-sku') || '') === sku) {
+                if (skuKey(cb.getAttribute('data-sku') || '') === skuKey(sku)) {
                     cb.checked = true;
                 }
             });
@@ -1910,8 +1931,8 @@
             if (titleEl) titleEl.textContent = rawImagesIsHero2 ? 'Hero Image 2 AI prompt' : 'AI prompt';
             if (hintEl) {
                 hintEl.textContent = rawImagesIsHero2
-                    ? 'Edits are saved automatically. Gemini generates a Hero Image 2 AI image for selected rows only. Ctrl / ⌘ + Enter to save and close.'
-                    : 'Edits are saved automatically. Gemini generates a raw-shoot image for selected rows only. Ctrl / ⌘ + Enter to save and close.';
+                    ? 'Edits are saved automatically. Gemini generates a Hero Image 2 AI image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.'
+                    : 'Edits are saved automatically. Gemini generates a raw-shoot image for every selected SKU, one after another. Ctrl / ⌘ + Enter to save and close.';
             }
             promptEl.value = riAiLastSaved;
             if (resultEl) resultEl.innerHTML = '';
@@ -2058,8 +2079,11 @@
                     promptEl.focus();
                     return;
                 }
-                if (selected.length > 8) {
-                    resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Select up to 8 SKUs at a time.</div>';
+                if (!selected.length) {
+                    resultEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Select one or more rows in the table.</div>';
+                    return;
+                }
+                if (selected.length > 20 && !confirm('Generate AI images for ' + selected.length + ' SKUs? This runs one after another and can take a while.')) {
                     return;
                 }
 
@@ -2111,7 +2135,7 @@
                 if (dataItem) dataItem[field] = !!loading;
                 patchRowsBySku(sku, patch);
             });
-            if (loading && table && skus[0]) {
+            if (loading && table && skus[0] && skus.length === 1) {
                 const first = table.searchRows('SKU', '=', skus[0])[0];
                 if (first && first.getElement) {
                     first.getElement().scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -2121,53 +2145,81 @@
 
         function runAiOnSelected(selected, prompt) {
             const target = 'raw';
-            const skus = (selected || []).map(function (row) { return row.sku; }).filter(Boolean);
+            const rows = (selected || []).filter(function (row) { return row && row.sku; });
+            const skus = rows.map(function (row) { return row.sku; });
             const aiBtn = document.getElementById('riAiBtn');
             showAiProcessLoader(skus);
             setAiGenerating(skus, true, target);
             if (aiBtn) aiBtn.disabled = true;
-            const form = new FormData();
-            form.append('prompt', prompt);
-            form.append('selected', JSON.stringify(selected));
-            form.append('keep_logo_paths', JSON.stringify((riAiSavedLogos || []).map(function (logo) { return logo.path; })));
-            riAiLogoFiles.forEach(function (file) { form.append('logos[]', file); });
-            return fetch(rawImagesAiPromptUrl, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: form
-            })
-            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
-            .then(function (result) {
-                const d = result.data || {};
-                if (Array.isArray(d.logos)) {
-                    applySavedAiLogos(d.logos);
-                    riAiLogoFiles = [];
-                    renderAiLogoPreview();
+
+            const errors = [];
+            let imported = 0;
+            let index = 0;
+
+            function postOne(row) {
+                const form = new FormData();
+                form.append('prompt', prompt);
+                form.append('selected', JSON.stringify([row]));
+                form.append('keep_logo_paths', JSON.stringify((riAiSavedLogos || []).map(function (logo) { return logo.path; })));
+                riAiLogoFiles.forEach(function (file) { form.append('logos[]', file); });
+                return fetch(rawImagesAiPromptUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: form
+                }).then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                });
+            }
+
+            function next() {
+                if (index >= rows.length) {
+                    setAiGenerating(skus, false, target);
+                    hideAiProcessLoader();
+                    if (aiBtn) aiBtn.disabled = false;
+                    if (errors.length) {
+                        alert('Created images for ' + imported + ' SKU' + (imported === 1 ? '' : 's') + '.'
+                            + (errors.length ? '\n' + errors.join('\n') : ''));
+                    } else if (imported > 1) {
+                        alert('Created images for ' + imported + ' SKUs.');
+                    }
+                    return Promise.resolve();
                 }
-                setAiGenerating(skus, false, target);
-                applyAiBySku(d.by_sku, target);
-                hideAiProcessLoader();
-                const errors = Array.isArray(d.errors) ? d.errors : [];
-                if (!result.ok || !d.success) {
-                    const extra = errors.length ? '\n' + errors.join('\n') : '';
-                    throw new Error((d.message || d.reply || 'AI request failed.') + extra);
-                }
-                applyAiAction(d.action || {});
-                if (errors.length) {
-                    alert((d.reply || 'Done.') + '\n' + errors.join('\n'));
-                    return;
-                }
-            })
-            .catch(function (err) {
-                hideAiProcessLoader();
-                setAiGenerating(skus, false, target);
-                alert(err.message || 'AI request failed.');
-            })
-            .finally(function () {
+                const row = rows[index];
+                showAiProcessLoader(skus, { current: index + 1, sku: row.sku });
+                return postOne(row)
+                    .then(function (result) {
+                        const d = result.data || {};
+                        if (Array.isArray(d.logos)) {
+                            applySavedAiLogos(d.logos);
+                            riAiLogoFiles = [];
+                            renderAiLogoPreview();
+                        }
+                        applyAiBySku(d.by_sku, target);
+                        setAiGenerating([row.sku], false, target);
+                        const errList = Array.isArray(d.errors) ? d.errors : [];
+                        if (!result.ok || !d.success) {
+                            errors.push.apply(errors, errList.length ? errList : [row.sku + ': ' + (d.message || d.reply || 'AI request failed.')]);
+                        } else {
+                            imported += d.imported || 1;
+                            if (errList.length) errors.push.apply(errors, errList);
+                            applyAiAction(d.action || {});
+                        }
+                    })
+                    .catch(function (err) {
+                        setAiGenerating([row.sku], false, target);
+                        errors.push(row.sku + ': ' + (err.message || 'AI request failed.'));
+                    })
+                    .then(function () {
+                        index += 1;
+                        return next();
+                    });
+            }
+
+            return next().finally(function () {
                 setAiGenerating(skus, false, target);
                 if (aiBtn) aiBtn.disabled = false;
                 hideAiProcessLoader();
@@ -2321,15 +2373,48 @@
             });
         }
 
+        function allTableSkus() {
+            let data = [];
+            if (table && typeof table.getData === 'function') {
+                try { data = table.getData() || []; } catch (e) { data = []; }
+            }
+            if (!data.length) data = tableData || [];
+            return data.map(function (row) { return row && row.SKU ? row.SKU : ''; }).filter(Boolean);
+        }
+
+        function currentPageSkus() {
+            const data = (function () {
+                if (table && typeof table.getData === 'function') {
+                    try { return table.getData() || []; } catch (e) { return []; }
+                }
+                return tableData || [];
+            })();
+            if (!table || typeof table.getPage !== 'function' || typeof table.getPageSize !== 'function') {
+                return data.map(function (row) { return row && row.SKU ? row.SKU : ''; }).filter(Boolean);
+            }
+            const page = table.getPage() || 1;
+            const size = table.getPageSize() || data.length || 1;
+            const start = (page - 1) * size;
+            return data.slice(start, start + size).map(function (row) { return row && row.SKU ? row.SKU : ''; }).filter(Boolean);
+        }
+
         function selectedSkus() {
-            return Array.from(document.querySelectorAll('.ri-row-select:checked'))
-                .map(function (cb) { return cb.getAttribute('data-sku') || ''; })
-                .filter(Boolean);
+            const fromTable = allTableSkus().filter(function (sku) { return riSelected.has(skuKey(sku)); });
+            if (fromTable.length) return fromTable;
+            return (tableData || []).map(function (row) { return row && row.SKU ? row.SKU : ''; })
+                .filter(function (sku) { return sku && riSelected.has(skuKey(sku)); });
         }
 
         function updateSelectedCount() {
             const el = document.getElementById('selectedCountBadge');
             if (el) el.textContent = 'Selected: ' + selectedSkus().length;
+            const header = document.getElementById('ri-select-all');
+            if (header) {
+                const skus = currentPageSkus();
+                const selectedOnPage = skus.filter(function (sku) { return riSelected.has(skuKey(sku)); }).length;
+                header.checked = skus.length > 0 && selectedOnPage === skus.length;
+                header.indeterminate = selectedOnPage > 0 && selectedOnPage < skus.length;
+            }
             updateAiSelectionHint();
         }
 

@@ -490,10 +490,10 @@ class RawImagesController extends Controller
                 'message' => 'Select at least one SKU in the table. Run only works on selected rows.',
             ], 422);
         }
-        if (count($rows) > 8) {
+        if (count($rows) > 1) {
             return response()->json([
                 'success' => false,
-                'message' => 'Select up to 8 SKUs at a time.',
+                'message' => 'Send one SKU per AI request. The page runs selected SKUs in sequence.',
             ], 422);
         }
 

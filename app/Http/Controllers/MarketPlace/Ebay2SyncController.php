@@ -180,7 +180,7 @@ class Ebay2SyncController extends Controller
             $liveService->peekCached(),
             $this->ebay2StockMapForSkus($allLinkedVerified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'ebay2');
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
         $counts['matched_inactive'] = 0;
@@ -234,7 +234,8 @@ class Ebay2SyncController extends Controller
                 $mismatchQty,
                 $zeroQty,
                 $liveShopify,
-                $liveMpByUpper
+                $liveMpByUpper,
+                'ebay2'
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
@@ -978,7 +979,7 @@ class Ebay2SyncController extends Controller
             $liveService->peekCached(),
             $this->ebay2StockMapForSkus($verified)
         );
-        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'ebay2');
         $mismatchQty = $classified['mismatch'] ?? [];
 
         return in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
@@ -1147,6 +1148,7 @@ class Ebay2SyncController extends Controller
         $inventory = $this->mergeSettingsSection($current['inventory'] ?? [], $request->input('inventory', []), [
             'inventory_sync',
         ]);
+        $inventory['quantity_calc_percent'] = max(0, min(100, (int) ($inventory['quantity_calc_percent'] ?? 100)));
         // Hard rule: never invent marketplace stock from Shopify 0 via min_quantity.
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
