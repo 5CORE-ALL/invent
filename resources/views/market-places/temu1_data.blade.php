@@ -37,8 +37,27 @@
         #summary-stats .ebay2-summary-badge-row,
         #summary-stats .d-flex { gap: 8px !important; }
 
+        .tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            position: relative;
+        }
         .tabulator-col .tabulator-col-sorter {
-            display: none !important;
+            display: flex !important;
+            justify-content: center;
+            align-items: center;
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 1px;
+            width: 100%;
+            height: 10px;
+            pointer-events: none;
+        }
+        .tabulator-col .tabulator-col-sorter .tabulator-arrow {
+            border-left-width: 4px;
+            border-right-width: 4px;
         }
 
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
@@ -1166,6 +1185,21 @@
         if (!(sprice > 0) || spft == null) return '';
         return Math.round((spft / sprice) * 100);
     }
+    function temuExportSnroi(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const lp = parseFloat(row.lp) || 0;
+        const sprice = temuExportRowSprice(row);
+        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(row, sprice) : null;
+        if (snpft == null || !(lp > 0)) return '';
+        return Math.round((snpft / lp) * 100);
+    }
+    function temuExportSpft(row) {
+        if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return '';
+        const sprice = temuExportRowSprice(row);
+        const snpft = typeof temu2SnpftDollars === 'function' ? temu2SnpftDollars(row, sprice) : null;
+        if (!(sprice > 0) || snpft == null) return '';
+        return Math.round((snpft / sprice) * 100);
+    }
     /** SPRICE used for push + inverse Temu base (same as old /temu-decrease Push Prc). */
     function temuPushSpriceAndBase(row) {
         const sprice = temuExportRowSprice(row);
@@ -1870,6 +1904,50 @@
 
     function temuHasEbCap(row) {
         return temuSpriceCapLabels(row).indexOf('EB') !== -1;
+    }
+
+    function temuSortNum(a, b) {
+        const an = (a === '' || a == null) ? NaN : Number(a);
+        const bn = (b === '' || b == null) ? NaN : Number(b);
+        const aOk = isFinite(an);
+        const bOk = isFinite(bn);
+        if (!aOk && !bOk) return 0;
+        if (!aOk) return 1;
+        if (!bOk) return -1;
+        return an - bn;
+    }
+    function temuSortBy(getVal) {
+        return function(a, b, aRow, bRow) {
+            const ad = (aRow && aRow.getData) ? (aRow.getData() || {}) : {};
+            const bd = (bRow && bRow.getData) ? (bRow.getData() || {}) : {};
+            return temuSortNum(getVal(ad), getVal(bd));
+        };
+    }
+    function temuSortImagePath(a, b) {
+        const as = a ? String(a) : '';
+        const bs = b ? String(b) : '';
+        if (!as && !bs) return 0;
+        if (!as) return 1;
+        if (!bs) return -1;
+        return as.localeCompare(bs);
+    }
+    function temuSortLinksRow(a, b, aRow, bRow) {
+        const count = function(d) {
+            return ((d && d.seller_link) ? 1 : 0) + ((d && d.buyer_link) ? 1 : 0);
+        };
+        return count(aRow.getData()) - count(bRow.getData());
+    }
+    function temuSortPushBase(a, b, aRow, bRow) {
+        const val = function(d) {
+            if (typeof temuPushSpriceAndBase === 'function') {
+                const cap = temuPushSpriceAndBase(d);
+                return (cap && cap.pushBase != null) ? cap.pushBase : '';
+            }
+            if (typeof temuPushBaseFromSprice !== 'function') return '';
+            const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
+            return temuPushBaseFromSprice(sprice);
+        };
+        return temuSortNum(val(aRow.getData()), val(bRow.getData()));
     }
 
     let blueTriangleFilterActive = false;
@@ -3348,6 +3426,7 @@
                 headerHozAlign: "center",
                 resizable: true,
                 minWidth: 64,
+                headerSort: true,
             },
             pagination: true,
             paginationSize: 100,
@@ -3402,7 +3481,8 @@
                         }
                         return '';
                     },
-                    headerSort: false
+                    headerSort: true,
+                    sorter: temuSortImagePath
                 },
                 {
                     title: "Parent",
@@ -3455,7 +3535,7 @@
                     }
                 },
                 {
-                    title: "Links", field: "links_column", frozen: true, width: 55, hozAlign: "center", headerSort: false,
+                    title: "Links", field: "links_column", frozen: true, width: 55, hozAlign: "center", headerSort: true, sorter: temuSortLinksRow,
                     tooltip: "Double-click to add / edit links",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -3603,7 +3683,14 @@
                     field: "MAP",
                     hozAlign: "center",
                     width: 90,
-                    sorter: "string",
+                    sorter: temuSortBy(function(d) {
+                        if (d.missing === 'M' || !d.goods_id) return '';
+                        const inv = parseFloat(d.inventory) || 0;
+                        const stock = parseFloat(d.temu_stock) || 0;
+                        if (!(inv > 0)) return '';
+                        if (typeof temuInvWithinMapTolerance === 'function' && temuInvWithinMapTolerance(inv, stock)) return 1;
+                        return 0;
+                    }),
                     visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -3659,7 +3746,9 @@
                     cellClick: function(e, cell) {
                         e.stopPropagation();
                     },
-                    width: 60
+                    width: 60,
+                    headerSort: true,
+                    sorter: "string"
                 },
                  {
                     title: "Views",
@@ -3684,7 +3773,12 @@
                     width: 90,
                     minWidth: 85,
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const v = parseInt(d.t_clicks, 10);
+                        if (Number.isFinite(v)) return v;
+                        const oClicks = parseInt(d.o_clicks, 10) || parseInt(d.product_clicks, 10) || 0;
+                        return oClicks + (parseInt(d.ad_clicks, 10) || 0);
+                    }),
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const sku = row.sku || '';
@@ -3747,7 +3841,12 @@
                     field: "temu_price_display",
                     hozAlign: "center",
                     minWidth: 90,
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const base = parseFloat(d.base_price) || 0;
+                        return (base > 0 && typeof temu2FullPriceFromBase === 'function')
+                            ? temu2FullPriceFromBase(base)
+                            : 0;
+                    }),
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -3764,7 +3863,11 @@
                     field: "temu_price",
                     hozAlign: "center",
                     minWidth: 86,
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const base = parseFloat(d.base_price) || 0;
+                        if (!(base > 0)) return 0;
+                        return base <= 26.99 ? base + 2.99 : base;
+                    }),
                     headerTooltip: "Normal Temu price (base + $2.99 when base ≤ $26.99)",
                     formatter: function(cell) {
                         const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
@@ -3780,7 +3883,11 @@
                     field: "s_profit",
                     hozAlign: "center",
                     minWidth: 88,
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        return typeof temu2SProfit === 'function'
+                            ? temu2SProfit(d, typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : undefined)
+                            : 0;
+                    }),
                     headerTooltip: "S Profit = S Recovery × marketplace% − LP − Temu Ship",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -3826,7 +3933,11 @@
                     field: "roi_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const pft = typeof temu2PftDollars === 'function' ? temu2PftDollars(d) : null;
+                        const lp = parseFloat(d.lp) || 0;
+                        return (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(d.roi_percent) || 0);
+                    }),
                     headerTooltip: "GROI% = Gpft / LP. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -3884,7 +3995,11 @@
                     title: "NPFT %",
                     field: "npft_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const npft = typeof temu2NpftDollars === 'function' ? temu2NpftDollars(d) : null;
+                        const temuPrice = typeof temu2FullPriceFromRow === 'function' ? temu2FullPriceFromRow(d) : 0;
+                        return (npft != null && temuPrice > 0) ? (npft / temuPrice) * 100 : 0;
+                    }),
                     visible: false,
                     headerTooltip: "NPFT% = NPFT / Temu Price. NPFT = Gpft − (Temu Price × Ads%)",
                     formatter: function(cell) {
@@ -3902,7 +4017,11 @@
                     title: "NROI %",
                     field: "nroi_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const npft = typeof temu2NpftDollars === 'function' ? temu2NpftDollars(d) : null;
+                        const lp = parseFloat(d.lp) || 0;
+                        return (npft != null && lp > 0) ? (npft / lp) * 100 : 0;
+                    }),
                     visible: false,
                     headerTooltip: "NROI% = NPFT / LP. NPFT = Gpft − (Temu Price × Ads%)",
                     formatter: function(cell) {
@@ -3921,8 +4040,10 @@
                     field: "lmp",
                     hozAlign: "center",
                     minWidth: 88,
-                    sorter: "number",
                     headerSort: true,
+                    sorter: temuSortBy(function(d) {
+                        return typeof getTemu2DisplayLmp === 'function' ? getTemu2DisplayLmp(d) : (parseFloat(d.lmp) || 0);
+                    }),
                     headerTooltip: "Lowest LMP from the modal: Price + Delivery (Del $2.99 when Price < $27). Same as the highlighted modal row.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3953,8 +4074,10 @@
                     hozAlign: "center",
                     width: 80,
                     minWidth: 76,
-                    sorter: "number",
                     headerSort: true,
+                    sorter: temuSortBy(function(d) {
+                        return typeof getTemu2LowestDelivery === 'function' ? getTemu2LowestDelivery(d) : 0;
+                    }),
                     headerTooltip: "Delivery from the lowest LMP row in the modal. Defaults to $2.99 when Price < $27 and Delivery is blank.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3970,6 +4093,11 @@
                     hozAlign: "center",
                     width: 84,
                     minWidth: 84,
+                    headerSort: true,
+                    sorter: temuSortBy(function(d) {
+                        const diff = typeof temu2LmpDiffPct === 'function' ? temu2LmpDiffPct(d) : null;
+                        return diff == null ? '' : diff;
+                    }),
                     headerTooltip: "S PRC vs lowest LMP (Price+D): (LMP − S PRC) / LMP. Green = S PRC below LMP, Red = S PRC above LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4002,6 +4130,10 @@
                     hozAlign: "center",
                     minWidth: 88,
                     editor: "input",
+                    headerSort: true,
+                    sorter: temuSortBy(function(d) {
+                        return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
+                    }),
                     headerTooltip: "S PRC = Discounted Price. If Discounted is higher than eBay, Amazon, or LMP (lowest modal Price+D), S PRC becomes that lower price. Always the lowest. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4047,7 +4179,10 @@
                     title: "S Recovery",
                     field: "s_recovery",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) {
+                        const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
+                        return (sprice > 0 && typeof temu2SRecovery === 'function') ? temu2SRecovery(sprice) : 0;
+                    }),
                     headerTooltip: "S Recovery = Sprice × 0.88",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4059,13 +4194,15 @@
                     }
                 },
                 {
-                    title: "Push Prc",
+                    title: "Base Prc",
                     field: "_push",
                     minWidth: 88,
                     hozAlign: "center",
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: temuSortPushBase,
+                    visible: false,
                     download: true,
-                    downloadTitle: "Push Prc",
+                    downloadTitle: "Base Prc",
                     accessorDownload: function(value, data) {
                         const cap = temuPushSpriceAndBase(data);
                         return cap.pushBase == null ? '' : cap.pushBase;
@@ -4104,7 +4241,7 @@
                     title: "S Temu B Prc",
                     field: "stemu_price",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortPushBase,
                     download: true,
                     downloadTitle: "Sugg B Price",
                     accessorDownload: function(value, data) {
@@ -4122,7 +4259,7 @@
                     title: "SGROI%",
                     field: "sgroi_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) { return temuExportSgroi(d); }),
                     download: true,
                     downloadTitle: "SGROI",
                     accessorDownload: function(value, data) {
@@ -4143,7 +4280,7 @@
                     title: "SNROI%",
                     field: "sroi_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) { return temuExportSnroi(d); }),
                     headerTooltip: "SNROI% = SNPFT / LP. SNPFT = SPFT − (S PRC × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4160,7 +4297,7 @@
                     title: "SGPRFT%",
                     field: "sgprft_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) { return temuExportSgpft(d); }),
                     download: true,
                     downloadTitle: "SGPFT",
                     accessorDownload: function(value, data) {
@@ -4183,7 +4320,7 @@
                     title: "SPFT%",
                     field: "spft_percent",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: temuSortBy(function(d) { return temuExportSpft(d); }),
                     headerTooltip: "SPFT% = SNPFT / S PRC. SNPFT = SPFT − (S PRC × Ads%)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -4255,6 +4392,10 @@
                     width: 80,
                     minWidth: 75,
                     hozAlign: "center",
+                    headerSort: true,
+                    sorter: temuSortBy(function(d) {
+                        return parseFloat(d.out_roas_l30 || d.net_roas || 0) || 0;
+                    }),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // Use net_roas as OUT ROAS if out_roas_l30 is not available
@@ -4269,6 +4410,8 @@
                     width: 75,
                     minWidth: 70,
                     hozAlign: "center",
+                    headerSort: true,
+                    sorter: "number",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -5570,7 +5713,7 @@
         }
 
         // Columns that should ALWAYS stay hidden, regardless of saved state.
-        var alwaysHiddenColumns = ['cvr_45', 'profit'];
+        var alwaysHiddenColumns = ['cvr_45', 'profit', '_push'];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
