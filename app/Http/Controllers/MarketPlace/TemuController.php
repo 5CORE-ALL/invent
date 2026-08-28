@@ -4385,7 +4385,8 @@ class TemuController extends Controller
                 ], 400);
             }
 
-            // API-only: do not update local temu_metrics / app price
+            $this->persistPushedTemuListingBase($sku, $price, false);
+
             return response()->json([
                 'success' => true,
                 'message' => $result['message'] ?? 'Price pushed to Temu',
@@ -4444,6 +4445,8 @@ class TemuController extends Controller
                 ], 400);
             }
 
+            $this->persistPushedTemuListingBase($sku, $price, true);
+
             return response()->json([
                 'success' => true,
                 'message' => $result['message'] ?? 'Price pushed to Temu2',
@@ -4466,6 +4469,46 @@ class TemuController extends Controller
                 'message' => 'Failed to push price to Temu2',
                 'errors' => [['message' => $e->getMessage()]],
             ], 500);
+        }
+    }
+
+    /**
+     * After a successful Temu listing API push, cache the new base so Temu Price
+     * (derived from base_price) matches the marketplace without using save-sprice.
+     */
+    private function persistPushedTemuListingBase(string $sku, float $base, bool $temu2): void
+    {
+        if (!($base > 0) || $sku === '') {
+            return;
+        }
+
+        try {
+            if ($temu2) {
+                $metric = Temu2Metric::where('sku', $sku)->first();
+                if ($metric) {
+                    $metric->base_price = $base;
+                    $metric->save();
+                }
+                if (Schema::hasTable('temu2_pricing')) {
+                    Temu2Pricing::where('sku', $sku)->update(['base_price' => $base]);
+                }
+            } else {
+                $metric = TemuMetric::where('sku', $sku)->first();
+                if ($metric) {
+                    $metric->base_price = $base;
+                    $metric->save();
+                }
+                if (Schema::hasTable('temu_pricing')) {
+                    TemuPricing::where('sku', $sku)->update(['base_price' => $base]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('persistPushedTemuListingBase failed', [
+                'sku' => $sku,
+                'base' => $base,
+                'temu2' => $temu2,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

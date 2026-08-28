@@ -70,6 +70,7 @@
             let chPushSpriceLastToastKey = '';
             let chPushSpriceFlushing = false;
             let chPushSpriceExclusive = false;
+            let chPushSpriceExpecting = false;
 
             function chPushSpriceCsrf() {
                 return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -234,6 +235,20 @@
                             patch['eBay Price'] = live;
                             priceChanged = true;
                         }
+                        if ((CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2')
+                            && live > 0
+                            && typeof temuPushBaseFromSprice === 'function') {
+                            const base = temuPushBaseFromSprice(live);
+                            if (base > 0 && !chPushSpriceNearlyEqual(d.base_price, base)) {
+                                patch.base_price = base;
+                                patch.temu_price = base <= 26.99 ? +(base + 2.99).toFixed(2) : base;
+                                if (typeof temu2FullPriceFromBase === 'function') {
+                                    patch.temu_price_display = +temu2FullPriceFromBase(base).toFixed(2);
+                                }
+                                patch.push_status = 'pushed';
+                                priceChanged = true;
+                            }
+                        }
                     } else if (st === 'failed') {
                         if (d.SPRICE_STATUS !== 'error') patch.SPRICE_STATUS = 'error';
                         const err = String(t.error || t.message || '').toLowerCase();
@@ -298,6 +313,9 @@
                     timeout: 20000,
                 }).done(function(resp) {
                     if (!resp) return;
+                    if (chPushSpriceExpecting && !resp.active && !(Number(resp.total) > 0)) {
+                        return;
+                    }
                     const active = !!resp.active;
                     applyChannelPushSpriceTasks(resp.tasks || []);
                     setChannelPushSpriceProgress({
@@ -352,6 +370,7 @@
                     data: payload,
                     timeout: 60000,
                 }).done(function(resp) {
+                    chPushSpriceExpecting = false;
                     startChannelPushSpricePoll();
                     if (resp) {
                         setChannelPushSpriceProgress({
@@ -365,6 +384,7 @@
                         });
                     }
                 }).fail(function(xhr) {
+                    chPushSpriceExpecting = false;
                     chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not queue S PRC');
                 });
             }
@@ -405,6 +425,7 @@
                 });
                 const n = Object.keys(chPushSpriceBuf).length;
                 if (!n) return;
+                chPushSpriceExpecting = true;
                 if (!opts.silent) {
                     setChannelPushSpriceProgress({
                         active: true,
@@ -419,12 +440,17 @@
                 clearTimeout(chPushSpriceTimer);
                 chPushSpriceTimer = setTimeout(flushChannelPushSprice, opts.immediate ? 0 : 180);
             }
-            function enqueueChannelPushSpriceAfterSave(sku, price, row) {
+            function enqueueChannelPushSpriceAfterSave(sku, price, row, opts) {
+                opts = opts || {};
+                const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2';
+                const force = opts.force === true || (isTemu && opts.force !== false);
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
                 let p = chPushSpriceRound2(price);
-                if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
-                if (typeof chPromoFloorShopifySpriceToAmz === 'function') {
-                    p = chPromoFloorShopifySpriceToAmz(d, p);
+                if (!force) {
+                    if (window.SpriceLmpCap && d) p = SpriceLmpCap.prepare(d, p);
+                    if (typeof chPromoFloorShopifySpriceToAmz === 'function') {
+                        p = chPromoFloorShopifySpriceToAmz(d, p);
+                    }
                 }
                 if (!sku || !(p > 0)) return false;
                 if (!chPushSpriceAutoPushAllowed()) {
@@ -438,13 +464,18 @@
                     } catch (e) { /* ignore */ }
                     return false;
                 }
-                const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
-                if (live > 0 && chPushSpriceNearlyEqual(p, live)) return false;
-                if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
+                if (!force) {
+                    const live = chPushSpriceRound2(d[CH_PUSH_SPRICE_PRICE_FIELD]);
+                    if (live > 0 && chPushSpriceNearlyEqual(p, live)) return false;
+                    if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
+                }
                 try {
                     if (row && typeof row.update === 'function') row.update({ SPRICE_STATUS: 'queued' });
                 } catch (e) { /* ignore */ }
-                enqueueChannelPushSprice([{ sku: sku, price: p }], { exclusive: true });
+                enqueueChannelPushSprice([{ sku: sku, price: p }], {
+                    exclusive: true,
+                    immediate: opts.immediate !== false,
+                });
                 return true;
             }
             function chPushSpriceIsChild(d) {
@@ -535,6 +566,7 @@
             global.chPushSpriceAutoPushAllowed = chPushSpriceAutoPushAllowed;
             global.scanAndQueueChannelPushSprice = scanAndQueueChannelPushSprice;
             global.startChannelPushSpricePoll = startChannelPushSpricePoll;
+            global.setChannelPushSpriceProgress = setChannelPushSpriceProgress;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
 
             if (CH_PUSH_SPRICE_LIVE) {

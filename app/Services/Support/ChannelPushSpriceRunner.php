@@ -7,6 +7,9 @@ use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
+use App\Http\Controllers\MarketPlace\TemuController;
+use App\Services\TemuApiService;
+use App\Services\Temu2ApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -335,6 +338,15 @@ class ChannelPushSpriceRunner
             if ($base !== null && $base > 0) {
                 $pushPrice = $base;
             }
+            $temuReq = Request::create(
+                $this->channel === 'temu2' ? '/temu2/push-price' : '/temu/push-price',
+                'POST',
+                ['sku' => $sku, 'price' => $pushPrice]
+            );
+
+            return $this->channel === 'temu2'
+                ? app(TemuController::class)->pushTemu2Price($temuReq, app(Temu2ApiService::class))
+                : app(TemuController::class)->pushTemuPrice($temuReq, app(TemuApiService::class));
         }
 
         $req = Request::create('/channel-push-sprice-push', 'POST', [
@@ -349,8 +361,6 @@ class ChannelPushSpriceRunner
             'macys' => 'macys',
             'macy' => 'macys',
             'bestbuy' => 'bestbuy',
-            'temu' => 'temu',
-            'temu2' => 'temu2',
             'doba' => 'doba',
             'doba_withoutship' => 'doba',
             'tiktok' => 'tiktok',
