@@ -783,7 +783,7 @@
                 manual: 'View / add ' + rawImagesManualColumnTitle.toLowerCase()
             };
             const title = titles[source] || titles.manual;
-            if (source === 'ai' && (row.ai_generating || riAiLoadingSkus.has(sku))) {
+            if (source === 'ai' && !images.length && (row.ai_generating || riAiLoadingSkus.has(sku))) {
                 return '<span class="ri-ai-loading" title="Generating AI image…"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i></span>';
             }
             if (!images.length) {
@@ -797,7 +797,7 @@
             const count = images.length;
             const alt = source === 'ai' ? 'Raw AI' : 'Raw';
             let inner;
-            if (first.previewable && (first.thumb_url || first.url)) {
+            if ((first.previewable !== false) && (first.thumb_url || first.url)) {
                 inner = thumbHtml(cachedImageSrc(first.url, first.thumb_url), alt);
             } else {
                 inner = '<i class="fas fa-file-image" style="font-size:22px;color:#2c6ed5;"></i>';
@@ -1661,35 +1661,62 @@
             });
         }
 
+        function skuKey(sku) {
+            return String(sku || '').replace(/\u00a0/g, ' ').trim().toUpperCase();
+        }
+
+        function findDataItemBySku(sku) {
+            const key = skuKey(sku);
+            return tableData.find(function (d) { return skuKey(d.SKU) === key; }) || null;
+        }
+
+        function patchRowsBySku(sku, patch) {
+            const item = findDataItemBySku(sku);
+            if (item) Object.assign(item, patch);
+            if (!table || !patch) return;
+            const key = skuKey(sku);
+            const rows = typeof table.getRows === 'function' ? table.getRows() : [];
+            rows.forEach(function (row) {
+                if (skuKey(row.getData().SKU) !== key) return;
+                row.update(patch);
+                if (typeof row.reformat === 'function') {
+                    row.reformat();
+                }
+            });
+        }
+
         function applyImagesToSku(sku, images, source) {
             const resolved = source || currentModalSource;
-            const item = tableData.find(function (d) { return d.SKU === sku; });
+            const list = Array.isArray(images) ? images : [];
             const patches = {
                 ai: {
-                    raw_ai_images: images,
-                    raw_ai_image_count: images.length,
-                    has_raw_ai_image: images.length > 0,
-                    raw_ai_image_url: images.length ? images[0].url : null
+                    raw_ai_images: list,
+                    raw_ai_image_count: list.length,
+                    has_raw_ai_image: list.length > 0,
+                    raw_ai_image_url: list.length ? list[0].url : null,
+                    ai_generating: false
                 },
                 manual: {
-                    raw_images: images,
-                    raw_image_count: images.length,
-                    has_raw_image: images.length > 0,
-                    raw_image_url: images.length ? images[0].url : null
+                    raw_images: list,
+                    raw_image_count: list.length,
+                    has_raw_image: list.length > 0,
+                    raw_image_url: list.length ? list[0].url : null
                 }
             };
             const patch = patches[resolved] || patches.manual;
-            if (item) {
-                Object.assign(item, patch);
+            if (resolved === 'ai') {
+                riAiLoadingSkus.delete(sku);
+                const item = findDataItemBySku(sku);
+                if (item && item.SKU) riAiLoadingSkus.delete(item.SKU);
             }
-            if (table) {
-                const rows = table.searchRows('SKU', '=', sku);
-                rows.forEach(function (row) {
-                    row.update(patch);
-                });
-            }
+            patchRowsBySku(sku, patch);
+            list.forEach(function (img) {
+                if (img && (img.thumb_url || img.url)) {
+                    warmImage(cachedImageSrc(img.url, img.thumb_url));
+                }
+            });
             if ((source || currentModalSource) === currentModalSource) {
-                renderModalGrid(images);
+                renderModalGrid(list);
             }
             updateCounts();
         }
@@ -2000,20 +2027,18 @@
                 if (!sku) return;
                 if (loading) {
                     loadingSet.add(sku);
+                    const item = findDataItemBySku(sku);
+                    if (item && item.SKU) loadingSet.add(item.SKU);
                 } else {
                     loadingSet.delete(sku);
+                    const item = findDataItemBySku(sku);
+                    if (item && item.SKU) loadingSet.delete(item.SKU);
                 }
-                const item = tableData.find(function (d) { return d.SKU === sku; });
-                if (item) {
-                    item[field] = !!loading;
-                }
-                if (table) {
-                    const patch = {};
-                    patch[field] = !!loading;
-                    table.searchRows('SKU', '=', sku).forEach(function (row) {
-                        row.update(patch);
-                    });
-                }
+                const patch = {};
+                patch[field] = !!loading;
+                const dataItem = findDataItemBySku(sku);
+                if (dataItem) dataItem[field] = !!loading;
+                patchRowsBySku(sku, patch);
             });
             if (loading && table && skus[0]) {
                 const first = table.searchRows('SKU', '=', skus[0])[0];
@@ -2045,9 +2070,10 @@
             })
             .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
             .then(function (result) {
-                hideAiProcessLoader();
                 const d = result.data || {};
+                setAiGenerating(skus, false, target);
                 applyAiBySku(d.by_sku, target);
+                hideAiProcessLoader();
                 const errors = Array.isArray(d.errors) ? d.errors : [];
                 if (!result.ok || !d.success) {
                     const extra = errors.length ? '\n' + errors.join('\n') : '';
@@ -2058,12 +2084,10 @@
                     alert((d.reply || 'Done.') + '\n' + errors.join('\n'));
                     return;
                 }
-                if (d.reply) {
-                    alert(d.reply);
-                }
             })
             .catch(function (err) {
                 hideAiProcessLoader();
+                setAiGenerating(skus, false, target);
                 alert(err.message || 'AI request failed.');
             })
             .finally(function () {
