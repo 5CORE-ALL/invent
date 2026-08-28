@@ -50,6 +50,70 @@
             text-align: right;
             font-weight: 600;
         }
+        #amzCvrDiscModal .amz-cd-pie-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #amzCvrDiscModal .amz-cd-pie-canvas-wrap {
+            width: 168px;
+            height: 168px;
+            flex: 0 0 168px;
+        }
+        #amzCvrDiscModal .amz-cd-pie-legend {
+            flex: 1 1 auto;
+            min-width: 0;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        #amzCvrDiscModal .amz-cd-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            line-height: 1.3;
+            padding: 1px 0;
+        }
+        #amzCvrDiscModal .amz-cd-pie-swatch {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            flex: 0 0 8px;
+        }
+        #amzCvrDiscModal .amz-cd-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
+        #amzCvrDiscModal .amz-cd-pie-count { font-weight: 700; min-width: 24px; text-align: right; }
+        #amzCvrDiscModal .amz-cd-pie-pct { color: #64748b; min-width: 24px; text-align: right; }
+        #amzCvrDiscModal .amz-cd-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #amzCvrDiscModal .amz-cd-hist-dot:hover { transform: scale(1.35); }
+        #amzCvrDiscModal .amz-cd-hist-wrap {
+            display: none;
+            margin: 0 0 10px;
+            padding: 6px 8px 4px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        #amzCvrDiscModal .amz-cd-hist-wrap.is-open { display: block; }
+        #amzCvrDiscModal .amz-cd-hist-canvas-wrap { height: 160px; }
+        #amz-cvr-disc-table .amz-cvr-disc-count {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+        }
         #amz-prmt-menu-btn {
             background: #198754;
             border-color: #198754;
@@ -91,6 +155,59 @@
             text-align: right;
             font-weight: 600;
         }
+        #amzZeroSoldModal .amz-zs-pie-wrap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #amzZeroSoldModal .amz-zs-pie-canvas-wrap {
+            width: 148px;
+            height: 148px;
+            flex: 0 0 148px;
+        }
+        #amzZeroSoldModal .amz-zs-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.35;
+            padding: 3px 0;
+        }
+        #amzZeroSoldModal .amz-zs-pie-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex: 0 0 10px;
+        }
+        #amzZeroSoldModal .amz-zs-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
+        #amzZeroSoldModal .amz-zs-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
+        #amzZeroSoldModal .amz-zs-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
+        #amzZeroSoldModal .amz-zs-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #amzZeroSoldModal .amz-zs-hist-dot:hover { transform: scale(1.35); }
+        #amzZeroSoldModal .amz-zs-hist-wrap {
+            display: none;
+            margin: 0 0 10px;
+            padding: 6px 8px 4px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        #amzZeroSoldModal .amz-zs-hist-wrap.is-open { display: block; }
+        #amzZeroSoldModal .amz-zs-hist-canvas-wrap { height: 160px; }
         #amz-sprice-recalc-btn {
             background: #0d6efd;
             border-color: #0d6efd;
@@ -321,7 +438,7 @@
 @if($amazonPefPromoPart === 'modals' || $amazonPefPromoPart === 'all')
     {{-- CVR Disc: Amazon-only rules store amazon_cvr_vs_disc --}}
     <div class="modal fade" id="amzCvrDiscModal" tabindex="-1" aria-labelledby="amzCvrDiscModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="amzCvrDiscModalLabel">
@@ -330,6 +447,21 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <div class="amz-cd-pie-wrap">
+                        <div class="amz-cd-pie-canvas-wrap">
+                            <canvas id="amz-cd-pie"></canvas>
+                        </div>
+                        <div class="amz-cd-pie-legend" id="amz-cd-pie-legend"></div>
+                    </div>
+                    <div class="amz-cd-hist-wrap" id="amz-cd-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="amz-cd-hist-title">Slab history</span>
+                            <button type="button" class="btn-close" id="amz-cd-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="amz-cd-hist-canvas-wrap">
+                            <canvas id="amz-cd-hist"></canvas>
+                        </div>
+                    </div>
                     <p class="small text-muted mb-2">
                         Map CVR% slabs to <strong>CVR Disc.</strong> % (no 0% slab).
                         Used by the CVR Disc. column and Push Prc Sale discount.
@@ -339,8 +471,9 @@
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-cvr-disc-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:55%;">CVR%</th>
-                                    <th style="width:45%;" class="text-end">Disc %</th>
+                                    <th>CVR%</th>
+                                    <th class="text-center" style="width:90px;">Count</th>
+                                    <th class="text-end" style="width:120px;">Disc %</th>
                                 </tr>
                             </thead>
                             <tbody id="amz-cvr-disc-tbody"></tbody>
@@ -359,7 +492,7 @@
     </div>
 
     <div class="modal fade" id="amzZeroSoldModal" tabindex="-1" aria-labelledby="amzZeroSoldModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="amzZeroSoldModalLabel">
@@ -368,13 +501,28 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <div class="amz-zs-pie-wrap">
+                        <div class="amz-zs-pie-canvas-wrap">
+                            <canvas id="amz-zs-pie"></canvas>
+                        </div>
+                        <div id="amz-zs-pie-legend"></div>
+                    </div>
+                    <div class="amz-zs-hist-wrap" id="amz-zs-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="amz-zs-hist-title">Sold history</span>
+                            <button type="button" class="btn-close" id="amz-zs-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="amz-zs-hist-canvas-wrap">
+                            <canvas id="amz-zs-hist"></canvas>
+                        </div>
+                    </div>
                     <p class="small text-muted mb-2">
                         Map <strong>Dil color</strong> to <strong>Target GROI%</strong>
                         (<strong style="color:#a00211;">Red &lt;25% → 50</strong>,
                         <strong style="color:#28a745;">Green 25–50% → 60</strong>,
                         <strong style="color:#e83e8c;">Pink 50%+ → 70</strong> first time).
                         Amazon has its own rule table.
-                        The <strong>0 Sold</strong> column shows the target when <strong>A L30 = 0</strong>.
+                        When <strong>A L30 = 0</strong>,
                         <strong>Apply</strong> sets <strong>S PRC</strong> so
                         <strong>SGROI = Target GROI%</strong>
                         (<code>S PRC = (LP × (1 + GROI%/100) + Ship) / 0.80</code>).
@@ -393,13 +541,9 @@
                     <div class="small text-muted mt-2" id="amz-zero-sold-status"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-primary" id="amz-zero-sold-save-btn"
-                        title="Save Dil color → Target GROI% for Amazon only">
-                        <i class="fas fa-save me-1"></i> Save Rule
-                    </button>
                     <button type="button" class="btn btn-sm btn-primary" id="amz-zero-sold-apply-btn"
-                        title="Save rules, then set S PRC so SGROI = Target on A L30 = 0 SKUs">
-                        Apply
+                        title="Save Dil color → Target GROI% and write S PRC on 0 Sold SKUs">
+                        <i class="fas fa-save me-1"></i> Apply
                     </button>
                 </div>
             </div>
@@ -483,6 +627,22 @@
 
         let pefDilPrmtRules = PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzCvrDiscRules = AMZ_CVR_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        const AMZ_CD_SLAB_META = [
+            { key: 'eq-0', label: '0', color: '#94a3b8' },
+            { key: '0.01-1', label: '0.01–1', color: '#a00211' },
+            { key: '1-1.5', label: '1–1.5', color: '#c2410c' },
+            { key: '1.5-2', label: '1.5–2', color: '#ea580c' },
+            { key: '2-3', label: '2–3', color: '#f59e0b' },
+            { key: '3-4', label: '3–4', color: '#eab308' },
+            { key: '4-5', label: '4–5', color: '#84cc16' },
+            { key: '5-6', label: '5–6', color: '#22c55e' },
+            { key: '6-6.5', label: '6–6.5', color: '#14b8a6' },
+            { key: '6.5-7', label: '6.5–7', color: '#3b82f6' },
+            { key: 'gt-7', label: '> 7', color: '#e83e8c' },
+        ];
+        let amzCdPieChart = null;
+        let amzCdHistChart = null;
+        let amzCdLiveCounts = {};
         const AMZ_ZERO_SOLD_DEFAULTS = [
             { key: 'red', label: 'Red Dil (<25%)', groi: 50 },
             { key: 'green', label: 'Green Dil (25–50%)', groi: 60 },
@@ -703,7 +863,7 @@
                 return '<span class="amz-cvr-discount-badge is-zero" title="No CVR Disc">—</span>';
             }
             return '<span class="amz-cvr-discount-badge" title="CVR Disc rule → ' + n + '%">'
-                + n + '%</span>';
+                + n + '</span>';
         }
         function amzDilColorBand(dil) {
             const n = Number(dil);
@@ -780,7 +940,7 @@
                 }
                 renderAmzZeroSoldModalTable();
                 $('#amz-zero-sold-status').text(res && res.is_default
-                    ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Save Rule to keep Amazon’s table.'
+                    ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Apply saves Amazon’s table and writes S PRC.'
                     : 'Loaded saved 0 Sold rules for Amazon.');
             } catch (e) {
                 renderAmzZeroSoldModalTable();
@@ -813,13 +973,400 @@
             });
         }
 
+        const AMZ_ZS_BANDS = [
+            { key: 'zero', label: '0 Sold', color: '#e83e8c' },
+            { key: 'sold', label: 'Sold', color: '#28a745' },
+        ];
+        let amzZsPieChart = null;
+        let amzZsHistChart = null;
+        let amzZsLiveCounts = { zero: 0, sold: 0 };
+
+        function amzZsWithChart(fn) {
+            if (typeof Chart !== 'undefined') { fn(); return; }
+            if (typeof loadChartJs === 'function') {
+                loadChartJs().then(fn).catch(function() {});
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+            s.onload = fn;
+            document.head.appendChild(s);
+        }
+        function amzZsCollectCounts() {
+            const counts = { zero: 0, sold: 0 };
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+                return counts;
+            }
+            table.getRows('active').forEach(function(row) {
+                const d = row.getData() || {};
+                if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return;
+                if (amzIsZeroSoldRow(d)) counts.zero++;
+                else counts.sold++;
+            });
+            return counts;
+        }
+        function amzZsSnapLocal(counts) {
+            try {
+                const key = 'amz_zero_sold_hist';
+                const today = new Date().toISOString().slice(0, 10);
+                let hist = {};
+                try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
+                hist[today] = counts;
+                const keys = Object.keys(hist).sort();
+                while (keys.length > 90) delete hist[keys.shift()];
+                localStorage.setItem(key, JSON.stringify(hist));
+            } catch (e) { /* ignore */ }
+        }
+        function amzZsLocalHistory() {
+            try {
+                const hist = JSON.parse(localStorage.getItem('amz_zero_sold_hist') || '{}') || {};
+                return Object.keys(hist).sort().map(function(date) {
+                    const row = hist[date] || {};
+                    return {
+                        date: date,
+                        label: date.slice(5),
+                        zero: Number(row.zero) || 0,
+                        sold: Number(row.sold) || 0,
+                    };
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+        function renderAmzZeroSoldPie() {
+            amzZsLiveCounts = amzZsCollectCounts();
+            amzZsSnapLocal(amzZsLiveCounts);
+            const total = amzZsLiveCounts.zero + amzZsLiveCounts.sold;
+            const legend = document.getElementById('amz-zs-pie-legend');
+            if (legend) {
+                legend.innerHTML = '<div class="amz-zs-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
+                    + '<span class="amz-zs-pie-swatch" style="visibility:hidden;"></span>'
+                    + '<span class="amz-zs-pie-name">A L30</span>'
+                    + '<span class="amz-zs-pie-count">count</span>'
+                    + '<span class="amz-zs-pie-pct">of total</span>'
+                    + '<span class="amz-zs-hist-dot" style="visibility:hidden;"></span>'
+                    + '</div>'
+                    + AMZ_ZS_BANDS.map(function(b) {
+                        const n = amzZsLiveCounts[b.key] || 0;
+                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                        return '<div class="amz-zs-pie-row">'
+                            + '<span class="amz-zs-pie-swatch" style="background:' + b.color + ';"></span>'
+                            + '<span class="amz-zs-pie-name">' + b.label + '</span>'
+                            + '<span class="amz-zs-pie-count">' + n + '</span>'
+                            + '<span class="amz-zs-pie-pct" title="' + pct + ' of total">' + pct + '</span>'
+                            + '<button type="button" class="amz-zs-hist-dot" data-band="' + b.key + '" '
+                            + 'style="background:' + b.color + ';" title="' + b.label + ' daily history"></button>'
+                            + '</div>';
+                    }).join('');
+            }
+            amzZsWithChart(function() {
+                const canvas = document.getElementById('amz-zs-pie');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (amzZsPieChart) {
+                    amzZsPieChart.destroy();
+                    amzZsPieChart = null;
+                }
+                amzZsPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: AMZ_ZS_BANDS.map(function(b) { return b.label; }),
+                        datasets: [{
+                            data: AMZ_ZS_BANDS.map(function(b) { return amzZsLiveCounts[b.key] || 0; }),
+                            backgroundColor: AMZ_ZS_BANDS.map(function(b) { return b.color; }),
+                            borderColor: '#fff',
+                            borderWidth: 1,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const n = Number(ctx.raw) || 0;
+                                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                        return ' ' + n + '  ·  ' + pct + ' of total';
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+            });
+        }
+        function amzZsDrawHist(band, rows) {
+            const spec = AMZ_ZS_BANDS.find(function(b) { return b.key === band; }) || AMZ_ZS_BANDS[0];
+            $('#amz-zs-hist-title').text(spec.label + ' count');
+            $('#amz-zs-hist-wrap').addClass('is-open');
+            amzZsWithChart(function() {
+                const canvas = document.getElementById('amz-zs-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (amzZsHistChart) {
+                    amzZsHistChart.destroy();
+                    amzZsHistChart = null;
+                }
+                amzZsHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        datasets: [{
+                            data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                            borderColor: spec.color,
+                            backgroundColor: spec.color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: spec.color,
+                            pointBorderColor: spec.color,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                        },
+                    },
+                });
+            });
+        }
+        function amzZsOpenHist(band) {
+            const applyToday = function(rows) {
+                const list = rows.slice();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!list.some(function(r) { return r.date === today; })) {
+                    list.push({
+                        date: today,
+                        label: today.slice(5),
+                        zero: amzZsLiveCounts.zero,
+                        sold: amzZsLiveCounts.sold,
+                    });
+                } else {
+                    list.forEach(function(r) {
+                        if (r.date === today) {
+                            r.zero = amzZsLiveCounts.zero;
+                            r.sold = amzZsLiveCounts.sold;
+                        }
+                    });
+                }
+                return list;
+            };
+            $.ajax({
+                url: '/amazon-zero-sold-history',
+                method: 'GET',
+                data: { days: 30 },
+            }).done(function(res) {
+                const rows = (res && res.success && Array.isArray(res.data)) ? res.data : amzZsLocalHistory();
+                amzZsDrawHist(band, applyToday(rows));
+            }).fail(function() {
+                amzZsDrawHist(band, applyToday(amzZsLocalHistory()));
+            });
+        }
+
+        function amzCdWithChart(fn) {
+            if (typeof Chart !== 'undefined') { fn(); return; }
+            if (typeof loadChartJs === 'function') {
+                loadChartJs().then(fn).catch(function() {});
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+            s.onload = fn;
+            document.head.appendChild(s);
+        }
+        function amzCvrDiscCollectCounts() {
+            const counts = {};
+            AMZ_CD_SLAB_META.forEach(function(s) { counts[s.key] = 0; });
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+                return counts;
+            }
+            table.getRows('active').forEach(function(row) {
+                const d = row.getData() || {};
+                if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return;
+                const key = pefCvrSlabKey(amzPefCvr(d));
+                counts[key] = (counts[key] || 0) + 1;
+            });
+            return counts;
+        }
+        function amzCdSnapLocal(counts) {
+            try {
+                const key = 'amz_cvr_disc_slab_hist';
+                const today = new Date().toISOString().slice(0, 10);
+                let hist = {};
+                try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
+                hist[today] = counts;
+                const keys = Object.keys(hist).sort();
+                while (keys.length > 90) delete hist[keys.shift()];
+                localStorage.setItem(key, JSON.stringify(hist));
+            } catch (e) { /* ignore */ }
+        }
+        function amzCdLocalHistory() {
+            try {
+                const hist = JSON.parse(localStorage.getItem('amz_cvr_disc_slab_hist') || '{}') || {};
+                return Object.keys(hist).sort().map(function(date) {
+                    return Object.assign({ date: date, label: date.slice(5) }, hist[date] || {});
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+        function amzCdHistDotHtml(key, color, label) {
+            return '<button type="button" class="amz-cd-hist-dot" data-band="' + String(key).replace(/"/g, '&quot;') + '" '
+                + 'style="background:' + color + ';" title="' + String(label).replace(/"/g, '&quot;') + ' daily history"></button>';
+        }
+        function renderAmzCvrDiscPie() {
+            amzCdLiveCounts = amzCvrDiscCollectCounts();
+            amzCdSnapLocal(amzCdLiveCounts);
+            const total = AMZ_CD_SLAB_META.reduce(function(sum, s) {
+                return sum + (amzCdLiveCounts[s.key] || 0);
+            }, 0);
+            const legend = document.getElementById('amz-cd-pie-legend');
+            if (legend) {
+                legend.innerHTML = '<div class="amz-cd-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
+                    + '<span class="amz-cd-pie-swatch" style="visibility:hidden;"></span>'
+                    + '<span class="amz-cd-pie-name">CVR slab</span>'
+                    + '<span class="amz-cd-pie-count">count</span>'
+                    + '<span class="amz-cd-pie-pct">of total</span>'
+                    + '<span class="amz-cd-hist-dot" style="visibility:hidden;"></span>'
+                    + '</div>'
+                    + AMZ_CD_SLAB_META.map(function(s) {
+                        const n = amzCdLiveCounts[s.key] || 0;
+                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                        return '<div class="amz-cd-pie-row">'
+                            + '<span class="amz-cd-pie-swatch" style="background:' + s.color + ';"></span>'
+                            + '<span class="amz-cd-pie-name">' + s.label + '</span>'
+                            + '<span class="amz-cd-pie-count">' + n + '</span>'
+                            + '<span class="amz-cd-pie-pct" title="' + pct + ' of total">' + pct + '</span>'
+                            + amzCdHistDotHtml(s.key, s.color, s.label)
+                            + '</div>';
+                    }).join('');
+            }
+            amzCdWithChart(function() {
+                const canvas = document.getElementById('amz-cd-pie');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (amzCdPieChart) {
+                    amzCdPieChart.destroy();
+                    amzCdPieChart = null;
+                }
+                amzCdPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: AMZ_CD_SLAB_META.map(function(s) { return s.label; }),
+                        datasets: [{
+                            data: AMZ_CD_SLAB_META.map(function(s) { return amzCdLiveCounts[s.key] || 0; }),
+                            backgroundColor: AMZ_CD_SLAB_META.map(function(s) { return s.color; }),
+                            borderColor: '#fff',
+                            borderWidth: 1,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const n = Number(ctx.raw) || 0;
+                                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                        return ' ' + n + '  ·  ' + pct + ' of total';
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+            });
+            $('#amz-cvr-disc-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                $(this).find('.amz-cvr-disc-count-n').text(amzCdLiveCounts[key] || 0);
+            });
+        }
+        function amzCdDrawHist(band, rows) {
+            const spec = AMZ_CD_SLAB_META.find(function(s) { return s.key === band; }) || AMZ_CD_SLAB_META[0];
+            $('#amz-cd-hist-title').text(spec.label + ' count');
+            $('#amz-cd-hist-wrap').addClass('is-open');
+            amzCdWithChart(function() {
+                const canvas = document.getElementById('amz-cd-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (amzCdHistChart) {
+                    amzCdHistChart.destroy();
+                    amzCdHistChart = null;
+                }
+                amzCdHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        datasets: [{
+                            data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                            borderColor: spec.color,
+                            backgroundColor: spec.color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: spec.color,
+                            pointBorderColor: spec.color,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                        },
+                    },
+                });
+            });
+        }
+        function amzCdOpenHist(band) {
+            const applyToday = function(rows) {
+                const list = rows.slice();
+                const today = new Date().toISOString().slice(0, 10);
+                const live = Object.assign({}, amzCdLiveCounts);
+                if (!list.some(function(r) { return r.date === today; })) {
+                    list.push(Object.assign({ date: today, label: today.slice(5) }, live));
+                } else {
+                    list.forEach(function(r) {
+                        if (r.date === today) Object.assign(r, live);
+                    });
+                }
+                return list;
+            };
+            $.ajax({
+                url: '/amazon-cvr-disc-slab-history',
+                method: 'GET',
+                data: { days: 30 },
+            }).done(function(res) {
+                const rows = (res && res.success && Array.isArray(res.data)) ? res.data : amzCdLocalHistory();
+                amzCdDrawHist(band, applyToday(rows));
+            }).fail(function() {
+                amzCdDrawHist(band, applyToday(amzCdLocalHistory()));
+            });
+        }
         function renderAmzCvrDiscModalTable() {
+            const counts = amzCvrDiscCollectCounts();
             const $tb = $('#amz-cvr-disc-tbody').empty();
             amzCvrDiscRules.forEach(function(r, idx) {
                 const disc = isFinite(Number(r.disc)) ? Number(r.disc) : 0;
+                const meta = AMZ_CD_SLAB_META.find(function(s) { return s.key === r.key; });
+                const color = meta ? meta.color : '#64748b';
                 $tb.append(
                     '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
                     + '<td>' + String(r.label || r.key) + '</td>'
+                    + '<td class="amz-cvr-disc-count">'
+                    + '<span class="amz-cvr-disc-count-n">' + (counts[r.key] || 0) + '</span> '
+                    + amzCdHistDotHtml(r.key, color, r.label || r.key)
+                    + '</td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm amz-cvr-disc-input" '
                     + 'min="0" step="0.1" value="' + disc + '" data-idx="' + idx + '">'
@@ -896,6 +1443,7 @@
                     if (table) {
                         try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
                     }
+                    amzScheduleRuleSpriceSync({ delay: 200 });
                 }
                 const modalEl = document.getElementById('amzCvrDiscModal');
                 if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
@@ -1142,6 +1690,7 @@
                 fieldMeta.label + ' → ' + ok + ' row(s)' + (skipped ? ('; skipped ' + skipped) : '')
             );
             if (table) table.redraw(true);
+            amzScheduleRuleSpriceSync({ delay: 250 });
         }
 
         function amazonPefPromoColumns() {
@@ -1152,29 +1701,39 @@
                     width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
-                    editable: function(cell) {
-                        return amzPefIsChildRow(cell.getRow().getData());
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = (typeof computeAmzLivePrmtPct === 'function')
+                            ? (computeAmzLivePrmtPct(aRow.getData()) || 0)
+                            : (parseFloat(a) || 0);
+                        const bv = (typeof computeAmzLivePrmtPct === 'function')
+                            ? (computeAmzLivePrmtPct(bRow.getData()) || 0)
+                            : (parseFloat(b) || 0);
+                        return av - bv;
                     },
-                    editor: 'input',
-                    headerTooltip: '% less on S PRC. Also filled by Dil vs PRMT. Dot = PDT daily history.',
+                    editable: false,
+                    headerTooltip: 'Read-only. Dil vs PRMT slab. Click the dot for PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
                         const sku = amzPefSku(d);
-                        const val = cell.getValue();
+                        const val = (typeof computeAmzLivePrmtPct === 'function')
+                            ? computeAmzLivePrmtPct(d)
+                            : cell.getValue();
                         const dot = amzPefPromoHistoryDotHtml(sku, 'prmt', val);
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:3px;">'
                             + dot + fmtAmzPefPromoCell(val, '%') + '</span>';
                     },
                     cellClick: function(e) {
-                        if (e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot')) {
-                            e.stopPropagation();
-                            return false;
+                        const btn = e.target.closest('.view-sku-chart') || e.target.closest('.amz-pef-hist-dot');
+                        if (!btn) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const sku = btn.getAttribute('data-sku');
+                        if (sku && typeof openAmazonSkuChart === 'function') {
+                            openAmazonSkuChart(sku, btn.getAttribute('data-metric') || 'prmt');
                         }
-                    },
-                    cellEdited: function(cell) {
-                        applyAmzPefPromoFromCell(cell, 'prmt');
+                        return false;
                     },
                 },
                 {
@@ -1207,41 +1766,6 @@
                             + fmtAmzCvrDiscountBadge(pct) + '</span>';
                     },
                 },
-                {
-                    title: '0 Sold',
-                    field: 'zero_sold',
-                    width: 100,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: true,
-                    headerTooltip: '0 Sold target price from Dil color → GROI% (Red 50 / Green 60 / Pink 70). Format: $price (GROI). N/A when A L30 > 0 or no LP.',
-                    sorter: function(a, b, aRow, bRow) {
-                        const ad = aRow.getData() || {};
-                        const bd = bRow.getData() || {};
-                        const av = amzSpriceFromTargetGroi(ad, amzZeroSoldGroiForRow(ad));
-                        const bv = amzSpriceFromTargetGroi(bd, amzZeroSoldGroiForRow(bd));
-                        return (av || 0) - (bv || 0);
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary || !amzPefIsChildRow(d)) return '';
-                        const roi = amzZeroSoldGroiForRow(d);
-                        const lp = parseFloat(d.LP_productmaster) || 0;
-                        const price = amzSpriceFromTargetGroi(d, roi);
-                        if (!amzIsZeroSoldRow(d) || !(lp > 0) || roi == null || !(price > 0)) {
-                            return '<span style="color:#999;">N/A</span>';
-                        }
-                        const band = amzDilColorBand(amzPefDil(d));
-                        const hex = amzDilColorHex(band);
-                        const label = band === 'red' ? 'Red' : (band === 'green' ? 'Green' : 'Pink');
-                        return '<div class="d-flex flex-column align-items-center justify-content-center" '
-                            + 'style="gap:1px;line-height:1.1;" title="0 Sold · '
-                            + label + ' Dil → $' + price.toFixed(2) + ' at ' + roi + '% GROI">'
-                            + '<span style="color:' + hex + ';font-weight:600;font-size:14px;">$' + price.toFixed(2) + '</span>'
-                            + '<span style="color:#007bff;font-weight:600;">(' + Math.round(roi) + ')</span>'
-                            + '</div>';
-                    },
-                },
                 ...(typeof cvrUpDnColumn === 'function' ? [cvrUpDnColumn()] : []),
                 ...(typeof tDiscountsColumn === 'function' ? [tDiscountsColumn(computeAmzTDiscountsPct)] : []),
                 {
@@ -1250,7 +1774,16 @@
                     width: 78,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerSort: false,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            const plan = (typeof computeAmzPushPrcPlan === 'function')
+                                ? computeAmzPushPrcPlan(row)
+                                : null;
+                            return (plan && plan.effective > 0) ? plan.effective : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
                     headerTooltip: 'Push Prc: Your=Std. 0 Sold → Sale=GROI. Sold → Sale=Std−(PRMT+CVR Disc+CVR UP/DN). Sale=Biz=Min. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
@@ -1383,27 +1916,28 @@
         }
         function computeAmzPushPrcPlan(d) {
             const std = Number(d.STANDARD_PRICE) || 0;
-            if (!(std > 0)) return null;
             const stack = computeAmzRuleStack(d);
             let sale = null;
             if (stack.zeroSold && stack.zeroSoldPrice != null) {
                 sale = stack.zeroSoldPrice;
                 if (!(sale >= 0.01)) sale = null;
+            } else if (!(std > 0)) {
+                return null;
             } else if (stack.totalDisc > 0 && stack.totalDisc < 100) {
                 sale = amzPefRound2(std * (1 - (stack.totalDisc / 100)));
                 if (!(sale >= 0.01) || sale >= std) sale = null;
             }
-            const saleBase = sale != null ? sale : amzPefRound2(std);
-            const max = amzPefRound2(std * 1.10);
-            const min = saleBase;
-            const business = saleBase;
+            const saleBase = sale != null ? sale : (std > 0 ? amzPefRound2(std) : 0);
+            if (!(saleBase > 0)) return null;
             const effective = sale != null ? sale : std;
+            if (!(effective > 0)) return null;
+            const max = std > 0 ? amzPefRound2(std * 1.10) : saleBase;
             return {
-                std: amzPefRound2(std),
+                std: std > 0 ? amzPefRound2(std) : saleBase,
                 sale: sale,
                 max: max,
-                min: min,
-                business: business,
+                min: saleBase,
+                business: saleBase,
                 prmt: stack.prmt,
                 cvrDisc: stack.cvrDisc,
                 cvrUpDn: stack.cvrUpDn,
@@ -1418,6 +1952,31 @@
             const plan = computeAmzPushPrcPlan(d);
             return plan ? plan.effective : null;
         }
+
+        function amzCapRuleSprice(d, price) {
+            let n = Number(price) || 0;
+            if (!(n > 0)) return 0;
+            if (typeof amazonCapSpriceToLmp === 'function') {
+                n = amazonCapSpriceToLmp(d, n);
+            }
+            return n > 0 ? amzPefRound2(n) : 0;
+        }
+        /** Live S PRC from Dil / PRMT / CVR Disc / 0 Sold / CVR UP/DN. Ignores stored SPRICE. */
+        function amzLiveRuleSprice(d) {
+            if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
+            const plan = computeAmzPushPrcPlan(d);
+            if (!plan || !(plan.effective > 0)) return 0;
+            return amzCapRuleSprice(d, plan.effective);
+        }
+        /** Visible S PRC = live rule price when computable; otherwise stored. */
+        function amzDisplayedSprice(d) {
+            const live = amzLiveRuleSprice(d);
+            if (live > 0) return live;
+            const stored = parseFloat(d && d.SPRICE) || 0;
+            return stored > 0 ? amzPefRound2(stored) : 0;
+        }
+        window.amzLiveRuleSprice = amzLiveRuleSprice;
+        window.amzDisplayedSprice = amzDisplayedSprice;
 
         function collectAmzPromoApplyTargets(emptyMsg) {
             const selected = collectAmzPefSelectedRows();
@@ -1466,12 +2025,9 @@
                 const plan = computeAmzPushPrcPlan(d);
                 if (!plan || !(plan.effective > 0)) { skipped++; continue; }
                 if (opts.skipWhenNoSale && plan.sale == null) {
-                    item.row.update({
-                        prmt_pct: String(plan.prmt),
-                        _prmt_pct_applied: plan.prmt,
-                    });
-                    saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: plan.prmt });
-                    skipped++;
+                    applyAmzPushPrcToSpriceRow(item.row, plan, null);
+                    saveAmzSpriceFromPromo(item.row, plan.effective, true, { prmt_pct: plan.prmt });
+                    ok++;
                     continue;
                 }
                 applyAmzPushPrcToSpriceRow(item.row, plan, null);
@@ -1487,6 +2043,7 @@
                     + (unmatched ? ('; ' + unmatched + ' no match') : '')
                     + (skipped ? ('; skipped ' + skipped) : '') + '.'
             );
+            amzScheduleRuleSpriceSync({ delay: 600 });
             return ok;
         }
 
@@ -1540,6 +2097,147 @@
                 data: data,
             });
         }
+
+        /**
+         * Always show/store the live rule S PRC. First pass overwrites stale stored
+         * values; later Dil / PRMT / CVR / 0 Sold / Std / LP changes overwrite again.
+         */
+        const AMZ_RULE_SPRICE_CLEAR_KEY = 'amzRuleSpriceClearedOnce:v1';
+        let amzRuleSpriceSlabsReady = false;
+        const amzRuleReadyBits = { dil: false, cvr: false, zero: false };
+        let amzRuleSpriceSyncTimer = null;
+        let amzRuleSpriceSyncBusy = false;
+        let amzRuleSpricePersistQueue = [];
+        let amzRuleSpricePersistActive = 0;
+        const AMZ_RULE_SPRICE_PERSIST_CONCURRENCY = 8;
+        const amzRuleSpricePersistInflight = {};
+
+        function amzShouldClearStoredOnce() {
+            try { return !localStorage.getItem(AMZ_RULE_SPRICE_CLEAR_KEY); }
+            catch (e) { return true; }
+        }
+        function amzMarkStoredClearedOnce() {
+            try { localStorage.setItem(AMZ_RULE_SPRICE_CLEAR_KEY, '1'); }
+            catch (e) { /* ignore */ }
+        }
+        function amzRuleSpriceNeedsOverwrite(stored, live) {
+            if (!(live > 0)) return false;
+            return Math.abs((Number(stored) || 0) - live) > 0.009;
+        }
+        function amzRuleSpricePlanForRow(d) {
+            const plan = computeAmzPushPrcPlan(d);
+            if (!plan || !(plan.effective > 0)) return null;
+            const live = amzCapRuleSprice(d, plan.effective);
+            if (!(live > 0)) return null;
+            plan.effective = live;
+            return plan;
+        }
+        function amzDrainRuleSpricePersist() {
+            while (amzRuleSpricePersistActive < AMZ_RULE_SPRICE_PERSIST_CONCURRENCY && amzRuleSpricePersistQueue.length) {
+                const job = amzRuleSpricePersistQueue.shift();
+                amzRuleSpricePersistActive++;
+                saveAmzPushPrcSprice(job.sku, job.plan, { recordPushPrc: false })
+                    .done(function(saveRes) {
+                        applyAmzPushPrcToSpriceRow(job.row, job.plan, saveRes);
+                    })
+                    .fail(function() {
+                        applyAmzPushPrcToSpriceRow(job.row, job.plan, null);
+                    })
+                    .always(function() {
+                        delete amzRuleSpricePersistInflight[job.sku];
+                        amzRuleSpricePersistActive--;
+                        amzDrainRuleSpricePersist();
+                    });
+            }
+        }
+        function amzEnqueueRuleSpricePersist(row, plan) {
+            const sku = amzPefSku(row.getData());
+            if (!sku || amzRuleSpricePersistInflight[sku]) return;
+            amzRuleSpricePersistInflight[sku] = true;
+            amzRuleSpricePersistQueue.push({ row: row, plan: plan, sku: sku });
+            amzDrainRuleSpricePersist();
+        }
+        function amzNoteRuleReady(key) {
+            if (key) amzRuleReadyBits[key] = true;
+            if (amzRuleReadyBits.dil && amzRuleReadyBits.cvr && amzRuleReadyBits.zero) {
+                amzRuleSpriceSlabsReady = true;
+                amzScheduleRuleSpriceSync({ delay: 250 });
+            }
+        }
+        function amzApplyRuleSpriceToAllRows(opts) {
+            opts = opts || {};
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return 0;
+            if (!amzRuleSpriceSlabsReady && !opts.force) {
+                amzScheduleRuleSpriceSync({ delay: 400 });
+                return 0;
+            }
+            const clearOnce = !!opts.clearOnce || amzShouldClearStoredOnce();
+            let changed = 0;
+            const rows = table.getRows('all') || [];
+            rows.forEach(function(row) {
+                const d = row.getData();
+                if (!amzPefIsChildRow(d) || amzPefInv(d) === 0) return;
+                const plan = amzRuleSpricePlanForRow(d);
+                if (!plan) return;
+                const stored = parseFloat(d.SPRICE) || 0;
+                if (!opts.force && !amzRuleSpriceNeedsOverwrite(stored, plan.effective)) return;
+                row.update({
+                    SPRICE: plan.effective,
+                    has_custom_sprice: true,
+                    prmt_pct: String(plan.prmt),
+                    _prmt_pct_applied: plan.prmt,
+                });
+                if (plan.zeroSold && plan.zeroSoldGroi != null) {
+                    row.update({ ZERO_SOLD_PRC_GROI: plan.zeroSoldGroi });
+                }
+                amzEnqueueRuleSpricePersist(row, plan);
+                changed++;
+            });
+            if (clearOnce) amzMarkStoredClearedOnce();
+            if (changed && table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+            if (opts.toast) {
+                amzPefToast(
+                    changed ? 'success' : 'info',
+                    changed
+                        ? ('S PRC autofilled from rules on ' + changed + ' SKU(s).')
+                        : 'S PRC already matches the live rules.'
+                );
+            }
+            return changed;
+        }
+        function amzScheduleRuleSpriceSync(opts) {
+            opts = opts || {};
+            clearTimeout(amzRuleSpriceSyncTimer);
+            amzRuleSpriceSyncTimer = setTimeout(function() {
+                if (amzRuleSpriceSyncBusy) {
+                    amzScheduleRuleSpriceSync(opts);
+                    return;
+                }
+                amzRuleSpriceSyncBusy = true;
+                try { amzApplyRuleSpriceToAllRows(opts); }
+                finally { amzRuleSpriceSyncBusy = false; }
+            }, opts.delay != null ? opts.delay : 400);
+        }
+        function bindAmzRuleSpriceAutofill() {
+            if (typeof table === 'undefined' || !table || !table.on) {
+                setTimeout(bindAmzRuleSpriceAutofill, 400);
+                return;
+            }
+            if (table._amzRuleSpriceAutofillBound) return;
+            table._amzRuleSpriceAutofillBound = true;
+            table.on('dataLoaded', function() {
+                amzScheduleRuleSpriceSync({ delay: 500 });
+            });
+            try {
+                if ((typeof table.getDataCount === 'function' ? table.getDataCount() : 0) > 0) {
+                    amzScheduleRuleSpriceSync({ delay: 500 });
+                }
+            } catch (e) { /* wait for dataLoaded */ }
+        }
+        window.amzScheduleRuleSpriceSync = amzScheduleRuleSpriceSync;
+        window.amzApplyRuleSpriceToAllRows = amzApplyRuleSpriceToAllRows;
 
         /**
          * Clear S PRC then autofill from Push Prc formula (no Amazon push).
@@ -2030,22 +2728,33 @@
             syncAmzReloadPushSwitchUi();
             $('#amz-reload-push-switch').off('change.amzReload');
 
-            // Prefetch Dil / CVR Disc rules
-            if (typeof loadDilPrmtRules === 'function') loadDilPrmtRules();
+            // Prefetch Dil / CVR Disc / 0 Sold rules, then autofill S PRC from live rules
+            if (typeof loadDilPrmtRules === 'function') {
+                Promise.resolve(loadDilPrmtRules()).then(function() { amzNoteRuleReady('dil'); }).catch(function() { amzNoteRuleReady('dil'); });
+            } else {
+                amzNoteRuleReady('dil');
+            }
             if (typeof loadAmzCvrDiscRules === 'function') {
                 Promise.resolve(loadAmzCvrDiscRules()).then(function() {
                     if (table) {
                         try { table.getColumn('cvr_discount') && table.redraw(true); } catch (e) { /* ignore */ }
                     }
-                }).catch(function() { /* defaults still work */ });
+                    amzNoteRuleReady('cvr');
+                }).catch(function() { amzNoteRuleReady('cvr'); });
+            } else {
+                amzNoteRuleReady('cvr');
             }
             if (typeof loadAmzZeroSoldRules === 'function') {
-                Promise.resolve(loadAmzZeroSoldRules()).then(function() {
-                    if (table) {
-                        try { table.getColumn('zero_sold') && table.redraw(true); } catch (e) { /* ignore */ }
-                    }
+                Promise.resolve(loadAmzZeroSoldRules()).then(function() { amzNoteRuleReady('zero'); }).catch(function() { amzNoteRuleReady('zero'); });
+            } else {
+                amzNoteRuleReady('zero');
+            }
+            if (typeof loadCvrUpDnRules === 'function') {
+                Promise.resolve(loadCvrUpDnRules()).then(function() {
+                    amzScheduleRuleSpriceSync({ delay: 250 });
                 }).catch(function() { /* defaults */ });
             }
+            bindAmzRuleSpriceAutofill();
 
             // Resume background Push Prc progress after refresh
             $('#amz-push-prc-cancel-btn').off('click.amzpef').on('click.amzpef', function(e) {
@@ -2145,6 +2854,20 @@
                 loadAmzCvrDiscRules();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
+            $('#amzCvrDiscModal').off('shown.bs.modal.amzcd').on('shown.bs.modal.amzcd', function() {
+                renderAmzCvrDiscPie();
+            });
+            $('#amzCvrDiscModal').off('hidden.bs.modal.amzcd').on('hidden.bs.modal.amzcd', function() {
+                $('#amz-cd-hist-wrap').removeClass('is-open');
+                if (amzCdPieChart) { amzCdPieChart.destroy(); amzCdPieChart = null; }
+                if (amzCdHistChart) { amzCdHistChart.destroy(); amzCdHistChart = null; }
+            });
+            $(document).off('click.amzcd', '.amz-cd-hist-dot').on('click.amzcd', '.amz-cd-hist-dot', function() {
+                amzCdOpenHist($(this).data('band') || 'eq-0');
+            });
+            $('#amz-cd-hist-close').off('click.amzcd').on('click.amzcd', function() {
+                $('#amz-cd-hist-wrap').removeClass('is-open');
+            });
             $('#amz-cvr-disc-apply-btn').off('click.amzpef').on('click.amzpef', saveAndApplyAmzCvrDisc);
 
             $('#amz-zero-sold-btn').off('click.amzpef').on('click.amzpef', function(e) {
@@ -2155,22 +2878,19 @@
                 loadAmzZeroSoldRules();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
-            $('#amz-zero-sold-save-btn').off('click.amzpef').on('click.amzpef', async function(e) {
-                e.preventDefault();
-                const $btn = $(this);
-                const html = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
-                try {
-                    await saveAmzZeroSoldRules();
-                    if (table) {
-                        try { table.redraw(true); } catch (err) { /* ignore */ }
-                    }
-                    amzPefToast('success', '0 Sold rules saved for Amazon.');
-                } catch (xhr) {
-                    amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
-                } finally {
-                    $btn.prop('disabled', false).html(html);
-                }
+            $('#amzZeroSoldModal').off('shown.bs.modal.amzzs').on('shown.bs.modal.amzzs', function() {
+                renderAmzZeroSoldPie();
+            });
+            $('#amzZeroSoldModal').off('hidden.bs.modal.amzzs').on('hidden.bs.modal.amzzs', function() {
+                $('#amz-zs-hist-wrap').removeClass('is-open');
+                if (amzZsPieChart) { amzZsPieChart.destroy(); amzZsPieChart = null; }
+                if (amzZsHistChart) { amzZsHistChart.destroy(); amzZsHistChart = null; }
+            });
+            $(document).off('click.amzzs', '.amz-zs-hist-dot').on('click.amzzs', '.amz-zs-hist-dot', function() {
+                amzZsOpenHist($(this).data('band') || 'zero');
+            });
+            $('#amz-zs-hist-close').off('click.amzzs').on('click.amzzs', function() {
+                $('#amz-zs-hist-wrap').removeClass('is-open');
             });
             $('#amz-zero-sold-apply-btn').off('click.amzpef').on('click.amzpef', async function(e) {
                 e.preventDefault();
@@ -2239,10 +2959,10 @@
                 pushAmzStdPrcWithPromos($btn, row);
             });
 
-            // sprice ? — clear + refill S PRC from Push Prc formula (no Amazon push)
+            // sprice ? — force overwrite stored S PRC from live rules (no Amazon push)
             $('#amz-sprice-recalc-btn').off('click.amzpef').on('click.amzpef', function(e) {
                 e.preventDefault();
-                clearAndAutopopulateAmzSprice();
+                amzApplyRuleSpriceToAllRows({ toast: true });
             });
         }
 

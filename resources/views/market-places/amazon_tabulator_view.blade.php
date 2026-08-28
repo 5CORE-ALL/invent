@@ -58,6 +58,9 @@
             text-overflow: ellipsis !important;
             vertical-align: middle !important;
         }
+        #amazon-table .tabulator-row .tabulator-cell[tabulator-field="price"] {
+            font-weight: 700 !important;
+        }
         #amazon-table .tabulator-row .tabulator-cell span,
         #amazon-table .tabulator-row .tabulator-cell a,
         #amazon-table .tabulator-row .tabulator-cell div,
@@ -240,7 +243,19 @@
             object-fit: contain;
         }
 
-        .tabulator-col .tabulator-col-sorter {
+        /* Sort by clicking the header; keep vertical titles free of carets */
+        .tabulator-col .tabulator-col-sorter,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+        }
+        .tabulator-col .tabulator-col-sorter-element,
+        .tabulator-col .tabulator-arrow {
             display: none !important;
         }
         /* Drag to reorder columns (shared for all users) */
@@ -494,6 +509,56 @@
             width: 100%;
             max-width: 100%;
         }
+
+        /* LMP ignore: dim ignored competitors; they don't count toward L1 */
+        #lmpModal tr.lmp-ignored-row {
+            opacity: 0.55;
+            background: #f1f3f5 !important;
+        }
+        #lmpModal tr.lmp-ignored-row td {
+            text-decoration: line-through;
+            text-decoration-color: #adb5bd;
+        }
+        #lmpModal tr.lmp-ignored-row td.lmp-ignore-cell,
+        #lmpModal tr.lmp-ignored-row td:last-child,
+        #lmpModal tr.lmp-ignored-row .lmp-ignore-cb {
+            text-decoration: none;
+        }
+        #lmpModal .lmp-ignore-cb {
+            cursor: pointer;
+            width: 1.1em;
+            height: 1.1em;
+        }
+        #lmpModal tr.lmp-lowest-row,
+        #lmpModal tr.lmp-lowest-row:hover,
+        #lmpModal tr.lmp-lowest-row > td {
+            background: #fff8c5 !important;
+        }
+        #lmpModal #lmpDataList thead th {
+            background: #334155 !important;
+            color: #fff !important;
+            border-color: #475569 !important;
+            font-weight: 600;
+        }
+        #lmpModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0;
+            padding: 0 !important;
+            align-items: flex-start !important;
+        }
+        #lmpModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            height: auto !important;
+            transform: none !important;
+        }
+        #lmpModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+            height: auto !important;
+        }
     </style>
 @endsection
 
@@ -522,6 +587,14 @@
                         <option value="all" selected>INV</option>
                         <option value="zero">Zero </option>
                         <option value="more">More</option>
+                    </select>
+
+                    <select id="sold-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="Filter by A L30 sold quantity">
+                        <option value="all">Sold</option>
+                        <option value="zero">=0</option>
+                        <option value="sold">&gt;0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm"
@@ -609,8 +682,6 @@
                         <option value="applied">Applied</option>
                         <option value="error">Error</option>
                     </select>
-
-                    <input type="hidden" id="sold-filter" value="all">
 
                     <select id="sprice-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -863,7 +934,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title mb-0">
-                        <i class="fa fa-shopping-cart me-1"></i> Competitors for SKU: <span id="lmpSku"></span>
+                        <i class="fa fa-shopping-cart me-1"></i> <span id="lmpSku"></span>
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto">
                         <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
@@ -902,9 +973,6 @@
 
                     <!-- Add New Competitor Form -->
                     <div class="card mb-3 border-success">
-                        <div class="card-header bg-success text-white">
-                            <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
-                        </div>
                         <div class="card-body">
                             <form id="addCompetitorForm" class="row g-3">
                                 <div class="col-md-3">
@@ -919,23 +987,13 @@
                                     <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control" id="addCompPrice" placeholder="29.99" step="0.01" min="0.01" required>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-5">
                                     <label class="form-label"><strong>Product Link</strong></label>
                                     <input type="url" class="form-control" id="addCompLink" placeholder="https://amazon.com/dp/...">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label"><strong>Marketplace</strong></label>
-                                    <select class="form-select" id="addCompMarketplace">
-                                        <option value="amazon" selected>Amz</option>
-                                        <option value="US">US</option>
-                                    </select>
                                 </div>
                                 <div class="col-12">
                                     <button type="submit" class="btn btn-success">
                                         <i class="fa fa-plus"></i> Add Competitor
-                                    </button>
-                                    <button type="reset" class="btn btn-secondary">
-                                        <i class="fa fa-undo"></i> Clear
                                     </button>
                                 </div>
                             </form>
@@ -1224,9 +1282,18 @@
          * where ad spend $ = SPRICE × Ads%/100 and COGS = LP.
          * Returns null when SPRICE/LP are missing.
          */
+        function amazonRowSprice(rowData) {
+            if (typeof amzDisplayedSprice === 'function') {
+                const live = amzDisplayedSprice(rowData);
+                if (live > 0) return live;
+            }
+            const stored = parseFloat(rowData && rowData.SPRICE);
+            return (isFinite(stored) && stored > 0) ? stored : 0;
+        }
+
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
-            const sprice = parseFloat(rowData.SPRICE);
+            const sprice = amazonRowSprice(rowData);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1245,7 +1312,7 @@
          */
         function amazonComputeSroi(rowData) {
             if (!rowData) return null;
-            const sprice = parseFloat(rowData.SPRICE);
+            const sprice = amazonRowSprice(rowData);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1354,12 +1421,12 @@
             const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
             const price = parseFloat(data.price) || 0;
-            const sprice = parseFloat(data.SPRICE) || 0;
+            const sprice = amazonRowSprice(data);
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         function amazonListingPriceEqualsSprice(data, spriceOverride) {
             const price = parseFloat(data && data.price) || 0;
-            const sprice = spriceOverride != null ? (parseFloat(spriceOverride) || 0) : (parseFloat(data && data.SPRICE) || 0);
+            const sprice = spriceOverride != null ? (parseFloat(spriceOverride) || 0) : amazonRowSprice(data);
             return price > 0 && sprice > 0 && Math.round(price * 100) === Math.round(sprice * 100);
         }
         function syncAmazonBlueTriangleBadgeState() {
@@ -1415,7 +1482,7 @@
             }
             return '<input type="number" class="form-control form-control-sm text-end parent-modal-sprice-input" inputmode="decimal" data-sku="' + escAttr(sku) + '" value="' + escAttr(val) + '" step="0.01" min="0.01" placeholder="' + escAttr(ph) + '" title="Enter S PRC — blur or Enter to save" style="max-width: 6.75rem; margin-left: auto;" />';
         }
-        /** Accept / push to Amazon — same icon logic as grid (class avoids duplicate .apply-price-btn handler) */
+        /** Accept / push from the parent pricing modal (AMZ / SFY / PLS). */
         function amazonModalAcceptPushHtml(row) {
             const sku = row['(Child) sku'] || '';
             const sprice = parseFloat(row.SPRICE) || 0;
@@ -1702,6 +1769,9 @@
 
         function amzHistoryRowIsEmpty(r) {
             if (!r) return true;
+            if (currentSkuChartMetric === 'prmt' && r.prmt_pct != null && r.prmt_pct !== '' && isFinite(Number(r.prmt_pct))) return false;
+            if (currentSkuChartMetric === 'push_prc' && Number(r.push_prc) > 0) return false;
+            if (currentSkuChartMetric === 'sprice' && Number(r.sprice) > 0) return false;
             const views = Number(r.views || r.total_views || 0);
             const aL30 = Number(r.a_l30 || 0);
             const cvr = Number(r.cvr_percent || r.avg_cvr_percent || 0);
@@ -2154,6 +2224,22 @@
             });
         }
 
+        function openAmazonSkuChart(sku, metric) {
+            if (!sku) return;
+            currentSkuChartMetric = metric || 'price';
+            currentSku = sku;
+            $('#modalSkuName').text(sku);
+            $('#sku-chart-days-filter').val('30');
+            const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
+            const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
+            $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30)');
+            $('#skuChartLoading').show();
+            $('#skuChartContainer').hide();
+            $('#chart-no-data-message').hide();
+            loadSkuMetricsData(sku, 30);
+            $('#skuMetricsModal').modal('show');
+        }
+
         function loadSkuMetricsData(sku, days = 30) {
             $('#skuChartLoading').show();
             $('#skuChartContainer').hide();
@@ -2211,11 +2297,19 @@
                         const liveCvr = sess30 > 0 ? (aL30 / sess30) * 100 : 0;
                         let last = data.length ? data[data.length - 1] : null;
                         const lastKey = last ? (last.date || last.full_date || '') : '';
+                        const livePrmt = (typeof computeAmzLivePrmtPct === 'function')
+                            ? computeAmzLivePrmtPct(liveRow)
+                            : (parseFloat(liveRow.prmt_pct) || 0);
+                        const liveSprice = (typeof amazonRowSprice === 'function')
+                            ? amazonRowSprice(liveRow)
+                            : (parseFloat(liveRow.SPRICE) || 0);
                         if (last && (lastKey === today || last.date_formatted === todayLabel)) {
                             last.cvr_percent = liveCvr;
                             last.views = sess30;
                             last.a_l30 = aL30;
                             last.price = parseFloat(liveRow.price || last.price) || last.price;
+                            last.prmt_pct = isFinite(livePrmt) ? livePrmt : last.prmt_pct;
+                            if (liveSprice > 0) last.sprice = liveSprice;
                             last.source = 'live';
                         } else {
                             data.push({
@@ -2226,6 +2320,8 @@
                                 views: sess30,
                                 a_l30: aL30,
                                 price: parseFloat(liveRow.price) || 0,
+                                sprice: liveSprice > 0 ? liveSprice : (parseFloat(liveRow.price) || 0),
+                                prmt_pct: isFinite(livePrmt) ? livePrmt : null,
                                 source: 'live'
                             });
                         }
@@ -2473,6 +2569,9 @@
                     const std = response.data || sp;
                     const primary = applyStandardPriceToLinkedRows(sku, std, response.applied_skus);
                     if (primary) currentLmpData.rowData = primary.getData();
+                    if (typeof amzScheduleRuleSpriceSync === 'function') {
+                        amzScheduleRuleSpriceSync({ delay: 200 });
+                    }
                     const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                     if (typeof showToast === 'function') {
                         showToast('success', n > 1
@@ -2866,23 +2965,14 @@
             if (typeof loadAmzBadgePrevDay === 'function') loadAmzBadgePrevDay();
 
             // Sold filter badge click handlers (toggle: click again returns to "show all")
+            // Keeps #sold-filter dropdown as the single source of truth.
             $('.sold-filter-badge').on('click', function(e) {
                 if ($(e.target).closest('.summary-trend-dot').length) return;
                 const filter = $(this).data('filter');
                 // "Sold >0" badge → 'sold', "0 Sold" badge → 'zero'
                 const targetVal = (filter === 'zero') ? 'zero' : 'sold';
                 const current = $('#sold-filter').val();
-
-                // Toggle off if this filter is already active, otherwise apply it
                 $('#sold-filter').val(current === targetVal ? 'all' : targetVal);
-
-                // Visual active state for the sold badges
-                $('.sold-filter-badge').css({ 'outline': '', 'outline-offset': '' });
-                if ($('#sold-filter').val() === targetVal) {
-                    $(this).css({ 'outline': '2px solid #212529', 'outline-offset': '1px' });
-                }
-
-                // Re-apply filters
                 applyFilters();
             });
 
@@ -3376,30 +3466,7 @@
                     }
                     
                     const { sku, price, asin } = skusToProcess[currentIndex];
-                    
-                    // Find the row and update button to show clock spinner
                     const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                    if (row) {
-                        const acceptCell = row.getCell('_accept');
-                        if (acceptCell) {
-                            const $cellElement = $(acceptCell.getElement());
-                            const $btnInCell = $cellElement.find('.apply-price-btn');
-                            if ($btnInCell.length) {
-                                $btnInCell.prop('disabled', true);
-                                // Ensure circular styling
-                                $btnInCell.css({
-                                    'border-radius': '50%',
-                                    'width': '35px',
-                                    'height': '35px',
-                                    'padding': '0',
-                                    'display': 'flex',
-                                    'align-items': 'center',
-                                    'justify-content': 'center'
-                                });
-                                $btnInCell.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-                            }
-                        }
-                    }
                     
                     // Use retry function to apply price to Amazon only (optional ASIN → seller SKU via amazon_datsheets on server)
                     applyPriceWithRetry(sku, price, null, 5, 5000, asin || null, false)
@@ -3419,27 +3486,6 @@
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'pushed';
                                 row.update(rowData);
-                                
-                                // Update button to show green tick in circular button
-                                const acceptCell = row.getCell('_accept');
-                                if (acceptCell) {
-                                    const $cellElement = $(acceptCell.getElement());
-                                    const $btnInCell = $cellElement.find('.apply-price-btn');
-                                    if ($btnInCell.length) {
-                                        $btnInCell.prop('disabled', false);
-                                        // Ensure circular styling
-                                        $btnInCell.css({
-                                            'border-radius': '50%',
-                                            'width': '35px',
-                                            'height': '35px',
-                                            'padding': '0',
-                                            'display': 'flex',
-                                            'align-items': 'center',
-                                            'justify-content': 'center'
-                                        });
-                                        $btnInCell.html('<i class="fas fa-check-circle" style="color: black; font-size: 1.1em;"></i>');
-                                    }
-                                }
                             }
                             
                             // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
@@ -3456,27 +3502,6 @@
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'error';
                                 row.update(rowData);
-                                
-                                // Update button to show error icon in circular button
-                                const acceptCell = row.getCell('_accept');
-                                if (acceptCell) {
-                                    const $cellElement = $(acceptCell.getElement());
-                                    const $btnInCell = $cellElement.find('.apply-price-btn');
-                                    if ($btnInCell.length) {
-                                        $btnInCell.prop('disabled', false);
-                                        // Ensure circular styling
-                                        $btnInCell.css({
-                                            'border-radius': '50%',
-                                            'width': '35px',
-                                            'height': '35px',
-                                            'padding': '0',
-                                            'display': 'flex',
-                                            'align-items': 'center',
-                                            'justify-content': 'center'
-                                        });
-                                        $btnInCell.html('<i class="fas fa-times" style="color: black;"></i>');
-                                    }
-                                }
                             }
                             
                             // Process next SKU with delay to avoid rate limiting
@@ -4011,71 +4036,6 @@
                 if (e.which === 13) $('#apply-target-gpft-btn').click();
             });
 
-            // Apply Price to Amazon button - delegated event handler
-            $(document).on('click', '.apply-price-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                console.log('Apply button clicked'); // Debug log
-                
-                const $btn = $(this);
-                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                const price = parseFloat($btn.attr('data-price') || $btn.data('price'));
-                
-                console.log('SKU:', sku, 'Price:', price); // Debug log
-                
-                if (!sku || !price || price <= 0 || isNaN(price)) {
-                    console.error('Invalid SKU or price:', {sku, price}); // Debug log
-                    showToast('error', 'Invalid SKU or price');
-                    return;
-                }
-                const applyRow = (typeof table !== 'undefined' && table)
-                    ? table.getRows().find(function(r) {
-                        return String((r.getData()['(Child) sku'] || '')).trim() === String(sku).trim();
-                    })
-                    : null;
-                if (applyRow && amazonListingPriceEqualsSprice(applyRow.getData(), price)) {
-                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
-                    return;
-                }
-                
-                // Disable button and show loading state
-                $btn.prop('disabled', true);
-                const originalHtml = $btn.html();
-                $btn.html('<i class="fas fa-spinner fa-spin"></i> Applying...');
-                
-                // Same retry path as Accept column (backend verifies listing price after PATCH)
-                const asinBtn = ($btn.attr('data-asin') || '').trim();
-                applyPriceWithRetry(sku, price, null, 5, 5000, asinBtn || null, false)
-                    .then(function(result) {
-                        $btn.prop('disabled', false);
-                        const resp = result && result.response ? result.response : null;
-                        const minPush = resp && resp.min_price_push;
-                        if (minPush && minPush.ok === false) {
-                            const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
-                            showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
-                        } else {
-                            showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
-                        }
-                        $btn.removeClass('btn-success').addClass('btn-secondary');
-                        $btn.html('<i class="fas fa-check-circle"></i> Applied');
-                        setTimeout(function() {
-                            $btn.removeClass('btn-secondary').addClass('btn-success');
-                            $btn.html(originalHtml);
-                        }, 3000);
-                    })
-                    .catch(function(err) {
-                        $btn.prop('disabled', false);
-                        $btn.html(originalHtml);
-                        const r = err && err.response;
-                        const errorMsg = (r && r.errors && r.errors[0] && r.errors[0].message)
-                            ? r.errors[0].message
-                            : 'Failed to apply price to Amz';
-                        showToast('error', errorMsg);
-                        console.error('Apply price error:', err);
-                    });
-            });
-
             // Parent pricing modal: push SPRICE to Amazon only
             $(document).on('click', '.parent-pricing-modal-apply-btn', function(e) {
                 e.preventDefault();
@@ -4591,6 +4551,8 @@
                     return { _ts: Date.now() };
                 },
                 ajaxSorting: false,
+                headerSort: true,
+                headerSortElement: false,
                 layout: "fitDataStretch",
                 movableColumns: true,
                 rowHeight: 36,
@@ -4748,75 +4710,6 @@
                             </div>`;
                         },
                      
-                    },
-                    {
-                        title: "CVR L60",
-                        field: "CVR_L60",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                            const sess60 = parseFloat(row['sessions_l60']) || 0;
-
-                            if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-
-                            const cvr = (aL60 / sess60) * 100;
-                            let color = '';
-                            
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                                const sess60 = parseFloat(row['sessions_l60']) || 0;
-                                return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 65
-                    },
-                    {
-                        title: "CVR L45",
-                        field: "CVR_L45",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            // 45-day: use average of L30 and L60 (sold and views) for 45-day approximation
-                            const aL30 = parseFloat(row['A_L30']) || 0;
-                            const sess30 = parseFloat(row['Sess30']) || 0;
-                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                            const sess60 = parseFloat(row['sessions_l60']) || 0;
-                            const aL45 = (aL30 + aL60) / 2;
-                            const sess45 = (sess30 + sess60) / 2;
-
-                            if (sess45 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-
-                            const cvr = (aL45 / sess45) * 100;
-                            let color = '';
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 13) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(cvr)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL30 = parseFloat(row['A_L30']) || 0;
-                                const sess30 = parseFloat(row['Sess30']) || 0;
-                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                                const sess60 = parseFloat(row['sessions_l60']) || 0;
-                                const aL45 = (aL30 + aL60) / 2;
-                                const sess45 = (sess30 + sess60) / 2;
-                                return sess45 === 0 ? 0 : (aL45 / sess45) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 65
                     },
                     {
                         title: "CVR L30",
@@ -5122,7 +5015,15 @@
                         title: "Dil",
                         field: "E Dil%",
                         hozAlign: "center",
-                        sorter: "number",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const dilOf = function(row) {
+                                const inv = parseFloat(row.INV) || 0;
+                                const ovl30 = parseFloat(row['L30']) || 0;
+                                return inv === 0 ? 0 : (ovl30 / inv) * 100;
+                            };
+                            return dilOf(aRow.getData()) - dilOf(bRow.getData());
+                        },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const INV = parseFloat(rowData.INV) || 0;
@@ -5235,6 +5136,8 @@
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
+                        headerSort: true,
+                        sorter: "number",
                         headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Dot vs Amz price.",
                         editor: "input",
                         width: 70,
@@ -5295,7 +5198,7 @@
                             if (price <= 0) {
                                 const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
                                 if (fallback > 0) {
-                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amz listing price)">$${fallback.toFixed(2)}</span>`;
+                                    return `<span style="color: #6c757d; font-style: italic; font-weight: 700;" title="Reference price (no Amz listing price)">$${fallback.toFixed(2)}</span>`;
                                 }
                                 return '';
                             }
@@ -5304,18 +5207,98 @@
                             const tri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(price, lmpPrice) : '');
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpPrice) : '');
                             if (lmpPrice > 0 && price > lmpPrice) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>${tri}`;
+                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>${tri}`;
                             }
-                            return priceFormatted + purpleTri;
+                            return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri;
                         },
                         sorter: "number",
                         width: 70
                     },
 
                     {
+                        title: "S PRC",
+                        field: "SPRICE",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = (typeof amazonRowSprice === 'function')
+                                ? (amazonRowSprice(aRow.getData()) || 0)
+                                : (parseFloat(a) || 0);
+                            const bv = (typeof amazonRowSprice === 'function')
+                                ? (amazonRowSprice(bRow.getData()) || 0)
+                                : (parseFloat(b) || 0);
+                            return av - bv;
+                        },
+                        editable: false,
+                        headerTooltip: "Read-only. Always the live rule price (0 Sold GROI, or Std − PRMT − CVR Disc − CVR UP/DN). Stored S PRC is overwritten to match. Red = reduced, Yellow = hold, Green = increase vs Amz price. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const hasCustomSprice = rowData.has_custom_sprice;
+                            const currentPrice = parseFloat(rowData.price) || 0;
+                            let sprice = amazonRowSprice(rowData);
+
+                            if (!(sprice > 0)) return '';
+
+                            const cap = window.SpriceLmpCap
+                                ? SpriceLmpCap.apply(rowData, sprice, lmpWithShipping)
+                                : null;
+                            const atOrAboveLmp = cap
+                                ? cap.alert
+                                : (lmpWithShipping(rowData) > 0 && sprice + 0.0001 >= lmpWithShipping(rowData));
+                            if (cap && cap.shown > 0) sprice = cap.shown;
+                            else if (atOrAboveLmp) sprice = amazonCapSpriceToLmp(rowData, sprice);
+
+                            const sku = rowData['(Child) sku'] || '';
+                            const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
+                            const redTri = atOrAboveLmp
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>')
+                                : '';
+                            const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
+                                && currentPrice.toFixed(2) !== sprice.toFixed(2))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
+                                : '';
+
+                            // When SPRICE matches Amazon price and is below LMP, show "-" (hold)
+                            if (!atOrAboveLmp && currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                    dot + '<span style="color:#adb5bd;" title="Same as Amz price">-</span></span>';
+                            }
+
+                            let formattedValue = '$' + sprice.toFixed(2);
+                            if (atOrAboveLmp) {
+                                formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
+                            } else if (hasCustomSprice === false) {
+                                formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
+                            }
+
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                dot + formattedValue + blueTri + redTri + '</span>';
+                        },
+                        cellClick: function(e) {
+                            if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
+                                e.stopPropagation();
+                                return false;
+                            }
+                        },
+                        width: 90
+                    },
+
+                    {
                         title: "LMP",
                         field: "lmp_price",
                         hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = (typeof lmpWithShipping === 'function')
+                                ? (lmpWithShipping(aRow.getData()) || 0)
+                                : (parseFloat(a) || 0);
+                            const bv = (typeof lmpWithShipping === 'function')
+                                ? (lmpWithShipping(bRow.getData()) || 0)
+                                : (parseFloat(b) || 0);
+                            return av - bv;
+                        },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
 
@@ -5426,7 +5409,7 @@
                         field: "Ship_productmaster",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Shipping cost. Default $6.00 is hidden; only non-default amounts show.",
+                        headerTooltip: "Shipping cost from CP Master / Shipping Master (Values.ship).",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5434,8 +5417,6 @@
                             if (val == null || val === '') return '';
                             const value = parseFloat(val);
                             if (!Number.isFinite(value)) return '';
-                            // Hide default ship ($6.00) so exceptions stand out
-                            if (Math.abs(value - 6) < 0.005) return '';
                             const labelQty = parseInt(rowData.label_qty, 10);
                             let tip = '';
                             if (Number.isFinite(labelQty) && labelQty >= 2) {
@@ -5566,66 +5547,6 @@
                         }
                     },
                     {
-                        title: "S PRC",
-                        field: "SPRICE",
-                        hozAlign: "center",
-                        editor: "input",
-                        headerTooltip: "Red = reduced, Yellow = hold, Green = increase vs Amz price. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const hasCustomSprice = rowData.has_custom_sprice;
-                            const currentPrice = parseFloat(rowData.price) || 0;
-                            let sprice = parseFloat(value) || 0;
-
-                            if (!value || sprice <= 0) return '';
-
-                            const cap = window.SpriceLmpCap
-                                ? SpriceLmpCap.apply(rowData, sprice, lmpWithShipping)
-                                : null;
-                            const atOrAboveLmp = cap
-                                ? cap.alert
-                                : (lmpWithShipping(rowData) > 0 && sprice + 0.0001 >= lmpWithShipping(rowData));
-                            if (cap && cap.shown > 0) sprice = cap.shown;
-                            else if (atOrAboveLmp) sprice = amazonCapSpriceToLmp(rowData, sprice);
-
-                            const sku = rowData['(Child) sku'] || '';
-                            const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
-                            const redTri = atOrAboveLmp
-                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>')
-                                : '';
-                            const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
-                                && currentPrice.toFixed(2) !== sprice.toFixed(2))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
-                                : '';
-
-                            // When SPRICE matches Amazon price and is below LMP, show "-" (hold)
-                            if (!atOrAboveLmp && currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '<span style="color:#adb5bd;" title="Same as Amz price">-</span></span>';
-                            }
-
-                            let formattedValue = '$' + sprice.toFixed(2);
-                            if (atOrAboveLmp) {
-                                formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
-                            } else if (hasCustomSprice === false) {
-                                formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
-                            }
-
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + blueTri + redTri + '</span>';
-                        },
-                        cellClick: function(e) {
-                            if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
-                                e.stopPropagation();
-                                return false;
-                            }
-                        },
-                        width: 90
-                    },
-                    {
                         title: "S st",
                         field: "S_STATUS",
                         hozAlign: "center",
@@ -5668,415 +5589,6 @@
                             return '<span style="color:#adb5bd;" title="ProLightSounds: not pushed">—</span>';
                         },
                         width: 44
-                    },
-                    {
-                        title: "Push Prices",
-                        field: "_accept",
-                        hozAlign: "center",
-                        headerSort: false,
-                        titleFormatter: function(column) {
-                            return `<div style="display: flex; align-items: center; justify-content: center; gap: 8px; flex-direction: row;">
-                                <div style="text-align: center; min-width: 30px;">
-                                    <div style="font-size: 0.75em; font-weight: 600; color: #FF9900;">AMZ</div>
-                                </div>
-                                <div style="text-align: center; min-width: 30px;">
-                                    <div style="font-size: 0.75em; font-weight: 600; color: #96bf48;">SFY</div>
-                                </div>
-                                <div style="text-align: center; min-width: 30px;">
-                                    <div style="font-size: 0.75em; font-weight: 600; color: #5C6AC4;">PLS</div>
-                                </div>
-                            </div>`;
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
-                            
-                            const sku = rowData['(Child) sku'];
-                            // Keep SPRICE as string to preserve exact decimal precision (e.g., 19.27 not 19.28)
-                            const spriceRaw = rowData.SPRICE;
-                            const sprice = spriceRaw ? parseFloat(spriceRaw) : 0;
-                            const amazonStatus = rowData.SPRICE_STATUS || null;
-                            const shopifyStatus = rowData.S_STATUS || null;
-                            const plsStatus = rowData.PLS_STATUS || null;
-                            const asinVal = (rowData.asin != null && String(rowData.asin).trim() !== '') ? escAttr(String(rowData.asin).trim()) : '';
-                            
-                            if (!sprice || sprice === 0) {
-                                return '<span style="color: #999;">N/A</span>';
-                            }
-                            
-                            // Determine Amazon button icon and color
-                            let amazonIcon = '<i class="fas fa-check"></i>';
-                            let amazonColor = '#28a745'; // Green
-                            let amazonTitle = 'Push to Amz';
-                            
-                            if (amazonStatus === 'pushed') {
-                                amazonIcon = '<i class="fa-solid fa-check-double"></i>';
-                                amazonColor = '#28a745';
-                                amazonTitle = 'Price pushed to Amz';
-                            } else if (amazonStatus === 'applied') {
-                                amazonIcon = '<i class="fa-solid fa-check-double"></i>';
-                                amazonColor = '#28a745';
-                                amazonTitle = 'Price applied to Amz';
-                            } else if (amazonStatus === 'error') {
-                                amazonIcon = '<i class="fa-solid fa-x"></i>';
-                                amazonColor = '#dc3545'; // Red
-                                amazonTitle = 'Error pushing to Amz';
-                            } else if (amazonStatus === 'processing') {
-                                amazonIcon = '<i class="fas fa-spinner fa-spin"></i>';
-                                amazonColor = '#ffc107'; // Yellow
-                                amazonTitle = 'Pushing to Amz...';
-                            }
-                            
-                            // Determine Shopify button icon and color
-                            let shopifyIcon = '<i class="fas fa-check"></i>';
-                            let shopifyColor = '#0d6efd'; // Blue
-                            let shopifyTitle = 'Push to Shopify';
-
-                            if (shopifyStatus === 'pushed') {
-                                shopifyIcon = '<i class="fa-solid fa-check-double"></i>';
-                                shopifyColor = '#28a745'; // Green when pushed
-                                shopifyTitle = 'Price pushed to Shopify';
-                            } else if (shopifyStatus === 'error') {
-                                shopifyIcon = '<i class="fa-solid fa-x"></i>';
-                                shopifyColor = '#dc3545'; // Red
-                                shopifyTitle = 'Error pushing to Shopify';
-                            } else if (shopifyStatus === 'processing') {
-                                shopifyIcon = '<i class="fas fa-spinner fa-spin"></i>';
-                                shopifyColor = '#ffc107'; // Yellow
-                                shopifyTitle = 'Pushing to Shopify...';
-                            }
-
-                            // Determine PLS button icon and color
-                            let plsIcon = '<i class="fas fa-check"></i>';
-                            let plsColor = '#ff8c00'; // Orange
-                            let plsTitle = 'Push to ProLightSounds';
-
-                            if (plsStatus === 'pushed') {
-                                plsIcon = '<i class="fa-solid fa-check-double"></i>';
-                                plsColor = '#28a745'; // Green when pushed
-                                plsTitle = 'Price pushed to ProLightSounds';
-                            } else if (plsStatus === 'error') {
-                                plsIcon = '<i class="fa-solid fa-x"></i>';
-                                plsColor = '#dc3545'; // Red
-                                plsTitle = 'Error pushing to ProLightSounds';
-                            } else if (plsStatus === 'processing') {
-                                plsIcon = '<i class="fas fa-spinner fa-spin"></i>';
-                                plsColor = '#ffc107'; // Yellow
-                                plsTitle = 'Pushing to ProLightSounds...';
-                            }
-
-                            // Return three buttons side by side - use raw string value for exact precision
-                            return `<div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
-                                <button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${escAttr(sku)}" data-asin="${asinVal}" data-price="${spriceRaw}" data-status="${amazonStatus || ''}" title="${amazonTitle}" style="border: none; background: none; color: ${amazonColor}; padding: 0; cursor: pointer;">
-                                    ${amazonIcon}
-                                </button>
-                                <button type="button" class="btn btn-sm push-shopify-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${spriceRaw}" data-status="${shopifyStatus || ''}" title="${shopifyTitle}" style="border: none; background: none; color: ${shopifyColor}; padding: 0; cursor: pointer;">
-                                    ${shopifyIcon}
-                                </button>
-                                <button type="button" class="btn btn-sm push-pls-btn btn-circle" data-sku="${escAttr(sku)}" data-price="${spriceRaw}" data-status="${plsStatus || ''}" title="${plsTitle}" style="border: none; background: none; color: ${plsColor}; padding: 0; cursor: pointer;">
-                                    ${plsIcon}
-                                </button>
-                            </div>`;
-                        },
-                        cellClick: function(e, cell) {
-                            // Handle button click directly in cellClick
-                            const $target = $(e.target);
-                            
-                            // Handle Amazon button click
-                            if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                
-                                // Read price from fresh row data instead of old button attribute
-                                const rowData = cell.getRow().getData();
-                                const sku = rowData['(Child) sku'];
-                                const price = parseFloat(rowData.SPRICE) || 0;
-                                const asinCell = (rowData.asin && String(rowData.asin).trim() !== '') ? String(rowData.asin).trim() : '';
-                                
-                                if (!sku || !price || price <= 0 || isNaN(price)) {
-                                    showToast('error', 'Invalid SKU or price');
-                                    return;
-                                }
-                                if (amazonListingPriceEqualsSprice(rowData, price)) {
-                                    showToast('success', sku + ': Price already equals S PRC — left unchanged');
-                                    return;
-                                }
-                                
-                                // Disable button and show loading state
-                                $btn.prop('disabled', true);
-                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-                                
-                                // Push to Amazon only (pass push_shopify: false)
-                                // Also update Amazon's minimum price constraint to match
-                                $.ajax({
-                                    url: '/apply-amazon-price',
-                                    method: 'POST',
-                                    timeout: 120000,
-                                    headers: {
-                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                    },
-                                    data: {
-                                        sku: sku,
-                                        price: price,
-                                        asin: asinCell || null,
-                                        push_shopify: false,
-                                        update_amazon_min_price: true
-                                    },
-                                    success: function(response) {
-                                        // Check for errors in response
-                                        if (response.errors && response.errors.length > 0) {
-                                            const errorMsg = response.errors[0].message || 'Unknown error';
-                                            const row = cell.getRow();
-                                            const rowData = row.getData();
-                                            rowData.SPRICE_STATUS = 'error';
-                                            row.update(rowData);
-                                            
-                                            $btn.prop('disabled', false);
-                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                            showToast('error', `Amz push failed: ${errorMsg}`);
-                                            return;
-                                        }
-                                        
-                                        // Success - update row data with pushed status
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        rowData.SPRICE_STATUS = 'pushed';
-                                        row.update(rowData);
-                                        
-                                        $btn.prop('disabled', false);
-                                        $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
-
-                                        const minPush = response.min_price_push;
-                                        if (minPush && minPush.ok === false) {
-                                            const minErr = minPush.errors?.[0]?.message || 'Unknown error';
-                                            showToast('warning', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
-                                        } else {
-                                            showToast('success', `Amz: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
-                                        }
-                                    },
-                                    error: function(xhr) {
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        rowData.SPRICE_STATUS = 'error';
-                                        row.update(rowData);
-                                        
-                                        $btn.prop('disabled', false);
-                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                        
-                                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                                        showToast('error', `Amz push failed: ${errorMsg}`);
-                                    }
-                                });
-                                return;
-                            }
-                            
-                            // Handle Shopify button click
-                            if ($target.hasClass('push-shopify-btn') || $target.closest('.push-shopify-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('push-shopify-btn') ? $target : $target.closest('.push-shopify-btn');
-
-                                // Read price from fresh row data instead of old button attribute
-                                const rowData = cell.getRow().getData();
-                                const sku = rowData['(Child) sku'];
-                                const price = parseFloat(rowData.SPRICE) || 0;
-
-                                if (!sku || !price || price <= 0 || isNaN(price)) {
-                                    showToast('error', 'Invalid SKU or price');
-                                    return;
-                                }
-
-                                // Disable button and show loading state
-                                $btn.prop('disabled', true);
-                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-
-                                // Push to Shopify only
-                                $.ajax({
-                                    url: '/push-shopify-b2c-price',
-                                    method: 'POST',
-                                    timeout: 120000,
-                                    headers: {
-                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                    },
-                                    data: {
-                                        sku: sku,
-                                        price: price
-                                    },
-                                    success: function(response) {
-                                        // Check for errors in response
-                                        if (response.errors && response.errors.length > 0) {
-                                            const errorMsg = response.errors[0].message || 'Unknown error';
-                                            const row = cell.getRow();
-                                            const rowData = row.getData();
-                                            rowData.S_STATUS = 'error';
-                                            row.update(rowData);
-
-                                            $btn.prop('disabled', false);
-                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                            showToast('error', `Shopify push failed: ${errorMsg}`);
-                                            return;
-                                        }
-
-                                        // Success - update row data with pushed status
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        const shopifyPush = response.shopify_push || {};
-                                        rowData.S_STATUS = shopifyPush.ok ? 'pushed' : 'error';
-                                        row.update(rowData);
-
-                                        $btn.prop('disabled', false);
-                                        if (shopifyPush.ok) {
-                                            $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
-                                            const msg = shopifyPush.message || 'Shopify B2C pushed successfully';
-                                            showToast('success', `Shopify: ${msg} for SKU: ${sku}`);
-                                        } else {
-                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                            const msg = shopifyPush.message || 'Shopify B2C push failed';
-                                            showToast('error', `Shopify: ${msg}`);
-                                        }
-                                    },
-                                    error: function(xhr) {
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        rowData.S_STATUS = 'error';
-                                        row.update(rowData);
-
-                                        $btn.prop('disabled', false);
-                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-
-                                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                                        showToast('error', `Shopify push failed: ${errorMsg}`);
-                                    }
-                                });
-                                return;
-                            }
-
-                            // Handle PLS button click
-                            if ($target.hasClass('push-pls-btn') || $target.closest('.push-pls-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('push-pls-btn') ? $target : $target.closest('.push-pls-btn');
-
-                                // Read price from fresh row data instead of old button attribute
-                                const rowData = cell.getRow().getData();
-                                const sku = rowData['(Child) sku'];
-                                const price = parseFloat(rowData.SPRICE) || 0;
-
-                                if (!sku || !price || price <= 0 || isNaN(price)) {
-                                    showToast('error', 'Invalid SKU or price');
-                                    return;
-                                }
-
-                                // Disable button and show loading state
-                                $btn.prop('disabled', true);
-                                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
-
-                                // Push to ProLightSounds only
-                                $.ajax({
-                                    url: '/push-pls-price',
-                                    method: 'POST',
-                                    timeout: 120000,
-                                    headers: {
-                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                    },
-                                    data: {
-                                        sku: sku,
-                                        price: price
-                                    },
-                                    success: function(response) {
-                                        // Check for errors in response
-                                        if (response.errors && response.errors.length > 0) {
-                                            const errorMsg = response.errors[0].message || 'Unknown error';
-                                            const row = cell.getRow();
-                                            const rowData = row.getData();
-                                            rowData.PLS_STATUS = 'error';
-                                            row.update(rowData);
-
-                                            $btn.prop('disabled', false);
-                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                            showToast('error', `ProLightSounds push failed: ${errorMsg}`);
-                                            return;
-                                        }
-
-                                        // Success - update row data with pushed status
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        const plsPush = response.pls_push || {};
-                                        rowData.PLS_STATUS = plsPush.ok ? 'pushed' : 'error';
-                                        row.update(rowData);
-
-                                        $btn.prop('disabled', false);
-                                        if (plsPush.ok) {
-                                            $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
-                                            const msg = plsPush.message || 'ProLightSounds pushed successfully';
-                                            showToast('success', `PLS: ${msg} for SKU: ${sku}`);
-                                        } else {
-                                            $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-                                            const msg = plsPush.message || 'ProLightSounds push failed';
-                                            showToast('error', `PLS: ${msg}`);
-                                        }
-                                    },
-                                    error: function(xhr) {
-                                        const row = cell.getRow();
-                                        const rowData = row.getData();
-                                        rowData.PLS_STATUS = 'error';
-                                        row.update(rowData);
-
-                                        $btn.prop('disabled', false);
-                                        $btn.html('<i class="fas fa-times" style="color: #dc3545;"></i>');
-
-                                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || 'Unknown error';
-                                        showToast('error', `ProLightSounds push failed: ${errorMsg}`);
-                                    }
-                                });
-                                return;
-                            }
-
-                            // Don't stop propagation for other clicks
-                            e.stopPropagation();
-                        },
-                        cellDblClick: function(e, cell) {
-                            // Handle double-click to manually set status to 'applied'
-                            const $target = $(e.target);
-                            if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
-                                e.stopPropagation();
-                                const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
-                                const sku = $btn.attr('data-sku') || $btn.data('sku');
-                                const currentStatus = $btn.attr('data-status') || '';
-                                
-                                // Only allow setting to 'applied' if current status is 'pushed'
-                                if (currentStatus === 'pushed') {
-                                    $.ajax({
-                                        url: '/update-sprice-status',
-                                        method: 'POST',
-                                        headers: {
-                                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                        },
-                                        data: {
-                                            sku: sku,
-                                            status: 'applied'
-                                        },
-                                        success: function(response) {
-                                            // Update row data
-                                            const row = cell.getRow();
-                                            const rowData = row.getData();
-                                            rowData.SPRICE_STATUS = 'applied';
-                                            row.update(rowData);
-                                            showToast('success', 'Status updated to Applied');
-                                        },
-                                        error: function(xhr) {
-                                            showToast('error', 'Failed to update status');
-                                        }
-                                    });
-                                } else if (currentStatus === 'applied') {
-                                    // If already applied, show message
-                                    showToast('info', 'Price is already marked as Applied');
-                                } else {
-                                    showToast('info', 'Please push the price first before marking as Applied');
-                                }
-                            }
-                        },
-                        width: 100
                     },
                     {
                         title: "SGROI",
@@ -6311,6 +5823,9 @@
                         success: function(response) {
                             const saved = response.data || std;
                             applyStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                            if (typeof amzScheduleRuleSpriceSync === 'function') {
+                                amzScheduleRuleSpriceSync({ delay: 200 });
+                            }
                             const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                             showToast('success', n > 1
                                 ? ('Std Prc saved for ' + n + ' linked SKUs')
@@ -6534,6 +6049,12 @@
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
+                $('.sold-filter-badge').css({ 'outline': '', 'outline-offset': '' });
+                if (soldFilter === 'zero') {
+                    $('.sold-filter-badge[data-filter="zero"]').css({ 'outline': '2px solid #212529', 'outline-offset': '1px' });
+                } else if (soldFilter === 'sold') {
+                    $('.sold-filter-badge[data-filter="all"]').css({ 'outline': '2px solid #212529', 'outline-offset': '1px' });
+                }
 
                 table.clearFilter(true);
 
@@ -7168,7 +6689,6 @@
             function amazonColVisPlainTitle(def) {
                 const field = def && def.field ? String(def.field) : '';
                 if (field === 'row_select') return 'Row Select';
-                if (field === '_accept') return 'Push Prices';
                 if (field === 'push_prc') return 'Push Prc';
                 if (field === 'cvr_discount') return 'CVR Disc.';
                 if (field === 'cvr_up_dn') return 'CVR Up/Dn';
@@ -7194,7 +6714,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|_accept|push_prc|prmt_pct|cvr_discount|zero_sold|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|s_status|pls_status|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
@@ -7202,7 +6722,7 @@
 
                 // Basic — identity, CVR, inventory, listing links, dil/views
                 if (
-                    /^(row_select|parent|image_path|\(child\) sku|cvr_l60|cvr_l45|cvr_l30|nr|nrp|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30|sess7)$/i.test(f) ||
+                    /^(row_select|parent|image_path|\(child\) sku|cvr_l30|nr|nrp|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30|sess7)$/i.test(f) ||
                     /\b(parent|image|sku|cvr|nr\/?rl|nrp|miss|reviews?|buyer|seller|inv|fba|ov\s*l30|dil|a\s*l30|nrl|view)\b/i.test(t)
                 ) {
                     return 'basic';
@@ -7500,6 +7020,14 @@
                     }
                     if (!inserted) valid.unshift(f);
                 });
+
+                const priceIdx = valid.indexOf('price');
+                const spriceIdx = valid.indexOf('SPRICE');
+                if (priceIdx !== -1 && spriceIdx !== -1 && spriceIdx !== priceIdx + 1) {
+                    valid.splice(spriceIdx, 1);
+                    const insertAt = valid.indexOf('price') + 1;
+                    valid.splice(insertAt, 0, 'SPRICE');
+                }
 
                 amazonApplyingColumnOrder = true;
                 try {
@@ -8042,19 +7570,7 @@
                     e.preventDefault();
                     e.stopPropagation();
                     const el = e.target.closest('.view-sku-chart');
-                    const sku = el.getAttribute('data-sku');
-                    currentSkuChartMetric = (el.getAttribute('data-metric') || 'price');
-                    currentSku = sku;
-                    $('#modalSkuName').text(sku);
-                    $('#sku-chart-days-filter').val('30');
-                    const metricLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
-                    const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
-                    $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30)');
-                    $('#skuChartLoading').show();
-                    $('#skuChartContainer').hide();
-                    $('#chart-no-data-message').hide();
-                    loadSkuMetricsData(sku, 30);
-                    $('#skuMetricsModal').modal('show');
+                    openAmazonSkuChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'price');
                 }
             });
 
@@ -8169,7 +7685,6 @@
                 $('#addCompAsin').val('');
                 $('#addCompPrice').val('');
                 $('#addCompLink').val('');
-                $('#addCompMarketplace').val('amazon');
 
                 currentLmpData.sku = sku;
                 currentLmpData.linkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
@@ -8276,6 +7791,62 @@
                 loadCompetitorsModal(sku, currentLmpData.linkedLmpSkus || [], { refresh: true });
             });
 
+            function amazonCompetitorLandedPrice(item) {
+                if (!item) return 0;
+                if (item.landed_price != null && parseFloat(item.landed_price) > 0) {
+                    return parseFloat(item.landed_price);
+                }
+                const basePrice = parseFloat(item.price) || 0;
+                let shipCost = 0;
+                if (item.delivery) {
+                    const delText = String(item.delivery);
+                    if (!/\bfree\b/i.test(delText)) {
+                        const paidMatch = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i)
+                            || delText.match(/\$\s*([\d,]+\.?\d*)/);
+                        if (paidMatch) {
+                            shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                        }
+                    }
+                }
+                return basePrice + shipCost;
+            }
+
+            function amazonL1FromCompetitors(competitors) {
+                let l1 = null;
+                let winner = null;
+                (competitors || []).forEach(function(c) {
+                    if (c.ignored) return;
+                    const tp = amazonCompetitorLandedPrice(c);
+                    if (tp > 0 && (l1 === null || tp < l1)) {
+                        l1 = tp;
+                        winner = c;
+                    }
+                });
+                return { l1: l1, winner: winner };
+            }
+
+            function patchAmazonGridLmp(lowestPrice, lowestDelivery) {
+                if (typeof table === 'undefined' || !table || !table.getRows) return;
+                const sku = String(currentLmpData.sku || '').trim();
+                const targets = new Set();
+                if (sku) targets.add(sku);
+                (currentLmpData.linkedLmpSkus || []).forEach(function(s) {
+                    const t = String(s || '').trim();
+                    if (t) targets.add(t);
+                });
+                if (!targets.size) return;
+                table.getRows().forEach(function(row) {
+                    const d = row.getData();
+                    if (!d || d.is_parent_summary) return;
+                    const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                    if (!targets.has(rowSku)) return;
+                    row.update({
+                        lmp_price: lowestPrice,
+                        lmp_delivery: lowestPrice == null ? null : (lowestDelivery != null ? lowestDelivery : d.lmp_delivery)
+                    });
+                });
+            }
+
             // Render Competitors List Function
             function renderCompetitorsList(competitors, lowestPrice) {
                 if (!competitors || competitors.length === 0) {
@@ -8293,6 +7864,8 @@
                 const modalNroi = amazonComputeNroiAtSp(modalSp, currentLmpData.rowData);
                 const modalGroiHtml = modalGroi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(modalGroi);
                 const modalNroiHtml = modalNroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(modalNroi);
+                const l1ValForList = (lowestPrice != null && isFinite(parseFloat(lowestPrice)))
+                    ? parseFloat(lowestPrice) : null;
 
                 let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">';
                 html += `
@@ -8301,7 +7874,7 @@
                             <th style="width: 30px;">#</th>
                             <th style="width: 60px;">Image</th>
                             <th style="width: 100px;">ASIN</th>
-                            <th style="width: 250px;">Product Title</th>
+                            <th style="width: 750px; min-width: 750px;">Product Title</th>
                             <th>Seller</th>
                             <th style="width: 80px;">Price</th>
                             <th style="width: 70px;" title="Std Prc from top input">Std Prc</th>
@@ -8316,6 +7889,7 @@
                             <th style="width: 140px;">Delivery</th>
                             <th style="width: 80px;" title="Competitor inventory / stock from Amz (SerpApi)">Inv</th>
                             <th style="width: 60px;">Link</th>
+                            <th class="text-center" style="width: 60px;" title="Ignore for L1">Ignore</th>
                             <th style="width: 80px;">Actions</th>
                         </tr>
                     </thead>
@@ -8341,16 +7915,25 @@
                         ? parseFloat(item.landed_price)
                         : (basePrice + shipCost);
 
-                    // L1 compares landed (price + paid delivery); FREE does not add
-                    const isLowest = Math.abs(totalPrice - parseFloat(lowestPrice)) < 0.01;
-                    const rowClass = isLowest ? 'table-success' : '';
+                    // L1 compares landed (price + paid delivery); ignored rows never count
+                    const ignored = !!item.ignored;
+                    const l1Val = (lowestPrice != null && isFinite(parseFloat(lowestPrice)))
+                        ? parseFloat(lowestPrice) : null;
+                    const isLowest = !ignored && l1Val !== null && Math.abs(totalPrice - l1Val) < 0.01;
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'lmp-lowest-row' : '');
                     const totalFormatted = '$' + totalPrice.toFixed(2);
                     const priceInner = shipCost > 0
                         ? `${totalFormatted}<br><small style="color:#888;font-weight:400;">$${basePrice.toFixed(2)} + $${shipCost.toFixed(2)} ship</small>`
                         : totalFormatted;
-                    const priceBadge = isLowest ?
-                        `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>` :
-                        `<strong>${priceInner}</strong>`;
+                    const priceBadge = isLowest
+                        ? `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>`
+                        : (ignored
+                            ? `<strong>${priceInner}</strong> <span class="badge bg-secondary">Ignored</span>`
+                            : `<strong>${priceInner}</strong>`);
+                    const skuEsc = escAttr(currentLmpData.sku || item.sku || '');
+                    const ignoreCb = `<input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"`
+                        + (ignored ? ' checked' : '')
+                        + ` data-id="${item.id}" data-marketplace="amazon" data-sku="${skuEsc}">`;
                     
                     const productLink = item.link || item.product_link || '#';
                     const productTitle = item.title || item.product_title || 'N/A';
@@ -8411,7 +7994,7 @@
                             <td>
                                 <span class="text-primary" style="font-weight: 600; font-size: 11px;">${item.asin || 'N/A'}</span>
                             </td>
-                            <td style="font-size: 11px;" title="${escAttr(productTitle)}">${productTitle.substring(0, 60)}${productTitle.length > 60 ? '...' : ''}</td>
+                            <td style="font-size: 11px; width: 750px; min-width: 750px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escAttr(productTitle)}">${productTitle.substring(0, 180)}${productTitle.length > 180 ? '...' : ''}</td>
                             <td style="font-size: 11px;">${sellerName}</td>
                             <td><strong>${priceBadge}</strong></td>
                             <td class="text-center fw-bold lmp-sp-cell">${modalSpText}</td>
@@ -8430,6 +8013,7 @@
                                     <i class="fa fa-external-link"></i>
                                 </a>
                             </td>
+                            <td class="text-center lmp-ignore-cell align-middle">${ignoreCb}</td>
                             <td class="text-center">
                                 <button class="btn btn-sm btn-danger delete-lmp-btn" 
                                     data-id="${item.id}" 
@@ -8444,10 +8028,51 @@
                 });
                 
                 html += '</tbody></table></div>';
+                if (l1ValForList !== null) {
+                    html = `<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$${Number(l1ValForList).toFixed(2)}</strong></div>` + html;
+                }
                 $('#lmpDataList').html(html);
             }
 
             // Live SP → GROI% / NROI% in modal; blur/Enter saves to grid SP column
+            $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
+                const $cb = $(this);
+                const id = $cb.attr('data-id') || $cb.data('id');
+                const marketplace = ($cb.attr('data-marketplace') || $cb.data('marketplace') || 'amazon').toLowerCase();
+                const sku = $cb.attr('data-sku') || $cb.data('sku') || currentLmpData.sku || '';
+                const ignored = $cb.is(':checked');
+                $cb.prop('disabled', true);
+
+                $.ajax({
+                    url: '/cvr-master-lmp-ignore',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { id: id, marketplace: marketplace, sku: sku, ignored: ignored ? 1 : 0 },
+                    success: function(res) {
+                        $cb.prop('disabled', false);
+                        if (res && res.success) {
+                            (currentLmpData.competitors || []).forEach(function(c) {
+                                if (String(c.id) === String(id)) c.ignored = ignored;
+                            });
+                            const l1Info = amazonL1FromCompetitors(currentLmpData.competitors);
+                            currentLmpData.lowestPrice = l1Info.l1;
+                            renderCompetitorsList(currentLmpData.competitors, l1Info.l1);
+                            patchAmazonGridLmp(l1Info.l1, l1Info.winner ? (l1Info.winner.delivery || null) : null);
+                            showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
+                        } else {
+                            $cb.prop('checked', !ignored);
+                            showToast((res && res.error) || 'Failed to update ignore', 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        $cb.prop('disabled', false);
+                        $cb.prop('checked', !ignored);
+                        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to update ignore';
+                        showToast(msg, 'error');
+                    }
+                });
+            });
+
             $(document).on('input', '#lmpModalSpInput', function() {
                 refreshLmpModalSpMetrics();
             });
@@ -8538,7 +8163,7 @@
                 const asin = $('#addCompAsin').val().trim();
                 const price = parseFloat($('#addCompPrice').val());
                 const link = $('#addCompLink').val().trim();
-                const marketplace = $('#addCompMarketplace').val();
+                const marketplace = 'US';
                 
                 // Validation
                 if (!asin) {

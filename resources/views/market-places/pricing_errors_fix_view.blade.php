@@ -178,6 +178,63 @@
             text-align: right;
             font-weight: 600;
         }
+        #pefZeroSoldModal .pef-zs-pie-wrap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #pefZeroSoldModal .pef-zs-pie-canvas-wrap {
+            width: 148px;
+            height: 148px;
+            flex: 0 0 148px;
+        }
+        #pefZeroSoldModal #pef-zs-pie-legend {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #pefZeroSoldModal .pef-zs-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.35;
+            padding: 3px 0;
+        }
+        #pefZeroSoldModal .pef-zs-pie-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex: 0 0 10px;
+        }
+        #pefZeroSoldModal .pef-zs-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
+        #pefZeroSoldModal .pef-zs-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
+        #pefZeroSoldModal .pef-zs-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
+        #pefZeroSoldModal .pef-zs-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #pefZeroSoldModal .pef-zs-hist-dot:hover { transform: scale(1.35); }
+        #pefZeroSoldModal .pef-zs-hist-wrap {
+            display: none;
+            margin: 0 0 10px;
+            padding: 6px 8px 4px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        #pefZeroSoldModal .pef-zs-hist-wrap.is-open { display: block; }
+        #pefZeroSoldModal .pef-zs-hist-canvas-wrap { height: 160px; }
         /* STD PRC — same teal header as /price-increase OV L30 */
         .tabulator .tabulator-header .tabulator-col[tabulator-field="standard_price"] {
             background: #20c997 !important;
@@ -853,7 +910,7 @@
     </div>
 
     <div class="modal fade" id="pefZeroSoldModal" tabindex="-1" aria-labelledby="pefZeroSoldModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="pefZeroSoldModalLabel">
@@ -862,6 +919,21 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <div class="pef-zs-pie-wrap">
+                        <div class="pef-zs-pie-canvas-wrap">
+                            <canvas id="pef-zs-pie"></canvas>
+                        </div>
+                        <div id="pef-zs-pie-legend"></div>
+                    </div>
+                    <div class="pef-zs-hist-wrap" id="pef-zs-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="pef-zs-hist-title">Sold history</span>
+                            <button type="button" class="btn-close" id="pef-zs-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="pef-zs-hist-canvas-wrap">
+                            <canvas id="pef-zs-hist"></canvas>
+                        </div>
+                    </div>
                     <p class="small text-muted mb-2">
                         Map <strong>Dil color</strong> to <strong>Target GROI%</strong>
                         (<strong style="color:#a00211;">Red &lt;25% → 50</strong>,
@@ -4895,6 +4967,186 @@
         const l30 = Number(d.l30 || 0);
         return inv > 0 && !(l30 > 0);
     }
+    const PEF_ZS_BANDS = [
+        { key: 'zero', label: '0 Sold', color: '#e83e8c' },
+        { key: 'sold', label: 'Sold', color: '#28a745' },
+    ];
+    let pefZsPieChart = null;
+    let pefZsHistChart = null;
+    let pefZsLiveCounts = { zero: 0, sold: 0 };
+    function pefZsWithChart(fn) {
+        if (typeof Chart !== 'undefined') { fn(); return; }
+        if (typeof loadChartJs === 'function') {
+            loadChartJs().then(fn).catch(function() {});
+            return;
+        }
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+        s.onload = fn;
+        document.head.appendChild(s);
+    }
+    function pefZsCollectCounts() {
+        const counts = { zero: 0, sold: 0 };
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return counts;
+        table.getRows('active').forEach(function(row) {
+            const d = row.getData() || {};
+            if (!(Number(d.inv || 0) > 0)) return;
+            if (pefIsZeroSoldRow(d)) counts.zero++;
+            else counts.sold++;
+        });
+        return counts;
+    }
+    function pefZsSnapLocal(counts) {
+        try {
+            const key = 'pef_zero_sold_hist';
+            const today = new Date().toISOString().slice(0, 10);
+            let hist = {};
+            try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
+            hist[today] = counts;
+            const keys = Object.keys(hist).sort();
+            while (keys.length > 90) delete hist[keys.shift()];
+            localStorage.setItem(key, JSON.stringify(hist));
+        } catch (e) { /* ignore */ }
+    }
+    function pefZsLocalHistory() {
+        try {
+            const hist = JSON.parse(localStorage.getItem('pef_zero_sold_hist') || '{}') || {};
+            return Object.keys(hist).sort().map(function(date) {
+                const row = hist[date] || {};
+                return {
+                    date: date,
+                    label: date.slice(5),
+                    zero: Number(row.zero) || 0,
+                    sold: Number(row.sold) || 0,
+                };
+            });
+        } catch (e) {
+            return [];
+        }
+    }
+    function renderPefZeroSoldPie() {
+        pefZsLiveCounts = pefZsCollectCounts();
+        pefZsSnapLocal(pefZsLiveCounts);
+        const total = pefZsLiveCounts.zero + pefZsLiveCounts.sold;
+        const legend = document.getElementById('pef-zs-pie-legend');
+        if (legend) {
+            legend.innerHTML = '<div class="pef-zs-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
+                + '<span class="pef-zs-pie-swatch" style="visibility:hidden;"></span>'
+                + '<span class="pef-zs-pie-name">L30</span>'
+                + '<span class="pef-zs-pie-count">count</span>'
+                + '<span class="pef-zs-pie-pct">of total</span>'
+                + '<span class="pef-zs-hist-dot" style="visibility:hidden;"></span>'
+                + '</div>'
+                + PEF_ZS_BANDS.map(function(b) {
+                    const n = pefZsLiveCounts[b.key] || 0;
+                    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                    return '<div class="pef-zs-pie-row">'
+                        + '<span class="pef-zs-pie-swatch" style="background:' + b.color + ';"></span>'
+                        + '<span class="pef-zs-pie-name">' + b.label + '</span>'
+                        + '<span class="pef-zs-pie-count">' + n + '</span>'
+                        + '<span class="pef-zs-pie-pct" title="' + pct + ' of total">' + pct + '</span>'
+                        + '<button type="button" class="pef-zs-hist-dot" data-band="' + b.key + '" '
+                        + 'style="background:' + b.color + ';" title="' + b.label + ' daily history"></button>'
+                        + '</div>';
+                }).join('');
+        }
+        pefZsWithChart(function() {
+            const canvas = document.getElementById('pef-zs-pie');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (pefZsPieChart) {
+                pefZsPieChart.destroy();
+                pefZsPieChart = null;
+            }
+            pefZsPieChart = new Chart(canvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: PEF_ZS_BANDS.map(function(b) { return b.label; }),
+                    datasets: [{
+                        data: PEF_ZS_BANDS.map(function(b) { return pefZsLiveCounts[b.key] || 0; }),
+                        backgroundColor: PEF_ZS_BANDS.map(function(b) { return b.color; }),
+                        borderColor: '#fff',
+                        borderWidth: 1,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const n = Number(ctx.raw) || 0;
+                                    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                    return ' ' + n + '  ·  ' + pct + ' of total';
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+        });
+    }
+    function pefZsDrawHist(band, rows) {
+        const spec = PEF_ZS_BANDS.find(function(b) { return b.key === band; }) || PEF_ZS_BANDS[0];
+        $('#pef-zs-hist-title').text(spec.label + ' count');
+        $('#pef-zs-hist-wrap').addClass('is-open');
+        pefZsWithChart(function() {
+            const canvas = document.getElementById('pef-zs-hist');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (pefZsHistChart) {
+                pefZsHistChart.destroy();
+                pefZsHistChart = null;
+            }
+            pefZsHistChart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: rows.map(function(r) { return r.label || r.date; }),
+                    datasets: [{
+                        data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                        borderColor: spec.color,
+                        backgroundColor: spec.color + '22',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 1.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: spec.color,
+                        pointBorderColor: spec.color,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                    },
+                },
+            });
+        });
+    }
+    function pefZsOpenHist(band) {
+        const list = pefZsLocalHistory().slice();
+        const today = new Date().toISOString().slice(0, 10);
+        if (!list.some(function(r) { return r.date === today; })) {
+            list.push({
+                date: today,
+                label: today.slice(5),
+                zero: pefZsLiveCounts.zero,
+                sold: pefZsLiveCounts.sold,
+            });
+        } else {
+            list.forEach(function(r) {
+                if (r.date === today) {
+                    r.zero = pefZsLiveCounts.zero;
+                    r.sold = pefZsLiveCounts.sold;
+                }
+            });
+        }
+        pefZsDrawHist(band, list);
+    }
     function pefZeroSoldGroiForRow(d) {
         if (!pefIsZeroSoldRow(d)) return null;
         const band = dilColorBand(d.dil) || 'red';
@@ -5013,6 +5265,20 @@
         renderPefZeroSoldModalTable();
         loadPefZeroSoldRules();
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+    $('#pefZeroSoldModal').on('shown.bs.modal', function() {
+        renderPefZeroSoldPie();
+    });
+    $('#pefZeroSoldModal').on('hidden.bs.modal', function() {
+        $('#pef-zs-hist-wrap').removeClass('is-open');
+        if (pefZsPieChart) { pefZsPieChart.destroy(); pefZsPieChart = null; }
+        if (pefZsHistChart) { pefZsHistChart.destroy(); pefZsHistChart = null; }
+    });
+    $(document).on('click', '.pef-zs-hist-dot', function() {
+        pefZsOpenHist($(this).data('band') || 'zero');
+    });
+    $('#pef-zs-hist-close').on('click', function() {
+        $('#pef-zs-hist-wrap').removeClass('is-open');
     });
     $('#pef-zero-sold-save-btn').on('click', function() {
         const $btn = $(this);

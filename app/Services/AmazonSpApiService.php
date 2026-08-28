@@ -2456,6 +2456,7 @@ class AmazonSpApiService
             'quantity' => null,
             'handling_time' => null,
             'your_price' => null,
+            'sale_price' => null,
             'minimum_advertised_price' => null,
             'list_price' => null,
             'merchant_shipping_group' => null,
@@ -2540,6 +2541,10 @@ class AmazonSpApiService
             if (($p = $getPriceFromOffer($offer, 'ourPrice')) !== null) {
                 $out['your_price'] = $p;
             }
+            if (($p = $getPriceFromOffer($offer, 'discountedPrice')) !== null
+                || ($p = $getPriceFromOffer($offer, 'discounted_price')) !== null) {
+                $out['sale_price'] = $p;
+            }
             if (($p = $getPriceFromOffer($offer, 'minimumSellerAllowedPrice')) !== null) {
                 $out['minimum_advertised_price'] = $p;
             }
@@ -2553,6 +2558,9 @@ class AmazonSpApiService
                 $po = $purchasable[0];
                 if ($out['your_price'] === null && ($p = $getPriceFromSchedule($po['our_price'] ?? null)) !== null) {
                     $out['your_price'] = $p;
+                }
+                if ($out['sale_price'] === null && ($p = $getPriceFromSchedule($po['discounted_price'] ?? $po['discountedPrice'] ?? null)) !== null) {
+                    $out['sale_price'] = $p;
                 }
                 if ($out['list_price'] === null && ($p = $getPriceFromSchedule($po['list_price'] ?? null)) !== null) {
                     $out['list_price'] = $p;

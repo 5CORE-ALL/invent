@@ -76,6 +76,63 @@
             font-size: 12px;
             font-weight: 600;
         }
+        .cvr-up-dn-pie-wrap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        .cvr-up-dn-pie-canvas-wrap {
+            width: 148px;
+            height: 148px;
+            flex: 0 0 148px;
+        }
+        .cvr-up-dn-pie-legend {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .cvr-up-dn-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.35;
+            padding: 3px 0;
+        }
+        .cvr-up-dn-pie-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex: 0 0 10px;
+        }
+        .cvr-up-dn-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
+        .cvr-up-dn-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
+        .cvr-up-dn-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
+        .cvr-up-dn-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        .cvr-up-dn-hist-dot:hover { transform: scale(1.35); }
+        .cvr-up-dn-hist-wrap {
+            display: none;
+            margin: 0 0 10px;
+            padding: 6px 8px 4px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .cvr-up-dn-hist-wrap.is-open { display: block; }
+        .cvr-up-dn-hist-canvas-wrap { height: 160px; }
 @endif
 
 @if($cvrUpDnPart === 'buttons' || $cvrUpDnPart === 'all')
@@ -94,16 +151,33 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <div class="cvr-up-dn-pie-wrap">
+                        <div class="cvr-up-dn-pie-canvas-wrap">
+                            <canvas id="cvr-up-dn-pie"></canvas>
+                        </div>
+                        <div class="cvr-up-dn-pie-legend" id="cvr-up-dn-pie-legend"></div>
+                    </div>
+                    <div class="cvr-up-dn-hist-wrap" id="cvr-up-dn-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="cvr-up-dn-hist-title">CVR history</span>
+                            <button type="button" class="btn-close" id="cvr-up-dn-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="cvr-up-dn-hist-canvas-wrap">
+                            <canvas id="cvr-up-dn-hist"></canvas>
+                        </div>
+                    </div>
                     <p class="small text-muted mb-2">
                         Compare <strong>CVR 30</strong> vs <strong>CVR 45</strong>.
                         A drop fills <strong>CVR Up/Dn</strong> with extra discount;
                         an increase reduces it. That value is added to <strong>T Discounts</strong>.
                         First rules: drop → <strong>+3</strong>, up → <strong>−3</strong>.
                         <strong>Down is ignored</strong> when CVR 30 is
+                        <strong>0</strong>,
                         <span style="color:#28a745;font-weight:700;">Green (7–13%)</span> or
                         <span style="color:#e83e8c;font-weight:700;">Pink (&gt; 13%)</span>.
                         <strong>UP is ignored</strong> when CVR 30 is
-                        <span style="color:#a00211;font-weight:700;">Red (0–7%)</span>.
+                        <span style="color:#a00211;font-weight:700;">Red (0–7%)</span> or
+                        <span style="color:#28a745;font-weight:700;">Green (7–13%)</span>.
                         Add more rows for larger changes.
                         <strong>Apply</strong> saves these rules, then writes <strong>S PRC</strong>
                         on matching SKUs using that SKU’s PRMT, CVR Disc, 0 Sold GROI, and CVR UP/DN.
@@ -278,17 +352,26 @@
             const recent = cvrUpDnRound2(cvrUpDnRecent(d));
             const prev = cvrUpDnRound2(cvrUpDnPrev(d));
             const delta = cvrUpDnRound2(recent - prev);
-            const forceDown = recent === 0;
-            if (!forceDown && delta === 0) {
+            if (recent === 0) {
+                return {
+                    pct: 0,
+                    recent: recent,
+                    prev: prev,
+                    delta: delta,
+                    dir: 'flat',
+                    tip: 'CVR 30 is 0 — Down rule not applied',
+                };
+            }
+            if (delta === 0) {
                 return { pct: 0, recent: recent, prev: prev, delta: 0, dir: 'flat', tip: 'CVR 30 ' + recent + '% = CVR 45 ' + prev + '%' };
             }
             const mag = Math.abs(delta);
-            const dir = forceDown || delta < 0 ? 'down' : 'up';
-            // Red [0, 7) → ignore UP. Green [7, 13] / Pink > 13 → ignore Down.
-            const ignoreDown = dir === 'down' && recent >= 7;
-            const ignoreUp = dir === 'up' && recent >= 0 && recent < 7;
+            const dir = delta < 0 ? 'down' : 'up';
+            // CVR 0 → ignore Down. Red [0, 7) / Green [7, 13] → ignore UP. Green [7, 13] / Pink > 13 → ignore Down.
+            const ignoreDown = dir === 'down' && (recent === 0 || recent >= 7);
+            const ignoreUp = dir === 'up' && recent >= 0 && recent <= 13;
             if (ignoreDown) {
-                const band = recent > 13 ? 'Pink (> 13%)' : 'Green (7–13%)';
+                const band = recent === 0 ? '0' : (recent > 13 ? 'Pink (> 13%)' : 'Green (7–13%)');
                 return {
                     pct: 0,
                     recent: recent,
@@ -299,21 +382,20 @@
                 };
             }
             if (ignoreUp) {
+                const band = recent >= 7 ? 'Green (7–13%)' : 'Red (0–7%)';
                 return {
                     pct: 0,
                     recent: recent,
                     prev: prev,
                     delta: delta,
                     dir: 'flat',
-                    tip: 'CVR 30 ' + recent + '% is Red (0–7%) — UP rule ignored',
+                    tip: 'CVR 30 ' + recent + '% is ' + band + ' — UP rule ignored',
                 };
             }
             const pct = cvrUpDnRound2(cvrUpDnMatchDisc(mag, cvrUpDnRules[dir]));
-            const tip = forceDown
-                ? 'CVR 30 is 0 → Down → ' + (pct > 0 ? '+' : '') + pct
-                : ('CVR 30 ' + recent + '% vs CVR 45 ' + prev + '% → '
-                    + (dir === 'down' ? 'drop ' : 'up ') + mag + ' pts → '
-                    + (pct > 0 ? '+' : '') + pct);
+            const tip = 'CVR 30 ' + recent + '% vs CVR 45 ' + prev + '% → '
+                + (dir === 'down' ? 'drop ' : 'up ') + mag + ' pts → '
+                + (pct > 0 ? '+' : '') + pct;
             return { pct: pct, recent: recent, prev: prev, delta: delta, dir: dir, tip: tip };
         }
         function computeCvrUpDnPct(d) {
@@ -456,7 +538,7 @@
                 hozAlign: 'center',
                 vertAlign: 'middle',
                 headerSort: true,
-                headerTooltip: 'CVR 30 vs CVR 45. Drop → extra discount. Up → reduce discount. Added to T Discounts.',
+                headerTooltip: 'CVR 30 vs CVR 45. Drop → extra discount. Up → reduce discount. CVR 30 = 0 → Down does not apply. Added to T Discounts.',
                 sorter: function(a, b, aRow, bRow) {
                     const av = computeCvrUpDnPct(aRow.getData()) || 0;
                     const bv = computeCvrUpDnPct(bRow.getData()) || 0;
@@ -505,6 +587,220 @@
         window.tDiscountsColumn = tDiscountsColumn;
         window.loadCvrUpDnRules = loadCvrUpDnRules;
 
+        const CVR_UP_DN_BANDS = [
+            { key: 'red', label: 'Red 0–7', color: '#a00211' },
+            { key: 'green', label: 'Green 7–13', color: '#28a745' },
+            { key: 'pink', label: 'Pink > 13', color: '#e83e8c' },
+        ];
+        let cvrUpDnPieChart = null;
+        let cvrUpDnHistChart = null;
+        let cvrUpDnLiveCounts = { red: 0, green: 0, pink: 0 };
+
+        function cvrUpDnBandOf(cvr) {
+            const n = Number(cvr);
+            if (!isFinite(n) || n < 7) return 'red';
+            if (n <= 13) return 'green';
+            return 'pink';
+        }
+        function cvrUpDnCollectBandCounts() {
+            const counts = { red: 0, green: 0, pink: 0 };
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+                return counts;
+            }
+            table.getRows('active').forEach(function(row) {
+                const d = row.getData() || {};
+                if (d.is_parent_summary) return;
+                if (cvrUpDnInv(d) <= 0) return;
+                counts[cvrUpDnBandOf(cvrUpDnRecent(d))]++;
+            });
+            return counts;
+        }
+        function cvrUpDnSnapLocal(counts) {
+            try {
+                const key = 'cvr_up_dn_hist_' + CVR_UP_DN_CHANNEL;
+                const today = new Date().toISOString().slice(0, 10);
+                let hist = {};
+                try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
+                hist[today] = counts;
+                const keys = Object.keys(hist).sort();
+                while (keys.length > 90) {
+                    delete hist[keys.shift()];
+                }
+                localStorage.setItem(key, JSON.stringify(hist));
+            } catch (e) { /* ignore */ }
+        }
+        function cvrUpDnLocalHistory() {
+            try {
+                const hist = JSON.parse(localStorage.getItem('cvr_up_dn_hist_' + CVR_UP_DN_CHANNEL) || '{}') || {};
+                return Object.keys(hist).sort().map(function(date) {
+                    const row = hist[date] || {};
+                    return {
+                        date: date,
+                        label: date.slice(5),
+                        red: Number(row.red) || 0,
+                        green: Number(row.green) || 0,
+                        pink: Number(row.pink) || 0,
+                    };
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+        function cvrUpDnWithChart(fn) {
+            if (typeof Chart !== 'undefined') { fn(); return; }
+            if (typeof loadChartJs === 'function') {
+                loadChartJs().then(fn).catch(function() {});
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+            s.onload = fn;
+            document.head.appendChild(s);
+        }
+        function renderCvrUpDnPie() {
+            cvrUpDnLiveCounts = cvrUpDnCollectBandCounts();
+            cvrUpDnSnapLocal(cvrUpDnLiveCounts);
+            const total = cvrUpDnLiveCounts.red + cvrUpDnLiveCounts.green + cvrUpDnLiveCounts.pink;
+            const legend = document.getElementById('cvr-up-dn-pie-legend');
+            if (legend) {
+                legend.innerHTML = '<div class="cvr-up-dn-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
+                    + '<span class="cvr-up-dn-pie-swatch" style="visibility:hidden;"></span>'
+                    + '<span class="cvr-up-dn-pie-name">CVR 30</span>'
+                    + '<span class="cvr-up-dn-pie-count">count</span>'
+                    + '<span class="cvr-up-dn-pie-pct">of total</span>'
+                    + '<span class="cvr-up-dn-hist-dot" style="visibility:hidden;"></span>'
+                    + '</div>'
+                    + CVR_UP_DN_BANDS.map(function(b) {
+                    const n = cvrUpDnLiveCounts[b.key] || 0;
+                    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                    return '<div class="cvr-up-dn-pie-row">'
+                        + '<span class="cvr-up-dn-pie-swatch" style="background:' + b.color + ';"></span>'
+                        + '<span class="cvr-up-dn-pie-name">' + b.label + '</span>'
+                        + '<span class="cvr-up-dn-pie-count">' + n + '</span>'
+                        + '<span class="cvr-up-dn-pie-pct" title="' + pct + ' of total">' + pct + '</span>'
+                        + '<button type="button" class="cvr-up-dn-hist-dot" data-band="' + b.key + '" '
+                        + 'style="background:' + b.color + ';" title="' + b.label + ' daily history"></button>'
+                        + '</div>';
+                }).join('');
+            }
+            cvrUpDnWithChart(function() {
+                const canvas = document.getElementById('cvr-up-dn-pie');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (cvrUpDnPieChart) {
+                    cvrUpDnPieChart.destroy();
+                    cvrUpDnPieChart = null;
+                }
+                cvrUpDnPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: CVR_UP_DN_BANDS.map(function(b) { return b.label; }),
+                        datasets: [{
+                            data: CVR_UP_DN_BANDS.map(function(b) { return cvrUpDnLiveCounts[b.key] || 0; }),
+                            backgroundColor: CVR_UP_DN_BANDS.map(function(b) { return b.color; }),
+                            borderColor: '#fff',
+                            borderWidth: 1,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const n = Number(ctx.raw) || 0;
+                                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                        return ' ' + n + '  ·  ' + pct + ' of total';
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+            });
+        }
+        function cvrUpDnDrawHist(band, rows) {
+            const spec = CVR_UP_DN_BANDS.find(function(b) { return b.key === band; }) || CVR_UP_DN_BANDS[0];
+            $('#cvr-up-dn-hist-title').text(spec.label + ' count');
+            $('#cvr-up-dn-hist-wrap').addClass('is-open');
+            cvrUpDnWithChart(function() {
+                const canvas = document.getElementById('cvr-up-dn-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (cvrUpDnHistChart) {
+                    cvrUpDnHistChart.destroy();
+                    cvrUpDnHistChart = null;
+                }
+                const labels = rows.map(function(r) { return r.label || r.date; });
+                const values = rows.map(function(r) { return Number(r[band]) || 0; });
+                cvrUpDnHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            borderColor: spec.color,
+                            backgroundColor: spec.color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: spec.color,
+                            pointBorderColor: spec.color,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                        },
+                    },
+                });
+            });
+        }
+        function cvrUpDnOpenHist(band) {
+            const applyToday = function(rows) {
+                const list = rows.slice();
+                const today = new Date().toISOString().slice(0, 10);
+                if (!list.some(function(r) { return r.date === today; })) {
+                    list.push({
+                        date: today,
+                        label: today.slice(5),
+                        red: cvrUpDnLiveCounts.red,
+                        green: cvrUpDnLiveCounts.green,
+                        pink: cvrUpDnLiveCounts.pink,
+                    });
+                } else {
+                    list.forEach(function(r) {
+                        if (r.date === today) {
+                            r.red = cvrUpDnLiveCounts.red;
+                            r.green = cvrUpDnLiveCounts.green;
+                            r.pink = cvrUpDnLiveCounts.pink;
+                        }
+                    });
+                }
+                return list;
+            };
+            if (CVR_UP_DN_CHANNEL === 'amazon') {
+                $.ajax({
+                    url: '/amazon-cvr-band-history',
+                    method: 'GET',
+                    data: { days: 30 },
+                }).done(function(res) {
+                    const rows = (res && res.success && Array.isArray(res.data)) ? res.data : cvrUpDnLocalHistory();
+                    cvrUpDnDrawHist(band, applyToday(rows));
+                }).fail(function() {
+                    cvrUpDnDrawHist(band, applyToday(cvrUpDnLocalHistory()));
+                });
+                return;
+            }
+            cvrUpDnDrawHist(band, applyToday(cvrUpDnLocalHistory()));
+        }
+
         $(function() {
             $('#cvr-up-dn-btn').off('click.cvrupdn').on('click.cvrupdn', function(e) {
                 e.preventDefault();
@@ -513,6 +809,20 @@
                 renderCvrUpDnModalTable();
                 loadCvrUpDnRules();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+            $('#cvrUpDnModal').off('shown.bs.modal.cvrupdn').on('shown.bs.modal.cvrupdn', function() {
+                renderCvrUpDnPie();
+            });
+            $('#cvrUpDnModal').off('hidden.bs.modal.cvrupdn').on('hidden.bs.modal.cvrupdn', function() {
+                $('#cvr-up-dn-hist-wrap').removeClass('is-open');
+                if (cvrUpDnPieChart) { cvrUpDnPieChart.destroy(); cvrUpDnPieChart = null; }
+                if (cvrUpDnHistChart) { cvrUpDnHistChart.destroy(); cvrUpDnHistChart = null; }
+            });
+            $(document).off('click.cvrupdn', '.cvr-up-dn-hist-dot').on('click.cvrupdn', '.cvr-up-dn-hist-dot', function() {
+                cvrUpDnOpenHist($(this).data('band') || 'red');
+            });
+            $('#cvr-up-dn-hist-close').off('click.cvrupdn').on('click.cvrupdn', function() {
+                $('#cvr-up-dn-hist-wrap').removeClass('is-open');
             });
             $('#cvr-up-dn-apply-btn').off('click.cvrupdn').on('click.cvrupdn', saveAndApplyCvrUpDn);
             $('#cvr-up-dn-add-down').off('click.cvrupdn').on('click.cvrupdn', function() { cvrUpDnAddRow('down'); });

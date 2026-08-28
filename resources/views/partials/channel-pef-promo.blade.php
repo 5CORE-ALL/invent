@@ -89,7 +89,6 @@
         #ch-promo-zero-sold-prmt-table .ch-promo-dil-prmt-input,
         #ch-promo-gt-sold-prc-table .ch-promo-gt-sold-pct-input,
         #ch-promo-cvr-cpn-table .ch-promo-cvr-cpn-input,
-        #ch-promo-zero-sold-dil-table .ch-promo-zero-sold-dil-roi-input,
         #ch-promo-prmt-menu-btn,
         #ch-promo-dil-vs-prmt-btn {
             background: #198754;
@@ -404,6 +403,69 @@
         #ch-promo-zero-sold-vs-dil-btn:disabled {
             opacity: 0.65;
         }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-wrap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-canvas-wrap {
+            width: 148px;
+            height: 148px;
+            flex: 0 0 148px;
+        }
+        #chPromoZeroSoldVsDilModal #ch-promo-zs-pie-legend {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #ch-promo-zero-sold-dil-table .ch-promo-zero-sold-dil-roi-input {
+            max-width: 90px;
+            margin-left: auto;
+            text-align: right;
+            font-weight: 600;
+        }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.35;
+            padding: 3px 0;
+        }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex: 0 0 10px;
+        }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
+        #chPromoZeroSoldVsDilModal .ch-zs-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
+        #chPromoZeroSoldVsDilModal .ch-zs-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #chPromoZeroSoldVsDilModal .ch-zs-hist-dot:hover { transform: scale(1.35); }
+        #chPromoZeroSoldVsDilModal .ch-zs-hist-wrap {
+            display: none;
+            margin: 0 0 10px;
+            padding: 6px 8px 4px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        #chPromoZeroSoldVsDilModal .ch-zs-hist-wrap.is-open { display: block; }
+        #chPromoZeroSoldVsDilModal .ch-zs-hist-canvas-wrap { height: 160px; }
         #ch-promo-push-prc-progress {
             display: none;
             width: 100%;
@@ -647,7 +709,7 @@
                     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => $channelPromoChannel])
                     @endif
                     <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
-                        title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. If a SKU is 0 sold, S PRC autofills from this rule. Apply force-writes S PRC so GROI equals the target.">
+                        title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. This page has its own rule table. Apply sets S PRC so SGROI equals the target when 0 sold.">
                         0 Sold
                     </button>
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
@@ -809,7 +871,7 @@
 
     @if($channelPromoShowZeroSoldDilRule)
     <div class="modal fade" id="chPromoZeroSoldVsDilModal" tabindex="-1" aria-labelledby="chPromoZeroSoldVsDilModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoZeroSoldVsDilModalLabel">
@@ -818,22 +880,31 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
+                    <div class="ch-zs-pie-wrap">
+                        <div class="ch-zs-pie-canvas-wrap">
+                            <canvas id="ch-promo-zs-pie"></canvas>
+                        </div>
+                        <div id="ch-promo-zs-pie-legend"></div>
+                    </div>
+                    <div class="ch-zs-hist-wrap" id="ch-promo-zs-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="ch-promo-zs-hist-title">Sold history</span>
+                            <button type="button" class="btn-close" id="ch-promo-zs-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="ch-zs-hist-canvas-wrap">
+                            <canvas id="ch-promo-zs-hist"></canvas>
+                        </div>
+                    </div>
                     <p class="small text-muted mb-2" id="ch-promo-zero-sold-dil-help">
                         Map <strong>Dil color</strong> to <strong>Target GROI%</strong>
                         (<strong style="color:#a00211;">Red &lt;25% → 50</strong>,
                         <strong style="color:#28a745;">Green 25–50% → 60</strong>,
                         <strong style="color:#e83e8c;">Pink 50%+ → 70</strong> first time).
-                        This page has its own rule table.
-                        If a SKU is <strong>0 sold</strong>, <strong>S PRC autofills from this rule</strong>
-                        (<code>S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>).
-                        It also re-applies when Dil color changes (Red / Green / Pink).
-                        <strong>Save Rule</strong> stores the slabs.
-                        <strong>Apply</strong> force-writes <strong>S PRC</strong> so
-                        <strong>GROI = Target GROI%</strong>
-                        (<code id="ch-promo-zero-sold-dil-formula">S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>)
-                        on selected or visible SKUs with
-                        <strong>0 sold</strong>, <strong>INV &gt; 0</strong>, and <strong>LP &gt; 0</strong>.
-                        No marketplace push.
+                        <span id="ch-promo-zero-sold-dil-owner">This page</span> has its own rule table.
+                        When <strong id="ch-promo-zero-sold-dil-gate">0 Sold</strong>,
+                        <strong>Apply</strong> sets <strong>S PRC</strong> so
+                        <strong>SGROI = Target GROI%</strong>
+                        (<code id="ch-promo-zero-sold-dil-formula">S PRC = (LP × (1 + GROI%/100) + Ship) / margin</code>).
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-zero-sold-dil-table">
@@ -850,13 +921,9 @@
                     <div class="small fw-semibold mt-1" id="ch-promo-zero-sold-dil-progress" style="display:none;"></div>
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-save-btn"
-                        title="Save Dil color → Target GROI% for this page only">
-                        <i class="fas fa-save me-1"></i> Save Rule
-                    </button>
                     <button type="button" class="btn btn-sm btn-primary" id="ch-promo-zero-sold-dil-apply-btn"
-                        title="Save rules, then set S PRC so GROI = Target on 0 Sold SKUs">
-                        Apply
+                        title="Save Dil color → Target GROI% and write S PRC on 0 Sold SKUs">
+                        <i class="fas fa-save me-1"></i> Apply
                     </button>
                     @if($channelPromoChannel === 'aliexpress')
                     <button type="button" class="btn btn-sm btn-warning" id="ch-promo-zero-sold-dil-pause-btn"
@@ -5371,11 +5438,252 @@
             });
         }
         function chPromoSyncZeroSoldDilHelp() {
+            const owner = (chPromoCfg && chPromoCfg.label) ? chPromoCfg.label : 'This page';
+            $('#ch-promo-zero-sold-dil-owner').text(owner);
+            $('#ch-promo-zero-sold-dil-gate').text(chPromoZeroSoldGateLabel());
             const $formula = $('#ch-promo-zero-sold-dil-formula');
             if (!$formula.length) return;
             if (chPromoIsTemuPromoChannel()) {
                 $formula.text('SGROI = (S R Price × 0.95 − Temu Ship − LP) / LP; Apply back-solves S PRC so SGROI = Target');
             }
+        }
+        const CH_ZS_BANDS = [
+            { key: 'zero', label: '0 Sold', color: '#e83e8c' },
+            { key: 'sold', label: 'Sold', color: '#28a745' },
+        ];
+        let chPromoZsPieChart = null;
+        let chPromoZsHistChart = null;
+        let chPromoZsLiveCounts = { zero: 0, sold: 0 };
+        function chPromoZsSoldAxisLabel() {
+            if (chPromoIsEbayChannel()) return 'E L30';
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein') return 'AL30';
+            return chPromoSoldFieldLabel() || 'L30';
+        }
+        function chPromoZsHistKey() {
+            return 'ch_zero_sold_hist_' + String(CHANNEL_PROMO_CHANNEL || 'channel');
+        }
+        function chPromoZsWithChart(fn) {
+            if (typeof Chart !== 'undefined') { fn(); return; }
+            if (typeof loadChartJs === 'function') {
+                loadChartJs().then(fn).catch(function() {});
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+            s.onload = fn;
+            document.head.appendChild(s);
+        }
+        function chPromoZsCollectCounts() {
+            const counts = { zero: 0, sold: 0 };
+            const seen = new Set();
+            function consider(d) {
+                if (!d || !chPromoIsChildRow(d) || chPromoInv(d) <= 0) return;
+                const sku = chPromoSkuKey(chPromoSku(d));
+                if (sku) {
+                    if (seen.has(sku)) return;
+                    seen.add(sku);
+                }
+                if (chPromoIsZeroSoldRow(d)) counts.zero++;
+                else counts.sold++;
+            }
+            chPromoEachTableRow(function(row, d) { consider(d); });
+            return counts;
+        }
+        function chPromoZsSnapLocal(counts) {
+            try {
+                const key = chPromoZsHistKey();
+                const today = new Date().toISOString().slice(0, 10);
+                let hist = {};
+                try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
+                hist[today] = counts;
+                const keys = Object.keys(hist).sort();
+                while (keys.length > 90) delete hist[keys.shift()];
+                localStorage.setItem(key, JSON.stringify(hist));
+            } catch (e) { /* ignore */ }
+        }
+        function chPromoZsLocalHistory() {
+            try {
+                const hist = JSON.parse(localStorage.getItem(chPromoZsHistKey()) || '{}') || {};
+                return Object.keys(hist).sort().map(function(date) {
+                    const row = hist[date] || {};
+                    return {
+                        date: date,
+                        label: date.slice(5),
+                        zero: Number(row.zero) || 0,
+                        sold: Number(row.sold) || 0,
+                    };
+                });
+            } catch (e) {
+                return [];
+            }
+        }
+        function renderChPromoZeroSoldPie() {
+            chPromoZsLiveCounts = chPromoZsCollectCounts();
+            chPromoZsSnapLocal(chPromoZsLiveCounts);
+            const total = chPromoZsLiveCounts.zero + chPromoZsLiveCounts.sold;
+            const legend = document.getElementById('ch-promo-zs-pie-legend');
+            if (legend) {
+                legend.innerHTML = '<div class="ch-zs-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
+                    + '<span class="ch-zs-pie-swatch" style="visibility:hidden;"></span>'
+                    + '<span class="ch-zs-pie-name">' + chPromoZsSoldAxisLabel() + '</span>'
+                    + '<span class="ch-zs-pie-count">count</span>'
+                    + '<span class="ch-zs-pie-pct">of total</span>'
+                    + '<span class="ch-zs-hist-dot" style="visibility:hidden;"></span>'
+                    + '</div>'
+                    + CH_ZS_BANDS.map(function(b) {
+                        const n = chPromoZsLiveCounts[b.key] || 0;
+                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                        return '<div class="ch-zs-pie-row">'
+                            + '<span class="ch-zs-pie-swatch" style="background:' + b.color + ';"></span>'
+                            + '<span class="ch-zs-pie-name">' + b.label + '</span>'
+                            + '<span class="ch-zs-pie-count">' + n + '</span>'
+                            + '<span class="ch-zs-pie-pct" title="' + pct + ' of total">' + pct + '</span>'
+                            + '<button type="button" class="ch-zs-hist-dot" data-band="' + b.key + '" '
+                            + 'style="background:' + b.color + ';" title="' + b.label + ' daily history"></button>'
+                            + '</div>';
+                    }).join('');
+            }
+            chPromoZsWithChart(function() {
+                const canvas = document.getElementById('ch-promo-zs-pie');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (chPromoZsPieChart) {
+                    chPromoZsPieChart.destroy();
+                    chPromoZsPieChart = null;
+                }
+                chPromoZsPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: CH_ZS_BANDS.map(function(b) { return b.label; }),
+                        datasets: [{
+                            data: CH_ZS_BANDS.map(function(b) { return chPromoZsLiveCounts[b.key] || 0; }),
+                            backgroundColor: CH_ZS_BANDS.map(function(b) { return b.color; }),
+                            borderColor: '#fff',
+                            borderWidth: 1,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const n = Number(ctx.raw) || 0;
+                                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                        return ' ' + n + '  ·  ' + pct + ' of total';
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+            });
+        }
+        function chPromoZsDrawHist(band, rows) {
+            const spec = CH_ZS_BANDS.find(function(b) { return b.key === band; }) || CH_ZS_BANDS[0];
+            $('#ch-promo-zs-hist-title').text(spec.label + ' count');
+            $('#ch-promo-zs-hist-wrap').addClass('is-open');
+            chPromoZsWithChart(function() {
+                const canvas = document.getElementById('ch-promo-zs-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (chPromoZsHistChart) {
+                    chPromoZsHistChart.destroy();
+                    chPromoZsHistChart = null;
+                }
+                chPromoZsHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        datasets: [{
+                            data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                            borderColor: spec.color,
+                            backgroundColor: spec.color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: spec.color,
+                            pointBorderColor: spec.color,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                        },
+                    },
+                });
+            });
+        }
+        function chPromoZsBadgeHistoryUrl() {
+            if (CHANNEL_PROMO_CHANNEL === 'ebay1') return '/ebay-badge-chart-data';
+            if (CHANNEL_PROMO_CHANNEL === 'ebay3') return '/ebay3-badge-chart-data';
+            if (CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2') {
+                return CHANNEL_PROMO_CHANNEL === 'tiktok2' ? '/tiktok-2-badge-chart-data' : '/tiktok-badge-chart-data';
+            }
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c') return '/shopify-b2c-badge-chart-data';
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress') return '/aliexpress/badge-chart-data';
+            if (CHANNEL_PROMO_CHANNEL === 'shein') return '/shein/badge-chart-data';
+            if (CHANNEL_PROMO_CHANNEL === 'faire') return '/faire/badge-chart-data';
+            if (CHANNEL_PROMO_CHANNEL === 'wayfair') return '/wayfair/badge-chart-data';
+            return '';
+        }
+        function chPromoZsOpenHist(band) {
+            const applyToday = function(rows) {
+                const list = (rows || []).slice();
+                const today = new Date().toISOString().slice(0, 10);
+                const todayShort = today.slice(5);
+                const rec = {
+                    date: today,
+                    label: todayShort,
+                    zero: chPromoZsLiveCounts.zero,
+                    sold: chPromoZsLiveCounts.sold,
+                };
+                const last = list[list.length - 1];
+                const isToday = last && (
+                    last.date === today
+                    || last.date === todayShort
+                    || last.label === todayShort
+                );
+                if (isToday) {
+                    last.zero = rec.zero;
+                    last.sold = rec.sold;
+                } else {
+                    list.push(rec);
+                }
+                return list;
+            };
+            const url = chPromoZsBadgeHistoryUrl();
+            const metric = band === 'sold' ? 'sold_count' : 'zero_sold_count';
+            if (!url) {
+                chPromoZsDrawHist(band, applyToday(chPromoZsLocalHistory()));
+                return;
+            }
+            $.ajax({
+                url: url,
+                method: 'GET',
+                data: { metric: metric, days: 30 },
+            }).done(function(res) {
+                const src = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                if (!src.length) {
+                    chPromoZsDrawHist(band, applyToday(chPromoZsLocalHistory()));
+                    return;
+                }
+                const rows = src.map(function(r) {
+                    const date = r.full_date || r.date || '';
+                    const rec = { date: date, label: r.date || (date ? String(date).slice(5) : ''), zero: 0, sold: 0 };
+                    rec[band] = Number(r.value) || 0;
+                    return rec;
+                }).filter(function(r) { return r.date; });
+                chPromoZsDrawHist(band, applyToday(rows));
+            }).fail(function() {
+                chPromoZsDrawHist(band, applyToday(chPromoZsLocalHistory()));
+            });
         }
         async function loadChPromoZeroSoldDilRules() {
             chPromoSyncZeroSoldDilHelp();
@@ -5391,7 +5699,7 @@
                 }
                 renderChPromoZeroSoldDilModalTable();
                 $('#ch-promo-zero-sold-dil-status').text(res && res.is_default
-                    ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Save Rule to keep this page’s table.'
+                    ? 'Using first-time defaults (Red 50 / Green 60 / Pink 70). Apply to save this page’s table.'
                     : 'Loaded saved 0 Sold rules for ' + (chPromoCfg.label || CHANNEL_PROMO_CHANNEL) + '.');
                 chPromoScheduleZeroSoldDilAutoApply();
             } catch (e) {
@@ -5519,7 +5827,7 @@
                 $pause.prop('disabled', true).html('<i class="fas fa-pause me-1"></i> Paused');
                 $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', false);
             } else {
-                $apply.prop('disabled', false).html('Apply');
+                $apply.prop('disabled', false).html('<i class="fas fa-save me-1"></i> Apply');
                 $pause.prop('disabled', true).html('<i class="fas fa-pause me-1"></i> Pause');
                 $('#ch-promo-zero-sold-dil-save-btn').prop('disabled', false);
             }
@@ -9456,6 +9764,20 @@
                     chPromoZeroSoldDilSetRunUi('idle');
                     chPromoZeroSoldDilSetProgress('', false);
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                });
+                $('#chPromoZeroSoldVsDilModal').off('shown.bs.modal.chpromozs').on('shown.bs.modal.chpromozs', function() {
+                    renderChPromoZeroSoldPie();
+                });
+                $('#chPromoZeroSoldVsDilModal').off('hidden.bs.modal.chpromozs').on('hidden.bs.modal.chpromozs', function() {
+                    $('#ch-promo-zs-hist-wrap').removeClass('is-open');
+                    if (chPromoZsPieChart) { chPromoZsPieChart.destroy(); chPromoZsPieChart = null; }
+                    if (chPromoZsHistChart) { chPromoZsHistChart.destroy(); chPromoZsHistChart = null; }
+                });
+                $(document).off('click.chpromozs', '.ch-zs-hist-dot').on('click.chpromozs', '.ch-zs-hist-dot', function() {
+                    chPromoZsOpenHist($(this).data('band') || 'zero');
+                });
+                $('#ch-promo-zs-hist-close').off('click.chpromozs').on('click.chpromozs', function() {
+                    $('#ch-promo-zs-hist-wrap').removeClass('is-open');
                 });
                 $('#ch-promo-zero-sold-dil-apply-btn').off('click.chpromo').on('click.chpromo', saveAndApplyChPromoZeroSoldDil);
                 $(document).off('input.chPromoZeroSoldDilAuto change.chPromoZeroSoldDilAuto', '#ch-promo-zero-sold-dil-tbody .ch-promo-zero-sold-dil-roi-input');

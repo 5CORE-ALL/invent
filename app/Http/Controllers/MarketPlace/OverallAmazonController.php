@@ -44,6 +44,7 @@ use App\Models\FbaTable;
 use App\Services\AmazonCvrCpnAutoPushService;
 use App\Services\AmazonDilPrmtAutoPushService;
 use App\Services\AmazonLivePriceFetcher;
+use App\Services\AmazonPushedPricePullService;
 use App\Services\FbaInventoryService;
 use App\Services\LmpSkuGroupService;
 
@@ -634,14 +635,13 @@ class OverallAmazonController extends Controller
             }
 
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
-            // L1 by landed (price + paid delivery; FREE does not add) — ignore ignored rows
-            $lowestLmp = AmazonSkuCompetitor::lowestFromCollection($allLmpEntries)
-                ?? $allLmpEntries->first();
+            // L1 by landed (price + paid delivery; FREE does not add) — ignored rows excluded
+            $lowestLmp = AmazonSkuCompetitor::lowestFromCollection($allLmpEntries);
 
             $row['lmp_price'] = $lowestLmp ? AmazonSkuCompetitor::landedPrice($lowestLmp) : null;
-            $row['lmp_link'] = $lowestLmp->product_link ?? null;
-            $row['lmp_asin'] = $lowestLmp->asin ?? null;
-            $row['lmp_title'] = $lowestLmp->product_title ?? null;
+            $row['lmp_link'] = $lowestLmp ? ($lowestLmp->product_link ?? null) : null;
+            $row['lmp_asin'] = $lowestLmp ? ($lowestLmp->asin ?? null) : null;
+            $row['lmp_title'] = $lowestLmp ? ($lowestLmp->product_title ?? null) : null;
             $row['lmp_delivery'] = $lowestLmp ? $this->normalizeDeliveryText($lowestLmp->delivery ?? null) : null;
             
             // Competitor sales data from JungleScout
@@ -651,8 +651,8 @@ class OverallAmazonController extends Controller
             $row['lmp_monthly_units'] = ($lowestLmp && isset($lowestLmp->monthly_units_sold))
                 ? intval($lowestLmp->monthly_units_sold)
                 : null;
-            $row['lmp_buy_box_owner'] = $lowestLmp->buy_box_owner ?? null;
-            $row['lmp_seller_type'] = $lowestLmp->seller_type_js ?? null;
+            $row['lmp_buy_box_owner'] = $lowestLmp ? ($lowestLmp->buy_box_owner ?? null) : null;
+            $row['lmp_seller_type'] = $lowestLmp ? ($lowestLmp->seller_type_js ?? null) : null;
             
             $row['lmp_entries'] = $allLmpEntries
                 ->map(function ($entry) {
@@ -678,6 +678,7 @@ class OverallAmazonController extends Controller
                             : null,
                         'buy_box_owner' => $entry->buy_box_owner ?? null,
                         'seller_type' => $entry->seller_type_js ?? null,
+                        'ignored' => (bool) ($entry->ignored ?? false),
                         'sales_data_updated_at' => $entry->sales_data_updated_at ?? null,
                     ];
                 })
@@ -1973,6 +1974,18 @@ class OverallAmazonController extends Controller
                 ]);
                 
                 $responseData['SPRICE_STATUS'] = 'pushed';
+            }
+
+            try {
+                app(AmazonPushedPricePullService::class)->scheduleAfterPush(
+                    $statusSku !== '' ? $statusSku : strtoupper(trim($skuForAmazon)),
+                    $skuForAmazon
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to schedule Amazon Price-column pull after push', [
+                    'sku' => $statusSku,
+                    'error' => $e->getMessage(),
+                ]);
             }
             
             return response()->json($responseData);
@@ -3347,6 +3360,227 @@ class OverallAmazonController extends Controller
         }
     }
 
+    /**
+     * Daily Red / Green / Pink CVR 30 counts for the CVR UP/DN pie history dots.
+     * Red [0, 7), Green [7, 13], Pink > 13. INV ≤ 0 skipped when inv is stored.
+     */
+    public function getCvrBandHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $out[$key] = [
+                'date' => $key,
+                'label' => $d->format('M d'),
+                'red' => 0,
+                'green' => 0,
+                'pink' => 0,
+            ];
+        }
+
+        AmazonSkuDailyData::query()
+            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+            ->select(['id', 'record_date', 'daily_data'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $record) {
+                    $dateKey = Carbon::parse($record->record_date)->toDateString();
+                    if (! isset($out[$dateKey])) {
+                        continue;
+                    }
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    if (isset($data['inv']) && (int) $data['inv'] <= 0) {
+                        continue;
+                    }
+                    $views = (int) ($data['views'] ?? $data['sessions_l30'] ?? $data['sess30'] ?? 0);
+                    $aL30 = (int) ($data['a_l30'] ?? $data['units_ordered_l30'] ?? 0);
+                    $cvr = $views > 0
+                        ? ($aL30 / $views) * 100
+                        : (float) ($data['cvr_percent'] ?? 0);
+                    if ($cvr > 13) {
+                        $out[$dateKey]['pink']++;
+                    } elseif ($cvr >= 7) {
+                        $out[$dateKey]['green']++;
+                    } else {
+                        $out[$dateKey]['red']++;
+                    }
+                }
+            });
+
+        return response()->json([
+            'success' => true,
+            'days' => $days,
+            'data' => array_values($out),
+        ]);
+    }
+
+    /**
+     * Daily 0 Sold (A L30 = 0) vs Sold (A L30 > 0) counts for the 0 Sold pie history dots.
+     * INV ≤ 0 skipped when inv is stored.
+     */
+    public function getZeroSoldHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $out[$key] = [
+                'date' => $key,
+                'label' => $d->format('M d'),
+                'zero' => 0,
+                'sold' => 0,
+            ];
+        }
+
+        AmazonSkuDailyData::query()
+            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+            ->select(['id', 'record_date', 'daily_data'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $record) {
+                    $dateKey = Carbon::parse($record->record_date)->toDateString();
+                    if (! isset($out[$dateKey])) {
+                        continue;
+                    }
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    if (isset($data['inv']) && (int) $data['inv'] <= 0) {
+                        continue;
+                    }
+                    $aL30 = (int) ($data['a_l30'] ?? $data['units_ordered_l30'] ?? 0);
+                    if ($aL30 > 0) {
+                        $out[$dateKey]['sold']++;
+                    } else {
+                        $out[$dateKey]['zero']++;
+                    }
+                }
+            });
+
+        return response()->json([
+            'success' => true,
+            'days' => $days,
+            'data' => array_values($out),
+        ]);
+    }
+
+    /**
+     * Daily CVR Disc slab counts (same keys as amazon-tabulator CVR Disc rules).
+     * INV ≤ 0 skipped when inv is stored.
+     */
+    public function getCvrDiscSlabHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 7) {
+            $days = 7;
+        }
+        if ($days > 90) {
+            $days = 90;
+        }
+
+        $keys = ['eq-0', '0.01-1', '1-1.5', '1.5-2', '2-3', '3-4', '4-5', '5-6', '6-6.5', '6.5-7', 'gt-7'];
+        $empty = array_fill_keys($keys, 0);
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $out[$key] = array_merge([
+                'date' => $key,
+                'label' => $d->format('M d'),
+            ], $empty);
+        }
+
+        AmazonSkuDailyData::query()
+            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+            ->select(['id', 'record_date', 'daily_data'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$out) {
+                foreach ($chunk as $record) {
+                    $dateKey = Carbon::parse($record->record_date)->toDateString();
+                    if (! isset($out[$dateKey])) {
+                        continue;
+                    }
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    if (isset($data['inv']) && (int) $data['inv'] <= 0) {
+                        continue;
+                    }
+                    $views = (int) ($data['views'] ?? $data['sessions_l30'] ?? $data['sess30'] ?? 0);
+                    $aL30 = (int) ($data['a_l30'] ?? $data['units_ordered_l30'] ?? 0);
+                    $cvr = $views > 0
+                        ? ($aL30 / $views) * 100
+                        : (float) ($data['cvr_percent'] ?? 0);
+                    $slab = $this->amazonCvrDiscSlabKey($cvr);
+                    $out[$dateKey][$slab] = ((int) ($out[$dateKey][$slab] ?? 0)) + 1;
+                }
+            });
+
+        return response()->json([
+            'success' => true,
+            'days' => $days,
+            'data' => array_values($out),
+        ]);
+    }
+
+    private function amazonCvrDiscSlabKey(float $cvr): string
+    {
+        if (! is_finite($cvr) || $cvr <= 0) {
+            return 'eq-0';
+        }
+        if ($cvr > 7) {
+            return 'gt-7';
+        }
+        if ($cvr >= 6.5) {
+            return '6.5-7';
+        }
+        if ($cvr >= 6) {
+            return '6-6.5';
+        }
+        if ($cvr >= 5) {
+            return '5-6';
+        }
+        if ($cvr >= 4) {
+            return '4-5';
+        }
+        if ($cvr >= 3) {
+            return '3-4';
+        }
+        if ($cvr >= 2) {
+            return '2-3';
+        }
+        if ($cvr >= 1.5) {
+            return '1.5-2';
+        }
+        if ($cvr >= 1) {
+            return '1-1.5';
+        }
+
+        return '0.01-1';
+    }
+
     public function getMetricsHistory(Request $request)
     {
         $days = (int) $request->input('days', 30); // Default L30; 0 = lifetime
@@ -3500,6 +3734,7 @@ class OverallAmazonController extends Controller
                 if ($views > 0 || $aL30 > 0 || $cvr > 0) {
                     $liveSprice = $price;
                     $dataView = AmazonDataView::where('sku', $skuNorm)->first();
+                    $prmtLive = $dataByDate[$todayKey]['prmt_pct'] ?? null;
                     if ($dataView) {
                         $dvVal = is_array($dataView->value)
                             ? $dataView->value
@@ -3507,6 +3742,9 @@ class OverallAmazonController extends Controller
                         $spLive = isset($dvVal['SPRICE']) ? round((float) $dvVal['SPRICE'], 2) : 0;
                         if ($spLive > 0) {
                             $liveSprice = $spLive;
+                        }
+                        if (isset($dvVal['PEF_PRMT_PCT']) && is_numeric($dvVal['PEF_PRMT_PCT'])) {
+                            $prmtLive = round((float) $dvVal['PEF_PRMT_PCT'], 2);
                         }
                     }
 
@@ -3524,7 +3762,7 @@ class OverallAmazonController extends Controller
                         'inv' => $dataByDate[$todayKey]['inv'] ?? null,
                         'inv_amz' => $dataByDate[$todayKey]['inv_amz'] ?? null,
                         'l30' => $dataByDate[$todayKey]['l30'] ?? null,
-                        'prmt_pct' => $dataByDate[$todayKey]['prmt_pct'] ?? null,
+                        'prmt_pct' => $prmtLive,
                         'cpn_pct' => $dataByDate[$todayKey]['cpn_pct'] ?? null,
                         'push_prc' => $dataByDate[$todayKey]['push_prc'] ?? null,
                     ];
@@ -3671,7 +3909,11 @@ class OverallAmazonController extends Controller
         $cvr = $views > 0
             ? round(($aL30 / $views) * 100, 2)
             : round((float) ($data['cvr_percent'] ?? 0), 2);
-        if ($views <= 0 && $aL30 <= 0 && $cvr <= 0) {
+        $hasPrmt = isset($data['prmt_pct']) && is_numeric($data['prmt_pct']);
+        $hasCpn = isset($data['cpn_pct']) && is_numeric($data['cpn_pct']);
+        $hasPush = isset($data['push_prc']) && is_numeric($data['push_prc']) && (float) $data['push_prc'] > 0;
+        $hasSprice = isset($data['sprice']) && is_numeric($data['sprice']) && (float) $data['sprice'] > 0;
+        if ($views <= 0 && $aL30 <= 0 && $cvr <= 0 && ! $hasPrmt && ! $hasCpn && ! $hasPush && ! $hasSprice) {
             return null;
         }
         $spriceHist = isset($data['sprice']) ? round((float) $data['sprice'], 2) : null;
@@ -4329,8 +4571,7 @@ class OverallAmazonController extends Controller
 
             // L1 = lowest non-ignored by landed (price + paid delivery; FREE does not add)
             $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
-            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored))
-                ?? $competitors->first();
+            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored));
             
             return response()->json([
                 'success' => true,
@@ -4406,13 +4647,16 @@ class OverallAmazonController extends Controller
             ]);
             
             $sku = trim($validated['sku']);
-            // Normalize marketplace to lowercase to match the getCompetitors filter
-            $marketplace = strtolower($validated['marketplace'] ?? 'amazon');
+            // Default + persist as US (Amz / amazon / us are the same LMP pool)
+            $marketplace = strtoupper(trim((string) ($validated['marketplace'] ?? 'US')));
+            if (in_array(strtolower($marketplace), ['amazon', 'amz', 'us', ''], true)) {
+                $marketplace = 'US';
+            }
             
-            // Check if this exact record already exists
+            // Check if this exact record already exists (treat Amz/US as the same)
             $existing = AmazonSkuCompetitor::where('sku', $sku)
                 ->where('asin', $validated['asin'])
-                ->where('marketplace', $marketplace)
+                ->forMarketplace('us')
                 ->first();
             
             if ($existing) {

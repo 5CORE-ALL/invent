@@ -4495,6 +4495,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-amazon-checklist-to-history', [OverallAmazonController::class, 'saveAmazonChecklistToHistory']);
     Route::get('/get-amazon-seo-history', [OverallAmazonController::class, 'getAmazonSeoHistory']);
     Route::get('/amazon-metrics-history', [OverallAmazonController::class, 'getMetricsHistory'])->name('amazon.metrics.history');
+    Route::get('/amazon-cvr-band-history', [OverallAmazonController::class, 'getCvrBandHistory'])->name('amazon.cvr-band.history');
+    Route::get('/amazon-zero-sold-history', [OverallAmazonController::class, 'getZeroSoldHistory'])->name('amazon.zero-sold.history');
+    Route::get('/amazon-cvr-disc-slab-history', [OverallAmazonController::class, 'getCvrDiscSlabHistory'])->name('amazon.cvr-disc-slab.history');
 
     // ebay 2
     Route::get('/listing-ebaytwo', [ListingEbayTwoController::class, 'listingEbayTwo'])->name('listing.ebayTwo');

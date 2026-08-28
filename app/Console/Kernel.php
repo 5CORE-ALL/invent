@@ -984,6 +984,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // After S PRC / Push Prc succeeds: wait 15 min, then write live listing price to Price.
+        // Runs 24/7 (not IST-windowed) so late-evening pushes still refresh.
+        $schedule->command('amazon:pull-pushed-prices')
+            ->everyMinute()
+            ->name('amazon-pull-pushed-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('walmart:fetch-listed-prices')
             ->cron('0 */3 * * *')
             ->name('walmart-fetch-listed-prices')
