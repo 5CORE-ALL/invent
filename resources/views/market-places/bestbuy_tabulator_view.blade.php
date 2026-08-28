@@ -71,6 +71,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -439,6 +440,7 @@
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
     /** Same as Temu / Macys / eBay: |INV − BB INV| ≤ this counts as MAP, not a mapping issue. */
     const BB_INV_MAP_TOLERANCE = 3;
@@ -1422,14 +1424,19 @@
                 `);
                 return;
             }
+            let l1Price = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors) : null;
+            if (l1Price === null && lowestPrice != null) l1Price = parseFloat(lowestPrice);
             let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
             html += `<thead class="table-dark"><tr>
-                <th>Image</th><th>Item ID</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th><th>Actions</th>
+                <th>Image</th><th>Item ID</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th>${LmpIgnore.header()}<th>Actions</th>
             </tr></thead><tbody>`;
             competitors.forEach(function(item) {
-                const isLowest = Math.abs(parseFloat(item.total_price) - parseFloat(lowestPrice)) < 0.01;
-                const rowClass = isLowest ? 'table-success' : '';
-                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
+                const ignored = !!item.ignored;
+                const total = parseFloat(item.total_price || 0);
+                const isLowest = !ignored && l1Price != null && Math.abs(total - l1Price) < 0.01;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>'
+                    : (ignored ? '<span class="badge bg-secondary ms-2">Ignored</span>' : '');
                 const productLink = item.link || `https://www.bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(item.item_id || '')}`;
                 const imageCell = item.image
                     ? `<img src="${escAttr(item.image)}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
@@ -1439,8 +1446,9 @@
                     <td><span class="text-primary" style="font-weight:600;font-size:11px;">${escAttr(item.item_id || 'N/A')}</span></td>
                     <td>$${parseFloat(item.price || 0).toFixed(2)}</td>
                     <td>${parseFloat(item.shipping_cost || 0) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
-                    <td><strong>$${parseFloat(item.total_price || 0).toFixed(2)}</strong> ${badge}</td>
+                    <td><strong>$${total.toFixed(2)}</strong> ${badge}</td>
                     <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(item.title || 'N/A')}</td>
+                    <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'bestbuy', currentLmpData.sku || '')}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
                             <a href="${escAttr(productLink)}" target="_blank" class="btn btn-sm btn-info" title="View on Best Buy"><i class="fa fa-external-link"></i></a>
@@ -1453,8 +1461,22 @@
                 </tr>`;
             });
             html += '</tbody></table></div>';
+            if (l1Price != null) {
+                html = '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(l1Price).toFixed(2) + '</strong></div>' + html;
+            }
             $('#lmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            marketplace: 'bestbuy',
+            sku: function() { return currentLmpData.sku || ''; },
+            onToggled: function(id, ignored) {
+                (currentLmpData.competitors || []).forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored;
+                });
+                currentLmpData.lowestPrice = LmpIgnore.l1(currentLmpData.competitors);
+                renderBestbuyCompetitorsList(currentLmpData.competitors, currentLmpData.lowestPrice);
+            }
+        });
 
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();

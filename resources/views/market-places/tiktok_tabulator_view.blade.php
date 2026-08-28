@@ -323,6 +323,7 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => $tiktokPromoChannel])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#ttLmpModal'])
     </style>
 @endsection
 
@@ -1042,6 +1043,7 @@
     <script>
         const TTP_CFG = @json($ttpCfg);
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => $tiktokPromoChannel])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
         const DEFAULT_TIKTOK_MARGIN_FACTOR = DEFAULT_TIKTOK_MARGIN_PERCENT / 100;
         // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
@@ -5881,6 +5883,10 @@
                     return;
                 }
 
+                window.ttCurrentLmpList = competitors;
+                let l1Price = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors) : null;
+                if (l1Price === null && lowestPrice != null) l1Price = parseFloat(lowestPrice);
+
                 let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle">';
                 html += `
                     <thead class="table-light">
@@ -5898,6 +5904,7 @@
                             <th style="width:80px;">Sold</th>
                             <th style="width:60px;">Region</th>
                             <th style="width:60px;">Link</th>
+                            ${LmpIgnore.header()}
                             <th style="width:90px;">Actions</th>
                         </tr>
                     </thead>
@@ -5908,12 +5915,15 @@
                     const basePrice = parseFloat(item.price) || 0;
                     const shipCost = parseFloat(item.shipping_cost) || 0;
                     const landedPrice = basePrice + shipCost;
-                    const isLowest = lowestPrice && Math.abs(landedPrice - parseFloat(lowestPrice)) < 0.01;
-                    const rowClass = isLowest ? 'table-success' : '';
+                    const ignored = !!item.ignored;
+                    const isLowest = !ignored && l1Price && Math.abs(landedPrice - l1Price) < 0.01;
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                     const priceFormatted = '$' + basePrice.toFixed(2);
-                    const priceBadge = isLowest
-                        ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
-                        : `<strong>${priceFormatted}</strong>`;
+                    const priceBadge = ignored
+                        ? `<strong>${priceFormatted}</strong> <span class="badge bg-secondary">Ignored</span>`
+                        : (isLowest
+                            ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
+                            : `<strong>${priceFormatted}</strong>`);
                     const shipHtml = shipCost === 0
                         ? '<span class="badge bg-info">FREE</span>'
                         : '$' + shipCost.toFixed(2);
@@ -5959,6 +5969,7 @@
                                     <i class="fa fa-external-link-alt"></i>
                                 </a>
                             </td>
+                            <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'tiktok', ttCurrentLmpSku || item.sku || '')}</td>
                             <td class="text-center text-nowrap">
                                 <button type="button" class="btn btn-sm btn-warning tt-edit-lmp-btn"
                                     data-id="${item.id}"
@@ -5986,6 +5997,21 @@
                 html += '</tbody></table></div>';
                 $('#ttLmpDataList').html(html);
             }
+            LmpIgnore.bind({
+                modal: '#ttLmpModal',
+                marketplace: 'tiktok',
+                sku: function() { return ttCurrentLmpSku || ''; },
+                onToggled: function(id, ignored) {
+                    (window.ttCurrentLmpList || []).forEach(function(c) {
+                        if (String(c.id) === String(id)) c.ignored = ignored;
+                    });
+                    const l1 = LmpIgnore.l1(window.ttCurrentLmpList || []);
+                    ttRenderCompetitorsList(window.ttCurrentLmpList || [], l1);
+                    if (typeof ttPatchLmpOnTable === 'function') {
+                        ttPatchLmpOnTable(l1, (window.ttCurrentLmpList || []).length);
+                    }
+                }
+            });
 
             // "$price (N)" / "N/A" trigger inside the LMP column
             $(document).on('click', '.view-tt-lmp-competitors', function(e) {

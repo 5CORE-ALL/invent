@@ -69,6 +69,7 @@
         }
         #amz-tt-comp-list .amz-tt-comp-item .amz-tt-comp-meta { flex: 1; min-width: 0; }
         #amz-tt-comp-list .amz-tt-comp-item .amz-tt-comp-item-price { font-weight: 700; color: #198754; white-space: nowrap; }
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#amzTtCompetitorsModal'])
         .amz-tt-approve-btn, .amz-tt-push-btn { font-size: 11px; padding: 2px 8px; }
         #amz-tt-prompt-badge {
             cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
@@ -189,7 +190,10 @@
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let amzTtTable = null;
+        let amzTtCurrentCompList = [];
+        let amzTtCurrentCompSku = '';
         const AMZ_TT_TITLE_SAVE_URL = @json(route('title.master.save'));
         const AMZ_TT_AI_ANALYZE_URL = @json(route('amz.titles.ai.analyze'));
         const AMZ_TT_NEG_SUGGEST_URL = @json(route('amz.titles.negatives.suggest'));
@@ -956,7 +960,9 @@
                         return;
                     }
                     const list = resp.competitors || [];
-                    const lowest = resp.lowest_price;
+                    amzTtCurrentCompList = list;
+                    amzTtCurrentCompSku = sku;
+                    const lowest = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(list, 'price') : resp.lowest_price;
                     $('#amz-tt-comp-summary').text(
                         list.length + ' competitor(s)'
                         + (lowest != null ? (' · LMP $' + parseFloat(lowest).toFixed(2)) : '')
@@ -995,7 +1001,9 @@
                         if (c.reviews != null) html += '(' + Number(c.reviews).toLocaleString() + ' reviews)';
                         if (ignored) html += ' · <span class="badge bg-secondary">ignored</span>';
                         html += '</div></div>';
-                        html += '<div class="amz-tt-comp-item-price">' + price + '</div>';
+                        html += '<div class="amz-tt-comp-item-price">' + price
+                            + '<div class="mt-1">' + LmpIgnore.checkbox(c, 'amazon', sku) + ' <small class="text-muted">Ignore</small></div>'
+                            + '</div>';
                         html += '</div>';
                     });
                     $('#amz-tt-comp-list').html(html);
@@ -1019,6 +1027,12 @@
                     $('#amz-tt-comp-list').html('<div class="text-danger py-3">' + amzTtEsc(msg) + '</div>');
                 });
         }
+        LmpIgnore.bind({
+            modal: '#amzTtCompetitorsModal',
+            marketplace: 'amazon',
+            sku: function() { return amzTtCurrentCompSku || (amzTtCompContext && amzTtCompContext.sku) || ''; },
+            onToggled: function() { amzTtLoadCompetitors(); }
+        });
 
         /** SKU row only — parent wand removed. */
         function amzTtResolveAnalysisTarget(rowData) {

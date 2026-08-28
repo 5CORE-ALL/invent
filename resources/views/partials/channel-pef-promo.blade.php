@@ -18,6 +18,9 @@
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'shopify_b2c'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
+    $channelPromoTakehome = ($channelPromoPart === 'script' || $channelPromoPart === 'all')
+        ? \App\Models\MarketplacePercentage::takeHomeForPromoChannel($channelPromoChannel)
+        : 1.0;
 @endphp
 
 @if($channelPromoPart === 'css' || $channelPromoPart === 'all')
@@ -28,6 +31,9 @@
             color: #64748b;
         }
         .ch-pef-promo-cell.has-val { color: #0f172a; }
+        .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"] {
+            cursor: default !important;
+        }
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="b2b_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="zero_sold_prmt"],
@@ -605,7 +611,7 @@
             <div class="ch-promo-reload-push-cluster" id="ch-promo-reload-push-cluster">
                 <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
                     id="ch-promo-reload-push-wrap"
-                    title="When ON, changing a price auto-pushes only those edited SKUs. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
+                    title="When ON, changing a price auto-pushes only those edited SKUs, then pulls live Price for those SKUs only. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
                     <span class="ch-promo-reload-push-text">
                         Push on reload
                         <span class="ch-promo-reload-push-state" id="ch-promo-reload-push-label">{{ $channelPromoPageReloadPushEnabled ? 'On' : 'Off' }}</span>
@@ -1068,6 +1074,7 @@
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
 
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
+        const CHANNEL_PROMO_TAKEHOME = {{ (float) ($channelPromoTakehome ?? 1) }};
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_HIDE_PUSH_CPN = @json($channelPromoHidePushCpn);
@@ -3124,11 +3131,24 @@
         function chPromoCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         }
+        function chPromoLmp(d) {
+            if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+                const n = Number(SpriceLmpCap.lmpOf(d));
+                return isFinite(n) && n > 0 ? n : 0;
+            }
+            if (!d) return 0;
+            const fields = ['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1'];
+            for (let i = 0; i < fields.length; i++) {
+                const n = Number(d[fields[i]]);
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
         function chPromoCapSpriceToLmp(d, sprice, extra) {
             extra = extra || {};
             if (extra.skip_lmp_cap) return chPromoRound2(sprice);
             if (window.SpriceLmpCap) return SpriceLmpCap.prepare(d, sprice);
-            const lmp = parseFloat(d && (d.lmp_price || d.lmp || d.LMP)) || 0;
+            const lmp = chPromoLmp(d);
             let s = chPromoRound2(sprice);
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
             return s;
@@ -3262,6 +3282,13 @@
                 row.update(patch);
                 if (st === 'processing') chPromoRefreshPushCell(row, field, btn, statusKey, title);
             });
+        }
+        function chPromoEbayStockQty(d) {
+            const raw = d && (d['eBay Stock'] != null && d['eBay Stock'] !== ''
+                ? d['eBay Stock']
+                : d['E Stock']);
+            const n = Number(raw);
+            return isFinite(n) && n > 0 ? n : 0;
         }
         function chPromoInv(d) {
             return Number(d[chPromoCfg.invField || 'INV']) || Number(d.INV) || Number(d.inventory) || Number(d.inv) || 0;
@@ -4235,8 +4262,36 @@
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
             raw = Number(d && d.percentage);
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
-            if (typeof EBAY2_TAKEHOME !== 'undefined') {
-                const t = Number(EBAY2_TAKEHOME);
+            if (typeof getRowMarginFactor === 'function') {
+                try {
+                    raw = Number(getRowMarginFactor(d));
+                    if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+                } catch (e) { /* next */ }
+            }
+            if (typeof getMacysMargin === 'function') {
+                try {
+                    raw = Number(getMacysMargin(d));
+                    if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+                } catch (e) { /* next */ }
+            }
+            if (typeof reverbTakeRate === 'function') {
+                try {
+                    raw = Number(reverbTakeRate(d));
+                    if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+                } catch (e) { /* next */ }
+            }
+            const globals = [];
+            if (typeof CHANNEL_PROMO_TAKEHOME !== 'undefined') globals.push(CHANNEL_PROMO_TAKEHOME);
+            if (typeof EBAY_TAKEHOME !== 'undefined') globals.push(EBAY_TAKEHOME);
+            if (typeof EBAY2_TAKEHOME !== 'undefined') globals.push(EBAY2_TAKEHOME);
+            if (typeof EBAY3_TAKEHOME !== 'undefined') globals.push(EBAY3_TAKEHOME);
+            if (typeof EBAY2OP_TAKEHOME !== 'undefined') globals.push(EBAY2OP_TAKEHOME);
+            if (typeof MARKETPLACE_PERCENTAGE !== 'undefined') globals.push(MARKETPLACE_PERCENTAGE);
+            if (typeof MACYS_DEFAULT_MARGIN !== 'undefined') globals.push(MACYS_DEFAULT_MARGIN);
+            if (typeof TEMU_MARGIN !== 'undefined') globals.push(TEMU_MARGIN);
+            if (typeof DEFAULT_TIKTOK_MARGIN_FACTOR !== 'undefined') globals.push(DEFAULT_TIKTOK_MARGIN_FACTOR);
+            for (let i = 0; i < globals.length; i++) {
+                const t = Number(globals[i]);
                 if (isFinite(t) && t > 0) return t > 1 ? (t / 100) : t;
             }
             return 1;
@@ -4261,7 +4316,6 @@
         function chPromoZeroSoldRuleSprice(d) {
             if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) return 0;
             if (!d || typeof chPromoIsZeroSoldRow !== 'function' || !chPromoIsZeroSoldRow(d)) return 0;
-            if (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d)) return 0;
             if (!(chPromoLp(d) > 0)) return 0;
             const roi = typeof chPromoZeroSoldGroiForRow === 'function'
                 ? chPromoZeroSoldGroiForRow(d)
@@ -4462,9 +4516,13 @@
         }
         function chPromoIsZeroSoldRow(d) {
             if (!d || d.is_parent_summary || !chPromoIsChildRow(d) || d.is_parent) return false;
-            if (!(chPromoInv(d) > 0)) return false;
-            if (chPromoIsEbayChannel()
-                || CHANNEL_PROMO_CHANNEL === 'aliexpress'
+            const inv = chPromoInv(d);
+            const ebayStock = chPromoIsEbayChannel() ? chPromoEbayStockQty(d) : 0;
+            if (!(inv > 0) && !(ebayStock > 0)) return false;
+            if (chPromoIsEbayChannel()) {
+                return !(chPromoEbaySaleQty(d) > 0);
+            }
+            if (CHANNEL_PROMO_CHANNEL === 'aliexpress'
                 || CHANNEL_PROMO_CHANNEL === 'shein'
                 || (chPromoCfg && chPromoCfg.soldField)) {
                 return !chPromoHasSaleQty(d);
@@ -4522,10 +4580,17 @@
             const updates = jobs.map(function(j) { return { sku: j.sku, sprice: j.price }; });
             try {
                 if (chPromoCfg.saveSpriceBatchUrl) {
-                    await saveChannelSpriceBatch(updates, { skip_push: true });
+                    await saveChannelSpriceBatch(updates, {
+                        skip_push: true,
+                        queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                    });
                 } else {
                     await chPromoMapLimit(jobs, 8, async function(job) {
-                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
+                            skip_push: true,
+                            queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                            row: job.row,
+                        }));
                     });
                 }
             } catch (e) {
@@ -5156,6 +5221,20 @@
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
                 data: data,
+            }).done(function() {
+                const shouldQueue = extra.queue_push === true
+                    || (extra.queue_push !== false
+                        && typeof chPromoPageReloadPushAllowed === 'function'
+                        && chPromoPageReloadPushAllowed());
+                if (!shouldQueue) return;
+                updates.forEach(function(u) {
+                    if (!u || !u.sku) return;
+                    if (chPromoIsTemuPromoChannel() && typeof enqueueTemuListingPushAfterSave === 'function') {
+                        enqueueTemuListingPushAfterSave(u.sku, u.sprice, null);
+                    } else if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                        enqueueChannelPushSpriceAfterSave(u.sku, u.sprice, null);
+                    }
+                });
             });
         }
         function collectChPromoGtSoldTargets() {
@@ -5220,10 +5299,17 @@
             const updates = jobs.map(function(j) { return { sku: j.sku, sprice: j.price }; });
             try {
                 if (chPromoCfg.saveSpriceBatchUrl) {
-                    await saveChannelSpriceBatch(updates, { skip_push: true });
+                    await saveChannelSpriceBatch(updates, {
+                        skip_push: true,
+                        queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                    });
                 } else {
                     await chPromoMapLimit(jobs, 8, async function(job) {
-                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
+                            skip_push: true,
+                            queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                            row: job.row,
+                        }));
                     });
                 }
             } catch (e) {
@@ -5462,6 +5548,9 @@
             if (!$formula.length) return;
             if (chPromoIsTemuPromoChannel()) {
                 $formula.text('SGROI = (S R Price × 0.95 − Temu Ship − LP) / LP; Apply back-solves S PRC so SGROI = Target');
+            } else if (chPromoIsEbayChannel()) {
+                const m = chPromoTakehomeMargin({});
+                $formula.text('S PRC = (LP × (1 + GROI%/100) + Ship) / ' + (m > 0 ? m.toFixed(2) : 'margin'));
             }
         }
         const CH_ZS_BANDS = [
@@ -5814,7 +5903,6 @@
             const ready = targets.filter(function(t) {
                 const d = (t.d || (t.row && t.row.getData())) || {};
                 if (!chPromoIsZeroSoldRow(d)
-                    || (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d))
                     || !(chPromoLp(d) > 0)
                     || (CHANNEL_PROMO_CHANNEL === 'aliexpress' && !(chPromoStdBase(d) > 0))) {
                     return false;
@@ -5928,7 +6016,6 @@
         }
         function chPromoZeroSoldDilEligible(d) {
             if (!d || !chPromoIsZeroSoldRow(d)) return false;
-            if (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d)) return false;
             if (!(chPromoLp(d) > 0)) return false;
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && !(chPromoStdBase(d) > 0)) return false;
             return true;
@@ -6044,8 +6131,7 @@
                 for (let i = 0; i < targets.length; i++) {
                     const item = targets[i];
                     const d = item.row.getData();
-                    if (!chPromoIsZeroSoldRow(d)
-                        || (typeof chPromoHasSaleQty === 'function' && chPromoHasSaleQty(d))) {
+                    if (!chPromoIsZeroSoldRow(d)) {
                         skipped++;
                         continue;
                     }
@@ -6973,7 +7059,7 @@
 
         function chPromoLmpDiffPct(d) {
             const price = chPromoPrice(d);
-            const lmp = Number(d.lmp_price) || 0;
+            const lmp = chPromoLmp(d);
             if (!(price > 0) || !(lmp > 0) || !(price > lmp)) return null;
             return chPromoRound2(((price - lmp) / price) * 100);
         }
@@ -7006,7 +7092,7 @@
         function applyChPromoApprDiscount(row) {
             const d = row.getData();
             const pct = chPromoLmpDiffPct(d);
-            const lmp = Number(d.lmp_price);
+            const lmp = chPromoLmp(d);
             if (!(pct > 0) || !(lmp > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 chPromoToast('error', 'Appr needs Price > LMP');
@@ -7026,13 +7112,14 @@
                 if (typeof table !== 'undefined' && table) table.redraw(true);
                 return false;
             }
-            const newPrice = applyChPromoToSpriceBase(base, { type: 'percent', value: pct });
+            let newPrice = applyChPromoToSpriceBase(base, { type: 'percent', value: pct });
             if (!(newPrice > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 chPromoToast('error', 'No S PRC/Price to discount');
                 if (typeof table !== 'undefined' && table) table.redraw(true);
                 return false;
             }
+            newPrice = chPromoCapSpriceToLmp(d, newPrice);
             row.update(Object.assign({
                 appr: true,
                 _appr_lmp: chPromoRound2(lmp),
@@ -7177,6 +7264,8 @@
                 item.row.update(patch);
                 if (chPromoIsTemuPromoChannel()) {
                     newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
+                } else {
+                    newPrice = chPromoCapSpriceToLmp(item.row.getData(), newPrice);
                 }
                 item.row.update(Object.assign({}, chPromoSpricePatch(newPrice), patch));
                 await saveChannelSpriceAndPromo(item.row, newPrice, true, extra);
@@ -8294,12 +8383,9 @@
                 persist: true,
                 silent: true,
                 force: clearOnce,
-                skip_push: !chPromoPageReloadPushAllowed(),
+                skip_push: true,
             });
             if (clearOnce) chPromoMarkStoredClearedOnce();
-            if (chPromoPageReloadPushAllowed()) {
-                chPromoQueueReloadSpricePush({ delay: 700 });
-            }
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -8432,7 +8518,7 @@
                     return;
                 }
                 const sku = chPromoSku(item.d);
-                const lmp = Number(rowData.lmp_price) || 0;
+                const lmp = chPromoLmp(rowData);
                 if (lmp > 0 && fill > lmp) aboveLmp++;
                 saveChannelSprice(sku, fill, true)
                     .done(function(saveRes) {
@@ -8894,15 +8980,12 @@
                         };
                         return valOf(aRow) - valOf(bRow);
                     },
-                    editable: function(cell) {
-                        return chPromoIsChildRow(cell.getRow().getData());
-                    },
-                    editor: 'input',
-                    headerTooltip: '% less on S PRC. Shared Dil vs PRMT: 0.01–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
+                    editable: false,
+                    headerTooltip: 'Read-only. % less on S PRC. Shared Dil vs PRMT: 0.01–3% → 12 … 21–24% → 5, 24–25% → 1. INV=0 → 0.'
                         + (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                             ? ' If discounted S PRC is below Amz, S PRC is raised to A Price (Amz label).'
                             : ' Same table on every marketplace page.')
-                        + ' Dot = PDT daily history.',
+                        + ' Click the dot for PDT daily history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (d.is_parent_summary) return '';
@@ -8946,9 +9029,6 @@
                             openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'prmt');
                         }
                         return false;
-                    },
-                    cellEdited: function(cell) {
-                        applyChPromoFromCell(cell, 'prmt');
                     },
                 },
                 ...(CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES && !chPromoZeroSoldUsesAmazonPrice() ? [{
@@ -9269,17 +9349,10 @@
                 const prev = chPromoPageReloadPushAllowed();
                 saveChPromoPageReloadPush(on)
                     .done(function() {
-                        if (on && chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                            scanAndQueueTemuListingPush(chPromoSafeTable());
-                        } else if (on) {
-                            chPromoQueueReloadSpricePush();
-                        }
                         chPromoToast(
                             'success',
                             on
-                                ? (chPromoIsTemuPromoChannel()
-                                    ? 'Auto-push on — Temu listing price updates through the Temu API.'
-                                    : 'Auto-push on — SKUs whose S PRC differs from Price are queued now.')
+                                ? 'Auto-push on — changing a price pushes only that SKU, then pulls its live Price.'
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
                     })

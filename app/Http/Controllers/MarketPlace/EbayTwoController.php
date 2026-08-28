@@ -160,7 +160,9 @@ class EbayTwoController extends Controller
 
     public function ebay2opTabulatorView(Request $request)
     {
-        return view("market-places.ebay2op_tabulator_view");
+        return view("market-places.ebay2op_tabulator_view", [
+            'ebayTakeHome' => MarketplacePercentage::takeHomeDecimal('EbayTwo'),
+        ]);
     }
 
     public function getEbay2TotsalSaleDataSave(Request $request)

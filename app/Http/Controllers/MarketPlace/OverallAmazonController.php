@@ -2109,6 +2109,27 @@ class OverallAmazonController extends Controller
         ]));
     }
 
+    /**
+     * After Push Prc, pull live Amazon Price for only the SKUs that were pushed.
+     */
+    public function pullPushedPricesNow(Request $request): JsonResponse
+    {
+        $skus = $request->input('skus', []);
+        if (! is_array($skus) || $skus === []) {
+            return response()->json(['success' => false, 'message' => 'skus required'], 422);
+        }
+
+        $results = app(AmazonPushedPricePullService::class)->pullSkusNow($skus);
+        $ok = count(array_filter($results, static fn ($r) => ! empty($r['success'])));
+
+        return response()->json([
+            'success' => $ok > 0,
+            'ok_count' => $ok,
+            'fail_count' => count($results) - $ok,
+            'results' => $results,
+        ]);
+    }
+
     private function spawnAmazonPushPrcWorker(): bool
     {
         try {
@@ -4565,7 +4586,7 @@ class OverallAmazonController extends Controller
 
             // L1 = lowest non-ignored by landed (price + paid delivery; FREE does not add)
             $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
-            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored));
+            $lowest = $competitors->first(fn ($comp) => ! AmazonSkuCompetitor::isIgnored($comp));
             
             return response()->json([
                 'success' => true,

@@ -121,6 +121,90 @@ class AmazonPushedPricePullService
     }
 
     /**
+     * Pull live listing Price now for specific grid SKUs (after a successful push).
+     *
+     * @param  list<string>  $skus
+     * @return list<array{success:bool,sku:string,price:?float,message:string}>
+     */
+    public function pullSkusNow(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(static function ($s) {
+            return strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $s)));
+        }, $skus), static fn ($s) => $s !== '')));
+        $skus = array_slice($skus, 0, 50);
+        $out = [];
+        if ($skus === []) {
+            return $out;
+        }
+
+        $api = app(AmazonSpApiService::class);
+        foreach ($skus as $gridSku) {
+            $row = AmazonDataView::query()
+                ->where(function ($q) use ($gridSku) {
+                    $q->where('sku', $gridSku)
+                        ->orWhereRaw('UPPER(TRIM(REPLACE(sku, UNHEX(\'C2A0\'), \' \'))) = ?', [$gridSku]);
+                })
+                ->first();
+            $value = $row
+                ? (is_array($row->value) ? $row->value : (json_decode($row->value ?? '{}', true) ?? []))
+                : [];
+            if (! is_array($value)) {
+                $value = [];
+            }
+            $sellerSku = trim((string) ($value['PRICE_PULL_SELLER_SKU'] ?? ''));
+            if ($sellerSku === '') {
+                $sellerSku = (string) (AmazonDatasheet::resolveSellerMskuByProductKey($gridSku) ?: $gridSku);
+            }
+
+            try {
+                $details = $api->getListingsItemFullDetails($sellerSku);
+                $price = $this->currentListingPrice($details);
+                if ($price === null || ! $this->writeDatasheetPrice($gridSku, $sellerSku, $price)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $gridSku,
+                        'price' => null,
+                        'message' => 'Live Amazon price not found',
+                    ];
+                    $this->pause(400);
+
+                    continue;
+                }
+
+                if ($row) {
+                    $value['PRICE_PULL_STATUS'] = 'pulled';
+                    $value['PRICE_PULLED_AT'] = now()->toDateTimeString();
+                    $value['PRICE_PULLED_VALUE'] = $price;
+                    $row->value = $value;
+                    $row->save();
+                }
+
+                $out[] = [
+                    'success' => true,
+                    'sku' => $gridSku,
+                    'price' => $price,
+                    'message' => 'Pulled live price $'.number_format($price, 2),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Amazon pushed-price pull-now failed', [
+                    'sku' => $gridSku,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $gridSku,
+                    'price' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+
+            $this->pause(400);
+        }
+
+        return $out;
+    }
+
+    /**
      * @return \Illuminate\Support\Collection<int, AmazonDataView>
      */
     private function dueRows(int $limit)

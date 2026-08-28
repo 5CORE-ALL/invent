@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class NeweggSkuCompetitor extends Model
 {
@@ -18,11 +19,13 @@ class NeweggSkuCompetitor extends Model
         'seller_name',
         'price',
         'shipping_cost',
+        'ignored',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
+        'ignored' => 'boolean',
     ];
 
     public static function normalizeSkuKey(?string $sku): string
@@ -57,7 +60,10 @@ class NeweggSkuCompetitor extends Model
 
     public static function lowestFromCollection($items)
     {
-        return collect($items)->sortBy(fn ($item) => self::landedPrice($item))->first();
+        return collect($items)
+            ->filter(fn ($item) => empty($item->ignored))
+            ->sortBy(fn ($item) => self::landedPrice($item))
+            ->first();
     }
 
     /**
@@ -80,11 +86,16 @@ class NeweggSkuCompetitor extends Model
     {
         $normalizedSku = self::normalizeSkuKey($sku);
 
-        return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
+        $query = self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
             ->where('marketplace', $marketplace)
-            ->wherePositivePrice()
-            ->orderByLandedPrice('asc')
-            ->first();
+            ->wherePositivePrice();
+        if (Schema::hasColumn((new static)->getTable(), 'ignored')) {
+            $query->where(function ($q) {
+                $q->where('ignored', false)->orWhereNull('ignored');
+            });
+        }
+
+        return $query->orderByLandedPrice('asc')->first();
     }
 
     public static function getCompetitorsForSku($sku, string $marketplace = 'newegg')

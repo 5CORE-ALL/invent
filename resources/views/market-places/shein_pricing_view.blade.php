@@ -161,6 +161,7 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shein'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#sheinLmpModal'])
     </style>
 @endsection
 
@@ -544,6 +545,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shein'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
         let summaryDataCache = [];
@@ -2764,13 +2766,17 @@
             if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
+        let sheinCurrentLmpEntries = [];
         function renderSheinLmpList(entries) {
             entries = Array.isArray(entries) ? entries.filter(e => (parseFloat(e.price) || 0) > 0) : [];
+            sheinCurrentLmpEntries = entries;
             if (entries.length === 0) {
                 $('#sheinLmpDataList').html('<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors yet. Add your first one above!</div>');
                 return;
             }
-            const lowest = Math.min.apply(null, entries.map(e => parseFloat(e.price) || Infinity));
+            const lowest = (window.LmpIgnore && LmpIgnore.l1)
+                ? LmpIgnore.l1(entries, 'price')
+                : Math.min.apply(null, entries.filter(e => !e.ignored).map(e => parseFloat(e.price) || Infinity));
 
             let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle mb-0">';
             html += '<thead class="table-light"><tr>' +
@@ -2778,19 +2784,22 @@
                 '<th style="width:120px;">Price</th>' +
                 '<th>Product Link</th>' +
                 '<th style="width:60px;">Open</th>' +
+                LmpIgnore.header() +
                 '<th style="width:100px;">Actions</th>' +
                 '</tr></thead><tbody>';
 
             entries.forEach(function(e, i) {
                 const price = parseFloat(e.price) || 0;
-                const isLow = Math.abs(price - lowest) < 0.01;
-                const rowClass = isLow ? 'table-success' : '';
+                const ignored = !!e.ignored;
+                const isLow = !ignored && lowest != null && Math.abs(price - lowest) < 0.01;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLow ? 'table-success' : '');
                 const priceBadge = isLow
                     ? '<span class="badge bg-success">' + money(price) + ' <i class="fa fa-trophy"></i></span>'
-                    : '<strong>' + money(price) + '</strong>';
+                    : (ignored ? '<strong>' + money(price) + '</strong> <span class="badge bg-secondary ms-1">Ignored</span>' : '<strong>' + money(price) + '</strong>');
                 const link = e.link || '';
                 const sourceSku = String(e.source_sku || sheinLmpCurrentSku || '').replace(/"/g, '&quot;');
                 const slot = e.slot || (i + 1);
+                const item = Object.assign({}, e, { id: 'shein-' + slot, ignored: ignored });
                 const linkText = link
                     ? '<a href="' + String(link).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer" style="font-size:11px;word-break:break-all;">' + String(link).substring(0, 90) + (String(link).length > 90 ? '…' : '') + '</a>'
                     : '<span style="color:#999;">—</span>';
@@ -2804,12 +2813,37 @@
                     '<td>' + priceBadge + '</td>' +
                     '<td>' + linkText + '</td>' +
                     '<td class="text-center">' + openBtn + '</td>' +
+                    '<td class="text-center align-middle">' + LmpIgnore.checkbox(item, 'shein', sourceSku) + '</td>' +
                     '<td class="text-center text-nowrap">' + editBtn + ' ' + delBtn + '</td>' +
                     '</tr>';
             });
             html += '</tbody></table></div>';
+            if (lowest != null && isFinite(lowest)) {
+                html = '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(lowest).toFixed(2) + '</strong></div>' + html;
+            }
             $('#sheinLmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            modal: '#sheinLmpModal',
+            marketplace: 'shein',
+            sku: function() { return sheinLmpCurrentSku; },
+            onToggled: function(id, ignored, $cb) {
+                const src = $cb ? String($cb.attr('data-sku') || $cb.data('sku') || sheinLmpCurrentSku || '') : '';
+                sheinCurrentLmpEntries.forEach(function(e) {
+                    const eSku = String(e.source_sku || sheinLmpCurrentSku || '');
+                    if ('shein-' + String(e.slot) === String(id) && (!src || eSku === src)) e.ignored = ignored;
+                });
+                renderSheinLmpList(sheinCurrentLmpEntries);
+                if (table && sheinLmpCurrentSku) {
+                    const match = table.getData().find(r => String(r.sku) === String(sheinLmpCurrentSku) && !r.is_parent);
+                    if (match) {
+                        const l1 = LmpIgnore.l1(sheinCurrentLmpEntries, 'price');
+                        const row = table.getRows().find(r => String(r.getData().sku) === String(sheinLmpCurrentSku) && !r.getData().is_parent);
+                        if (row) row.update({ lmp_entries: sheinCurrentLmpEntries, lmp_price: l1 });
+                    }
+                }
+            }
+        });
 
         // After LMP add/delete, refresh the grid so linked-SKU merges stay correct.
         function sheinRefreshLmpAfterChange(sku) {

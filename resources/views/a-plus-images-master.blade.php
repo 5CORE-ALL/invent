@@ -147,6 +147,7 @@
             0% { transform: translate(-50%, -50%) rotate(0deg); }
             100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#competitorsModal'])
     </style>
 @endsection
 
@@ -628,6 +629,8 @@
 
 @section('script-bottom')
 <script>
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+        let aplusCurrentLmp = { sku: '', competitors: [] };
     const COLUMN_VIS_KEY = "aplus_tabulator_column_visibility";
     const CSRF_TOKEN = '{{ csrf_token() }}';
     let table = null;
@@ -2138,6 +2141,7 @@
         // Set SKU in modal and form
         $('#competitorsSku').text(sku);
         $('#compSku').val(sku);
+        aplusCurrentLmp.sku = sku;
         
         // Show loading
         competitorsList.html(`
@@ -2210,19 +2214,23 @@
                     <th style="width: 70px;">Rating</th>
                     <th style="width: 70px;">Reviews</th>
                     <th style="width: 60px;">Link</th>
+                    ${LmpIgnore.header()}
                     <th style="width: 80px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
         `;
         
+        aplusCurrentLmp.competitors = competitors;
+        const l1 = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors, 'price') : parseFloat(lowestPrice);
         competitors.forEach((item, index) => {
-            const isLowest = (parseFloat(item.price) === parseFloat(lowestPrice));
-            const rowClass = isLowest ? 'table-success' : '';
+            const ignored = !!item.ignored;
+            const isLowest = !ignored && l1 != null && Math.abs(parseFloat(item.price) - l1) < 0.01;
+            const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
             const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
             const priceBadge = isLowest ? 
                 `<span class="badge bg-success">${priceFormatted} <i class="fas fa-trophy"></i></span>` : 
-                `<strong>${priceFormatted}</strong>`;
+                (ignored ? `<strong>${priceFormatted}</strong> <span class="badge bg-secondary">Ignored</span>` : `<strong>${priceFormatted}</strong>`);
             
             const productLink = item.link || item.product_link || '#';
             const productTitle = item.title || item.product_title || 'N/A';
@@ -2257,6 +2265,7 @@
                             <i class="fas fa-external-link-alt"></i>
                         </a>
                     </td>
+                    <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'amazon', aplusCurrentLmp.sku || '')}</td>
                     <td style="text-align: center;">
                         <button class="btn btn-sm btn-outline-danger" onclick="deleteCompetitor('${escapeHtml(item.id || '')}', '${escapeHtml(item.sku || '')}')">
                             <i class="fas fa-trash"></i>
@@ -2267,8 +2276,22 @@
         });
         
         html += '</tbody></table></div>';
+        if (l1 != null && isFinite(l1)) {
+            html = '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(l1).toFixed(2) + '</strong></div>' + html;
+        }
         $('#competitorsList').html(html);
     }
+    LmpIgnore.bind({
+        modal: '#competitorsModal',
+        marketplace: 'amazon',
+        sku: function() { return aplusCurrentLmp.sku; },
+        onToggled: function(id, ignored) {
+            aplusCurrentLmp.competitors.forEach(function(c) {
+                if (String(c.id) === String(id)) c.ignored = ignored;
+            });
+            renderCompetitorsList(aplusCurrentLmp.competitors, LmpIgnore.l1(aplusCurrentLmp.competitors, 'price'));
+        }
+    });
 
     // Add Competitor Form Submit
     $('#addCompetitorForm').on('submit', async function(e) {

@@ -4476,6 +4476,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-push-prc', [OverallAmazonController::class, 'queueAmazonPushPrc'])->name('amazon.push-prc.queue');
     Route::get('/amazon-push-prc-status', [OverallAmazonController::class, 'amazonPushPrcJobStatus'])->name('amazon.push-prc.status');
     Route::post('/amazon-push-prc-cancel', [OverallAmazonController::class, 'cancelAmazonPushPrc'])->name('amazon.push-prc.cancel');
+    Route::post('/amazon-pull-pushed-prices', [OverallAmazonController::class, 'pullPushedPricesNow'])->name('amazon.pull-pushed-prices');
     Route::post('/amazon-dil-prmt-push', [OverallAmazonController::class, 'pushAmazonDilPrmt'])->name('amazon.dil-prmt.push');
     Route::post('/amazon-cvr-cpn-push', [OverallAmazonController::class, 'pushAmazonCvrCpn'])->name('amazon.cvr-cpn.push');
     Route::get('/amazon-cvr-disc', [OverallAmazonController::class, 'amazonCvrDiscRules'])->name('amazon.cvr-disc');
@@ -5503,6 +5504,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-push-sprice/{channel}', [ChannelPromoPricingController::class, 'queuePushSprice'])->name('channel.push-sprice.queue');
     Route::get('/channel-push-sprice/{channel}/status', [ChannelPromoPricingController::class, 'pushSpriceJobStatus'])->name('channel.push-sprice.status');
     Route::post('/channel-push-sprice/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushSprice'])->name('channel.push-sprice.cancel');
+    Route::post('/channel-push-sprice/{channel}/pull', [ChannelPromoPricingController::class, 'pullPushedPrices'])->name('channel.push-sprice.pull');
     Route::post('/channel-push-prmt/{channel}', [ChannelPromoPricingController::class, 'queuePushPrmt'])->name('channel.push-prmt.queue');
     Route::get('/channel-push-prmt/{channel}/status', [ChannelPromoPricingController::class, 'pushPrmtJobStatus'])->name('channel.push-prmt.status');
     Route::post('/channel-push-prmt/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrmt'])->name('channel.push-prmt.cancel');

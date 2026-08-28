@@ -492,6 +492,7 @@
             line-height: 1;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
     @include('partials.lazy-chart-js')
 @endsection
@@ -2614,6 +2615,7 @@
         };
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
@@ -4240,10 +4242,11 @@
         function updateShopifyB2cLmpRow(sku, competitors, lowestPrice) {
             if (!table || !sku) return;
             const list = Array.isArray(competitors) ? competitors : [];
+            const active = list.filter(function(c) { return !c.ignored; });
             const lowest = (lowestPrice != null && lowestPrice > 0)
                 ? parseFloat(lowestPrice)
-                : (list.length
-                    ? Math.min.apply(null, list.map(c => parseFloat(c.price) || 0).filter(p => p > 0))
+                : (active.length
+                    ? Math.min.apply(null, active.map(c => parseFloat(c.price) || 0).filter(p => p > 0))
                     : null);
 
             table.getRows().forEach(function(row) {
@@ -4268,23 +4271,28 @@
                 return;
             }
 
-            const lowest = (lowestPrice != null && lowestPrice > 0)
-                ? parseFloat(lowestPrice)
-                : Math.min.apply(null, list.map(c => parseFloat(c.price) || 0).filter(p => p > 0));
+            const lowest = (window.LmpIgnore && LmpIgnore.l1)
+                ? LmpIgnore.l1(list, 'price')
+                : ((lowestPrice != null && lowestPrice > 0)
+                    ? parseFloat(lowestPrice)
+                    : Math.min.apply(null, list.filter(function(c) { return !c.ignored; }).map(c => parseFloat(c.price) || 0).filter(p => p > 0)));
+
+            window.currentGoogleLmp = { sku: sku, competitors: list, lowestPrice: lowest };
 
             let html = '';
             if (lowest && lowest > 0) {
-                html += '<div class="mb-3"><span class="badge bg-success">Google lowest: $' + lowest.toFixed(2) + '</span></div>';
+                html += '<div class="mb-3"><span class="badge bg-success">Google lowest (non-ignored): $' + lowest.toFixed(2) + '</span></div>';
             }
 
             html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">' +
                 '<thead class="table-light"><tr>' +
-                '<th>#</th><th>Price</th><th>Source</th><th>Product ID</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Link</th><th>Actions</th>' +
+                '<th>#</th><th>Price</th><th>Source</th><th>Product ID</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Link</th>' + LmpIgnore.header() + '<th>Actions</th>' +
                 '</tr></thead><tbody>';
 
             list.forEach(function(item, index) {
                 const price = parseFloat(item.price) || 0;
-                const isLowest = price > 0 && lowest > 0 && Math.abs(price - lowest) < 0.01;
+                const ignored = !!item.ignored;
+                const isLowest = !ignored && price > 0 && lowest > 0 && Math.abs(price - lowest) < 0.01;
                 const link = shopifyB2cConnectedLink(item.product_link || item.link || '');
                 const title = item.product_title || item.title || '';
                 const titleShort = title.length > 50 ? title.substring(0, 50) + '...' : title;
@@ -4310,15 +4318,19 @@
                     escapeHtmlAttr(item.id) + '" data-sku="' + escapeHtmlAttr(sku) + '" data-price="' + price +
                     '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
 
-                html += '<tr class="' + (isLowest ? 'table-success' : '') + '">' +
+                const priceBadgeHtml = ignored
+                    ? '<strong>$' + price.toFixed(2) + '</strong> <span class="badge bg-secondary">Ignored</span>'
+                    : priceBadge;
+                html += '<tr class="' + (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '') + '">' +
                     '<td class="text-center"><strong>' + (index + 1) + '</strong></td>' +
-                    '<td><div class="d-flex align-items-center">' + imgHtml + priceBadge + '</div></td>' +
+                    '<td><div class="d-flex align-items-center">' + imgHtml + priceBadgeHtml + '</div></td>' +
                     '<td style="font-size:11px;" title="' + escapeHtmlAttr(source) + '">' + escapeHtmlAttr(String(source).substring(0, 30)) + '</td>' +
                     '<td style="font-size:11px;">' + escapeHtmlAttr(productId) + '</td>' +
                     '<td style="font-size:11px;" title="' + escapeHtmlAttr(title) + '">' + escapeHtmlAttr(titleShort || '—') + '</td>' +
                     '<td class="text-center">' + rating + '</td>' +
                     '<td class="text-center">' + reviews + '</td>' +
                     '<td class="text-center">' + linkBtn + '</td>' +
+                    '<td class="text-center align-middle">' + LmpIgnore.checkbox(item, 'google', sku) + '</td>' +
                     '<td class="text-center">' + delBtn + '</td>' +
                     '</tr>';
             });
@@ -4326,6 +4338,19 @@
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            marketplace: 'google',
+            sku: function() { return (window.currentGoogleLmp && currentGoogleLmp.sku) || ''; },
+            onToggled: function(id, ignored) {
+                const cache = window.currentGoogleLmp || { sku: '', competitors: [] };
+                (cache.competitors || []).forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored;
+                });
+                cache.lowestPrice = LmpIgnore.l1(cache.competitors, 'price');
+                renderGoogleLmpList(cache.sku, cache.competitors, cache.lowestPrice);
+                updateShopifyB2cLmpRow(cache.sku, cache.competitors, cache.lowestPrice);
+            }
+        });
 
         function loadGoogleLmpModal(sku, linkedLmpSkus) {
             $('#lmpSku').text(sku);

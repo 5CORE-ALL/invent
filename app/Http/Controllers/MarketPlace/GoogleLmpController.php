@@ -72,7 +72,7 @@ class GoogleLmpController extends Controller
                 $competitors = GoogleSkuCompetitor::getCompetitorsForSkus($groupSkus, 'google');
             }
 
-            $lowest = $competitors->first();
+            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored));
 
             return response()->json([
                 'success' => true,

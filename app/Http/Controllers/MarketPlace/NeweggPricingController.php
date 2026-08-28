@@ -827,7 +827,7 @@ class NeweggPricingController extends Controller
             ))));
 
             $competitors = NeweggSkuCompetitor::getCompetitorsForSkus($groupSkus, 'newegg');
-            $lowest = $competitors->first();
+            $lowest = NeweggSkuCompetitor::lowestFromCollection($competitors);
 
             return response()->json([
                 'success' => true,
@@ -845,6 +845,7 @@ class NeweggPricingController extends Controller
                         'seller_name' => $comp->seller_name,
                         'price' => (float) $comp->price,
                         'shipping_cost' => (float) ($comp->shipping_cost ?? 0),
+                        'ignored' => (bool) $comp->ignored,
                         'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
                         'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
                     ];

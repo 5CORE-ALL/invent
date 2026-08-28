@@ -381,7 +381,7 @@
             width: 100%;
             max-width: 100%;
         }
-
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
 
@@ -958,6 +958,7 @@
 @section('script-bottom')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     /**
      * ========================================
      * CVR MASTER - TABULATOR VIEW
@@ -2943,6 +2944,8 @@ title: "Dil %",
 
         // ==================== LMP COMPETITORS MODAL ====================
         
+        let currentSoldLmp = { sku: '', amazonRes: null, ebayRes: null, googleRes: null, marketplace: null };
+
         function loadLmpCompetitorsModal(sku, marketplace) {
             $('#lmpSku').text(sku);
             $('#lmpModal').data('lmp-marketplace', marketplace || null);
@@ -2966,6 +2969,7 @@ title: "Dil %",
             function tryRender() {
                 loaded++;
                 if (loaded < totalNeeded) return;
+                currentSoldLmp = { sku: sku, amazonRes: amazonData, ebayRes: ebayData, googleRes: googleData, marketplace: marketplace };
                 renderLmpCombined(sku, amazonData, ebayData, googleData, marketplace);
             }
             
@@ -3026,10 +3030,12 @@ title: "Dil %",
             const onlyEbay = marketplace === 'ebay';
             const onlyGoogle = marketplace === 'google';
             
-            const amzLowest = amzList.length ? Math.min(...amzList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
-            const ebayTotals = ebayList.map(c => parseFloat(c.total_price || c.price) || 0).filter(t => t > 0);
-            const ebayLowest = ebayTotals.length ? Math.min(...ebayTotals) : null;
-            const googleLowest = googleList.length ? Math.min(...googleList.map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null;
+            const amzLowest = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(amzList, 'price') : (amzList.length ? Math.min(...amzList.filter(c => !c.ignored).map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null);
+            const ebayLowest = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(ebayList) : (function() {
+                const ebayTotals = ebayList.filter(c => !c.ignored).map(c => parseFloat(c.total_price || c.price) || 0).filter(t => t > 0);
+                return ebayTotals.length ? Math.min(...ebayTotals) : null;
+            })();
+            const googleLowest = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(googleList, 'price') : (googleList.length ? Math.min(...googleList.filter(c => !c.ignored).map(c => parseFloat(c.price) || 0).filter(p => p > 0)) : null);
             
             const listToShow = onlyAmazon ? amzList : (onlyEbay ? ebayList : (onlyGoogle ? googleList : null));
             if (onlyAmazon && amzList.length === 0) {
@@ -3066,13 +3072,14 @@ title: "Dil %",
             }
             
             if (onlyAmazon) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th>' + LmpIgnore.header() + '<th>Action</th></tr></thead><tbody>';
                 amzList.forEach(function(amz, i) {
                     const sn = 'L' + (i + 1);
                     const amzPrice = parseFloat(amz.price) || 0;
                     const amzLink = amz.product_link || amz.link || '';
                     const amzImage = amz.image || '';
-                    const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
+                    const ignored = !!amz.ignored;
+                    const amzLowestFlag = !ignored && amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
                     const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
                     const amzCell = amzPrice > 0
                         ? `<div class="d-flex align-items-center">${amzImgHtml}<span>${amzLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${amzPrice.toFixed(2)}</span>${amzLink ? ` <a href="${amzLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
@@ -3084,34 +3091,36 @@ title: "Dil %",
                     const oldPrice = amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null;
                     const oldPriceCell = oldPrice != null && oldPrice > 0 ? '$' + oldPrice.toFixed(2) : '<span class="text-muted">-</span>';
                     const deliveryCell = (amz.delivery || '').substring(0, 50) + ((amz.delivery || '').length > 50 ? '...' : '') || '<span class="text-muted">-</span>';
-                    const rowClass = amzLowestFlag ? 'table-success' : '';
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (amzLowestFlag ? 'table-success' : '');
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + amzPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td title="${(amz.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz.delivery || '').replace(/"/g, '&quot;')}">${deliveryCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td title="${(amz.product_title || '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz.delivery || '').replace(/"/g, '&quot;')}">${deliveryCell}</td><td class="text-center align-middle">${LmpIgnore.checkbox(amz, 'amazon', sku)}</td><td>${delBtn}</td></tr>`;
                 });
             } else if (onlyEbay) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>eBay</th>' + LmpIgnore.header() + '<th>Action</th></tr></thead><tbody>';
                 ebayList.forEach(function(ebay, i) {
                     const sn = 'L' + (i + 1);
                     const ebayPrice = parseFloat(ebay.total_price || ebay.price) || 0;
                     const ebayLink = ebay.link || ebay.product_link || '';
                     const ebayImage = ebay.image || '';
-                    const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
+                    const ignored = !!ebay.ignored;
+                    const ebayLowestFlag = !ignored && ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
                     const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
                     const ebayCell = ebayPrice > 0
                         ? `<div class="d-flex align-items-center">${ebayImgHtml}<span>${ebayLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${ebayPrice.toFixed(2)}</span>${ebayLink ? ` <a href="${ebayLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
                         : `<div class="d-flex align-items-center">${ebayImgHtml}<span class="text-muted">-</span></div>`;
-                    const rowClass = ebayLowestFlag ? 'table-success' : '';
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (ebayLowestFlag ? 'table-success' : '');
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + ebayPrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${ebayCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${ebayCell}</td><td class="text-center align-middle">${LmpIgnore.checkbox(ebay, 'ebay', sku)}</td><td>${delBtn}</td></tr>`;
                 });
             } else if (onlyGoogle) {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Google</th><th>Source</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Google</th><th>Source</th><th>Title</th><th>Rating</th><th>Reviews</th>' + LmpIgnore.header() + '<th>Action</th></tr></thead><tbody>';
                 googleList.forEach(function(google, i) {
                     const sn = 'L' + (i + 1);
                     const googlePrice = parseFloat(google.price) || 0;
                     const googleLink = google.link || google.product_link || '';
                     const googleImage = google.image || '';
-                    const googleLowestFlag = googlePrice > 0 && googleLowest != null && Math.abs(googlePrice - googleLowest) < 0.01;
+                    const ignored = !!google.ignored;
+                    const googleLowestFlag = !ignored && googlePrice > 0 && googleLowest != null && Math.abs(googlePrice - googleLowest) < 0.01;
                     const googleImgHtml = googleImage ? `<img src="${googleImage.replace(/"/g, '&quot;')}" alt="Google" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
                     const googleCell = googlePrice > 0
                         ? `<div class="d-flex align-items-center">${googleImgHtml}<span>${googleLowestFlag ? '<i class="fa fa-trophy text-success me-1"></i>' : ''}<span style="font-weight: 600;">$${googlePrice.toFixed(2)}</span>${googleLink ? ` <a href="${googleLink.replace(/"/g, '&quot;')}" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>` : ''}</span></div>`
@@ -3121,12 +3130,12 @@ title: "Dil %",
                     const ratingVal = google.rating != null ? parseFloat(google.rating) : null;
                     const ratingCell = ratingVal != null ? '<span><i class="fa fa-star text-warning"></i> ' + ratingVal.toFixed(1) + '</span>' : '<span class="text-muted">-</span>';
                     const reviewsCell = google.reviews != null ? (parseInt(google.reviews) || 0).toLocaleString() : '<span class="text-muted">-</span>';
-                    const rowClass = googleLowestFlag ? 'table-success' : '';
+                    const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (googleLowestFlag ? 'table-success' : '');
                     const delBtn = '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + google.id + '" data-marketplace="google" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + googlePrice + '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${googleCell}</td><td title="${(google.source || '').replace(/"/g, '&quot;')}">${source}</td><td title="${((google.product_title || google.title || '') + '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${delBtn}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${googleCell}</td><td title="${(google.source || '').replace(/"/g, '&quot;')}">${source}</td><td title="${((google.product_title || google.title || '') + '').replace(/"/g, '&quot;')}">${title || '-'}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td class="text-center align-middle">${LmpIgnore.checkbox(google, 'google', sku)}</td><td>${delBtn}</td></tr>`;
                 });
             } else {
-                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th><th>Action</th></tr></thead><tbody>';
+                html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light"><tr><th>#</th><th>Amz</th><th>Rating</th><th>Reviews</th><th>Old Price</th><th>Delivery</th><th>eBay</th>' + LmpIgnore.header() + '<th>Action</th></tr></thead><tbody>';
                 for (let i = 0; i < maxRows; i++) {
                     const sn = 'L' + (i + 1);
                     const amz = amzList[i];
@@ -3137,8 +3146,10 @@ title: "Dil %",
                     const ebayLink = ebay ? (ebay.link || ebay.product_link || '') : '';
                     const amzImage = amz ? (amz.image || '') : '';
                     const ebayImage = ebay ? (ebay.image || '') : '';
-                    const amzLowestFlag = amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
-                    const ebayLowestFlag = ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
+                    const amzIgnored = !!(amz && amz.ignored);
+                    const ebayIgnored = !!(ebay && ebay.ignored);
+                    const amzLowestFlag = !amzIgnored && amzPrice > 0 && amzLowest != null && Math.abs(amzPrice - amzLowest) < 0.01;
+                    const ebayLowestFlag = !ebayIgnored && ebayPrice > 0 && ebayLowest != null && Math.abs(ebayPrice - ebayLowest) < 0.01;
                     const amzImgHtml = amzImage ? `<img src="${amzImage.replace(/"/g, '&quot;')}" alt="Amz" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
                     const ebayImgHtml = ebayImage ? `<img src="${ebayImage.replace(/"/g, '&quot;')}" alt="eBay" class="rounded" style="height:40px;width:40px;object-fit:contain;margin-right:6px;" onerror="this.style.display='none'">` : '';
                     const amzCell = amzPrice != null && amzPrice > 0
@@ -3153,7 +3164,11 @@ title: "Dil %",
                     const oldPrice = amz && amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null;
                     const oldPriceCell = oldPrice != null && oldPrice > 0 ? '$' + oldPrice.toFixed(2) : '<span class="text-muted">-</span>';
                     const deliveryCell = (amz && amz.delivery) ? ((amz.delivery + '').substring(0, 35) + ((amz.delivery + '').length > 35 ? '...' : '')) : '<span class="text-muted">-</span>';
-                    const rowClass = (amzLowestFlag || ebayLowestFlag) ? 'table-success' : '';
+                    const rowClass = ((amzIgnored && ebayIgnored) ? 'lmp-ignored-row ' : '') + ((amzLowestFlag || ebayLowestFlag) ? 'table-success' : '');
+                    let ignoreCell = '';
+                    if (amz && amz.id) ignoreCell += LmpIgnore.checkbox(amz, 'amazon', sku);
+                    if (ebay && ebay.id) ignoreCell += (ignoreCell ? ' ' : '') + LmpIgnore.checkbox(ebay, 'ebay', sku);
+                    if (!ignoreCell) ignoreCell = '<span class="text-muted">-</span>';
                     let actionCell = '';
                     if (amz && amz.id) {
                         actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn me-1" data-id="' + amz.id + '" data-marketplace="amazon" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (amzPrice || 0) + '" title="Delete Amz"><i class="fa fa-trash"></i></button>';
@@ -3162,13 +3177,24 @@ title: "Dil %",
                         actionCell += '<button type="button" class="btn btn-sm btn-outline-danger delete-lmp-row-btn" data-id="' + ebay.id + '" data-marketplace="ebay" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-price="' + (ebayPrice || 0) + '" title="Delete eBay"><i class="fa fa-trash"></i></button>';
                     }
                     if (!actionCell) actionCell = '<span class="text-muted">-</span>';
-                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz && amz.delivery) ? (amz.delivery + '').replace(/"/g, '&quot;') : ''}">${deliveryCell}</td><td>${ebayCell}</td><td>${actionCell}</td></tr>`;
+                    html += `<tr class="${rowClass}"><td>${sn}</td><td>${amzCell}</td><td>${ratingCell}</td><td>${reviewsCell}</td><td>${oldPriceCell}</td><td title="${(amz && amz.delivery) ? (amz.delivery + '').replace(/"/g, '&quot;') : ''}">${deliveryCell}</td><td>${ebayCell}</td><td class="text-center align-middle">${ignoreCell}</td><td>${actionCell}</td></tr>`;
                 }
             }
             
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            sku: function() { return currentSoldLmp.sku; },
+            onToggled: function(id, ignored) {
+                [currentSoldLmp.amazonRes, currentSoldLmp.ebayRes, currentSoldLmp.googleRes].forEach(function(res) {
+                    ((res && res.competitors) || []).forEach(function(c) {
+                        if (String(c.id) === String(id)) c.ignored = ignored;
+                    });
+                });
+                renderLmpCombined(currentSoldLmp.sku, currentSoldLmp.amazonRes, currentSoldLmp.ebayRes, currentSoldLmp.googleRes, currentSoldLmp.marketplace);
+            }
+        });
         
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();

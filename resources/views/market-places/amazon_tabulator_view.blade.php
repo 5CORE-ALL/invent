@@ -559,6 +559,52 @@
             max-width: 100%;
             height: auto !important;
         }
+        #lmpModal .lmp-text-preview-btn {
+            flex-shrink: 0;
+            color: #0d6efd;
+            line-height: 1;
+            padding: 0 2px;
+            border: 0;
+            background: none;
+            cursor: pointer;
+        }
+        #lmpModal .lmp-text-preview-btn:hover { color: #0a58ca; }
+        .lmp-text-preview-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.45);
+            padding: 1.5rem;
+        }
+        .lmp-text-preview-overlay.is-open { display: flex; }
+        .lmp-text-preview-card {
+            width: min(640px, 100%);
+            max-height: 80vh;
+            overflow: auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.28);
+        }
+        .lmp-text-preview-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #334155;
+            color: #fff;
+            border-radius: 10px 10px 0 0;
+        }
+        .lmp-text-preview-body {
+            padding: 16px 18px 18px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
     </style>
 @endsection
 
@@ -1014,6 +1060,16 @@
         </div>
     </div>
 
+    <div id="lmpTextPreviewOverlay" class="lmp-text-preview-overlay" hidden>
+        <div class="lmp-text-preview-card" role="dialog" aria-modal="true">
+            <div class="lmp-text-preview-head">
+                <strong id="lmpTextPreviewTitle">Details</strong>
+                <button type="button" class="btn-close btn-close-white" id="lmpTextPreviewClose" aria-label="Close"></button>
+            </div>
+            <div class="lmp-text-preview-body" id="lmpTextPreviewBody"></div>
+        </div>
+    </div>
+
     <!-- Sku Link LMP Modal (same as /purchase-master/sku-link-lmp) -->
     <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1208,9 +1264,72 @@
             });
         }
 
-        // LMP base price + parsed shipping fee from lmp_delivery text (FREE => 0).
-        // Used by the LMP column, Diff column and Diff filter so they all agree.
+        function amazonNormalizeSkuKey(sku) {
+            return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        }
+
+        function amazonCompetitorIsIgnored(item) {
+            if (!item) return false;
+            const v = item.ignored;
+            return v === true || v === 1 || v === '1' || v === 'true' || v === 'yes';
+        }
+
+        function amazonCompetitorLandedPrice(item) {
+            if (!item) return 0;
+            if (item.landed_price != null && parseFloat(item.landed_price) > 0) {
+                return parseFloat(item.landed_price);
+            }
+            const basePrice = parseFloat(item.price) || 0;
+            let shipCost = 0;
+            if (item.delivery) {
+                const delText = String(item.delivery);
+                if (!/\bfree\b/i.test(delText)) {
+                    const paidMatch = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i)
+                        || delText.match(/\$\s*([\d,]+\.?\d*)/);
+                    if (paidMatch) {
+                        shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                    }
+                }
+            }
+            return basePrice + shipCost;
+        }
+
+        function amazonL1FromCompetitors(competitors) {
+            let l1 = null;
+            let winner = null;
+            (competitors || []).forEach(function(c) {
+                if (amazonCompetitorIsIgnored(c)) return;
+                const tp = amazonCompetitorLandedPrice(c);
+                if (tp > 0 && (l1 === null || tp < l1)) {
+                    l1 = tp;
+                    winner = c;
+                }
+            });
+            return { l1: l1, winner: winner };
+        }
+
+        function amazonApplyL1FromEntries(row) {
+            if (!row || row.is_parent_summary) return row;
+            const info = amazonL1FromCompetitors(row.lmp_entries || []);
+            if (info.l1 != null) {
+                row.lmp_price = info.l1;
+                if (info.winner) {
+                    if (info.winner.delivery != null) row.lmp_delivery = info.winner.delivery;
+                    if (info.winner.asin) row.lmp_asin = info.winner.asin;
+                    if (info.winner.link || info.winner.product_link) {
+                        row.lmp_link = info.winner.product_link || info.winner.link;
+                    }
+                }
+            }
+            return row;
+        }
+
+        // Outer LMP = lowest non-ignored competitor (same as modal L1).
+        // Used by the LMP column, Diff column, S PRC cap, and Diff filter.
         function lmpWithShipping(rowData) {
+            if (!rowData) return 0;
+            const fromEntries = amazonL1FromCompetitors(rowData.lmp_entries || []);
+            if (fromEntries.l1 != null && fromEntries.l1 > 0) return fromEntries.l1;
             const base = parseFloat(rowData.lmp_price || 0) || 0;
             if (!base || base <= 0) return base;
             let shipCost = 0;
@@ -2446,12 +2565,12 @@
 
         function getAmazonTabulatorRowDataBySku(sku) {
             if (typeof table === 'undefined' || !table || !sku) return null;
-            const target = String(sku).trim();
+            const target = amazonNormalizeSkuKey(sku);
             const rows = table.getRows() || [];
             for (let i = 0; i < rows.length; i++) {
                 const d = rows[i].getData();
                 if (!d || d.is_parent_summary) continue;
-                const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                const rowSku = amazonNormalizeSkuKey(d['(Child) sku'] || d.SKU || d.sku);
                 if (rowSku === target) return d;
             }
             return null;
@@ -4567,6 +4686,7 @@
                 ajaxResponse: function(url, params, response) {
                     var payload = response.data || response;
                     if (Array.isArray(payload)) {
+                        payload.forEach(function(row) { amazonApplyL1FromEntries(row); });
                         allTableData = payload;
                         if (window.ParentExpand) ParentExpand.captureDataset(payload);
                         var withFba = 0, sumFba = 0, childN = 0;
@@ -5313,18 +5433,19 @@
                             const lmpPrice = cell.getValue();
                             const lmpEntries = rowData.lmp_entries || [];
                             const sku = rowData['(Child) sku'];
-                            const totalCompetitors = rowData.lmp_entries_total || 0;
+                            const totalCompetitors = rowData.lmp_entries_total || lmpEntries.length || 0;
                             const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                             const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
+                            const finalPrice = lmpWithShipping(rowData);
 
-                            if (!lmpPrice && totalCompetitors === 0) {
+                            if (!(finalPrice > 0) && totalCompetitors === 0) {
                                 return '<span style="color: #999;">N/A</span>';
                             }
 
                             // LMP price + clickable competitor count in brackets: $28.70 (4)
-                            if (lmpPrice) {
-                                const base = parseFloat(lmpPrice) || 0;
-                                const finalPrice = lmpWithShipping(rowData);
+                            // Price is L1 (lowest non-ignored), never an ignored competitor.
+                            if (finalPrice > 0) {
+                                const base = parseFloat(lmpPrice) || finalPrice;
                                 const shipCost = finalPrice - base;
                                 const priceFormatted = '$' + finalPrice.toFixed(2);
                                 const currentPrice = parseFloat(rowData.price || 0);
@@ -7722,28 +7843,19 @@
                         if (response.success && response.competitors && response.competitors.length > 0) {
                             currentLmpData.sku = sku;
                             currentLmpData.competitors = response.competitors;
-                            currentLmpData.lowestPrice = response.lowest_price;
+                            const l1Info = amazonL1FromCompetitors(response.competitors);
+                            const l1 = l1Info.l1 != null ? l1Info.l1 : response.lowest_price;
+                            currentLmpData.lowestPrice = l1;
                             
-                            renderCompetitorsList(response.competitors, response.lowest_price);
+                            renderCompetitorsList(response.competitors, l1);
+                            patchAmazonGridLmp(
+                                l1,
+                                l1Info.winner ? (l1Info.winner.delivery || null) : (response.lowest_delivery || null),
+                                response.competitors
+                            );
 
                             if (refreshFromApi) {
                                 showToast('Pulled live LMP prices + shipping for ' + sku, 'success');
-                                // Patch LMP on this row only — avoid full table.replaceData()
-                                // (that reload was making Pull feel much slower after SerpApi returned).
-                                if (typeof table !== 'undefined' && table && table.getRows) {
-                                    const row = table.getRows().find(r => {
-                                        const d = r.getData();
-                                        return d['(Child) sku'] === sku || d.SKU === sku || d.sku === sku;
-                                    });
-                                    if (row && response.lowest_price != null) {
-                                        row.update({
-                                            lmp_price: response.lowest_price,
-                                            lmp_delivery: response.lowest_delivery != null
-                                                ? response.lowest_delivery
-                                                : (row.getData().lmp_delivery || null),
-                                        });
-                                    }
-                                }
                             }
                         } else {
                             $('#lmpDataList').html(`
@@ -7791,60 +7903,87 @@
                 loadCompetitorsModal(sku, currentLmpData.linkedLmpSkus || [], { refresh: true });
             });
 
-            function amazonCompetitorLandedPrice(item) {
-                if (!item) return 0;
-                if (item.landed_price != null && parseFloat(item.landed_price) > 0) {
-                    return parseFloat(item.landed_price);
+            function patchAmazonGridLmp(lowestPrice, lowestDelivery, competitors) {
+                const entries = Array.isArray(competitors) ? competitors : null;
+                const patch = {
+                    lmp_price: lowestPrice,
+                    lmp_delivery: lowestPrice == null ? null : (lowestDelivery != null ? lowestDelivery : undefined)
+                };
+                if (entries) {
+                    patch.lmp_entries = entries;
+                    patch.lmp_entries_total = entries.length;
                 }
-                const basePrice = parseFloat(item.price) || 0;
-                let shipCost = 0;
-                if (item.delivery) {
-                    const delText = String(item.delivery);
-                    if (!/\bfree\b/i.test(delText)) {
-                        const paidMatch = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i)
-                            || delText.match(/\$\s*([\d,]+\.?\d*)/);
-                        if (paidMatch) {
-                            shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
-                        }
-                    }
-                }
-                return basePrice + shipCost;
-            }
 
-            function amazonL1FromCompetitors(competitors) {
-                let l1 = null;
-                let winner = null;
-                (competitors || []).forEach(function(c) {
-                    if (c.ignored) return;
-                    const tp = amazonCompetitorLandedPrice(c);
-                    if (tp > 0 && (l1 === null || tp < l1)) {
-                        l1 = tp;
-                        winner = c;
-                    }
-                });
-                return { l1: l1, winner: winner };
-            }
-
-            function patchAmazonGridLmp(lowestPrice, lowestDelivery) {
-                if (typeof table === 'undefined' || !table || !table.getRows) return;
-                const sku = String(currentLmpData.sku || '').trim();
                 const targets = new Set();
-                if (sku) targets.add(sku);
-                (currentLmpData.linkedLmpSkus || []).forEach(function(s) {
-                    const t = String(s || '').trim();
+                const addTarget = function(s) {
+                    const t = amazonNormalizeSkuKey(s);
                     if (t) targets.add(t);
-                });
+                };
+                addTarget(currentLmpData.sku);
+                (currentLmpData.linkedLmpSkus || []).forEach(addTarget);
                 if (!targets.size) return;
-                table.getRows().forEach(function(row) {
+
+                const applyToData = function(d) {
+                    if (!d || d.is_parent_summary) return false;
+                    const rowSku = amazonNormalizeSkuKey(d['(Child) sku'] || d.SKU || d.sku);
+                    if (!targets.has(rowSku)) return false;
+                    d.lmp_price = patch.lmp_price;
+                    if (patch.lmp_delivery !== undefined) d.lmp_delivery = patch.lmp_delivery;
+                    if (entries) {
+                        d.lmp_entries = entries;
+                        d.lmp_entries_total = entries.length;
+                    }
+                    amazonApplyL1FromEntries(d);
+                    return true;
+                };
+
+                if (Array.isArray(allTableData)) {
+                    allTableData.forEach(applyToData);
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+                }
+
+                if (typeof table === 'undefined' || !table || !table.getRows) return;
+                let rows = [];
+                try {
+                    rows = table.getRows('all') || table.getRows() || [];
+                } catch (e) {
+                    rows = table.getRows() || [];
+                }
+                rows.forEach(function(row) {
                     const d = row.getData();
-                    if (!d || d.is_parent_summary) return;
-                    const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
-                    if (!targets.has(rowSku)) return;
-                    row.update({
-                        lmp_price: lowestPrice,
-                        lmp_delivery: lowestPrice == null ? null : (lowestDelivery != null ? lowestDelivery : d.lmp_delivery)
-                    });
+                    if (!applyToData(d)) return;
+                    const upd = {
+                        lmp_price: d.lmp_price,
+                        lmp_delivery: d.lmp_delivery
+                    };
+                    if (entries) {
+                        upd.lmp_entries = d.lmp_entries;
+                        upd.lmp_entries_total = d.lmp_entries_total;
+                    }
+                    row.update(upd);
                 });
+            }
+
+            function lmpTextPreviewCell(label, text, maxChars) {
+                const raw = (text == null) ? '' : String(text).trim();
+                if (!raw || raw === '—' || raw === 'N/A') {
+                    return '<span style="color:#999;">—</span>';
+                }
+                const limit = maxChars || 80;
+                const short = raw.length > limit ? (raw.substring(0, limit) + '…') : raw;
+                return '<span class="d-inline-flex align-items-center gap-1" style="max-width:100%;">'
+                    + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escAttr(short) + '</span>'
+                    + '<button type="button" class="lmp-text-preview-btn" title="View full ' + escAttr(label) + '"'
+                    + ' data-label="' + escAttr(label) + '" data-text="' + escAttr(raw) + '">'
+                    + '<i class="fa fa-search"></i></button></span>';
+            }
+            function openLmpTextPreview(label, text) {
+                $('#lmpTextPreviewTitle').text(label || 'Details');
+                $('#lmpTextPreviewBody').text(text || '');
+                $('#lmpTextPreviewOverlay').prop('hidden', false).addClass('is-open');
+            }
+            function closeLmpTextPreview() {
+                $('#lmpTextPreviewOverlay').removeClass('is-open').prop('hidden', true);
             }
 
             // Render Competitors List Function
@@ -7938,6 +8077,8 @@
                     const productLink = item.link || item.product_link || '#';
                     const productTitle = item.title || item.product_title || 'N/A';
                     const sellerName = item.seller_name || '—';
+                    const titleCell = lmpTextPreviewCell('Product Title', productTitle, 80);
+                    const sellerCell = lmpTextPreviewCell('Seller', sellerName, 28);
                     const imageUrl = item.image || '';
                     const imageHtml = imageUrl ? `<img src="${imageUrl}" style="width: 50px; height: 50px; object-fit: contain;" />` : '<span style="color: #999;">—</span>';
                     
@@ -7994,8 +8135,8 @@
                             <td>
                                 <span class="text-primary" style="font-weight: 600; font-size: 11px;">${item.asin || 'N/A'}</span>
                             </td>
-                            <td style="font-size: 11px; width: 750px; min-width: 750px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escAttr(productTitle)}">${productTitle.substring(0, 180)}${productTitle.length > 180 ? '...' : ''}</td>
-                            <td style="font-size: 11px;">${sellerName}</td>
+                            <td style="font-size: 11px; width: 750px; min-width: 360px; max-width: 750px;">${titleCell}</td>
+                            <td style="font-size: 11px; max-width: 180px;">${sellerCell}</td>
                             <td><strong>${priceBadge}</strong></td>
                             <td class="text-center fw-bold lmp-sp-cell">${modalSpText}</td>
                             <td class="text-center lmp-groi-cell">${modalGroiHtml}</td>
@@ -8035,6 +8176,25 @@
             }
 
             // Live SP → GROI% / NROI% in modal; blur/Enter saves to grid SP column
+            $(document).on('click', '#lmpModal .lmp-text-preview-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openLmpTextPreview($(this).attr('data-label'), $(this).attr('data-text'));
+            });
+            $(document).on('click', '#lmpTextPreviewClose, #lmpTextPreviewOverlay', function(e) {
+                if (e.target === this || e.target.id === 'lmpTextPreviewClose') {
+                    closeLmpTextPreview();
+                }
+            });
+            $(document).on('keydown', function(e) {
+                if (e.key === 'Escape' && $('#lmpTextPreviewOverlay').hasClass('is-open')) {
+                    closeLmpTextPreview();
+                }
+            });
+            $('#lmpModal').on('hidden.bs.modal', function() {
+                closeLmpTextPreview();
+            });
+
             $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
                 const $cb = $(this);
                 const id = $cb.attr('data-id') || $cb.data('id');
@@ -8057,7 +8217,11 @@
                             const l1Info = amazonL1FromCompetitors(currentLmpData.competitors);
                             currentLmpData.lowestPrice = l1Info.l1;
                             renderCompetitorsList(currentLmpData.competitors, l1Info.l1);
-                            patchAmazonGridLmp(l1Info.l1, l1Info.winner ? (l1Info.winner.delivery || null) : null);
+                            patchAmazonGridLmp(
+                                l1Info.l1,
+                                l1Info.winner ? (l1Info.winner.delivery || null) : null,
+                                currentLmpData.competitors
+                            );
                             showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
                         } else {
                             $cb.prop('checked', !ignored);

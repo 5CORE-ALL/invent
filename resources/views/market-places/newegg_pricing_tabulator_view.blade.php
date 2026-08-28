@@ -85,6 +85,7 @@
             z-index: 5;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'newegg'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#neLmpModal'])
     </style>
 @endsection
 
@@ -418,6 +419,7 @@
 @section('script-bottom')
     <script>
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'newegg'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let decreaseModeActive  = false;
         let increaseModeActive  = false;
@@ -931,8 +933,11 @@
             });
         }
 
+        let neCurrentLmpList = [];
         function neRenderCompetitorsList(competitors, lowestPrice) {
-            if (!competitors || competitors.length === 0) {
+            competitors = Array.isArray(competitors) ? competitors : [];
+            neCurrentLmpList = competitors;
+            if (!competitors.length) {
                 $('#neLmpDataList').html(`
                     <div class="alert alert-info mb-0">
                         <i class="fa fa-info-circle"></i> No competitors found for this SKU. Add your first one above.
@@ -940,6 +945,9 @@
                 `);
                 return;
             }
+
+            let l1Price = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors) : null;
+            if (l1Price === null && lowestPrice != null) l1Price = parseFloat(lowestPrice);
 
             let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm align-middle">';
             html += `
@@ -952,6 +960,7 @@
                         <th style="width:80px;">Price</th>
                         <th style="width:70px;">Ship</th>
                         <th style="width:60px;">Link</th>
+                        ${LmpIgnore.header()}
                         <th style="width:90px;">Actions</th>
                     </tr>
                 </thead>
@@ -962,12 +971,13 @@
                 const basePrice = parseFloat(item.price) || 0;
                 const shipCost = parseFloat(item.shipping_cost) || 0;
                 const landedPrice = basePrice + shipCost;
-                const isLowest = lowestPrice && Math.abs(landedPrice - parseFloat(lowestPrice)) < 0.01;
-                const rowClass = isLowest ? 'table-success' : '';
+                const ignored = !!item.ignored;
+                const isLowest = !ignored && l1Price != null && Math.abs(landedPrice - l1Price) < 0.01;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 const priceFormatted = '$' + basePrice.toFixed(2);
                 const priceBadge = isLowest
                     ? `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i></span>`
-                    : `<strong>${priceFormatted}</strong>`;
+                    : (ignored ? `<strong>${priceFormatted}</strong> <span class="badge bg-secondary ms-1">Ignored</span>` : `<strong>${priceFormatted}</strong>`);
                 const shipHtml = shipCost === 0
                     ? '<span class="badge bg-info">FREE</span>'
                     : '$' + shipCost.toFixed(2);
@@ -989,6 +999,7 @@
                                 <i class="fa fa-external-link-alt"></i>
                             </a>
                         </td>
+                        <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'newegg', item.sku || neCurrentLmpSku || '')}</td>
                         <td class="text-center text-nowrap">
                             <button type="button" class="btn btn-sm btn-warning ne-edit-lmp-btn"
                                 data-id="${item.id}"
@@ -1012,8 +1023,22 @@
             });
 
             html += '</tbody></table></div>';
+            if (l1Price != null && isFinite(l1Price)) {
+                html = '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(l1Price).toFixed(2) + '</strong></div>' + html;
+            }
             $('#neLmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            modal: '#neLmpModal',
+            marketplace: 'newegg',
+            sku: function() { return neCurrentLmpSku; },
+            onToggled: function(id, ignored) {
+                neCurrentLmpList.forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored;
+                });
+                neRenderCompetitorsList(neCurrentLmpList, LmpIgnore.l1(neCurrentLmpList));
+            }
+        });
 
         $(document).ready(function() {
             $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });

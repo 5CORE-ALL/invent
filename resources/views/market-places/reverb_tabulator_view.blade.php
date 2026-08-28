@@ -280,6 +280,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -1185,6 +1186,7 @@
     let samePriceModeActive = false;
     let selectedSkus = new Set();
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function reverbPrmtPctOf(d) {
         const n = parseFloat(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied));
@@ -3403,9 +3405,12 @@
             const ourPrice = ours ? (parseFloat(ours['RV Price'] || ours.price || 0) || 0) : 0;
             const ourHtml = reverbOurProductRowHtml(ours || { '(Child) sku': currentLmpData.sku });
 
+            let l1Price = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(list) : null;
+            if (l1Price === null && lowestPrice != null) l1Price = parseFloat(lowestPrice);
+
             let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
             html += `<thead class="table-dark"><tr>
-                <th>Image</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th><th>Actions</th>
+                <th>Image</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th>${LmpIgnore.header()}<th>Actions</th>
             </tr></thead><tbody>`;
 
             let inserted = false;
@@ -3415,10 +3420,12 @@
                     html += ourHtml;
                     inserted = true;
                 }
-                const isLowest = lowestPrice != null && isFinite(total)
-                    && Math.abs(total - parseFloat(lowestPrice)) < 0.01;
-                const rowClass = isLowest ? 'table-success' : '';
-                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
+                const ignored = !!item.ignored;
+                const isLowest = !ignored && l1Price != null && isFinite(total)
+                    && Math.abs(total - l1Price) < 0.01;
+                const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>'
+                    : (ignored ? '<span class="badge bg-secondary ms-2">Ignored</span>' : '');
                 const productLink = item.link || `https://reverb.com/item/${item.item_id}`;
                 const imageCell = item.image
                     ? `<img src="${escAttr(item.image)}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
@@ -3429,6 +3436,7 @@
                     <td>${parseFloat(item.shipping_cost || 0) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
                     <td><strong>$${parseFloat(item.total_price || 0).toFixed(2)}</strong> ${badge}</td>
                     <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(item.title || 'N/A')}</td>
+                    <td class="text-center align-middle">${LmpIgnore.checkbox(item, 'reverb', currentLmpData.sku || '')}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
                             <a href="${escAttr(productLink)}" target="_blank" class="btn btn-sm btn-info" title="View on Reverb"><i class="fa fa-external-link"></i></a>
@@ -3442,11 +3450,25 @@
             });
             if (!inserted) html += ourHtml;
             if (!list.length && !ourHtml) {
-                html += '<tr><td colspan="6" class="text-muted text-center">No competitors found yet. Add your first competitor above!</td></tr>';
+                html += '<tr><td colspan="7" class="text-muted text-center">No competitors found yet. Add your first competitor above!</td></tr>';
             }
             html += '</tbody></table></div>';
+            if (l1Price != null) {
+                html = '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(l1Price).toFixed(2) + '</strong></div>' + html;
+            }
             $('#lmpDataList').html(html);
         }
+        LmpIgnore.bind({
+            marketplace: 'reverb',
+            sku: function() { return currentLmpData.sku || ''; },
+            onToggled: function(id, ignored) {
+                (currentLmpData.competitors || []).forEach(function(c) {
+                    if (String(c.id) === String(id)) c.ignored = ignored;
+                });
+                currentLmpData.lowestPrice = LmpIgnore.l1(currentLmpData.competitors);
+                renderReverbCompetitorsList(currentLmpData.competitors, currentLmpData.lowestPrice);
+            }
+        });
 
         $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();
