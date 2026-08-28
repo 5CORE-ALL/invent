@@ -360,8 +360,8 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'walmart'])
         function walmartRowSpriceForAlert(data) {
             let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isWalmartParentRow(data)) {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function' && !isWalmartParentRow(data)) {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -887,8 +887,8 @@
                             const rowData = cell.getRow().getData();
                             if (isWalmartParentRow(rowData)) return '';
                             let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(rowData);
                                 if (calc > 0) value = calc;
                             }
                             const hasCustomSprice = rowData.has_custom_sprice;

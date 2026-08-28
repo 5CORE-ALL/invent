@@ -3285,15 +3285,32 @@
             if (isFinite(s) && s > 0) return s;
             return 0;
         }
-        /** Live S PRC from Dil/cvr rules only. Never uses stored SPRICE or live Price. */
+        /** Keep in-memory SPRICE / sprice equal to the visible rule price. */
+        function chPromoWriteStoredSprice(d, live) {
+            if (!d || !(live > 0)) return;
+            const patch = chPromoSpricePatch(live);
+            Object.assign(d, patch);
+            const sku = chPromoSku(d);
+            if (sku && typeof chPromoPatchDatasetSprice === 'function') {
+                chPromoPatchDatasetSprice(sku, patch);
+            }
+        }
+        /** Live S PRC from Dil/cvr/0 Sold rules. Writes stored so visible === stored. */
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
-            if (zeroSold > 0) return zeroSold;
-            const start = chPromoIsTemuPromoChannel()
-                ? chPromoTemuDiscountedStart(d)
-                : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0);
-            return chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
+            const start = zeroSold > 0
+                ? zeroSold
+                : (chPromoIsTemuPromoChannel()
+                    ? chPromoTemuDiscountedStart(d)
+                    : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0));
+            const live = zeroSold > 0
+                ? zeroSold
+                : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
+            if (live > 0 && Math.abs((chPromoGetSprice(d) || 0) - live) > 0.009) {
+                chPromoWriteStoredSprice(d, live);
+            }
+            return live > 0 ? live : 0;
         }
         function chPromoSpricePatch(val) {
             const n = Number(val);
@@ -6152,6 +6169,7 @@
                             + (fail ? (', ' + fail + ' failed') : '') + '.'
                     );
                 }
+                chPromoOverwriteStoredSpriceFromRules({ silent: true, force: true });
                 return;
             }
             chPromoToast(
@@ -6160,6 +6178,7 @@
                     + (fail ? (', ' + fail + ' failed') : '')
                     + (skipped ? (', ' + skipped + ' skipped') : '') + '.'
             );
+            chPromoOverwriteStoredSpriceFromRules({ silent: true, force: true });
         }
         async function saveAndApplyChPromoZeroSoldDil() {
             const run = chPromoZeroSoldDilRun;
@@ -6468,12 +6487,13 @@
                         'Dil vs PRMT: Dil slab changed → PRMT% updated on ' + (jobs.length || applyTargets.length) + ' SKU(s).'
                     );
                 }
-                if (typeof window.temuRedrawPricingNow === 'function') {
-                    window.temuRedrawPricingNow();
-                } else if (typeof table !== 'undefined' && table) {
-                    table.redraw(true);
-                }
-                return;
+            if (typeof window.temuRedrawPricingNow === 'function') {
+                window.temuRedrawPricingNow();
+            } else if (typeof table !== 'undefined' && table) {
+                table.redraw(true);
+            }
+            chPromoOverwriteStoredSpriceFromRules({ silent: true, force: true });
+            return;
             }
             chPromoToast(
                 (filled ? 'success' : 'error'),
@@ -6496,6 +6516,7 @@
             } else if (typeof table !== 'undefined' && table) {
                 table.redraw(true);
             }
+            chPromoOverwriteStoredSpriceFromRules({ silent: true, force: true });
         }
 
         let chPromoDilLastSlab = {};
@@ -6907,6 +6928,7 @@
                         'CVR%: slab changed → CPN% updated on ' + jobs.length + ' SKU(s).'
                     );
                 }
+                chPromoOverwriteStoredSpriceFromRules({ silent: true, force: true });
                 return;
             }
             chPromoToast(
@@ -6916,6 +6938,7 @@
                     + (ebay1 ? ' (saved locally — use Push CPN% to create eBay coupons)' : '')
                     + '.'
             );
+            chPromoOverwriteStoredSpriceFromRules({ silent: true, force: true });
         }
 
         async function pushEbay1CodedCouponsForTargets(targets) {
@@ -8016,17 +8039,22 @@
                 const key = chPromoSkuKey(sku);
                 if (!sku || !key || queuedKeys.has(key)) return;
                 const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
-                if (zeroSold > 0) return;
-                const start = chPromoIsTemuPromoChannel()
-                    ? chPromoTemuDiscountedStart(d)
-                    : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d));
-                const fill = chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
+                const start = zeroSold > 0
+                    ? zeroSold
+                    : (chPromoIsTemuPromoChannel()
+                        ? chPromoTemuDiscountedStart(d)
+                        : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d)));
+                const fill = zeroSold > 0
+                    ? zeroSold
+                    : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
                 if (!(fill > 0)) return;
                 const current = chPromoGetSprice(d);
                 const live = chPromoLivePrice(d);
                 const prmt = chPromoEbayPrmtUsed(d);
                 const cpn = chPromoEbayCpnUsed(d);
-                const needsFill = !(current > 0) || (overwrite && !chPromoNearlyEqual(current, fill));
+                const needsFill = !!opts.force
+                    || !(current > 0)
+                    || (overwrite && !chPromoNearlyEqual(current, fill));
                 const needsPush = !forceSkipPush && livePushOn && (
                     (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function')
                         ? temuListingNeedsPush(d, fill)
@@ -8201,6 +8229,25 @@
             if (delay > 0) setTimeout(run, delay);
             else run();
         }
+        const CH_PROMO_RULE_SPRICE_CLEAR_KEY = 'chPromoRuleSpriceClearedOnce:v2:' + CHANNEL_PROMO_CHANNEL;
+        function chPromoShouldClearStoredOnce() {
+            try { return !localStorage.getItem(CH_PROMO_RULE_SPRICE_CLEAR_KEY); }
+            catch (e) { return true; }
+        }
+        function chPromoMarkStoredClearedOnce() {
+            try { localStorage.setItem(CH_PROMO_RULE_SPRICE_CLEAR_KEY, '1'); }
+            catch (e) { /* ignore */ }
+        }
+        function chPromoOverwriteStoredSpriceFromRules(extra) {
+            extra = extra || {};
+            autopopulateEbaySpriceFromStdPrmtCpn(Object.assign({
+                overwrite: true,
+                persist: true,
+                silent: extra.silent !== false,
+                force: !!extra.force,
+                skip_push: extra.skip_push != null ? extra.skip_push : true,
+            }, extra));
+        }
         function chPromoTryQueueAfterSlabs() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
             if (!chPromoEbaySpriceSlabsReady()) return;
@@ -8241,17 +8288,18 @@
             if (typeof chPromoSyncCvrDiscColumnFromSlabs === 'function') {
                 chPromoSyncCvrDiscColumnFromSlabs();
             }
-            if (chPromoIsTemuPromoChannel()) {
-                autopopulateEbaySpriceFromStdPrmtCpn({
-                    overwrite: true,
-                    persist: true,
-                    silent: true,
-                    skip_push: !chPromoPageReloadPushAllowed(),
-                });
-                return;
+            const clearOnce = chPromoShouldClearStoredOnce();
+            autopopulateEbaySpriceFromStdPrmtCpn({
+                overwrite: true,
+                persist: true,
+                silent: true,
+                force: clearOnce,
+                skip_push: !chPromoPageReloadPushAllowed(),
+            });
+            if (clearOnce) chPromoMarkStoredClearedOnce();
+            if (chPromoPageReloadPushAllowed()) {
+                chPromoQueueReloadSpricePush({ delay: 700 });
             }
-            if (!chPromoPageReloadPushAllowed()) return;
-            chPromoQueueReloadSpricePush({ delay: 700 });
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -9858,6 +9906,7 @@
         window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.chPromoLiveSprice = chPromoLiveSprice;
+        window.chPromoOverwriteStoredSpriceFromRules = chPromoOverwriteStoredSpriceFromRules;
         window.applyChannelSpriceFromStdChange = applyChannelSpriceFromStdChange;
         window.chPromoSpriceFromStdPrmtCpnWith = chPromoSpriceFromStdPrmtCpnWith;
         window.chPromoEbayStdMinusPrmtCpnEnabled = chPromoEbayStdMinusPrmtCpnEnabled;

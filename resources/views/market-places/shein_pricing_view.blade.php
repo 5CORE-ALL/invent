@@ -561,8 +561,8 @@
         function sheinRowSpriceForAlert(data) {
             if (!data || data.is_parent) return 0;
             let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -1866,8 +1866,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let value = parseFloat(cell.getValue()) || 0;
-                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                                const calc = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(d);
                                 if (calc > 0) value = calc;
                             }
                             if (!(value > 0)) return '';

@@ -492,8 +492,8 @@
         }
         function frRowSpriceForAlert(data) {
             let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function' && !frIsParentRow(data)) {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function' && !frIsParentRow(data)) {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -2231,8 +2231,8 @@
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
                             let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                                const calc = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(d);
                                 if (calc > 0) value = calc;
                             }
                             if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';

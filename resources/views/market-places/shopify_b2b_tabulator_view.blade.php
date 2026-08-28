@@ -775,14 +775,11 @@
 
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
-        const stored = parseFloat(data.SPRICE) || 0;
-        if (data.has_custom_sprice && stored > 0) return stored;
-        const std = parseFloat(data.STANDARD_PRICE || data.standard_price) || 0;
-        if (std > 0 && typeof chPromoSpriceFromStdTPromo === 'function') {
-            const calc = chPromoSpriceFromStdTPromo(data);
-            if (calc > 0) return calc;
+        if (typeof chPromoLiveSprice === 'function') {
+            const live = chPromoLiveSprice(data);
+            if (live > 0) return live;
         }
-        return stored;
+        return parseFloat(data.SPRICE) || 0;
     }
     function shopifyB2bSpriceMetrics(sprice, lp) {
         sprice = parseFloat(sprice) || 0;

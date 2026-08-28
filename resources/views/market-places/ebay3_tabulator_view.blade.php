@@ -2221,9 +2221,8 @@
             return String(data['(Child) sku'] || '').toUpperCase().includes('PARENT');
         }
         function ebay3RowSpriceForAlert(data) {
-            if (typeof chPromoLiveSprice === 'function') return chPromoLiveSprice(data);
-            if (typeof chPromoSpriceFromStdTPromo !== 'function' || ebay3IsAlertParentRow(data)) return 0;
-            return chPromoSpriceFromStdTPromo(data) || 0;
+            if (typeof chPromoLiveSprice !== 'function' || ebay3IsAlertParentRow(data)) return 0;
+            return chPromoLiveSprice(data) || 0;
         }
         function ebay3IsEndedListing(data) {
             if (!data || ebay3IsAlertParentRow(data)) return false;

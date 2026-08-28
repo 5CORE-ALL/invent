@@ -387,8 +387,8 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'wayfair'])
         function wayfairRowSpriceForAlert(data) {
             let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function' && !isWayfairParentRow(data)) {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function' && !isWayfairParentRow(data)) {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -1618,8 +1618,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                                const calc = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(d);
                                 if (calc > 0) value = calc;
                             }
                             const live = parseFloat(d.price) || 0;

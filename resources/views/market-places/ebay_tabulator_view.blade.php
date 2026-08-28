@@ -2696,8 +2696,8 @@
             }
             if (metric === 'sprice') {
                 let n = Number(found.SPRICE);
-                if (!(isFinite(n) && n > 0) && typeof chPromoSpriceFromStdTPromo === 'function') {
-                    n = Number(chPromoSpriceFromStdTPromo(found));
+                if (!(isFinite(n) && n > 0) && typeof chPromoLiveSprice === 'function') {
+                    n = Number(chPromoLiveSprice(found));
                 }
                 return isFinite(n) && n > 0 ? n : null;
             }
@@ -3276,9 +3276,8 @@
                     || (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))));
             }
             function ebay1RowSpriceForAlert(data) {
-                if (typeof chPromoLiveSprice === 'function') return chPromoLiveSprice(data);
-                if (typeof chPromoSpriceFromStdTPromo !== 'function' || ebay1IsAlertParentRow(data)) return 0;
-                return chPromoSpriceFromStdTPromo(data) || 0;
+                if (typeof chPromoLiveSprice !== 'function' || ebay1IsAlertParentRow(data)) return 0;
+                return chPromoLiveSprice(data) || 0;
             }
             function ebay1IsEndedListing(data) {
                 if (!data || ebay1IsAlertParentRow(data)) return false;

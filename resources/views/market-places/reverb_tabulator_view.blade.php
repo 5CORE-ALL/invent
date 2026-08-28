@@ -1312,8 +1312,8 @@
     }
     function reverbRowSpriceForAlert(data) {
         let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isReverbParentRow(data)) {
-            const calc = chPromoSpriceFromStdTPromo(data);
+        if (typeof chPromoLiveSprice === 'function' && !isReverbParentRow(data)) {
+            const calc = chPromoLiveSprice(data);
             if (calc > 0) sprice = calc;
         }
         if (window.SpriceLmpCap) sprice = SpriceLmpCap.prepare(data, sprice);
@@ -4206,8 +4206,8 @@
                         const rowData = cell.getRow().getData();
                         if (isReverbParentRow(rowData)) return '';
                         let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                        if (typeof chPromoLiveSprice === 'function') {
+                            const calc = chPromoLiveSprice(rowData);
                             if (calc > 0) value = calc;
                         }
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;

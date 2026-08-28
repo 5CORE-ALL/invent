@@ -1332,8 +1332,8 @@
         if (shopifyB2cIsAmzSuggApplied(data) && stored > 0) {
             return Math.round(stored * 100) / 100;
         }
-        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-            const calc = chPromoSpriceFromStdTPromo(data);
+        if (typeof chPromoLiveSprice === 'function') {
+            const calc = chPromoLiveSprice(data);
             if (calc > 0) return calc;
         }
         return stored;

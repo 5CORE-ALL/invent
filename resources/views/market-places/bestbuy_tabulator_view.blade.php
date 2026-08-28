@@ -464,8 +464,8 @@
     }
     function bestbuyRowSpriceForAlert(data) {
         let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoSpriceFromStdTPromo === 'function' && !isBestbuyParentRow(data)) {
-            const calc = chPromoSpriceFromStdTPromo(data);
+        if (typeof chPromoLiveSprice === 'function' && !isBestbuyParentRow(data)) {
+            const calc = chPromoLiveSprice(data);
             if (calc > 0) sprice = calc;
         }
         return sprice;
@@ -2095,8 +2095,8 @@
                         const rowData = cell.getRow().getData();
                         if (isBestbuyParentRow(rowData)) return '';
                         let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                        if (typeof chPromoLiveSprice === 'function') {
+                            const calc = chPromoLiveSprice(rowData);
                             if (calc > 0) value = calc;
                         }
                         const hasCustom = rowData.has_custom_sprice;

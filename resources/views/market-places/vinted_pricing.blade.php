@@ -633,8 +633,8 @@
         function vintedRowSpriceForAlert(data) {
             if (!data) return 0;
             let sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -962,8 +962,8 @@
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         let value = parseFloat(cell.getValue() || 0);
-                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                            const calc = chPromoSpriceFromStdTPromo(d);
+                        if (typeof chPromoLiveSprice === 'function') {
+                            const calc = chPromoLiveSprice(d);
                             if (calc > 0) value = calc;
                         }
                         if (!(value > 0) && !(parseFloat(cell.getValue() || 0) > 0)) {

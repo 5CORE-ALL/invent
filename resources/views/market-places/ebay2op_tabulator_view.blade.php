@@ -2784,10 +2784,10 @@
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const ebay2Price = parseFloat(rowData['eBay Price']) || 0;
                             let sprice = parseFloat(value) || 0;
-                            if (!(sprice > 0) && typeof chPromoSpriceFromStdTPromo === 'function'
+                            if (!(sprice > 0) && typeof chPromoLiveSprice === 'function'
                                 && !rowData.is_parent_summary
                                 && !(String(rowData.Parent || '').toUpperCase().startsWith('PARENT'))) {
-                                const calc = chPromoSpriceFromStdTPromo(rowData);
+                                const calc = chPromoLiveSprice(rowData);
                                 if (calc > 0) sprice = calc;
                             }
 

@@ -611,8 +611,8 @@
         function neRowSpriceForAlert(data) {
             if (!data) return 0;
             let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -1295,8 +1295,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = parseFloat(cell.getValue());
-                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                                const calc = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(d);
                                 if (calc > 0) value = calc;
                             }
                             if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';

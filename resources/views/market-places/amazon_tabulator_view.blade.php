@@ -2570,7 +2570,7 @@
                     const primary = applyStandardPriceToLinkedRows(sku, std, response.applied_skus);
                     if (primary) currentLmpData.rowData = primary.getData();
                     if (typeof amzScheduleRuleSpriceSync === 'function') {
-                        amzScheduleRuleSpriceSync({ delay: 200 });
+                        amzScheduleRuleSpriceSync({ force: true, delay: 200 });
                     }
                     const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                     if (typeof showToast === 'function') {

@@ -555,8 +555,8 @@
         function aeRowSpriceForAlert(data) {
             if (!data || data.is_parent) return 0;
             let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                const calc = chPromoSpriceFromStdTPromo(data);
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
             return sprice;
@@ -1724,8 +1724,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let value = parseFloat(cell.getValue()) || 0;
-                            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                                const calc = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(d);
                                 if (calc > 0) value = calc;
                             }
                             if (!(value > 0)) return '';
@@ -1755,8 +1755,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let v = parseFloat(cell.getValue());
-                            if (typeof chPromoSpriceFromStdTPromo === 'function' && typeof chPromoLp === 'function') {
-                                const sprice = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function' && typeof chPromoLp === 'function') {
+                                const sprice = chPromoLiveSprice(d);
                                 const lp = chPromoLp(d);
                                 if (sprice > 0 && lp > 0 && typeof chPromoTakehomeMargin === 'function') {
                                     v = ((sprice * chPromoTakehomeMargin(d) - lp - chPromoShipCost(d)) / lp) * 100;
@@ -1781,8 +1781,8 @@
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let v = parseFloat(cell.getValue());
-                            if (typeof chPromoSpriceFromStdTPromo === 'function' && typeof chPromoTakehomeMargin === 'function') {
-                                const sprice = chPromoSpriceFromStdTPromo(d);
+                            if (typeof chPromoLiveSprice === 'function' && typeof chPromoTakehomeMargin === 'function') {
+                                const sprice = chPromoLiveSprice(d);
                                 if (sprice > 0) {
                                     v = ((sprice * chPromoTakehomeMargin(d) - chPromoLp(d) - chPromoShipCost(d)) / sprice) * 100;
                                 }

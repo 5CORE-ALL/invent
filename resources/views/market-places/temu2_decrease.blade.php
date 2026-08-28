@@ -2032,6 +2032,11 @@
             ? temuSpriceCapResult(row)
             : { sprice: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
         const value = (cap && cap.sprice > 0) ? +Number(cap.sprice).toFixed(2) : 0;
+        if (value > 0 && Math.abs((parseFloat(row.SPRICE || row.sprice) || 0) - value) > 0.009) {
+            row.SPRICE = value;
+            row.sprice = value;
+            row.has_custom_sprice = true;
+        }
         return {
             value: value,
             labels: (cap && cap.labels) || [],

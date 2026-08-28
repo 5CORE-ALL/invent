@@ -1586,12 +1586,11 @@
             return list;
         }
         function ebay2RowSpriceForAlert(data) {
-            if (typeof chPromoLiveSprice === 'function') return chPromoLiveSprice(data);
-            if (typeof chPromoSpriceFromStdTPromo !== 'function') return 0;
+            if (typeof chPromoLiveSprice !== 'function') return 0;
             const sku = String((data && (data['(Child) sku'] || data.sku)) || '');
             if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return 0;
             if (data && (data.is_parent_summary || data.is_parent_row)) return 0;
-            return chPromoSpriceFromStdTPromo(data) || 0;
+            return chPromoLiveSprice(data) || 0;
         }
         function ebay2HasBlueTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;

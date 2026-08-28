@@ -324,8 +324,8 @@
     }
     function tdRowSpriceForAlert(data) {
         let sprice = parseFloat(data && data.SPRICE) || 0;
-        if (typeof chPromoSpriceFromStdTPromo === 'function' && !tdIsParentRow(data)) {
-            const calc = chPromoSpriceFromStdTPromo(data);
+        if (typeof chPromoLiveSprice === 'function' && !tdIsParentRow(data)) {
+            const calc = chPromoLiveSprice(data);
             if (calc > 0) sprice = calc;
         }
         return sprice;
@@ -1066,8 +1066,8 @@
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
                         let value = parseFloat(c.getValue() || 0);
-                        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                            const calc = chPromoSpriceFromStdTPromo(rowData);
+                        if (typeof chPromoLiveSprice === 'function') {
+                            const calc = chPromoLiveSprice(rowData);
                             if (calc > 0) value = calc;
                         }
                         const status = rowData.SPRICE_STATUS || '';

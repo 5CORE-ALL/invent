@@ -823,17 +823,11 @@ class OverallAmazonController extends Controller
             }
             
 
-            // If SPRICE is null or empty, use price as default and calculate SGPFT/SPFT/SROI
-            if (empty($row['SPRICE']) && $price > 0) {
-                $row['SPRICE'] = $price;
-                $row['has_custom_sprice'] = false; // Flag to indicate using default price
-                
-                // Calculate SGPFT based on default price (using 0.80 for Amazon)
-                $sgpft = round(
-                    $price > 0 ? (($price * 0.80 - $ship - $lp) / $price) * 100 : 0,
-                    2
-                );
-                $row['SGPFT'] = $sgpft;
+            // S PRC is rule-owned. Do not fill empty SPRICE from listing price —
+            // the grid overwrites stored SPRICE from Dil / PRMT / CVR / 0 Sold.
+            if (empty($row['SPRICE'])) {
+                $row['SPRICE'] = null;
+                $row['has_custom_sprice'] = false;
             } else {
                 $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
                 
