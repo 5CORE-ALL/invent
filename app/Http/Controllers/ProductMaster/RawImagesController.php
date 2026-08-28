@@ -142,6 +142,10 @@ class RawImagesController extends Controller
 
     public function upload(Request $request): JsonResponse
     {
+        if ($request->boolean('ebay_hero')) {
+            return $this->saveEbayHeroImages($request);
+        }
+
         $kind = $this->imageKindFromRequest($request);
 
         $validated = $request->validate([
