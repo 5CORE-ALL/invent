@@ -3517,9 +3517,9 @@
             return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
         }
         /** Temu: S PRC = min(Discounted, eBay, Amz, displayed LMP). */
-        function chPromoResolveTemuSprice(d, sprice) {
+        function chPromoResolveTemuSprice(d, sprice, extra) {
             if (d && typeof temuPrepareSpriceForSave === 'function' && chPromoIsTemuPromoChannel()) {
-                const v = Number(temuPrepareSpriceForSave(d, sprice));
+                const v = Number(temuPrepareSpriceForSave(d, sprice, extra));
                 if (v > 0) return chPromoRound2(v);
             }
             const n = chPromoRound2(sprice);
@@ -3528,6 +3528,23 @@
                 if (clamped > 0) return chPromoRound2(clamped);
             }
             return n;
+        }
+        /** Temu discount apply: wipe stored S PRC, then save Discounted → EB/Amz/LMP → $26.99. */
+        function chPromoClearThenRuleTemuSprice(row, candidate) {
+            if (!row || !chPromoIsTemuPromoChannel()) {
+                const n = Number(candidate);
+                return (isFinite(n) && n > 0) ? chPromoRound2(n) : 0;
+            }
+            if (typeof temuClearAndPrepareSprice === 'function') {
+                const v = Number(temuClearAndPrepareSprice(row, candidate));
+                if (v > 0) return chPromoRound2(v);
+            }
+            try {
+                row.update({ sprice: null, SPRICE: null });
+            } catch (e) { /* ignore */ }
+            const d = (typeof row.getData === 'function' ? row.getData() : row) || {};
+            const passed = Number(candidate);
+            return chPromoResolveTemuSprice(d, passed, { use_passed_as_discounted: passed > 0 });
         }
         /** Temu 0 Sold Dil→Target GROI% owns S PRC. Dil/PRMT/CPN must not overwrite it. */
         function chPromoTemuZeroSoldOwnsSprice(d) {
@@ -5835,8 +5852,12 @@
                             // 0 Sold Target GROI% owns S PRC. PRMT% stays independent.
                             skipSprice = true;
                         } else {
-                            // S PRC = Std × (1 − (PRMT% + CPN%)/100)
-                            newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { prmt: prmt });
+                            // Wipe old S PRC, then Std × (1 − (PRMT% + CPN%)/100) + caps
+                            item.row.update(patch);
+                            newPrice = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), { prmt: prmt });
+                            if (newPrice > 0 && chPromoIsTemuPromoChannel()) {
+                                newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
+                            }
                             if (newPrice > 0) {
                                 Object.assign(patch, chPromoSpricePatch(newPrice));
                                 skipSprice = false;
@@ -5966,19 +5987,23 @@
                         if (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d)) {
                             item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
                             jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
-                        } else {
-                            const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: 0 });
-                            if (newPrice > 0) {
-                                item.row.update(Object.assign({
-                                    cpn_pct: String(cpn),
-                                    _cpn_pct_applied: 0,
-                                }, chPromoSpricePatch(newPrice)));
-                                jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
-                            } else {
-                                item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
-                                jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
-                            }
+                    } else {
+                        item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                        let newPrice = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), { cpn: 0 });
+                        if (newPrice > 0 && chPromoIsTemuPromoChannel()) {
+                            newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
                         }
+                        if (newPrice > 0) {
+                            item.row.update(Object.assign({
+                                cpn_pct: String(cpn),
+                                _cpn_pct_applied: 0,
+                            }, chPromoSpricePatch(newPrice)));
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
+                        } else {
+                            item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                            jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: false });
+                        }
+                    }
                     } else if (ebay1) {
                         const newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
                         const patch = { cpn_pct: String(cpn), _cpn_pct_applied: 0 };
@@ -6003,7 +6028,11 @@
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
                         jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
                     } else {
-                        const newPrice = chPromoTemuSpriceFromStdPrmtCpn(d, { cpn: cpn });
+                        item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
+                        let newPrice = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), { cpn: cpn });
+                        if (newPrice > 0 && chPromoIsTemuPromoChannel()) {
+                            newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
+                        }
                         if (newPrice > 0) {
                             item.row.update(Object.assign({
                                 cpn_pct: String(cpn),
@@ -6196,11 +6225,15 @@
                         patch.appr = false;
                         patch._appr_lmp = null;
                     }
-                    // Cleared PRMT/CPN on Temu → S PRC = Std − remaining %
+                    // Cleared PRMT/CPN on Temu → wipe S PRC, then Std − remaining % + caps
                     if ((kind === 'prmt' || kind === 'cpn') && chPromoPrmtCpnComboEnabled()
                         && !chPromoTemuZeroSoldOwnsSprice(d) && !chPromoKeepZeroSoldPrcSprice(d)) {
-                        const recalc = chPromoTemuSpriceFromStdPrmtCpn(d, kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
-                        if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
+                        item.row.update(patch);
+                        const recalc = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), kind === 'prmt' ? { prmt: 0 } : { cpn: 0 });
+                        const ruled = chPromoIsTemuPromoChannel()
+                            ? chPromoClearThenRuleTemuSprice(item.row, recalc)
+                            : recalc;
+                        if (ruled > 0) Object.assign(patch, chPromoSpricePatch(ruled));
                     } else if (kind === 'prmt' && chPromoReverbComboEnabled() && !chPromoKeepZeroSoldPrcSprice(d)) {
                         const recalc = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
@@ -6276,7 +6309,7 @@
                     ok++;
                     continue;
                 }
-                const patch = Object.assign({}, chPromoSpricePatch(newPrice));
+                const patch = {};
                 patch[fieldMeta.field] = displayVal;
                 patch[fieldMeta.appliedKey] = promo.value;
                 if (kind === 'dsc') {
@@ -6284,6 +6317,10 @@
                     patch._appr_lmp = null;
                 }
                 item.row.update(patch);
+                if (chPromoIsTemuPromoChannel()) {
+                    newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
+                }
+                item.row.update(Object.assign({}, chPromoSpricePatch(newPrice), patch));
                 await saveChannelSpriceAndPromo(item.row, newPrice, true, extra);
                 ok++;
             }
