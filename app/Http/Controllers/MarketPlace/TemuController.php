@@ -4473,6 +4473,50 @@ class TemuController extends Controller
     }
 
     /**
+     * Pull live Temu listing base price(s) immediately after a push.
+     */
+    public function pullTemuPrice(Request $request)
+    {
+        return $this->pullTemuListingPrices($request, 'temu');
+    }
+
+    /**
+     * Pull live Temu 2 listing base price(s) immediately after a push.
+     */
+    public function pullTemu2Price(Request $request)
+    {
+        return $this->pullTemuListingPrices($request, 'temu2');
+    }
+
+    private function pullTemuListingPrices(Request $request, string $channel)
+    {
+        $skus = $request->input('skus', []);
+        if (! is_array($skus) || $skus === []) {
+            $sku = trim((string) $request->input('sku', ''));
+            $skus = $sku !== '' ? [$sku] : [];
+        }
+        if ($skus === []) {
+            return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+        }
+
+        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($channel, $skus);
+        $ok = 0;
+        foreach ($results as $row) {
+            if (! empty($row['success'])) {
+                $ok++;
+            }
+        }
+
+        return response()->json([
+            'success' => $ok > 0,
+            'channel' => $channel,
+            'ok_count' => $ok,
+            'fail_count' => count($results) - $ok,
+            'results' => $results,
+        ]);
+    }
+
+    /**
      * After a successful Temu listing API push, cache the new base so Temu Price
      * (derived from base_price) matches the marketplace without using save-sprice.
      */

@@ -4,6 +4,7 @@
             if (TEMU_LISTING_CHANNEL !== 'temu' && TEMU_LISTING_CHANNEL !== 'temu2') return;
 
             const TEMU_LISTING_PUSH_URL = TEMU_LISTING_CHANNEL === 'temu2' ? '/temu2/push-price' : '/temu/push-price';
+            const TEMU_LISTING_PULL_URL = TEMU_LISTING_CHANNEL === 'temu2' ? '/temu2/pull-price' : '/temu/pull-price';
             const TEMU_LISTING_PERSIST_URL = TEMU_LISTING_CHANNEL === 'temu2'
                 ? '/temu2-pricing/update-price'
                 : '/temu-pricing/update-price';
@@ -132,6 +133,27 @@
                     data: { sku: sku, base_price: base, _token: temuListingCsrf() },
                 });
             }
+            function temuListingPullPrice(sku, row, d) {
+                if (!sku) return;
+                $.ajax({
+                    url: TEMU_LISTING_PULL_URL,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': temuListingCsrf(), 'Accept': 'application/json' },
+                    data: { _token: temuListingCsrf(), sku: sku, skus: [sku] },
+                    timeout: 45000,
+                }).done(function(resp) {
+                    const results = resp && Array.isArray(resp.results) ? resp.results : [];
+                    let live = 0;
+                    results.forEach(function(r) {
+                        if (!r || !r.success) return;
+                        const n = parseFloat(r.base_price != null ? r.base_price : r.price);
+                        if (n > 0) live = n;
+                    });
+                    if (!(live > 0)) return;
+                    temuApplyPushedListingPrice(row, live, d);
+                    temuListingPersistBase(sku, live);
+                });
+            }
             function temuListingPump() {
                 if (temuListingCancelled) return;
                 while (temuListingInflight < TEMU_LISTING_MAX && temuListingQ.length) {
@@ -164,6 +186,7 @@
                             temuListingPushed.add(String(item.sku).toUpperCase() + '|' + Number(item.pushBase).toFixed(2));
                             temuApplyPushedListingPrice(item.row, item.pushBase, d);
                             temuListingPersistBase(item.sku, item.pushBase);
+                            temuListingPullPrice(item.sku, item.row, d);
                         } else {
                             temuListingFail++;
                             if (item.row && typeof item.row.update === 'function') {
@@ -280,6 +303,7 @@
             global.enqueueTemuListingPushAfterSave = enqueueTemuListingPushAfterSave;
             global.scanAndQueueTemuListingPush = scanAndQueueTemuListingPush;
             global.temuApplyPushedListingPrice = temuApplyPushedListingPrice;
+            global.temuListingPullPrice = temuListingPullPrice;
             global.cancelTemuListingAutopush = cancelTemuListingAutopush;
             global.temuListingNeedsPush = temuListingNeedsPush;
         })(window);

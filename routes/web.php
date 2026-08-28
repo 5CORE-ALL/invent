@@ -4464,7 +4464,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
     Route::get('/amazon-badge-prev-day', [OverallAmazonController::class, 'getAmazonBadgePrevDay']);
     Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);
-    Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
+    Route::match(['get', 'post'], '/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
@@ -4948,7 +4948,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
     Route::post('/temu/push-price', [TemuController::class, 'pushTemuPrice'])->name('temu.push.price');
+    Route::post('/temu/pull-price', [TemuController::class, 'pullTemuPrice'])->name('temu.pull.price');
     Route::post('/temu2/push-price', [TemuController::class, 'pushTemu2Price'])->name('temu2.push.price');
+    Route::post('/temu2/pull-price', [TemuController::class, 'pullTemu2Price'])->name('temu2.pull.price');
     Route::post('/temu2-pricing/update-price', [TemuController::class, 'updateTemu2Price']);
     Route::post('/temu2-pricing/save-sprice', [TemuController::class, 'saveTemu2Sprice']);
     Route::post('/temu2-sync-data-view-from-temu', [TemuController::class, 'syncTemu2DataViewFromTemuDataView'])->name('temu2.sync.dataview');

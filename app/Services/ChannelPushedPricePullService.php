@@ -4,7 +4,12 @@ namespace App\Services;
 
 use App\Models\ShopifySku;
 use App\Models\StoreListingPrice;
+use App\Models\Temu2Metric;
+use App\Models\Temu2Pricing;
+use App\Models\TemuMetric;
+use App\Models\TemuPricing;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * After an S PRC auto-push, pull live listing Price for only the SKUs that were pushed.
@@ -37,6 +42,10 @@ class ChannelPushedPricePullService
             return $this->pullShopifyStore($skus, $channel);
         }
 
+        if (in_array($channel, ['temu', 'temu2'], true)) {
+            return $this->pullTemu($skus, $channel);
+        }
+
         return array_map(static fn ($sku) => [
             'success' => false,
             'sku' => $sku,
@@ -46,6 +55,130 @@ class ChannelPushedPricePullService
             'message' => 'live pull not available for this channel',
             'skipped' => true,
         ], $skus);
+    }
+
+    /**
+     * Live Temu / Temu 2 supplier (base) price via bg.local.goods.sku.list.price.query.
+     *
+     * @param  list<string>  $skus
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,base_price?:float,sprice:?float,message:string,skipped?:bool}>
+     */
+    private function pullTemu(array $skus, string $channel): array
+    {
+        $temu2 = $channel === 'temu2';
+        $api = $temu2 ? app(Temu2ApiService::class) : app(TemuApiService::class);
+        $metricClass = $temu2 ? Temu2Metric::class : TemuMetric::class;
+        $pricingClass = $temu2 ? Temu2Pricing::class : TemuPricing::class;
+        $pricingTable = $temu2 ? 'temu2_pricing' : 'temu_pricing';
+
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $key = strtoupper(trim((string) $sku));
+            if ($key !== '') {
+                $wanted[$key] = trim((string) $sku);
+            }
+        }
+
+        $rows = $wanted === []
+            ? collect()
+            : $metricClass::query()
+                ->where(function ($q) use ($wanted) {
+                    foreach (array_keys($wanted) as $key) {
+                        $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+                    }
+                })
+                ->get(['sku', 'sku_id', 'goods_id']);
+
+        $byKey = [];
+        foreach ($rows as $row) {
+            $byKey[strtoupper(trim((string) $row->sku))] = $row;
+        }
+
+        $queryByGoods = [];
+        $skuIdToKey = [];
+        foreach ($wanted as $key => $orig) {
+            $row = $byKey[$key] ?? null;
+            $goodsId = $row ? trim((string) ($row->goods_id ?? '')) : '';
+            $skuId = $row ? trim((string) ($row->sku_id ?? '')) : '';
+            if ($goodsId === '') {
+                $goodsId = (string) ($api->getGoodsIdBySku($orig) ?? '');
+            }
+            if ($skuId === '') {
+                $skuId = (string) ($api->getSkuIdBySku($orig) ?? '');
+            }
+            $skuIdInt = (int) $skuId;
+            if ($goodsId === '' || $skuIdInt <= 0) {
+                continue;
+            }
+            $queryByGoods[$goodsId][$skuIdInt] = $key;
+            $skuIdToKey[(string) $skuIdInt] = $key;
+        }
+
+        $queryList = [];
+        foreach ($queryByGoods as $goodsId => $ids) {
+            $queryList[] = [
+                'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+                'skuIdList' => array_map('intval', array_keys($ids)),
+            ];
+        }
+
+        $prices = $queryList !== [] ? $api->querySkuSupplierPrices($queryList) : [];
+
+        $out = [];
+        foreach ($wanted as $key => $orig) {
+            $skuId = null;
+            foreach ($skuIdToKey as $sid => $mapped) {
+                if ($mapped === $key) {
+                    $skuId = $sid;
+                    break;
+                }
+            }
+            $live = $skuId !== null
+                ? ($prices[$skuId] ?? $prices[(string) ((int) $skuId)] ?? null)
+                : null;
+            if (! ($live > 0)) {
+                $out[] = [
+                    'success' => false,
+                    'sku' => $orig,
+                    'marketplace' => $channel,
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $skuId
+                        ? 'Live Temu base price not returned'
+                        : 'goods_id / sku_id missing — run Temu metrics fetch',
+                ];
+                continue;
+            }
+
+            try {
+                $metricClass::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
+                    ->update(['base_price' => $live]);
+                if (Schema::hasTable($pricingTable)) {
+                    $pricingClass::query()
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
+                        ->update(['base_price' => $live]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Temu live price persist failed', [
+                    'sku' => $orig,
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            $out[] = [
+                'success' => true,
+                'sku' => $orig,
+                'marketplace' => $channel,
+                'price' => $live,
+                'base_price' => $live,
+                'sprice' => null,
+                'message' => 'Pulled Temu base $'.number_format($live, 2),
+            ];
+        }
+
+        return $out;
     }
 
     /**

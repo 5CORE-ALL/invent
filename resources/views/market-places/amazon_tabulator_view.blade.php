@@ -4665,7 +4665,15 @@
 
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
-                // Bust browser/proxy GET cache so LMP always matches DB after refresh
+                // POST so FastPanel/nginx GET disk-cache cannot serve a stale LMP
+                ajaxConfig: {
+                    method: "POST",
+                    headers: {
+                        "X-CSRF-TOKEN": $('meta[name="csrf-token"]').attr('content') || '',
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
+                    }
+                },
                 ajaxParams: function() {
                     return { _ts: Date.now() };
                 },

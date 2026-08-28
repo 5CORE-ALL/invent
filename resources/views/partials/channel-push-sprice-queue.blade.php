@@ -102,6 +102,7 @@
             let chPushClientTotal = 0;
             let chPushClientCancelled = false;
             const chPushClientPushed = new Set();
+            let chPushClientOkSkus = [];
 
             function chPushSpriceCsrf() {
                 return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -146,6 +147,11 @@
                 chPushClientQ = [];
                 chPushClientCancelled = true;
                 chPushClientSetProgress(chPushClientInflight > 0);
+                if (chPushClientOkSkus.length) {
+                    const toPull = chPushClientOkSkus.slice();
+                    chPushClientOkSkus = [];
+                    chPushSpricePullAfterPush(toPull);
+                }
                 if (!chPushClientInflight) {
                     chPushClientDone = 0;
                     chPushClientOk = 0;
@@ -743,6 +749,9 @@
                             const live = resp.ebay_price != null ? resp.ebay_price
                                 : (resp.price != null ? resp.price : item.price);
                             chPushClientPushed.add(String(item.sku).toUpperCase() + '|' + Number(item.price).toFixed(2));
+                            if (chPushClientOkSkus.indexOf(item.sku) === -1) {
+                                chPushClientOkSkus.push(item.sku);
+                            }
                             chPushClientApplyResult(item, true, live, null);
                         } else {
                             chPushClientFail++;
@@ -764,6 +773,11 @@
                                     'S PRC: ' + chPushClientOk + ' ok'
                                     + (chPushClientFail ? (' · ' + chPushClientFail + ' failed') : '')
                                 );
+                                if (chPushClientOkSkus.length) {
+                                    const toPull = chPushClientOkSkus.slice();
+                                    chPushClientOkSkus = [];
+                                    chPushSpricePullAfterPush(toPull);
+                                }
                             } else if (chPushClientFail > 0) {
                                 chPushSpriceToast('error', 'S PRC: ' + chPushClientFail + ' failed');
                             }

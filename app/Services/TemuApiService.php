@@ -1916,6 +1916,100 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Live supplier/base prices via bg.local.goods.sku.list.price.query.
+     *
+     * @param  list<array{goodsId:int|string, skuIdList:list<int|string>}>  $queryList
+     * @return array<string, float> skuId => amount
+     */
+    public function querySkuSupplierPrices(array $queryList): array
+    {
+        $normalized = [];
+        foreach ($queryList as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $goodsId = $row['goodsId'] ?? null;
+            $skuIds = $row['skuIdList'] ?? [];
+            if ($goodsId === null || $goodsId === '' || ! is_array($skuIds) || $skuIds === []) {
+                continue;
+            }
+            $ids = [];
+            foreach ($skuIds as $skuId) {
+                $n = (int) $skuId;
+                if ($n > 0) {
+                    $ids[$n] = true;
+                }
+            }
+            if ($ids === []) {
+                continue;
+            }
+            $normalized[] = [
+                'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+                'skuIdList' => array_map('intval', array_keys($ids)),
+            ];
+        }
+        if ($normalized === []) {
+            return [];
+        }
+
+        $resp = $this->callOpenApi('bg.local.goods.sku.list.price.query', [
+            'querySupplierPriceBaseList' => $normalized,
+            'language' => 'en',
+        ], 45);
+
+        if (! ($resp['success'] ?? false)) {
+            Log::warning('Temu querySkuSupplierPrices failed', [
+                'channel' => $this->temuServiceConfigKey(),
+                'message' => $resp['message'] ?? ($resp['errorMsg'] ?? null),
+            ]);
+
+            return [];
+        }
+
+        $result = is_array($resp['result'] ?? null) ? $resp['result'] : [];
+        $goodsPriceList = $result['openapiGoodsSupplierPriceDTOList']
+            ?? $result['skuPriceInfoList']
+            ?? [];
+
+        $out = [];
+        foreach ($goodsPriceList as $goodsBlock) {
+            if (! is_array($goodsBlock)) {
+                continue;
+            }
+            $skuPriceList = $goodsBlock['openapiSkuSupplierPriceDTOList'] ?? null;
+            if (is_array($skuPriceList)) {
+                foreach ($skuPriceList as $skuPrice) {
+                    if (! is_array($skuPrice)) {
+                        continue;
+                    }
+                    $this->collectQueriedSkuPrice($out, $skuPrice);
+                }
+                continue;
+            }
+            $this->collectQueriedSkuPrice($out, $goodsBlock);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, float>  $out
+     * @param  array<string, mixed>  $skuPrice
+     */
+    private function collectQueriedSkuPrice(array &$out, array $skuPrice): void
+    {
+        $skuId = $skuPrice['skuId'] ?? $skuPrice['sku_id'] ?? null;
+        $amount = $skuPrice['supplierPrice']['amount']
+            ?? $skuPrice['supplierPrice']['val']
+            ?? $skuPrice['basePrice']
+            ?? null;
+        if ($skuId === null || $amount === null || ! is_numeric($amount)) {
+            return;
+        }
+        $out[(string) (int) $skuId] = round((float) $amount, 2);
+    }
+
+    /**
      * Update product title on Temu by seller SKU.
      * Resolves SKU → goodsId (required by API); uses goodsId + goodsName in request.
      * API type is configurable via config('services.temu.goods_update_type') or TEMU_GOODS_UPDATE_TYPE.

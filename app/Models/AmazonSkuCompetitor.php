@@ -122,11 +122,27 @@ class AmazonSkuCompetitor extends Model
 
     /**
      * Whether a competitor is excluded from L1. Handles model/array and 1/"1"/true.
-     * Do not use empty($item->ignored) — Eloquent __isset makes that unreliable.
+     * Reads raw attributes so Eloquent casts / empty() cannot hide ignored=1.
      */
     public static function isIgnored($item): bool
     {
-        $v = is_array($item) ? ($item['ignored'] ?? false) : (is_object($item) ? ($item->ignored ?? false) : false);
+        $v = false;
+        if (is_array($item)) {
+            $v = $item['ignored'] ?? false;
+        } elseif (is_object($item)) {
+            if (method_exists($item, 'getAttributes')) {
+                $attrs = $item->getAttributes();
+                if (array_key_exists('ignored', $attrs)) {
+                    $v = $attrs['ignored'];
+                } elseif (method_exists($item, 'getRawOriginal') && $item->getRawOriginal('ignored') !== null) {
+                    $v = $item->getRawOriginal('ignored');
+                } else {
+                    $v = $item->ignored ?? false;
+                }
+            } else {
+                $v = $item->ignored ?? false;
+            }
+        }
         if (is_bool($v)) {
             return $v;
         }
@@ -135,6 +151,27 @@ class AmazonSkuCompetitor extends Model
         }
 
         return in_array(strtolower(trim((string) $v)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Competitor ids currently marked ignored (raw DB, not Eloquent).
+     *
+     * @return array<int, true>
+     */
+    public static function ignoredIdSet(): array
+    {
+        $table = (new static)->getTable();
+        if (! \Illuminate\Support\Facades\Schema::hasColumn($table, 'ignored')) {
+            return [];
+        }
+
+        return array_fill_keys(
+            \Illuminate\Support\Facades\DB::table($table)
+                ->where('ignored', 1)
+                ->pluck('id')
+                ->all(),
+            true
+        );
     }
 
     public static function lowestFromCollection($items)

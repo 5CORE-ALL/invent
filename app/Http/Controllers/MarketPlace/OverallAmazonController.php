@@ -439,10 +439,12 @@ class OverallAmazonController extends Controller
         // Fetch LMP data from amazon_sku_competitors table
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
+        $lmpIgnoredIds = [];
         try {
             $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
             $lmpDetailsLookup = $lmpLookups['details'];
             $lmpLowestLookup = $lmpLookups['lowest'];
+            $lmpIgnoredIds = AmazonSkuCompetitor::ignoredIdSet();
         } catch (\Exception $e) {
             Log::warning('Could not fetch LMP data from amazon_sku_competitors: ' . $e->getMessage());
         }
@@ -635,31 +637,17 @@ class OverallAmazonController extends Controller
             }
 
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
-            // L1 by landed (price + paid delivery; FREE does not add) — ignored rows excluded
-            $lowestLmp = AmazonSkuCompetitor::lowestFromCollection($allLmpEntries);
 
-            $row['lmp_price'] = $lowestLmp ? AmazonSkuCompetitor::landedPrice($lowestLmp) : null;
-            $row['lmp_link'] = $lowestLmp ? ($lowestLmp->product_link ?? null) : null;
-            $row['lmp_asin'] = $lowestLmp ? ($lowestLmp->asin ?? null) : null;
-            $row['lmp_title'] = $lowestLmp ? ($lowestLmp->product_title ?? null) : null;
-            $row['lmp_delivery'] = $lowestLmp ? $this->normalizeDeliveryText($lowestLmp->delivery ?? null) : null;
-            
-            // Competitor sales data from JungleScout
-            $row['lmp_monthly_revenue'] = ($lowestLmp && isset($lowestLmp->monthly_revenue))
-                ? (is_numeric($lowestLmp->monthly_revenue) ? floatval($lowestLmp->monthly_revenue) : null)
-                : null;
-            $row['lmp_monthly_units'] = ($lowestLmp && isset($lowestLmp->monthly_units_sold))
-                ? intval($lowestLmp->monthly_units_sold)
-                : null;
-            $row['lmp_buy_box_owner'] = $lowestLmp ? ($lowestLmp->buy_box_owner ?? null) : null;
-            $row['lmp_seller_type'] = $lowestLmp ? ($lowestLmp->seller_type_js ?? null) : null;
-            
             $row['lmp_entries'] = $allLmpEntries
-                ->map(function ($entry) {
+                ->map(function ($entry) use ($lmpIgnoredIds) {
+                    $ignored = isset($lmpIgnoredIds[(int) $entry->id]) || AmazonSkuCompetitor::isIgnored($entry);
+                    $landed = AmazonSkuCompetitor::landedPrice($entry);
+
                     return [
                         'id' => $entry->id,
                         'asin' => $entry->asin ?? null,
                         'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
+                        'landed_price' => $landed,
                         'delivery' => $this->normalizeDeliveryText($entry->delivery ?? null),
                         'link' => $entry->product_link ?? null,
                         'product_link' => $entry->product_link ?? null,
@@ -678,12 +666,55 @@ class OverallAmazonController extends Controller
                             : null,
                         'buy_box_owner' => $entry->buy_box_owner ?? null,
                         'seller_type' => $entry->seller_type_js ?? null,
-                        'ignored' => (bool) ($entry->ignored ?? false),
+                        'ignored' => $ignored ? 1 : 0,
                         'sales_data_updated_at' => $entry->sales_data_updated_at ?? null,
                     ];
                 })
-                ->toArray();
-            $row['lmp_entries_total'] = $allLmpEntries->count();
+                ->values()
+                ->all();
+            $row['lmp_entries_total'] = count($row['lmp_entries']);
+
+            // L1 from the same mapped entries the grid receives (skip ignored).
+            $lowestMapped = null;
+            $lowestLanded = null;
+            foreach ($row['lmp_entries'] as $mapped) {
+                if (! empty($mapped['ignored'])) {
+                    continue;
+                }
+                $landed = isset($mapped['landed_price']) ? (float) $mapped['landed_price'] : (float) ($mapped['price'] ?? 0);
+                if ($landed > 0 && ($lowestLanded === null || $landed < $lowestLanded)) {
+                    $lowestLanded = $landed;
+                    $lowestMapped = $mapped;
+                }
+            }
+            $lowestLmp = null;
+            if ($lowestMapped && ! empty($lowestMapped['id'])) {
+                $lowestLmp = $allLmpEntries->first(fn ($e) => (int) $e->id === (int) $lowestMapped['id']);
+            }
+
+            $row['lmp_price'] = $lowestLanded;
+            $row['lmp_link'] = is_array($lowestMapped)
+                ? ($lowestMapped['product_link'] ?? null)
+                : ($lowestLmp ? ($lowestLmp->product_link ?? null) : null);
+            $row['lmp_asin'] = is_array($lowestMapped)
+                ? ($lowestMapped['asin'] ?? null)
+                : ($lowestLmp ? ($lowestLmp->asin ?? null) : null);
+            $row['lmp_title'] = is_array($lowestMapped)
+                ? ($lowestMapped['product_title'] ?? null)
+                : ($lowestLmp ? ($lowestLmp->product_title ?? null) : null);
+            $row['lmp_delivery'] = is_array($lowestMapped)
+                ? ($lowestMapped['delivery'] ?? null)
+                : ($lowestLmp ? $this->normalizeDeliveryText($lowestLmp->delivery ?? null) : null);
+            
+            // Competitor sales data from JungleScout
+            $row['lmp_monthly_revenue'] = ($lowestLmp && isset($lowestLmp->monthly_revenue))
+                ? (is_numeric($lowestLmp->monthly_revenue) ? floatval($lowestLmp->monthly_revenue) : null)
+                : null;
+            $row['lmp_monthly_units'] = ($lowestLmp && isset($lowestLmp->monthly_units_sold))
+                ? intval($lowestLmp->monthly_units_sold)
+                : null;
+            $row['lmp_buy_box_owner'] = $lowestLmp ? ($lowestLmp->buy_box_owner ?? null) : null;
+            $row['lmp_seller_type'] = $lowestLmp ? ($lowestLmp->seller_type_js ?? null) : null;
 
             // GPFT% Formula = ((price × 0.80 - ship - lp) / price) × 100
             $row['GPFT%'] = $price > 0
@@ -3159,9 +3190,11 @@ class OverallAmazonController extends Controller
             return response()->json([
                 'data' => $data['data'] ?? []
             ])->withHeaders([
-                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma' => 'no-cache',
                 'Expires' => '0',
+                'Surrogate-Control' => 'no-store',
+                'Vary' => '*',
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
@@ -4613,7 +4646,7 @@ class OverallAmazonController extends Controller
                         'seller_name' => $comp->seller_name,
                         'price' => floatval($comp->price),
                         'landed_price' => $landed,
-                        'ignored' => (bool) ($comp->ignored ?? false),
+                        'ignored' => AmazonSkuCompetitor::isIgnored($comp) ? 1 : 0,
                         'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
                         'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
                         'extracted_old_price' => $comp->extracted_old_price !== null ? floatval($comp->extracted_old_price) : null,
