@@ -71,6 +71,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -415,6 +416,7 @@
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
     let lmpMissingFilterActive = false;

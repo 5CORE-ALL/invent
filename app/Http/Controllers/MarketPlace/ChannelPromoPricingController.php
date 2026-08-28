@@ -391,6 +391,42 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
+     * After a successful S PRC push, pull live listing Price for only those SKUs.
+     */
+    public function pullPushedPrices(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, self::PUSH_SPRICE_CHANNELS, true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $skus = $request->input('skus', []);
+        if (! is_array($skus) || $skus === []) {
+            return response()->json(['success' => false, 'message' => 'skus required'], 422);
+        }
+
+        $results = app(\App\Services\ChannelPushedPricePullService::class)->pullSkus($channel, $skus);
+        $ok = 0;
+        $skipped = 0;
+        foreach ($results as $row) {
+            if (! empty($row['success'])) {
+                $ok++;
+            } elseif (! empty($row['skipped'])) {
+                $skipped++;
+            }
+        }
+
+        return response()->json([
+            'success' => $ok > 0 || $skipped === count($results),
+            'channel' => $channel,
+            'ok_count' => $ok,
+            'skip_count' => $skipped,
+            'fail_count' => count($results) - $ok - $skipped,
+            'results' => $results,
+        ]);
+    }
+
+    /**
      * End every active eBay markdown sale event for the channel.
      */
     public function endAllSales(string $channel): JsonResponse

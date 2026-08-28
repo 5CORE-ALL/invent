@@ -290,7 +290,7 @@ class ChannelPushSpriceRunner
             return;
         }
         $class = match ($this->channel) {
-            'ebay2' => \App\Models\Ebay2Metric::class,
+            'ebay2', 'ebay2op' => \App\Models\Ebay2Metric::class,
             'ebay3' => \App\Models\Ebay3Metric::class,
             'ebay1' => \App\Models\EbayMetric::class,
             default => null,
@@ -380,10 +380,11 @@ class ChannelPushSpriceRunner
         }
 
         return match ($this->channel) {
+            'ebay1' => app(EbayController::class)->pushEbayPrice($req),
             'ebay2', 'ebay2op' => app(EbayTwoController::class)->pushEbay2Price($req),
             'ebay3' => app(EbayThreeController::class)->pushEbay3Price($req),
             'shopify_b2c' => app(OverallAmazonController::class)->pushShopifyB2CPrice($req),
-            default => app(EbayController::class)->pushEbayPrice($req),
+            default => throw new \RuntimeException('Live S PRC push is not available for '.$this->channel),
         };
     }
 }

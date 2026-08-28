@@ -52,22 +52,38 @@
                 temu: 'temu_price',
                 temu2: 'temu_price',
                 doba: 'doba Price',
-                doba_withoutship: 'doba Price',
-                tiktok: 'Price',
-                tiktok2: 'Price',
-                topdawg: 'Price',
-                purchasing_power: 'Price',
-                aliexpress: 'Price',
-                shein: 'Price',
-                newegg: 'Price',
-                faire: 'Price',
-                pls: 'Price',
+                doba_withoutship: 'self_pick_price',
+                tiktok: 'TT Price',
+                tiktok2: 'TT Price',
+                topdawg: 'TD Price',
+                purchasing_power: 'PP Price',
+                aliexpress: 'price',
+                shein: 'special_offer',
+                newegg: 'price',
+                faire: 'price',
+                pls: 'price',
+                mercari_wship: 'price',
+                mercari_woship: 'price',
+                fb_marketplace: 'price',
+                vinted: 'V Price',
+                depop: 'price',
             })[CH_PUSH_SPRICE_CHANNEL] || 'Price';
+            const CH_PUSH_SPRICE_CAN_LIVE = ({
+                ebay1: 1, ebay2: 1, ebay2op: 1, ebay3: 1,
+                shopify_b2c: 1, shopify_b2b: 1,
+                reverb: 1, macys: 1, macy: 1, bestbuy: 1, walmart: 1,
+                temu: 1, temu2: 1, doba: 1, doba_withoutship: 1,
+                tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
+                faire: 1, pls: 1,
+            })[CH_PUSH_SPRICE_CHANNEL] === 1;
+            const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_SPRICE_PULL_DELAY_MS = /ebay/.test(CH_PUSH_SPRICE_CHANNEL) ? 60000 : 8000;
             const CH_PUSH_SPRICE_CHUNK = 200;
             let chPushSpriceBuf = {};
             let chPushSpriceTimer = null;
             let chPushSpricePollTimer = null;
             let chPushSpriceLastToastKey = '';
+            let chPushSpricePulledKey = '';
             let chPushSpriceFlushing = false;
             let chPushSpriceExclusive = false;
             let chPushSpriceExpecting = false;
@@ -299,6 +315,59 @@
                     }, 400);
                 }
             }
+            function chPushSpriceOkSkus(tasks) {
+                const out = [];
+                const seen = {};
+                (tasks || []).forEach(function(t) {
+                    if (!t || String(t.status) !== 'ok') return;
+                    const sku = String(t.sku || '').trim();
+                    const key = sku.toUpperCase();
+                    if (!sku || seen[key]) return;
+                    seen[key] = true;
+                    out.push(sku);
+                });
+                return out;
+            }
+            function applyChannelPushSpricePullResults(results) {
+                if (!Array.isArray(results) || !results.length) return;
+                const tasks = results.filter(function(r) {
+                    return r && r.success && Number(r.price) > 0 && !r.skipped;
+                }).map(function(r) {
+                    return { sku: r.sku, status: 'ok', ebay_price: Number(r.price), price: Number(r.price) };
+                });
+                if (!tasks.length) return;
+                applyChannelPushSpriceTasks(tasks);
+            }
+            function chPushSpricePullAfterPush(skus) {
+                if (!skus || !skus.length) return;
+                if (!CH_PUSH_SPRICE_CAN_PULL) return;
+                clearTimeout(chPushSpricePullAfterPush._t);
+                const n = skus.length;
+                chPushSpricePullAfterPush._t = setTimeout(function() {
+                    $.ajax({
+                        url: CH_PUSH_SPRICE_URL + '/pull',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                        data: { _token: chPushSpriceCsrf(), skus: skus },
+                        timeout: 300000,
+                    }).done(function(resp) {
+                        const results = resp && Array.isArray(resp.results) ? resp.results : [];
+                        applyChannelPushSpricePullResults(results);
+                        const pulled = Number(resp && resp.ok_count) || 0;
+                        const skipped = Number(resp && resp.skip_count) || 0;
+                        if (pulled > 0) {
+                            chPushSpriceToast('success', 'Pulled live Price for ' + pulled + ' SKU(s)');
+                        } else if (!skipped) {
+                            chPushSpriceToast('error', (resp && resp.message) || 'Live Price pull failed');
+                        }
+                    }).fail(function(xhr) {
+                        chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Live Price pull failed');
+                    });
+                }, CH_PUSH_SPRICE_PULL_DELAY_MS);
+                if (/ebay/.test(CH_PUSH_SPRICE_CHANNEL)) {
+                    chPushSpriceToast('success', 'eBay Price pull in 1 min for ' + n + ' pushed SKU(s)');
+                }
+            }
             function stopChannelPushSpricePoll() {
                 if (chPushSpricePollTimer) {
                     clearInterval(chPushSpricePollTimer);
@@ -330,13 +399,18 @@
                     });
                     if (!active) {
                         stopChannelPushSpricePoll();
-                        const toastKey = String(resp.job && resp.job.status) + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
+                        const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : '';
+                        const toastKey = jobStatus + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
                         if (toastKey !== chPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
                             chPushSpriceLastToastKey = toastKey;
                             chPushSpriceToast(
                                 (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success',
                                 resp.message || ('S PRC: ' + (resp.ok_count || 0) + ' ok')
                             );
+                        }
+                        if (jobStatus === 'completed' && (Number(resp.ok_count) || 0) > 0 && toastKey !== chPushSpricePulledKey) {
+                            chPushSpricePulledKey = toastKey;
+                            chPushSpricePullAfterPush(chPushSpriceOkSkus(resp.tasks || []));
                         }
                     }
                 });
@@ -420,6 +494,12 @@
                     }
                     return;
                 }
+                if (!CH_PUSH_SPRICE_CAN_LIVE) {
+                    if (!opts.silent) {
+                        chPushSpriceToast('error', 'Live S PRC push is not available for this channel');
+                    }
+                    return;
+                }
                 if (opts.exclusive) chPushSpriceExclusive = true;
                 if (!items || !items.length) return;
                 items.forEach(function(item) {
@@ -459,6 +539,7 @@
                     }
                 }
                 if (!sku || !(p > 0)) return false;
+                if (!CH_PUSH_SPRICE_CAN_LIVE) return false;
                 if (!chPushSpriceAutoPushAllowed()) {
                     try {
                         if (row && typeof row.update === 'function') {
@@ -561,6 +642,9 @@
             }
             function scanAndQueueChannelPushSprice(tbl, opts) {
                 opts = opts || {};
+                // Catalog-wide catch-up is off. Autopush only queues SKUs that just changed
+                // (enqueueChannelPushSpriceAfterSave). Call with { catalog: true } to opt in.
+                if (!opts.catalog) return;
                 if (opts.once !== false && opts.silent && window._chPushSpricePageChecked) return;
                 if (opts.once !== false && opts.silent) window._chPushSpricePageChecked = true;
                 if (!chPushSpriceAutoPushAllowed()) return;

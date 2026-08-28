@@ -115,7 +115,7 @@ class PefEbayPricePullService
         if (in_array($mp, ['ebay', 'ebay1', 'ebayone'], true)) {
             return 'ebay1';
         }
-        if (in_array($mp, ['ebay2', 'ebaytwo'], true)) {
+        if (in_array($mp, ['ebay2', 'ebaytwo', 'ebay2op'], true)) {
             return 'ebay2';
         }
         if (in_array($mp, ['ebay3', 'ebaythree'], true)) {

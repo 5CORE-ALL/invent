@@ -401,6 +401,7 @@
         .shopify-b2b-push-row-btn:hover { color: #dc6502; }
         .shopify-b2b-push-row-btn:disabled { opacity: 0.5; cursor: wait; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2b'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
 
@@ -772,6 +773,7 @@
         return sku.includes('PARENT');
     }
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2b'])
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;

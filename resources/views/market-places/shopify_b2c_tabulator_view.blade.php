@@ -492,6 +492,7 @@
             line-height: 1;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
     @include('partials.lazy-chart-js')
 @endsection
@@ -2614,6 +2615,7 @@
         };
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {

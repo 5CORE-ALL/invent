@@ -19,6 +19,7 @@ class TiktokSkuCompetitor extends Model
         'seller_name',
         'brand_name',
         'price',
+        'ignored',
         'shipping_cost',
         'min_price',
         'max_price',
@@ -29,6 +30,7 @@ class TiktokSkuCompetitor extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'ignored' => 'boolean',
         'shipping_cost' => 'decimal:2',
         'min_price' => 'decimal:2',
         'max_price' => 'decimal:2',
@@ -78,7 +80,10 @@ class TiktokSkuCompetitor extends Model
 
     public static function lowestFromCollection($items)
     {
-        return collect($items)->sortBy(fn ($item) => self::landedPrice($item))->first();
+        return collect($items)
+            ->filter(fn ($item) => empty($item->ignored))
+            ->sortBy(fn ($item) => self::landedPrice($item))
+            ->first();
     }
 
     /**

@@ -434,6 +434,7 @@
         }
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
 
@@ -970,6 +971,7 @@
     const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PMT_SPENT = {{ $pmtSpent ?? 0 }};

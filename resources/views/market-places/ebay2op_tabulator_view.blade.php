@@ -222,6 +222,7 @@
         }
         .nrp-dot-cell .nrp-nr-select:focus { opacity: 1; outline: 1px solid #0d6efd; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2op'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
 
@@ -992,7 +993,8 @@
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2op'])
-        @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => 'ebay2op'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+        const EBAY2OP_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
         const COLUMN_VIS_KEY = "ebay2op_tabulator_column_visibility";
         let skuMetricsChart = null;
         let currentSku = null;

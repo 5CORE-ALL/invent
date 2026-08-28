@@ -18,6 +18,9 @@
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'shopify_b2c'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
+    $channelPromoTakehome = ($channelPromoPart === 'script' || $channelPromoPart === 'all')
+        ? \App\Models\MarketplacePercentage::takeHomeForPromoChannel($channelPromoChannel)
+        : 1.0;
 @endphp
 
 @if($channelPromoPart === 'css' || $channelPromoPart === 'all')
@@ -605,7 +608,7 @@
             <div class="ch-promo-reload-push-cluster" id="ch-promo-reload-push-cluster">
                 <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
                     id="ch-promo-reload-push-wrap"
-                    title="When ON, changing a price auto-pushes only those edited SKUs. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
+                    title="When ON, changing a price auto-pushes only those edited SKUs, then pulls live Price for those SKUs only. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
                     <span class="ch-promo-reload-push-text">
                         Push on reload
                         <span class="ch-promo-reload-push-state" id="ch-promo-reload-push-label">{{ $channelPromoPageReloadPushEnabled ? 'On' : 'Off' }}</span>
@@ -1068,6 +1071,7 @@
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
 
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
+        const CHANNEL_PROMO_TAKEHOME = {{ (float) ($channelPromoTakehome ?? 1) }};
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_HIDE_PUSH_CPN = @json($channelPromoHidePushCpn);
@@ -3124,11 +3128,24 @@
         function chPromoCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         }
+        function chPromoLmp(d) {
+            if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+                const n = Number(SpriceLmpCap.lmpOf(d));
+                return isFinite(n) && n > 0 ? n : 0;
+            }
+            if (!d) return 0;
+            const fields = ['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1'];
+            for (let i = 0; i < fields.length; i++) {
+                const n = Number(d[fields[i]]);
+                if (isFinite(n) && n > 0) return n;
+            }
+            return 0;
+        }
         function chPromoCapSpriceToLmp(d, sprice, extra) {
             extra = extra || {};
             if (extra.skip_lmp_cap) return chPromoRound2(sprice);
             if (window.SpriceLmpCap) return SpriceLmpCap.prepare(d, sprice);
-            const lmp = parseFloat(d && (d.lmp_price || d.lmp || d.LMP)) || 0;
+            const lmp = chPromoLmp(d);
             let s = chPromoRound2(sprice);
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
             return s;
@@ -4242,11 +4259,34 @@
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
             raw = Number(d && d.percentage);
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+            if (typeof getRowMarginFactor === 'function') {
+                try {
+                    raw = Number(getRowMarginFactor(d));
+                    if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+                } catch (e) { /* next */ }
+            }
+            if (typeof getMacysMargin === 'function') {
+                try {
+                    raw = Number(getMacysMargin(d));
+                    if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+                } catch (e) { /* next */ }
+            }
+            if (typeof reverbTakeRate === 'function') {
+                try {
+                    raw = Number(reverbTakeRate(d));
+                    if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+                } catch (e) { /* next */ }
+            }
             const globals = [];
+            if (typeof CHANNEL_PROMO_TAKEHOME !== 'undefined') globals.push(CHANNEL_PROMO_TAKEHOME);
             if (typeof EBAY_TAKEHOME !== 'undefined') globals.push(EBAY_TAKEHOME);
             if (typeof EBAY2_TAKEHOME !== 'undefined') globals.push(EBAY2_TAKEHOME);
             if (typeof EBAY3_TAKEHOME !== 'undefined') globals.push(EBAY3_TAKEHOME);
             if (typeof EBAY2OP_TAKEHOME !== 'undefined') globals.push(EBAY2OP_TAKEHOME);
+            if (typeof MARKETPLACE_PERCENTAGE !== 'undefined') globals.push(MARKETPLACE_PERCENTAGE);
+            if (typeof MACYS_DEFAULT_MARGIN !== 'undefined') globals.push(MACYS_DEFAULT_MARGIN);
+            if (typeof TEMU_MARGIN !== 'undefined') globals.push(TEMU_MARGIN);
+            if (typeof DEFAULT_TIKTOK_MARGIN_FACTOR !== 'undefined') globals.push(DEFAULT_TIKTOK_MARGIN_FACTOR);
             for (let i = 0; i < globals.length; i++) {
                 const t = Number(globals[i]);
                 if (isFinite(t) && t > 0) return t > 1 ? (t / 100) : t;
@@ -4537,10 +4577,17 @@
             const updates = jobs.map(function(j) { return { sku: j.sku, sprice: j.price }; });
             try {
                 if (chPromoCfg.saveSpriceBatchUrl) {
-                    await saveChannelSpriceBatch(updates, { skip_push: true });
+                    await saveChannelSpriceBatch(updates, {
+                        skip_push: true,
+                        queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                    });
                 } else {
                     await chPromoMapLimit(jobs, 8, async function(job) {
-                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
+                            skip_push: true,
+                            queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                            row: job.row,
+                        }));
                     });
                 }
             } catch (e) {
@@ -5171,6 +5218,20 @@
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
                 data: data,
+            }).done(function() {
+                const shouldQueue = extra.queue_push === true
+                    || (extra.queue_push !== false
+                        && typeof chPromoPageReloadPushAllowed === 'function'
+                        && chPromoPageReloadPushAllowed());
+                if (!shouldQueue) return;
+                updates.forEach(function(u) {
+                    if (!u || !u.sku) return;
+                    if (chPromoIsTemuPromoChannel() && typeof enqueueTemuListingPushAfterSave === 'function') {
+                        enqueueTemuListingPushAfterSave(u.sku, u.sprice, null);
+                    } else if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                        enqueueChannelPushSpriceAfterSave(u.sku, u.sprice, null);
+                    }
+                });
             });
         }
         function collectChPromoGtSoldTargets() {
@@ -5235,10 +5296,17 @@
             const updates = jobs.map(function(j) { return { sku: j.sku, sprice: j.price }; });
             try {
                 if (chPromoCfg.saveSpriceBatchUrl) {
-                    await saveChannelSpriceBatch(updates, { skip_push: true });
+                    await saveChannelSpriceBatch(updates, {
+                        skip_push: true,
+                        queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                    });
                 } else {
                     await chPromoMapLimit(jobs, 8, async function(job) {
-                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, { skip_push: true }));
+                        await Promise.resolve(saveChannelSprice(job.sku, job.price, true, {
+                            skip_push: true,
+                            queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
+                            row: job.row,
+                        }));
                     });
                 }
             } catch (e) {
@@ -6988,7 +7056,7 @@
 
         function chPromoLmpDiffPct(d) {
             const price = chPromoPrice(d);
-            const lmp = Number(d.lmp_price) || 0;
+            const lmp = chPromoLmp(d);
             if (!(price > 0) || !(lmp > 0) || !(price > lmp)) return null;
             return chPromoRound2(((price - lmp) / price) * 100);
         }
@@ -7021,7 +7089,7 @@
         function applyChPromoApprDiscount(row) {
             const d = row.getData();
             const pct = chPromoLmpDiffPct(d);
-            const lmp = Number(d.lmp_price);
+            const lmp = chPromoLmp(d);
             if (!(pct > 0) || !(lmp > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 chPromoToast('error', 'Appr needs Price > LMP');
@@ -7041,13 +7109,14 @@
                 if (typeof table !== 'undefined' && table) table.redraw(true);
                 return false;
             }
-            const newPrice = applyChPromoToSpriceBase(base, { type: 'percent', value: pct });
+            let newPrice = applyChPromoToSpriceBase(base, { type: 'percent', value: pct });
             if (!(newPrice > 0)) {
                 row.update({ appr: false, _appr_lmp: null });
                 chPromoToast('error', 'No S PRC/Price to discount');
                 if (typeof table !== 'undefined' && table) table.redraw(true);
                 return false;
             }
+            newPrice = chPromoCapSpriceToLmp(d, newPrice);
             row.update(Object.assign({
                 appr: true,
                 _appr_lmp: chPromoRound2(lmp),
@@ -7192,6 +7261,8 @@
                 item.row.update(patch);
                 if (chPromoIsTemuPromoChannel()) {
                     newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
+                } else {
+                    newPrice = chPromoCapSpriceToLmp(item.row.getData(), newPrice);
                 }
                 item.row.update(Object.assign({}, chPromoSpricePatch(newPrice), patch));
                 await saveChannelSpriceAndPromo(item.row, newPrice, true, extra);
@@ -8309,12 +8380,9 @@
                 persist: true,
                 silent: true,
                 force: clearOnce,
-                skip_push: !chPromoPageReloadPushAllowed(),
+                skip_push: true,
             });
             if (clearOnce) chPromoMarkStoredClearedOnce();
-            if (chPromoPageReloadPushAllowed()) {
-                chPromoQueueReloadSpricePush({ delay: 700 });
-            }
         }
         function bindEbaySpriceAutofill() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
@@ -8447,7 +8515,7 @@
                     return;
                 }
                 const sku = chPromoSku(item.d);
-                const lmp = Number(rowData.lmp_price) || 0;
+                const lmp = chPromoLmp(rowData);
                 if (lmp > 0 && fill > lmp) aboveLmp++;
                 saveChannelSprice(sku, fill, true)
                     .done(function(saveRes) {
@@ -9284,17 +9352,10 @@
                 const prev = chPromoPageReloadPushAllowed();
                 saveChPromoPageReloadPush(on)
                     .done(function() {
-                        if (on && chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
-                            scanAndQueueTemuListingPush(chPromoSafeTable());
-                        } else if (on) {
-                            chPromoQueueReloadSpricePush();
-                        }
                         chPromoToast(
                             'success',
                             on
-                                ? (chPromoIsTemuPromoChannel()
-                                    ? 'Auto-push on — Temu listing price updates through the Temu API.'
-                                    : 'Auto-push on — SKUs whose S PRC differs from Price are queued now.')
+                                ? 'Auto-push on — changing a price pushes only that SKU, then pulls its live Price.'
                                 : 'Auto-push off — price edits only save. Daily cron still pushes.'
                         );
                     })

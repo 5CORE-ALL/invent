@@ -549,7 +549,72 @@
             flex-shrink: 0;
             cursor: pointer;
         }
+        .pef-reload-push-progress {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1 1 180px;
+            min-width: 160px;
+            max-width: 320px;
+            padding: 4px 10px;
+            border: 1px solid #bfdbfe;
+            border-radius: 999px;
+            background: #eff6ff;
+            font-size: 11px;
+            font-weight: 700;
+            color: #1d4ed8;
+            line-height: 1.2;
+        }
+        .pef-reload-push-progress.is-busy { border-color: #93c5fd; }
+        .pef-reload-push-progress.is-done {
+            border-color: #86efac;
+            background: #f0fdf4;
+            color: #15803d;
+        }
+        .pef-reload-push-progress.is-fail {
+            border-color: #fcd34d;
+            background: #fffbeb;
+            color: #b45309;
+        }
+        .pef-reload-push-progress-track {
+            flex: 1 1 72px;
+            height: 8px;
+            min-width: 64px;
+            border-radius: 999px;
+            background: #bfdbfe;
+            overflow: hidden;
+        }
+        .pef-reload-push-progress-track > span {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: #93c5fd;
+            border-radius: 999px;
+            transition: width .25s ease;
+        }
+        .pef-reload-push-progress.is-done .pef-reload-push-progress-track > span { background: #22c55e; }
+        .pef-reload-push-progress-pct { flex: 0 0 auto; min-width: 2.4em; text-align: right; }
+        .pef-reload-push-progress-msg {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 9.5rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 600;
+            color: #64748b;
+        }
     </style>
+    @push('page-title-after')
+        <div id="pef-reload-push-progress" class="pef-reload-push-progress"
+            aria-live="polite" title="PEF marketplace push progress">
+            <div class="pef-reload-push-progress-track">
+                <span id="pef-reload-push-progress-bar"></span>
+            </div>
+            <span class="pef-reload-push-progress-pct" id="pef-reload-push-progress-pct">0%</span>
+            <span class="pef-reload-push-progress-msg" id="pef-reload-push-progress-msg">Ready</span>
+        </div>
+    @endpush
 @endsection
 
 @section('script')
@@ -1072,6 +1137,7 @@
 @endsection
 
 @section('script-bottom')
+    @include('partials.sprice-lmp-cap-script')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function() {
@@ -2337,10 +2403,18 @@
         return '<span class="pef-promo-cell has-val">' + String(value) + '</span>';
     }
 
+    function pefLmp(d) {
+        if (window.SpriceLmpCap && typeof SpriceLmpCap.lmpOf === 'function') {
+            const n = Number(SpriceLmpCap.lmpOf(d));
+            if (isFinite(n) && n > 0) return n;
+        }
+        const n = Number(d && (d.lmp || d.lmp_price || d.LMP || d['LMP 1']));
+        return isFinite(n) && n > 0 ? n : 0;
+    }
     /** Dollar LMP difference amount = Price − LMP (only when Price > LMP). */
     function pefLmpDiffAmount(d) {
         const price = Number(d.price) || 0;
-        const lmp = Number(d.lmp) || 0;
+        const lmp = pefLmp(d);
         if (!(price > 0) || !(lmp > 0)) return null;
         const amt = round2(price - lmp);
         return amt > 0 ? amt : null;
@@ -2392,7 +2466,7 @@
     function applyPefApprDiscount(row) {
         const d = row.getData();
         const amt = pefLmpDiffAmount(d);
-        const lmp = Number(d.lmp);
+        const lmp = pefLmp(d);
         if (!(amt > 0) || !(lmp > 0)) {
             row.update({ appr: false, _appr_lmp: null });
             syncPefRowCache(d.id, { appr: false, _appr_lmp: null });
@@ -3551,7 +3625,13 @@
     function saveSprice(row, opts) {
         opts = opts || {};
         const d = row.getData();
-        const sprice = round2(parseSpriceValue(d.sprice));
+        let sprice = round2(parseSpriceValue(d.sprice));
+        if (sprice > 0 && window.SpriceLmpCap) {
+            sprice = round2(SpriceLmpCap.prepare(d, sprice));
+        } else if (sprice > 0) {
+            const lmp = pefLmp(d);
+            if (lmp > 0 && sprice + 0.0001 >= lmp) sprice = round2(lmp);
+        }
         if (!d.sku || !d.marketplace) {
             if (!opts.silent) toast('Save failed: missing SKU/marketplace', 'error');
             return;
@@ -3885,8 +3965,24 @@
     function isPefEbay123Marketplace(mp) {
         const m = String(mp || '').toLowerCase().replace(/\s+/g, '');
         return m === 'ebay' || m === 'ebay1' || m === 'ebayone'
-            || m === 'ebay2' || m === 'ebaytwo'
+            || m === 'ebay2' || m === 'ebaytwo' || m === 'ebay2op'
             || m === 'ebay3' || m === 'ebaythree';
+    }
+    function isPefAmazonMarketplace(mp) {
+        return String(mp || '').toLowerCase().replace(/\s+/g, '') === 'amazon';
+    }
+    function isPefShopifyMarketplace(mp) {
+        const m = String(mp || '').toLowerCase().replace(/\s+/g, '');
+        return m === 'sb2b' || m === 'sb2c' || m === 'shopify'
+            || m === 'shopifyb2b' || m === 'shopifyb2c'
+            || m === 'shopify_b2b' || m === 'shopify_b2c';
+    }
+    function pefShopifyPullChannel(mp) {
+        const m = String(mp || '').toLowerCase().replace(/\s+/g, '');
+        if (m === 'sb2c' || m === 'shopify' || m === 'shopifyb2c' || m === 'shopify_b2c') {
+            return 'shopify_b2c';
+        }
+        return 'shopify_b2b';
     }
 
     /** Queue eBay 1/2/3 rows for a delayed live Price/SPRICE pull (only pushed SKUs). */
@@ -4023,6 +4119,143 @@
         updatePushBtn();
     }
 
+    function collectPefPushedSkus(resp, matchFn) {
+        const out = [];
+        const seen = {};
+        if (!resp || !resp.job) return out;
+        const results = (resp.job.results && typeof resp.job.results === 'object') ? resp.job.results : {};
+        const tasks = Array.isArray(resp.job.tasks) ? resp.job.tasks : [];
+        const byId = {};
+        tasks.forEach(function(t) {
+            if (t && t.row_id) byId[t.row_id] = t;
+        });
+        Object.keys(results).forEach(function(id) {
+            if (!byId[id]) byId[id] = results[id];
+        });
+        Object.keys(byId).forEach(function(id) {
+            const t = byId[id];
+            if (!t) return;
+            const st = String(t.status || (t.success === true ? 'done' : '')).toLowerCase();
+            if (!(st === 'done' || st === 'pushed' || st === 'ok' || t.success === true)) return;
+            const mp = t.marketplace || (results[id] && results[id].marketplace) || '';
+            if (typeof matchFn === 'function' && !matchFn(mp)) return;
+            const sku = String(t.sku || (results[id] && results[id].sku) || '').trim();
+            const key = sku.toUpperCase();
+            if (!sku || seen[key]) return;
+            seen[key] = true;
+            out.push(sku);
+        });
+        return out;
+    }
+    function collectPefShopifyPushed(resp) {
+        const byCh = { shopify_b2b: [], shopify_b2c: [] };
+        const seen = {};
+        if (!resp || !resp.job) return byCh;
+        const results = (resp.job.results && typeof resp.job.results === 'object') ? resp.job.results : {};
+        const tasks = Array.isArray(resp.job.tasks) ? resp.job.tasks : [];
+        const byId = {};
+        tasks.forEach(function(t) {
+            if (t && t.row_id) byId[t.row_id] = t;
+        });
+        Object.keys(results).forEach(function(id) {
+            if (!byId[id]) byId[id] = results[id];
+        });
+        Object.keys(byId).forEach(function(id) {
+            const t = byId[id];
+            if (!t) return;
+            const st = String(t.status || (t.success === true ? 'done' : '')).toLowerCase();
+            if (!(st === 'done' || st === 'pushed' || st === 'ok' || t.success === true)) return;
+            const mp = t.marketplace || (results[id] && results[id].marketplace) || '';
+            if (!isPefShopifyMarketplace(mp)) return;
+            const sku = String(t.sku || (results[id] && results[id].sku) || '').trim();
+            const ch = pefShopifyPullChannel(mp);
+            const key = ch + '|' + sku.toUpperCase();
+            if (!sku || seen[key]) return;
+            seen[key] = true;
+            byCh[ch].push(sku);
+        });
+        return byCh;
+    }
+    function applyPefPulledPrices(results, matchFn) {
+        if (!table || !Array.isArray(results)) return { ok: 0, fail: 0 };
+        let ok = 0;
+        let fail = 0;
+        results.forEach(function(r) {
+            if (!r || !r.sku) return;
+            const row = table.getRows().find(function(rw) {
+                const d = rw.getData();
+                const mp = d.marketplace || d.channel_key || '';
+                return String(d.sku || '').toUpperCase() === String(r.sku).toUpperCase()
+                    && (typeof matchFn !== 'function' || matchFn(mp));
+            });
+            if (r.success && Number(r.price) > 0) {
+                const price = +Number(r.price).toFixed(2);
+                if (row) {
+                    const d = row.getData();
+                    const patch = {
+                        price: price,
+                        success: 'pushed',
+                        push_error: null,
+                        push_message: r.message || 'price pulled',
+                    };
+                    const live = recalcLiveForRow(Object.assign({}, d, patch));
+                    Object.assign(patch, live);
+                    row.update(patch);
+                    syncPefRowCache(d.id, patch);
+                }
+                ok++;
+            } else if (!r.skipped) {
+                fail++;
+            }
+        });
+        try { table.redraw(true); } catch (e) { /* ignore */ }
+        return { ok: ok, fail: fail };
+    }
+    function queuePefAmazonPostPushPull(skus) {
+        if (!skus || !skus.length) return;
+        clearTimeout(queuePefAmazonPostPushPull._t);
+        toast('Amazon Price pull in ~90s for ' + skus.length + ' pushed SKU(s)', 'success');
+        queuePefAmazonPostPushPull._t = setTimeout(function() {
+            $.ajax({
+                url: '/amazon-pull-pushed-prices',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                data: { _token: csrf, skus: skus },
+                timeout: 300000,
+            }).done(function(resp) {
+                const stats = applyPefPulledPrices(resp && resp.results, isPefAmazonMarketplace);
+                toast(
+                    'Amazon pull done: ' + stats.ok + ' ok' + (stats.fail ? (', ' + stats.fail + ' failed') : ''),
+                    stats.fail && !stats.ok ? 'error' : 'success'
+                );
+            }).fail(function(xhr) {
+                toast(ajaxErrorMessage(xhr, 'Amazon price pull failed'), 'error');
+            });
+        }, 90000);
+    }
+    function queuePefChannelPostPushPull(channel, skus) {
+        if (!channel || !skus || !skus.length) return;
+        clearTimeout((queuePefChannelPostPushPull._t = queuePefChannelPostPushPull._t || {})[channel]);
+        toast('Store Price pull for ' + skus.length + ' ' + channel + ' SKU(s)…', 'success');
+        queuePefChannelPostPushPull._t[channel] = setTimeout(function() {
+            $.ajax({
+                url: '/channel-push-sprice/' + encodeURIComponent(channel) + '/pull',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                data: { _token: csrf, skus: skus },
+                timeout: 300000,
+            }).done(function(resp) {
+                const stats = applyPefPulledPrices(resp && resp.results, isPefShopifyMarketplace);
+                toast(
+                    'Shopify pull done: ' + stats.ok + ' ok' + (stats.fail ? (', ' + stats.fail + ' failed') : ''),
+                    stats.fail && !stats.ok ? 'error' : 'success'
+                );
+            }).fail(function(xhr) {
+                toast(ajaxErrorMessage(xhr, 'Shopify price pull failed'), 'error');
+            });
+        }, 8000);
+    }
+
     /**
      * After push: update live Price only. Keep SPRICE / SROI / SGPFT formulas as-is.
      */
@@ -4073,6 +4306,15 @@
         const d = done || 0;
         const pct = t > 0 ? Math.min(100, Math.round((d / t) * 100)) : 0;
         $('#pef-push-progress-bar').css('width', pct + '%');
+        const $pill = $('#pef-reload-push-progress');
+        if ($pill.length) {
+            $pill.toggleClass('is-busy', !!active);
+            $pill.toggleClass('is-done', !active && t > 0 && pct >= 100 && !(fail > 0));
+            $pill.toggleClass('is-fail', !!(fail > 0));
+            $('#pef-reload-push-progress-pct').text(pct + '%');
+            $('#pef-reload-push-progress-bar').css('width', pct + '%');
+            $('#pef-reload-push-progress-msg').text(active ? (msg || (d + '/' + t)) : (t ? (msg || 'Ready') : 'Ready'));
+        }
         const def = Number(deferred || 0);
         $('#pef-push-progress-counts').text(
             t ? (d + '/' + t + ' · ' + (ok || 0) + ' ok · ' + (fail || 0) + ' failed'
@@ -4211,6 +4453,16 @@
                 if (ebayPushed.length) {
                     queueEbayPostPushPull(ebayPushed);
                 }
+                const amazonSkus = collectPefPushedSkus(resp, isPefAmazonMarketplace);
+                if (amazonSkus.length) {
+                    queuePefAmazonPostPushPull(amazonSkus);
+                }
+                const shopifyByChannel = collectPefShopifyPushed(resp);
+                Object.keys(shopifyByChannel).forEach(function(ch) {
+                    if (shopifyByChannel[ch].length) {
+                        queuePefChannelPostPushPull(ch, shopifyByChannel[ch]);
+                    }
+                });
                 if (fail > 0) {
                     const first = (resp.failed_tasks && resp.failed_tasks[0])
                         ? ((resp.failed_tasks[0].sku || '') + ': ' + (resp.failed_tasks[0].error || 'failed'))
@@ -5246,7 +5498,12 @@
             const lp = Number(d.lp || 0);
             const ship = Number(d.ship || 0);
             const margin = rowMargin(d);
-            const sprice = round2((lp * (1 + roi / 100) + ship) / margin);
+            let sprice = round2((lp * (1 + roi / 100) + ship) / margin);
+            if (sprice > 0 && window.SpriceLmpCap) sprice = round2(SpriceLmpCap.prepare(d, sprice));
+            else if (sprice > 0) {
+                const lmp = pefLmp(d);
+                if (lmp > 0 && sprice + 0.0001 >= lmp) sprice = round2(lmp);
+            }
             if (!(sprice > 0)) return;
             item.row.update({ ZERO_SOLD_PRC_GROI: roi });
             rowsToProcess.push({ row: item.row, d: d, sprice: sprice, margin: margin });

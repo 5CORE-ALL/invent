@@ -10216,7 +10216,7 @@ class CvrMasterController extends Controller
         $id = $request->input('id');
         $sku = trim((string) $request->input('sku', ''));
 
-        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'aliexpress'], true)) {
+        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'aliexpress', 'tiktok'], true)) {
             return response()->json(['success' => false, 'error' => 'Invalid marketplace'], 400);
         }
 
@@ -10436,6 +10436,7 @@ class CvrMasterController extends Controller
                 'bestbuy' => BestbuySkuCompetitor::class,
                 'macy' => MacySkuCompetitor::class,
                 'reverb' => ReverbSkuCompetitor::class,
+                'tiktok' => \App\Models\TiktokSkuCompetitor::class,
             };
             $table = (new $model)->getTable();
             if (!Schema::hasColumn($table, 'ignored')) {

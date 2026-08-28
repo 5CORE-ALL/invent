@@ -422,6 +422,7 @@ class GoogleShoppingCampaignsController extends Controller
         /** @var GoogleAdsSbidService $sbidService */
         $sbidService = app(GoogleAdsSbidService::class);
         $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $fallbackBudgetIds = $this->latestBudgetIdsByCampaignId($campaignIds);
         $lines = [];
         $updated = 0;
         $skipped = 0;
@@ -447,8 +448,11 @@ class GoogleShoppingCampaignsController extends Controller
                 continue;
             }
 
-            $budgetId = $row['budget_id'] ?? null;
-            if ($budgetId === null || $budgetId === '') {
+            $budgetId = $this->normalizeBudgetId($row['budget_id'] ?? null);
+            if ($budgetId === '') {
+                $budgetId = $fallbackBudgetIds[$campaignId] ?? '';
+            }
+            if ($budgetId === '') {
                 $lines[] = "[SKIP] {$name} ({$campaignId}): missing budget_id.";
                 $skipped++;
 
@@ -605,6 +609,51 @@ class GoogleShoppingCampaignsController extends Controller
         }
 
         return $byId;
+    }
+
+    /**
+     * Latest non-empty budget_id per campaign — used when the grid's latest daily
+     * row omitted the column or stored an empty id (common on PARENT rows).
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, string>
+     */
+    private function latestBudgetIdsByCampaignId(array $campaignIds): array
+    {
+        $campaignIds = array_values(array_unique(array_filter(
+            array_map(static fn ($id) => (string) $id, $campaignIds),
+            static fn (string $id) => $id !== ''
+        )));
+        if ($campaignIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('google_ads_campaigns')
+            ->select('campaign_id', 'budget_id')
+            ->whereIn('campaign_id', $campaignIds)
+            ->whereNotNull('budget_id')
+            ->where('budget_id', '!=', '')
+            ->orderByDesc('date')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $cid = (string) ($row->campaign_id ?? '');
+            if ($cid === '' || isset($out[$cid])) {
+                continue;
+            }
+            $budgetId = $this->normalizeBudgetId($row->budget_id ?? null);
+            if ($budgetId !== '') {
+                $out[$cid] = $budgetId;
+            }
+        }
+
+        return $out;
+    }
+
+    private function normalizeBudgetId(mixed $budgetId): string
+    {
+        return preg_replace('/\D/', '', (string) $budgetId) ?? '';
     }
 
     /**
@@ -1681,6 +1730,7 @@ class GoogleShoppingCampaignsController extends Controller
             'g.campaign_id',
             'g.campaign_name',
             'g.campaign_status',
+            'g.budget_id',
             'g.budget_amount_micros',
             'g.bidding_strategy_type',
         ])

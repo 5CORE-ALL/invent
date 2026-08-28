@@ -280,6 +280,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
             font-size: 11px;
@@ -1185,6 +1186,7 @@
     let samePriceModeActive = false;
     let selectedSkus = new Set();
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function reverbPrmtPctOf(d) {
         const n = parseFloat(d && (d.prmt_pct != null ? d.prmt_pct : d._prmt_pct_applied));

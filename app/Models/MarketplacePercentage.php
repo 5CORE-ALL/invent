@@ -40,6 +40,55 @@ class MarketplacePercentage extends Model
     }
 
     /**
+     * marketplace_percentages.marketplace names for a channel-pef-promo key.
+     *
+     * @return list<string>
+     */
+    public static function promoChannelNames(string $channel): array
+    {
+        return match ($channel) {
+            'ebay1' => ['Ebay'],
+            'ebay2', 'ebay2op' => ['EbayTwo'],
+            'ebay3' => ['EbayThree'],
+            'shopify_b2c' => ['ShopifyB2C'],
+            'shopify_b2b' => ['ShopifyB2B'],
+            'macys', 'macy' => ['Macys', 'Macy'],
+            'bestbuy' => ['BestbuyUSA', 'BestBuy'],
+            'reverb' => ['Reverb'],
+            'walmart' => ['Walmart'],
+            'wayfair' => ['Wayfair'],
+            'temu' => ['Temu'],
+            'temu2' => ['Temu 2', 'TemuTwo', 'Temu2', 'Temu'],
+            'doba', 'doba_withoutship' => ['Doba'],
+            'tiktok', 'tiktok2' => ['TiktokShop'],
+            'topdawg' => ['TopDawg'],
+            'purchasing_power' => ['Purchase', 'PurchasingPower'],
+            'aliexpress' => ['Aliexpress', 'AliExpress'],
+            'shein' => ['Shein'],
+            'newegg' => ['Neweggb2c', 'Newegg'],
+            'faire' => ['Faire'],
+            'pls' => ['PLS', 'Pls'],
+            'mercari_wship' => ['MercariWShip'],
+            'mercari_woship' => ['MercariWoShip'],
+            'fb_marketplace' => ['FB Marketplace', 'FBMarketplace'],
+            'vinted' => ['Vinted'],
+            'depop' => ['Depop'],
+            default => [],
+        };
+    }
+
+    /** Take-home decimal (0–1) for a channel-pef-promo analytics page. */
+    public static function takeHomeForPromoChannel(string $channel): float
+    {
+        $names = static::promoChannelNames($channel);
+        if ($names === []) {
+            return 1.0;
+        }
+
+        return static::takeHomeDecimal(...$names);
+    }
+
+    /**
      * eBay channel aliases → take-home decimal from marketplace_percentages.
      * Names match the table: Ebay, EbayTwo, EbayThree.
      *

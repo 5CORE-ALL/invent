@@ -2280,7 +2280,7 @@ class TikTokPricingController extends Controller
             ))));
 
             $competitors = TiktokSkuCompetitor::getCompetitorsForSkus($groupSkus, 'tiktok');
-            $lowest = $competitors->first();
+            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored));
 
             return response()->json([
                 'success' => true,
@@ -2299,6 +2299,7 @@ class TikTokPricingController extends Controller
                         'seller_name' => $comp->seller_name,
                         'brand_name' => $comp->brand_name,
                         'price' => floatval($comp->price),
+                        'ignored' => (bool) ($comp->ignored ?? false),
                         'shipping_cost' => floatval($comp->shipping_cost ?? 0),
                         'min_price' => $comp->min_price !== null ? floatval($comp->min_price) : null,
                         'max_price' => $comp->max_price !== null ? floatval($comp->max_price) : null,
