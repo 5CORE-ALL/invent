@@ -3329,7 +3329,8 @@
                 chPromoPatchDatasetSprice(sku, patch);
             }
         }
-        /** Live S PRC from Dil/cvr/0 Sold rules. Writes stored so visible === stored. */
+        /** Rule S PRC from Dil/cvr/0 Sold. Used only by Apply (clear, then save).
+         *  Does not write into SPRICE — an unsaved row stays empty, not a live guess. */
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
@@ -3341,10 +3342,12 @@
             const live = zeroSold > 0
                 ? zeroSold
                 : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
-            if (live > 0 && Math.abs((chPromoGetSprice(d) || 0) - live) > 0.009) {
-                chPromoWriteStoredSprice(d, live);
-            }
             return live > 0 ? live : 0;
+        }
+        /** Cell / S GPFT / S GROI: saved SPRICE only. No live fallback. */
+        function chPromoSavedOrLiveSprice(d) {
+            const saved = chPromoGetSprice(d);
+            return saved > 0 ? saved : 0;
         }
         function chPromoSpricePatch(val) {
             const n = Number(val);
@@ -5984,14 +5987,18 @@
                 const extra = {
                     skip_push: true,
                     queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
-                    skip_lmp_cap: true,
+                    skip_lmp_cap: !(typeof chPromoIsEbayChannel === 'function' && chPromoIsEbayChannel()),
                     prmt_pct: job.prmt,
                     cpn_pct: job.cpn,
                 };
+                if (job.row && typeof job.row.update === 'function') {
+                    job.row.update(chPromoSpricePatch(0));
+                }
                 const saveRes = job.row
                     ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
                     : await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra));
-                chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
+                const stored = job.row ? chPromoGetSprice(job.row.getData()) : job.price;
+                chPromoApplySpriceSavePatch(job.row, stored > 0 ? stored : job.price, saveRes);
                 run.ok++;
             } catch (e) {
                 chPromoApplySpriceSavePatch(job.row, job.price, null);
@@ -6236,14 +6243,18 @@
                     const extra = {
                         skip_push: true,
                         queue_push: typeof chPromoPageReloadPushAllowed === 'function' && chPromoPageReloadPushAllowed(),
-                        skip_lmp_cap: true,
+                        skip_lmp_cap: !(typeof chPromoIsEbayChannel === 'function' && chPromoIsEbayChannel()),
                         prmt_pct: job.prmt,
                         cpn_pct: job.cpn,
                     };
+                    if (job.row && typeof job.row.update === 'function') {
+                        job.row.update(chPromoSpricePatch(0));
+                    }
                     const saveRes = job.row
                         ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
                         : await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra));
-                    chPromoApplySpriceSavePatch(job.row, job.price, saveRes);
+                    const stored = job.row ? chPromoGetSprice(job.row.getData()) : job.price;
+                    chPromoApplySpriceSavePatch(job.row, stored > 0 ? stored : job.price, saveRes);
                     const skuKey = chPromoSkuKey(job.sku);
                     if (skuKey && job.band) chPromoZeroSoldLastDilBand[skuKey] = job.band;
                     ok++;
@@ -6497,7 +6508,8 @@
                         }
                     } else if (ebay1PrmtOnly) {
                         if (chPromoInv(d) > 0) {
-                            newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { prmt: prmt });
+                            item.row.update(Object.assign({}, patch, chPromoSpricePatch(0)));
+                            newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { prmt: prmt });
                             if (newPrice > 0) {
                                 Object.assign(patch, chPromoSpricePatch(newPrice));
                                 skipSprice = false;

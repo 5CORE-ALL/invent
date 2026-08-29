@@ -1410,10 +1410,12 @@
          * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
          */
         function ebaySpriceAmount(rowData) {
-            if (typeof chPromoLiveSprice === 'function') {
-                const live = Number(chPromoLiveSprice(rowData));
-                if (isFinite(live) && live > 0) return live;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                const saved = Number(chPromoSavedOrLiveSprice(rowData));
+                if (isFinite(saved) && saved > 0) return saved;
             }
+            const stored = Number(rowData && (rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice));
+            if (isFinite(stored) && stored > 0) return stored;
             return 0;
         }
         function ebayComputeNetRoi(rowData, priceKey) {
@@ -1431,7 +1433,7 @@
             const adSpend = price * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
         }
-        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE) — uncapped rule price, not the LMP display cap. */
+        /** S GPFT / S GROI / SNROI / SNPFT use saved S PRC (clear-then-save), same $ as the cell / DB. */
         function ebayComputeSgpftFromSprice(rowData) {
             if (!rowData) return null;
             const price = ebaySpriceAmount(rowData);
@@ -4833,17 +4835,16 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "S PRC is the saved value after Apply (clear, then save). Same $ as DB. Red triangle = saved S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            let sprice = (typeof chPromoLiveSprice === 'function')
-                                ? chPromoLiveSprice(rowData)
-                                : 0;
+                            let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
+                                ? chPromoSavedOrLiveSprice(rowData)
+                                : (parseFloat(rowData.SPRICE) || 0);
                             if (!(sprice > 0)) {
                                 return '';
                             }
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
-                            if (cap && cap.shown > 0) sprice = cap.shown;
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
@@ -4892,7 +4893,7 @@
                                 priceHtml = `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
                             }
                             const redTri = atOrAboveLmp
-                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + Number(lmp).toFixed(2) + '"></i>')
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $' + Number(lmp).toFixed(2) + '"></i>'
                                 : '';
 
                             return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${priceHtml}${redTri}${blueTri}${dotBtn}</span>`;
@@ -4915,7 +4916,7 @@
                         field: "SGPFT",
                         visible: false,
                         hozAlign: "center",
-                        headerTooltip: "S GPFT from S PRC (SPRICE).",
+                        headerTooltip: "S GPFT from saved S PRC (same $ as the S PRC cell / DB).",
                         formatter: function(cell) {
                             const percent = ebayComputeSgpftFromSprice(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';

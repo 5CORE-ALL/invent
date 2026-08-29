@@ -1581,36 +1581,18 @@ class EbayController extends Controller
                     }
                 }
                 
-                // Use saved SPRICE only if it exists in DB; otherwise show nothing (no default/calculated value)
+                // Apply clears then saves SPRICE. Cell, S GPFT, and this JSON all read that saved value.
+                // Do not overwrite it with Std × (1 − PRMT%) on every load.
                 if ($savedSprice !== null && $savedSprice > 0) {
                     $row['SPRICE'] = $savedSprice;
                     $row['has_custom_sprice'] = true;
                     $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
                     $sprice = $savedSprice;
                 } else {
-                    // No saved SPRICE (cleared or never set) — do not show default calculated value
                     $row['SPRICE'] = null;
                     $row['has_custom_sprice'] = false;
                     $row['SPRICE_STATUS'] = $savedStatus;
                     $sprice = 0;
-                }
-
-                // S PRC = Std × (1 − (PRMT% + CPN%)/100). If both % are 0, S PRC = Std.
-                $stdPrcForSprice = (float) ($row['STANDARD_PRICE'] ?? 0);
-                if ($stdPrcForSprice > 0) {
-                    $prmtPct = is_numeric($row['prmt_pct'] ?? null)
-                        ? (float) $row['prmt_pct']
-                        : (float) ($row['_prmt_pct_applied'] ?? 0);
-                    $cpnPct = is_numeric($row['cpn_pct'] ?? null)
-                        ? (float) $row['cpn_pct']
-                        : (float) ($row['_cpn_pct_applied'] ?? 0);
-                    $tPromo = min(99.99, max(0, $prmtPct + $cpnPct));
-                    $formulaSprice = round($tPromo > 0 ? $stdPrcForSprice * (1 - $tPromo / 100) : $stdPrcForSprice, 2);
-                    if ($formulaSprice >= 0.01) {
-                        $row['SPRICE'] = $formulaSprice;
-                        $row['has_custom_sprice'] = true;
-                        $sprice = $formulaSprice;
-                    }
                 }
                 
                 $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;

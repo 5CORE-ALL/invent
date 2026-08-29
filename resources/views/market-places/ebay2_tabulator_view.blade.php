@@ -1178,10 +1178,12 @@
          * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
          */
         function ebay2SpriceAmount(rowData) {
-            if (typeof chPromoLiveSprice === 'function') {
-                const live = Number(chPromoLiveSprice(rowData));
-                if (isFinite(live) && live > 0) return live;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                const saved = Number(chPromoSavedOrLiveSprice(rowData));
+                if (isFinite(saved) && saved > 0) return saved;
             }
+            const stored = Number(rowData && (rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice));
+            if (isFinite(stored) && stored > 0) return stored;
             return 0;
         }
         function ebay2ComputeNetRoi(rowData, priceKey) {
@@ -4096,17 +4098,16 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) from live Dil/CVR rules. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "S PRC is the saved value after Apply (clear, then save). Same $ as DB. Red triangle = saved S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            let sprice = (typeof chPromoLiveSprice === 'function')
-                                ? chPromoLiveSprice(rowData)
-                                : 0;
+                            let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
+                                ? chPromoSavedOrLiveSprice(rowData)
+                                : (parseFloat(rowData.SPRICE) || 0);
                             if (!(sprice > 0)) {
                                 return '';
                             }
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
-                            if (cap && cap.shown > 0) sprice = cap.shown;
 
                             const formattedValue = '$' + Number(sprice).toFixed(2);
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
