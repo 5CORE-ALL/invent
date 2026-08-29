@@ -441,7 +441,8 @@ class ChannelMasterController extends Controller
             $mapC = 0;
             $nmapC = 0;
             $totalViews = 0;
-            // total_sold tracks the same temu_l30 sum the /temu-decrease & /temu2-decrease
+            $viewsByGoodsId = [];
+            // total_sold tracks the same temu_l30 sum the /temu-decrease & /temu1-data
             // pages use for the "Total Sold" badge — that ÷ total_views gives the CVR
             // shown on those pages. We expose cvr_pct here so the /all-marketplace-master
             // Temu/Temu 2 rows can render the IDENTICAL CVR % (instead of falling back
@@ -449,6 +450,9 @@ class ChannelMasterController extends Controller
             $totalSold = 0;
 
             foreach ($data as $row) {
+                if (! empty($row['is_parent'])) {
+                    continue;
+                }
                 if (empty($row['sku'] ?? null)) {
                     continue;
                 }
@@ -457,8 +461,16 @@ class ChannelMasterController extends Controller
                 $missing = (string) ($row['missing'] ?? '');
                 $temuPrice = (float) ($row['temu_price'] ?? 0);
                 $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-                $totalViews += (int) ($row['product_clicks'] ?? 0);
-                $totalSold  += (int) ($row['temu_l30'] ?? 0);
+                // Same as /temu1-data Views badge: o_clicks / product_clicks once per goods_id.
+                // Summing every SKU row double-counted variations that share one listing.
+                $rowViews = (int) ($row['o_clicks'] ?? $row['product_clicks'] ?? 0);
+                $gid = trim((string) ($row['goods_id'] ?? ''));
+                if ($gid !== '') {
+                    $viewsByGoodsId[$gid] = $rowViews;
+                } else {
+                    $totalViews += $rowViews;
+                }
+                $totalSold += (int) ($row['temu_l30'] ?? 0);
 
                 // Missing L: not listed (missing='M'), INV > 0, REQ only — same rule as /map-issues.
                 if ($missing === 'M' && $inventory > 0 && $nrReq === 'REQ') {
@@ -480,6 +492,10 @@ class ChannelMasterController extends Controller
                         $mapC++;
                     }
                 }
+            }
+
+            foreach ($viewsByGoodsId as $views) {
+                $totalViews += (int) $views;
             }
 
             // CVR exactly matches the /temu-decrease & /temu2-decrease badge:

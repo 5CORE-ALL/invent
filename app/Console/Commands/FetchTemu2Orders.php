@@ -219,7 +219,7 @@ class FetchTemu2Orders extends Command
             // Pull the ACTUAL order amounts (bg.order.amount.query) so reported sales use
             // Temu 2's real figures instead of catalog price × qty — the same principle as the
             // Amazon pipeline, which stores real per-order price from its orderItems endpoint.
-            $amountStats = $this->fetchAndStoreOrderAmounts();
+            $amountStats = $this->fetchAndStoreOrderAmounts($from);
 
             $this->info("✅ Done. Parent orders: {$totalParents}, sub-orders seen: {$totalSubOrders}, rows upserted: {$totalUpserted}, pruned: {$pruned}, amounts: {$amountStats['updated']} rows from {$amountStats['parents']} parent(s)");
             Log::info('Completed FetchTemu2Orders', [
@@ -250,14 +250,17 @@ class FetchTemu2Orders extends Command
      *
      * @return array{parents:int, updated:int}
      */
-    private function fetchAndStoreOrderAmounts(): array
+    private function fetchAndStoreOrderAmounts(?Carbon $windowFrom = null): array
     {
         $recentCutoff = Carbon::now()->subDays(3);
 
-        // Group by parent (not distinct + orderBy) so ordering by the latest order time is
-        // compatible with MySQL ONLY_FULL_GROUP_BY. Recent parents first so a cut-short run
-        // still refreshes the newest orders.
+        // Only the fetch window (plus never-fetched rows in that window). Do not walk
+        // every historical parent — that hit rate limits after the list pages and
+        // aborted with 0 amounts (277 listed, 2700 amount-queued).
         $parentSns = Temu2Order::whereNotNull('parent_order_sn')
+            ->when($windowFrom !== null, function ($q) use ($windowFrom) {
+                $q->where('parent_order_time', '>=', $windowFrom);
+            })
             ->where(function ($q) use ($recentCutoff) {
                 $q->whereNull('amount_fetched_at')
                     ->orWhere('parent_order_time', '>=', $recentCutoff);
@@ -273,24 +276,28 @@ class FetchTemu2Orders extends Command
         }
 
         $this->info('Fetching order amounts for '.$parentSns->count().' parent order(s)...');
+        sleep(2);
 
         $parentsDone = 0;
         $rowsUpdated = 0;
         $consecutiveFailures = 0;
         $loggedSample = false;
+        $loggedFirstError = false;
 
         foreach ($parentSns as $parentOrderSn) {
-            $result = $this->queryOrderAmount($parentOrderSn);
+            [$result, $error] = $this->queryOrderAmount($parentOrderSn);
 
             if ($result === null) {
                 $consecutiveFailures++;
-                // Stop early if the API is clearly unhappy (quota / auth) rather than
-                // hammering it for every parent.
+                if (! $loggedFirstError) {
+                    $loggedFirstError = true;
+                    $this->warn('   ⚠️ bg.order.amount.query failed: '.($error ?: 'unknown').' (parent '.$parentOrderSn.')');
+                }
                 if ($consecutiveFailures >= 10) {
                     $this->warn('   ⚠️ Too many consecutive amount-query failures — stopping amount sync for this run.');
                     break;
                 }
-                usleep(300000);
+                usleep(800000);
                 continue;
             }
             $consecutiveFailures = 0;
@@ -338,10 +345,11 @@ class FetchTemu2Orders extends Command
     }
 
     /**
-     * Call bg.order.amount.query for one parent order. Returns the decoded `result`
-     * array on success, or null on any failure (logged, non-fatal).
+     * Call bg.order.amount.query for one parent order.
+     *
+     * @return array{0: ?array, 1: string}
      */
-    private function queryOrderAmount(string $parentOrderSn): ?array
+    private function queryOrderAmount(string $parentOrderSn): array
     {
         try {
             $body = [
@@ -355,24 +363,27 @@ class FetchTemu2Orders extends Command
                 ->post('https://openapi-b-us.temu.com/openapi/router', $signed);
 
             if ($response->failed()) {
+                $msg = 'HTTP '.$response->status();
                 Log::warning('bg.order.amount.query HTTP failure', ['parent' => $parentOrderSn, 'status' => $response->status()]);
 
-                return null;
+                return [null, $msg];
             }
 
             $data = $response->json();
             if (! ($data['success'] ?? false)) {
+                $msg = (string) ($data['errorMsg'] ?? 'Unknown').' [code '.($data['errorCode'] ?? 'N/A').']';
                 Log::warning('bg.order.amount.query API error', ['parent' => $parentOrderSn, 'error' => $data['errorMsg'] ?? null, 'code' => $data['errorCode'] ?? null]);
-                return null;
+
+                return [null, $msg];
             }
 
             $result = $data['result'] ?? null;
 
-            return is_array($result) ? $result : null;
+            return [is_array($result) ? $result : null, is_array($result) ? '' : 'empty result'];
         } catch (\Throwable $e) {
             Log::warning('bg.order.amount.query exception', ['parent' => $parentOrderSn, 'error' => $e->getMessage()]);
 
-            return null;
+            return [null, $e->getMessage()];
         }
     }
 
