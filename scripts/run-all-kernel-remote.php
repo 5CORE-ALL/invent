@@ -139,7 +139,6 @@ $price = [
     'products:recalc-lp',
     'sync:amazon-prices',
     'walmart:fetch-listed-prices',
-    'pef:dil-prmt-auto-apply',
     'pef:cvr-cpn-auto-apply',
     'channel:push-sprice-daily',
 ];

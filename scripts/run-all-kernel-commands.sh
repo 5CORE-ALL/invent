@@ -165,7 +165,6 @@ commands=(
   "fulfillment:refresh-shipment-status --skip-tracking --days=30"
   "sof:pull-missing-tracking --limit=200 --temu-limit=40"
   "cc:pull-pending-messages"
-  "pef:dil-prmt-auto-apply"
   "pef:cvr-cpn-auto-apply"
   "channel:push-sprice-daily"
   "sof:snapshot-daily"

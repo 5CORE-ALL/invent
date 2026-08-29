@@ -149,6 +149,15 @@ class Ebay1PromotionService
             return $this->removeSkuFromSales($token, $apiSku, $itemId, $dv, $val, $storedPromoId);
         }
 
+        // Sale events are retired — never create or add listings to PEF SALE.
+        return [
+            'success' => true,
+            'skipped' => true,
+            'message' => 'Sale event create is disabled',
+            'promotion_id' => $storedPromoId ?: null,
+            'percent' => (float) $percent,
+        ];
+
         $pctInt = (int) round($percent);
         if ($pctInt < 5 || $pctInt > 80) {
             return [
@@ -1121,50 +1130,10 @@ class Ebay1PromotionService
      */
     private function createMarkdown(string $token, string $itemId, string $sku, int $pctInt, string $imageUrl): array
     {
-        $listingId = $this->markdownListingId($itemId);
-        $payload = $this->markdownPayload(
-            $pctInt,
-            $imageUrl,
-            $listingId !== '' ? [$listingId] : [],
-            null,
-            null,
-            null,
-            null
-        );
-        $resp = $this->http($token)
-            ->post('https://api.ebay.com/sell/marketing/v1/item_price_markdown', $payload);
-
-        if (! $resp->successful() && $resp->status() !== 201) {
-            Log::error('eBay1 sale event create failed', [
-                'sku' => $sku,
-                'item_id' => $itemId,
-                'status' => $resp->status(),
-                'body' => mb_substr($resp->body(), 0, 800),
-            ]);
-            $msg = $this->ebayErrorMessage($resp);
-
-            return [
-                'success' => false,
-                'message' => 'Create failed: '.$msg,
-                'promotion_id' => null,
-            ];
-        }
-
-        $promoId = $this->extractPromotionId($resp);
-        if ($promoId === '') {
-            return [
-                'success' => false,
-                'message' => 'Create ok but sale id missing from response',
-                'promotion_id' => null,
-            ];
-        }
-
-        $this->resumeIfNeeded($token, $promoId);
-
         return [
-            'success' => true,
-            'message' => 'created',
-            'promotion_id' => $promoId,
+            'success' => false,
+            'message' => 'Sale event create is disabled',
+            'promotion_id' => null,
         ];
     }
 

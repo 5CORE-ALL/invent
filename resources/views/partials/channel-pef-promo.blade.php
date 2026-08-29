@@ -3121,7 +3121,7 @@
         const CH_PROMO_PUSH_QUEUE_URL = '/channel-push-prc/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => $channelPromoChannel])
         @include('partials.temu-listing-autopush', ['channelPromoChannel' => $channelPromoChannel])
-        const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = ['ebay2', 'ebay2op', 'ebay3'];
+        const CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS = [];
         const chPromoPushPrmtQueueEnabled = CH_PROMO_PUSH_PRMT_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_PRMT_QUEUE_URL = '/channel-push-prmt/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         const CH_PROMO_PUSH_PRMT_CHUNK = 25;
@@ -3787,8 +3787,12 @@
         function saveChannelSprice(sku, sprice, silent, extra) {
             extra = extra || {};
             const rowData = chPromoRowDataFromExtra(extra);
+            const requested = Number(sprice);
             let val;
-            if (rowData && typeof temuPrepareSpriceForSave === 'function'
+            if (!(requested > 0)) {
+                // Persist a real clear. Temu prepare would otherwise rewrite Std × promo.
+                val = 0;
+            } else if (rowData && typeof temuPrepareSpriceForSave === 'function'
                 && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')) {
                 val = temuPrepareSpriceForSave(rowData, sprice);
             } else {
@@ -3824,12 +3828,14 @@
                     else if (extra.queue_push === false) shouldQueue = false;
                     else shouldQueue = extra.skip_push !== true;
                 }
-                if (shouldQueue) {
+                if (shouldQueue && val > 0) {
                     if (temuListingPush) {
                         shouldQueue = enqueueTemuListingPushAfterSave(sku, val, extra.row || null) !== false;
                     } else {
                         shouldQueue = enqueueChannelPushSpriceAfterSave(sku, val, extra.row || null) !== false;
                     }
+                } else if (!(val > 0)) {
+                    shouldQueue = false;
                 }
                 if (!silent) chPromoToast('success', shouldQueue ? 'S PRC saved — push queued' : 'S PRC updated');
             }).fail(function() {
@@ -3842,13 +3848,16 @@
             extra = extra || {};
             const d = row.getData();
             const sku = chPromoSku(d);
-            const val = (typeof temuPrepareSpriceForSave === 'function'
-                && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2'))
-                ? temuPrepareSpriceForSave(d, sprice)
-                : chPromoFloorShopifySpriceToAmz(
-                    d,
-                    extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra)
-                );
+            const requested = Number(sprice);
+            const val = !(requested > 0)
+                ? 0
+                : ((typeof temuPrepareSpriceForSave === 'function'
+                    && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2'))
+                    ? temuPrepareSpriceForSave(d, sprice)
+                    : chPromoFloorShopifySpriceToAmz(
+                        d,
+                        extra.skip_lmp_cap ? chPromoRound2(sprice) : chPromoCapSpriceToLmp(d, sprice, extra)
+                    ));
             extra.row = extra.row || row;
             if (!sku) return Promise.resolve(null);
             if (val > 0) {
@@ -3857,6 +3866,9 @@
                 if (typeof window.temuSyncSpriceUi === 'function') {
                     window.temuSyncSpriceUi(sku, val, row);
                 }
+            } else {
+                row.update(chPromoSpricePatch(0));
+                try { row.reformat(); } catch (e) { /* ignore */ }
             }
             const promoFields = {};
             if (extra.prmt_pct !== undefined && extra.prmt_pct !== null) {
@@ -3951,7 +3963,7 @@
                         if (!silent) chPromoToast('success', 'S PRC / promo updated');
                         resolve(pres || response || null);
                     };
-                    if (val > 0 && chPromoCfg.saveSpriceUrl) {
+                    if (chPromoCfg.saveSpriceUrl && (val > 0 || !(requested > 0))) {
                         saveChannelSprice(sku, val, true, extra).done(finish).fail(function() {
                             if (!silent) chPromoToast('error', 'Failed to save S PRC');
                             finish(null);
@@ -3969,12 +3981,38 @@
                             // Still keep UI values and try S PRC
                             afterPromo(null);
                         });
-                } else if (val > 0 && chPromoCfg.saveSpriceUrl) {
+                } else if (chPromoCfg.saveSpriceUrl && (val > 0 || !(requested > 0))) {
                     afterPromo(null);
                 } else {
                     resolve(null);
                 }
             });
+        }
+
+        /** Wipe stored S PRC (persist 0), then insert the rule price. Same as eBay apply. */
+        function chPromoPersistClearThenSprice(row, fill, silent, extra) {
+            extra = extra || {};
+            extra.row = extra.row || row;
+            const d = (row && typeof row.getData === 'function')
+                ? (row.getData() || {})
+                : (extra.rowData || {});
+            const sku = chPromoSku(d) || extra.sku || '';
+            if (!sku) return Promise.resolve(null);
+            extra.sku = sku;
+            extra.rowData = extra.rowData || d;
+            if (row && typeof row.update === 'function') {
+                row.update(chPromoSpricePatch(0));
+                try { row.reformat(); } catch (e) { /* ignore */ }
+            }
+            const wipeExtra = Object.assign({}, extra, { skip_push: true, queue_push: false, row: row });
+            const afterWipe = function() {
+                if (row && typeof row.getData === 'function') {
+                    return Promise.resolve(saveChannelSpriceAndPromo(row, fill, silent, extra));
+                }
+                if (!(Number(fill) > 0)) return Promise.resolve(null);
+                return Promise.resolve(saveChannelSprice(sku, fill, silent, extra));
+            };
+            return Promise.resolve(saveChannelSprice(sku, 0, true, wipeExtra)).then(afterWipe, afterWipe);
         }
 
         function collectChPromoSelectedRows() {
@@ -5994,9 +6032,14 @@
                 if (job.row && typeof job.row.update === 'function') {
                     job.row.update(chPromoSpricePatch(0));
                 }
-                const saveRes = job.row
-                    ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
-                    : await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra));
+                extra.sku = job.sku;
+                extra.row = job.row;
+                extra.rowData = job.row && typeof job.row.getData === 'function' ? job.row.getData() : extra.rowData;
+                const saveRes = chPromoIsTemuPromoChannel()
+                    ? await chPromoPersistClearThenSprice(job.row, job.price, true, extra)
+                    : (job.row
+                        ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
+                        : await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra)));
                 const stored = job.row ? chPromoGetSprice(job.row.getData()) : job.price;
                 chPromoApplySpriceSavePatch(job.row, stored > 0 ? stored : job.price, saveRes);
                 run.ok++;
@@ -6250,9 +6293,14 @@
                     if (job.row && typeof job.row.update === 'function') {
                         job.row.update(chPromoSpricePatch(0));
                     }
-                    const saveRes = job.row
-                        ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
-                        : await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra));
+                    extra.sku = job.sku;
+                    extra.row = job.row;
+                    extra.rowData = job.row && typeof job.row.getData === 'function' ? job.row.getData() : extra.rowData;
+                    const saveRes = chPromoIsTemuPromoChannel()
+                        ? await chPromoPersistClearThenSprice(job.row, job.price, true, extra)
+                        : (job.row
+                            ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
+                            : await Promise.resolve(saveChannelSprice(job.sku, job.price, true, extra)));
                     const stored = job.row ? chPromoGetSprice(job.row.getData()) : job.price;
                     chPromoApplySpriceSavePatch(job.row, stored > 0 ? stored : job.price, saveRes);
                     const skuKey = chPromoSkuKey(job.sku);
@@ -6495,8 +6543,8 @@
                             // 0 Sold Target GROI% owns S PRC. PRMT% stays independent.
                             skipSprice = true;
                         } else {
-                            // Wipe old S PRC, then Std × (1 − (PRMT% + CPN%)/100) + caps
-                            item.row.update(patch);
+                            // Wipe old S PRC first, then Std × (1 − (PRMT% + CPN%)/100) + caps
+                            item.row.update(Object.assign({}, patch, chPromoSpricePatch(0)));
                             newPrice = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), { prmt: prmt });
                             if (newPrice > 0 && chPromoIsTemuPromoChannel()) {
                                 newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
@@ -6576,7 +6624,13 @@
                         await Promise.resolve(saveChannelPromoFields(job.sku, extra));
                         return;
                     }
-                    await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
+                    extra.row = job.row;
+                    extra.sku = job.sku;
+                    if (chPromoIsTemuPromoChannel()) {
+                        await chPromoPersistClearThenSprice(job.row, job.price, true, extra);
+                    } else {
+                        await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
+                    }
                 } catch (e) { /* keep going */ }
             }, function(done, total) {
                 if ($progressBtn) chPromoSetApplyBtnProgress($progressBtn, done, total, 'Saving');
@@ -6933,7 +6987,10 @@
                             item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
                             jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
                     } else {
-                        item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
+                        item.row.update(Object.assign({
+                            cpn_pct: String(cpn),
+                            _cpn_pct_applied: 0,
+                        }, chPromoSpricePatch(0)));
                         let newPrice = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), { cpn: 0 });
                         if (newPrice > 0 && chPromoIsTemuPromoChannel()) {
                             newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
@@ -6973,7 +7030,10 @@
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
                         jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: true });
                     } else {
-                        item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
+                        item.row.update(Object.assign({
+                            cpn_pct: String(cpn),
+                            _cpn_pct_applied: cpn,
+                        }, chPromoSpricePatch(0)));
                         let newPrice = chPromoTemuSpriceFromStdPrmtCpn(item.row.getData(), { cpn: cpn });
                         if (newPrice > 0 && chPromoIsTemuPromoChannel()) {
                             newPrice = chPromoClearThenRuleTemuSprice(item.row, newPrice);
@@ -7014,7 +7074,12 @@
                         await Promise.resolve(saveChannelPromoFields(job.sku, { cpn_pct: job.cpn }));
                         return;
                     }
-                    await saveChannelSpriceAndPromo(job.row, job.price, true, { cpn_pct: job.cpn });
+                    const extra = { cpn_pct: job.cpn, row: job.row, sku: job.sku };
+                    if (chPromoIsTemuPromoChannel()) {
+                        await chPromoPersistClearThenSprice(job.row, job.price, true, extra);
+                    } else {
+                        await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
+                    }
                 } catch (e) { /* keep going */ }
             });
 
@@ -7145,7 +7210,12 @@
                 dsc: String(pct),
                 _dsc_applied: pct,
             }, chPromoSpricePatch(newPrice)));
-            saveChannelSpriceAndPromo(row, newPrice, true, { dsc: pct, appr: true });
+            const extra = { dsc: pct, appr: true, row: row };
+            if (chPromoIsTemuPromoChannel()) {
+                chPromoPersistClearThenSprice(row, newPrice, true, extra);
+            } else {
+                saveChannelSpriceAndPromo(row, newPrice, true, extra);
+            }
             if (typeof table !== 'undefined' && table) table.redraw(true);
             return true;
         }
@@ -7220,7 +7290,13 @@
                     ))
                         ? Number(patch.SPRICE)
                         : chPromoGetSprice(d);
-                    await saveChannelSpriceAndPromo(item.row, savePrice, true, extra);
+                    extra.row = item.row;
+                    extra.sku = chPromoSku(d);
+                    if (chPromoIsTemuPromoChannel()) {
+                        await chPromoPersistClearThenSprice(item.row, savePrice, true, extra);
+                    } else {
+                        await saveChannelSpriceAndPromo(item.row, savePrice, true, extra);
+                    }
                     skipped++;
                     continue;
                 }
@@ -7269,7 +7345,13 @@
                         patchOnly._appr_lmp = null;
                     }
                     item.row.update(patchOnly);
-                    await saveChannelSpriceAndPromo(item.row, 0, true, extra);
+                    extra.row = item.row;
+                    extra.sku = chPromoSku(d);
+                    if (chPromoIsTemuPromoChannel()) {
+                        await chPromoPersistClearThenSprice(item.row, 0, true, extra);
+                    } else {
+                        await saveChannelSpriceAndPromo(item.row, 0, true, extra);
+                    }
                     ok++;
                     continue;
                 }
@@ -7287,7 +7369,13 @@
                     newPrice = chPromoCapSpriceToLmp(item.row.getData(), newPrice);
                 }
                 item.row.update(Object.assign({}, chPromoSpricePatch(newPrice), patch));
-                await saveChannelSpriceAndPromo(item.row, newPrice, true, extra);
+                extra.row = item.row;
+                extra.sku = chPromoSku(item.row.getData());
+                if (chPromoIsTemuPromoChannel()) {
+                    await chPromoPersistClearThenSprice(item.row, newPrice, true, extra);
+                } else {
+                    await saveChannelSpriceAndPromo(item.row, newPrice, true, extra);
+                }
                 ok++;
             }
             chPromoToast(
@@ -7906,53 +7994,58 @@
                     return;
                 }
                 const sku = chPromoSku(item.d);
-                saveChannelSprice(sku, fill, true, { row: item.row })
-                    .done(function(saveRes) {
-                        const refillPatch = {
-                            prmt_pct: String(plan.prmt),
-                            cpn_pct: String(plan.cpn),
-                            _prmt_pct_applied: plan.prmt,
-                            _cpn_pct_applied: plan.cpn,
-                        };
-                        if (chPromoReverbComboEnabled()) {
-                            refillPatch.zero_sold_prmt = plan.zeroSold != null ? String(plan.zeroSold) : '';
-                            refillPatch._zero_sold_prmt_applied = plan.zeroSold || 0;
-                        }
-                        item.row.update(Object.assign(refillPatch, chPromoSpricePatch(fill)));
-                        if (saveRes && (saveRes.sgpft_percent !== undefined || saveRes.sgprft_percent !== undefined || saveRes.sroi_percent !== undefined)) {
-                            item.row.update({
-                                SGPFT: saveRes.sgpft_percent,
-                                'Spft%': saveRes.spft_percent,
-                                SPFT: saveRes.spft_percent,
-                                SNPFT: saveRes.spft_percent,
-                                SROI: saveRes.sroi_percent,
-                                SGROI: saveRes.sgroi_percent,
-                                SNROI: saveRes.snroi_percent,
-                                sroi_percent: saveRes.sroi_percent,
-                                sgprft_percent: saveRes.sgprft_percent != null ? saveRes.sgprft_percent : saveRes.sgpft_percent,
-                                spft_percent: saveRes.spft_percent,
-                            });
-                        }
-                        if (typeof applyTemuSpriceRelatedToRow === 'function') {
-                            applyTemuSpriceRelatedToRow(item.row, fill, saveRes);
-                        } else {
-                            try { item.row.reformat(); } catch (e) { /* ignore */ }
-                        }
-                        const promoSave = { prmt_pct: plan.prmt, cpn_pct: plan.cpn };
-                        if (chPromoReverbComboEnabled()) promoSave.zero_sold_prmt = plan.zeroSold || 0;
-                        saveChannelPromoFields(sku, promoSave).always(function() {
-                            ok++;
-                            next();
+                const persistFill = function(saveRes) {
+                    const refillPatch = {
+                        prmt_pct: String(plan.prmt),
+                        cpn_pct: String(plan.cpn),
+                        _prmt_pct_applied: plan.prmt,
+                        _cpn_pct_applied: plan.cpn,
+                    };
+                    if (chPromoReverbComboEnabled()) {
+                        refillPatch.zero_sold_prmt = plan.zeroSold != null ? String(plan.zeroSold) : '';
+                        refillPatch._zero_sold_prmt_applied = plan.zeroSold || 0;
+                    }
+                    item.row.update(Object.assign(refillPatch, chPromoSpricePatch(fill)));
+                    if (saveRes && (saveRes.sgpft_percent !== undefined || saveRes.sgprft_percent !== undefined || saveRes.sroi_percent !== undefined)) {
+                        item.row.update({
+                            SGPFT: saveRes.sgpft_percent,
+                            'Spft%': saveRes.spft_percent,
+                            SPFT: saveRes.spft_percent,
+                            SNPFT: saveRes.spft_percent,
+                            SROI: saveRes.sroi_percent,
+                            SGROI: saveRes.sgroi_percent,
+                            SNROI: saveRes.snroi_percent,
+                            sroi_percent: saveRes.sroi_percent,
+                            sgprft_percent: saveRes.sgprft_percent != null ? saveRes.sgprft_percent : saveRes.sgpft_percent,
+                            spft_percent: saveRes.spft_percent,
                         });
-                    })
-                    .fail(function() {
-                        item.row.update(chPromoSpricePatch(fill));
-                        if (typeof applyTemuSpriceRelatedToRow === 'function') {
-                            applyTemuSpriceRelatedToRow(item.row, fill, null);
-                        }
-                        fail++;
+                    }
+                    if (typeof applyTemuSpriceRelatedToRow === 'function') {
+                        applyTemuSpriceRelatedToRow(item.row, fill, saveRes);
+                    } else {
+                        try { item.row.reformat(); } catch (e) { /* ignore */ }
+                    }
+                    const promoSave = { prmt_pct: plan.prmt, cpn_pct: plan.cpn };
+                    if (chPromoReverbComboEnabled()) promoSave.zero_sold_prmt = plan.zeroSold || 0;
+                    saveChannelPromoFields(sku, promoSave).always(function() {
+                        ok++;
                         next();
                     });
+                };
+                const persistFail = function() {
+                    item.row.update(chPromoSpricePatch(fill));
+                    if (typeof applyTemuSpriceRelatedToRow === 'function') {
+                        applyTemuSpriceRelatedToRow(item.row, fill, null);
+                    }
+                    fail++;
+                    next();
+                };
+                const extra = { row: item.row, sku: sku };
+                if (chPromoIsTemuPromoChannel()) {
+                    chPromoPersistClearThenSprice(item.row, fill, true, extra).then(persistFill, persistFail);
+                } else {
+                    saveChannelSprice(sku, fill, true, extra).done(persistFill).fail(persistFail);
+                }
             }
             next();
         }
@@ -8085,7 +8178,11 @@
             const current = chPromoRound2(chPromoGetSprice(d));
             const hadValue = current > 0;
             if (hadValue && current === fill && opts.persist === false) return null;
-            row.update(chPromoSpricePatch(fill));
+            if (chPromoIsTemuPromoChannel() && opts.persist !== false) {
+                row.update(chPromoSpricePatch(0));
+            } else {
+                row.update(chPromoSpricePatch(fill));
+            }
             try { row.reformat(); } catch (e) { /* ignore */ }
             if (opts.persist === false) return { sku: sku, price: fill, row: row };
             const live = chPromoLivePrice(d);
@@ -8099,12 +8196,22 @@
                 queue_push: opts.skip_push !== true && !alreadyLive
                     && (typeof chPromoPageReloadPushAllowed !== 'function' || chPromoPageReloadPushAllowed()),
                 row: row,
+                sku: sku,
             };
-            saveChannelSprice(sku, fill, true, extra).done(function(saveRes) {
-                chPromoApplySpriceSavePatch(row, fill, saveRes);
-            }).fail(function() {
-                chPromoApplySpriceSavePatch(row, fill, null);
-            });
+            if (chPromoIsTemuPromoChannel()) {
+                row.update(chPromoSpricePatch(0));
+                chPromoPersistClearThenSprice(row, fill, true, extra).then(function(saveRes) {
+                    chPromoApplySpriceSavePatch(row, fill, saveRes);
+                }).catch(function() {
+                    chPromoApplySpriceSavePatch(row, fill, null);
+                });
+            } else {
+                saveChannelSprice(sku, fill, true, extra).done(function(saveRes) {
+                    chPromoApplySpriceSavePatch(row, fill, saveRes);
+                }).fail(function() {
+                    chPromoApplySpriceSavePatch(row, fill, null);
+                });
+            }
             return { sku: sku, price: fill, row: row };
         }
 
@@ -8238,11 +8345,15 @@
                         skip_push: true,
                         queue_push: false,
                         row: job.row,
+                        sku: job.sku,
                         prmt_pct: job.prmt,
                         cpn_pct: job.cpn,
                     };
                     let saveRes;
-                    if (job.row) {
+                    if (chPromoIsTemuPromoChannel()) {
+                        extra.rowData = job.row && typeof job.row.getData === 'function' ? job.row.getData() : extra.rowData;
+                        saveRes = await chPromoPersistClearThenSprice(job.row, job.price, true, extra);
+                    } else if (job.row) {
                         saveRes = await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra));
                     } else {
                         await Promise.resolve(saveChannelPromoFields(job.sku, {
@@ -9247,7 +9358,7 @@
                             + sign + pct + '%</span>';
                     },
                 }] : []),
-                ...(CHANNEL_PROMO_CHANNEL === 'ebay2op'
+                ...(false
                     ? [channelPromoPushPrmtColumn()]
                     : []),
                 ...(CHANNEL_PROMO_HIDE_CVR_CPN ? [] : [{
@@ -10117,6 +10228,7 @@
         window.chPromoLiveSprice = chPromoLiveSprice;
         window.chPromoOverwriteStoredSpriceFromRules = chPromoOverwriteStoredSpriceFromRules;
         window.applyChannelSpriceFromStdChange = applyChannelSpriceFromStdChange;
+        window.chPromoPersistClearThenSprice = chPromoPersistClearThenSprice;
         window.chPromoSpriceFromStdPrmtCpnWith = chPromoSpriceFromStdPrmtCpnWith;
         window.chPromoEbayStdMinusPrmtCpnEnabled = chPromoEbayStdMinusPrmtCpnEnabled;
         window.autopopulateEbaySpriceFromStdPrmtCpn = autopopulateEbaySpriceFromStdPrmtCpn;

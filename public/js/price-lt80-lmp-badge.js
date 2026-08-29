@@ -51,8 +51,20 @@
         return NaN;
     }
 
+    function invOf(row) {
+        if (!row) return 0;
+        var fields = ['inventory', 'INV', 'inv', 'Inv', 'QTY AVAIL', 'qty_avail'];
+        for (var i = 0; i < fields.length; i++) {
+            if (row[fields[i]] == null || row[fields[i]] === '') continue;
+            var n = num(row[fields[i]]);
+            if (isFinite(n)) return n;
+        }
+        return 0;
+    }
+
     function hasPurpleTriangle(row, priceField) {
         if (!row || isParentRow(row)) return false;
+        if (!(invOf(row) > 0)) return false;
         var price = priceOf(row, priceField);
         var lmp = lmpOf(row);
         return isFinite(price) && price > 0 && isFinite(lmp) && lmp > 0 && price < (lmp * THRESHOLD);

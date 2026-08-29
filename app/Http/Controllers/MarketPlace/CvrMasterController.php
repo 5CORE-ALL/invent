@@ -473,6 +473,15 @@ class CvrMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'percent required'], 422);
         }
 
+        if ((float) $percent > 0) {
+            return response()->json([
+                'success' => true,
+                'skipped' => true,
+                'message' => 'Sale event create is disabled',
+                'promotion_id' => null,
+            ]);
+        }
+
         $result = app(\App\Services\Ebay1PromotionService::class)
             ->syncSkuPromotionPercent($sku, (float) $percent);
 
