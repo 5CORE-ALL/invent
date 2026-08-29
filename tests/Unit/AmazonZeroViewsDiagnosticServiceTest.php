@@ -113,6 +113,19 @@ class AmazonZeroViewsDiagnosticServiceTest extends TestCase
             'l30_views' => 40,
             'buy_box_percentage' => 85.5,
         ])['featured_offer_percentage']);
+        $this->assertFalse($row['ad_present']);
+        $this->assertTrue($this->service()->evaluate([
+            'sku' => 'TEST SKU',
+            'asin' => 'B0TESTASIN',
+            'listing_status' => 'ACTIVE',
+            'inventory' => 3,
+            'price' => 12.5,
+            'title' => 'Test product title',
+            'main_image' => 'https://example.com/a.jpg',
+            'category' => 'HOME',
+            'l30_views' => 40,
+            'ad_present' => true,
+        ])['ad_present']);
         $this->assertSame('https://www.amazon.com/dp/B0TESTASIN', $row['buyer_link']);
         $this->assertSame(
             'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=B0TESTASIN',
@@ -280,14 +293,20 @@ class AmazonZeroViewsDiagnosticServiceTest extends TestCase
         $summaryAll = $summarize->invoke($service, $all);
         $summaryMore = $summarize->invoke($service, $more);
 
-        $this->assertSame(2, $summaryAll['blocked']);
+        $this->assertSame(3, $summaryAll['total']);
+        $this->assertSame(3, $summaryAll['blocked']);
         $this->assertSame(1, $summaryAll['suppressed']);
-        $this->assertSame(0, $summaryAll['not_buyable']);
-        $this->assertSame(1, $summaryMore['blocked']);
+        $this->assertSame(3, $summaryAll['inactive']);
+        $this->assertSame(0, $summaryAll['active']);
+        $this->assertSame(3, $summaryAll['low_views']);
+        $this->assertSame(2, $summaryMore['blocked']);
         $this->assertSame(1, $summaryMore['suppressed']);
         $this->assertTrue($match->invoke($service, $blockedInStock, ['card' => 'blocked']));
-        $this->assertFalse($match->invoke($service, $suppressed, ['card' => 'blocked']));
+        $this->assertTrue($match->invoke($service, $suppressed, ['card' => 'blocked']));
         $this->assertTrue($match->invoke($service, $suppressed, ['card' => 'suppressed']));
+        $this->assertTrue($match->invoke($service, $blockedInStock, ['card' => 'inactive']));
+        $this->assertFalse($match->invoke($service, $blockedInStock, ['card' => 'active']));
+        $this->assertTrue($match->invoke($service, $blockedInStock, ['card' => 'low_views']));
     }
 
     public function test_missing_image_is_listing_issue(): void

@@ -8,8 +8,10 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonListingRaw;
 use App\Models\AmazonListingStatus;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\AmazonAdsMissingLink;
 use App\Models\AmazonZeroViewDiagnostic;
 use App\Models\ProductMaster;
+use App\Support\Marketplace\AmazonAdsMissingLinks;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\AmazonListingStatusHelper;
@@ -267,6 +269,7 @@ class AmazonZeroViewsDiagnosticService
             'featured_offer_percentage' => $featuredPct,
             'l7_views' => $l7Views,
             'l30_views' => $l30Views,
+            'ad_present' => (bool) ($facts['ad_present'] ?? false),
             'l7_sessions' => $l7Sessions,
             'l30_sessions' => $l30Sessions,
             'search_indexed' => 'Not Verified',
@@ -297,7 +300,7 @@ class AmazonZeroViewsDiagnosticService
     public function paginate(array $filters): array
     {
         $page = max(1, (int) ($filters['page'] ?? 1));
-        $rawSize = $filters['size'] ?? 50;
+        $rawSize = $filters['size'] ?? 120;
         $wantAll = in_array(strtolower(trim((string) $rawSize)), ['all', 'true'], true)
             || (int) $rawSize === 0;
 
@@ -343,7 +346,7 @@ class AmazonZeroViewsDiagnosticService
     private function cachedTextMatched(array $filters): array
     {
         $version = (int) Cache::get(self::CACHE_SUMMARY_KEY.'.version', 1);
-        $key = self::CACHE_SUMMARY_KEY.'.'.$version.'.fo1.'.md5(json_encode([
+        $key = self::CACHE_SUMMARY_KEY.'.'.$version.'.fo2.'.md5(json_encode([
             $filters['sku'] ?? '',
             $filters['asin'] ?? '',
             $filters['brand'] ?? '',
@@ -794,9 +797,21 @@ class AmazonZeroViewsDiagnosticService
         $diagnostics = [];
         $lmpLowest = collect();
         $lmpDetails = collect();
+        $adPresentSkus = [];
 
         if (Schema::hasTable('amazon_datsheets')) {
             $datasheetsGrouped = AmazonDatasheet::groupedByNormalizedSku();
+        }
+
+        if (Schema::hasTable('amazon_ads_missing_links')) {
+            AmazonAdsMissingLink::query()
+                ->get(['sku'])
+                ->each(function ($row) use (&$adPresentSkus) {
+                    $key = strtoupper(trim((string) $row->sku));
+                    if ($key !== '') {
+                        $adPresentSkus[$key] = true;
+                    }
+                });
         }
 
         if (Schema::hasTable('amazon_sku_competitors')) {
@@ -908,6 +923,7 @@ class AmazonZeroViewsDiagnosticService
             'data_view' => $dataView,
             'stock' => $stock,
             'diagnostics' => $diagnostics,
+            'ad_present_skus' => $adPresentSkus,
         ];
     }
 
@@ -1051,6 +1067,7 @@ class AmazonZeroViewsDiagnosticService
                 ? 'amazon_datsheets.listing_status'
                 : 'amazon_listing_statuses.value',
             'listing_status_checked_at' => $this->formatTs($sheet?->updated_at),
+            'ad_present' => $this->adPresentFor($sku, trim((string) ($product->parent ?? '')), $maps),
             'suppressed' => $suppressed,
             'suppression_source' => 'amazon_datsheets.listing_status / amazon_listing_statuses',
             'inventory' => $shopify?->inv ?? 0,
@@ -1183,40 +1200,43 @@ class AmazonZeroViewsDiagnosticService
             }
         }
 
+        $card = strtolower(trim((string) ($filters['card'] ?? '')));
         $status = strtoupper(trim((string) ($filters['status'] ?? '')));
-        if ($status !== '' && strtoupper((string) ($row['listing_status'] ?? '')) !== $status) {
+        if ($status !== '' && ! in_array($card, ['active', 'inactive'], true)
+            && strtoupper((string) ($row['listing_status'] ?? '')) !== $status) {
             return false;
         }
 
+        if ($card !== '' && $card !== 'total') {
+            return $this->matchesCard($row, $card);
+        }
+
         $result = strtoupper(trim((string) ($filters['diagnostic_result'] ?? $filters['diagnostic_status'] ?? '')));
-        $card = strtolower(trim((string) ($filters['card'] ?? '')));
-        if ($card !== '' && $card !== 'total' && $card !== 'zero_views') {
-            $cardMap = [
-                'blocked' => '__blocked__',
-                'suppressed' => '__suppressed__',
-                'out_of_stock' => 'INVENTORY ISSUE',
-                'not_buyable' => 'BUYABILITY ISSUE',
-                'indexing' => 'INDEXING ISSUE',
-                'listing' => 'LISTING ISSUE',
-                'needs_review' => 'NEEDS REVIEW',
-                'healthy' => 'HEALTHY',
-            ];
-            if (isset($cardMap[$card])) {
-                $result = $cardMap[$card];
-            }
-        }
-        if ($result === '__suppressed__') {
-            return strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') === 0;
-        }
-        if ($result === '__blocked__') {
-            return strtoupper((string) ($row['diagnostic_status'] ?? '')) === 'BLOCKED'
-                && strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') !== 0;
-        }
         if ($result !== '' && strtoupper((string) ($row['diagnostic_status'] ?? '')) !== $result) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function matchesCard(array $row, string $card): bool
+    {
+        $listing = strtoupper((string) ($row['listing_status'] ?? ''));
+        $suppressed = strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') === 0;
+        $status = strtoupper((string) ($row['diagnostic_status'] ?? ''));
+        $l7 = (int) ($row['l7_views'] ?? $row['Sess7'] ?? 0);
+
+        return match ($card) {
+            'blocked' => $status === 'BLOCKED',
+            'active' => $listing === 'ACTIVE',
+            'suppressed' => $suppressed,
+            'inactive' => $listing === 'INACTIVE',
+            'low_views' => $l7 < 70,
+            default => true,
+        };
     }
 
     /**
@@ -1244,46 +1264,28 @@ class AmazonZeroViewsDiagnosticService
     {
         $summary = [
             'total' => count($rows),
-            'zero_views' => 0,
             'blocked' => 0,
+            'active' => 0,
             'suppressed' => 0,
-            'out_of_stock' => 0,
-            'not_buyable' => 0,
-            'indexing' => 0,
-            'listing' => 0,
-            'needs_review' => 0,
-            'healthy' => 0,
+            'inactive' => 0,
+            'low_views' => 0,
         ];
 
         foreach ($rows as $row) {
-            if ((int) ($row['l30_views'] ?? 0) === 0) {
-                $summary['zero_views']++;
-            }
-            $status = (string) ($row['diagnostic_status'] ?? '');
-            $suppressed = strcasecmp((string) ($row['suppression'] ?? ''), 'Suppressed') === 0;
-            if ($suppressed) {
-                $summary['suppressed']++;
-            }
-            if ($status === 'BLOCKED' && ! $suppressed) {
+            if ($this->matchesCard($row, 'blocked')) {
                 $summary['blocked']++;
             }
-            if ($status === 'INVENTORY ISSUE') {
-                $summary['out_of_stock']++;
+            if ($this->matchesCard($row, 'active')) {
+                $summary['active']++;
             }
-            if ($status === 'BUYABILITY ISSUE') {
-                $summary['not_buyable']++;
+            if ($this->matchesCard($row, 'suppressed')) {
+                $summary['suppressed']++;
             }
-            if ($status === 'INDEXING ISSUE') {
-                $summary['indexing']++;
+            if ($this->matchesCard($row, 'inactive')) {
+                $summary['inactive']++;
             }
-            if ($status === 'LISTING ISSUE') {
-                $summary['listing']++;
-            }
-            if ($status === 'NEEDS REVIEW') {
-                $summary['needs_review']++;
-            }
-            if ($status === 'HEALTHY') {
-                $summary['healthy']++;
+            if ($this->matchesCard($row, 'low_views')) {
+                $summary['low_views']++;
             }
         }
 
@@ -1542,6 +1544,28 @@ class AmazonZeroViewsDiagnosticService
         }
 
         return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $maps
+     */
+    private function adPresentFor(string $sku, string $parent, array $maps): bool
+    {
+        $present = $maps['ad_present_skus'] ?? [];
+        if (! is_array($present) || $present === []) {
+            return false;
+        }
+        $keys = [
+            strtoupper(trim($sku)),
+            strtoupper(AmazonAdsMissingLinks::skuForParent($parent)),
+        ];
+        foreach ($keys as $key) {
+            if ($key !== '' && ! empty($present[$key])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function numeric(mixed $value): ?float

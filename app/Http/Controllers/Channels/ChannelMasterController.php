@@ -5916,7 +5916,7 @@ class ChannelMasterController extends Controller
             $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap) {
                 $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 return [
-                    'Channel ' => $channel->channel,
+                    'Channel ' => $this->allMarketplaceDisplayName($channel->channel),
                     'alias' => $aliasMap[$canonicalKey] ?? null,
                     'promotions' => $promotionsMap[$canonicalKey] ?? null,
                     'compliance_count' => $complianceCountMap[$canonicalKey] ?? null,
@@ -8772,13 +8772,13 @@ class ChannelMasterController extends Controller
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
         // Channel data
-        $channelData = ChannelMaster::where('channel', 'EbayThree')->first();
+        $channelData = ChannelMaster::whereIn('channel', ['EbayThree', 'eBay 3', 'eBay3'])->first();
 
         // eBay3 Map/Miss/NMap: compute from same tree payload as ebay3 tabulator view.
         $mapMissCounts = $this->getEbay3LiveMapMissCountsFromTabulator($request);
 
         $result[] = [
-            'Channel '   => 'EbayThree',
+            'Channel '   => 'eBay 3',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
             'Growth'     => round($growth, 2) . '%',
@@ -14293,9 +14293,22 @@ class ChannelMasterController extends Controller
         $aliases = [
             'tiktok shop 2' => 'tiktok 2',
             'depop.com'     => 'depop',
+            'ebay 3' => 'ebaythree',
+            'ebay3' => 'ebaythree',
+            'ebay three' => 'ebaythree',
         ];
 
         return $aliases[$key] ?? $key;
+    }
+
+    private function allMarketplaceDisplayName(?string $name): string
+    {
+        $key = $this->allMarketplaceSnapshotKey($name);
+
+        return match ($key) {
+            'ebaythree' => 'eBay 3',
+            default => trim((string) $name),
+        };
     }
 
     /**
@@ -15653,6 +15666,9 @@ class ChannelMasterController extends Controller
                 // Those rows plot as $0 on every metric — skip them.
                 $fullRows = $rows->filter(function ($row) use ($useL7Window, $useDailyWindow) {
                     $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+                    if ($this->channelSnapshotIsSeededCopy($row, $sd)) {
+                        return false;
+                    }
                     if (array_key_exists('l30_sales', $sd)) {
                         return true;
                     }
@@ -15960,6 +15976,11 @@ class ChannelMasterController extends Controller
                 $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll);
             }
 
+            $chartData = $this->collapseTrailingEqualChartPoints(
+                $chartData,
+                $this->metricDotEpsilon($metric)
+            );
+
             // Table (channel_master_calculated_data / the grid cell) is the source.
             // History stays on daily snapshots; the last point must equal the table.
             if (! empty($chartData)) {
@@ -16039,7 +16060,8 @@ class ChannelMasterController extends Controller
     private function channelMetricDotTrendsCacheKey(int $window): string
     {
         // v9: last graph point + table dot v2 = saved table row.
-        return 'amm_dot_trends_v9_w'.$window;
+        // v11: All badges keep the blended pair; eBay 3 included from calculated_data.
+        return 'amm_dot_trends_v11_w'.$window;
     }
 
     /**
@@ -16047,14 +16069,32 @@ class ChannelMasterController extends Controller
      */
     private function activeMarketplaceSnapshotKeys(): array
     {
-        return ChannelMaster::query()
+        $fromMaster = ChannelMaster::query()
             ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
             ->pluck('channel')
-            ->map(fn ($c) => $this->allMarketplaceSnapshotKey((string) $c))
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+            ->map(fn ($c) => $this->allMarketplaceSnapshotKey((string) $c));
+
+        // Table rows come from calculated_data (EbayThree, Shopify, …). Include
+        // those keys so eBay 3 / All cannot stay gray just because the master
+        // name spelling differs from the snapshot key.
+        $fromCalc = \App\Models\ChannelMasterCalculatedData::query()
+            ->pluck('channel')
+            ->map(fn ($c) => $this->allMarketplaceSnapshotKey((string) $c));
+
+        return $fromMaster->merge($fromCalc)->filter()->unique()->values()->all();
+    }
+
+    private function snapshotDateYmd($row): string
+    {
+        $raw = is_object($row) ? ($row->snapshot_date ?? '') : $row;
+        if ($raw instanceof \DateTimeInterface) {
+            return $raw->format('Y-m-d');
+        }
+        try {
+            return Carbon::parse((string) $raw, 'America/Los_Angeles')->toDateString();
+        } catch (\Throwable $e) {
+            return substr((string) $raw, 0, 10);
+        }
     }
 
     /**
@@ -16073,6 +16113,9 @@ class ChannelMasterController extends Controller
             if (isset($all[$key])) {
                 $filtered[$key] = $all[$key];
             }
+        }
+        if (isset($all['all'])) {
+            $filtered['all'] = $all['all'];
         }
 
         return $filtered;
@@ -16198,10 +16241,8 @@ class ChannelMasterController extends Controller
             $out = [];
             $processedByChannel = [];
 
-            // Last two calendar full snapshots — same last step as the chart
-            // (vs previous day). Do not walk back to an older different day and
-            // do not skip seeded copies: both of those made the table dot the
-            // opposite color of the graph's last point.
+            // Last real change (skip seeded listing-copies and duplicate last
+            // days). Chart trailing flats are collapsed to the same pair.
             $snapshotWindow = $useL7Window ? 36 : 30;
             $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
             $this->preloadAmazonPacificDayYSales(
@@ -16229,7 +16270,7 @@ class ChannelMasterController extends Controller
 
                 $cmsRows = ($cmsByChannel->get($channel) ?? collect())
                     ->groupBy(function ($row) {
-                        return (string) $row->snapshot_date;
+                        return $this->snapshotDateYmd($row);
                     })
                     ->map(function ($rows) use ($channel) {
                         return $rows->first(function ($row) use ($channel) {
@@ -16237,15 +16278,18 @@ class ChannelMasterController extends Controller
                         }) ?? $rows->first();
                     })
                     ->sortByDesc(function ($row) {
-                        return (string) $row->snapshot_date;
+                        return $this->snapshotDateYmd($row);
                     })
                     ->values()
                     ->take($snapshotWindow)
                     ->filter(function ($row) use ($useL7Window, $useDailyWindow) {
+                        $sd = $row->summaryArray();
+                        if ($this->channelSnapshotIsSeededCopy($row, $sd)) {
+                            return false;
+                        }
                         if ($row->isFullChannelSnapshot()) {
                             return true;
                         }
-                        $sd = $row->summaryArray();
 
                         return ($useL7Window && (
                             array_key_exists('l7_sales', $sd) || array_key_exists('y_sales', $sd)
@@ -16278,9 +16322,16 @@ class ChannelMasterController extends Controller
                 foreach ($metrics as $metric) {
                     $series = [];
                     foreach ($cmsRows as $row) {
+                        $sd = $summaryForRow($row);
+                        if ($this->channelSnapshotIsSeededCopy($row, $sd)) {
+                            continue;
+                        }
                         $series[] = $metricValue($metric, $row);
                     }
-                    $out[$channel][$metric] = ChannelMetricDotPair::lastTwoAdjacent($series);
+                    $out[$channel][$metric] = ChannelMetricDotPair::lastTwoDistinct(
+                        $series,
+                        $this->metricDotEpsilon($metric)
+                    );
                 }
             }
 
@@ -16289,6 +16340,7 @@ class ChannelMasterController extends Controller
             if (! $useDailyWindow && ! $useL7Window) {
                 $this->pinLiveDotTrendsFromCalculatedData($out);
                 $this->overlayLiveAmazonDotTrends($out);
+                $this->pinAllDotTrendsFromChannelPairs($out);
             }
 
             return $out;
@@ -16315,8 +16367,8 @@ class ChannelMasterController extends Controller
         $byDate = [];
         foreach ($processedByChannel as $channel => $cmsRows) {
             foreach ($cmsRows as $row) {
-                $date = (string) ($row->snapshot_date ?? '');
-                if ($date === '') {
+                $date = $this->snapshotDateYmd($row);
+                if ($date === '' || $date === '1970-01-01') {
                     continue;
                 }
                 $byDate[$date][$channel] = $row;
@@ -16326,16 +16378,6 @@ class ChannelMasterController extends Controller
             return $empty;
         }
         krsort($byDate);
-        $picked = [];
-        foreach (array_keys($byDate) as $date) {
-            $picked[] = $date;
-            if (count($picked) >= 2) {
-                break;
-            }
-        }
-        if (count($picked) < 2) {
-            return $empty;
-        }
 
         $summariesFor = function (string $date) use ($byDate): array {
             $rows = collect(array_values($byDate[$date] ?? []));
@@ -16350,15 +16392,17 @@ class ChannelMasterController extends Controller
             return [$decoded, $rowByCh];
         };
 
-        [$sd2, $rows2] = $summariesFor($picked[0]);
-        [$sd1, $rows1] = $summariesFor($picked[1]);
-
         $out = [];
         foreach ($metrics as $metric) {
-            $out[$metric] = [
-                $this->aggregateAllChannelsMetricFromSummaries($metric, $sd1, $rows1, $metricMap),
-                $this->aggregateAllChannelsMetricFromSummaries($metric, $sd2, $rows2, $metricMap),
-            ];
+            $series = [];
+            foreach (array_keys($byDate) as $date) {
+                [$sd, $rows] = $summariesFor($date);
+                $series[] = $this->aggregateAllChannelsMetricFromSummaries($metric, $sd, $rows, $metricMap);
+            }
+            $out[$metric] = ChannelMetricDotPair::lastTwoDistinct(
+                $series,
+                $this->metricDotEpsilon($metric)
+            );
         }
 
         return $out;
@@ -17752,6 +17796,32 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Drop a flat last calendar day so the last chart step is the last real
+     * move — same pair the table dots use after lastTwoDistinct.
+     *
+     * @param  list<array{date: string, value: float}>  $chartData
+     * @return list<array{date: string, value: float}>
+     */
+    private function collapseTrailingEqualChartPoints(array $chartData, float $epsilon): array
+    {
+        while (count($chartData) >= 2) {
+            $lastIdx = array_key_last($chartData);
+            $prevIdx = $lastIdx - 1;
+            if (! isset($chartData[$prevIdx])) {
+                break;
+            }
+            $last = (float) ($chartData[$lastIdx]['value'] ?? 0);
+            $prev = (float) ($chartData[$prevIdx]['value'] ?? 0);
+            if (abs($last - $prev) > $epsilon) {
+                break;
+            }
+            array_pop($chartData);
+        }
+
+        return array_values($chartData);
+    }
+
+    /**
      * Last graph point = Active Channel table cell (saved calculated row, or
      * the live overlay the grid already shows).
      *
@@ -17882,6 +17952,78 @@ class ChannelMasterController extends Controller
                     $this->metricDotEpsilon($metric)
                 );
             }
+        }
+    }
+
+    /**
+     * All-row / summary-badge v2 = sum (or sales-weighted %) of the table
+     * cells. v1 stays the last different All snapshot day so badges cannot
+     * stay gray while Amazon/eBay already moved.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function pinAllDotTrendsFromChannelPairs(array &$out): void
+    {
+        if (! isset($out['all'])) {
+            $out['all'] = [];
+        }
+
+        $sumMetrics = [
+            'y_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
+            'qty', 'ad_spend', 'total_views', 'clicks', 'ad_sales', 'ad_sold',
+            'missing_l', 'map', 'nmap',
+        ];
+        $weightBy = [
+            'gprofit' => 'l30_sales',
+            'npft' => 'l30_sales',
+            'ads_pct' => 'l30_sales',
+            'groi' => 'l30_sales',
+            'nroi' => 'l30_sales',
+            'cvr' => 'total_views',
+            'ads_cvr' => 'clicks',
+            'acos' => 'ad_sales',
+        ];
+
+        foreach (array_merge($sumMetrics, array_keys($weightBy)) as $metric) {
+            $s2 = 0.0;
+            $w2 = 0.0;
+            $n = 0;
+            $weightKey = $weightBy[$metric] ?? null;
+            foreach ($out as $ch => $metrics) {
+                if ($ch === 'all' || ! is_array($metrics)) {
+                    continue;
+                }
+                $pair = $metrics[$metric] ?? null;
+                if (! is_array($pair) || $pair[1] === null || ! is_numeric($pair[1])) {
+                    continue;
+                }
+                $v2 = (float) $pair[1];
+                if ($weightKey !== null) {
+                    $wt = $metrics[$weightKey][1] ?? 0;
+                    $wt = is_numeric($wt) ? (float) $wt : 0.0;
+                    $s2 += $v2 * $wt;
+                    $w2 += $wt;
+                } else {
+                    $s2 += $v2;
+                }
+                $n++;
+            }
+            if ($n === 0) {
+                continue;
+            }
+            $live = $weightKey !== null
+                ? ($w2 > 0 ? $s2 / $w2 : null)
+                : $s2;
+            if ($live === null) {
+                continue;
+            }
+            $pair = $out['all'][$metric] ?? [null, null];
+            $out['all'][$metric] = ChannelMetricDotPair::pinLatest(
+                $pair[0] !== null ? (float) $pair[0] : null,
+                $pair[1] !== null ? (float) $pair[1] : null,
+                $live,
+                $this->metricDotEpsilon($metric)
+            );
         }
     }
 

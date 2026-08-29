@@ -269,6 +269,7 @@ class AmzZeroViewsDiagnosticController extends Controller
                 'Listing Status',
                 'Suppression',
                 'Buyable',
+                'Ad Present',
                 'Diagnostic Result',
                 'Problem',
                 'Recommended Action',
@@ -296,6 +297,7 @@ class AmzZeroViewsDiagnosticController extends Controller
                     $row['listing_status'] ?? '',
                     $row['suppression'] ?? '',
                     $row['buyable'] ?? '',
+                    ! empty($row['ad_present']) ? 'Yes' : 'No',
                     $row['diagnostic_status'] ?? '',
                     $row['problem'] ?? '',
                     $row['recommended_action'] ?? '',
@@ -316,7 +318,7 @@ class AmzZeroViewsDiagnosticController extends Controller
     {
         return [
             'page' => $request->input('page', 1),
-            'size' => $request->input('size', 50),
+            'size' => $request->input('size', 120),
             'marketplace' => $request->input('marketplace'),
             'account' => $request->input('account'),
             'sku' => $request->input('sku'),

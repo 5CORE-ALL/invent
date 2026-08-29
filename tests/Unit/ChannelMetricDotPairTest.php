@@ -15,11 +15,35 @@ class ChannelMetricDotPairTest extends TestCase
         );
     }
 
-    public function test_flat_last_step_stays_gray(): void
+    public function test_flat_last_step_stays_gray_when_adjacent(): void
     {
         $this->assertSame(
             [8585.0, 8585.0],
             ChannelMetricDotPair::lastTwoAdjacent([8585.0, 8585.0, 8178.8])
+        );
+    }
+
+    public function test_distinct_walks_back_past_duplicate_last_days(): void
+    {
+        $this->assertSame(
+            [517.67, 337.31],
+            ChannelMetricDotPair::lastTwoDistinct([337.31, 337.31, 517.67, 955.39])
+        );
+    }
+
+    public function test_distinct_temu2_frozen_y_walks_to_last_move(): void
+    {
+        $this->assertSame(
+            [585.0, 659.44],
+            ChannelMetricDotPair::lastTwoDistinct([659.44, 659.44, 659.44, 585.0])
+        );
+    }
+
+    public function test_distinct_truly_flat_stays_gray(): void
+    {
+        $this->assertSame(
+            [165.0, 165.0],
+            ChannelMetricDotPair::lastTwoDistinct([165.0, 165.0, 165.0])
         );
     }
 

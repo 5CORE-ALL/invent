@@ -1012,6 +1012,7 @@
             var aliases = {
                 ebay2: 'ebaytwo',
                 ebay3: 'ebaythree',
+                ebaythree: 'ebaythree',
                 shopify: 'shopifyb2c',
                 tiktok: 'tiktokshop',
                 tiktok2: 'tiktokshop2',
@@ -1366,9 +1367,9 @@
                         var live = liveMetricFromRow(data[i], metric);
                         if (live == null || isNaN(live)) continue;
                         var key = ch + '_' + metric;
-                        var pair = lastDotPairByKey[key] || [null, null];
+                        var pair = lastDotPairByKey[key];
+                        if (!pair || pair[0] == null || isNaN(pair[0])) continue;
                         var v1 = pair[0];
-                        if (v1 == null || isNaN(v1)) v1 = pair[1];
                         lastDotPairByKey[key] = [v1, live];
                         lastDotColorByKey[key] = colorFromDotPair(v1, live, metric);
                     }
@@ -3759,7 +3760,9 @@
                 };
                 function pairClass(v1, v2, metric) {
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
-                    if (v2 === v1) return 'flat';
+                    var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
+                        || metric === 'npft' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                    if (Math.abs(v2 - v1) <= eps) return 'flat';
                     var isInv = inverted.indexOf(metric) >= 0;
                     if (isInv) return v2 < v1 ? 'up' : 'down';
                     return v2 > v1 ? 'up' : 'down';
@@ -3767,13 +3770,13 @@
                 $('#summary-stats .summary-trend-dot[data-metric]').each(function() {
                     var metric = $(this).attr('data-metric');
                     if (!metric) return;
-                    // Prefer the blended All pair (same last two days as the All chart)
-                    // so the outer badge cannot be green while the last graph point is red.
-                    var allColor = lastDotColorByKey['all_' + metric];
-                    if (allColor) {
-                        var allCls = allColor === '#28a745' ? 'up'
-                            : allColor === '#dc3545' ? 'down' : 'flat';
-                        $(this).removeClass('up down flat none').addClass(allCls);
+                    // Prefer the blended All pair. Only treat it as settled when
+                    // both values exist — a leftover gray hex must not lock Every
+                    // summary badge to flat.
+                    var allPair = lastDotPairByKey['all_' + metric];
+                    if (allPair && allPair[0] != null && allPair[1] != null
+                        && !isNaN(allPair[0]) && !isNaN(allPair[1])) {
+                        $(this).removeClass('up down flat none').addClass(pairClass(allPair[0], allPair[1], metric));
                         return;
                     }
                     var s1 = 0, s2 = 0, w1 = 0, w2 = 0, n = 0;
