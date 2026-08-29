@@ -140,49 +140,11 @@ class Ebay3OrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        $settings = MarketplaceSyncSettings::getFor('ebay3');
-        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('ebay3', $settings);
-        $queue = MarketplaceManagerRegistry::queueFor('ebay3');
-        MarketplaceShopifyImportQueue::prepareForDispatch(Ebay3OrderMetric::class, $queue);
-
-        $orders = Ebay3OrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->orderBy('id')
-            ->limit(200)
-            ->get();
-
-        $dispatched = 0;
-        foreach ($orders as $order) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('ebay3', $order)) {
-                continue;
-            }
-
-            try {
-                MarketplaceShopifyImportQueue::push(
-                    new \App\Jobs\ImportEbay3OrderToShopify((int) $order->id),
-                    $queue
-                );
-                $order->update(['import_status' => 'queued']);
-                $dispatched++;
-            } catch (\Throwable $e) {
-                Log::warning('Ebay3OrderSyncService: failed to queue import', [
-                    'id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $dispatched;
+        return MarketplaceShopifyImportQueue::dispatchLatestUnpushed(
+            'ebay3',
+            Ebay3OrderMetric::class,
+            static fn (int $id) => new \App\Jobs\ImportEbay3OrderToShopify($id)
+        );
     }
 
     /**

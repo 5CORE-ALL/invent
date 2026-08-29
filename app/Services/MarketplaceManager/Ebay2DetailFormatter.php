@@ -1824,6 +1824,11 @@ class Ebay2DetailFormatter
      */
     protected function extractLogisticsList(array $order): array
     {
+        $ebay = $this->extractEbayShipmentRows($order);
+        if ($ebay !== []) {
+            return $ebay;
+        }
+
         $out = [];
         $list = $this->list(
             $order['logistic_info_list']['global_aeop_tp_logistic_info_dto']
@@ -1860,6 +1865,31 @@ class Ebay2DetailFormatter
         }
 
         return $out;
+    }
+
+    /**
+     * eBay Sell Fulfillment payload (not AliExpress logistics_no).
+     *
+     * @param  array<string, mixed>  $order
+     * @return list<array<string, mixed>>
+     */
+    protected function extractEbayShipmentRows(array $order): array
+    {
+        $hit = EbaySellFulfillmentTracking::trackingFromEbayPayload($order);
+        if ($hit === null) {
+            return [];
+        }
+
+        return [[
+            'service' => $hit['carrier'],
+            'tracking' => $hit['tracking'],
+            'status' => $this->str($order['orderFulfillmentStatus'] ?? null),
+            'status_message' => null,
+            'send_type' => null,
+            'receive_status' => null,
+            'shipped_at' => $this->str($order['lastModifiedDate'] ?? null),
+            'received_at' => null,
+        ]];
     }
 
     /**

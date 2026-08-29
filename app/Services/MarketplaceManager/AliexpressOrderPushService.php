@@ -234,6 +234,7 @@ class AliexpressOrderPushService
             if ($localLinked) {
                 $this->linkAliexpressOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedOrder($order);
 
                 return (string) $localLinked;
             }
@@ -270,6 +271,7 @@ class AliexpressOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedOrder($order);
 
             return (string) $existing['id'];
         }
@@ -294,16 +296,8 @@ class AliexpressOrderPushService
             return null;
         }
 
-        if ($this->lastDuplicateLinkMessage === null) {
-            $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
-            $tracking = (string) ($fulfillment['tracking'] ?? '');
-            $carrier = (string) ($fulfillment['carrier'] ?? 'AliExpress');
-            if ($tracking !== '') {
-                $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
-            }
-        }
-
         $this->linkAliexpressOrderToShopify($orderId !== '' ? $orderId : (string) $order->order_id, $shopifyOrderId);
+        $this->fulfillShopifyForImportedOrder($order->fresh() ?? $order);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);
@@ -690,6 +684,29 @@ class AliexpressOrderPushService
             Log::error('AliexpressOrderPushService: exception', ['error' => $e->getMessage()]);
 
             return null;
+        }
+    }
+
+    protected function fulfillShopifyForImportedOrder(AliexpressOrderMetric $order): void
+    {
+        $id = (int) $order->id;
+        if ($id < 1) {
+            return;
+        }
+
+        try {
+            $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('aliexpress', $id);
+            if (empty($result['success']) && empty($result['skipped'])) {
+                Log::warning('AliexpressOrderPushService: Shopify fulfillment after import failed', [
+                    'order_id' => $order->order_id,
+                    'result' => $result,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AliexpressOrderPushService: Shopify fulfillment after import exception', [
+                'order_id' => $order->order_id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

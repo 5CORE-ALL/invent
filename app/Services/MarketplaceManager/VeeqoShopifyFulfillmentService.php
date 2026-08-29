@@ -853,6 +853,18 @@ class VeeqoShopifyFulfillmentService
                 }
             }
         }
+        if ($local === null && in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            $ebayOrderId = trim((string) ($model->order_id ?? ''));
+            if ($ebayOrderId !== '') {
+                $cacheKey = 'mm.ebay.pull-tracking.'.$marketplace.'.'.$ebayOrderId;
+                $pulled = Cache::remember($cacheKey, now()->addMinutes(20), function () use ($marketplace, $ebayOrderId) {
+                    return app(EbaySellFulfillmentTracking::class)->readTrackingFromEbay($marketplace, $ebayOrderId);
+                });
+                if (is_array($pulled) && trim((string) ($pulled['tracking'] ?? '')) !== '') {
+                    $local = $pulled;
+                }
+            }
+        }
 
         return [
             'shopify_order_id' => (string) ($model->shopify_order_id ?? ''),
@@ -1417,7 +1429,7 @@ class VeeqoShopifyFulfillmentService
                     $tracking = $tn;
                 }
             }
-            if ($carrier === '' && preg_match('/carrier|shipping.?company|logistics.?company/', $k) && ! is_numeric($s)) {
+            if ($carrier === '' && preg_match('/carrier|shipping.?company|logistics.?company|shippingcarriercode/', $k) && ! is_numeric($s)) {
                 $carrier = $s;
             }
         };
