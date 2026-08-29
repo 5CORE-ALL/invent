@@ -86,6 +86,7 @@ class VeeqoShopifyFulfillmentService
                 $tn,
                 (string) ($result['carrier'] ?? '')
             );
+            $this->pushEbayTrackingAfterShopify($marketplace, $orderId, $result);
         }
 
         return $result;
@@ -463,9 +464,11 @@ class VeeqoShopifyFulfillmentService
                     if ($amazonId !== '') {
                         $this->linkAmazonOrderToShopify($amazonId, $shopifyId);
                     }
+                    $this->pushEbayTrackingForShopifyOrder($order, $shopifyId, $result);
                 } elseif ($action === 'already_on_shopify') {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addDays(7));
+                    $this->pushEbayTrackingForShopifyOrder($order, $shopifyId, $result);
                 } elseif (in_array($action, ['tracking_not_found', 'not_linked'], true)) {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addMinutes(8));
@@ -2114,6 +2117,96 @@ class VeeqoShopifyFulfillmentService
                 'order_id' => $orderId,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function pushEbayTrackingAfterShopify(string $marketplace, int $orderId, array $result): void
+    {
+        $marketplace = strtolower(trim($marketplace));
+        if (! in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
+            return;
+        }
+        if (trim((string) ($result['tracking'] ?? '')) === '') {
+            return;
+        }
+
+        $class = match ($marketplace) {
+            'ebay1' => Ebay1OrderMetric::class,
+            'ebay2' => Ebay2OrderMetric::class,
+            'ebay3' => Ebay3OrderMetric::class,
+            default => null,
+        };
+        if ($class === null) {
+            return;
+        }
+
+        try {
+            $line = $class::query()->find($orderId);
+            if ($line === null) {
+                return;
+            }
+            app(EbaySellFulfillmentTracking::class)->pushForChannel($marketplace, $line);
+        } catch (\Throwable $e) {
+            Log::warning('VeeqoShopifyFulfillmentService: eBay tracking push after Shopify failed', [
+                'marketplace' => $marketplace,
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $shopifyOrder
+     * @param  array<string, mixed>  $result
+     */
+    protected function pushEbayTrackingForShopifyOrder(array $shopifyOrder, string $shopifyOrderId, array $result): void
+    {
+        if (trim((string) ($result['tracking'] ?? '')) === '') {
+            return;
+        }
+
+        $hay = strtolower(trim((string) ($shopifyOrder['tags'] ?? '')).' '.trim((string) ($shopifyOrder['note'] ?? '')));
+        foreach (['ebay1', 'ebay2', 'ebay3'] as $slug) {
+            if (! preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-([^\s,]+)/i', $hay, $m)) {
+                continue;
+            }
+            $ebayOrderId = trim((string) ($m[1] ?? ''));
+            if ($ebayOrderId === '') {
+                continue;
+            }
+            $class = match ($slug) {
+                'ebay1' => Ebay1OrderMetric::class,
+                'ebay2' => Ebay2OrderMetric::class,
+                'ebay3' => Ebay3OrderMetric::class,
+                default => null,
+            };
+            if ($class === null) {
+                continue;
+            }
+            try {
+                $line = $class::query()
+                    ->where('order_id', $ebayOrderId)
+                    ->orWhere('order_number', $ebayOrderId)
+                    ->orderBy('id')
+                    ->first();
+                if ($line === null) {
+                    continue;
+                }
+                if (trim((string) ($line->shopify_order_id ?? '')) === '') {
+                    $line->shopify_order_id = $shopifyOrderId;
+                    $line->save();
+                }
+                app(EbaySellFulfillmentTracking::class)->pushForChannel($slug, $line);
+            } catch (\Throwable $e) {
+                Log::warning('VeeqoShopifyFulfillmentService: eBay tracking push from Shopify copy failed', [
+                    'marketplace' => $slug,
+                    'ebay_order_id' => $ebayOrderId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
