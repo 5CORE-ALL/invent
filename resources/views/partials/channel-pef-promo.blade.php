@@ -1727,6 +1727,13 @@
             if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
             if (typeof chPromoToast === 'function') chPromoToast('success', 'Push Std Prc column hidden');
         }
+        function hideChannelPushPrcColumn() {
+            if (typeof table === 'undefined' || !table) return;
+            if (!confirm('Hide the Push Prc column?')) return;
+            try { table.hideColumn('push_prc'); } catch (e) { /* ignore */ }
+            if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
+            if (typeof chPromoToast === 'function') chPromoToast('success', 'Push Prc column hidden');
+        }
 
         let chPromoSaleEventBusy = false;
         async function bulkPushChannelSaleEvent() {
@@ -8940,6 +8947,108 @@
             };
         }
 
+        /** Push Prc — listing = Std, then coupon from CPN%. Select rows, then header or cell push. */
+        function channelPromoPushPrcColumn() {
+            return {
+                title: 'Push Prc',
+                field: 'push_prc',
+                width: 96,
+                hozAlign: 'center',
+                vertAlign: 'middle',
+                headerSort: true,
+                headerTooltip: 'Push Prc — send Std as listing price, then coupon from CPN%. Select SKUs and click this header (or a selected cell) to bulk push.',
+                sorter: function(a, b, aRow, bRow) {
+                    const val = function(row) {
+                        const plan = computeChannelPushPrcPlan(row);
+                        return (plan && plan.effective > 0) ? plan.effective : 0;
+                    };
+                    return val(aRow.getData()) - val(bRow.getData());
+                },
+                titleFormatter: function() {
+                    return chPromoHeaderWithDelete(
+                        'Push Prc',
+                        'ch-promo-push-prc-header-btn',
+                        'ch-promo-push-prc-header-del',
+                        'Bulk Push Prc for selected SKUs',
+                        'Hide the Push Prc column'
+                    );
+                },
+                headerClick: function(e) {
+                    if (e.target.closest('.ch-promo-push-prc-header-del')) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        hideChannelPushPrcColumn();
+                        return false;
+                    }
+                    if (e.target.closest('.ch-promo-push-prc-header-btn')) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        bulkPushChannelPrcSelected();
+                        return false;
+                    }
+                },
+                formatter: function(cell) {
+                    const d = cell.getRow().getData() || {};
+                    if (!chPromoIsChildRow(d)) return '';
+                    const sku = chPromoSku(d);
+                    const plan = computeChannelPushPrcPlan(d);
+                    const status = String(d.PUSH_PRC_STATUS || '');
+                    const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : (plan ? plan.effective : null);
+                    const dot = chPromoHistoryDotHtml(sku, 'push_prc', histVal);
+                    if (!plan || !(plan.std > 0)) {
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                            + dot + '<span style="color:#adb5bd;" title="Std Prc required">—</span></span>';
+                    }
+                    let icon = '<i class="fas fa-upload"></i>';
+                    let color = '#FF9900';
+                    let tip = chPromoPushPrcStepsText(plan)
+                        + '\nMax $' + plan.max.toFixed(2)
+                        + ' · Min $' + plan.min.toFixed(2)
+                        + ' · Biz $' + plan.business.toFixed(2);
+                    if (status === 'processing') {
+                        icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
+                        color = '#ffc107';
+                        tip = 'Pushing Std → coupon…';
+                    } else if (status === 'error') {
+                        icon = '<i class="fa-solid fa-xmark"></i>';
+                        color = '#dc3545';
+                        tip = 'Last Push Prc failed — click to retry';
+                    } else if (status === 'pushed') {
+                        icon = '<i class="fa-solid fa-check-double"></i>';
+                        color = '#28a745';
+                        const last = Number(d.PUSH_PRC_VALUE) || plan.effective;
+                        tip = 'Pushed $' + Number(last).toFixed(2) + ' — click to push again';
+                    }
+                    return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                        + dot
+                        + '<span style="font-weight:600;font-size:11px;color:#212529;">$'
+                        + plan.effective.toFixed(2) + '</span>'
+                        + '<button type="button" class="btn btn-sm p-0 ch-promo-push-prc-btn" '
+                        + 'data-sku="' + chPromoEscAttr(sku) + '" '
+                        + 'data-price="' + plan.effective.toFixed(2) + '" '
+                        + 'title="' + chPromoEscAttr(tip) + '" '
+                        + 'style="border:none;background:none;cursor:pointer;color:' + color
+                        + ';padding:0;line-height:1;vertical-align:middle;">'
+                        + icon + '</button></span>';
+                },
+                cellClick: function(e, cell) {
+                    if (e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot')) {
+                        e.stopPropagation();
+                        return false;
+                    }
+                    const btn = e.target.closest('.ch-promo-push-prc-btn');
+                    if (!btn) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (btn.disabled) return false;
+                    const d = cell.getRow().getData() || {};
+                    if (String(d.PUSH_PRC_STATUS || '') === 'processing') return false;
+                    pushChannelStdPrcWithPromos($(btn), cell.getRow());
+                    return false;
+                },
+            };
+        }
+
         function channelPromoB2bDiscountColumn() {
             return {
                 title: 'B2B disc',
@@ -9350,6 +9459,8 @@
                         return false;
                     },
                 }] : []),
+                ...((['ebay1', 'ebay2', 'ebay3'].indexOf(CHANNEL_PROMO_CHANNEL) !== -1)
+                    ? [channelPromoPushPrcColumn()] : []),
             ];
         }
 
@@ -9984,6 +10095,8 @@
         window.channelPromoPushPrmtColumn = channelPromoPushPrmtColumn;
         window.channelPromoPushCpnColumn = channelPromoPushCpnColumn;
         window.channelPromoPushStdPrcColumn = channelPromoPushStdPrcColumn;
+        window.channelPromoPushPrcColumn = channelPromoPushPrcColumn;
+        window.hideChannelPushPrcColumn = hideChannelPushPrcColumn;
         window.chPromoHeaderWithDelete = chPromoHeaderWithDelete;
         window.chPromoDeleteIconBtn = chPromoDeleteIconBtn;
         window.deleteChannelSaleEventOne = deleteChannelSaleEventOne;
