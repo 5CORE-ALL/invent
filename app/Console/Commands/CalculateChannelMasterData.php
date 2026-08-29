@@ -290,7 +290,7 @@ class CalculateChannelMasterData extends Command
             'map' => (int) ($data['Map'] ?? 0),
             'miss' => (int) ($data['Miss'] ?? 0),
             'nmap' => (int) ($data['NMap'] ?? 0),
-            'total_views' => (int) ChannelMasterViewsGuard::stabilize(
+            'total_views' => (int) $this->stabilizeChannelViews(
                 strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($data['Channel '] ?? $data['Channel'] ?? '')))),
                 $parseNumber($data['Total Views'] ?? 0),
                 (float) ($data['Qty'] ?? 0)
@@ -309,6 +309,19 @@ class CalculateChannelMasterData extends Command
             'calculated_at' => $calculatedAt,
             'data_as_of' => $dataAsOf,
         ]);
+    }
+
+    /**
+     * Temu Views come from /temu1-data (temu_view_data). Do not carry a stale
+     * ChannelMasterViewsGuard number — that was why Active Channel disagreed.
+     */
+    private function stabilizeChannelViews(string $channelKey, float $candidateViews, float $candidateQty): float
+    {
+        if ($channelKey === 'temu') {
+            return $candidateViews;
+        }
+
+        return ChannelMasterViewsGuard::stabilize($channelKey, $candidateViews, $candidateQty);
     }
 
     private function normalizeUpdateFlag($raw): ?string

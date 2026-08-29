@@ -115,7 +115,9 @@ use App\Models\Temu2CampaignReport;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DailyDataL60;
 use App\Models\TemuMetric;
+use App\Models\TemuViewData;
 use App\Models\TemuProductSheet;
+use App\Support\TemuGoodsIdHelper;
 use App\Models\TiktokCampaignReport;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
@@ -461,9 +463,10 @@ class ChannelMasterController extends Controller
                 $missing = (string) ($row['missing'] ?? '');
                 $temuPrice = (float) ($row['temu_price'] ?? 0);
                 $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-                // Same as /temu1-data Views badge: o_clicks / product_clicks once per goods_id.
+                // Same as /temu1-data Views badge: o_clicks || product_clicks (0 is empty).
                 // Summing every SKU row double-counted variations that share one listing.
-                $rowViews = (int) ($row['o_clicks'] ?? $row['product_clicks'] ?? 0);
+                $oClicks = (int) ($row['o_clicks'] ?? 0);
+                $rowViews = $oClicks > 0 ? $oClicks : (int) ($row['product_clicks'] ?? 0);
                 $gid = trim((string) ($row['goods_id'] ?? ''));
                 if ($gid !== '') {
                     $viewsByGoodsId[$gid] = $rowViews;
@@ -506,7 +509,7 @@ class ChannelMasterController extends Controller
             // been uploaded yet to temu2_view_data (product_clicks all zero).
             $cvrPct = $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0;
 
-            return [
+            $result = [
                 'map' => $mapC,
                 'miss' => $missingC,
                 'nmap' => $nmapC,
@@ -514,15 +517,167 @@ class ChannelMasterController extends Controller
                 'total_sold' => $totalSold,
                 'cvr_pct' => $cvrPct,
             ];
+
+            // Temu 1 Views/CVR must match /temu1-data (temu_view_data by goods_id), not a
+            // guarded/stale amazon_channel_summary_data or decrease-scan leftover.
+            if (! $isTemu2) {
+                $temu1Views = $this->computeTemu1ViewsLikeTemu1DataPage();
+                if (! empty($temu1Views['ok'])) {
+                    $result['total_views'] = $temu1Views['total_views'];
+                    $result['total_sold'] = $temu1Views['total_sold'];
+                    $result['cvr_pct'] = $temu1Views['cvr_pct'];
+                }
+            }
+
+            return $result;
         } catch (\Throwable $e) {
             Log::warning('Temu live map/miss/nmap fallback: '.$e->getMessage());
             $ch = $isTemu2 ? 'temu2' : 'temu';
+            $fallback = $this->getMapAndMissCounts($ch);
+            if (! $isTemu2) {
+                $temu1Views = $this->computeTemu1ViewsLikeTemu1DataPage();
+                if (! empty($temu1Views['ok'])) {
+                    $fallback['total_views'] = $temu1Views['total_views'];
+                    $fallback['total_sold'] = $temu1Views['total_sold'];
+                    $fallback['cvr_pct'] = $temu1Views['cvr_pct'];
+                }
+            }
 
-            return $this->getMapAndMissCounts($ch);
+            return $fallback;
         }
     }
 
-   
+    /**
+     * /temu1-data Views badge: o_clicks || product_clicks, once per goods_id, skip PARENT.
+     * o_clicks = SUM(temu_view_data.product_clicks) joined on temu_metrics.goods_id.
+     * product_clicks = sheet sum, else temu_metrics.product_clicks_l30, then + ads clicks.
+     *
+     * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
+     */
+    private function computeTemu1ViewsLikeTemu1DataPage(): array
+    {
+        $empty = ['ok' => false, 'total_views' => 0, 'total_sold' => 0, 'cvr_pct' => 0.0];
+
+        try {
+            $normalizeSku = static function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $pmSkus = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
+                ->unique()
+                ->values();
+
+            $normalizedPm = [];
+            foreach ($pmSkus as $sku) {
+                $n = $normalizeSku($sku);
+                if ($n !== '') {
+                    $normalizedPm[$n] = (string) $sku;
+                }
+            }
+
+            $noSpaceToNormalized = [];
+            foreach (array_keys($normalizedPm) as $nk) {
+                $ns = str_replace(' ', '', $nk);
+                if ($ns !== '') {
+                    $noSpaceToNormalized[$ns] = $nk;
+                }
+            }
+
+            $metricsByNorm = [];
+            foreach (TemuMetric::query()->select(['sku', 'goods_id', 'product_clicks_l30'])->get() as $m) {
+                $n = $normalizeSku($m->sku);
+                if ($n !== '' && isset($normalizedPm[$n])) {
+                    $metricsByNorm[$n] = $m;
+                }
+            }
+
+            $viewByGid = [];
+            if (Schema::hasTable('temu_view_data')) {
+                foreach (TemuViewData::query()
+                    ->selectRaw('goods_id, SUM(product_clicks) as product_clicks')
+                    ->groupBy('goods_id')
+                    ->get() as $row) {
+                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                    if ($gid) {
+                        $viewByGid[$gid] = (int) $row->product_clicks;
+                    }
+                }
+            }
+
+            $adsByGid = [];
+            if (Schema::hasTable('temu_ads_api_reports')) {
+                TemuAdsApiReport::query()
+                    ->activeAds()
+                    ->where('period', 'L30')
+                    ->whereNotNull('goods_id')
+                    ->get(['goods_id', 'clicks'])
+                    ->each(function ($row) use (&$adsByGid) {
+                        $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                        if ($gid) {
+                            $adsByGid[$gid] = (int) ($row->clicks ?? 0);
+                        }
+                    });
+            }
+
+            $viewsByGoodsId = [];
+            $totalViews = 0;
+            foreach ($normalizedPm as $norm => $_sku) {
+                $item = $metricsByNorm[$norm] ?? null;
+                $gid = $item ? TemuGoodsIdHelper::normalizeKey($item->goods_id) : null;
+                $hasSheet = $gid !== null && array_key_exists($gid, $viewByGid);
+                $sheet = $hasSheet ? (int) $viewByGid[$gid] : 0;
+                $oClicks = $sheet;
+                $productClicks = $hasSheet ? $sheet : (int) ($item->product_clicks_l30 ?? 0);
+                $adsViews = $gid ? (int) ($adsByGid[$gid] ?? 0) : 0;
+                $rowViews = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+                if ($gid) {
+                    $viewsByGoodsId[$gid] = $rowViews;
+                } else {
+                    $totalViews += $rowViews;
+                }
+            }
+            foreach ($viewsByGoodsId as $views) {
+                $totalViews += (int) $views;
+            }
+
+            $totalSold = 0;
+            [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
+            foreach (TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd) as $row) {
+                $raw = trim((string) ($row['contribution_sku'] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                $n = $normalizeSku($raw);
+                $nNoSpace = str_replace(' ', '', $n);
+                if (! isset($normalizedPm[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
+                    continue;
+                }
+                $totalSold += (int) ($row['quantity_purchased'] ?? 0);
+            }
+
+            $cvrPct = $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0;
+
+            return [
+                'ok' => true,
+                'total_views' => $totalViews,
+                'total_sold' => $totalSold,
+                'cvr_pct' => $cvrPct,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu 1 views (temu1-data source) failed: '.$e->getMessage());
+
+            return $empty;
+        }
+    }
+
     private function getDobaLiveMapMissNMapFromTabulatorData(): array
     {
         try {
