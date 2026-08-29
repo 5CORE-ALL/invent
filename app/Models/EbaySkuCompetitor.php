@@ -262,6 +262,8 @@ class EbaySkuCompetitor extends Model
             }
         }
 
+        $lmpEntries = self::applyIgnoreToSameItemIds($lmpEntries);
+        $lowestLmp = $lmpEntries->first(fn ($e) => ! self::isIgnored($e));
         self::attachLmpFieldsToRow($row, $lmpEntries, $lowestLmp);
     }
 

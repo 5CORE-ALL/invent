@@ -1148,6 +1148,7 @@
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
     @include('partials.price-lt80-lmp-badge-script')
+    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
@@ -1616,7 +1617,9 @@
             if (isEbay2TabulatorParentRow(data)) return false;
             const sprice = ebay2RowSpriceForAlert(data);
             if (window.SpriceLmpCap) return SpriceLmpCap.hasAlert(data, sprice);
-            const lmp = parseFloat(data.lmp_price) || 0;
+            const lmp = (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
+                ? LmpIgnore.effectiveLmp(data)
+                : (parseFloat(data.lmp_price) || 0);
             return sprice > 0 && lmp > 0 && sprice + 0.0001 >= lmp;
         }
         function syncEbay2TriangleBadgeState() {
@@ -3291,6 +3294,7 @@
                 ajaxResponse: function(url, params, response) {
                     // Extract the data array from the response object
                     allTableData = response.data || []; // Store unfiltered data
+                    if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                     window.allTableData = allTableData;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     console.log('API Response - Total rows:', allTableData.length);
@@ -3875,7 +3879,9 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
-                            const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
+                            const lmpPrice = (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
+                                ? LmpIgnore.effectiveLmp(rowData)
+                                : (parseFloat(rowData['lmp_price'] || 0) || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
                             const overLmp = lmpPrice > 0 && value > lmpPrice;
@@ -4040,38 +4046,14 @@
                                 const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, { dataset: allTableData });
                                 if (avgHtml !== null) return avgHtml;
                             }
-                            const lmpPrice = cell.getValue();
-                            const sku = rowData['(Child) sku'];
-                            const totalCompetitors = rowData.lmp_entries_total || 0;
-                            const currentPrice = parseFloat(rowData['eBay Price'] || 0);
-                            const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
-                            const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
-                            const skuAttr = escapeHtmlAttr(sku || '');
-                            const countHtml = totalCompetitors > 0
-                                ? ` <span style="color:#007bff;font-weight:500;font-size:12px;">(${totalCompetitors})</span>`
+                            return (window.LmpIgnore && typeof LmpIgnore.columnHtml === 'function')
+                                ? LmpIgnore.columnHtml(rowData, {
+                                    colorVsPrice: true,
+                                    parentOpts: { dataset: typeof allTableData !== 'undefined' ? allTableData : undefined }
+                                })
                                 : '';
-
-                            // Compact like eBay 1: $34.50 (9) — click opens competitors
-                            if (lmpPrice) {
-                                const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
-                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap;"
-                                    title="Open LMP competitors">
-                                    <span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">$${parseFloat(lmpPrice).toFixed(2)}</span>${countHtml}
-                                </a>`;
-                            }
-
-                            if (totalCompetitors > 0) {
-                                return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;"
-                                    title="Open LMP competitors">(${totalCompetitors})</a>`;
-                            }
-
-                            return `<a href="#" class="view-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 12px;"
-                                title="Add LMP competitors">—</a>`;
                         },
-                        width: 78
+                        width: 88
                     },
                     {
                         title: "Sku Link LMP",
@@ -4128,7 +4110,9 @@
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
 
                             const formattedValue = '$' + Number(sprice).toFixed(2);
-                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
+                            const lmp = cap ? cap.lmp : ((window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function')
+                                ? LmpIgnore.effectiveLmp(rowData)
+                                : (parseFloat(rowData.lmp_price) || 0));
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const differsFromPrice = ebayPrice > 0
                                 && Math.round(sprice * 100) !== Math.round(ebayPrice * 100);
@@ -5645,6 +5629,7 @@
                         currentLmpData.lowestPrice = response.lowest_price;
                         
                         renderEbayCompetitorsList(response.competitors, response.lowest_price);
+                        patchEbay2GridLmp();
                     } else {
                         $('#lmpDataList').html(`
                             <div class="alert alert-warning">
@@ -5676,13 +5661,8 @@
                 return;
             }
 
-            let l1Price = null;
-            competitors.forEach(function(item) {
-                if (item.ignored) return;
-                const tp = parseFloat(item.total_price) || 0;
-                if (tp > 0 && (l1Price === null || tp < l1Price)) l1Price = tp;
-            });
-            if (l1Price === null && lowestPrice != null) {
+            let l1Price = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(competitors) : null;
+            if (l1Price === null && lowestPrice != null && (!window.LmpIgnore || LmpIgnore.activeCount(competitors) > 0)) {
                 l1Price = parseFloat(lowestPrice);
             }
 
@@ -5754,47 +5734,26 @@
             $('#lmpDataList').html(html);
         }
 
-        $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
-            const $cb = $(this);
-            const id = $cb.attr('data-id') || $cb.data('id');
-            const marketplace = ($cb.attr('data-marketplace') || $cb.data('marketplace') || 'ebay').toLowerCase();
-            const sku = $cb.attr('data-sku') || $cb.data('sku') || currentLmpData.sku || '';
-            const ignored = $cb.is(':checked');
-            $cb.prop('disabled', true);
-
-            $.ajax({
-                url: '/cvr-master-lmp-ignore',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: { id: id, marketplace: marketplace, sku: sku, ignored: ignored ? 1 : 0 },
-                success: function(res) {
-                    $cb.prop('disabled', false);
-                    if (res && res.success) {
-                        (currentLmpData.competitors || []).forEach(function(c) {
-                            if (String(c.id) === String(id)) c.ignored = ignored;
-                        });
-                        let l1 = null;
-                        (currentLmpData.competitors || []).forEach(function(c) {
-                            if (c.ignored) return;
-                            const tp = parseFloat(c.total_price) || 0;
-                            if (tp > 0 && (l1 === null || tp < l1)) l1 = tp;
-                        });
-                        currentLmpData.lowestPrice = l1;
-                        renderEbayCompetitorsList(currentLmpData.competitors, l1);
-                        showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
-                        refreshEbay2TableData();
-                    } else {
-                        $cb.prop('checked', !ignored);
-                        showToast((res && res.error) || 'Failed to update ignore', 'error');
-                    }
-                },
-                error: function(xhr) {
-                    $cb.prop('disabled', false);
-                    $cb.prop('checked', !ignored);
-                    const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to update ignore';
-                    showToast(msg, 'error');
-                }
+        function patchEbay2GridLmp() {
+            if (!window.LmpIgnore) return;
+            LmpIgnore.patchGrid({
+                table: typeof table !== 'undefined' ? table : null,
+                dataset: typeof allTableData !== 'undefined' ? allTableData : [],
+                sku: currentLmpData.sku,
+                linkedSkus: currentLmpData.linkedLmpSkus || [],
+                competitors: currentLmpData.competitors || []
             });
+        }
+        LmpIgnore.bind({
+            marketplace: 'ebay',
+            sku: function() { return currentLmpData.sku || ''; },
+            competitors: function() { return currentLmpData.competitors || []; },
+            onToggled: function(id, ignored) {
+                const l1 = LmpIgnore.l1(currentLmpData.competitors);
+                currentLmpData.lowestPrice = l1;
+                renderEbayCompetitorsList(currentLmpData.competitors, l1);
+                patchEbay2GridLmp();
+            }
         });
 
         // View Competitors Modal Event Listener
