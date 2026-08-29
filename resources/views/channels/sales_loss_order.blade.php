@@ -957,13 +957,26 @@
         }
     }
 
-    function sloFormatPctCell(cell, redBelow) {
+    const sloAnalyticsPctBands = {
+        groi: { redBelow: 50, purpleAbove: 100 },
+        nroi: { redBelow: 40, purpleAbove: 75 },
+        gpft: { redBelow: 17, purpleAbove: 33 },
+        npft: { redBelow: 10, purpleAbove: 27 },
+    };
+
+    function sloFormatPctCell(cell, metric) {
         const v = cell.getValue();
         if (v === null || v === undefined || v === '') return '—';
         const n = Number(v);
         if (!Number.isFinite(n)) return '—';
-        const label = n.toFixed(1) + '%';
-        return n < redBelow ? '<span class="text-danger fw-semibold">' + label + '</span>' : label;
+        const band = sloAnalyticsPctBands[metric] || sloAnalyticsPctBands.groi;
+        let color = '#006400';
+        if (n < band.redBelow) {
+            color = '#c00000';
+        } else if (n > band.purpleAbove) {
+            color = '#7030a0';
+        }
+        return '<span style="color:' + color + ';font-weight:700">' + n.toFixed(1) + '%</span>';
     }
 
     function sloStatusFilterValue() {
@@ -1335,44 +1348,44 @@
                 },
             },
             {
-                title: 'GROI%',
+                title: 'Groi$',
                 field: 'groi_pct',
                 minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'SKU GROI% for this site: ((Price × margin − LP − Ship) / LP) × 100. Red when under 50%.',
-                formatter: function (cell) { return sloFormatPctCell(cell, 50); },
+                headerTooltip: 'SKU GROI% from this marketplace Analytics page. Red <50%, dark green 50–100%, purple >100%.',
+                formatter: function (cell) { return sloFormatPctCell(cell, 'groi'); },
             },
             {
-                title: 'GPFT%',
-                field: 'gpft_pct',
-                minWidth: 70,
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                sorter: 'number',
-                headerTooltip: 'SKU GPFT% for this site: ((Price × margin − LP − Ship) / Price) × 100. Red when under 10%.',
-                formatter: function (cell) { return sloFormatPctCell(cell, 10); },
-            },
-            {
-                title: 'NROI%',
+                title: 'Nroi%',
                 field: 'nroi_pct',
                 minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'SKU NROI% for this site (GROI minus ads). Red when under 50%.',
-                formatter: function (cell) { return sloFormatPctCell(cell, 50); },
+                headerTooltip: 'SKU NROI% from this marketplace Analytics page. Red <40%, dark green 40–75%, purple >75%.',
+                formatter: function (cell) { return sloFormatPctCell(cell, 'nroi'); },
             },
             {
-                title: 'NPFT%',
+                title: 'Gpft%',
+                field: 'gpft_pct',
+                minWidth: 70,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                headerTooltip: 'SKU GPFT% from this marketplace Analytics page. Red <17%, dark green 17–33%, purple >33%.',
+                formatter: function (cell) { return sloFormatPctCell(cell, 'gpft'); },
+            },
+            {
+                title: 'Npft%',
                 field: 'npft_pct',
                 minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'SKU NPFT% for this site (GPFT minus ads). Red when under 10%.',
-                formatter: function (cell) { return sloFormatPctCell(cell, 10); },
+                headerTooltip: 'SKU NPFT% from this marketplace Analytics page. Red <10%, dark green 10–27%, purple >27%.',
+                formatter: function (cell) { return sloFormatPctCell(cell, 'npft'); },
             },
             {
                 title: 'INV',
