@@ -1592,7 +1592,9 @@ class ChannelMasterController extends Controller
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        return $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+
+        return $this->overlayLiveStaleYSalesOnChannelRows($rows);
     }
 
     /**
@@ -1689,31 +1691,32 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Overlay Pacific-yesterday Y Sales for channels that used "latest order − 1 day"
-     * and could show $0 on a day that actually had sales (AliExpress, Faire, Mercari, TopDawg).
+     * Overlay Pacific-yesterday Y Sales when calculated_data is $0 but orders exist
+     * (TikTok 2 used latest-order−1; Faire API vs Shopify can disagree).
      */
     private function overlayLiveStaleYSalesOnChannelRows(array $rows): array
     {
         $live = [
-            'Aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
-            'Faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
-            'Mercari w ship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
-            'Mercari wo ship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
-            'TopDawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
+            'aliexpress' => fn () => $this->computeAliexpressYSalesLikeAmazon(),
+            'faire' => fn () => $this->computeFaireYSalesLikeAmazon(),
+            'tiktokshop2' => fn () => $this->computeTiktokTwoYSalesLikeAmazon(),
+            'mercariwship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
+            'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
+            'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
         ];
 
         foreach ($rows as &$row) {
-            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($name === '' || ! isset($live[$name])) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key === '' || ! isset($live[$key])) {
                 continue;
             }
             try {
-                $value = $live[$name]();
+                $value = $live[$key]();
                 if ($value !== null) {
                     $this->applyLiveYSalesIfPositive($row, $value);
                 }
             } catch (\Throwable $e) {
-                Log::warning('Live Y Sales overlay failed for '.$name.': '.$e->getMessage());
+                Log::warning('Live Y Sales overlay failed for '.$key.': '.$e->getMessage());
             }
         }
         unset($row);
@@ -7062,25 +7065,38 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Faire: price × quantity for Pacific calendar yesterday (same clock as Amazon Y Sales).
+     * Faire: Pacific yesterday from Shopify Faire orders, or faire_order_metrics
+     * when the API has a day Shopify has not imported yet.
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
-        // Sourced from shopify_raw_orders (inventory_db) so Faire's Y Sales uses the same
-        // pipeline as the all-marketplace-master Faire row and /faire-tabulator page.
-        // Previously this queried `faire_daily_data` (manual Excel uploads) which had a
-        // different latest-order anchor and could disagree with the L30/L60 numbers.
         [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
-        $sum = (float) DB::table('shopify_raw_orders')
-            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-            ->where('order_date', '>=', $yStartPacific)
-            ->where('order_date', '<=', $yEndPacific)
-            ->where('quantity', '>', 0)
-            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-            ->value('revenue');
+        $fromShopify = 0.0;
+        if (Schema::hasTable('shopify_raw_orders')) {
+            $fromShopify = (float) DB::table('shopify_raw_orders')
+                ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
+                ->where('order_date', '>=', $yStartPacific)
+                ->where('order_date', '<=', $yEndPacific)
+                ->where('quantity', '>', 0)
+                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+                ->value('revenue');
+        }
 
-        return round($sum, 2);
+        $fromApi = 0.0;
+        if (Schema::hasTable('faire_order_metrics')) {
+            $fromApi = (float) DB::table('faire_order_metrics')
+                ->where('order_date', '>=', $yStartPacific)
+                ->where('order_date', '<=', $yEndPacific)
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
+                })
+                ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
+                ->value('revenue');
+        }
+
+        return round(max($fromShopify, $fromApi), 2);
     }
 
     /**
@@ -7145,34 +7161,21 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * TikTok 2: tiktok2_orders line sales (sale_price × qty) for the Pacific day
-     * before the latest *active* order — same rule as TikTok Shop. A cancelled
-     * order must not move the window. Falls back to tiktok_sales_two if API is empty.
+     * TikTok 2: tiktok2_orders line sales for Pacific calendar yesterday
+     * (same clock as Amazon / Faire). Do not use latest-order−1 — that skipped
+     * a real Aug 28 $39.99 order because the latest row was already yesterday.
      */
     private function computeTiktokTwoYSalesLikeAmazon(): ?float
     {
-        if (Tiktok2Order::tableReady()) {
-            $latestPacific = Tiktok2Order::latestActiveCreatedAt();
-            if ($latestPacific) {
-                $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-                $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
 
-                return round(Tiktok2Order::salesAmountBetween($yStartPacific, $yEndPacific), 2);
-            }
+        if (Tiktok2Order::tableReady() && Tiktok2Order::query()->whereNotNull('order_created_at')->exists()) {
+            return round(Tiktok2Order::salesAmountBetween($yStartPacific, $yEndPacific), 2);
         }
 
         if (! Schema::hasTable('tiktok_sales_two')) {
             return null;
         }
-
-        $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
-        $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
 
         $sum = (float) DB::table('tiktok_sales_two')
             ->where('order_date', '>=', $yStartPacific)
@@ -7709,26 +7712,17 @@ class ChannelMasterController extends Controller
 
     private function computeTiktokTwoL7SalesLikeAmazon(): ?float
     {
-        if (Tiktok2Order::tableReady()) {
-            $latestPacific = Tiktok2Order::latestActiveCreatedAt();
-            if ($latestPacific) {
-                [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
+        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday(
+            Carbon::now('America/Los_Angeles')
+        );
 
-                return round(Tiktok2Order::salesAmountBetween($l7StartPacific, $l7EndPacific), 2);
-            }
+        if (Tiktok2Order::tableReady() && Tiktok2Order::query()->whereNotNull('order_created_at')->exists()) {
+            return round(Tiktok2Order::salesAmountBetween($l7StartPacific, $l7EndPacific), 2);
         }
 
         if (! Schema::hasTable('tiktok_sales_two')) {
             return null;
         }
-
-        $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
-        if (!$latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
 
         $sum = (float) DB::table('tiktok_sales_two')
             ->where('order_date', '>=', $l7StartPacific)
@@ -11493,6 +11487,8 @@ class ChannelMasterController extends Controller
             'Channel '   => 'Faire',
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
+            'Y Sales'    => $this->computeFaireYSalesLikeAmazon() ?? 0,
+            'L7 Sales'   => $this->computeFaireL7SalesLikeAmazon() ?? 0,
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,

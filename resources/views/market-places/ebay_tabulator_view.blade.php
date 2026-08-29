@@ -1431,7 +1431,7 @@
             const adSpend = price * adsFrac;
             return ((grossPft - adSpend) / lp) * 100;
         }
-        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE). */
+        /** S GPFT / S GROI / SNROI / SNPFT use S PRC (SPRICE) — uncapped rule price, not the LMP display cap. */
         function ebayComputeSgpftFromSprice(rowData) {
             if (!rowData) return null;
             const price = ebaySpriceAmount(rowData);
