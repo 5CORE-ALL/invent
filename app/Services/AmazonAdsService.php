@@ -276,6 +276,95 @@ class AmazonAdsService
     }
 
     /**
+     * SP targeting clauses for one or more campaigns (walks nextToken).
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listTargetsByCampaignIds(array $campaignIds, int $maxPages = 20): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/targets/list',
+            'application/vnd.spTargetingClause.v3+json',
+            ['targetingClauses', 'targets'],
+            $campaignIds,
+            $maxPages
+        );
+    }
+
+    /**
+     * SP keywords for one or more campaigns (walks nextToken).
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listKeywordsByCampaignIds(array $campaignIds, int $maxPages = 20): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/keywords/list',
+            'application/vnd.spKeyword.v3+json',
+            ['keywords'],
+            $campaignIds,
+            $maxPages
+        );
+    }
+
+    /**
+     * @param  list<string>  $campaignIds
+     * @param  list<string>  $listKeys
+     * @return list<array<string, mixed>>
+     */
+    protected function listSpEntitiesByCampaignIds(
+        string $path,
+        string $accept,
+        array $listKeys,
+        array $campaignIds,
+        int $maxPages = 20
+    ): array {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn (string $id) => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+
+        $out = [];
+        $nextToken = null;
+        $pages = 0;
+        do {
+            $pages++;
+            $body = [
+                'campaignIdFilter' => ['include' => $ids],
+                'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
+                'maxResults' => 100,
+            ];
+            if (is_string($nextToken) && $nextToken !== '') {
+                $body['nextToken'] = $nextToken;
+            }
+            $response = $this->post($path, $body, [
+                'Content-Type' => $accept,
+                'Accept' => $accept,
+            ]);
+            $batch = [];
+            foreach ($listKeys as $key) {
+                if (isset($response[$key]) && is_array($response[$key])) {
+                    $batch = $response[$key];
+                    break;
+                }
+            }
+            foreach ($batch as $row) {
+                if (is_array($row)) {
+                    $out[] = $row;
+                }
+            }
+            $nextToken = $response['nextToken'] ?? null;
+        } while (is_string($nextToken) && $nextToken !== '' && $pages < $maxPages);
+
+        return $out;
+    }
+
+    /**
      * List Sponsored Products product ads (paginated).
      * POST /sp/productAds/list
      *
