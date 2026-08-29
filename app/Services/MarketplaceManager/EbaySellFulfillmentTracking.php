@@ -79,10 +79,23 @@ class EbaySellFulfillmentTracking
             return ['success' => false, 'message' => 'eBay API credentials missing or token failed.'];
         }
 
-        $order = $this->getEbayOrder($token, $orderId);
+        $candidateIds = $this->ebayOrderIdCandidates($line);
+        $order = null;
+        $ebayOrderId = $orderId;
+        foreach ($candidateIds as $candidateId) {
+            $loaded = $this->getEbayOrder($token, $candidateId);
+            if (is_array($loaded) && $loaded !== []) {
+                $order = $loaded;
+                $ebayOrderId = trim((string) ($loaded['orderId'] ?? $candidateId));
+                break;
+            }
+        }
         if ($order === null) {
             $raw = is_array($line->raw_payload ?? null) ? $line->raw_payload : [];
             $order = $raw !== [] ? $raw : null;
+            if (is_array($order) && trim((string) ($order['orderId'] ?? '')) !== '') {
+                $ebayOrderId = trim((string) $order['orderId']);
+            }
         }
         if (! is_array($order) || $order === []) {
             return [
@@ -94,7 +107,9 @@ class EbaySellFulfillmentTracking
         }
 
         $fulfillmentStatus = strtoupper(trim((string) ($order['orderFulfillmentStatus'] ?? $status)));
-        if ($this->alreadyHasTracking($token, $orderId, $order, $tracking)) {
+        if ($this->alreadyHasTracking($token, $ebayOrderId, $order, $tracking)) {
+            $this->rememberPushedTracking($line, $tracking, $this->mapCarrier($carrier));
+
             return [
                 'success' => true,
                 'skipped' => true,
@@ -106,6 +121,13 @@ class EbaySellFulfillmentTracking
         }
 
         $lineItems = $this->lineItemsForFulfillment($order, $line);
+        if ($lineItems === []) {
+            $refreshed = $this->getEbayOrder($token, $ebayOrderId);
+            if (is_array($refreshed) && $refreshed !== []) {
+                $order = $refreshed;
+                $lineItems = $this->lineItemsForFulfillment($order, $line);
+            }
+        }
         if ($lineItems === []) {
             return [
                 'success' => false,
@@ -123,37 +145,73 @@ class EbaySellFulfillmentTracking
             'trackingNumber' => $tracking,
         ];
 
-        try {
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                    'Content-Language' => 'en-US',
-                ])
-                ->timeout(45)
-                ->post(
-                    'https://api.ebay.com/sell/fulfillment/v1/order/'.rawurlencode($orderId).'/shipping_fulfillment',
-                    $payload
-                );
-        } catch (\Throwable $e) {
-            Log::warning('EbaySellFulfillmentTracking: request failed', [
-                'channel' => $channel,
-                'order_id' => $orderId,
-                'error' => $e->getMessage(),
-            ]);
+        $response = null;
+        $lastError = '';
+        foreach ($this->uniqueEbayIds(array_merge([$ebayOrderId], $candidateIds)) as $postId) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => 'Bearer '.$token,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                        'Content-Language' => 'en-US',
+                    ])
+                    ->timeout(45)
+                    ->post(
+                        'https://api.ebay.com/sell/fulfillment/v1/order/'.rawurlencode($postId).'/shipping_fulfillment',
+                        $payload
+                    );
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::warning('EbaySellFulfillmentTracking: request failed', [
+                    'channel' => $channel,
+                    'order_id' => $postId,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
 
-            return [
-                'success' => false,
-                'message' => 'eBay tracking push failed: '.$e->getMessage(),
-                'shopify_tracking' => $tracking,
-                'shopify_carrier' => $carrier !== '' ? $carrier : null,
-            ];
+            if ($response->successful() || in_array($response->status(), [201, 204], true)) {
+                $this->rememberPushedTracking($line, $tracking, $carrierCode);
+                Log::info('EbaySellFulfillmentTracking: tracking pushed', [
+                    'channel' => $channel,
+                    'order_id' => $postId,
+                    'tracking' => $tracking,
+                    'carrier' => $carrierCode,
+                ]);
+
+                return [
+                    'success' => true,
+                    'action' => 'ship',
+                    'message' => "Marked eBay order shipped with tracking {$tracking} ({$carrierCode}).",
+                    'shopify_tracking' => $tracking,
+                    'shopify_carrier' => $carrier !== '' ? $carrier : $carrierCode,
+                ];
+            }
+
+            $body = (string) $response->body();
+            $lastError = $body !== '' ? $body : 'HTTP '.$response->status();
+            if ($this->looksAlreadyShipped($body, $fulfillmentStatus)) {
+                $this->rememberPushedTracking($line, $tracking, $carrierCode);
+
+                return [
+                    'success' => true,
+                    'skipped' => true,
+                    'action' => 'already_shipped',
+                    'message' => 'eBay already has a shipment for this order.',
+                    'shopify_tracking' => $tracking,
+                    'shopify_carrier' => $carrier !== '' ? $carrier : null,
+                ];
+            }
+            if (! in_array($response->status(), [400, 404], true)) {
+                break;
+            }
         }
 
-        if ($response->successful() || in_array($response->status(), [201, 204], true)) {
+        $trading = $this->completeSaleViaTradingApi($channel, $token, $candidateIds, $tracking, $carrierCode);
+        if (! empty($trading['success'])) {
             $this->rememberPushedTracking($line, $tracking, $carrierCode);
-            Log::info('EbaySellFulfillmentTracking: tracking pushed', [
+            Log::info('EbaySellFulfillmentTracking: tracking pushed via CompleteSale', [
                 'channel' => $channel,
                 'order_id' => $orderId,
                 'tracking' => $tracking,
@@ -169,29 +227,18 @@ class EbaySellFulfillmentTracking
             ];
         }
 
-        $body = (string) $response->body();
-        if ($this->looksAlreadyShipped($body, $fulfillmentStatus)) {
-            return [
-                'success' => true,
-                'skipped' => true,
-                'action' => 'already_shipped',
-                'message' => 'eBay already has a shipment for this order.',
-                'shopify_tracking' => $tracking,
-                'shopify_carrier' => $carrier !== '' ? $carrier : null,
-            ];
-        }
-
+        $body = $lastError !== '' ? $lastError : (string) ($trading['message'] ?? 'eBay tracking push failed.');
         Log::warning('EbaySellFulfillmentTracking: eBay rejected tracking', [
             'channel' => $channel,
             'order_id' => $orderId,
-            'status' => $response->status(),
+            'status' => $response?->status(),
             'body' => mb_substr($body, 0, 800),
         ]);
 
         return [
             'success' => false,
             'action' => 'ship',
-            'message' => 'eBay tracking push failed: '.mb_substr($body !== '' ? $body : 'HTTP '.$response->status(), 0, 400),
+            'message' => 'eBay tracking push failed: '.mb_substr($body, 0, 400),
             'shopify_tracking' => $tracking,
             'shopify_carrier' => $carrier !== '' ? $carrier : null,
         ];
@@ -231,16 +278,37 @@ class EbaySellFulfillmentTracking
         }
 
         $rows = $query
-            ->orderByRaw("CASE WHEN UPPER(COALESCE(status, '')) IN ('FULFILLED', 'SHIPPED') THEN 1 ELSE 0 END")
-            ->orderByDesc('order_date')
-            ->orderByDesc('id')
-            ->limit($limit * 8)
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->limit($limit * 16)
             ->get();
 
+        $ranked = $rows->sortBy(function ($row) {
+            $raw = is_array($row->raw_payload ?? null) ? $row->raw_payload : [];
+            $pushed = trim((string) ($raw['shopify_tracking_pushed'] ?? ''));
+            $localTn = trim((string) ($raw['tracking_number'] ?? ''));
+            $status = strtoupper(trim((string) ($row->status ?? '')));
+            if ($pushed !== '') {
+                return 4;
+            }
+            if (strlen($localTn) >= 8) {
+                return 0;
+            }
+            if (in_array($status, ['FULFILLED', 'SHIPPED'], true)) {
+                return 3;
+            }
+
+            return 1;
+        })->values();
+
         $unique = [];
-        foreach ($rows as $row) {
+        foreach ($ranked as $row) {
             $orderId = trim((string) ($row->order_id ?? ''));
             if ($orderId === '' || isset($unique[$orderId])) {
+                continue;
+            }
+            $raw = is_array($row->raw_payload ?? null) ? $row->raw_payload : [];
+            if (trim((string) ($raw['shopify_tracking_pushed'] ?? '')) !== '') {
                 continue;
             }
             $unique[$orderId] = $row;
@@ -301,8 +369,8 @@ class EbaySellFulfillmentTracking
         try {
             $response = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,fulfillments,fulfillment_status',
+            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2025-01/orders/{$shopifyOrderId}.json", [
+                'fields' => 'id,name,fulfillments,fulfillment_status',
             ]);
             if (! $response->successful()) {
                 return ['tracking' => null, 'carrier' => null];
@@ -524,8 +592,8 @@ class EbaySellFulfillmentTracking
             if (! is_array($item)) {
                 continue;
             }
-            $id = trim((string) ($item['lineItemId'] ?? $item['legacyItemId'] ?? ''));
-            if ($id === '') {
+            $id = trim((string) ($item['lineItemId'] ?? ''));
+            if ($id === '' || ! preg_match('/^\d{5,}$/', $id)) {
                 continue;
             }
             $qty = max(1, (int) ($item['quantity'] ?? $item['quantityPurchased'] ?? $line->quantity ?? 1));
@@ -558,14 +626,112 @@ class EbaySellFulfillmentTracking
 
     protected function looksAlreadyShipped(string $body, string $fulfillmentStatus): bool
     {
-        if (in_array($fulfillmentStatus, ['FULFILLED', 'IN_PROGRESS'], true) && str_contains(strtolower($body), 'already')) {
-            return true;
-        }
         $m = strtolower($body);
+        if (str_contains($m, 'already associated') || str_contains($m, 'already been used')) {
+            return false;
+        }
 
         return str_contains($m, 'already been fulfilled')
             || str_contains($m, 'already shipped')
             || str_contains($m, 'fulfillment already exists');
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function ebayOrderIdCandidates(object $line): array
+    {
+        $raw = is_array($line->raw_payload ?? null) ? $line->raw_payload : [];
+
+        return $this->uniqueEbayIds([
+            $line->order_id ?? '',
+            $line->order_number ?? '',
+            $raw['orderId'] ?? '',
+            $raw['legacyOrderId'] ?? '',
+        ]);
+    }
+
+    /**
+     * @param  list<mixed>  $ids
+     * @return list<string>
+     */
+    protected function uniqueEbayIds(array $ids): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            $id = trim((string) $id);
+            if ($id !== '' && ! in_array($id, $out, true)) {
+                $out[] = $id;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Trading API CompleteSale fallback when Sell Fulfillment rejects the shipment.
+     *
+     * @param  list<string>  $orderIds
+     * @return array{success: bool, message?: string}
+     */
+    protected function completeSaleViaTradingApi(string $channel, string $token, array $orderIds, string $tracking, string $carrier): array
+    {
+        $orderIds = $this->uniqueEbayIds($orderIds);
+        if ($orderIds === [] || $token === '' || $tracking === '') {
+            return ['success' => false, 'message' => 'CompleteSale skipped.'];
+        }
+
+        $compat = (string) config("services.{$channel}.compat_level", '967');
+        $siteId = (string) config("services.{$channel}.site_id", '0');
+        foreach ($orderIds as $orderId) {
+            $xml = '<?xml version="1.0" encoding="utf-8"?>'
+                .'<CompleteSaleRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+                .'<OrderID>'.htmlspecialchars($orderId, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</OrderID>'
+                .'<Shipment><ShipmentTrackingDetails>'
+                .'<ShippingCarrierUsed>'.htmlspecialchars($carrier, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</ShippingCarrierUsed>'
+                .'<ShipmentTrackingNumber>'.htmlspecialchars($tracking, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</ShipmentTrackingNumber>'
+                .'</ShipmentTrackingDetails></Shipment>'
+                .'<Shipped>true</Shipped>'
+                .'</CompleteSaleRequest>';
+
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'X-EBAY-API-IAF-TOKEN' => $token,
+                        'X-EBAY-API-CALL-NAME' => 'CompleteSale',
+                        'X-EBAY-API-SITEID' => $siteId,
+                        'X-EBAY-API-COMPATIBILITY-LEVEL' => $compat,
+                        'Content-Type' => 'text/xml',
+                    ])
+                    ->timeout(45)
+                    ->withBody($xml, 'text/xml')
+                    ->post('https://api.ebay.com/ws/api.dll');
+            } catch (\Throwable $e) {
+                Log::info('EbaySellFulfillmentTracking: CompleteSale request failed', [
+                    'channel' => $channel,
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            $body = (string) $response->body();
+            if ($response->successful() && (str_contains($body, '<Ack>Success</Ack>') || str_contains($body, '<Ack>Warning</Ack>'))) {
+                return ['success' => true];
+            }
+            $low = strtolower($body);
+            if (str_contains($low, 'already been fulfilled') || str_contains($low, 'already shipped')) {
+                return ['success' => true];
+            }
+            Log::info('EbaySellFulfillmentTracking: CompleteSale rejected', [
+                'channel' => $channel,
+                'order_id' => $orderId,
+                'status' => $response->status(),
+                'body' => mb_substr($body, 0, 400),
+            ]);
+        }
+
+        return ['success' => false, 'message' => 'eBay CompleteSale fallback failed.'];
     }
 
     protected function accessToken(string $channel): ?string
@@ -590,7 +756,7 @@ class EbaySellFulfillmentTracking
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
                     'refresh_token' => $refreshToken,
-                    'scope' => 'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+                    'scope' => 'https://api.ebay.com/oauth/api_scope/sell.fulfillment https://api.ebay.com/oauth/api_scope',
                 ]);
             if ($response->successful()) {
                 return $response->json('access_token');
