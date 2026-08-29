@@ -5082,6 +5082,8 @@ class EbayController extends Controller
                 $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
             }
 
+            $competitors = $this->backfillEbayLmpShipping($competitors);
+
             $competitors = $competitors
                 ->filter(function ($comp) {
                     return (float) ($comp->total_price ?? 0) > 0;
@@ -5293,6 +5295,88 @@ class EbayController extends Controller
                 'error' => 'Failed to update LMP: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Repair LMP rows stored as FREE when the live listing actually charges shipping.
+     */
+    private function backfillEbayLmpShipping($competitors)
+    {
+        $fetcher = app(EbayLivePriceFetcher::class);
+        $repaired = 0;
+
+        foreach ($competitors as $competitor) {
+            if ((float) ($competitor->shipping_cost ?? 0) > 0) {
+                continue;
+            }
+
+            $listingId = $fetcher->resolveListingId($competitor->product_link, $competitor->item_id);
+            if (! $listingId) {
+                continue;
+            }
+
+            $shipCost = 0.0;
+            $cached = \App\Models\EbayCompetitorItem::query()
+                ->where(function ($query) use ($listingId, $competitor) {
+                    $query->where('item_id', $listingId);
+                    if (! empty($competitor->item_id)) {
+                        $query->orWhere('item_id', $competitor->item_id);
+                    }
+                })
+                ->where('shipping_cost', '>', 0)
+                ->orderByDesc('updated_at')
+                ->first();
+            if ($cached) {
+                $shipCost = (float) $cached->shipping_cost;
+            }
+
+            if ($shipCost <= 0) {
+                try {
+                    $ship = $fetcher->fetchListingShipping($listingId);
+                    $shipCost = (float) ($ship['cost'] ?? 0);
+                } catch (\Throwable $e) {
+                    Log::warning('backfillEbayLmpShipping skipped competitor', [
+                        'id' => $competitor->id ?? null,
+                        'error' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+            }
+
+            if ($shipCost <= 0) {
+                continue;
+            }
+
+            $price = (float) ($competitor->price ?? 0);
+            $competitor->shipping_cost = $shipCost;
+            $competitor->total_price = round($price + $shipCost, 2);
+            try {
+                $competitor->save();
+                \App\Models\EbayCompetitorItem::syncLiveListingData(
+                    (string) $listingId,
+                    $competitor->item_id !== null ? (string) $competitor->item_id : null,
+                    [
+                        'price' => $price,
+                        'shipping_cost' => $shipCost,
+                        'shipping_known' => true,
+                        'link' => $competitor->product_link,
+                        'title' => $competitor->product_title,
+                    ]
+                );
+                $repaired++;
+            } catch (\Throwable $e) {
+                Log::warning('backfillEbayLmpShipping save failed', [
+                    'id' => $competitor->id ?? null,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($repaired > 0) {
+            Log::info('backfillEbayLmpShipping repaired competitors', ['count' => $repaired]);
+        }
+
+        return $competitors;
     }
 
     /**

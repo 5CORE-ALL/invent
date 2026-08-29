@@ -84,11 +84,6 @@ class EbayShippingCostParser
      */
     public static function fromOption(array $option): array
     {
-        $type = (string) ($option['shippingCostType'] ?? $option['type'] ?? '');
-        if (strcasecmp($type, 'FREE') === 0) {
-            return ['cost' => 0.0, 'known' => true];
-        }
-
         foreach (['shippingCost', 'shipping_cost', 'price', 'cost'] as $key) {
             if (! isset($option[$key])) {
                 continue;
@@ -99,7 +94,8 @@ class EbayShippingCostParser
             }
         }
 
-        if (! empty($option['free'])) {
+        $type = (string) ($option['shippingCostType'] ?? $option['type'] ?? '');
+        if (strcasecmp($type, 'FREE') === 0 || ! empty($option['free'])) {
             return ['cost' => 0.0, 'known' => true];
         }
 
@@ -192,6 +188,8 @@ class EbayShippingCostParser
             '/"shippingCost"\s*:\s*\{\s*"value"\s*:\s*"?(?P<v>[\d.]+)"?/',
             '/"convertedShippingCost"\s*:\s*\{\s*"value"\s*:\s*"?(?P<v>[\d.]+)"?/',
             '/"logisticsCost"\s*:\s*\{\s*"value"\s*:\s*"?(?P<v>[\d.]+)"?/',
+            '/US\s*\$\s*(?P<v>[\d,.]+)\s+(?:Economy|Standard|Expedited|Priority|Calculated|FedEx|UPS|USPS|eBay International)\s+Shipping/i',
+            '/Shipping:\s*US\s*\$\s*(?P<v>[\d,.]+)/i',
             '/US\s*\$\s*(?P<v>[\d,.]+)\s*eBay International Shipping/i',
             '/eBay International Shipping[^$]{0,80}\$\s*(?P<v>[\d,.]+)/i',
         ];
@@ -223,11 +221,11 @@ class EbayShippingCostParser
      */
     public static function preferExisting(array $live, mixed $existingShipping): array
     {
-        $known = (bool) ($live['shipping_known'] ?? false);
         $shipping = round((float) ($live['shipping_cost'] ?? 0), 2);
         $existing = is_numeric($existingShipping) ? round((float) $existingShipping, 2) : null;
 
-        if (! $known && $shipping <= 0 && $existing !== null && $existing > 0) {
+        // Never let a flaky "FREE" live result wipe a stored paid shipping amount.
+        if ($shipping <= 0 && $existing !== null && $existing > 0) {
             $shipping = $existing;
         }
 

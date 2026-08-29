@@ -86,7 +86,7 @@ class EbayShippingCostParserTest extends TestCase
         $this->assertSame(34.50, $live['total_price']);
     }
 
-    public function test_prefer_existing_allows_confirmed_free(): void
+    public function test_prefer_existing_does_not_let_claimed_free_wipe_paid_shipping(): void
     {
         $live = EbayShippingCostParser::preferExisting([
             'price' => 24.50,
@@ -95,8 +95,17 @@ class EbayShippingCostParserTest extends TestCase
             'total_price' => 24.50,
         ], 10);
 
-        $this->assertSame(0.0, $live['shipping_cost']);
-        $this->assertSame(24.50, $live['total_price']);
+        $this->assertSame(10.0, $live['shipping_cost']);
+        $this->assertSame(34.50, $live['total_price']);
+    }
+
+    public function test_html_economy_shipping_amount(): void
+    {
+        $html = 'Shipping, returns, and payments Shipping: US $10.00 Economy Shipping Located in: Rowland Heights';
+        $parsed = EbayShippingCostParser::fromHtml($html);
+
+        $this->assertTrue($parsed['known']);
+        $this->assertSame(10.0, $parsed['cost']);
     }
 
     public function test_browse_option_shipping_cost_value(): void
@@ -107,5 +116,16 @@ class EbayShippingCostParserTest extends TestCase
 
         $this->assertTrue($parsed['known']);
         $this->assertSame(36.13, $parsed['cost']);
+    }
+
+    public function test_paid_shipping_cost_wins_over_free_type(): void
+    {
+        $parsed = EbayShippingCostParser::fromOption([
+            'shippingCostType' => 'FREE',
+            'shippingCost' => ['value' => '10.00'],
+        ]);
+
+        $this->assertTrue($parsed['known']);
+        $this->assertSame(10.0, $parsed['cost']);
     }
 }

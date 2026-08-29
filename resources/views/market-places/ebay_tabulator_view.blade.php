@@ -6771,16 +6771,16 @@
 
                         renderEbayCompetitorsList(response.competitors, response.lowest_price);
 
+                        if (typeof table !== 'undefined' && table && table.getRows) {
+                            const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                            if (row && response.lowest_price != null) {
+                                row.update({ lmp_price: response.lowest_price });
+                            }
+                        }
+                        renderLmpModalStats(sku);
+
                         if (refreshFromApi) {
                             showToast('Pulled live LMP prices for ' + sku, 'success');
-                            // Patch this row's LMP immediately, then refresh table from server
-                            if (typeof table !== 'undefined' && table && table.getRows) {
-                                const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                                if (row && response.lowest_price != null) {
-                                    row.update({ lmp_price: response.lowest_price });
-                                }
-                            }
-                            renderLmpModalStats(sku);
                             if (typeof table !== 'undefined' && table && table.replaceData) {
                                 table.replaceData();
                             }
@@ -7006,6 +7006,12 @@
             const rows = competitors.map(function(item) {
                 const ignored = !!item.ignored;
                 const total = parseFloat(item.total_price) || 0;
+                const shipStored = parseFloat(item.shipping_cost);
+                const shipInferred = Math.max(0, total - (parseFloat(item.price) || 0));
+                const shipAmount = (shipStored > 0 ? shipStored : shipInferred);
+                const shipHtml = shipAmount > 0.004
+                    ? ('$' + shipAmount.toFixed(2))
+                    : '<span class="badge bg-info">FREE</span>';
                 const isLowest = !ignored && l1Price !== null && Math.abs(total - l1Price) < 0.005;
                 const rowClass = (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 const badge = isLowest ? '<span class="badge bg-success ms-2">L1</span>' : (ignored ? '<span class="badge bg-secondary ms-2">Ignored</span>' : '');
@@ -7024,7 +7030,7 @@
                         <td class="text-center align-middle">${selectCb}</td>
                         <td>${imageCell}</td>
                         <td>$${parseFloat(item.price).toFixed(2)}</td>
-                        <td>${parseFloat(item.shipping_cost) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
+                        <td>${shipHtml}</td>
                         <td><strong>$${total.toFixed(2)}</strong> ${badge}</td>
                         <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             ${item.title || 'N/A'}

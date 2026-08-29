@@ -824,10 +824,13 @@ class EbayLivePriceFetcher
         }
 
         $parsed = $this->fetchListingShipping($listingId);
-        if (! $parsed['known'] && $html) {
-            $parsed = EbayShippingCostParser::fromHtml($html);
+        if ($parsed['cost'] <= 0 && $html) {
+            $fromHtml = EbayShippingCostParser::fromHtml($html);
+            if ($fromHtml['cost'] > 0) {
+                $parsed = $fromHtml;
+            }
         }
-        if (! $parsed['known'] && $parsed['cost'] <= 0) {
+        if ($parsed['cost'] <= 0) {
             return $variations;
         }
 
@@ -845,15 +848,27 @@ class EbayLivePriceFetcher
     /**
      * @return array{cost: float, known: bool}
      */
-    private function fetchListingShipping(string $listingId): array
+    public function fetchListingShipping(string $listingId): array
     {
         if (isset($this->listingShippingCache[$listingId])) {
             return $this->listingShippingCache[$listingId];
         }
 
         $parsed = $this->fetchShippingFromBrowseItem($listingId);
-        if (! $parsed['known']) {
-            $parsed = $this->fetchShippingFromShoppingApi($listingId);
+        if ($parsed['cost'] <= 0) {
+            $shopping = $this->fetchShippingFromShoppingApi($listingId);
+            if ($shopping['cost'] > 0) {
+                $parsed = $shopping;
+            } elseif (! $parsed['known'] && $shopping['known']) {
+                $parsed = $shopping;
+            }
+        }
+
+        if ($parsed['cost'] <= 0) {
+            $html = $this->fetchShippingFromListingHtml($listingId);
+            if ($html['cost'] > 0) {
+                $parsed = $html;
+            }
         }
 
         $this->listingShippingCache[$listingId] = $parsed;
@@ -970,6 +985,30 @@ class EbayLivePriceFetcher
                     ?? $summary['ShippingServiceCost']
                     ?? null
             );
+            if ($parsed['cost'] > 0) {
+                return $parsed;
+            }
+
+            $options = $data['ShippingDetails']['ShippingServiceOptions'] ?? [];
+            if (isset($options['ShippingServiceCost']) || isset($options['ShippingService'])) {
+                $options = [$options];
+            }
+            if (is_array($options)) {
+                foreach ($options as $option) {
+                    if (! is_array($option)) {
+                        continue;
+                    }
+                    $optionParsed = EbayShippingCostParser::fromMoney(
+                        $option['ShippingServiceCost']['Value']
+                            ?? $option['ShippingServiceCost']
+                            ?? null
+                    );
+                    if ($optionParsed['cost'] > 0) {
+                        return $optionParsed;
+                    }
+                }
+            }
+
             if ($parsed['known']) {
                 return $parsed;
             }
@@ -981,6 +1020,37 @@ class EbayLivePriceFetcher
             return ['cost' => 0.0, 'known' => false];
         } catch (\Throwable $e) {
             Log::warning('EbayLivePriceFetcher: Shopping shipping failed', [
+                'listing_id' => $listingId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['cost' => 0.0, 'known' => false];
+        }
+    }
+
+    /**
+     * @return array{cost: float, known: bool}
+     */
+    private function fetchShippingFromListingHtml(string $listingId): array
+    {
+        try {
+            $response = Http::timeout(20)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                    'Accept' => 'text/html,application/xhtml+xml',
+                ])
+                ->get("https://www.ebay.com/itm/{$listingId}", [
+                    '_stpos' => self::US_SHIP_ZIP,
+                ]);
+
+            if (! $response->successful()) {
+                return ['cost' => 0.0, 'known' => false];
+            }
+
+            return EbayShippingCostParser::fromHtml($response->body());
+        } catch (\Throwable $e) {
+            Log::warning('EbayLivePriceFetcher: listing HTML shipping failed', [
                 'listing_id' => $listingId,
                 'message' => $e->getMessage(),
             ]);
