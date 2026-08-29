@@ -161,7 +161,8 @@ class AmazonOrderSyncService
                     ->orWhereNotIn('status', ['Canceled', 'Cancelled', 'Pending']);
             })
             ->where('order_date', '>=', $cutoff)
-            ->orderBy('id')
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
             ->limit(500)
             ->get([
                 'id',
@@ -174,8 +175,16 @@ class AmazonOrderSyncService
                 'raw_data',
             ]);
 
+        $seen = [];
         $dispatched = 0;
         foreach ($orders as $order) {
+            $amazonId = trim((string) ($order->amazon_order_id ?? ''));
+            if ($amazonId !== '') {
+                if (isset($seen[$amazonId])) {
+                    continue;
+                }
+                $seen[$amazonId] = true;
+            }
             if ($order->isFba()) {
                 $order->update(['import_status' => 'skipped_fba', 'fulfillment_channel' => 'AFN']);
 

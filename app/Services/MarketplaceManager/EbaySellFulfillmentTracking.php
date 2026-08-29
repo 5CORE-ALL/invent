@@ -378,6 +378,75 @@ class EbaySellFulfillmentTracking
     }
 
     /**
+     * Read tracking already declared on eBay (shipping_fulfillment + order payload).
+     *
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public function readTrackingFromEbay(string $channel, string $orderId): ?array
+    {
+        $channel = strtolower(trim($channel));
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return null;
+        }
+
+        $token = $this->accessToken($channel);
+        if ($token === null || $token === '') {
+            return null;
+        }
+
+        $fulfillments = $this->listShippingFulfillments($token, $orderId);
+        $fromList = self::trackingFromEbayPayload(['fulfillments' => $fulfillments]);
+        if ($fromList !== null) {
+            return $fromList;
+        }
+
+        $order = $this->getEbayOrder($token, $orderId);
+
+        return is_array($order) ? self::trackingFromEbayPayload($order) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{tracking: string, carrier: string}|null
+     */
+    public static function trackingFromEbayPayload(array $payload): ?array
+    {
+        $tracking = null;
+        $carrier = '';
+        $walk = static function ($value, $key = '') use (&$walk, &$tracking, &$carrier): void {
+            if (is_array($value)) {
+                foreach ($value as $k => $v) {
+                    $walk($v, (string) $k);
+                }
+
+                return;
+            }
+            $k = strtolower((string) $key);
+            $s = trim((string) $value);
+            if ($s === '') {
+                return;
+            }
+            if ($tracking === null && preg_match('/^(tracking(_)?(number|no|id)?|shipmenttrackingnumber)$/', $k)) {
+                $tn = strtoupper(preg_replace('/[\s\-]/', '', $s) ?? '');
+                if (strlen($tn) >= 8 && ! preg_match('/^\d{3}-\d{7}-\d{7}$/', $tn)) {
+                    $tracking = $tn;
+                }
+            }
+            if ($carrier === '' && preg_match('/carrier|shippingcarriercode|shipping.?service/', $k) && ! is_numeric($s)) {
+                $carrier = $s;
+            }
+        };
+        $walk($payload);
+
+        if ($tracking === null) {
+            return null;
+        }
+
+        return ['tracking' => $tracking, 'carrier' => $carrier !== '' ? $carrier : 'eBay'];
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     protected function getEbayOrder(string $token, string $orderId): ?array

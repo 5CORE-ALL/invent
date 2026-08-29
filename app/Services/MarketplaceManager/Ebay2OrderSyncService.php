@@ -140,49 +140,11 @@ class Ebay2OrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        $settings = MarketplaceSyncSettings::getFor('ebay2');
-        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('ebay2', $settings);
-        $queue = MarketplaceManagerRegistry::queueFor('ebay2');
-        MarketplaceShopifyImportQueue::prepareForDispatch(Ebay2OrderMetric::class, $queue);
-
-        $orders = Ebay2OrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->orderBy('id')
-            ->limit(200)
-            ->get();
-
-        $dispatched = 0;
-        foreach ($orders as $order) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('ebay2', $order)) {
-                continue;
-            }
-
-            try {
-                MarketplaceShopifyImportQueue::push(
-                    new \App\Jobs\ImportEbay2OrderToShopify((int) $order->id),
-                    $queue
-                );
-                $order->update(['import_status' => 'queued']);
-                $dispatched++;
-            } catch (\Throwable $e) {
-                Log::warning('Ebay2OrderSyncService: failed to queue import', [
-                    'id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $dispatched;
+        return MarketplaceShopifyImportQueue::dispatchLatestUnpushed(
+            'ebay2',
+            Ebay2OrderMetric::class,
+            static fn (int $id) => new \App\Jobs\ImportEbay2OrderToShopify($id)
+        );
     }
 
     /**

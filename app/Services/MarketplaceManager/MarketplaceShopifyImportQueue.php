@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\MarketplaceSyncSettings;
 use Illuminate\Bus\UniqueLock;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,7 @@ class MarketplaceShopifyImportQueue
 
     public static function shouldDispatchImports(string $slug, bool $requested = false): bool
     {
-        return $requested || \App\Models\MarketplaceSyncSettings::canAutoImportToShopify($slug);
+        return $requested || MarketplaceSyncSettings::canAutoImportToShopify($slug);
     }
 
     /**
@@ -180,6 +181,115 @@ class MarketplaceShopifyImportQueue
         self::markLinkedAsImported($modelClass, $constrain);
 
         return self::releaseStuckQueued($modelClass, $queue, $constrain);
+    }
+
+    /**
+     * Queue one Shopify import per marketplace order, newest first.
+     * Sibling line rows that already have a Shopify id are linked instead of
+     * creating a second order.
+     *
+     * @param  class-string  $modelClass
+     * @param  callable(int):object  $makeJob
+     * @param  callable(Builder):void|null  $constrain
+     */
+    public static function dispatchLatestUnpushed(
+        string $slug,
+        string $modelClass,
+        callable $makeJob,
+        string $orderIdColumn = 'order_id',
+        ?callable $constrain = null,
+        int $scanLimit = 400,
+        int $dispatchLimit = 200
+    ): int {
+        if (! MarketplaceSyncSettings::canAutoImportToShopify($slug)) {
+            return 0;
+        }
+
+        $queue = MarketplaceManagerRegistry::queueFor($slug);
+        self::prepareForDispatch($modelClass, $queue, $constrain);
+
+        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly($slug);
+        $table = (new $modelClass)->getTable();
+        $hasOrderDate = Schema::hasColumn($table, 'order_date');
+        $hasImportStatus = Schema::hasColumn($table, 'import_status');
+
+        $query = $modelClass::query()
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->where(function ($q) {
+                $q->whereNull('import_status')
+                    ->orWhereIn('import_status', self::DISPATCHABLE_IMPORT_STATUSES);
+            });
+        if ($constrain) {
+            $constrain($query);
+        }
+        if ($hasOrderDate) {
+            $query->orderByDesc('order_date');
+        }
+        $query->orderByDesc('id')->limit(max(1, $scanLimit));
+
+        $seen = [];
+        $dispatched = 0;
+        foreach ($query->get() as $order) {
+            $orderId = trim((string) ($order->{$orderIdColumn} ?? ''));
+            if ($orderId === '' || isset($seen[$orderId])) {
+                continue;
+            }
+            $seen[$orderId] = true;
+
+            $alreadyImported = $modelClass::query()
+                ->where($orderIdColumn, $orderId)
+                ->whereNotNull('shopify_order_id')
+                ->where('shopify_order_id', '!=', '')
+                ->value('shopify_order_id');
+            if ($alreadyImported) {
+                $modelClass::query()
+                    ->where($orderIdColumn, $orderId)
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
+                    ->update([
+                        'shopify_order_id' => (string) $alreadyImported,
+                        'import_status' => 'imported',
+                    ]);
+                continue;
+            }
+
+            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid($slug, $order)) {
+                if ($hasImportStatus) {
+                    $modelClass::query()
+                        ->where($orderIdColumn, $orderId)
+                        ->where(function ($q) {
+                            $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                        })
+                        ->update(['import_status' => 'skipped_unpaid']);
+                }
+                continue;
+            }
+
+            try {
+                self::push($makeJob((int) $order->id), $queue);
+                $modelClass::query()
+                    ->where($orderIdColumn, $orderId)
+                    ->where(function ($q) {
+                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                    })
+                    ->update(['import_status' => 'queued']);
+                $dispatched++;
+                if ($dispatched >= $dispatchLimit) {
+                    break;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('MarketplaceShopifyImportQueue: failed to queue import', [
+                    'slug' => $slug,
+                    'id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $dispatched;
     }
 
     /**

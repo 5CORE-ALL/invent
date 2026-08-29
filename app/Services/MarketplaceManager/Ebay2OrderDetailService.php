@@ -276,12 +276,23 @@ class Ebay2OrderDetailService
                 'country' => $ship['countryCode'] ?? null,
                 'phone' => $ship['phone'] ?? null,
             ],
-            'shipment' => [
-                'tracking' => null,
-                'service' => null,
-            ],
+            'shipment' => $this->extractShipment($order),
             'line_items' => $items,
             'raw' => $order,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{tracking: ?string, service: ?string}
+     */
+    protected function extractShipment(array $order): array
+    {
+        $hit = EbaySellFulfillmentTracking::trackingFromEbayPayload($order);
+
+        return [
+            'tracking' => $hit['tracking'] ?? null,
+            'service' => $hit['carrier'] ?? null,
         ];
     }
 

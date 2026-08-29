@@ -131,49 +131,11 @@ class SheinOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        $settings = MarketplaceSyncSettings::getFor('shein');
-        if (! ($settings['order']['auto_import_to_shopify'] ?? false)) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('shein', $settings);
-        $queue = MarketplaceManagerRegistry::queueFor('shein');
-        MarketplaceShopifyImportQueue::prepareForDispatch(SheinOrderMetric::class, $queue);
-
-        $orders = SheinOrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->orderBy('id')
-            ->limit(200)
-            ->get();
-
-        $dispatched = 0;
-        foreach ($orders as $order) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('shein', $order)) {
-                continue;
-            }
-
-            try {
-                MarketplaceShopifyImportQueue::push(
-                    new \App\Jobs\ImportSheinOrderToShopify((int) $order->id),
-                    $queue
-                );
-                $order->update(['import_status' => 'queued']);
-                $dispatched++;
-            } catch (\Throwable $e) {
-                Log::warning('SheinOrderSyncService: failed to queue import', [
-                    'id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $dispatched;
+        return MarketplaceShopifyImportQueue::dispatchLatestUnpushed(
+            'shein',
+            SheinOrderMetric::class,
+            static fn (int $id) => new \App\Jobs\ImportSheinOrderToShopify($id)
+        );
     }
 
     /**
