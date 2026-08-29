@@ -704,6 +704,14 @@
         #sof-in-received-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-invoiced-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-delivered-table .tabulator-row:has(.sof-text-dot-wrap:hover),
+        #sof-loss-making-table .tabulator-row.sof-loss-making-row .tabulator-cell {
+            background: #fde8ea;
+        }
+        #sof-loss-making-badge {
+            background: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+        }
         #sof-all-order-table .tabulator-row:has(.sof-text-dot-wrap:hover) {
             z-index: 5;
             position: relative;
@@ -805,6 +813,12 @@
             line-height: 1;
             cursor: help;
         }
+        .sof-analytics-pct {
+            font-weight: 700;
+        }
+        .sof-analytics-pct.is-red { color: #c00000; }
+        .sof-analytics-pct.is-green { color: #006400; }
+        .sof-analytics-pct.is-purple { color: #7030a0; }
         .sof-inv-zero-alert i {
             color: #dc3545;
         }
@@ -1074,6 +1088,9 @@
                             <span class="badge sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; border:1px solid #ced4da;" title="All Order — click for history graph">
                                 All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
                             </span>
+                            <span class="badge sof-summary-badge" id="sof-loss-making-badge" title="Loss-making orders in the last 7 days — click to open the tab">
+                                Loss Making: <span id="sof-loss-making-total">0</span>
+                            </span>
                             <button type="button"
                                     id="sof-pull-tracking-btn"
                                     class="btn btn-sm btn-outline-secondary ms-1"
@@ -1254,6 +1271,13 @@
                                 Delivered <span class="badge ms-1" id="sof-delivered-tab-count" style="background:#cff4fc;color:#055160;border:1px solid #9eeaf9;" title="Selected date range">0</span>
                             </button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-loss-making-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-loss-making-pane" type="button" role="tab"
+                                    aria-controls="sof-loss-making-pane" aria-selected="false">
+                                Loss Making Order <span class="badge ms-1" id="sof-loss-making-tab-count" style="background:#f8d7da;color:#842029;border:1px solid #f5c2c7;">0</span>
+                            </button>
+                        </li>
                     </ul>
 
                     <div class="tab-content">
@@ -1302,6 +1326,11 @@
                         <div class="tab-pane fade" id="sof-delivered-pane" role="tabpanel" aria-labelledby="sof-delivered-tab">
                             <p class="small text-muted mb-2 sof-date-scope-hint">Delivered orders in the selected date range.</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sof-loss-making-pane" role="tabpanel" aria-labelledby="sof-loss-making-tab">
+                            <p class="small text-muted mb-2">Last 7 Eastern days. Lowest SKU profit (NPFT%, then GPFT%) is at the top. Negative profit rows are highlighted.</p>
+                            <div id="sof-loss-making-table" style="height: calc(100vh - 400px);"></div>
                         </div>
                     </div>
                 </div>
@@ -1642,6 +1671,10 @@
     let allOrderRows = [];
     let allOrderTableLoaded = false;
     let allOrderTableLoading = false;
+    let lossMakingTable = null;
+    let lossMakingRows = [];
+    let lossMakingTableLoaded = false;
+    let lossMakingTableLoading = false;
 
     function escapeHtml(str) {
         return String(str ?? '')
@@ -1971,6 +2004,7 @@
             ['#sof-invoiced-tab', '#sof-invoiced-pane', function () { return invoicedRows; }],
             ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
             ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
+            ['#sof-loss-making-tab', '#sof-loss-making-pane', function () { return lossMakingRows; }],
         ];
         for (let i = 0; i < pairs.length; i++) {
             if (sofOrderTabIsActive(pairs[i][0], pairs[i][1])) {
@@ -1991,13 +2025,14 @@
         if (tbl === invoicedTable) return invoicedRows;
         if (tbl === deliveredTable) return deliveredRows;
         if (tbl === allOrderTable) return allOrderRows;
+        if (tbl === lossMakingTable) return lossMakingRows;
         return null;
     }
 
     function sofAnyLoadedOrderRows() {
         const caches = [
             pendingRows, fulfilledRows, scanDoneRows, inTransitRows,
-            inReceivedRows, invoicedRows, deliveredRows, allOrderRows,
+            inReceivedRows, invoicedRows, deliveredRows, allOrderRows, lossMakingRows,
         ];
         let best = [];
         for (let i = 0; i < caches.length; i++) {
@@ -2127,6 +2162,7 @@
             ['#sof-invoiced-tab', '#sof-invoiced-pane', invoicedTable],
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
+            ['#sof-loss-making-tab', '#sof-loss-making-pane', lossMakingTable],
         ];
     }
 
@@ -3009,6 +3045,16 @@
         ensureDeliveredTable();
     }
 
+    function switchToLossMakingTab() {
+        const tabBtn = document.getElementById('sof-loss-making-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        ensureLossMakingTable();
+    }
+
     function switchToAllOrderTab() {
         const tabBtn = document.getElementById('sof-all-order-tab');
         if (tabBtn && typeof bootstrap !== 'undefined') {
@@ -3263,7 +3309,14 @@
         });
     }
 
-    function formatChannelPctAlert(value, threshold, metricLabel) {
+    const sofAnalyticsPctBands = {
+        groi: { redBelow: 50, purpleAbove: 100 },
+        nroi: { redBelow: 40, purpleAbove: 75 },
+        gpft: { redBelow: 17, purpleAbove: 33 },
+        npft: { redBelow: 10, purpleAbove: 27 },
+    };
+
+    function formatSofAnalyticsPct(value, metric) {
         if (value === null || value === undefined || value === '') {
             return '<span class="sof-oc-missing">—</span>';
         }
@@ -3271,17 +3324,30 @@
         if (!Number.isFinite(n)) {
             return '<span class="sof-oc-missing">—</span>';
         }
-        const label = Math.round(n).toLocaleString(undefined, {
-            maximumFractionDigits: 0,
-        }) + '%';
-        if (n < threshold) {
-            return `<span class="sof-inv-cell">`
-                + `<span>${escapeHtml(label)}</span>`
-                + `<span class="sof-inv-zero-alert" title="Alert: Channel ${escapeHtml(metricLabel)} is below ${threshold}%">`
-                + `<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>`
-                + `</span></span>`;
+        const band = sofAnalyticsPctBands[metric] || sofAnalyticsPctBands.groi;
+        let tone = 'is-green';
+        if (n < band.redBelow) {
+            tone = 'is-red';
+        } else if (n > band.purpleAbove) {
+            tone = 'is-purple';
         }
-        return `<span class="sof-inv-cell">${escapeHtml(label)}</span>`;
+        const label = n.toFixed(1) + '%';
+        return `<span class="sof-analytics-pct ${tone}">${escapeHtml(label)}</span>`;
+    }
+
+    function sofAnalyticsPctColumn(title, field, metric, tooltip) {
+        return {
+            title: title,
+            field: field,
+            minWidth: 68,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            sorter: 'number',
+            headerTooltip: tooltip,
+            formatter: function (cell) {
+                return formatSofAnalyticsPct(cell.getValue(), metric);
+            },
+        };
     }
 
     function sofDisplayStatusLabel(raw) {
@@ -3580,30 +3646,10 @@
                     return Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 },
             },
-            {
-                title: 'Prft alert',
-                field: 'groi_pct',
-                minWidth: 80,
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                sorter: 'number',
-                headerTooltip: 'Channel GROI% from Channel Master. Red triangle if below 40%.',
-                formatter: function (cell) {
-                    return formatChannelPctAlert(cell.getValue(), 40, 'GROI%');
-                },
-            },
-            {
-                title: 'GPFT%',
-                field: 'gpft_pct',
-                minWidth: 70,
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                sorter: 'number',
-                headerTooltip: 'Channel GPFT% from Channel Master. Red triangle if below 15%.',
-                formatter: function (cell) {
-                    return formatChannelPctAlert(cell.getValue(), 15, 'GPFT%');
-                },
-            },
+            sofAnalyticsPctColumn('Groi$', 'groi_pct', 'groi', 'SKU GROI% from this marketplace Analytics page. Red <50%, dark green 50–100%, purple >100%.'),
+            sofAnalyticsPctColumn('Nroi%', 'nroi_pct', 'nroi', 'SKU NROI% from this marketplace Analytics page. Red <40%, dark green 40–75%, purple >75%.'),
+            sofAnalyticsPctColumn('Gpft%', 'gpft_pct', 'gpft', 'SKU GPFT% from this marketplace Analytics page. Red <17%, dark green 17–33%, purple >33%.'),
+            sofAnalyticsPctColumn('Npft%', 'npft_pct', 'npft', 'SKU NPFT% from this marketplace Analytics page. Red <10%, dark green 10–27%, purple >27%.'),
             {
                 title: 'Shopify',
                 field: 'shopify_order_id',
@@ -4708,8 +4754,101 @@
         sofWireOrderTable(allOrderTable);
     }
 
+    function sofRowIsLossMaking(row) {
+        const npft = Number(row && row.npft_pct);
+        const gpft = Number(row && row.gpft_pct);
+        return (Number.isFinite(npft) && npft < 0) || (Number.isFinite(gpft) && gpft < 0);
+    }
+
+    function lossMakingOrderColumns() {
+        const cols = orderListColumns('sof-all-order-status-badge');
+        cols.forEach(function (c) {
+            if (c.field === 'status_label') {
+                c.title = 'Status';
+                c.headerTooltip = 'Original marketplace status';
+            }
+        });
+        return cols;
+    }
+
+    function updateLossMakingCounts(count, lossCount) {
+        const tabCount = document.getElementById('sof-loss-making-tab-count');
+        const badgeEl = document.getElementById('sof-loss-making-total');
+        const shown = (lossCount != null) ? Number(lossCount) : Number(count || 0);
+        if (tabCount) tabCount.textContent = shown.toLocaleString();
+        if (badgeEl) badgeEl.textContent = shown.toLocaleString();
+    }
+
+    function ensureLossMakingTable() {
+        if (lossMakingTable || lossMakingTableLoading) {
+            if (lossMakingTable) {
+                setTimeout(function () { lossMakingTable.redraw(true); }, 50);
+            }
+            return;
+        }
+        lossMakingTableLoading = true;
+
+        lossMakingTable = new Tabulator('#sof-loss-making-table', Object.assign({}, sofOrderTableOpts, {
+            layout: 'fitColumns',
+            placeholder: 'Loading last 7 days of lowest-profit orders…',
+            initialSort: [
+                { column: 'npft_pct', dir: 'asc' },
+                { column: 'gpft_pct', dir: 'asc' },
+            ],
+            ajaxURL: '{{ route("sales.order.fulfillment.loss.making.data") }}',
+            ajaxConfig: 'GET',
+            ajaxRequestFunc: function (url, config, params) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: params || {},
+                        timeout: 0,
+                        success: resolve,
+                        error: reject,
+                    });
+                });
+            },
+            ajaxResponse: function (url, params, response) {
+                lossMakingRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
+                    ? response.data
+                    : []);
+                lossMakingTableLoaded = true;
+                lossMakingTableLoading = false;
+                const count = (response && response.count != null)
+                    ? Number(response.count)
+                    : lossMakingRows.length;
+                const lossCount = (response && response.loss_count != null)
+                    ? Number(response.loss_count)
+                    : lossMakingRows.filter(sofRowIsLossMaking).length;
+                updateLossMakingCounts(count, lossCount);
+                sofUpdateTrackingFilterCounts(lossMakingRows);
+                return lossMakingRows;
+            },
+            dataLoaded: function () {
+                sofUpdateTrackingFilterCounts(lossMakingRows);
+            },
+            rowFormatter: function (row) {
+                if (sofRowIsLossMaking(row.getData() || {})) {
+                    row.getElement().classList.add('sof-loss-making-row');
+                }
+            },
+            columns: (function () {
+                const cols = lossMakingOrderColumns();
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
+                return cols;
+            })(),
+        }));
+        sofWireOrderTable(lossMakingTable);
+    }
+
     document.getElementById('sof-all-order-tab')?.addEventListener('shown.bs.tab', function () {
         ensureAllOrderTable();
+    });
+    document.getElementById('sof-loss-making-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureLossMakingTable();
     });
     document.getElementById('sof-pending-tab')?.addEventListener('shown.bs.tab', function () {
         ensurePendingTable();
@@ -4750,6 +4889,9 @@
     });
     document.getElementById('sof-all-order-badge')?.addEventListener('click', function () {
         switchToAllOrderTab();
+    });
+    document.getElementById('sof-loss-making-badge')?.addEventListener('click', function () {
+        switchToLossMakingTab();
     });
     $('#sof-search').on('keyup', function (e) {
         if (e.key === 'Enter') {
