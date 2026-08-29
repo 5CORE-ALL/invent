@@ -23,11 +23,13 @@
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .amz-fbm-targeting .aft-count-badge {
-        display: inline-block; padding: 2px 8px; border-radius: 999px;
+        display: inline-block; padding: 2px 10px; border-radius: 999px;
         background: #1d4ed8; border: 1px solid #1e40af; color: #fff;
-        font-size: 12px; font-weight: 700; flex-shrink: 0;
+        font-size: 12px; font-weight: 700; cursor: pointer;
     }
+    .amz-fbm-targeting .aft-count-badge:hover { background: #1e40af; }
     .amz-fbm-targeting .aft-empty { color: #94a3b8; font-size: 12px; }
+    .amz-fbm-targeting .aft-modal-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 420px; overflow-y: auto; }
 </style>
 @endsection
 
@@ -49,6 +51,21 @@
                     </div>
                     <div id="aft-table"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="aftTargetsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-bullseye"></i> <span id="aft-modal-title">Targets</span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2" id="aft-modal-count"></p>
+                <div id="aft-modal-targets" class="aft-modal-list"></div>
             </div>
         </div>
     </div>
@@ -118,24 +135,46 @@
             },
             {
                 title: 'Targets',
-                field: 'targets',
-                minWidth: 360,
-                widthGrow: 5,
+                field: 'target_count',
+                hozAlign: 'center',
+                minWidth: 100,
+                width: 120,
                 headerSort: false,
                 formatter: function (cell) {
-                    const list = cell.getValue();
-                    const n = Number((cell.getRow().getData() || {}).target_count || (Array.isArray(list) ? list.length : 0));
-                    const countHtml = '<span class="aft-count-badge">' + n.toLocaleString() + '</span>';
-                    if (!Array.isArray(list) || list.length === 0) {
-                        return '<div class="aft-target-wrap">' + countHtml + '<span class="aft-empty">No targets yet</span></div>';
-                    }
-                    return '<div class="aft-target-wrap">' + countHtml + list.map(function (t) {
-                        return '<span class="aft-chip" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>';
-                    }).join('') + '</div>';
+                    const n = Number(cell.getValue() || 0);
+                    return '<span class="aft-count-badge" title="View targets">' + n.toLocaleString() + '</span>';
+                },
+                cellClick: function (_e, cell) {
+                    openTargetsModal(cell.getRow().getData() || {});
                 },
             },
         ],
     });
+
+    function openTargetsModal(row) {
+        const name = row.campaign_name || 'Campaign';
+        const list = Array.isArray(row.targets) ? row.targets : [];
+        const titleEl = document.getElementById('aft-modal-title');
+        const countLabel = document.getElementById('aft-modal-count');
+        const listEl = document.getElementById('aft-modal-targets');
+        if (titleEl) titleEl.textContent = name;
+        if (countLabel) countLabel.textContent = list.length.toLocaleString() + ' target' + (list.length === 1 ? '' : 's');
+        if (listEl) {
+            if (list.length === 0) {
+                listEl.innerHTML = '<span class="aft-empty">No targets yet</span>';
+            } else {
+                listEl.innerHTML = list.map(function (t) {
+                    return '<span class="aft-chip" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>';
+                }).join('');
+            }
+        }
+        const modalEl = document.getElementById('aftTargetsModal');
+        if (modalEl && window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } else if (window.jQuery) {
+            window.jQuery(modalEl).modal('show');
+        }
+    }
 
     if (searchEl) {
         searchEl.addEventListener('input', function () {
