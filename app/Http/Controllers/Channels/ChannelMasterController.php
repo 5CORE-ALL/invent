@@ -1426,10 +1426,11 @@ class ChannelMasterController extends Controller
     {
         try {
             $yesterdayPacific = Carbon::now('America/Los_Angeles')->startOfDay()->subDay();
-            $amazonYSales = round((float) AmazonOrder::productSalesByOrderDate(
-                $yesterdayPacific->copy()->startOfDay()->utc(),
-                $yesterdayPacific->copy()->endOfDay()->utc()
-            ), 2);
+            $amazonYSales = $this->realPacificDayYSales('amazon', $yesterdayPacific->toDateString());
+            if ($amazonYSales === null) {
+                return $rows;
+            }
+            $amazonYSales = round((float) $amazonYSales, 2);
         } catch (\Throwable $e) {
             Log::warning('Fast-path Amazon Y Sales overlay failed: '.$e->getMessage());
 
@@ -1469,7 +1470,14 @@ class ChannelMasterController extends Controller
                 });
             };
 
-            $l30Sales = AmazonOrder::badgeTotalSalesByOrderDate($start, $endToday);
+            $l30Sales = $this->sumCachedAmazonPacificSales(
+                $start->toDateString(),
+                $yesterdayPacific->toDateString()
+            );
+            $l60Sales = $this->sumCachedAmazonPacificSales(
+                $l60Start->toDateString(),
+                $l60End->toDateString()
+            );
             $l30Orders = (int) AmazonOrder::constrainOrderDate(
                 DB::table('amazon_orders as o')->where($active),
                 $start,
@@ -1483,7 +1491,6 @@ class ChannelMasterController extends Controller
                 $endToday
             )->selectRaw('COALESCE(SUM(i.quantity), 0) as total_qty')
                 ->value('total_qty') ?? 0);
-            $l60Sales = AmazonOrder::badgeTotalSalesByOrderDate($l60Start, $l60End);
         } catch (\Throwable $e) {
             Log::warning('Fast-path Amazon L30 Sales overlay failed: '.$e->getMessage());
 
@@ -1521,6 +1528,11 @@ class ChannelMasterController extends Controller
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
+        $this->preloadAmazonPacificDayYSales(
+            now('America/Los_Angeles')->subDays(59)->toDateString(),
+            now('America/Los_Angeles')->subDay()->toDateString()
+        );
+
         $steps = [
             'amazon_l30' => fn (array $r) => $this->overlayLiveAmazonL30SalesOnChannelRows($r),
             'amazon_y' => fn (array $r) => $this->overlayLiveAmazonYSalesOnChannelRows($r),
@@ -1547,6 +1559,12 @@ class ChannelMasterController extends Controller
             } catch (\Throwable $e) {
                 Log::warning('Fast-path live sales overlay failed ('.$name.'): '.$e->getMessage());
             }
+        }
+
+        try {
+            $this->persistLiveAmazonSnapshotMetrics($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Amazon snapshot persist failed: '.$e->getMessage());
         }
 
         return $rows;
@@ -5713,6 +5731,7 @@ class ChannelMasterController extends Controller
     public function getViewChannelDataFast(Request $request)
     {
         @ini_set('memory_limit', '512M');
+        @set_time_limit(120);
 
         try {
             $hasCalculatedRows = \App\Models\ChannelMasterCalculatedData::query()->exists();
@@ -15450,6 +15469,25 @@ class ChannelMasterController extends Controller
             $metricKey = $metricMap[$metric] ?? $metric;
             $isAll = ($channel === 'all');
 
+            // Amazon Y Sales / L30 on this page must come from amazon_orders (same
+            // formula as the table cell). Snapshots lag a day on the fast path and
+            // older y_sales rows still hold SUM(i.price) including shipping.
+            if (! $isAll && $channel === 'amazon' && $metric === 'y_sales' && ! $useL7Window) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->buildDailyYSalesChart('amazon', $days, false),
+                ]);
+            }
+            if (! $isAll && $channel === 'amazon' && $metric === 'l30_sales' && ! $useDailyWindow && ! $useL7Window) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->buildAmazonLiveRollingSalesChart(
+                        max(1, $days),
+                        AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+                    ),
+                ]);
+            }
+
             // Yesterday-page charts: one point per Pacific day from 1-day sources,
             // never L30 rolling snapshots (those mixed ~43k L30 with a 1.5k last day).
             $dailyChartMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
@@ -15644,6 +15682,14 @@ class ChannelMasterController extends Controller
                                 && in_array($metric, ['total_views', 'l30_orders', 'qty', 'ad_spend'], true)) {
                                 continue;
                             }
+                            if ($metric === 'y_sales') {
+                                $yCh = $this->allMarketplaceSnapshotKey((string) ($row->channel ?? ''));
+                                $realY = $this->realPacificDayYSales($yCh, $dateKey);
+                                if ($yCh === 'amazon' && $realY !== null) {
+                                    $totalVal += $realY;
+                                    continue;
+                                }
+                            }
                             $totalVal += floatval($sd[$metricKey] ?? 0);
                         }
                     }
@@ -15799,16 +15845,17 @@ class ChannelMasterController extends Controller
                     }
                 }
 
-                // Y Sales is stored on the snapshot (channel_master_daily_data.y_sales).
-                // Recalculate from orders only when that day was a listing-copy / missing key.
-                // Yesterday-page charts (window=1) always use that Pacific day's orders
-                // so the series is daily sales, not an L30 snapshot.
+                // Y Sales: prefer that Pacific day's orders over the snapshot.
+                // Stored y_sales is often a day behind (fast path never wrote today)
+                // or an older formula (shipping included). Amazon always uses orders.
                 if ($metric === 'y_sales' && ! $isAll) {
                     $snapRow = $rows->first();
                     $sdForY = $summaryData ?? \App\Models\ChannelMasterSummary::decodeSummaryData($snapRow->summary_data ?? []);
                     $storedY = array_key_exists('y_sales', $sdForY) ? (float) $sdForY['y_sales'] : null;
                     $realY = $this->realPacificDayYSales($channel, $dateKey);
-                    if ($useDailyWindow) {
+                    if ($channel === 'amazon' && $realY !== null) {
+                        $value = $realY;
+                    } elseif ($useDailyWindow) {
                         if ($realY !== null) {
                             $value = $realY;
                         } elseif ($storedY === null || $storedY <= 0) {
@@ -15829,6 +15876,10 @@ class ChannelMasterController extends Controller
                     'date' => $date,
                     'value' => $value,
                 ];
+            }
+
+            if ($metric === 'y_sales' && ! $useL7Window) {
+                $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll);
             }
 
             // Align chart with the live cell/badge the user clicked.
@@ -15911,6 +15962,7 @@ class ChannelMasterController extends Controller
      */
     public function getChannelMetricDotTrends(Request $request)
     {
+        @set_time_limit(120);
         try {
             $channelsParam = $request->input('channels', '');
             // Same normalization as chart and table save: normalized key (temu, amazon, etc.)
@@ -15931,9 +15983,9 @@ class ChannelMasterController extends Controller
 
     private function channelMetricDotTrendsCacheKey(int $window): string
     {
-        // v3: Amazon listing CVR from amazon_channel_summary_data (A_L30 ÷ Sess30)
-        // so the table CVR dot is no longer stuck gray on a null listing_cvr.
-        return 'amm_dot_trends_v5_w'.$window;
+        // v6: Amazon Y Sales / L30 dots use live amazon_orders (Pacific yesterday),
+        // not a snapshot that is one day behind the table cell.
+        return 'amm_dot_trends_v6_w'.$window;
     }
 
     /**
@@ -16096,12 +16148,10 @@ class ChannelMasterController extends Controller
             // through to the next populated day.
             $snapshotWindow = $useL7Window ? 36 : 30;
             $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
-            if ($useDailyWindow) {
-                $this->preloadAmazonPacificDayYSales(
-                    $historyFrom,
-                    now('America/Los_Angeles')->subDay()->toDateString()
-                );
-            }
+            $this->preloadAmazonPacificDayYSales(
+                $historyFrom,
+                now('America/Los_Angeles')->subDay()->toDateString()
+            );
             $lookupKeys = [];
             foreach ($channelKeys as $key) {
                 foreach ($this->allMarketplaceSnapshotLookupKeys($key) as $alias) {
@@ -16199,6 +16249,10 @@ class ChannelMasterController extends Controller
             }
 
             $out['all'] = $this->computeAllChannelsLastTwoDayPairs($processedByChannel, $metrics, $metricMap);
+
+            if (! $useDailyWindow && ! $useL7Window) {
+                $this->overlayLiveAmazonDotTrends($out);
+            }
 
             return $out;
     }
@@ -16912,13 +16966,20 @@ class ChannelMasterController extends Controller
      */
     private function ySalesValueForDotRow(string $channel, $row, array $sd): ?float
     {
+        $asOf = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
         $storedY = array_key_exists('y_sales', $sd) ? (float) $sd['y_sales'] : null;
+
+        if ($this->allMarketplaceSnapshotKey($channel) === 'amazon') {
+            $realY = $this->realPacificDayYSales($channel, $asOf);
+
+            return $realY !== null ? $realY : $storedY;
+        }
+
         $needsReal = $storedY === null || $storedY <= 0 || $this->channelSnapshotYSalesIsInherited($row, $sd);
         if (! $needsReal) {
             return $storedY;
         }
 
-        $asOf = Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
         $realY = $this->realPacificDayYSales($channel, $asOf);
 
         return $realY !== null ? $realY : $storedY;
@@ -17569,11 +17630,173 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fast path never runs saveChannelDailySummaries, so today's Amazon snapshot
+     * (and therefore the last graph point) stayed on yesterday. Persist the live
+     * overlay so All-channel charts/dots can see today's as-of day.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function persistLiveAmazonSnapshotMetrics(array $rows): void
+    {
+        foreach ($rows as $row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'amazon') {
+                continue;
+            }
+            $y = (float) ($row['Y Sales'] ?? 0);
+            $l30 = (float) ($row['L30 Sales'] ?? 0);
+            $today = now('America/Los_Angeles')->toDateString();
+            $existing = \App\Models\ChannelMasterSummary::where('channel', 'amazon')
+                ->whereDate('snapshot_date', $today)
+                ->first();
+            $sd = $existing ? $existing->summaryArray() : [];
+            if ($existing
+                && abs((float) ($sd['y_sales'] ?? 0) - $y) < 0.01
+                && abs((float) ($sd['l30_sales'] ?? 0) - $l30) < 1
+            ) {
+                break;
+            }
+            \App\Models\ChannelMasterSummary::mergeTodaySummary('amazon', [
+                'y_sales' => $y,
+                'l30_sales' => $l30,
+                'l30_orders' => (float) ($row['L30 Orders'] ?? 0),
+                'total_quantity' => (float) ($row['Qty'] ?? 0),
+                'l60_sales' => (float) ($row['L-60 Sales'] ?? 0),
+            ], 'Amazon live overlay snapshot');
+            break;
+        }
+    }
+
+    /**
+     * Table Y Sales / L30 are live Pacific-yesterday from amazon_orders.
+     * Snapshot dots compared the last two *saved* days (often D−2 vs D−3).
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function overlayLiveAmazonDotTrends(array &$out): void
+    {
+        if (! isset($out['amazon'])) {
+            return;
+        }
+
+        $d2 = now('America/Los_Angeles')->subDay()->toDateString();
+        $d1 = now('America/Los_Angeles')->subDays(2)->toDateString();
+        $window = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
+
+        $out['amazon']['y_sales'] = [
+            $this->realPacificDayYSales('amazon', $d1),
+            $this->realPacificDayYSales('amazon', $d2),
+        ];
+
+        $end2 = Carbon::parse($d2, 'America/Los_Angeles')->endOfDay();
+        $start2 = Carbon::parse($d2, 'America/Los_Angeles')->subDays($window - 1)->startOfDay();
+        $end1 = Carbon::parse($d1, 'America/Los_Angeles')->endOfDay();
+        $start1 = Carbon::parse($d1, 'America/Los_Angeles')->subDays($window - 1)->startOfDay();
+        $out['amazon']['l30_sales'] = [
+            $this->sumCachedAmazonPacificSales($start1->toDateString(), $end1->toDateString()),
+            $this->sumCachedAmazonPacificSales($start2->toDateString(), $end2->toDateString()),
+        ];
+    }
+
+    /**
+     * Fast-path table never writes today's snapshot, so Y Sales charts stopped
+     * at D−2 while the cell already showed Pacific yesterday.
+     *
+     * @param  list<array{date: string, value: float}>  $chartData
+     * @return list<array{date: string, value: float}>
+     */
+    private function extendYSalesChartThroughYesterday(string $channel, array $chartData, bool $isAll): array
+    {
+        if ($isAll) {
+            return $chartData;
+        }
+
+        $yesterday = now('America/Los_Angeles')->subDay();
+        $label = $yesterday->format('M d');
+        $lastLabel = $chartData !== [] ? (string) ($chartData[array_key_last($chartData)]['date'] ?? '') : '';
+        if ($lastLabel === $label) {
+            return $chartData;
+        }
+
+        $value = $this->realPacificDayYSales($channel, $yesterday->toDateString());
+        if ($value === null) {
+            return $chartData;
+        }
+        $chartData[] = ['date' => $label, 'value' => round((float) $value, 2)];
+
+        return $chartData;
+    }
+
+    /**
+     * Amazon Sales column chart: rolling L30 of ordered product sales, one point
+     * per Pacific day through yesterday — same window as the table cell.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildAmazonLiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $start = $end->copy()->subDays(max(1, $days) - 1);
+        $this->preloadAmazonPacificDayYSales(
+            $start->copy()->subDays($windowDays - 1)->toDateString(),
+            $end->toDateString()
+        );
+
+        $out = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            for ($i = 0; $i < $windowDays; $i++) {
+                $d = $cursor->copy()->subDays($i)->toDateString();
+                $sum += (float) (self::$pacificDayYSalesCache['amazon|'.$d] ?? 0);
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Sum cached Amazon Pacific-day sales. Preloads the range once if needed.
+     */
+    private function sumCachedAmazonPacificSales(string $fromYmd, string $toYmd): float
+    {
+        $this->preloadAmazonPacificDayYSales($fromYmd, $toYmd);
+        $sum = 0.0;
+        $cursor = Carbon::parse($fromYmd, 'America/Los_Angeles');
+        $endDay = Carbon::parse($toYmd, 'America/Los_Angeles');
+        while ($cursor->lte($endDay)) {
+            $sum += (float) (self::$pacificDayYSalesCache['amazon|'.$cursor->toDateString()] ?? 0);
+            $cursor->addDay();
+        }
+
+        return round($sum, 2);
+    }
+
+    /**
      * Fill the Y Sales cache for Amazon from one grouped order query.
      */
     private function preloadAmazonPacificDayYSales(string $fromYmd, string $toYmd): void
     {
         if ($fromYmd === '' || $toYmd === '' || $fromYmd > $toYmd) {
+            return;
+        }
+        $cursor = Carbon::parse($fromYmd, 'America/Los_Angeles');
+        $endDay = Carbon::parse($toYmd, 'America/Los_Angeles');
+        $missing = false;
+        $check = $cursor->copy();
+        while ($check->lte($endDay)) {
+            if (! array_key_exists('amazon|'.$check->toDateString(), self::$pacificDayYSalesCache)) {
+                $missing = true;
+                break;
+            }
+            $check->addDay();
+        }
+        if (! $missing) {
             return;
         }
         if (! Schema::hasTable('amazon_orders') || ! Schema::hasTable('amazon_order_items')) {
@@ -17583,27 +17806,11 @@ class ChannelMasterController extends Controller
         try {
             $start = Carbon::parse($fromYmd, 'America/Los_Angeles')->startOfDay()->utc();
             $end = Carbon::parse($toYmd, 'America/Los_Angeles')->endOfDay()->utc();
-            $rows = DB::table('amazon_orders as o')
-                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-                ->where('o.order_date', '>=', $start)
-                ->where('o.order_date', '<=', $end)
-                ->where(function ($q) {
-                    $q->whereNull('o.status')
-                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-                })
-                ->select('o.id', 'o.order_date', DB::raw('SUM(COALESCE(i.price, 0)) as sales'))
-                ->groupBy('o.id', 'o.order_date')
-                ->get();
+            $byDay = AmazonOrder::productSalesGroupedByPacificDay($start, $end);
         } catch (\Throwable $e) {
             Log::warning('preloadAmazonPacificDayYSales failed: '.$e->getMessage());
 
             return;
-        }
-
-        $byDay = [];
-        foreach ($rows as $row) {
-            $d = Carbon::parse($row->order_date)->timezone('America/Los_Angeles')->toDateString();
-            $byDay[$d] = ($byDay[$d] ?? 0) + (float) $row->sales;
         }
 
         $cursor = Carbon::parse($fromYmd, 'America/Los_Angeles');

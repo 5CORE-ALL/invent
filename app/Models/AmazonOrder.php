@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -334,6 +335,78 @@ class AmazonOrder extends Model
             $start,
             $end
         )->sum(DB::raw(self::orderedProductSalesSql('i')));
+    }
+
+    /**
+     * UTC instants [start, end) when America/Los_Angeles is PDT (UTC−7).
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public static function pacificPdtUtcWindows(DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $fromYear = (int) Carbon::parse($start)->utc()->year - 1;
+        $toYear = (int) Carbon::parse($end)->utc()->year + 1;
+        $windows = [];
+        for ($year = $fromYear; $year <= $toYear; $year++) {
+            $windows[] = [
+                Carbon::parse("second sunday of march {$year} 10:00:00", 'UTC')->format('Y-m-d H:i:s'),
+                Carbon::parse("first sunday of november {$year} 09:00:00", 'UTC')->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        return $windows;
+    }
+
+    /**
+     * UTC DATETIME → Pacific calendar date in SQL.
+     * Named-zone CONVERT_TZ is NULL on this MySQL (empty time_zone tables),
+     * so offsets come from PHP DST windows (PDT −7, PST −8).
+     */
+    public static function pacificDayFromUtcDatetimeSql(string $column, DateTimeInterface $start, DateTimeInterface $end): string
+    {
+        $parts = [];
+        foreach (self::pacificPdtUtcWindows($start, $end) as [$from, $to]) {
+            $parts[] = "({$column} >= '{$from}' AND {$column} < '{$to}')";
+        }
+        $offsetExpr = $parts === [] ? '-8' : 'IF('.implode(' OR ', $parts).', -7, -8)';
+
+        return "DATE(DATE_ADD({$column}, INTERVAL {$offsetExpr} HOUR))";
+    }
+
+    /**
+     * Ordered product sales keyed by Pacific calendar day.
+     * order_date is stored as a UTC clock DATETIME — never group with APP_TZ or SUM(i.price).
+     * Aggregates in SQL so a tunnel/local client does not pull every order line.
+     *
+     * @return array<string, float> Y-m-d => sales
+     */
+    public static function productSalesGroupedByPacificDay(DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $daySql = self::pacificDayFromUtcDatetimeSql('o.order_date', $start, $end);
+        $rows = self::constrainOrderDate(
+            DB::table('amazon_orders as o')
+                ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                ->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                })
+                ->selectRaw("{$daySql} as pacific_day")
+                ->selectRaw('SUM('.self::orderedProductSalesSql('i').') as sales')
+                ->groupByRaw($daySql),
+            $start,
+            $end
+        )->get();
+
+        $byDay = [];
+        foreach ($rows as $row) {
+            $d = (string) $row->pacific_day;
+            if ($d === '') {
+                continue;
+            }
+            $byDay[$d] = round((float) $row->sales, 2);
+        }
+
+        return $byDay;
     }
 
     /**
