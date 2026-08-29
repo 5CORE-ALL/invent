@@ -1604,9 +1604,11 @@ class CvrMasterController extends Controller
                         ->get()
                         ->groupBy(fn ($item) => EbaySkuCompetitor::normalizeSkuKey($item->sku));
                     $ebayLmpLookup = $ebayGrouped->map(function ($items) {
-                        $active = $items->filter(fn ($i) => empty($i->ignored));
-                        $pool = $active->isNotEmpty() ? $active : $items;
-                        return $pool->sortBy(function ($i) {
+                        $active = $items->filter(fn ($i) => ! EbaySkuCompetitor::isIgnored($i));
+                        if ($active->isEmpty()) {
+                            return null;
+                        }
+                        return $active->sortBy(function ($i) {
                             $total = floatval($i->total_price ?? 0);
                             if ($total <= 0) {
                                 $total = floatval($i->price ?? 0) + floatval($i->shipping_cost ?? 0);
@@ -1614,7 +1616,9 @@ class CvrMasterController extends Controller
                             return $total;
                         })->first();
                     });
-                    $ebayLmpCountLookup = $ebayGrouped->map(fn ($items) => $items->count());
+                    $ebayLmpCountLookup = $ebayGrouped->map(
+                        fn ($items) => $items->filter(fn ($i) => ! EbaySkuCompetitor::isIgnored($i))->count()
+                    );
                     unset($ebayGrouped);
                 }
             } catch (\Exception $e) {
@@ -10492,6 +10496,13 @@ class CvrMasterController extends Controller
             }
             if ($marketplace === 'amazon') {
                 if (! AmazonSkuCompetitor::persistIgnored((int) $id, $ignored)) {
+                    return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
+                }
+
+                return response()->json(['success' => true, 'ignored' => $ignored ? 1 : 0, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+            }
+            if ($marketplace === 'ebay') {
+                if (! EbaySkuCompetitor::persistIgnored((int) $id, $ignored)) {
                     return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
                 }
 

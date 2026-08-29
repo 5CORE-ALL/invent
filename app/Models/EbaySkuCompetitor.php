@@ -29,6 +29,69 @@ class EbaySkuCompetitor extends Model
     ];
 
     /**
+     * Whether a competitor is excluded from L1 / LMP column count.
+     * Reads raw attributes so Eloquent casts / empty() cannot hide ignored=1.
+     */
+    public static function isIgnored($item): bool
+    {
+        $v = false;
+        if (is_array($item)) {
+            $v = $item['ignored'] ?? false;
+        } elseif (is_object($item)) {
+            if (method_exists($item, 'getAttributes')) {
+                $attrs = $item->getAttributes();
+                if (array_key_exists('ignored', $attrs)) {
+                    $v = $attrs['ignored'];
+                } elseif (method_exists($item, 'getRawOriginal') && $item->getRawOriginal('ignored') !== null) {
+                    $v = $item->getRawOriginal('ignored');
+                } else {
+                    $v = $item->ignored ?? false;
+                }
+            } else {
+                $v = $item->ignored ?? false;
+            }
+        }
+        if (is_bool($v)) {
+            return $v;
+        }
+        if (is_numeric($v)) {
+            return (int) $v !== 0;
+        }
+
+        return in_array(strtolower(trim((string) $v)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * Write ignored to the DB column (tinyint 0/1). Avoids Eloquent boolean-cast
+     * dirty-checks that can skip the UPDATE so Ignore looks saved until refresh.
+     */
+    public static function persistIgnored(int $id, bool $ignored): bool
+    {
+        if ($id < 1) {
+            return false;
+        }
+
+        $table = (new static)->getTable();
+        $updated = \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->update([
+            'ignored' => $ignored ? 1 : 0,
+            'updated_at' => now(),
+        ]);
+        if ($updated > 0) {
+            return true;
+        }
+
+        return \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists();
+    }
+
+    /**
+     * @param  iterable<mixed>  $items
+     */
+    public static function withoutIgnored($items): \Illuminate\Support\Collection
+    {
+        return collect($items)->filter(fn ($item) => ! self::isIgnored($item))->values();
+    }
+
+    /**
      * Get the lowest priced competitor for a given SKU
      * Handles SKUs with line breaks, extra spaces, and case differences
      */
@@ -48,7 +111,7 @@ class EbaySkuCompetitor extends Model
             });
         }
 
-        return $q->first();
+        return $q->get()->first(fn ($row) => ! self::isIgnored($row));
     }
 
     /**
@@ -86,7 +149,7 @@ class EbaySkuCompetitor extends Model
         return [
             'details' => $lmpRecords,
             'lowest' => $lmpRecords->map(function ($items) {
-                $active = $items->filter(fn ($item) => empty($item->ignored));
+                $active = self::withoutIgnored($items);
 
                 return $active->isNotEmpty() ? $active->first() : null;
             }),
@@ -183,7 +246,7 @@ class EbaySkuCompetitor extends Model
 
         $lmpEntries = self::dedupeByItemId($lmpEntries, $sku);
         // L1 = lowest non-ignored (same as Temu)
-        $lowest = $lmpEntries->first(fn ($e) => empty($e->ignored));
+        $lowest = $lmpEntries->first(fn ($e) => ! self::isIgnored($e));
         self::attachLmpFieldsToRow($row, $lmpEntries, $lowest);
     }
 
@@ -192,8 +255,9 @@ class EbaySkuCompetitor extends Model
      */
     private static function attachLmpFieldsToRow(array &$row, $lmpEntries, $lowestLmp = null): void
     {
-        if (! $lowestLmp || ! empty($lowestLmp->ignored)) {
-            $lowestLmp = $lmpEntries->first(fn ($e) => empty($e->ignored));
+        $active = self::withoutIgnored($lmpEntries);
+        if (! $lowestLmp || self::isIgnored($lowestLmp)) {
+            $lowestLmp = $active->first();
         }
         $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
             ? floatval($lowestLmp->total_price)
@@ -209,14 +273,17 @@ class EbaySkuCompetitor extends Model
                     'price' => floatval($entry->price ?? 0),
                     'shipping_cost' => floatval($entry->shipping_cost ?? 0),
                     'total_price' => floatval($entry->total_price ?? 0),
-                    'ignored' => (bool) ($entry->ignored ?? false),
+                    'ignored' => self::isIgnored($entry),
                     'link' => $entry->product_link,
                     'title' => $entry->product_title,
                 ];
             })
             ->values()
             ->toArray();
-        $row['lmp_entries_total'] = $lmpEntries->count();
+        // Column (N) = active competitors only; ignored rows stay in lmp_entries for the modal.
+        $row['lmp_entries_total'] = $active->filter(function ($entry) {
+            return (float) ($entry->total_price ?? 0) > 0;
+        })->count();
     }
 
     /** @return array<string, mixed> */

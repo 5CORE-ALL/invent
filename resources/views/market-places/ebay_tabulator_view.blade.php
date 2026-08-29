@@ -3278,6 +3278,56 @@
                 applyFilters();
             });
 
+            function ebayCompetitorIsIgnored(item) {
+                if (!item) return false;
+                const v = item.ignored;
+                if (v === true || v === 1 || v === '1') return true;
+                if (typeof v === 'string') {
+                    return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
+                }
+                return false;
+            }
+            function ebayL1FromCompetitors(competitors) {
+                let l1 = null;
+                (competitors || []).forEach(function(c) {
+                    if (ebayCompetitorIsIgnored(c)) return;
+                    const tp = parseFloat(c.total_price) || parseFloat(c.price) || 0;
+                    if (tp > 0 && (l1 === null || tp < l1)) l1 = tp;
+                });
+                return l1;
+            }
+            function ebayActiveLmpCount(competitors) {
+                let n = 0;
+                (competitors || []).forEach(function(c) {
+                    if (ebayCompetitorIsIgnored(c)) return;
+                    const tp = parseFloat(c.total_price) || parseFloat(c.price) || 0;
+                    if (tp > 0) n++;
+                });
+                return n;
+            }
+            function ebayEffectiveLmp(row) {
+                if (!row) return 0;
+                const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+                if (entries.length) {
+                    const l1 = ebayL1FromCompetitors(entries);
+                    return l1 != null && l1 > 0 ? l1 : 0;
+                }
+                return parseFloat(row.lmp_price) || 0;
+            }
+            function ebayApplyL1FromEntries(row) {
+                if (!row || row.is_parent_summary) return row;
+                const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+                if (!entries.length) return row;
+                const l1 = ebayL1FromCompetitors(entries);
+                row.lmp_price = l1;
+                row.lmp_entries_total = ebayActiveLmpCount(entries);
+                if (l1 == null) {
+                    row.lmp_link = null;
+                    row.lmp_item_id = null;
+                    row.lmp_title = null;
+                }
+                return row;
+            }
             function ebay1IsAlertParentRow(data) {
                 return !!(data && (data.is_parent_summary
                     || (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))));
@@ -3304,7 +3354,7 @@
             function ebay1HasRedTriangle(data) {
                 if (ebay1IsAlertParentRow(data)) return false;
                 const price = parseFloat(data['eBay Price']) || 0;
-                const lmp = parseFloat(data.lmp_price) || 0;
+                const lmp = ebayEffectiveLmp(data);
                 return price > 0 && lmp > 0 && price > lmp;
             }
             function syncEbay1TriangleBadgeState() {
@@ -3942,6 +3992,9 @@
                 ajaxResponse: function(url, params, response) {
                     var payload = (response && response.data) ? response.data : response;
                     if (Array.isArray(payload)) {
+                        payload.forEach(function(row) {
+                            if (typeof ebayApplyL1FromEntries === 'function') ebayApplyL1FromEntries(row);
+                        });
                         allTableData = payload;
                         window.allTableData = allTableData;
                         if (window.ParentExpand) ParentExpand.captureDataset(payload);
@@ -4571,7 +4624,9 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
-                            const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
+                            const lmpPrice = (typeof ebayEffectiveLmp === 'function')
+                                ? ebayEffectiveLmp(rowData)
+                                : (parseFloat(rowData['lmp_price'] || 0) || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
                             const overLmp = lmpPrice > 0 && value > lmpPrice;
@@ -4757,9 +4812,14 @@
                                 });
                                 if (avgHtml !== null) return avgHtml;
                             }
-                            const lmpPrice = cell.getValue();
+                            const entries = Array.isArray(rowData.lmp_entries) ? rowData.lmp_entries : [];
+                            const lmpPrice = entries.length
+                                ? ebayL1FromCompetitors(entries)
+                                : cell.getValue();
                             const sku = rowData['(Child) sku'];
-                            const totalCompetitors = rowData.lmp_entries_total || 0;
+                            const totalCompetitors = entries.length
+                                ? ebayActiveLmpCount(entries)
+                                : (rowData.lmp_entries_total || 0);
                             const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                             const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
                             const skuAttr = escapeHtmlAttr(sku || '');
@@ -4873,7 +4933,9 @@
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, sprice) : null;
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
-                            const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price) || 0);
+                            const lmp = cap ? cap.lmp : ((typeof ebayEffectiveLmp === 'function')
+                                ? ebayEffectiveLmp(rowData)
+                                : (parseFloat(rowData.lmp_price) || 0));
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
 
@@ -5647,7 +5709,9 @@
                             ? ebay1RowSpriceForAlert(data)
                             : (parseFloat(data.SPRICE) || 0);
                         if (window.SpriceLmpCap) return SpriceLmpCap.hasAlert(data, sprice);
-                        const lmp = parseFloat(data.lmp_price) || 0;
+                        const lmp = (typeof ebayEffectiveLmp === 'function')
+                            ? ebayEffectiveLmp(data)
+                            : (parseFloat(data.lmp_price) || 0);
                         return sprice > 0 && lmp > 0 && sprice + 0.0001 >= lmp;
                     });
                 }
@@ -5658,7 +5722,9 @@
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
                             return true;
                         const price = parseFloat(data['eBay Price']) || 0;
-                        const lmp = parseFloat(data.lmp_price) || 0;
+                        const lmp = (typeof ebayEffectiveLmp === 'function')
+                            ? ebayEffectiveLmp(data)
+                            : (parseFloat(data.lmp_price) || 0);
                         return price > 0 && lmp > 0 && price > lmp;
                     });
                 }
@@ -5668,7 +5734,9 @@
                     table.addFilter(function(data) {
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
                             return true;
-                        const lmp = parseFloat(data.lmp_price) || 0;
+                        const lmp = (typeof ebayEffectiveLmp === 'function')
+                            ? ebayEffectiveLmp(data)
+                            : (parseFloat(data.lmp_price) || 0);
                         return lmp <= 0;
                     });
                 }
@@ -6770,13 +6838,7 @@
                         currentLmpData.lowestPrice = response.lowest_price;
 
                         renderEbayCompetitorsList(response.competitors, response.lowest_price);
-
-                        if (typeof table !== 'undefined' && table && table.getRows) {
-                            const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                            if (row && response.lowest_price != null) {
-                                row.update({ lmp_price: response.lowest_price });
-                            }
-                        }
+                        patchEbayGridLmp(response.lowest_price, response.competitors);
                         renderLmpModalStats(sku);
 
                         if (refreshFromApi) {
@@ -6972,13 +7034,8 @@
             }
 
             // L1 among non-ignored only (matches backend) — 5 Core row is never L1
-            let l1Price = null;
-            competitors.forEach(function(item) {
-                if (item.ignored) return;
-                const tp = parseFloat(item.total_price) || 0;
-                if (tp > 0 && (l1Price === null || tp < l1Price)) l1Price = tp;
-            });
-            if (l1Price === null && lowestPrice != null) {
+            let l1Price = ebayL1FromCompetitors(competitors);
+            if (l1Price === null && lowestPrice != null && ebayActiveLmpCount(competitors) > 0) {
                 l1Price = parseFloat(lowestPrice);
             }
 
@@ -7004,7 +7061,7 @@
 
             // Build competitor rows with sort key, then insert 5 Core at our price level
             const rows = competitors.map(function(item) {
-                const ignored = !!item.ignored;
+                const ignored = ebayCompetitorIsIgnored(item);
                 const total = parseFloat(item.total_price) || 0;
                 const shipStored = parseFloat(item.shipping_cost);
                 const shipInferred = Math.max(0, total - (parseFloat(item.price) || 0));
@@ -7085,14 +7142,88 @@
             updateLmpBulkDeleteUi();
         }
 
-        // Toggle LMP ignore
+        function ebayNormalizeSkuKey(s) {
+            return String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+        }
+
+        function patchEbayGridLmp(lowestPrice, competitors) {
+            const entries = Array.isArray(competitors) ? competitors : null;
+            const l1 = entries ? ebayL1FromCompetitors(entries) : (lowestPrice != null ? parseFloat(lowestPrice) : null);
+            const activeCount = entries ? ebayActiveLmpCount(entries) : null;
+
+            const targets = new Set();
+            const add = function(s) {
+                const t = ebayNormalizeSkuKey(s);
+                if (t) targets.add(t);
+            };
+            add(currentLmpData.sku);
+            (currentLmpData.linkedLmpSkus || []).forEach(add);
+
+            const applyToData = function(d) {
+                if (!d || d.is_parent_summary) return false;
+                const rowSku = ebayNormalizeSkuKey(d['(Child) sku'] || d.sku);
+                if (!targets.has(rowSku)) return false;
+                d.lmp_price = l1;
+                if (entries) {
+                    d.lmp_entries = entries;
+                    d.lmp_entries_total = activeCount;
+                }
+                return true;
+            };
+
+            if (Array.isArray(allTableData)) {
+                allTableData.forEach(applyToData);
+                if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+                if (window.LmpMissingBadge) {
+                    LmpMissingBadge.update('#ebay1-lmp-missing-badge', allTableData, 'ebay');
+                }
+                if (window.PriceGtLmpBadge) {
+                    PriceGtLmpBadge.update('#ebay1-red-triangle-badge', allTableData, 'ebay', 'eBay Price');
+                }
+                if (window.PriceLt80LmpBadge) {
+                    PriceLt80LmpBadge.update('#ebay1-purple-triangle-badge', allTableData, 'ebay', 'eBay Price');
+                }
+            }
+
+            if (typeof table === 'undefined' || !table || !table.getRows) return;
+            let rows = [];
+            try {
+                rows = table.getRows('all') || table.getRows() || [];
+            } catch (e) {
+                rows = table.getRows() || [];
+            }
+            rows.forEach(function(row) {
+                const d = row.getData();
+                if (!applyToData(d)) return;
+                const upd = { lmp_price: d.lmp_price };
+                if (entries) {
+                    upd.lmp_entries = d.lmp_entries;
+                    upd.lmp_entries_total = d.lmp_entries_total;
+                }
+                row.update(upd);
+            });
+        }
+
+        function applyEbayLmpIgnoreLocal(id, ignored) {
+            (currentLmpData.competitors || []).forEach(function(c) {
+                if (String(c.id) === String(id)) c.ignored = ignored ? 1 : 0;
+            });
+            const l1 = ebayL1FromCompetitors(currentLmpData.competitors);
+            currentLmpData.lowestPrice = l1;
+            renderEbayCompetitorsList(currentLmpData.competitors, l1);
+            patchEbayGridLmp(l1, currentLmpData.competitors);
+            renderLmpModalStats(currentLmpData.sku);
+        }
+
+        // Toggle LMP ignore — excluded from L1, vs LMP, and the LMP column (N)
         $(document).on('change', '#lmpModal .lmp-ignore-cb', function() {
             const $cb = $(this);
             const id = $cb.attr('data-id') || $cb.data('id');
             const marketplace = ($cb.attr('data-marketplace') || $cb.data('marketplace') || 'ebay').toLowerCase();
             const sku = $cb.attr('data-sku') || $cb.data('sku') || currentLmpData.sku || '';
             const ignored = $cb.is(':checked');
-            $cb.prop('disabled', true);
+            applyEbayLmpIgnoreLocal(id, ignored);
+            $('#lmpModal .lmp-ignore-cb[data-id="' + id + '"]').prop('disabled', true);
 
             $.ajax({
                 url: '/cvr-master-lmp-ignore',
@@ -7100,31 +7231,16 @@
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                 data: { id: id, marketplace: marketplace, sku: sku, ignored: ignored ? 1 : 0 },
                 success: function(res) {
-                    $cb.prop('disabled', false);
+                    $('#lmpModal .lmp-ignore-cb[data-id="' + id + '"]').prop('disabled', false);
                     if (res && res.success) {
-                        (currentLmpData.competitors || []).forEach(function(c) {
-                            if (String(c.id) === String(id)) c.ignored = ignored;
-                        });
-                        let l1 = null;
-                        (currentLmpData.competitors || []).forEach(function(c) {
-                            if (c.ignored) return;
-                            const tp = parseFloat(c.total_price) || 0;
-                            if (tp > 0 && (l1 === null || tp < l1)) l1 = tp;
-                        });
-                        currentLmpData.lowestPrice = l1;
-                        renderEbayCompetitorsList(currentLmpData.competitors, l1);
                         showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
-                        if (table && typeof table.replaceData === 'function') {
-                            table.replaceData();
-                        }
                     } else {
-                        $cb.prop('checked', !ignored);
+                        applyEbayLmpIgnoreLocal(id, !ignored);
                         showToast((res && res.error) || 'Failed to update ignore', 'error');
                     }
                 },
                 error: function(xhr) {
-                    $cb.prop('disabled', false);
-                    $cb.prop('checked', !ignored);
+                    applyEbayLmpIgnoreLocal(id, !ignored);
                     const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to update ignore';
                     showToast(msg, 'error');
                 }
@@ -7186,7 +7302,9 @@
             const price = parseFloat(rowData['eBay Price']) || 0;
             const views = parseFloat(rowData.views) || 0;
             const sold = parseFloat(rowData['eBay L30']) || 0;
-            const lmp = parseFloat(rowData.lmp_price) || 0;
+            const lmp = (typeof ebayEffectiveLmp === 'function')
+                ? ebayEffectiveLmp(rowData)
+                : (parseFloat(rowData.lmp_price) || 0);
             const badge = (label, value, bg) =>
                 `<span class="badge fs-6 p-2" style="background:${bg};color:#fff;font-weight:600;">${label}: ${value}</span>`;
             let html =

@@ -36,19 +36,28 @@
         return firstNum(row, fields);
     }
 
+    function entryIgnored(e) {
+        if (!e) return false;
+        var v = e.ignored;
+        if (v === true || v === 1 || v === '1') return true;
+        if (typeof v === 'string') {
+            return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
+        }
+        return false;
+    }
+
     function lmpOf(row) {
-        var v = firstNum(row, ['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1']);
-        if (isFinite(v) && v > 0) return v;
         if (row && Array.isArray(row.lmp_entries) && row.lmp_entries.length) {
             var lowest = NaN;
             for (var j = 0; j < row.lmp_entries.length; j++) {
                 var e = row.lmp_entries[j] || {};
-                var p = num(e.price != null ? e.price : e.lmp);
+                if (entryIgnored(e)) continue;
+                var p = num(e.total_price != null ? e.total_price : (e.price != null ? e.price : e.lmp));
                 if (isFinite(p) && p > 0 && (!isFinite(lowest) || p < lowest)) lowest = p;
             }
             return lowest;
         }
-        return NaN;
+        return firstNum(row, ['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1']);
     }
 
     function invOf(row) {

@@ -1090,7 +1090,7 @@ class EbayController extends Controller
             $lmpDetailsLookup = $lmpRecords;
             // L1 = lowest non-ignored (EbaySkuCompetitor::buildGroupedLookup)
             $lmpLowestLookup = $lmpRecords->map(function ($items) {
-                $active = $items->filter(fn ($item) => empty($item->ignored));
+                $active = \App\Models\EbaySkuCompetitor::withoutIgnored($items);
 
                 return $active->isNotEmpty() ? $active->sortBy('total_price')->first() : null;
             });
@@ -1296,8 +1296,8 @@ class EbayController extends Controller
                 ->sortBy('total_price')
                 ->values();
 
-            // L1 ignores flagged competitors
-            $lowestLmp = $lmpEntries->first(fn ($e) => empty($e->ignored));
+            // L1 / column count ignore flagged competitors
+            $lowestLmp = $lmpEntries->first(fn ($e) => ! \App\Models\EbaySkuCompetitor::isIgnored($e));
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price))
                 ? (is_numeric($lowestLmp->total_price) ? floatval($lowestLmp->total_price) : null)
                 : null;
@@ -1312,13 +1312,15 @@ class EbayController extends Controller
                         'price' => floatval($entry->price ?? 0),
                         'shipping_cost' => floatval($entry->shipping_cost ?? 0),
                         'total_price' => floatval($entry->total_price ?? 0),
-                        'ignored' => (bool) ($entry->ignored ?? false),
+                        'ignored' => \App\Models\EbaySkuCompetitor::isIgnored($entry),
                         'link' => $entry->product_link,
                         'title' => $entry->product_title,
                     ];
                 })
                 ->toArray();
-            $row['lmp_entries_total'] = $lmpEntries->count();
+            $row['lmp_entries_total'] = $lmpEntries
+                ->filter(fn ($e) => ! \App\Models\EbaySkuCompetitor::isIgnored($e) && (float) ($e->total_price ?? 0) > 0)
+                ->count();
 
             $row["E Dil%"] = ($row["eBay L30"] && $row["INV"] > 0)
                 ? round(($row["eBay L30"] / $row["INV"]), 2)
@@ -5091,7 +5093,7 @@ class EbayController extends Controller
                 ->sortBy(function ($comp) { return (float) $comp->total_price; })
                 ->values();
             // L1 = lowest non-ignored competitor
-            $lowestPrice = $competitors->first(fn ($comp) => empty($comp->ignored));
+            $lowestPrice = $competitors->first(fn ($comp) => ! \App\Models\EbaySkuCompetitor::isIgnored($comp));
             
             return response()->json([
                 'success' => true,
@@ -5103,7 +5105,7 @@ class EbayController extends Controller
                         'price' => floatval($comp->price ?? 0),
                         'shipping_cost' => floatval($comp->shipping_cost ?? 0),
                         'total_price' => floatval($comp->total_price ?? 0),
-                        'ignored' => (bool) ($comp->ignored ?? false),
+                        'ignored' => \App\Models\EbaySkuCompetitor::isIgnored($comp),
                         'link' => $comp->product_link,
                         'title' => $comp->product_title,
                         'image' => $comp->image ?? null,
@@ -5111,7 +5113,7 @@ class EbayController extends Controller
                     ];
                 }),
                 'lowest_price' => $lowestPrice ? floatval($lowestPrice->total_price) : null,
-                'total_count' => $competitors->count()
+                'total_count' => $competitors->filter(fn ($comp) => ! \App\Models\EbaySkuCompetitor::isIgnored($comp))->count(),
             ]);
             
         } catch (\Exception $e) {
