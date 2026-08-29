@@ -929,7 +929,7 @@ class ChannelMasterController extends Controller
 
             $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
             if ($l7Sales !== null) {
@@ -1011,7 +1011,7 @@ class ChannelMasterController extends Controller
             try {
                 $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
                 if ($ySales !== null) {
-                    $row['Y Sales'] = $ySales;
+                    $this->applyLiveYSalesIfPositive($row, $ySales);
                 }
                 $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
                 if ($l7Sales !== null) {
@@ -1200,7 +1200,7 @@ class ChannelMasterController extends Controller
 
             $ySales = $this->computeEbayYSalesLikeAmazon($which);
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
 
             $l7Sales = $this->computeEbayL7SalesLikeAmazon($which);
@@ -1441,7 +1441,7 @@ class ChannelMasterController extends Controller
         foreach ($rows as &$row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
             if ($key === 'amazon') {
-                $row['Y Sales'] = $amazonYSales;
+                $this->applyLiveYSalesIfPositive($row, $amazonYSales);
                 break;
             }
         }
@@ -1520,53 +1520,102 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Live sales overlays for /all-marketplace-master fast path (cache hit and miss).
-     * Calculated-table L30/Y Sales stay frozen until channel:calculate-data; these
-     * cheap reads keep the Sales badge and column moving with the source pages.
+     * Live Y Sales may be $0 when orders have not landed for Pacific yesterday.
+     * Never overwrite the saved table cell with that zero (shows as NYS).
+     */
+    private function applyLiveYSalesIfPositive(array &$row, mixed $ySales): void
+    {
+        if ($ySales === null || $ySales === '') {
+            return;
+        }
+        $y = (float) $ySales;
+        if ($y <= 0) {
+            return;
+        }
+        $row['Y Sales'] = $y;
+    }
+
+    /**
+     * Cached fast-path rows can already be $0 from a live overlay. Put the
+     * saved calculated Y Sales back so the grid does not show NYS.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function restoreSavedYSalesWhenZero(array $rows): array
+    {
+        $saved = [];
+        foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $calc) {
+            $ch = $this->allMarketplaceSnapshotKey((string) $calc->channel);
+            $y = $calc->yesterday_sales !== null ? (float) $calc->yesterday_sales : 0.0;
+            if ($ch !== '' && $y > 0) {
+                $saved[$ch] = $y;
+            }
+        }
+        foreach ($rows as &$row) {
+            $current = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Y Sales'] ?? 0));
+            if ($current > 0) {
+                continue;
+            }
+            $ch = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($ch !== '' && isset($saved[$ch])) {
+                $row['Y Sales'] = $saved[$ch];
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * /all-marketplace-master grid = channel_master_calculated_data only.
+     * Live order overlays were painting $0 Y Sales (NYS) and hiding saved rows.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        $this->preloadAmazonPacificDayYSales(
-            now('America/Los_Angeles')->subDays(59)->toDateString(),
-            now('America/Los_Angeles')->subDay()->toDateString()
-        );
+        return $this->restoreSavedTableMetricsOnChannelRows($rows);
+    }
 
-        $steps = [
-            'amazon_l30' => fn (array $r) => $this->overlayLiveAmazonL30SalesOnChannelRows($r),
-            'amazon_y' => fn (array $r) => $this->overlayLiveAmazonYSalesOnChannelRows($r),
-            'ebay_l30' => fn (array $r) => $this->overlayLiveEbayMetricsOnChannelRows($r),
-            'ebay2_ads' => fn (array $r) => $this->overlayLiveEbayTwoAdsOnChannelRows($r),
-            'ebay2_cvr' => fn (array $r) => $this->overlayLiveEbayTwoListingCvrOnChannelRows($r),
-            'ebay_y' => fn (array $r) => $this->overlayLiveEbayYSalesOnChannelRows($r),
-            'shopify_l30' => fn (array $r) => $this->overlayLiveShopifyDirectMetricsOnChannelRows($r),
-            'shopify_y' => fn (array $r) => $this->overlayLiveShopifyYSalesOnChannelRows($r),
-            'shopify_b2b' => fn (array $r) => $this->overlayLiveShopifyB2BMetricsOnChannelRows($r),
-            'temu_l30' => fn (array $r) => $this->overlayLiveTemuSalesOnChannelRows($r),
-            'tiktok_l30' => fn (array $r) => $this->overlayLiveTiktokShopSalesOnChannelRows($r),
-            'walmart_l30' => fn (array $r) => $this->overlayLiveWalmartSalesOnChannelRows($r),
-            'pp_l30' => fn (array $r) => $this->overlayLivePurchasingPowerMetricsOnChannelRows($r),
-            'fb_l30' => fn (array $r) => $this->overlayLiveFbMarketplaceMetricsOnChannelRows($r),
-            'tiktok2_l30' => fn (array $r) => $this->overlayLiveTiktokTwoMetricsOnChannelRows($r),
-            'faire_l30' => fn (array $r) => $this->overlayLiveFaireMetricsOnChannelRows($r),
-            'stale_y' => fn (array $r) => $this->overlayLiveStaleYSalesOnChannelRows($r),
-        ];
-
-        foreach ($steps as $name => $fn) {
-            try {
-                $rows = $fn($rows);
-            } catch (\Throwable $e) {
-                Log::warning('Fast-path live sales overlay failed ('.$name.'): '.$e->getMessage());
+    /**
+     * Put saved calculated_data numbers back on every channel row.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function restoreSavedTableMetricsOnChannelRows(array $rows): array
+    {
+        $saved = [];
+        foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $calc) {
+            $ch = $this->allMarketplaceSnapshotKey((string) $calc->channel);
+            if ($ch !== '') {
+                $saved[$ch] = $calc;
             }
         }
-
-        try {
-            $this->persistLiveAmazonSnapshotMetrics($rows);
-        } catch (\Throwable $e) {
-            Log::warning('Fast-path Amazon snapshot persist failed: '.$e->getMessage());
+        foreach ($rows as &$row) {
+            $ch = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            $calc = $saved[$ch] ?? null;
+            if (! $calc) {
+                continue;
+            }
+            $row['Y Sales'] = $calc->yesterday_sales !== null ? (float) $calc->yesterday_sales : ($row['Y Sales'] ?? 0);
+            $row['L30 Sales'] = $calc->l30_sales !== null ? (int) $calc->l30_sales : ($row['L30 Sales'] ?? 0);
+            $row['L7 Sales'] = $calc->l7_sales !== null ? (float) $calc->l7_sales : ($row['L7 Sales'] ?? 0);
+            $row['L-60 Sales'] = $calc->l60_sales !== null ? (int) $calc->l60_sales : ($row['L-60 Sales'] ?? 0);
+            $row['L30 Orders'] = $calc->l30_orders !== null ? (int) $calc->l30_orders : ($row['L30 Orders'] ?? 0);
+            $row['Qty'] = $calc->total_quantity !== null ? (int) $calc->total_quantity : ($row['Qty'] ?? 0);
+            $row['Total Ad Spend'] = $calc->total_ad_spend !== null ? round((float) $calc->total_ad_spend, 2) : ($row['Total Ad Spend'] ?? 0);
+            $row['Total Views'] = $calc->total_views !== null ? (int) $calc->total_views : ($row['Total Views'] ?? 0);
+            if ($calc->ads_percentage !== null) {
+                $row['Ads%'] = round((float) $calc->ads_percentage, 2).'%';
+            }
+            if ($calc->listing_cvr !== null && $calc->listing_cvr !== '') {
+                $row['CVR'] = (float) $calc->listing_cvr;
+            }
         }
+        unset($row);
 
         return $rows;
     }
@@ -1587,7 +1636,7 @@ class ChannelMasterController extends Controller
                     default => null,
                 };
                 if ($value !== null) {
-                    $row['Y Sales'] = $value;
+                    $this->applyLiveYSalesIfPositive($row, $value);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Fast-path Shopify Y Sales overlay failed for '.$name.': '.$e->getMessage());
@@ -1611,7 +1660,7 @@ class ChannelMasterController extends Controller
             }
             $ySales = $this->computeEbayYSalesLikeAmazon($which);
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             $l7Sales = $this->computeEbayL7SalesLikeAmazon($which);
             if ($l7Sales !== null) {
@@ -1645,7 +1694,7 @@ class ChannelMasterController extends Controller
             try {
                 $value = $live[$name]();
                 if ($value !== null) {
-                    $row['Y Sales'] = $value;
+                    $this->applyLiveYSalesIfPositive($row, $value);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Live Y Sales overlay failed for '.$name.': '.$e->getMessage());
@@ -1711,7 +1760,7 @@ class ChannelMasterController extends Controller
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
@@ -1820,7 +1869,7 @@ class ChannelMasterController extends Controller
 
             $ySales = $this->computePurchasingPowerYSalesLikeAmazon();
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
 
             $l7Sales = $this->computePurchasingPowerL7SalesLikeAmazon();
@@ -2450,7 +2499,7 @@ class ChannelMasterController extends Controller
             $row['N PFT'] = round($nPftPct, 1) . '%';
             $row['N ROI'] = round($nRoi, 1);
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
@@ -2517,7 +2566,7 @@ class ChannelMasterController extends Controller
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
@@ -2565,7 +2614,7 @@ class ChannelMasterController extends Controller
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
@@ -2700,7 +2749,7 @@ class ChannelMasterController extends Controller
 
             $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
             if ($ySales !== null) {
-                $row['Y Sales'] = $ySales;
+                $this->applyLiveYSalesIfPositive($row, $ySales);
             }
 
             $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
@@ -15476,15 +15525,27 @@ class ChannelMasterController extends Controller
             if (! $isAll && $channel === 'amazon' && $metric === 'y_sales' && ! $useL7Window) {
                 return response()->json([
                     'success' => true,
-                    'data' => $this->buildDailyYSalesChart('amazon', $days, false),
+                    'data' => $this->pinChartSeriesLastToTable(
+                        $this->buildDailyYSalesChart('amazon', $days, false),
+                        $channel,
+                        $metric,
+                        $request->input('badge_value'),
+                        false
+                    ),
                 ]);
             }
             if (! $isAll && $channel === 'amazon' && $metric === 'l30_sales' && ! $useDailyWindow && ! $useL7Window) {
                 return response()->json([
                     'success' => true,
-                    'data' => $this->buildAmazonLiveRollingSalesChart(
-                        max(1, $days),
-                        AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+                    'data' => $this->pinChartSeriesLastToTable(
+                        $this->buildAmazonLiveRollingSalesChart(
+                            max(1, $days),
+                            AmazonSalesController::DAILY_SALES_WINDOW_DAYS
+                        ),
+                        $channel,
+                        $metric,
+                        $request->input('badge_value'),
+                        false
                     ),
                 ]);
             }
@@ -15496,13 +15557,13 @@ class ChannelMasterController extends Controller
                 $chartData = $metric === 'y_sales'
                     ? $this->buildDailyYSalesChart($channel, $days, $isAll)
                     : $this->buildDailyWindowChart($channel, $metric, $days, $isAll);
-                $badgeValue = $request->input('badge_value');
-                if (! empty($chartData) && $badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
-                    $lastIdx = array_key_last($chartData);
-                    if ($lastIdx !== null) {
-                        $chartData[$lastIdx]['value'] = round((float) $badgeValue, 2);
-                    }
-                }
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
 
                 return response()->json(['success' => true, 'data' => $chartData]);
             }
@@ -15883,30 +15944,12 @@ class ChannelMasterController extends Controller
                 $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll);
             }
 
-            // Align chart with the live cell/badge the user clicked.
-            // - "all" channels: scale the whole series to the badge total (aggregate drift).
-            // - single channel: when badge_value is sent, pin only the latest point to that
-            //   value (EbayTwo views column is live-overlaid; snapshots can lag). Do not
-            //   rescale history — that would distort real day-to-day movement.
-            // Listing CVR is pinned the same way for a single channel (Amazon live
-            // A_L30÷sessions vs snapshot cvr_percent) so the last graph point equals
-            // the table cell. We still never scale the whole CVR series (it is a ratio).
-            // Never pin Y Sales to the badge: listing-copy snapshots reuse yesterday's
-            // figure, and the badge can be that same stale number.
-            if (!empty($chartData) && $metric === 'cvr' && ! $isAll) {
-                $badgeValue = $request->input('badge_value');
-                if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
-                    $lastIdx = array_key_last($chartData);
-                    if ($lastIdx !== null) {
-                        $chartData[$lastIdx]['value'] = round((float) $badgeValue, 2);
-                    }
-                }
-            }
-            if (!empty($chartData) && $metric !== 'cvr' && $metric !== 'y_sales') {
-                $badgeValue = $request->input('badge_value');
-                $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
-
-                if ($isAll) {
+            // Table (channel_master_calculated_data / the grid cell) is the source.
+            // History stays on daily snapshots; the last point must equal the table.
+            if (! empty($chartData)) {
+                if ($isAll && $metric !== 'cvr') {
+                    $badgeValue = $request->input('badge_value');
+                    $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
                     $tableRef = $hasBadge
                         ? (float) $badgeValue
                         : $this->getAllChannelsTableReference($metric);
@@ -15920,19 +15963,14 @@ class ChannelMasterController extends Controller
                             unset($pt);
                         }
                     }
-                } elseif ($hasBadge) {
-                    $tableRef = (float) $badgeValue;
-                    $lastIdx = array_key_last($chartData);
-                    if ($lastIdx !== null && abs((float) $chartData[$lastIdx]['value'] - $tableRef) > 0.01) {
-                        $prevIdx = is_int($lastIdx) && $lastIdx > 0 ? $lastIdx - 1 : null;
-                        $oldLast = (float) $chartData[$lastIdx]['value'];
-                        $prev = $prevIdx !== null ? (float) $chartData[$prevIdx]['value'] : null;
-                        $wouldFlip = $prev !== null
-                            && (($oldLast > $prev && $tableRef < $prev) || ($oldLast < $prev && $tableRef > $prev));
-                        if (! $wouldFlip) {
-                            $chartData[$lastIdx]['value'] = round($tableRef, 2);
-                        }
-                    }
+                } elseif (! $isAll) {
+                    $chartData = $this->pinChartSeriesLastToTable(
+                        $chartData,
+                        $channel,
+                        $metric,
+                        $request->input('badge_value'),
+                        false
+                    );
                 }
             }
 
@@ -15984,9 +16022,8 @@ class ChannelMasterController extends Controller
 
     private function channelMetricDotTrendsCacheKey(int $window): string
     {
-        // v7: walk back past seeded/duplicate snapshot days and pin v2 to live
-        // table values so Spend / views / CVR cannot stay gray while the chart moves.
-        return 'amm_dot_trends_v7_w'.$window;
+        // v9: last graph point + table dot v2 = saved table row.
+        return 'amm_dot_trends_v9_w'.$window;
     }
 
     /**
@@ -16145,18 +16182,10 @@ class ChannelMasterController extends Controller
             $out = [];
             $processedByChannel = [];
 
-            // Today's snapshot is included in the comparison: saveChannelDailySummaries
-            // overwrites today's row on every page load, so it always reflects the
-            // freshest values (including post-upload metrics like total_ad_spend that
-            // come from a single L30/L7 file).
-            //
-            // Baseline is the immediately previous snapshot that has a value (skip
-            // nulls only). Walking back to the last *different* value made table and
-            // badge dots disagree with the chart's last point (chart is always
-            // "vs Yesterday"). A frozen eBay L30 (today == yesterday) is grey on
-            // both the dot and the last graph point — that match is intentional.
-            // We still pull a 30-snapshot window so a missing yesterday can fall
-            // through to the next populated day.
+            // Last two calendar full snapshots — same last step as the chart
+            // (vs previous day). Do not walk back to an older different day and
+            // do not skip seeded copies: both of those made the table dot the
+            // opposite color of the graph's last point.
             $snapshotWindow = $useL7Window ? 36 : 30;
             $historyFrom = now('America/Los_Angeles')->subDays($snapshotWindow + 10)->toDateString();
             $this->preloadAmazonPacificDayYSales(
@@ -16233,16 +16262,9 @@ class ChannelMasterController extends Controller
                 foreach ($metrics as $metric) {
                     $series = [];
                     foreach ($cmsRows as $row) {
-                        $sd = $summaryForRow($row);
-                        if ($this->channelSnapshotIsSeededCopy($row, $sd)) {
-                            continue;
-                        }
                         $series[] = $metricValue($metric, $row);
                     }
-                    $out[$channel][$metric] = ChannelMetricDotPair::lastTwoDistinct(
-                        $series,
-                        $this->metricDotEpsilon($metric)
-                    );
+                    $out[$channel][$metric] = ChannelMetricDotPair::lastTwoAdjacent($series);
                 }
             }
 
@@ -17653,40 +17675,145 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast path never runs saveChannelDailySummaries, so today's Amazon snapshot
-     * (and therefore the last graph point) stayed on yesterday. Persist the live
-     * overlay so All-channel charts/dots can see today's as-of day.
+     * Write the numbers the Active Channel table is showing onto today's
+     * snapshot so the graph reads the same save as the grid.
      *
      * @param  list<array<string, mixed>>  $rows
      */
-    private function persistLiveAmazonSnapshotMetrics(array $rows): void
+    private function persistDisplayedTableToTodaySnapshots(array $rows): void
     {
+        $today = now('America/Los_Angeles')->toDateString();
         foreach ($rows as $row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($key !== 'amazon') {
+            if ($key === '') {
                 continue;
             }
-            $today = now('America/Los_Angeles')->toDateString();
-            $existing = \App\Models\ChannelMasterSummary::where('channel', 'amazon')
+            $existing = \App\Models\ChannelMasterSummary::where('channel', $key)
                 ->whereDate('snapshot_date', $today)
                 ->first();
             if (! $existing) {
-                break;
+                continue;
             }
-            $y = (float) ($row['Y Sales'] ?? 0);
-            $l30 = (float) ($row['L30 Sales'] ?? 0);
+            $num = static function ($value): float {
+                return (float) preg_replace('/[^0-9.-]/', '', (string) ($value ?? 0));
+            };
             $sd = $existing->summaryArray();
-            if (abs((float) ($sd['y_sales'] ?? 0) - $y) < 0.01
+            $spend = $num($row['Total Ad Spend'] ?? 0);
+            $views = $num($row['Total Views'] ?? 0);
+            $y = $num($row['Y Sales'] ?? 0);
+            $l30 = $num($row['L30 Sales'] ?? 0);
+            $qty = $num($row['Qty'] ?? 0);
+            $ads = $num($row['Ads%'] ?? $row['TACOS'] ?? 0);
+            if (abs((float) ($sd['total_ad_spend'] ?? 0) - $spend) < 0.01
+                && abs((float) ($sd['y_sales'] ?? 0) - $y) < 0.01
                 && abs((float) ($sd['l30_sales'] ?? 0) - $l30) < 1
+                && abs((float) ($sd['total_views'] ?? 0) - $views) < 1
             ) {
-                break;
+                continue;
             }
-            $sd['y_sales'] = $y;
-            $sd['l30_sales'] = $l30;
+            if ($spend > 0.01) {
+                $sd['total_ad_spend'] = $spend;
+            }
+            if ($y > 0.01) {
+                $sd['y_sales'] = $y;
+            }
+            if ($l30 > 0) {
+                $sd['l30_sales'] = $l30;
+            }
+            if ($views > 0) {
+                $sd['total_views'] = $views;
+            }
+            if ($qty > 0) {
+                $sd['total_quantity'] = $qty;
+            }
+            $sd['tcos_percent'] = round($ads, 2);
+            $sd['calculated_at'] = now()->toDateTimeString();
+            unset($sd['seeded_from_snapshot']);
             $existing->summary_data = $sd;
+            $existing->notes = 'Auto-saved channel master snapshot';
             $existing->save();
-            break;
         }
+    }
+
+    /**
+     * Last graph point = Active Channel table cell (saved calculated row, or
+     * the live overlay the grid already shows).
+     *
+     * @param  list<array{date: string, value: float}>  $chartData
+     * @return list<array{date: string, value: float}>
+     */
+    private function pinChartSeriesLastToTable(
+        array $chartData,
+        string $channel,
+        string $metric,
+        mixed $badgeValue,
+        bool $isAll
+    ): array {
+        if ($chartData === [] || $isAll) {
+            return $chartData;
+        }
+        $tableRef = null;
+        if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
+            $tableRef = (float) $badgeValue;
+        } elseif ($channel === 'amazon' && $metric === 'y_sales') {
+            $tableRef = $this->realPacificDayYSales(
+                'amazon',
+                now('America/Los_Angeles')->subDay()->toDateString()
+            );
+        } elseif ($channel === 'amazon' && $metric === 'l30_sales') {
+            $end = now('America/Los_Angeles')->subDay();
+            $start = $end->copy()->subDays(AmazonSalesController::DAILY_SALES_WINDOW_DAYS - 1);
+            $tableRef = $this->sumCachedAmazonPacificSales($start->toDateString(), $end->toDateString());
+        } else {
+            $tableRef = $this->getSavedTableMetric($channel, $metric);
+        }
+        if ($tableRef === null) {
+            return $chartData;
+        }
+        $lastIdx = array_key_last($chartData);
+        if ($lastIdx === null) {
+            return $chartData;
+        }
+        $chartData[$lastIdx]['value'] = round((float) $tableRef, 2);
+
+        return $chartData;
+    }
+
+    private function getSavedTableMetric(string $channel, string $metric): ?float
+    {
+        $row = \App\Models\ChannelMasterCalculatedData::query()->get()->first(
+            fn ($r) => $this->allMarketplaceSnapshotKey((string) $r->channel) === $channel
+        );
+        if (! $row) {
+            return null;
+        }
+        $views = (float) ($row->total_views ?? 0);
+        $qty = (float) ($row->total_quantity ?? 0);
+        $listingCvr = $row->listing_cvr;
+        $cvr = ($listingCvr !== null && $listingCvr !== '')
+            ? (float) $listingCvr
+            : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
+
+        return match ($metric) {
+            'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
+            'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
+            'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
+            'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
+            'total_views' => $views > 0 ? $views : null,
+            'qty' => $qty > 0 ? $qty : null,
+            'l30_orders' => $row->l30_orders !== null ? (float) $row->l30_orders : null,
+            'cvr' => $cvr,
+            'gprofit' => $row->gprofit_pct !== null ? (float) $row->gprofit_pct : null,
+            'groi' => $row->g_roi !== null ? (float) $row->g_roi : null,
+            'ads_pct' => $row->ads_percentage !== null ? (float) $row->ads_percentage : null,
+            'npft' => $row->n_pft !== null ? (float) $row->n_pft : null,
+            'nroi' => $row->n_roi !== null ? (float) $row->n_roi : null,
+            'clicks' => $row->clicks !== null ? (float) $row->clicks : null,
+            'ad_sales' => $row->ad_sales !== null ? (float) $row->ad_sales : null,
+            'ad_sold' => $row->ad_sold !== null ? (float) $row->ad_sold : null,
+            'acos' => $row->acos !== null ? (float) $row->acos : null,
+            default => null,
+        };
     }
 
     /**

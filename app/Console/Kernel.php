@@ -754,7 +754,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-     
+      
         $ist($schedule->command('newegg:orders --days=60 --save')
             ->twiceDaily(9, 18)
             ->name('fetch-newegg-orders')

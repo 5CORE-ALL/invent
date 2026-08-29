@@ -7,35 +7,35 @@ use PHPUnit\Framework\TestCase;
 
 class ChannelMetricDotPairTest extends TestCase
 {
-    public function test_walks_back_past_duplicate_days(): void
+    public function test_adjacent_days_not_older_different_day(): void
     {
         $this->assertSame(
-            [8178.8, 8585.0],
-            ChannelMetricDotPair::lastTwoDistinct([8585.0, 8585.0, 8178.8, 8000.0], 0.01)
+            [8585.0, 8589.0],
+            ChannelMetricDotPair::lastTwoAdjacent([8589.0, 8585.0, 9294.47])
         );
     }
 
-    public function test_flat_history_stays_equal(): void
+    public function test_flat_last_step_stays_gray(): void
     {
         $this->assertSame(
-            [100.0, 100.0],
-            ChannelMetricDotPair::lastTwoDistinct([100.0, 100.0, 100.0], 0.01)
+            [8585.0, 8585.0],
+            ChannelMetricDotPair::lastTwoAdjacent([8585.0, 8585.0, 8178.8])
         );
     }
 
-    public function test_pins_live_latest_without_losing_baseline(): void
+    public function test_pins_saved_table_value_as_latest(): void
+    {
+        $this->assertSame(
+            [8585.0, 8585.0],
+            ChannelMetricDotPair::pinLatest(8585.0, 8589.0, 8585.0)
+        );
+    }
+
+    public function test_pins_live_when_it_is_the_new_latest(): void
     {
         $this->assertSame(
             [9179.5, 8585.0],
             ChannelMetricDotPair::pinLatest(9179.5, 9179.5, 8585.0)
-        );
-    }
-
-    public function test_cvr_epsilon_treats_6_42_as_flat(): void
-    {
-        $this->assertSame(
-            [6.39, 6.42],
-            ChannelMetricDotPair::lastTwoDistinct([6.42, 6.42, 6.39], 0.005)
         );
     }
 }
