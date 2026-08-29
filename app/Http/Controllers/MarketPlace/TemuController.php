@@ -3456,10 +3456,10 @@ class TemuController extends Controller
                 $tClicksGrowth = ($tClicks > 0 && $tClicksL7 > 0)
                     ? round(((($tClicksL7 / 7) / ($tClicks / 30)) - 1) * 100, 1)
                     : null;
-                // Temu 1: same Views as the column (o_clicks || product_clicks+ads).
-                // Temu 2: leave the existing sheet + ads Views denom unchanged.
+                // CVR denom = same Views as the column: o_clicks (sheet) else product_clicks.
+                // Temu 1 may add ads views when the sheet has no row; Temu 2 is sheet-only.
                 $cvrDenom = $isTemu2Pricing
-                    ? ((int) $productClicks + (int) $adsViews)
+                    ? ((int) $oClicks > 0 ? (int) $oClicks : (int) $productClicks)
                     : ((int) $oClicks > 0
                         ? (int) $oClicks
                         : ((int) $productClicks + (int) $adsViews));
@@ -3812,7 +3812,8 @@ class TemuController extends Controller
                         $row['spend'] = round($spendShare, 2);
                         $row['spend_l30'] = round($spendL30Share, 2);
                         $sold = (int) ($row['temu_l30'] ?? 0);
-                        $row['cvr_percent'] = $fullO > 0 ? round(($sold / $fullO) * 100, 2) : 0;
+                        $cvrViews = $fullSheetO > 0 ? $fullSheetO : $fullO;
+                        $row['cvr_percent'] = $cvrViews > 0 ? round(($sold / $cvrViews) * 100, 2) : 0;
                         $row['cvr_30'] = $row['cvr_percent'];
                         $processedData[$idx] = $row;
                     }
@@ -3927,8 +3928,9 @@ class TemuController extends Controller
                     $row['spend'] = round($parentSpend, 2);
                     $row['spend_l30'] = round($parentSpendL30, 2);
                     $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
-                    // Temu 2 parent CVR = Temu L30 / Views (Views includes Ads Views)
-                    $row['cvr_percent'] = $parentO > 0 ? round(($temuL30 / $parentO) * 100, 2) : 0;
+                    // Temu 2 parent CVR = Temu L30 / Views (o_clicks from temu2_view_data, once per goods_id)
+                    $cvrViews = $parentSheetO > 0 ? $parentSheetO : $parentO;
+                    $row['cvr_percent'] = $cvrViews > 0 ? round(($temuL30 / $cvrViews) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
 

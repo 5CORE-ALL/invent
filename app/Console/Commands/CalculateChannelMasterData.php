@@ -312,12 +312,12 @@ class CalculateChannelMasterData extends Command
     }
 
     /**
-     * Temu Views come from /temu1-data (temu_view_data). Do not carry a stale
-     * ChannelMasterViewsGuard number — that was why Active Channel disagreed.
+     * Temu / Temu 2 Views come from /temu1-data and /temu2-decrease sheet data.
+     * Do not carry a stale ChannelMasterViewsGuard number.
      */
     private function stabilizeChannelViews(string $channelKey, float $candidateViews, float $candidateQty): float
     {
-        if ($channelKey === 'temu') {
+        if ($channelKey === 'temu' || $channelKey === 'temu2') {
             return $candidateViews;
         }
 
