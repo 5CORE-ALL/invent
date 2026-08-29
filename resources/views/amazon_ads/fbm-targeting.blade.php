@@ -113,18 +113,21 @@
             },
             {
                 title: 'Targets',
-                field: 'targets',
-                minWidth: 360,
-                widthGrow: 5,
+                field: 'target_count',
+                hozAlign: 'center',
+                minWidth: 100,
+                width: 120,
                 headerSort: false,
                 formatter: function (cell) {
-                    const list = cell.getValue();
-                    if (!Array.isArray(list) || list.length === 0) {
-                        return '<span class="aft-empty">No targets yet</span>';
+                    const n = Number(cell.getValue() || 0);
+                    const list = (cell.getRow().getData() || {}).targets;
+                    const title = Array.isArray(list) && list.length
+                        ? escapeHtml(list.join(', '))
+                        : '';
+                    if (n < 1) {
+                        return '<span class="aft-empty">0</span>';
                     }
-                    return '<div class="aft-target-wrap">' + list.map(function (t) {
-                        return '<span class="aft-chip" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>';
-                    }).join('') + '</div>';
+                    return '<span class="aft-chip"' + (title ? ' title="' + title + '"' : '') + '>' + n.toLocaleString() + '</span>';
                 },
             },
         ],
