@@ -651,15 +651,11 @@ class OverallAmazonController extends Controller
             } else {
                 $row['has_custom_sprice'] = true; // Flag to indicate custom SPRICE
                 
-                // Calculate SGPFT using custom SPRICE if not already set (using 0.80 for Amazon)
-                if (empty($row['SGPFT'])) {
-                    $sprice = floatval($row['SPRICE']);
-                    $sgpft = round(
-                        $sprice > 0 ? (($sprice * 0.80 - $ship - $lp) / $sprice) * 100 : 0,
-                        2
-                    );
-                    $row['SGPFT'] = $sgpft;
-                }
+                // Always recompute margins from the stored SPRICE (discounted or LMP-capped).
+                $sprice = floatval($row['SPRICE']);
+                $row['SGPFT'] = $sprice > 0
+                    ? round((($sprice * 0.80 - $ship - $lp) / $sprice) * 100, 2)
+                    : 0;
             }
 
             // SPFT = SGPFT − Ads% (always recompute from current SGPFT + channel Ads%)
@@ -675,6 +671,8 @@ class OverallAmazonController extends Controller
             if ($spriceForRoi > 0 && $lp > 0) {
                 $grossPft = ($spriceForRoi * 0.80) - $ship - $lp;
                 $row['SGROI'] = round(($grossPft / $lp) * 100, 2);
+                $row['SGPFT'] = round(($grossPft / $spriceForRoi) * 100, 2);
+                $row['Spft%'] = round($row['SGPFT'] - $amazonAdsPercent, 2);
                 $adSpend = $spriceForRoi * ($amazonAdsPercent / 100);
                 $row['SROI'] = round((($grossPft - $adSpend) / $lp) * 100, 2);
             }

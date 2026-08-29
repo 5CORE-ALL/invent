@@ -1369,6 +1369,27 @@
             return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
 
+        /**
+         * S GPFT — same profit $ as SGROI, divided by S PRC (not stored SGPFT):
+         *   ((SPRICE × 0.80 − ship − lp) / SPRICE) × 100
+         */
+        function amazonComputeSgpft(rowData) {
+            if (!rowData) return null;
+            const sprice = amazonRowSprice(rowData);
+            if (!isFinite(sprice) || sprice <= 0) return null;
+            const lp = parseFloat(rowData.LP_productmaster);
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const cost = (isFinite(lp) && lp > 0 ? lp : 0);
+            return ((sprice * 0.80 - ship - cost) / sprice) * 100;
+        }
+
+        /** SNPFT = live S GPFT − Ads% */
+        function amazonComputeSpft(rowData) {
+            const sgpft = amazonComputeSgpft(rowData);
+            if (sgpft == null || !isFinite(sgpft)) return null;
+            return sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+        }
+
         function amazonModalFmtL30(v) {
             const n = parseFloat(v);
             if (isNaN(n)) return '—';
@@ -1553,14 +1574,8 @@
         }
         /** S PFT % — NPFT schema via MetricPctColors */
         function amazonModalSpftColoredHtml(row) {
-            // SPFT = SGPFT − Ads% (channel TACOS)
-            const rawGpft = row.SGPFT;
-            if (rawGpft === null || rawGpft === undefined || rawGpft === '') {
-                return '<span class="text-muted">—</span>';
-            }
-            const sgpft = parseFloat(rawGpft);
-            if (isNaN(sgpft)) return '<span class="text-muted">—</span>';
-            const percent = sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
+            const percent = amazonComputeSpft(row);
+            if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
             if (window.MetricPctColors) {
                 return MetricPctColors.htmlFor('npft', percent, { decimals: 0 });
             }
@@ -3167,10 +3182,15 @@
                 return +(roundedDollar - 0.51).toFixed(2);
             }
 
-            /** Same as eBay: persist SPRICE = 0, then insert the rule price. */
+            /** Wipe SPRICE = 0, then insert the discounted or LMP-capped price. */
             function amazonPersistClearThenSave(sku, fill, row) {
+                let toSave = parseFloat(fill);
+                if (!(toSave > 0)) toSave = 0;
+                else if (row && typeof row.getData === 'function') {
+                    toSave = amazonCapSpriceToLmp(row.getData(), toSave);
+                }
                 if (row && typeof row.update === 'function') {
-                    row.update({ SPRICE: 0, has_custom_sprice: false });
+                    row.update({ SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0, SROI: 0, 'Spft%': 0 });
                     try { row.reformat(); } catch (e) { /* ignore */ }
                 }
                 const token = $('meta[name="csrf-token"]').attr('content');
@@ -3186,8 +3206,12 @@
                         url: '/save-amazon-sprice',
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': token },
-                        data: { sku: sku, sprice: fill, _token: token }
+                        data: { sku: sku, sprice: toSave, _token: token }
                     }).done(function(res) {
+                        if (row && typeof row.update === 'function') {
+                            const saved = (res && res.data != null && res.data !== '') ? res.data : toSave;
+                            row.update({ _amz_persisted_sprice: saved });
+                        }
                         deferred.resolve(res);
                     }).fail(function(xhr) {
                         deferred.reject(xhr);
@@ -3780,12 +3804,12 @@
                 const tabRow = table.getRows().find(function(r) {
                     return (r.getData()['(Child) sku'] || '') === sku;
                 });
-                amazonPersistClearThenSave(sku, num, tabRow || null)
+                amazonPersistClearThenSave(sku, amazonCapSpriceToLmp(rowData, num), tabRow || null)
                     .done(function(response) {
                         showToast('success', 'SPRICE updated successfully');
                         if (tabRow) {
                             const u = {
-                                SPRICE: num,
+                                SPRICE: response.data || amazonCapSpriceToLmp(rowData, num),
                                 has_custom_sprice: true
                             };
                             if (response.sgpft_percent !== undefined) {
@@ -4812,12 +4836,17 @@
                         title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
+                        headerTooltip: "Live from S PRC: ((S PRC × 0.80 − ship − LP) / S PRC) × 100. Same profit $ as SGROI.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aVal = amazonComputeSgpft(aRow.getData());
+                            const bVal = amazonComputeSgpft(bRow.getData());
+                            return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                                 - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                        },
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
+                            const percent = amazonComputeSgpft(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
@@ -4847,24 +4876,17 @@
                         title: "SNPFT",
                         field: "Spft%",
                         hozAlign: "center",
+                        headerTooltip: "SNPFT = live S GPFT − Ads%. Same S PRC as SGROI / S GPFT.",
                         sorter: function(a, b, aRow, bRow) {
-                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
-                            const aVal = parseFloat(aRow.getData().SGPFT);
-                            const bVal = parseFloat(bRow.getData().SGPFT);
-                            const aSpft = isNaN(aVal) ? 0 : (aVal - ads);
-                            const bSpft = isNaN(bVal) ? 0 : (bVal - ads);
-                            return aSpft - bSpft;
+                            const aVal = amazonComputeSpft(aRow.getData());
+                            const bVal = amazonComputeSpft(bRow.getData());
+                            return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                                 - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
                         },
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            // SPFT = SGPFT − Ads% (net of channel ad spend)
-                            const rawGpft = rowData.SGPFT;
-                            if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
-                            const sgpft = parseFloat(rawGpft);
-                            if (isNaN(sgpft)) return '';
-                            const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
-                            const percent = sgpft - ads;
-                            
+                            const percent = amazonComputeSpft(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
