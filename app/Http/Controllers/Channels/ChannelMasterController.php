@@ -7398,38 +7398,107 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Faire: Pacific yesterday from Shopify Faire orders, or faire_order_metrics
-     * when the API has a day Shopify has not imported yet.
+     * Faire Y Sales: Pacific yesterday from Shopify Faire orders or faire_order_metrics.
+     * Faire orders are wholesale and the Shopify/API sync often lags 1–2 days — if
+     * calendar yesterday is $0, use the latest Faire sales day before today so
+     * Active Channel does not show NYS while /faire-tabulator still has sales.
      */
     private function computeFaireYSalesLikeAmazon(): ?float
     {
-        [$yStartPacific, $yEndPacific] = $this->pacificYesterdayBounds();
+        [$yStartPacific, $yEndPacific, $yDate] = $this->pacificYesterdayBounds();
 
-        $fromShopify = 0.0;
-        if (Schema::hasTable('shopify_raw_orders')) {
-            $fromShopify = (float) DB::table('shopify_raw_orders')
-                ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
-                ->where('order_date', '>=', $yStartPacific)
-                ->where('order_date', '<=', $yEndPacific)
-                ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
-                ->value('revenue');
+        $y = max(
+            $this->sumFaireShopifySalesBetween($yStartPacific, $yEndPacific),
+            $this->sumFaireApiSalesBetween($yStartPacific, $yEndPacific)
+        );
+        if ($y > 0) {
+            return round($y, 2);
         }
 
-        $fromApi = 0.0;
+        $latestDate = $this->latestFaireSalesDateBeforeToday();
+        if ($latestDate === null || $latestDate === $yDate) {
+            return 0.0;
+        }
+
+        $start = Carbon::parse($latestDate, 'America/Los_Angeles')->startOfDay();
+        $end = Carbon::parse($latestDate, 'America/Los_Angeles')->endOfDay();
+
+        return round(max(
+            $this->sumFaireShopifySalesBetween($start, $end),
+            $this->sumFaireApiSalesBetween($start, $end)
+        ), 2);
+    }
+
+    private function sumFaireShopifySalesBetween(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return 0.0;
+        }
+
+        return (float) DB::table('shopify_raw_orders')
+            ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->where('quantity', '>', 0)
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
+    }
+
+    private function sumFaireApiSalesBetween(Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('faire_order_metrics')) {
+            return 0.0;
+        }
+
+        return (float) DB::table('faire_order_metrics')
+            ->where('order_date', '>=', $start)
+            ->where('order_date', '<=', $end)
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
+            })
+            ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
+            ->value('revenue');
+    }
+
+    private function latestFaireSalesDateBeforeToday(): ?string
+    {
+        $today = Carbon::now('America/Los_Angeles')->toDateString();
+        $dates = [];
+
+        if (Schema::hasTable('shopify_raw_orders')) {
+            $d = DB::table('shopify_raw_orders')
+                ->where(fn ($q) => FaireController::applyFaireShopifyOrderFilter($q))
+                ->where('quantity', '>', 0)
+                ->whereRaw('(COALESCE(price, 0) * COALESCE(quantity, 0)) > 0')
+                ->whereRaw('DATE(order_date) < ?', [$today])
+                ->max(DB::raw('DATE(order_date)'));
+            if (is_string($d) && $d !== '') {
+                $dates[] = $d;
+            }
+        }
+
         if (Schema::hasTable('faire_order_metrics')) {
-            $fromApi = (float) DB::table('faire_order_metrics')
-                ->where('order_date', '>=', $yStartPacific)
-                ->where('order_date', '<=', $yEndPacific)
+            $d = DB::table('faire_order_metrics')
+                ->where('amount', '>', 0)
                 ->where(function ($q) {
                     $q->whereNull('status')
                         ->orWhereRaw('UPPER(status) NOT IN (?, ?)', ['CANCELLED', 'CANCELED']);
                 })
-                ->selectRaw('COALESCE(SUM(amount), 0) as revenue')
-                ->value('revenue');
+                ->whereRaw('DATE(order_date) < ?', [$today])
+                ->max(DB::raw('DATE(order_date)'));
+            if (is_string($d) && $d !== '') {
+                $dates[] = $d;
+            }
         }
 
-        return round(max($fromShopify, $fromApi), 2);
+        if ($dates === []) {
+            return null;
+        }
+
+        rsort($dates);
+
+        return $dates[0];
     }
 
     /**
