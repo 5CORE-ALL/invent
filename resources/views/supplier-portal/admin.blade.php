@@ -51,12 +51,13 @@
                         <input class="form-control" name="footer_tagline" value="{{ old('footer_tagline', $settings->footer_tagline) }}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Hero image</label>
+                        <label class="form-label">Full-width banner image</label>
                         <input class="form-control" type="file" name="hero_image" accept="image/*">
+                        <div class="form-text">Wide image (about 1920×500 or larger). Welcome text sits on top of it.</div>
                         @if($settings->hero_image_path)
                             <div class="mt-2 d-flex align-items-center gap-3">
                                 <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($settings->hero_image_path) }}" alt="" style="height:64px;border-radius:6px;object-fit:cover;">
-                                <button form="spHeroDelete" class="btn btn-sm btn-outline-danger">Remove hero image</button>
+                                <button form="spHeroDelete" class="btn btn-sm btn-outline-danger">Remove banner</button>
                             </div>
                         @endif
                     </div>
