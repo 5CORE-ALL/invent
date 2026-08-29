@@ -16,11 +16,16 @@
     .amz-fbm-targeting .tabulator-row { min-height: 36px; }
     .amz-fbm-targeting .tabulator-row:hover { background-color: #f8fafc !important; }
     .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
-    .amz-fbm-targeting .aft-target-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+    .amz-fbm-targeting .aft-target-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
     .amz-fbm-targeting .aft-chip {
         display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 999px;
         background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; font-size: 12px;
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .amz-fbm-targeting .aft-count-badge {
+        display: inline-block; padding: 2px 8px; border-radius: 999px;
+        background: #1d4ed8; border: 1px solid #1e40af; color: #fff;
+        font-size: 12px; font-weight: 700; flex-shrink: 0;
     }
     .amz-fbm-targeting .aft-empty { color: #94a3b8; font-size: 12px; }
 </style>
@@ -113,21 +118,20 @@
             },
             {
                 title: 'Targets',
-                field: 'target_count',
-                hozAlign: 'center',
-                minWidth: 100,
-                width: 120,
+                field: 'targets',
+                minWidth: 360,
+                widthGrow: 5,
                 headerSort: false,
                 formatter: function (cell) {
-                    const n = Number(cell.getValue() || 0);
-                    const list = (cell.getRow().getData() || {}).targets;
-                    const title = Array.isArray(list) && list.length
-                        ? escapeHtml(list.join(', '))
-                        : '';
-                    if (n < 1) {
-                        return '<span class="aft-empty">0</span>';
+                    const list = cell.getValue();
+                    const n = Number((cell.getRow().getData() || {}).target_count || (Array.isArray(list) ? list.length : 0));
+                    const countHtml = '<span class="aft-count-badge">' + n.toLocaleString() + '</span>';
+                    if (!Array.isArray(list) || list.length === 0) {
+                        return '<div class="aft-target-wrap">' + countHtml + '<span class="aft-empty">No targets yet</span></div>';
                     }
-                    return '<span class="aft-chip"' + (title ? ' title="' + title + '"' : '') + '>' + n.toLocaleString() + '</span>';
+                    return '<div class="aft-target-wrap">' + countHtml + list.map(function (t) {
+                        return '<span class="aft-chip" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>';
+                    }).join('') + '</div>';
                 },
             },
         ],
