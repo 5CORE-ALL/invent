@@ -242,6 +242,7 @@ class TemuOrderPushService
             if ($localLinked) {
                 $this->linkTemuParentToShopify($parent, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedOrder($order);
 
                 return (string) $localLinked;
             }
@@ -279,6 +280,7 @@ class TemuOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedOrder($order);
 
             return (string) $existing['id'];
         }
@@ -321,6 +323,7 @@ class TemuOrderPushService
             ]);
 
         if ($this->lastDuplicateLinkMessage === null) {
+            $this->fulfillShopifyForImportedOrder($order->fresh() ?? $order);
             $this->syncInventoryAfterPush($order);
         }
 
@@ -738,44 +741,38 @@ class TemuOrderPushService
         }
     }
 
-    protected function addFulfillmentTracking(string $shopifyOrderId, string $trackingNumber, string $carrier): void
+    protected function fulfillShopifyForImportedOrder(TemuOrder $order): void
     {
-        $config = $this->shopifyConfig();
-        $storeUrl = $config['store_url'];
-        $token = $config['token'];
+        $id = (int) $order->id;
+        if ($id < 1) {
+            return;
+        }
 
         try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}/fulfillment_orders.json");
-
-            if (! $response->successful()) {
-                return;
+            $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('temu', $id);
+            if (empty($result['success']) && empty($result['skipped'])) {
+                Log::warning('TemuOrderPushService: Shopify fulfillment after import failed', [
+                    'parent_order_sn' => $order->parent_order_sn,
+                    'result' => $result,
+                ]);
             }
-
-            $lineItems = [];
-            foreach ($response->json('fulfillment_orders') ?? [] as $fo) {
-                if (! empty($fo['id'])) {
-                    $lineItems[] = ['fulfillment_order_id' => $fo['id']];
-                }
-            }
-            if ($lineItems === []) {
-                return;
-            }
-
-            Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->post("https://{$storeUrl}/admin/api/2024-01/fulfillments.json", [
-                'fulfillment' => [
-                    'line_items_by_fulfillment_order' => $lineItems,
-                    'tracking_info' => [
-                        'number' => $trackingNumber,
-                        'company' => mb_substr($carrier, 0, 100),
-                    ],
-                    'notify_customer' => false,
-                ],
+        } catch (\Throwable $e) {
+            Log::warning('TemuOrderPushService: Shopify fulfillment after import exception', [
+                'parent_order_sn' => $order->parent_order_sn,
+                'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    protected function addFulfillmentTracking(string $shopifyOrderId, string $trackingNumber, string $carrier): void
+    {
+        try {
+            app(VeeqoShopifyFulfillmentService::class)->fulfillShopifyFromLabels(
+                $shopifyOrderId,
+                $this->shopifyConfig(),
+                [],
+                ['tracking' => $trackingNumber, 'carrier' => $carrier !== '' ? $carrier : 'Temu']
+            );
         } catch (\Throwable $e) {
             Log::warning('TemuOrderPushService: fulfillment tracking failed', [
                 'shopify_order_id' => $shopifyOrderId,

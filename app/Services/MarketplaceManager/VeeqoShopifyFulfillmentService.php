@@ -40,6 +40,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class VeeqoShopifyFulfillmentService
 {
+    private const SHOPIFY_API_VERSION = '2025-01';
+
     public function __construct(
         protected VeeqoApiService $veeqo,
         protected GofoExpressService $gofo,
@@ -113,6 +115,11 @@ class VeeqoShopifyFulfillmentService
                 'message' => 'Order is not linked to a Shopify order yet. Import/push to Shopify first.',
             ];
         }
+
+        $refs = array_values(array_unique(array_filter(array_merge(
+            $refs,
+            $this->shopifyDisplayNameRefs($shopifyConfig, $shopifyOrderId)
+        ))));
 
         $existing = $this->existingShopifyTracking($shopifyConfig, $shopifyOrderId);
         if ($existing !== null) {
@@ -313,6 +320,12 @@ class VeeqoShopifyFulfillmentService
             if (! in_array($ref, $out, true)) {
                 $out[] = $ref;
             }
+            if (preg_match('/^PO-(.+)$/i', $ref, $m)) {
+                $tail = trim((string) ($m[1] ?? ''));
+                if ($tail !== '' && ! in_array($tail, $out, true)) {
+                    $out[] = $tail;
+                }
+            }
             if (count($out) >= $max) {
                 break;
             }
@@ -435,12 +448,13 @@ class VeeqoShopifyFulfillmentService
                     continue;
                 }
                 $checked++;
-                $cacheKey = 'mm_fetch_tracking_shopify:'.$shopifyId;
+                $cacheKey = 'mm_fetch_tracking_shopify_v2:'.$shopifyId;
                 if (Cache::has($cacheKey)) {
                     $skipped++;
                     continue;
                 }
-                $result = $this->fulfillShopifyFromLabels($shopifyId, $config, $refs);
+                $local = $this->localTrackingFromShopifyOrder($order);
+                $result = $this->fulfillShopifyFromLabels($shopifyId, $config, $refs, $local);
                 $action = (string) ($result['action'] ?? '');
                 if (! empty($result['success']) && $action === 'shopify_fulfilled') {
                     $fulfilled++;
@@ -449,15 +463,18 @@ class VeeqoShopifyFulfillmentService
                     if ($amazonId !== '') {
                         $this->linkAmazonOrderToShopify($amazonId, $shopifyId);
                     }
-                } elseif (! empty($result['skipped']) || $action === 'already_on_shopify') {
+                } elseif ($action === 'already_on_shopify') {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addDays(7));
-                } elseif ($action === 'tracking_not_found') {
+                } elseif (in_array($action, ['tracking_not_found', 'not_linked'], true)) {
                     $skipped++;
-                    Cache::put($cacheKey, 1, now()->addMinutes(20));
+                    Cache::put($cacheKey, 1, now()->addMinutes(8));
+                } elseif (! empty($result['skipped'])) {
+                    $skipped++;
+                    Cache::put($cacheKey, 1, now()->addHours(2));
                 } else {
                     $failed++;
-                    Cache::put($cacheKey, 1, now()->addMinutes(15));
+                    Cache::put($cacheKey, 1, now()->addMinutes(2));
                 }
                 usleep(120000);
             }
@@ -567,7 +584,7 @@ class VeeqoShopifyFulfillmentService
             $gql = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
-            ])->timeout(30)->post("https://{$storeUrl}/admin/api/2024-01/graphql.json", [
+            ])->timeout(30)->post("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/graphql.json", [
                 'query' => 'query ($q: String!) { orders(first: 8, query: $q) { edges { node { id name tags displayFulfillmentStatus } } } }',
                 'variables' => [
                     'q' => 'tag:amazon-'.$amazonOrderId,
@@ -593,7 +610,7 @@ class VeeqoShopifyFulfillmentService
             try {
                 $res = Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
-                ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders.json", [
+                ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders.json", [
                     'status' => 'any',
                     'name' => ltrim($shopifyOrderName, '#'),
                     'limit' => 5,
@@ -639,10 +656,10 @@ class VeeqoShopifyFulfillmentService
      */
     protected function marketplaceRefsFromShopifyOrder(array $order): array
     {
-        $tags = strtolower((string) ($order['tags'] ?? ''));
+        $tagsRaw = (string) ($order['tags'] ?? '');
         $note = (string) ($order['note'] ?? '');
-        $hay = $tags.' '.$note;
-        if (trim($hay) === '') {
+        $hay = strtolower($tagsRaw.' '.$note);
+        if (trim($hay) === '' && empty($order['note_attributes']) && trim((string) ($order['name'] ?? '')) === '') {
             return [];
         }
 
@@ -660,6 +677,29 @@ class VeeqoShopifyFulfillmentService
             $id = trim((string) ($m[1] ?? ''));
             if ($id !== '') {
                 $refs[] = $id;
+                $refs[] = $slug.'-'.$id;
+            }
+        }
+
+        if (preg_match_all('/PO-\d[\w-]{6,}/i', $tagsRaw.' '.$note, $poMatches)) {
+            $matched = true;
+            foreach ($poMatches[0] as $po) {
+                $refs[] = $po;
+            }
+        }
+
+        foreach ($order['note_attributes'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower((string) ($attr['name'] ?? ''));
+            $val = trim((string) ($attr['value'] ?? ''));
+            if ($val === '' || strlen($val) < 6) {
+                continue;
+            }
+            if (str_contains($name, 'order') || str_contains($name, 'po_') || $name === 'po' || str_contains($name, 'track')) {
+                $matched = true;
+                $refs[] = $val;
             }
         }
 
@@ -898,6 +938,9 @@ class VeeqoShopifyFulfillmentService
             }
             if ($plain !== '' && ! str_starts_with(strtolower($plain), 'amz')) {
                 $variants[] = 'Amz'.$plain;
+            }
+            if (preg_match('/^PO-(.+)$/i', $plain, $m)) {
+                $variants[] = trim((string) $m[1]);
             }
             foreach ($variants as $candidate) {
                 $candidate = trim($candidate);
@@ -1209,64 +1252,47 @@ class VeeqoShopifyFulfillmentService
                 }
             }
 
-            $foRes = $this->shopifyApi(
-                    $storeUrl,
-                    $token,
-                    'GET',
-                    "orders/{$shopifyOrderId}/fulfillment_orders.json"
-                );
-
-            if (! $foRes->successful()) {
-                return ['success' => false, 'message' => 'Could not load Shopify fulfillment orders (HTTP '.$foRes->status().').'];
+            $prepared = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, false);
+            if (($prepared['error'] ?? null) !== null) {
+                return ['success' => false, 'message' => (string) $prepared['error']];
             }
-
-            $lineItems = [];
-            foreach ($foRes->json('fulfillment_orders') ?? [] as $fo) {
-                if (! is_array($fo) || empty($fo['id'])) {
-                    continue;
-                }
-                $status = strtolower((string) ($fo['status'] ?? ''));
-                if ($status === 'on_hold' && $this->releaseShopifyFulfillmentHold($storeUrl, $token, (int) $fo['id'])) {
-                    $status = 'open';
-                }
-                if (! in_array($status, ['open', 'in_progress', 'scheduled'], true)) {
-                    continue;
-                }
-                $lineItems[] = ['fulfillment_order_id' => (int) $fo['id']];
-            }
-
+            $lineItems = $prepared['line_items'] ?? [];
             if ($lineItems === []) {
                 return [
                     'success' => false,
-                    'message' => 'Shopify has no open fulfillment orders to fulfill (already fulfilled or on hold).',
+                    'message' => 'Shopify has no open fulfillment orders to fulfill (already fulfilled, on hold, or assigned to a service).',
                 ];
             }
 
-            $post = $this->shopifyApi(
-                    $storeUrl,
-                    $token,
-                    'POST',
-                    'fulfillments.json',
-                    [
-                        'fulfillment' => [
-                            'line_items_by_fulfillment_order' => $lineItems,
-                            'tracking_info' => [
-                                'number' => $tracking,
-                                'company' => mb_substr($carrier, 0, 100),
-                            ],
-                            'notify_customer' => false,
-                        ],
-                    ]
-                );
+            $payload = [
+                'fulfillment' => [
+                    'line_items_by_fulfillment_order' => $lineItems,
+                    'tracking_info' => [
+                        'number' => $tracking,
+                        'company' => mb_substr($carrier, 0, 100),
+                    ],
+                    'notify_customer' => false,
+                ],
+            ];
+
+            $post = $this->shopifyApi($storeUrl, $token, 'POST', 'fulfillments.json', $payload);
+            if (! $post->successful() && $post->status() === 422 && $this->shopifyFulfillmentNeedsLocationRetry((string) $post->body())) {
+                $retried = $this->prepareShopifyFulfillmentOrders($storeUrl, $token, $shopifyOrderId, true);
+                if (($retried['line_items'] ?? []) !== []) {
+                    $payload['fulfillment']['line_items_by_fulfillment_order'] = $retried['line_items'];
+                    $post = $this->shopifyApi($storeUrl, $token, 'POST', 'fulfillments.json', $payload);
+                }
+            }
 
             if (! $post->successful()) {
+                $snippet = $this->shopifyErrorSnippet($post);
                 Log::warning('VeeqoShopifyFulfillmentService: Shopify fulfill failed', [
                     'shopify_order_id' => $shopifyOrderId,
                     'status' => $post->status(),
-                    'body' => mb_substr($post->body(), 0, 400),
+                    'body' => mb_substr((string) $post->body(), 0, 400),
                 ]);
 
-                return ['success' => false, 'message' => 'Shopify fulfill failed (HTTP '.$post->status().').'];
+                return ['success' => false, 'message' => 'Shopify fulfill failed (HTTP '.$post->status().'): '.$snippet];
             }
 
             return ['success' => true, 'message' => 'Shopify fulfilled.'];
@@ -1312,6 +1338,292 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Release holds, move FOs that cannot be fulfilled in place, and collect FO line items.
+     *
+     * @return array{line_items: list<array<string, mixed>>, error: string|null}
+     */
+    protected function prepareShopifyFulfillmentOrders(string $storeUrl, string $token, string $shopifyOrderId, bool $forceMove = false): array
+    {
+        $foRes = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}/fulfillment_orders.json");
+        if (! $foRes->successful()) {
+            return ['line_items' => [], 'error' => 'Could not load Shopify fulfillment orders (HTTP '.$foRes->status().').'];
+        }
+
+        $orders = $foRes->json('fulfillment_orders') ?? [];
+        if (! is_array($orders)) {
+            $orders = [];
+        }
+
+        $released = false;
+        foreach ($orders as $fo) {
+            if (! is_array($fo) || empty($fo['id'])) {
+                continue;
+            }
+            $status = strtolower((string) ($fo['status'] ?? ''));
+            $actions = $this->shopifyFulfillmentActions($fo);
+            if ($status === 'on_hold' || in_array('release_hold', $actions, true)) {
+                if ($this->releaseShopifyFulfillmentHold($storeUrl, $token, (int) $fo['id'])) {
+                    $released = true;
+                }
+            }
+        }
+        if ($released) {
+            $foRes = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}/fulfillment_orders.json");
+            if ($foRes->successful() && is_array($foRes->json('fulfillment_orders'))) {
+                $orders = $foRes->json('fulfillment_orders');
+            }
+        }
+
+        $locationId = null;
+        $lineItems = [];
+        foreach ($orders as $fo) {
+            if (! is_array($fo) || empty($fo['id'])) {
+                continue;
+            }
+            $status = strtolower((string) ($fo['status'] ?? ''));
+            if (! in_array($status, ['open', 'in_progress', 'scheduled', 'incomplete'], true)) {
+                continue;
+            }
+            $actions = $this->shopifyFulfillmentActions($fo);
+            $canCreate = $actions === [] || in_array('create_fulfillment', $actions, true);
+            $canMove = in_array('move', $actions, true);
+            $foId = (int) $fo['id'];
+
+            if ($forceMove || (! $canCreate && $canMove)) {
+                if ($locationId === null) {
+                    $locationId = $this->shopifyMerchantLocationId($storeUrl, $token, $fo);
+                }
+                if ($locationId) {
+                    $moved = $this->moveShopifyFulfillmentOrder($storeUrl, $token, $foId, $locationId);
+                    if (is_array($moved) && ! empty($moved['id'])) {
+                        $fo = $moved;
+                        $foId = (int) $fo['id'];
+                        $actions = $this->shopifyFulfillmentActions($fo);
+                        $canCreate = $actions === [] || in_array('create_fulfillment', $actions, true);
+                    }
+                }
+            }
+
+            if (! $canCreate && $actions !== []) {
+                continue;
+            }
+
+            $rawLines = $fo['line_items'] ?? null;
+            $items = is_array($rawLines) ? $this->shopifyFulfillmentOrderLineItems($fo) : [];
+            if (is_array($rawLines) && $rawLines !== [] && $items === []) {
+                continue;
+            }
+
+            $entry = ['fulfillment_order_id' => $foId];
+            if ($items !== []) {
+                $entry['fulfillment_order_line_items'] = $items;
+            }
+            $lineItems[] = $entry;
+        }
+
+        return ['line_items' => $lineItems, 'error' => null];
+    }
+
+    /**
+     * @param  array<string, mixed>  $fo
+     * @return list<string>
+     */
+    protected function shopifyFulfillmentActions(array $fo): array
+    {
+        $out = [];
+        foreach ((array) ($fo['supported_actions'] ?? []) as $action) {
+            $action = strtolower(trim((string) $action));
+            if ($action !== '' && ! in_array($action, $out, true)) {
+                $out[] = $action;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fo
+     * @return list<array{id: int, quantity: int}>
+     */
+    protected function shopifyFulfillmentOrderLineItems(array $fo): array
+    {
+        $items = [];
+        foreach ($fo['line_items'] ?? [] as $li) {
+            if (! is_array($li) || empty($li['id'])) {
+                continue;
+            }
+            $qty = (int) ($li['fulfillable_quantity'] ?? 0);
+            if ($qty < 1) {
+                $qty = (int) ($li['quantity'] ?? 0) - (int) ($li['fulfilled_quantity'] ?? 0);
+            }
+            if ($qty < 1) {
+                continue;
+            }
+            $items[] = ['id' => (int) $li['id'], 'quantity' => $qty];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fo
+     */
+    protected function shopifyMerchantLocationId(string $storeUrl, string $token, array $fo): ?int
+    {
+        $assigned = (int) ($fo['assigned_location_id'] ?? 0);
+        try {
+            $res = $this->shopifyApi($storeUrl, $token, 'GET', 'locations.json');
+        } catch (\Throwable $e) {
+            return $assigned > 0 ? $assigned : null;
+        }
+        if (! $res->successful()) {
+            return $assigned > 0 ? $assigned : null;
+        }
+
+        $preferred = null;
+        foreach ($res->json('locations') ?? [] as $loc) {
+            if (! is_array($loc) || empty($loc['id']) || empty($loc['active'])) {
+                continue;
+            }
+            $id = (int) $loc['id'];
+            $name = strtolower((string) ($loc['name'] ?? ''));
+            if (str_contains($name, 'fulfillment service')) {
+                continue;
+            }
+            if ($preferred === null) {
+                $preferred = $id;
+            }
+            if ($assigned > 0 && $id !== $assigned) {
+                return $id;
+            }
+        }
+
+        return $preferred ?: ($assigned > 0 ? $assigned : null);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function moveShopifyFulfillmentOrder(string $storeUrl, string $token, int $fulfillmentOrderId, int $locationId): ?array
+    {
+        if ($fulfillmentOrderId < 1 || $locationId < 1) {
+            return null;
+        }
+
+        try {
+            $res = $this->shopifyApi(
+                $storeUrl,
+                $token,
+                'POST',
+                "fulfillment_orders/{$fulfillmentOrderId}/move.json",
+                ['fulfillment_order' => ['new_location_id' => $locationId]]
+            );
+            if ($res->successful()) {
+                $moved = $res->json('moved_fulfillment_order');
+
+                return is_array($moved) && ! empty($moved['id']) ? $moved : null;
+            }
+            Log::info('VeeqoShopifyFulfillmentService: fulfillment order move failed', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'location_id' => $locationId,
+                'status' => $res->status(),
+                'body' => mb_substr((string) $res->body(), 0, 200),
+            ]);
+        } catch (\Throwable $e) {
+            Log::info('VeeqoShopifyFulfillmentService: fulfillment order move exception', [
+                'fulfillment_order_id' => $fulfillmentOrderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    protected function shopifyFulfillmentNeedsLocationRetry(string $body): bool
+    {
+        $body = strtolower($body);
+
+        return str_contains($body, 'location')
+            || str_contains($body, 'create_fulfillment')
+            || str_contains($body, 'assigned')
+            || str_contains($body, 'fulfillment order')
+            || str_contains($body, 'on hold')
+            || str_contains($body, 'on_hold');
+    }
+
+    protected function shopifyErrorSnippet($response): string
+    {
+        $json = method_exists($response, 'json') ? $response->json() : null;
+        if (is_array($json)) {
+            $errors = $json['errors'] ?? $json['error'] ?? null;
+            if (is_string($errors) && trim($errors) !== '') {
+                return mb_substr(trim($errors), 0, 180);
+            }
+            if (is_array($errors) && $errors !== []) {
+                $encoded = json_encode($errors);
+
+                return mb_substr(is_string($encoded) ? $encoded : 'Shopify error', 0, 180);
+            }
+        }
+
+        return mb_substr(trim((string) (method_exists($response, 'body') ? $response->body() : '')), 0, 180);
+    }
+
+    /**
+     * @param  array{store_url?: string, token?: string}  $config
+     * @return list<string>
+     */
+    protected function shopifyDisplayNameRefs(array $config, string $shopifyOrderId): array
+    {
+        $fromDb = $this->shopifyOrderNumberRefs($shopifyOrderId);
+        if ($fromDb !== []) {
+            return $fromDb;
+        }
+
+        $storeUrl = trim((string) ($config['store_url'] ?? ''));
+        $token = trim((string) ($config['token'] ?? ''));
+        if ($storeUrl === '' || $token === '') {
+            return [];
+        }
+
+        try {
+            $res = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}.json", ['fields' => 'id,name']);
+            $name = ltrim((string) ($res->json('order.name') ?? ''), '#');
+
+            return $name !== '' ? [$name] : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return array{tracking: string, carrier: string}|null
+     */
+    protected function localTrackingFromShopifyOrder(array $order): ?array
+    {
+        foreach ($order['note_attributes'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower((string) ($attr['name'] ?? ''));
+            $val = trim((string) ($attr['value'] ?? ''));
+            if ($val === '' || strlen($val) < 8 || ! str_contains($name, 'track')) {
+                continue;
+            }
+
+            return ['tracking' => $val, 'carrier' => 'Other'];
+        }
+
+        $note = (string) ($order['note'] ?? '');
+        if (preg_match('/Tracking:\s*([A-Za-z0-9]{8,})/', $note, $m)) {
+            return ['tracking' => $m[1], 'carrier' => 'Other'];
+        }
+
+        return null;
+    }
+
+    /**
      * @return array{store_url: string, token: string, store_key: string}
      */
     protected function shopifyConfigFor(string $marketplace): array
@@ -1329,7 +1641,7 @@ class VeeqoShopifyFulfillmentService
      */
     protected function shopifyApi(string $storeUrl, string $token, string $method, string $path, array $payload = [])
     {
-        $url = "https://{$storeUrl}/admin/api/2024-01/{$path}";
+        $url = "https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/{$path}";
         $last = null;
         for ($attempt = 1; $attempt <= 4; $attempt++) {
             try {
@@ -1457,7 +1769,7 @@ class VeeqoShopifyFulfillmentService
         try {
             $response = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
+            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
                 'fields' => 'id,fulfillments,fulfillment_status',
             ]);
             if (! $response->successful()) {

@@ -227,6 +227,12 @@ class GofoExpressService
             if (str_starts_with($ref, '#')) {
                 $variants[] = ltrim($ref, '#');
             }
+            if (preg_match('/^PO-(.+)$/i', $ref, $m)) {
+                $tail = trim((string) ($m[1] ?? ''));
+                if ($tail !== '') {
+                    $variants[] = $tail;
+                }
+            }
             foreach ($variants as $candidate) {
                 $candidate = trim($candidate);
                 if (strlen($candidate) < 6) {
