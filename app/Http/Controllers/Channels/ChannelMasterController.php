@@ -45,6 +45,7 @@ use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThree
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Support\EbayCampaignReportRollup;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
+use App\Support\Marketplace\ChannelMetricDotPair;
 use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
 use App\Models\AliExpressSheetData;
@@ -15983,9 +15984,9 @@ class ChannelMasterController extends Controller
 
     private function channelMetricDotTrendsCacheKey(int $window): string
     {
-        // v6: Amazon Y Sales / L30 dots use live amazon_orders (Pacific yesterday),
-        // not a snapshot that is one day behind the table cell.
-        return 'amm_dot_trends_v6_w'.$window;
+        // v7: walk back past seeded/duplicate snapshot days and pin v2 to live
+        // table values so Spend / views / CVR cannot stay gray while the chart moves.
+        return 'amm_dot_trends_v7_w'.$window;
     }
 
     /**
@@ -16039,9 +16040,19 @@ class ChannelMasterController extends Controller
         }
 
         $out = $this->computeChannelMetricDotTrends($this->activeMarketplaceSnapshotKeys(), $window);
-        \Cache::put($cacheKey, $out, 180);
+        if ($out !== []) {
+            \Cache::put($cacheKey, $out, 3600);
+        }
 
         return $out;
+    }
+
+    public function warmChannelMetricDotTrends(): void
+    {
+        foreach ([0, 1, 7] as $window) {
+            \Cache::forget($this->channelMetricDotTrendsCacheKey($window));
+            $this->rememberChannelMetricDotTrends($window, true);
+        }
     }
 
     /**
@@ -16219,38 +16230,26 @@ class ChannelMasterController extends Controller
 
                 $processedByChannel[$channel] = $cmsRows;
 
-                if ($cmsRows->count() >= 2) {
-                    foreach ($metrics as $metric) {
-                        // Same adjacent-day rule as the chart last point (tooltip
-                        // "vs Yesterday"). Skip nulls only — do not walk back to the
-                        // last *different* value, or the table/badge dot can be green
-                        // while the graph's last point is red (or vice-versa).
-                        $v2 = $metricValue($metric, $cmsRows->get(0));
-                        if ($v2 === null) {
+                foreach ($metrics as $metric) {
+                    $series = [];
+                    foreach ($cmsRows as $row) {
+                        $sd = $summaryForRow($row);
+                        if ($this->channelSnapshotIsSeededCopy($row, $sd)) {
                             continue;
                         }
-                        $v1 = null;
-                        for ($i = 1; $i < $cmsRows->count(); $i++) {
-                            $candidate = $metricValue($metric, $cmsRows->get($i));
-                            if ($candidate !== null) {
-                                $v1 = $candidate;
-                                break;
-                            }
-                        }
-
-                        $out[$channel][$metric] = [$v1, $v2];
+                        $series[] = $metricValue($metric, $row);
                     }
-                } elseif ($cmsRows->count() === 1) {
-                    foreach ($metrics as $metric) {
-                        $v = $metricValue($metric, $cmsRows->get(0));
-                        $out[$channel][$metric] = $v !== null ? [$v, $v] : [null, null];
-                    }
+                    $out[$channel][$metric] = ChannelMetricDotPair::lastTwoDistinct(
+                        $series,
+                        $this->metricDotEpsilon($metric)
+                    );
                 }
             }
 
             $out['all'] = $this->computeAllChannelsLastTwoDayPairs($processedByChannel, $metrics, $metricMap);
 
             if (! $useDailyWindow && ! $useL7Window) {
+                $this->pinLiveDotTrendsFromCalculatedData($out);
                 $this->overlayLiveAmazonDotTrends($out);
             }
 
@@ -16943,17 +16942,41 @@ class ChannelMasterController extends Controller
      */
     private function channelSnapshotYSalesIsInherited($row, array $sd): bool
     {
+        return $this->channelSnapshotIsSeededCopy($row, $sd);
+    }
+
+    /**
+     * Listing-copy / merge / live-overlay days reuse yesterday's spend/views/CVR.
+     * Comparing those to the prior row makes every table dot gray.
+     *
+     * @param  array<string, mixed>  $sd
+     */
+    private function channelSnapshotIsSeededCopy($row, array $sd): bool
+    {
+        if (! empty($sd['seeded_from_snapshot'])) {
+            return true;
+        }
         $notes = (string) ($row->notes ?? '');
         if (stripos($notes, 'Listing Missing L') !== false
             || stripos($notes, 'Listing Catalogue') !== false
             || stripos($notes, 'Variations Verify') !== false
-            || stripos($notes, 'L7 window snapshot') !== false) {
+            || stripos($notes, 'L7 window snapshot') !== false
+            || stripos($notes, 'Yesterday window snapshot') !== false
+            || stripos($notes, 'Amazon live overlay') !== false
+            || stripos($notes, 'Merged channel snapshot') !== false) {
             return true;
         }
         $calc = substr((string) ($sd['calculated_at'] ?? ''), 0, 10);
         $snap = Carbon::parse($row->snapshot_date)->toDateString();
 
         return $calc !== '' && $calc < $snap;
+    }
+
+    private function metricDotEpsilon(string $metric): float
+    {
+        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'nroi', 'ads_pct', 'acos'], true)
+            ? 0.005
+            : 0.01;
     }
 
     /**
@@ -17643,27 +17666,79 @@ class ChannelMasterController extends Controller
             if ($key !== 'amazon') {
                 continue;
             }
-            $y = (float) ($row['Y Sales'] ?? 0);
-            $l30 = (float) ($row['L30 Sales'] ?? 0);
             $today = now('America/Los_Angeles')->toDateString();
             $existing = \App\Models\ChannelMasterSummary::where('channel', 'amazon')
                 ->whereDate('snapshot_date', $today)
                 ->first();
-            $sd = $existing ? $existing->summaryArray() : [];
-            if ($existing
-                && abs((float) ($sd['y_sales'] ?? 0) - $y) < 0.01
+            if (! $existing) {
+                break;
+            }
+            $y = (float) ($row['Y Sales'] ?? 0);
+            $l30 = (float) ($row['L30 Sales'] ?? 0);
+            $sd = $existing->summaryArray();
+            if (abs((float) ($sd['y_sales'] ?? 0) - $y) < 0.01
                 && abs((float) ($sd['l30_sales'] ?? 0) - $l30) < 1
             ) {
                 break;
             }
-            \App\Models\ChannelMasterSummary::mergeTodaySummary('amazon', [
-                'y_sales' => $y,
-                'l30_sales' => $l30,
-                'l30_orders' => (float) ($row['L30 Orders'] ?? 0),
-                'total_quantity' => (float) ($row['Qty'] ?? 0),
-                'l60_sales' => (float) ($row['L-60 Sales'] ?? 0),
-            ], 'Amazon live overlay snapshot');
+            $sd['y_sales'] = $y;
+            $sd['l30_sales'] = $l30;
+            $existing->summary_data = $sd;
+            $existing->save();
             break;
+        }
+    }
+
+    /**
+     * Pin each channel's latest dot value to channel_master_calculated_data
+     * (same numbers the table shows before live overlays).
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $out
+     */
+    private function pinLiveDotTrendsFromCalculatedData(array &$out): void
+    {
+        foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $row) {
+            $ch = $this->allMarketplaceSnapshotKey((string) $row->channel);
+            if ($ch === '' || ! isset($out[$ch])) {
+                continue;
+            }
+            $views = (float) ($row->total_views ?? 0);
+            $qty = (float) ($row->total_quantity ?? 0);
+            $listingCvr = $row->listing_cvr;
+            $cvr = ($listingCvr !== null && $listingCvr !== '')
+                ? (float) $listingCvr
+                : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
+            $live = [
+                'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
+                'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
+                'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
+                'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
+                'total_views' => $views > 0 ? $views : null,
+                'qty' => $qty > 0 ? $qty : null,
+                'l30_orders' => $row->l30_orders !== null ? (float) $row->l30_orders : null,
+                'cvr' => $cvr,
+                'gprofit' => $row->gprofit_pct !== null ? (float) $row->gprofit_pct : null,
+                'groi' => $row->g_roi !== null ? (float) $row->g_roi : null,
+                'ads_pct' => $row->ads_percentage !== null ? (float) $row->ads_percentage : null,
+                'npft' => $row->n_pft !== null ? (float) $row->n_pft : null,
+                'nroi' => $row->n_roi !== null ? (float) $row->n_roi : null,
+                'clicks' => $row->clicks !== null ? (float) $row->clicks : null,
+                'ad_sales' => $row->ad_sales !== null ? (float) $row->ad_sales : null,
+                'ad_sold' => $row->ad_sold !== null ? (float) $row->ad_sold : null,
+                'acos' => $row->acos !== null ? (float) $row->acos : null,
+            ];
+            foreach ($live as $metric => $v2) {
+                if ($v2 === null) {
+                    continue;
+                }
+                $pair = $out[$ch][$metric] ?? [null, null];
+                $out[$ch][$metric] = ChannelMetricDotPair::pinLatest(
+                    $pair[0] !== null ? (float) $pair[0] : null,
+                    $pair[1] !== null ? (float) $pair[1] : null,
+                    $v2,
+                    $this->metricDotEpsilon($metric)
+                );
+            }
         }
     }
 
@@ -17683,10 +17758,11 @@ class ChannelMasterController extends Controller
         $d1 = now('America/Los_Angeles')->subDays(2)->toDateString();
         $window = AmazonSalesController::DAILY_SALES_WINDOW_DAYS;
 
-        $out['amazon']['y_sales'] = [
+        $out['amazon']['y_sales'] = ChannelMetricDotPair::pinLatest(
             $this->realPacificDayYSales('amazon', $d1),
-            $this->realPacificDayYSales('amazon', $d2),
-        ];
+            $out['amazon']['y_sales'][1] ?? null,
+            $this->realPacificDayYSales('amazon', $d2)
+        );
 
         $end2 = Carbon::parse($d2, 'America/Los_Angeles')->endOfDay();
         $start2 = Carbon::parse($d2, 'America/Los_Angeles')->subDays($window - 1)->startOfDay();

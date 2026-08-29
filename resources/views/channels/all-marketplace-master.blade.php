@@ -1306,46 +1306,72 @@
                         var v1 = pair && pair[0] != null ? parseFloat(pair[0]) : null;
                         var v2 = pair && pair[1] != null ? parseFloat(pair[1]) : null;
                         lastDotPairByKey[channel + '_' + metric] = [v1, v2];
-                        if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) {
-                            lastDotColorByKey[channel + '_' + metric] = DEFAULT_DOT_GRAY;
-                            return;
-                        }
-                        var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
-                        lastDotColorByKey[channel + '_' + metric] = v1 === v2 ? DEFAULT_DOT_GRAY
-                            : isInverted ? (v2 < v1 ? '#28a745' : '#dc3545')
-                            : (v2 > v1 ? '#28a745' : '#dc3545');
+                        lastDotColorByKey[channel + '_' + metric] = colorFromDotPair(v1, v2, metric);
                     });
                 });
                 saveDotColorsToStorage();
             }
-            function amazonLiveCvrFromRow(row) {
+            function colorFromDotPair(v1, v2, metric) {
+                if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
+                var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
+                    || metric === 'npft' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
+                var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
+                return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
+            }
+            function liveMetricFromRow(row, metric) {
                 if (!row) return null;
+                var ch = snapshotChannelKey(row['Channel '] || row['Channel'] || '');
                 var views = parseNumber(row['Total Views'] || 0);
                 var qty = parseNumber(row['Qty'] || 0);
-                if (!(views > 0)) return null;
-                return Math.round((qty / views) * 10000) / 100;
-            }
-            function alignAmazonCvrDotToTable(tableData) {
-                var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
-                var row = null;
-                for (var i = 0; i < data.length; i++) {
-                    if (snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '') === 'amazon') {
-                        row = data[i];
-                        break;
-                    }
+                var n = function(v) {
+                    var x = parseNumber(v);
+                    return (x == null || isNaN(x)) ? null : x;
+                };
+                switch (metric) {
+                    case 'y_sales': return n(row['Y Sales']);
+                    case 'l30_sales': return n(row['L30 Sales']);
+                    case 'l60_sales': return n(row['L-60 Sales']);
+                    case 'ad_spend': return n(row['Total Ad Spend']);
+                    case 'total_views': return views > 0 ? views : null;
+                    case 'qty': return qty > 0 ? qty : null;
+                    case 'l30_orders': return n(row['L30 Orders']);
+                    case 'l60_orders': return n(row['L60 Orders']);
+                    case 'cvr':
+                        if (ch === 'amazon') return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
+                        if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') return n(row['CVR']);
+                        return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
+                    case 'gprofit': return n(row['Gprofit%']);
+                    case 'groi': return n(row['G Roi']);
+                    case 'ads_pct': return n(row['Ads%'] != null ? row['Ads%'] : row['TACOS']);
+                    case 'npft': return n(row['N PFT']);
+                    case 'nroi': return n(row['N ROI']);
+                    case 'clicks': return n(row['clicks'] != null ? row['clicks'] : row['Clicks']);
+                    case 'ad_sales': return n(row['Ad Sales']);
+                    case 'ad_sold': return n(row['ad_sold'] != null ? row['ad_sold'] : row['Ad Sold']);
+                    case 'acos': return n(row['ACOS']);
+                    case 'map': return n(row['Map']);
+                    case 'nmap': return n(row['NMap']);
+                    case 'missing_l': return n(row['Miss']);
+                    default: return null;
                 }
-                var live = amazonLiveCvrFromRow(row);
-                if (live == null || isNaN(live)) return;
-                var key = 'amazon_cvr';
-                var pair = lastDotPairByKey[key] || [null, null];
-                var v1 = pair[0];
-                lastDotPairByKey[key] = [v1, live];
-                if (v1 == null || isNaN(v1)) {
-                    lastDotColorByKey[key] = DEFAULT_DOT_GRAY;
-                } else if (v1 === live) {
-                    lastDotColorByKey[key] = DEFAULT_DOT_GRAY;
-                } else {
-                    lastDotColorByKey[key] = live > v1 ? '#28a745' : '#dc3545';
+            }
+            function alignAllDotsToLiveTable(tableData) {
+                var data = tableData && Array.isArray(tableData) ? tableData : (table && table.getData ? table.getData() : []);
+                for (var i = 0; i < data.length; i++) {
+                    var ch = snapshotChannelKey(data[i]['Channel '] || data[i]['Channel'] || '');
+                    if (!ch) continue;
+                    for (var m = 0; m < metricDotMetricKeys.length; m++) {
+                        var metric = metricDotMetricKeys[m];
+                        var live = liveMetricFromRow(data[i], metric);
+                        if (live == null || isNaN(live)) continue;
+                        var key = ch + '_' + metric;
+                        var pair = lastDotPairByKey[key] || [null, null];
+                        var v1 = pair[0];
+                        if (v1 == null || isNaN(v1)) v1 = pair[1];
+                        lastDotPairByKey[key] = [v1, live];
+                        lastDotColorByKey[key] = colorFromDotPair(v1, live, metric);
+                    }
                 }
                 saveDotColorsToStorage();
             }
@@ -1393,7 +1419,7 @@
             }).done(function(response) {
                 if (response && response.success && response.channels) {
                     applyDotTrendsMap(response.channels);
-                    alignAmazonCvrDotToTable();
+                    alignAllDotsToLiveTable();
                     if (table) {
                         paintMetricDots(Object.keys(response.channels));
                     }
@@ -1485,7 +1511,7 @@
                         if (response.dot_trends) {
                             applyDotTrendsMap(response.dot_trends);
                         }
-                        alignAmazonCvrDotToTable(response.data);
+                        alignAllDotsToLiveTable(response.data);
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
                             loadMetricDotTrends(response.data);
@@ -3695,7 +3721,7 @@
 
                 function finish(channels) {
                     if (channels) applyDotTrendsMap(channels);
-                    alignAmazonCvrDotToTable(tableData);
+                    alignAllDotsToLiveTable(tableData);
                     for (var c = 0; c < channelKeys.length; c++) {
                         for (var m = 0; m < metricDotMetricKeys.length; m++) {
                             var key = channelKeys[c] + '_' + metricDotMetricKeys[m];

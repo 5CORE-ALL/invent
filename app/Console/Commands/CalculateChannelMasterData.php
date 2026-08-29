@@ -177,6 +177,12 @@ class CalculateChannelMasterData extends Command
 
                 $this->storeSummaryData($response, $calculatedAt);
                 $this->calculateAndStoreLqsData($calculatedAt, $chunkSize);
+                try {
+                    $this->info('Warming /all-marketplace-master dot-trend cache...');
+                    app(ChannelMasterController::class)->warmChannelMetricDotTrends();
+                } catch (\Throwable $e) {
+                    $this->warn('Dot-trend cache warm failed: '.$e->getMessage());
+                }
                 $this->calculateAndStoreOnSeaTransitData($calculatedAt);
                 ChannelMasterCalculatedData::bumpFastPayloadCache();
 
