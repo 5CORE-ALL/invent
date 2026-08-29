@@ -1370,6 +1370,9 @@
                                                 <li>
                                                     <a href="{{ route('amazon.ads.all') }}">Ads All Amz</a>
                                                 </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.ads.fbm-targeting') }}">Amz FBM Targeting</a>
+                                                </li>
                                                 @if (Route::has('amazon.ads.campaign-link.index'))
                                                 <li>
                                                     <a href="{{ route('amazon.ads.campaign-link.index') }}">Campaign Link Amz</a>

@@ -1,0 +1,141 @@
+@extends('layouts.vertical', ['title' => 'Marketplaces - Amz FBM - Targeting'])
+
+@section('css')
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    .amz-fbm-targeting .tabulator { font-size: 13px; border: 1px solid #dee2e6; border-radius: 0 0 8px 8px; }
+    .amz-fbm-targeting .tabulator .tabulator-header {
+        background: #dbeafe; border-bottom: 1px solid #93c5fd; font-weight: 600;
+        position: sticky; top: var(--tz-topbar-height, 70px); z-index: 24;
+    }
+    .amz-fbm-targeting .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+        font-size: 12.5px; text-align: center; padding: 6px 4px;
+    }
+    .amz-fbm-targeting .tabulator-row { min-height: 36px; }
+    .amz-fbm-targeting .tabulator-row:hover { background-color: #f8fafc !important; }
+    .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
+    .amz-fbm-targeting .aft-target-wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+    .amz-fbm-targeting .aft-chip {
+        display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 999px;
+        background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; font-size: 12px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .amz-fbm-targeting .aft-empty { color: #94a3b8; font-size: 12px; }
+</style>
+@endsection
+
+@section('content')
+<div class="container-fluid mt-4 amz-fbm-targeting">
+    @include('layouts.shared/page-title', ['sub_title' => 'Marketplaces', 'page_title' => 'Amz FBM - Targeting'])
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h4 class="mb-0"><i class="mdi mdi-bullseye-arrow"></i> Amz FBM Targeting</h4>
+                    <span class="small">Campaign names from the same SP reports table as Ads All. Targets from Amazon Ads (keywords + product targets).</span>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+                        <input type="text" id="aft-search" class="form-control form-control-sm"
+                               style="max-width: 360px;" placeholder="Search campaign name...">
+                        <span class="text-muted small" id="aft-count"></span>
+                    </div>
+                    <div id="aft-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
+
+@section('script')
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script>
+(function () {
+    const dataUrl = @json(route('amazon.ads.fbm-targeting.data'));
+    const searchEl = document.getElementById('aft-search');
+    const countEl = document.getElementById('aft-count');
+    let searchTimer = null;
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, function (c) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);
+        });
+    }
+
+    const table = new Tabulator('#aft-table', {
+        layout: 'fitColumns',
+        placeholder: 'Loading campaigns…',
+        pagination: true,
+        paginationMode: 'remote',
+        paginationSize: 50,
+        paginationSizeSelector: [25, 50, 100],
+        ajaxURL: dataUrl,
+        ajaxConfig: 'GET',
+        filterMode: 'remote',
+        ajaxRequestFunc: function (url, _config, params) {
+            const q = new URLSearchParams();
+            q.set('page', String(params.page || 1));
+            q.set('size', String(params.size || 50));
+            const search = (searchEl && searchEl.value || '').trim();
+            if (search) q.set('campaign', search);
+            return fetch(url + '?' + q.toString(), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function (res) {
+                if (!res.ok) throw new Error('Network response was not ok');
+                return res.json();
+            });
+        },
+        ajaxResponse: function (_url, _params, response) {
+            const total = Number(response.total || 0);
+            if (countEl) countEl.textContent = total ? (total.toLocaleString() + ' campaigns') : '';
+            return {
+                data: response.data || [],
+                last_page: response.last_page || 1,
+            };
+        },
+        columns: [
+            {
+                title: 'Campaign name',
+                field: 'campaign_name',
+                minWidth: 280,
+                widthGrow: 2,
+                headerSort: false,
+                formatter: function (cell) {
+                    const name = escapeHtml(cell.getValue() || '');
+                    const id = escapeHtml((cell.getRow().getData() || {}).campaign_id || '');
+                    return '<div><strong>' + name + '</strong>' +
+                        (id ? '<div class="text-muted" style="font-size:11px;">' + id + '</div>' : '') +
+                        '</div>';
+                },
+            },
+            {
+                title: 'Targets',
+                field: 'targets',
+                minWidth: 360,
+                widthGrow: 5,
+                headerSort: false,
+                formatter: function (cell) {
+                    const list = cell.getValue();
+                    if (!Array.isArray(list) || list.length === 0) {
+                        return '<span class="aft-empty">No targets yet</span>';
+                    }
+                    return '<div class="aft-target-wrap">' + list.map(function (t) {
+                        return '<span class="aft-chip" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>';
+                    }).join('') + '</div>';
+                },
+            },
+        ],
+    });
+
+    if (searchEl) {
+        searchEl.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(function () { table.setPage(1); }, 300);
+        });
+    }
+})();
+</script>
+@endsection
