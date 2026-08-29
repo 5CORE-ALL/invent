@@ -1290,7 +1290,8 @@ class EbayController extends Controller
                     $lmpEntries = $lmpEntries->merge($entries);
                 }
             }
-            // Dedupe by competitor item_id, then order by total_price ascending.
+            // Same listing on a linked SKU inherits Ignore so refresh does not revive L1.
+            $lmpEntries = \App\Models\EbaySkuCompetitor::applyIgnoreToSameItemIds($lmpEntries);
             $lmpEntries = $lmpEntries
                 ->unique(fn($e) => $e->item_id ?? spl_object_id($e))
                 ->sortBy('total_price')
@@ -1321,6 +1322,12 @@ class EbayController extends Controller
             $row['lmp_entries_total'] = $lmpEntries
                 ->filter(fn ($e) => ! \App\Models\EbaySkuCompetitor::isIgnored($e) && (float) ($e->total_price ?? 0) > 0)
                 ->count();
+            $lowestIgnored = $row['lmp_entries_total'] === 0
+                ? $lmpEntries->first(fn ($e) => (float) ($e->total_price ?? 0) > 0)
+                : null;
+            $row['lmp_ignored_price'] = ($lowestIgnored && is_numeric($lowestIgnored->total_price ?? null))
+                ? floatval($lowestIgnored->total_price)
+                : null;
 
             $row["E Dil%"] = ($row["eBay L30"] && $row["INV"] > 0)
                 ? round(($row["eBay L30"] / $row["INV"]), 2)
@@ -5092,6 +5099,7 @@ class EbayController extends Controller
                 })
                 ->sortBy(function ($comp) { return (float) $comp->total_price; })
                 ->values();
+            $competitors = \App\Models\EbaySkuCompetitor::applyIgnoreToSameItemIds($competitors);
             // L1 = lowest non-ignored competitor
             $lowestPrice = $competitors->first(fn ($comp) => ! \App\Models\EbaySkuCompetitor::isIgnored($comp));
             

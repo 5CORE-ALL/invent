@@ -72,15 +72,65 @@ class EbaySkuCompetitor extends Model
         }
 
         $table = (new static)->getTable();
-        $updated = \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->update([
-            'ignored' => $ignored ? 1 : 0,
-            'updated_at' => now(),
-        ]);
-        if ($updated > 0) {
-            return true;
+        $row = \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->first();
+        if (! $row) {
+            return false;
         }
 
-        return \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists();
+        $payload = [
+            'ignored' => $ignored ? 1 : 0,
+            'updated_at' => now(),
+        ];
+        $itemId = trim((string) ($row->item_id ?? ''));
+        $q = \Illuminate\Support\Facades\DB::table($table);
+        if ($itemId !== '') {
+            $q->where('item_id', $itemId);
+            if (! empty($row->marketplace)) {
+                $q->where('marketplace', $row->marketplace);
+            }
+        } else {
+            $q->where('id', $id);
+        }
+        $q->update($payload);
+
+        return true;
+    }
+
+    /**
+     * If any copy of an eBay listing is ignored, treat every SKU copy of that item_id as ignored.
+     *
+     * @param  iterable<mixed>  $items
+     */
+    public static function applyIgnoreToSameItemIds($items): \Illuminate\Support\Collection
+    {
+        $collection = collect($items)->values();
+        $ignoredItemIds = [];
+        foreach ($collection as $item) {
+            if (! self::isIgnored($item)) {
+                continue;
+            }
+            $itemId = strtolower(trim((string) (is_object($item) ? ($item->item_id ?? '') : ($item['item_id'] ?? ''))));
+            if ($itemId !== '') {
+                $ignoredItemIds[$itemId] = true;
+            }
+        }
+        if ($ignoredItemIds === []) {
+            return $collection;
+        }
+
+        return $collection->map(function ($item) use ($ignoredItemIds) {
+            $itemId = strtolower(trim((string) (is_object($item) ? ($item->item_id ?? '') : ($item['item_id'] ?? ''))));
+            if ($itemId === '' || ! isset($ignoredItemIds[$itemId])) {
+                return $item;
+            }
+            if (is_object($item)) {
+                $item->ignored = true;
+            } elseif (is_array($item)) {
+                $item['ignored'] = true;
+            }
+
+            return $item;
+        })->values();
     }
 
     /**
@@ -244,6 +294,7 @@ class EbaySkuCompetitor extends Model
             }
         }
 
+        $lmpEntries = self::applyIgnoreToSameItemIds($lmpEntries);
         $lmpEntries = self::dedupeByItemId($lmpEntries, $sku);
         // L1 = lowest non-ignored (same as Temu)
         $lowest = $lmpEntries->first(fn ($e) => ! self::isIgnored($e));
@@ -284,6 +335,12 @@ class EbaySkuCompetitor extends Model
         $row['lmp_entries_total'] = $active->filter(function ($entry) {
             return (float) ($entry->total_price ?? 0) > 0;
         })->count();
+        $lowestIgnored = $active->isEmpty()
+            ? $lmpEntries->first(fn ($e) => (float) ($e->total_price ?? 0) > 0)
+            : null;
+        $row['lmp_ignored_price'] = ($lowestIgnored && is_numeric($lowestIgnored->total_price ?? null))
+            ? floatval($lowestIgnored->total_price)
+            : null;
     }
 
     /** @return array<string, mixed> */
@@ -296,6 +353,7 @@ class EbaySkuCompetitor extends Model
             'lmp_title' => null,
             'lmp_entries' => [],
             'lmp_entries_total' => 0,
+            'lmp_ignored_price' => null,
             'linked_lmp_skus' => [],
         ];
     }

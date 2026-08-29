@@ -218,6 +218,15 @@ class EbayCompetitorVariationFamilySync
             return;
         }
 
+        $siblingIgnored = EbaySkuCompetitor::query()
+            ->where('marketplace', $marketplace)
+            ->where('item_id', $itemId)
+            ->where(function ($q) {
+                $q->where('ignored', 1)->orWhere('ignored', true);
+            })
+            ->exists();
+        $payload['ignored'] = $siblingIgnored;
+
         EbaySkuCompetitor::create($payload);
     }
 }
