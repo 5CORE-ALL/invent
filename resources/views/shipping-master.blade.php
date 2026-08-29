@@ -1814,6 +1814,7 @@
                         <div class="text-muted mt-1">
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
                             Carriers: Ship, Ship BB, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
+                            For <strong>Ship</strong>, Apply writes the slab rate + <strong>Handling + O-Size + PR</strong> (same total as the Ship column).
                             For <strong>Temu ship</strong>, Apply writes the slab rate + <strong>50% of O-Size Charge</strong> when Type is O-Size.
                         </div>
                     </div>
@@ -2177,6 +2178,38 @@
                 const n = parseFloat(raw);
                 if (!Number.isFinite(n)) return null;
                 return Math.round((n - itemOSizeHalf(item)) * 100) / 100;
+            }
+
+            /** Rate written to Product Master Ship (slab + handling + o-size + PR). */
+            function shipWriteRate(item, baseRate) {
+                const n = parseFloat(baseRate);
+                if (!Number.isFinite(n)) return null;
+                const handling = parseChargeAmount(item && (item.handling_charge ?? (item.Values && item.Values.handling_charge)));
+                const oSize = parseChargeAmount(item && (item.o_size_charge ?? (item.Values && item.Values.o_size_charge)));
+                const pr = parseChargeAmount(item && (item.pr_charge ?? (item.Values && item.Values.pr_charge)));
+                return Math.round((n + handling + oSize + pr) * 100) / 100;
+            }
+
+            /** Implied slab base from stored Ship (ship_base, else legacy ship). */
+            function shipStoredBase(item) {
+                if (!item) return null;
+                const baseRaw = item.ship_base ?? (item.Values && item.Values.ship_base);
+                if (baseRaw !== null && baseRaw !== undefined && baseRaw !== '') {
+                    const b = parseFloat(baseRaw);
+                    if (Number.isFinite(b)) return Math.round(b * 100) / 100;
+                }
+                const raw = item.ship;
+                if (raw === null || raw === undefined || raw === '') return null;
+                const n = parseFloat(raw);
+                if (!Number.isFinite(n)) return null;
+                return Math.round(n * 100) / 100;
+            }
+
+            function carrierWriteRate(item, carrierKey, slabRate) {
+                if (carrierKey === 'temu_ship') return temuShipWriteRate(item, slabRate);
+                if (carrierKey === 'ship') return shipWriteRate(item, slabRate);
+                const n = parseFloat(slabRate);
+                return Number.isFinite(n) ? normalizeSlabRate(n) : null;
             }
 
             function applyLabelTypeColor(dropdown, labelType) {
@@ -5730,6 +5763,25 @@
                     baseFormData.o_size_charge = oSizeChargeVal === '' ? null : oSizeChargeVal;
                     const prChargeVal = normalizePrCharge(document.getElementById('editPrCharge')?.value);
                     baseFormData.pr_charge = prChargeVal === '' ? null : prChargeVal;
+                    const editSkuForShip = document.getElementById('editSku')?.value;
+                    const editIdForShip = document.getElementById('editProductId')?.value;
+                    const editItemForShip = (tableData || []).find(d =>
+                        (editIdForShip && String(d.id) === String(editIdForShip))
+                        || (editSkuForShip && d.SKU === editSkuForShip)
+                    );
+                    if (editItemForShip && typeof shipWriteRate === 'function') {
+                        const draft = Object.assign({}, editItemForShip, {
+                            handling_charge: baseFormData.handling_charge,
+                            o_size_charge: baseFormData.o_size_charge,
+                            pr_charge: baseFormData.pr_charge,
+                            label_type: baseFormData.label_type
+                        });
+                        const slab = parseFloat(getOuterCarrierDisplayRate(draft, 'ship', false));
+                        if (Number.isFinite(slab)) {
+                            baseFormData.ship_base = normalizeSlabRate(slab);
+                            baseFormData.ship = shipWriteRate(draft, slab);
+                        }
+                    }
                     // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
@@ -6208,6 +6260,17 @@
                             if (product.Values && typeof product.Values === 'object') {
                                 product.Values.label_type = labelType;
                             }
+                            if (typeof shipWriteRate === 'function') {
+                                const slab = parseFloat(getOuterCarrierDisplayRate(product, 'ship', false));
+                                if (Number.isFinite(slab)) {
+                                    product.ship_base = normalizeSlabRate(slab);
+                                    product.ship = shipWriteRate(product, slab);
+                                    if (product.Values && typeof product.Values === 'object') {
+                                        product.Values.ship_base = product.ship_base;
+                                        product.Values.ship = product.ship;
+                                    }
+                                }
+                            }
                         }
                         refreshShipTotalCellsForSku(sku);
                         showToast('success', 'Label Type updated');
@@ -6297,6 +6360,17 @@
                         product.o_size_charge = next === '' ? null : next;
                         if (product.Values && typeof product.Values === 'object') {
                             product.Values.o_size_charge = product.o_size_charge;
+                        }
+                        if (typeof shipWriteRate === 'function') {
+                            const slab = parseFloat(getOuterCarrierDisplayRate(product, 'ship', false));
+                            if (Number.isFinite(slab)) {
+                                product.ship_base = normalizeSlabRate(slab);
+                                product.ship = shipWriteRate(product, slab);
+                                if (product.Values && typeof product.Values === 'object') {
+                                    product.Values.ship_base = product.ship_base;
+                                    product.Values.ship = product.ship;
+                                }
+                            }
                         }
                     }
                     refreshShipTotalCellsForSku(sku);
@@ -6454,7 +6528,11 @@
                     : parseFloat(storedRaw);
                 const storedNorm = Number.isFinite(stored) ? normalizeSlabRate(stored) : null;
                 const slabNorm = normalizeSlabRate(slabRate);
-                if (storedNorm !== slabNorm) {
+                const expected = (typeof carrierWriteRate === 'function')
+                    ? carrierWriteRate(item, carrierKey, slabRate)
+                    : slabNorm;
+                const expectedNorm = expected == null ? slabNorm : normalizeSlabRate(expected);
+                if (storedNorm !== expectedNorm) {
                     const storedLabel = storedNorm === null ? 'missing' : ('$' + formatSlabRate(storedNorm));
                     td.title = `Slab rate $${formatSlabRate(slabNorm)} (SKU stored ${storedLabel}). Saving to Product Master…`;
                 } else {
@@ -6482,17 +6560,19 @@
                         if (slabRate == null || !Number.isFinite(slabRate)) return;
                         const rate = normalizeSlabRate(slabRate);
                         if (rate === null) return;
-                        const writeRate = c.key === 'temu_ship' ? temuShipWriteRate(item, rate) : rate;
+                        const writeRate = carrierWriteRate(item, c.key, rate);
                         if (writeRate === null) return;
 
                         const raw = item[c.key];
                         if (raw === null || raw === undefined || raw === '') {
                             fields[c.key] = writeRate;
+                            if (c.key === 'ship') fields.ship_base = rate;
                             return;
                         }
                         const n = parseFloat(raw);
                         if (!Number.isFinite(n) || normalizeSlabRate(n) !== writeRate) {
                             fields[c.key] = writeRate;
+                            if (c.key === 'ship') fields.ship_base = rate;
                         }
                     });
 
@@ -6584,6 +6664,12 @@
                         if (base === null) { missing++; return; }
                         n = base;
                     }
+                    // Ship stored value is the column total; compare ship_base / legacy slab.
+                    if (carrierKey === 'ship') {
+                        const base = shipStoredBase(it);
+                        if (base === null) { missing++; return; }
+                        n = base;
+                    }
                     filled++;
                     const r = normalizeSlabRate(n);
                     distinctSet.set(r, (distinctSet.get(r) || 0) + 1);
@@ -6621,9 +6707,11 @@
                     const th = document.createElement('th');
                     th.className = 'text-center slab-rates-carrier-col';
                     th.style.fontSize = '12px';
-                    th.title = c.key === 'temu_ship'
-                        ? `${c.label} rate ($) — when Type is O-Size, Apply writes this rate + 50% of O-Size Charge`
-                        : `${c.label} rate ($)`
+                    th.title = c.key === 'ship'
+                        ? `${c.label} rate ($) — Apply writes this rate + Handling + O-Size + PR`
+                        : (c.key === 'temu_ship'
+                            ? `${c.label} rate ($) — when Type is O-Size, Apply writes this rate + 50% of O-Size Charge`
+                            : `${c.label} rate ($)`);
                     th.textContent = c.label;
                     headRow.appendChild(th);
                 });
@@ -6941,9 +7029,7 @@
                     } else {
                         items = items.filter(it => {
                             if (isCarrierValueMissing(it, carrierKey)) return true;
-                            const expected = carrierKey === 'temu_ship'
-                                ? temuShipWriteRate(it, rate)
-                                : normalizeSlabRate(rate);
+                            const expected = carrierWriteRate(it, carrierKey, rate);
                             const n = parseFloat(it[carrierKey]);
                             return !Number.isFinite(n) || normalizeSlabRate(n) !== expected;
                         });
@@ -6977,9 +7063,10 @@
                     items.forEach(item => {
                         const id = String(item.id);
                         if (!perSku.has(id)) perSku.set(id, { item, fields: {} });
-                        perSku.get(id).fields[carrierKey] = carrierKey === 'temu_ship'
-                            ? temuShipWriteRate(item, rate)
-                            : rate;
+                        perSku.get(id).fields[carrierKey] = carrierWriteRate(item, carrierKey, rate);
+                        if (carrierKey === 'ship') {
+                            perSku.get(id).fields.ship_base = normalizeSlabRate(rate);
+                        }
                         totalWritesPlanned++;
                     });
                 });
