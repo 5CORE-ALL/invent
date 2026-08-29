@@ -2596,6 +2596,146 @@ class OverallAmazonController extends Controller
         return response()->json(['success' => true, 'rules' => $rules]);
     }
 
+    /**
+     * Default Review count slabs → Disc% for Amazon tabulator Rev Disc. column.
+     * 1–2 and 2–3 take 4%. Review count above max (4) never takes a discount.
+     *
+     * @return list<array{key:string,min:int,max:int,label:string,disc:float|int}>
+     */
+    private function amazonDefaultReviewDiscRules(): array
+    {
+        return [
+            ['key' => '1-2', 'min' => 1, 'max' => 2, 'label' => '1–2', 'disc' => 4],
+            ['key' => '2-3', 'min' => 2, 'max' => 3, 'label' => '2–3', 'disc' => 4],
+        ];
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return list<array{key:string,min:int,max:int,label:string,disc:float}>
+     */
+    private function amazonNormalizeReviewDiscRules($incoming): array
+    {
+        if (! is_array($incoming)) {
+            return $this->amazonDefaultReviewDiscRules();
+        }
+
+        $items = $incoming;
+        if (isset($incoming['rules']) && is_array($incoming['rules'])) {
+            $items = $incoming['rules'];
+        }
+
+        $rules = [];
+        foreach ($items as $item) {
+            if (! is_array($item) || (isset($item['max_reviews']) && ! isset($item['min']) && ! isset($item['key']))) {
+                continue;
+            }
+            $min = isset($item['min']) && is_numeric($item['min']) ? (int) $item['min'] : null;
+            $max = isset($item['max']) && is_numeric($item['max']) ? (int) $item['max'] : null;
+            if ($min === null || $max === null) {
+                $key = (string) ($item['key'] ?? '');
+                if (preg_match('/^(\d+)\s*-\s*(\d+)$/', $key, $m)) {
+                    $min = (int) $m[1];
+                    $max = (int) $m[2];
+                }
+            }
+            if ($min === null || $max === null) {
+                continue;
+            }
+            if ($min < 0) {
+                $min = 0;
+            }
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $disc = isset($item['disc']) && is_numeric($item['disc'])
+                ? round((float) $item['disc'], 2)
+                : 0.0;
+            if ($disc < 0) {
+                $disc = 0.0;
+            }
+            $rules[] = [
+                'key' => $min.'-'.$max,
+                'min' => $min,
+                'max' => $max,
+                'label' => $min.'–'.$max,
+                'disc' => $disc,
+            ];
+        }
+
+        usort($rules, static function ($a, $b) {
+            return ($a['min'] <=> $b['min']) ?: ($a['max'] <=> $b['max']);
+        });
+
+        return $rules !== [] ? $rules : $this->amazonDefaultReviewDiscRules();
+    }
+
+    private function amazonReviewDiscMaxFromSaved($saved): int
+    {
+        if (is_array($saved) && isset($saved['max_reviews']) && is_numeric($saved['max_reviews'])) {
+            $n = (int) $saved['max_reviews'];
+
+            return $n > 0 ? $n : 4;
+        }
+
+        return 4;
+    }
+
+    /**
+     * Load Amazon Review Disc rules (channel amazon_review_vs_disc).
+     */
+    public function amazonReviewDiscRules()
+    {
+        $defaults = $this->amazonDefaultReviewDiscRules();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'amazon_review_vs_disc')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'max_reviews' => 4,
+                'rules' => $defaults,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'max_reviews' => $this->amazonReviewDiscMaxFromSaved($saved),
+            'rules' => $this->amazonNormalizeReviewDiscRules($saved),
+        ]);
+    }
+
+    /**
+     * Persist Amazon Review Disc rules (dynamic from–to review ranges + Disc%).
+     */
+    public function amazonReviewDiscSaveRules(Request $request)
+    {
+        $rules = $this->amazonNormalizeReviewDiscRules($request->input('rules'));
+        $maxReviews = (int) $request->input('max_reviews', 4);
+        if ($maxReviews < 1) {
+            $maxReviews = 4;
+        }
+
+        $payload = [
+            'max_reviews' => $maxReviews,
+            'rules' => $rules,
+        ];
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'amazon_review_vs_disc'],
+            ['visibility' => $payload, 'column_order' => array_column($rules, 'key')]
+        );
+
+        return response()->json([
+            'success' => true,
+            'max_reviews' => $maxReviews,
+            'rules' => $rules,
+        ]);
+    }
+
     public function amazonPriceIncreaseDecrease(Request $request)
     {
         $mode = $request->query('mode');

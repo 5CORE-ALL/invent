@@ -4493,7 +4493,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Always the live rule price (0 Sold GROI, or Std − PRMT − CVR Disc − CVR UP/DN). Stored S PRC is overwritten to match. Red = reduced, Yellow = hold, Green = increase vs Amz price. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.",
+                        headerTooltip: "Read-only. Always the live rule price (0 Sold GROI, or Std − PRMT − CVR Disc − Rev Disc − CVR UP/DN). Stored S PRC is overwritten to match. Red = reduced, Yellow = hold, Green = increase vs Amz price. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4625,7 +4625,7 @@
                         width: 100
                     },
 
-                    // PRMT % / CVR Disc. / CVR Up/Dn / T Discounts / Push Prc
+                    // PRMT % / CVR Disc. / Rev Disc. / CVR Up/Dn / T Discounts / Push Prc
                     ...amazonPefPromoColumns(),
 
                     {
@@ -5637,6 +5637,7 @@
                 if (field === 'row_select') return 'Row Select';
                 if (field === 'push_prc') return 'Push Prc';
                 if (field === 'cvr_discount') return 'CVR Disc.';
+                if (field === 'review_discount') return 'Rev Disc.';
                 if (field === 'cvr_up_dn') return 'CVR Up/Dn';
                 if (field === 't_discounts') return 'T Discounts';
                 if (field === 'prmt_pct') return 'PRMT %';
@@ -5660,7 +5661,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|push_prc|prmt_pct|cvr_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|push_prc|prmt_pct|cvr_discount|review_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';

@@ -4499,6 +4499,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-cvr-cpn-push', [OverallAmazonController::class, 'pushAmazonCvrCpn'])->name('amazon.cvr-cpn.push');
     Route::get('/amazon-cvr-disc', [OverallAmazonController::class, 'amazonCvrDiscRules'])->name('amazon.cvr-disc');
     Route::post('/amazon-cvr-disc', [OverallAmazonController::class, 'amazonCvrDiscSaveRules'])->name('amazon.cvr-disc.save');
+    Route::get('/amazon-review-disc', [OverallAmazonController::class, 'amazonReviewDiscRules'])->name('amazon.review-disc');
+    Route::post('/amazon-review-disc', [OverallAmazonController::class, 'amazonReviewDiscSaveRules'])->name('amazon.review-disc.save');
     Route::post('/push-shopify-b2c-price', [OverallAmazonController::class, 'pushShopifyB2CPrice'])->name('push.shopify.b2c.price');
     Route::post('/push-pls-price', [OverallAmazonController::class, 'pushPlsPrice'])->name('push.pls.price');
     Route::post('/update-sprice-status', [OverallAmazonController::class, 'updateSpriceStatus']);
