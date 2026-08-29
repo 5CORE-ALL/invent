@@ -45,13 +45,24 @@
         .sp-top-actions { display: flex; align-items: center; gap: 22px; font-size: 14px; color: #333; }
         .sp-top-actions a:hover { color: var(--sp-red); }
         .sp-hero {
-            background: linear-gradient(105deg, #111 0%, #1c1c1c 55%, #2a2a2a 100%);
+            position: relative;
             color: #fff;
-            display: grid;
-            grid-template-columns: 1.15fr .85fr;
-            gap: 40px;
-            padding: 64px 7% 56px;
+            min-height: 380px;
+            padding: 72px 7% 64px;
+            display: flex;
             align-items: center;
+            background: #141414 center / cover no-repeat;
+        }
+        .sp-hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, rgba(10,10,10,.78) 0%, rgba(10,10,10,.42) 55%, rgba(10,10,10,.18) 100%);
+        }
+        .sp-hero-copy {
+            position: relative;
+            z-index: 1;
+            max-width: 620px;
         }
         .sp-hero h1 {
             margin: 0 0 14px;
@@ -60,31 +71,15 @@
             font-weight: 800;
         }
         .sp-hero h1 em { color: var(--sp-red); font-style: normal; }
-        .sp-hero p { margin: 0 0 22px; color: #cfcfcf; max-width: 520px; font-size: 16px; }
+        .sp-hero p { margin: 0 0 22px; color: #f0f0f0; max-width: 520px; font-size: 16px; }
         .sp-lock {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            color: #bdbdbd;
+            color: #e8e8e8;
             font-size: 13px;
         }
         .sp-lock i { color: var(--sp-red); }
-        .sp-hero-visual {
-            min-height: 240px;
-            border-radius: 10px;
-            overflow: hidden;
-            background: #0d0d0d;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .sp-hero-visual img { width: 100%; height: 320px; object-fit: cover; display: block; }
-        .sp-hero-fallback {
-            color: #888;
-            text-align: center;
-            padding: 40px;
-            font-size: 14px;
-        }
         .sp-wrap { padding: 42px 7% 20px; }
         .sp-head {
             display: flex;
@@ -192,11 +187,13 @@
         .sp-footer em { color: var(--sp-red); font-style: normal; }
         .sp-footer a:hover { color: #fff; }
         @media (max-width: 980px) {
-            .sp-hero, .sp-quick, .sp-grid { grid-template-columns: 1fr 1fr; }
+            .sp-hero { min-height: 300px; }
+            .sp-quick, .sp-grid { grid-template-columns: 1fr 1fr; }
             .sp-footer, .sp-announce { flex-direction: column; align-items: flex-start; }
         }
         @media (max-width: 640px) {
-            .sp-hero, .sp-quick, .sp-grid { grid-template-columns: 1fr; }
+            .sp-quick, .sp-grid { grid-template-columns: 1fr; }
+            .sp-hero { min-height: 260px; padding-top: 48px; padding-bottom: 48px; }
             .sp-top, .sp-hero, .sp-wrap, .sp-announce, .sp-footer { padding-left: 18px; padding-right: 18px; }
         }
     </style>
@@ -214,8 +211,8 @@
         </div>
     </header>
 
-    <section class="sp-hero">
-        <div>
+    <section class="sp-hero"@if($settings->hero_image_path) style="background-image: url('{{ \Illuminate\Support\Facades\Storage::disk('public')->url($settings->hero_image_path) }}')"@endif>
+        <div class="sp-hero-copy">
             <h1>
                 @php
                     $hero = (string) $settings->hero_title;
@@ -228,13 +225,6 @@
                 <i class="ri-lock-2-line"></i>
                 Authorized suppliers — download official logos and packaging files only.
             </div>
-        </div>
-        <div class="sp-hero-visual">
-            @if($settings->hero_image_path)
-                <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($settings->hero_image_path) }}" alt="{{ $settings->company_name }}">
-            @else
-                <div class="sp-hero-fallback">Upload a hero image from Supplier Portal admin</div>
-            @endif
         </div>
     </section>
 
