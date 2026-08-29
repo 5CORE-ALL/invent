@@ -3,6 +3,7 @@
 return [
     // Main
     ['value' => 'dashboard', 'text' => 'Dashboard', 'group' => 'Main'],
+    ['value' => 'supplier_portal', 'text' => 'Supplier Portal', 'group' => 'Main'],
 
     // User
     ['value' => 'roles', 'text' => 'Roles', 'group' => 'User'],
