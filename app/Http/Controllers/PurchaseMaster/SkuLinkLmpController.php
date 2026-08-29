@@ -500,7 +500,7 @@ class SkuLinkLmpController extends Controller
                 }
             }
 
-            $competitors = EbaySkuCompetitor::dedupeByItemId($competitors);
+            $competitors = EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
 
             $lowestPrice = $competitors->first();
 
@@ -551,7 +551,7 @@ class SkuLinkLmpController extends Controller
             }
         }
 
-        $allEntries = EbaySkuCompetitor::dedupeByItemId($allEntries);
+        $allEntries = EbaySkuCompetitor::dedupeByItemId($allEntries, $skus[0] ?? null);
 
         $lowest = $allEntries->first();
 

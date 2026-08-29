@@ -73,9 +73,8 @@ class EbayLivePriceFetcher
     public function fetchByListingId(string $listingId, ?string $sku = null, ?string $productLink = null): ?array
     {
         $variationId = $this->extractVariationIdFromUrl($productLink);
-        $packQty = EbayCompetitorVariationMatcher::extractPackQty($sku);
 
-        if ($variationId || $packQty) {
+        if ($variationId || EbayCompetitorVariationMatcher::wantsVariationMatch($sku)) {
             $matched = EbayCompetitorVariationMatcher::pick(
                 $this->fetchVariations($listingId),
                 $sku,
@@ -83,31 +82,17 @@ class EbayLivePriceFetcher
             );
 
             if ($matched && (float) ($matched['price'] ?? 0) > 0) {
-                $price = round((float) $matched['price'], 2);
-                $shipping = round((float) ($matched['shipping_cost'] ?? 0), 2);
-                $label = EbayCompetitorVariationMatcher::shortLabel($matched);
-                $title = $matched['title'] ?? null;
-                if ($title && $label !== '' && stripos($title, '['.$label.']') === false) {
-                    $title = $title.' ['.$label.']';
+                $live = $this->liveFromVariation($listingId, $matched, $sku);
+                if ($live) {
+                    Log::info('EbayLivePriceFetcher: using matched variation price', [
+                        'listing_id' => $listingId,
+                        'sku' => $sku,
+                        'variation_label' => $live['variation_label'] ?? null,
+                        'price' => $live['price'],
+                    ]);
+
+                    return $live;
                 }
-
-                Log::info('EbayLivePriceFetcher: using matched variation price', [
-                    'listing_id' => $listingId,
-                    'sku' => $sku,
-                    'variation_label' => $label,
-                    'price' => $price,
-                ]);
-
-                return [
-                    'listing_id' => $listingId,
-                    'price' => $price,
-                    'shipping_cost' => $shipping,
-                    'total_price' => round($price + $shipping, 2),
-                    'title' => $title,
-                    'link' => $matched['link'] ?? $this->variationLink($listingId, $matched),
-                    'image' => $matched['image'] ?? null,
-                    'variation_label' => $label !== '' ? $label : null,
-                ];
             }
         }
 
@@ -124,7 +109,7 @@ class EbayLivePriceFetcher
         }
 
         $variations = $this->fetchVariationsFromBrowseApi($listingId);
-        if (! $this->hasPackLabeledVariation($variations)) {
+        if (! $this->hasUsefulVariationLabels($variations)) {
             $shopping = $this->fetchVariationsFromShoppingApi($listingId);
             if ($shopping !== []) {
                 $variations = $shopping;
@@ -136,6 +121,38 @@ class EbayLivePriceFetcher
         $this->variationCache[$listingId] = $variations;
 
         return $variations;
+    }
+
+    /**
+     * @param  array<string, mixed>  $variation
+     * @return array{listing_id: string, price: float, shipping_cost: float, total_price: float, title: ?string, link: ?string, image: ?string, variation_label?: ?string}|null
+     */
+    public function liveFromVariation(string $listingId, array $variation, ?string $sku = null): ?array
+    {
+        $price = round((float) ($variation['price'] ?? 0), 2);
+        if ($price <= 0) {
+            return null;
+        }
+
+        $shipping = round((float) ($variation['shipping_cost'] ?? 0), 2);
+        $label = EbayCompetitorVariationMatcher::shortLabel($variation, $sku);
+        $title = is_string($variation['title'] ?? null) ? trim((string) $variation['title']) : '';
+        if ($title !== '' && $label !== '' && stripos($title, $label) === false) {
+            $title = $title.' ['.$label.']';
+        } elseif ($title === '') {
+            $title = $label !== '' ? $label : '';
+        }
+
+        return [
+            'listing_id' => $listingId,
+            'price' => $price,
+            'shipping_cost' => $shipping,
+            'total_price' => round($price + $shipping, 2),
+            'title' => $title !== '' ? $title : null,
+            'link' => $variation['link'] ?? $this->variationLink($listingId, $variation),
+            'image' => $variation['image'] ?? null,
+            'variation_label' => $label !== '' ? $label : null,
+        ];
     }
 
     /**
@@ -681,10 +698,10 @@ class EbayLivePriceFetcher
     /**
      * @param  list<array<string, mixed>>  $variations
      */
-    private function hasPackLabeledVariation(array $variations): bool
+    private function hasUsefulVariationLabels(array $variations): bool
     {
         foreach ($variations as $variation) {
-            if (EbayCompetitorVariationMatcher::extractPackQty((string) ($variation['label'] ?? '')) !== null) {
+            if (EbayCompetitorVariationMatcher::labelHasDiscriminant((string) ($variation['label'] ?? ''))) {
                 return true;
             }
         }

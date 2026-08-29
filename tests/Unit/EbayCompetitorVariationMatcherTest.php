@@ -59,10 +59,108 @@ class EbayCompetitorVariationMatcherTest extends TestCase
         $this->assertSame(63.99, $picked['price']);
     }
 
-    public function test_returns_null_when_sku_has_no_pack(): void
+    public function test_returns_null_when_sku_has_no_pack_or_color(): void
     {
         $this->assertNull(EbayCompetitorVariationMatcher::pick([
             ['label' => '4PCS', 'price' => 63.99],
         ], 'MS DBL'));
+    }
+
+    public function test_picks_white_for_ps_whls_wh_not_black(): void
+    {
+        $variations = [
+            ['id' => 'b', 'label' => 'Black / Projector Stand', 'price' => 52.99],
+            ['id' => 'w', 'label' => 'White / Projector Stand', 'price' => 54.99],
+        ];
+
+        $picked = EbayCompetitorVariationMatcher::pick($variations, 'PS WHLS WH');
+
+        $this->assertNotNull($picked);
+        $this->assertSame(54.99, $picked['price']);
+        $this->assertSame('WHITE', EbayCompetitorVariationMatcher::shortLabel($picked, 'PS WHLS WH'));
+    }
+
+    public function test_picks_black_for_ps_whls_blk(): void
+    {
+        $variations = [
+            ['id' => 'b', 'label' => 'Color:Black', 'price' => 52.99],
+            ['id' => 'w', 'label' => 'Color:White', 'price' => 54.99],
+        ];
+
+        $picked = EbayCompetitorVariationMatcher::pick($variations, 'PS WHLS BLK');
+
+        $this->assertNotNull($picked);
+        $this->assertSame(52.99, $picked['price']);
+    }
+
+    public function test_wh_does_not_match_whls_in_label(): void
+    {
+        $variations = [
+            ['label' => 'PS WHLS Tripod', 'price' => 39.00],
+            ['label' => 'White', 'price' => 54.99],
+        ];
+
+        $picked = EbayCompetitorVariationMatcher::pick($variations, 'PS WHLS WH');
+
+        $this->assertNotNull($picked);
+        $this->assertSame(54.99, $picked['price']);
+    }
+
+    public function test_pack_match_still_wins_when_color_also_present(): void
+    {
+        $variations = [
+            ['label' => '2PCS / White', 'price' => 42.00],
+            ['label' => '4PCS / Black', 'price' => 63.99],
+            ['label' => '4PCS / White', 'price' => 65.50],
+        ];
+
+        $picked = EbayCompetitorVariationMatcher::pick($variations, 'MS DBL WH 4PCS');
+
+        $this->assertNotNull($picked);
+        $this->assertSame(65.50, $picked['price']);
+    }
+
+    public function test_assign_to_skus_pulls_every_matching_family_variation(): void
+    {
+        $variations = [
+            ['label' => '2PCS- ($21/ea)', 'price' => 39.98],
+            ['label' => '4PCS- ($16.75/ea)', 'price' => 63.99],
+            ['label' => '8PCS- ($14.5/ea)', 'price' => 113.98],
+            ['label' => 'White', 'price' => 54.99],
+            ['label' => 'Black', 'price' => 52.99],
+        ];
+
+        $assigned = EbayCompetitorVariationMatcher::assignToSkus($variations, [
+            'MS DBL 2 PCS',
+            'MS DBL 4PCS',
+            'PS WHLS WH',
+            'PS WHLS BLK',
+        ]);
+
+        $this->assertSame(39.98, $assigned['MS DBL 2 PCS']['price']);
+        $this->assertSame(63.99, $assigned['MS DBL 4PCS']['price']);
+        $this->assertSame(54.99, $assigned['PS WHLS WH']['price']);
+        $this->assertSame(52.99, $assigned['PS WHLS BLK']['price']);
+        $this->assertArrayNotHasKey('MS DBL 8PCS', $assigned);
+    }
+
+    public function test_short_label_keeps_product_dropdown_name(): void
+    {
+        $label = EbayCompetitorVariationMatcher::shortLabel([
+            'label' => 'Projector Stand Floor 22.8 to 57.3 in / Uimoso / Motorized Projector Lift',
+        ]);
+
+        $this->assertSame('Projector Stand Floor 22.8 to 57.3 in', $label);
+    }
+
+    public function test_variation_item_id_uses_numeric_var_not_parent_listing(): void
+    {
+        $this->assertSame(
+            '416989144665',
+            EbayCompetitorVariationMatcher::variationItemId(
+                ['id' => '416989144665', 'item_id' => 'v1|116864762870|416989144665'],
+                '116864762870'
+            )
+        );
     }
 }

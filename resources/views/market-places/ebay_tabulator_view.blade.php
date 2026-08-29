@@ -1031,7 +1031,7 @@
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto">
                         <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
-                            title="Pull live prices. For pack SKUs (4PCS, 2PCS) this uses the matching competitor variation BIN, not the default listing price.">
+                            title="Pull live prices. If the competitor listing has variations, every matching family SKU is updated (4PCS, 2PCS, WH, BLK).">
                             <i class="fas fa-cloud-download-alt"></i> Pull
                         </button>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"

@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use App\Models\EbaySkuCompetitor;
 use App\Models\EbayCompetitorItem;
 use App\Services\EbayLivePriceFetcher;
+use App\Services\EbayCompetitorVariationFamilySync;
 use Illuminate\Support\Facades\Log;
 
 class UpdateEbaySkuCompetitorPrices extends Command
@@ -176,6 +177,7 @@ class UpdateEbaySkuCompetitorPrices extends Command
     protected function refreshLiveListingPrices($skuCompetitors, bool $isDryRun): void
     {
         $fetcher = app(EbayLivePriceFetcher::class);
+        $familySync = app(EbayCompetitorVariationFamilySync::class);
         $listingMap = [];
 
         foreach ($skuCompetitors as $competitor) {
@@ -202,9 +204,48 @@ class UpdateEbaySkuCompetitorPrices extends Command
             $index++;
             $competitors = EbaySkuCompetitor::whereIn('id', $competitorIds)->get();
             $anyLive = false;
+            $familySkus = [];
+            foreach ($competitors as $competitor) {
+                foreach ($familySync->resolveFamilySkus((string) $competitor->sku) as $familySku) {
+                    $familySkus[] = $familySku;
+                }
+            }
+            $familySkus = array_values(array_unique($familySkus));
+            $anchorSku = (string) ($competitors->first()->sku ?? '');
+            $syncResult = $familySync->syncListing(
+                $listingId,
+                $familySkus,
+                $competitors->first()->product_link ?? null,
+                'ebay',
+                $isDryRun,
+                $anchorSku
+            );
+            $familyLive = $syncResult['assigned'] ?? [];
+            $variationCount = (int) ($syncResult['variation_count'] ?? 0);
+
+            if ($variationCount >= 2) {
+                $anyLive = true;
+                $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: {$variationCount} variations pulled (SKU: {$anchorSku})");
+                foreach ($familyLive as $familySku => $payload) {
+                    $label = $payload['variation_label'] ?? '';
+                    $this->line('    '.$familySku.': $'.($payload['price'] ?? 0).($label !== '' ? " [{$label}]" : ''));
+                    $liveUpdated++;
+                }
+                usleep(500000);
+                continue;
+            }
 
             foreach ($competitors as $competitor) {
-                $live = $fetcher->fetchByListingId($listingId, $competitor->sku, $competitor->product_link);
+                $live = null;
+                foreach ($familyLive as $familySku => $payload) {
+                    if (strcasecmp(trim((string) $familySku), trim((string) $competitor->sku)) === 0) {
+                        $live = $payload;
+                        break;
+                    }
+                }
+                if (! $live) {
+                    $live = $fetcher->fetchByListingId($listingId, $competitor->sku, $competitor->product_link);
+                }
                 if (!$live) {
                     continue;
                 }

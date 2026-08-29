@@ -181,7 +181,7 @@ class EbaySkuCompetitor extends Model
             }
         }
 
-        $lmpEntries = self::dedupeByItemId($lmpEntries);
+        $lmpEntries = self::dedupeByItemId($lmpEntries, $sku);
         // L1 = lowest non-ignored (same as Temu)
         $lowest = $lmpEntries->first(fn ($e) => empty($e->ignored));
         self::attachLmpFieldsToRow($row, $lmpEntries, $lowest);
@@ -235,12 +235,15 @@ class EbaySkuCompetitor extends Model
 
     /**
      * Merge competitor rows from multiple SKUs, keeping one row per eBay item_id.
+     * When the same listing was pulled onto sibling SKUs (4PCS vs 2PCS, WH vs BLK),
+     * keep the row that belongs to $preferSku so L1 is that variation's BIN.
      *
      * @param  iterable<mixed>  $competitors
      */
-    public static function dedupeByItemId(iterable $competitors): \Illuminate\Support\Collection
+    public static function dedupeByItemId(iterable $competitors, ?string $preferSku = null): \Illuminate\Support\Collection
     {
         $byItemId = [];
+        $prefer = self::normalizeSkuKey($preferSku);
 
         foreach ($competitors as $competitor) {
             $itemId = strtolower(trim((string) ($competitor->item_id ?? '')));
@@ -249,6 +252,18 @@ class EbaySkuCompetitor extends Model
             if (! isset($byItemId[$key])) {
                 $byItemId[$key] = $competitor;
                 continue;
+            }
+
+            if ($prefer !== '') {
+                $existingMatch = self::normalizeSkuKey($byItemId[$key]->sku ?? '') === $prefer;
+                $candidateMatch = self::normalizeSkuKey($competitor->sku ?? '') === $prefer;
+                if ($candidateMatch && ! $existingMatch) {
+                    $byItemId[$key] = $competitor;
+                    continue;
+                }
+                if ($existingMatch && ! $candidateMatch) {
+                    continue;
+                }
             }
 
             $existingPrice = (float) ($byItemId[$key]->total_price ?? 0);

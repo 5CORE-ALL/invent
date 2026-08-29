@@ -28,6 +28,7 @@ use App\Services\EbayApiService;
 use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Services\EbayLivePriceFetcher;
+use App\Services\EbayCompetitorVariationFamilySync;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -4999,7 +5000,7 @@ class EbayController extends Controller
                     }
                 }
             }
-            $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors);
+            $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
 
             // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so LMP modal
             // opens quickly. Background `ebay:update-sku-prices` keeps prices fresh.
@@ -5010,11 +5011,39 @@ class EbayController extends Controller
                 @set_time_limit(300);
 
                 $fetcher = app(EbayLivePriceFetcher::class);
+                $familySync = app(EbayCompetitorVariationFamilySync::class);
+                $familySkus = $familySync->resolveFamilySkus($sku, $groupSkus);
 
                 foreach ($competitors as $competitor) {
                     try {
                         $listingId = $fetcher->resolveListingId($competitor->product_link, $competitor->item_id);
                         if (!$listingId) {
+                            continue;
+                        }
+
+                        $syncResult = $familySync->syncListing(
+                            $listingId,
+                            $familySkus,
+                            $competitor->product_link,
+                            'ebay',
+                            false,
+                            $sku
+                        );
+                        $upserted = $syncResult['assigned'] ?? [];
+                        $variationCount = (int) ($syncResult['variation_count'] ?? 0);
+
+                        if ($variationCount > 0 || $upserted !== []) {
+                            $live = $upserted[$sku]
+                                ?? collect($upserted)->first(function ($payload, $familySku) use ($sku) {
+                                    return strcasecmp(trim((string) $familySku), trim($sku)) === 0;
+                                });
+                            if (is_array($live)) {
+                                \App\Models\EbayCompetitorItem::syncLiveListingData(
+                                    (string) $listingId,
+                                    $competitor->item_id !== null ? (string) $competitor->item_id : null,
+                                    $live
+                                );
+                            }
                             continue;
                         }
 
@@ -5054,14 +5083,16 @@ class EbayController extends Controller
                     }
                 }
 
-                $competitors = $competitors
-                    ->map(function ($comp) {
-                        try {
-                            return $comp->refresh();
-                        } catch (\Throwable $e) {
-                            return $comp;
+                $competitors = collect();
+                foreach ($groupSkus as $groupSku) {
+                    foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($groupSku) as $lookupSku) {
+                        $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
+                        if ($found->isNotEmpty()) {
+                            $competitors = $competitors->merge($found);
                         }
-                    });
+                    }
+                }
+                $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
             }
 
             $competitors = $competitors
