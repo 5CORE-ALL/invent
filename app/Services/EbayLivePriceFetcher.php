@@ -3,14 +3,21 @@
 namespace App\Services;
 
 use App\Support\Marketplace\EbayCompetitorVariationMatcher;
+use App\Support\Marketplace\EbayShippingCostParser;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class EbayLivePriceFetcher
 {
+    /** US zip so calculated / EIS shipping is resolved instead of treated as FREE. */
+    private const US_SHIP_ZIP = '10001';
+
     /** @var array<string, list<array<string, mixed>>> */
     private array $variationCache = [];
+
+    /** @var array<string, array{cost: float, known: bool}> */
+    private array $listingShippingCache = [];
 
     public function getApiKey(): ?string
     {
@@ -84,11 +91,13 @@ class EbayLivePriceFetcher
             if ($matched && (float) ($matched['price'] ?? 0) > 0) {
                 $live = $this->liveFromVariation($listingId, $matched, $sku);
                 if ($live) {
+                    $live = $this->ensureLiveShipping($listingId, $live);
                     Log::info('EbayLivePriceFetcher: using matched variation price', [
                         'listing_id' => $listingId,
                         'sku' => $sku,
                         'variation_label' => $live['variation_label'] ?? null,
                         'price' => $live['price'],
+                        'shipping_cost' => $live['shipping_cost'],
                     ]);
 
                     return $live;
@@ -96,7 +105,7 @@ class EbayLivePriceFetcher
             }
         }
 
-        return $this->fetchSerpApiProduct($listingId);
+        return $this->ensureLiveShipping($listingId, $this->fetchSerpApiProduct($listingId));
     }
 
     /**
@@ -118,9 +127,9 @@ class EbayLivePriceFetcher
             }
         }
 
-        $this->variationCache[$listingId] = $variations;
+        $this->variationCache[$listingId] = $this->withListingShipping($variations, $listingId);
 
-        return $variations;
+        return $this->variationCache[$listingId];
     }
 
     /**
@@ -135,6 +144,7 @@ class EbayLivePriceFetcher
         }
 
         $shipping = round((float) ($variation['shipping_cost'] ?? 0), 2);
+        $shippingKnown = (bool) ($variation['shipping_known'] ?? ($shipping > 0));
         $label = EbayCompetitorVariationMatcher::shortLabel($variation, $sku);
         $title = is_string($variation['title'] ?? null) ? trim((string) $variation['title']) : '';
         if ($title !== '' && $label !== '' && stripos($title, $label) === false) {
@@ -147,6 +157,7 @@ class EbayLivePriceFetcher
             'listing_id' => $listingId,
             'price' => $price,
             'shipping_cost' => $shipping,
+            'shipping_known' => $shippingKnown,
             'total_price' => round($price + $shipping, 2),
             'title' => $title !== '' ? $title : null,
             'link' => $variation['link'] ?? $this->variationLink($listingId, $variation),
@@ -172,6 +183,7 @@ class EbayLivePriceFetcher
                 'engine' => 'ebay_product',
                 'ebay_domain' => 'ebay.com',
                 'product_id' => $listingId,
+                'shipping_country' => 'US',
                 'api_key' => $apiKey,
             ]);
 
@@ -195,15 +207,16 @@ class EbayLivePriceFetcher
                 return null;
             }
 
-            $shippingCost = $this->extractShippingCost($product);
+            $shipping = EbayShippingCostParser::fromProduct(is_array($product) ? $product : []);
             $link = $product['product_link'] ?? $product['link'] ?? "https://www.ebay.com/itm/{$listingId}";
             $image = $this->extractImage($product);
 
             return [
                 'listing_id' => $listingId,
                 'price' => round($price, 2),
-                'shipping_cost' => round($shippingCost, 2),
-                'total_price' => round($price + $shippingCost, 2),
+                'shipping_cost' => round($shipping['cost'], 2),
+                'shipping_known' => $shipping['known'],
+                'total_price' => round($price + $shipping['cost'], 2),
                 'title' => $product['title'] ?? null,
                 'link' => $link,
                 'image' => $image,
@@ -230,7 +243,7 @@ class EbayLivePriceFetcher
 
         try {
             $response = Http::withToken($token)
-                ->withHeaders(['X-EBAY-C-MARKETPLACE-ID' => 'EBAY_US'])
+                ->withHeaders($this->browseHeaders())
                 ->timeout(25)
                 ->get('https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group', [
                     'item_group_id' => $listingId,
@@ -272,15 +285,7 @@ class EbayLivePriceFetcher
                     }
                 }
 
-                $shipping = 0.0;
-                $option = $item['shippingOptions'][0] ?? null;
-                if (is_array($option)) {
-                    if (isset($option['shippingCost']['value'])) {
-                        $shipping = (float) $option['shippingCost']['value'];
-                    } elseif (strcasecmp((string) ($option['shippingCostType'] ?? ''), 'FREE') === 0) {
-                        $shipping = 0.0;
-                    }
-                }
+                $shipping = $this->shippingFromBrowseItem($item);
 
                 $itemId = (string) ($item['itemId'] ?? '');
                 $varId = null;
@@ -293,7 +298,8 @@ class EbayLivePriceFetcher
                     'item_id' => $itemId,
                     'label' => implode(' / ', $labels),
                     'price' => $price,
-                    'shipping_cost' => $shipping,
+                    'shipping_cost' => $shipping['cost'],
+                    'shipping_known' => $shipping['known'],
                     'title' => $item['title'] ?? null,
                     'image' => $item['image']['imageUrl'] ?? null,
                     'link' => $item['itemWebUrl'] ?? $this->variationLink($listingId, ['id' => $varId]),
@@ -349,11 +355,18 @@ class EbayLivePriceFetcher
                 $raw = [$raw];
             }
 
-            $shipping = $this->numericPrice(
+            $shippingParsed = EbayShippingCostParser::fromMoney(
                 $item['ShippingCostSummary']['ShippingServiceCost']['Value']
                     ?? $item['ShippingCostSummary']['ShippingServiceCost']
-                    ?? 0
-            ) ?? 0.0;
+                    ?? null
+            );
+            if (! $shippingParsed['known'] && isset($item['ShippingCostSummary']['ShippingType'])) {
+                $type = (string) $item['ShippingCostSummary']['ShippingType'];
+                if (stripos($type, 'free') !== false) {
+                    $shippingParsed = ['cost' => 0.0, 'known' => true];
+                }
+            }
+            $shipping = $shippingParsed['cost'];
 
             $title = $item['Title'] ?? null;
             $image = $item['PictureURL'][0] ?? (is_string($item['PictureURL'] ?? null) ? $item['PictureURL'] : null);
@@ -390,6 +403,7 @@ class EbayLivePriceFetcher
                     'label' => implode(' / ', $labels),
                     'price' => $price,
                     'shipping_cost' => $shipping,
+                    'shipping_known' => $shippingParsed['known'] || $shipping > 0,
                     'title' => $title,
                     'image' => is_string($image) ? $image : null,
                     'link' => "https://www.ebay.com/itm/{$listingId}",
@@ -418,18 +432,25 @@ class EbayLivePriceFetcher
                     'User-Agent' => 'Mozilla/5.0 (compatible; InventLmp/1.0)',
                     'Accept-Language' => 'en-US,en;q=0.9',
                 ])
-                ->get("https://www.ebay.com/itm/{$listingId}");
+                ->get("https://www.ebay.com/itm/{$listingId}", [
+                    '_stpos' => self::US_SHIP_ZIP,
+                ]);
 
             if (!$response->successful()) {
                 return [];
             }
 
-            $msku = $this->extractMskuObject($response->body());
+            $html = $response->body();
+            $msku = $this->extractMskuObject($html);
             if ($msku === []) {
                 return [];
             }
 
-            return $this->variationsFromMsku($listingId, $msku);
+            return $this->withListingShipping(
+                $this->variationsFromMsku($listingId, $msku),
+                $listingId,
+                $html
+            );
         } catch (\Throwable $e) {
             Log::warning('EbayLivePriceFetcher: HTML variation fetch failed', [
                 'listing_id' => $listingId,
@@ -750,53 +771,233 @@ class EbayLivePriceFetcher
         return null;
     }
 
-    private function extractShippingCost(array $product): float
+    /**
+     * @param  array<string, mixed>|null  $live
+     * @return array<string, mixed>|null
+     */
+    private function ensureLiveShipping(string $listingId, ?array $live): ?array
     {
-        $shipping = $product['shipping'] ?? null;
-        if (!is_array($shipping)) {
-            return 0.0;
+        if ($live === null) {
+            return null;
         }
 
-        $option = $shipping['options'][0] ?? null;
-        if (is_array($option)) {
-            if (!empty($option['free'])) {
-                return 0.0;
+        $shipping = (float) ($live['shipping_cost'] ?? 0);
+        if ($shipping > 0) {
+            return $live;
+        }
+
+        // SerpApi often reports FREE when calculated shipping needs a US zip.
+        // Ask Browse/Shopping with a destination before accepting $0.
+        $fetched = $this->fetchListingShipping($listingId);
+        if ($fetched['cost'] > 0) {
+            $live['shipping_cost'] = $fetched['cost'];
+            $live['shipping_known'] = true;
+            $live['total_price'] = round((float) ($live['price'] ?? 0) + $fetched['cost'], 2);
+
+            return $live;
+        }
+
+        if ($fetched['known']) {
+            $live['shipping_known'] = true;
+            $live['shipping_cost'] = 0.0;
+            $live['total_price'] = round((float) ($live['price'] ?? 0), 2);
+        }
+
+        return $live;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $variations
+     * @return list<array<string, mixed>>
+     */
+    private function withListingShipping(array $variations, string $listingId, ?string $html = null): array
+    {
+        $needs = false;
+        foreach ($variations as $variation) {
+            if ((float) ($variation['shipping_cost'] ?? 0) <= 0 && empty($variation['shipping_known'])) {
+                $needs = true;
+                break;
+            }
+        }
+        if (! $needs) {
+            return $variations;
+        }
+
+        $parsed = $this->fetchListingShipping($listingId);
+        if (! $parsed['known'] && $html) {
+            $parsed = EbayShippingCostParser::fromHtml($html);
+        }
+        if (! $parsed['known'] && $parsed['cost'] <= 0) {
+            return $variations;
+        }
+
+        foreach ($variations as $index => $variation) {
+            if ((float) ($variation['shipping_cost'] ?? 0) > 0 || ! empty($variation['shipping_known'])) {
+                continue;
+            }
+            $variations[$index]['shipping_cost'] = $parsed['cost'];
+            $variations[$index]['shipping_known'] = $parsed['known'];
+        }
+
+        return $variations;
+    }
+
+    /**
+     * @return array{cost: float, known: bool}
+     */
+    private function fetchListingShipping(string $listingId): array
+    {
+        if (isset($this->listingShippingCache[$listingId])) {
+            return $this->listingShippingCache[$listingId];
+        }
+
+        $parsed = $this->fetchShippingFromBrowseItem($listingId);
+        if (! $parsed['known']) {
+            $parsed = $this->fetchShippingFromShoppingApi($listingId);
+        }
+
+        $this->listingShippingCache[$listingId] = $parsed;
+
+        return $parsed;
+    }
+
+    /**
+     * @return array{cost: float, known: bool}
+     */
+    private function fetchShippingFromBrowseItem(string $listingId): array
+    {
+        $token = $this->getBrowseAccessToken();
+        if (! $token) {
+            return ['cost' => 0.0, 'known' => false];
+        }
+
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders($this->browseHeaders())
+                ->timeout(25)
+                ->get('https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id', [
+                    'legacy_item_id' => $listingId,
+                ]);
+
+            if (! $response->successful()) {
+                return ['cost' => 0.0, 'known' => false];
             }
 
-            if (isset($option['price']['amount'])) {
-                return (float) $option['price']['amount'];
-            }
+            $item = $response->json();
 
-            if (isset($option['cost']['amount'])) {
-                return (float) $option['cost']['amount'];
-            }
+            return is_array($item) ? $this->shippingFromBrowseItem($item) : ['cost' => 0.0, 'known' => false];
+        } catch (\Throwable $e) {
+            Log::warning('EbayLivePriceFetcher: Browse item shipping failed', [
+                'listing_id' => $listingId,
+                'message' => $e->getMessage(),
+            ]);
 
-            foreach (['price', 'cost', 'via'] as $key) {
-                $raw = $option[$key] ?? null;
-                if (is_string($raw)) {
-                    if (stripos($raw, 'free') !== false) {
-                        return 0.0;
-                    }
-                    if (preg_match('/[\d,.]+/', $raw, $matches)) {
-                        return (float) str_replace(',', '', $matches[0]);
-                    }
+            return ['cost' => 0.0, 'known' => false];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{cost: float, known: bool}
+     */
+    private function shippingFromBrowseItem(array $item): array
+    {
+        $options = $item['shippingOptions'] ?? [];
+        if (! is_array($options) || $options === []) {
+            return ['cost' => 0.0, 'known' => false];
+        }
+
+        $bestPaid = null;
+        $sawFree = false;
+        foreach ($options as $option) {
+            if (! is_array($option)) {
+                continue;
+            }
+            $parsed = EbayShippingCostParser::fromOption($option);
+            if (! $parsed['known']) {
+                continue;
+            }
+            if ($parsed['cost'] > 0) {
+                if ($bestPaid === null || $parsed['cost'] < $bestPaid) {
+                    $bestPaid = $parsed['cost'];
                 }
+            } else {
+                $sawFree = true;
             }
         }
 
-        if (isset($shipping['cost']['value'])) {
-            return (float) $shipping['cost']['value'];
+        if ($bestPaid !== null) {
+            return ['cost' => $bestPaid, 'known' => true];
+        }
+        if ($sawFree) {
+            return ['cost' => 0.0, 'known' => true];
         }
 
-        if (isset($shipping['price']['amount'])) {
-            return (float) $shipping['price']['amount'];
+        return ['cost' => 0.0, 'known' => false];
+    }
+
+    /**
+     * @return array{cost: float, known: bool}
+     */
+    private function fetchShippingFromShoppingApi(string $listingId): array
+    {
+        $appId = config('services.ebay.app_id') ?: config('services.ebay2.app_id') ?: config('services.ebay3.app_id');
+        if (! $appId) {
+            return ['cost' => 0.0, 'known' => false];
         }
 
-        if (isset($shipping['cost']['amount'])) {
-            return (float) $shipping['cost']['amount'];
-        }
+        try {
+            $response = Http::timeout(25)->get('https://open.api.ebay.com/shopping', [
+                'callname' => 'GetShippingCosts',
+                'responseencoding' => 'JSON',
+                'appid' => $appId,
+                'siteid' => 0,
+                'version' => 1157,
+                'ItemID' => $listingId,
+                'DestinationCountryCode' => 'US',
+                'DestinationPostalCode' => self::US_SHIP_ZIP,
+                'IncludeDetails' => 'true',
+            ]);
 
-        return 0.0;
+            if (! $response->successful()) {
+                return ['cost' => 0.0, 'known' => false];
+            }
+
+            $data = $response->json() ?? [];
+            $summary = is_array($data) ? ($data['ShippingCostSummary'] ?? []) : [];
+            $parsed = EbayShippingCostParser::fromMoney(
+                $summary['ShippingServiceCost']['Value']
+                    ?? $summary['ShippingServiceCost']
+                    ?? null
+            );
+            if ($parsed['known']) {
+                return $parsed;
+            }
+
+            if (isset($summary['ShippingType']) && stripos((string) $summary['ShippingType'], 'free') !== false) {
+                return ['cost' => 0.0, 'known' => true];
+            }
+
+            return ['cost' => 0.0, 'known' => false];
+        } catch (\Throwable $e) {
+            Log::warning('EbayLivePriceFetcher: Shopping shipping failed', [
+                'listing_id' => $listingId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['cost' => 0.0, 'known' => false];
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function browseHeaders(): array
+    {
+        return [
+            'X-EBAY-C-MARKETPLACE-ID' => 'EBAY_US',
+            'X-EBAY-C-ENDUSERCTX' => 'contextualLocation=country%3DUS%2Czip%3D'.self::US_SHIP_ZIP,
+        ];
     }
 
     private function extractImage(array $product): ?string

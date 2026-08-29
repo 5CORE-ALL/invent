@@ -249,6 +249,10 @@ class UpdateEbaySkuCompetitorPrices extends Command
                 if (!$live) {
                     continue;
                 }
+                $live = \App\Support\Marketplace\EbayShippingCostParser::preferExisting(
+                    $live,
+                    $competitor->shipping_cost
+                );
                 $anyLive = true;
 
                 $oldPrice = floatval($competitor->price ?? 0);

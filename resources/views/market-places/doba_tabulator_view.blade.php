@@ -922,10 +922,17 @@
             /** Same as eBay: persist SPRICE = 0, then insert the rule price. */
             function dobaPersistClearThenSave(sku, fill, row) {
                 const token = $('meta[name="csrf-token"]').attr('content');
-                const fillPrice = Number(fill && fill.sprice != null ? fill.sprice : fill);
+                let fillPrice = Number(fill && fill.sprice != null ? fill.sprice : fill);
                 const fillData = (fill && typeof fill === 'object')
                     ? fill
                     : { sprice: fillPrice };
+                if (row && fillPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                    const capped = Number(chPromoFinalSpriceToSave(row.getData(), fillPrice));
+                    if (capped > 0) {
+                        fillPrice = capped;
+                        fillData.sprice = capped;
+                    }
+                }
                 if (!(fillPrice > 0)) {
                     return $.ajax({
                         url: '/doba/save-sprice',

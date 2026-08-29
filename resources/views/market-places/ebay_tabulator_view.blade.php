@@ -1056,10 +1056,15 @@
                                         <input type="text" class="form-control form-control-sm" id="addCompItemId" name="item_id"
                                             required placeholder="e.g., 123456789012">
                                     </div>
-                                    <div class="col-6">
+                                    <div class="col-3">
                                         <label class="form-label small mb-0">Price</label>
                                         <input type="number" class="form-control form-control-sm" id="addCompPrice" name="price"
                                             step="0.01" min="0" required placeholder="0.00">
+                                    </div>
+                                    <div class="col-3">
+                                        <label class="form-label small mb-0">Shipping</label>
+                                        <input type="number" class="form-control form-control-sm" id="addCompShipping" name="shipping_cost"
+                                            step="0.01" min="0" placeholder="0.00">
                                     </div>
                                     <div class="col-8">
                                         <label class="form-label small mb-0">Product Link</label>
@@ -3478,7 +3483,28 @@
             }
 
             // Retry function for saving SPRICE (only 1 retry for eBay)
-            function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+            function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
+                if (row && Number(sprice) > 0) {
+                    sprice = (typeof chPromoFinalSpriceToSave === 'function')
+                        ? chPromoFinalSpriceToSave(row.getData(), sprice)
+                        : (window.SpriceLmpCap ? SpriceLmpCap.prepare(row.getData(), sprice) : sprice);
+                }
+                if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    else if (row) row.update({ SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0 });
+                    return new Promise((resolve, reject) => {
+                        $.ajax({
+                            url: '/ebay-one/save-sprice',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: { sku: sku, sprice: 0, skip_push: 1 }
+                        }).always(function() {
+                            saveSpriceWithRetry(sku, sprice, row, 0, true).then(resolve).catch(reject);
+                        });
+                    });
+                }
                 return new Promise((resolve, reject) => {
                     // Update status to processing
                     if (row) {
@@ -3524,7 +3550,7 @@
                                 console.log(`Retrying SKU ${sku} in 2 seconds...`);
                                 setTimeout(() => {
                                     saveSpriceWithRetry(sku, sprice, row, retryCount +
-                                            1)
+                                            1, true)
                                         .then(resolve)
                                         .catch(reject);
                                 }, 2000);
@@ -6702,6 +6728,7 @@
             $('#addCompSku').val(sku);
             $('#addCompItemId').val('');
             $('#addCompPrice').val('');
+            $('#addCompShipping').val('');
             $('#addCompLink').val('');
 
             currentLmpData.sku = sku;
@@ -7193,7 +7220,7 @@
                     sku: $('#addCompSku').val(),
                     item_id: $('#addCompItemId').val(),
                     price: $('#addCompPrice').val(),
-                    shipping_cost: 0,
+                    shipping_cost: $('#addCompShipping').val() || 0,
                     product_link: $('#addCompLink').val()
                 },
                 success: function(response) {
@@ -7203,6 +7230,7 @@
                         // Clear form
                         $('#addCompItemId').val('');
                         $('#addCompPrice').val('');
+                        $('#addCompShipping').val('');
                         $('#addCompLink').val('');
 
                         // Reload competitors list

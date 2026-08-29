@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\EbaySkuCompetitor;
 use App\Models\ProductMaster;
 use App\Support\Marketplace\EbayCompetitorVariationMatcher;
+use App\Support\Marketplace\EbayShippingCostParser;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -196,6 +197,8 @@ class EbayCompetitorVariationFamilySync
             ->where('item_id', $itemId)
             ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
             ->first();
+
+        $live = EbayShippingCostParser::preferExisting($live, $existing?->shipping_cost);
 
         $payload = [
             'sku' => $existing->sku ?? $sku,

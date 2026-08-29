@@ -1284,6 +1284,23 @@
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
         function saveSpriceUpdates(updates, opts) {
             opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        const wipeData = { updates: zeros };
+                        if (opts.skip_push) wipeData.skip_push = 1;
+                        return $.ajax({
+                            url: '/macys-save-sprice-batch',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: wipeData
+                        });
+                    }
+                });
+                return;
+            }
             const data = {
                 updates: updates
             };

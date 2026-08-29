@@ -5034,6 +5034,11 @@ class EbayController extends Controller
                             continue;
                         }
 
+                        $live = \App\Support\Marketplace\EbayShippingCostParser::preferExisting(
+                            $live,
+                            $competitor->shipping_cost
+                        );
+
                         $liveTotal = isset($live['total_price']) ? (float) $live['total_price'] : 0.0;
                         if ($liveTotal <= 0) {
                             continue;

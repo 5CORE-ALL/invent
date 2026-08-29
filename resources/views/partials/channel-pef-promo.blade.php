@@ -3160,6 +3160,86 @@
             if (lmp > 0 && s + 0.0001 >= lmp) s = chPromoRound2(lmp);
             return s;
         }
+        /** Discounted or LMP-capped value that must be persisted after a wipe. */
+        function chPromoFinalSpriceToSave(d, fill, extra) {
+            extra = extra || {};
+            const requested = Number(fill);
+            if (!(requested > 0)) return 0;
+            if (d && typeof temuPrepareSpriceForSave === 'function' && chPromoIsTemuPromoChannel()) {
+                const v = Number(temuPrepareSpriceForSave(d, fill));
+                return v > 0 ? chPromoRound2(v) : 0;
+            }
+            const capped = extra.skip_lmp_cap
+                ? chPromoRound2(fill)
+                : (d ? chPromoCapSpriceToLmp(d, fill, extra) : chPromoRound2(fill));
+            return d ? chPromoFloorShopifySpriceToAmz(d, capped) : capped;
+        }
+        function chPromoWipeSpriceRow(row) {
+            if (!row || typeof row.update !== 'function') return;
+            row.update(Object.assign(chPromoSpricePatch(0), {
+                has_custom_sprice: false,
+                SGPFT: 0,
+                sgpft: 0,
+                SGROI: 0,
+                sgroi: 0,
+                SROI: 0,
+                sroi: 0,
+                SPFT: 0,
+                spft: 0,
+                'Spft%': 0,
+            }));
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        }
+        /**
+         * Page-level batch saves: wipe SPRICE=0, then POST the discounted / LMP-capped fills.
+         * continueFn(cappedUpdates) runs the existing save body.
+         */
+        function chPromoBatchClearThenSave(updates, continueFn, opts) {
+            opts = opts || {};
+            if (!updates || !updates.length) return;
+            function findRow(sku) {
+                if (typeof table === 'undefined' || !table) return null;
+                if (typeof table.searchRows === 'function') {
+                    try {
+                        const rows = table.searchRows('(Child) sku', '=', sku);
+                        if (rows && rows.length) return rows[0];
+                    } catch (e) { /* fall through */ }
+                }
+                let found = null;
+                if (typeof table.getRows === 'function') {
+                    table.getRows().forEach(function(r) {
+                        const d = r.getData() || {};
+                        if ((d['(Child) sku'] || d.sku) === sku) found = r;
+                    });
+                }
+                return found;
+            }
+            const capped = updates.map(function(u) {
+                const next = Object.assign({}, u);
+                const row = findRow(next.sku);
+                if (Number(next.sprice) > 0) {
+                    next.sprice = chPromoFinalSpriceToSave(row ? row.getData() : {}, next.sprice);
+                }
+                return next;
+            });
+            const fills = capped.filter(function(u) { return Number(u.sprice) > 0; });
+            if (opts.clearFirst === false || !fills.length) {
+                continueFn(capped);
+                return;
+            }
+            fills.forEach(function(u) {
+                const row = findRow(u.sku);
+                if (row) chPromoWipeSpriceRow(row);
+            });
+            const zeros = fills.map(function(u) { return { sku: u.sku, sprice: 0 }; });
+            const wipe = typeof opts.wipeFn === 'function'
+                ? opts.wipeFn(zeros)
+                : $.Deferred().resolve().promise();
+            Promise.resolve(wipe).then(function() { continueFn(capped); }, function() { continueFn(capped); });
+        }
+        window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
+        window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
+        window.chPromoBatchClearThenSave = chPromoBatchClearThenSave;
         /** Shopify B2C: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
         function chPromoFloorShopifySpriceToAmz(d, sprice) {
             if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return chPromoRound2(sprice);
@@ -3655,15 +3735,9 @@
         function chPromoIsTemuPromoChannel() {
             return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
         }
-        /** Persist SPRICE = 0, then insert the rule price (eBay/Temu/Shopify B2C/Doba/Reverb/TikTok apply). */
+        /** Persist SPRICE = 0, then insert the discounted or LMP-capped price — all marketplace blades. */
         function chPromoShouldPersistClearThenSprice() {
-            return chPromoIsTemuPromoChannel()
-                || CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                || CHANNEL_PROMO_CHANNEL === 'doba'
-                || CHANNEL_PROMO_CHANNEL === 'doba_withoutship'
-                || CHANNEL_PROMO_CHANNEL === 'reverb'
-                || CHANNEL_PROMO_CHANNEL === 'tiktok'
-                || CHANNEL_PROMO_CHANNEL === 'tiktok2';
+            return true;
         }
         /** Temu discounted start: Std × (1 − T Promo). Never stored S PRC. */
         function chPromoTemuDiscountedStart(d) {
@@ -3999,7 +4073,7 @@
             });
         }
 
-        /** Wipe stored S PRC (persist 0), then insert the rule price. Same as eBay apply. */
+        /** Wipe stored S PRC (persist 0), then insert the discounted or LMP-capped price. */
         function chPromoPersistClearThenSprice(row, fill, silent, extra) {
             extra = extra || {};
             extra.row = extra.row || row;
@@ -4010,10 +4084,8 @@
             if (!sku) return Promise.resolve(null);
             extra.sku = sku;
             extra.rowData = extra.rowData || d;
-            if (row && typeof row.update === 'function') {
-                row.update(chPromoSpricePatch(0));
-                try { row.reformat(); } catch (e) { /* ignore */ }
-            }
+            fill = chPromoFinalSpriceToSave(d, fill, extra);
+            chPromoWipeSpriceRow(row);
             const wipeExtra = Object.assign({}, extra, { skip_push: true, queue_push: false, row: row });
             const afterWipe = function() {
                 if (row && typeof row.getData === 'function') {

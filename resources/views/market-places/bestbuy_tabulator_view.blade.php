@@ -986,7 +986,23 @@
         }
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
-        function saveSpriceUpdates(updates) {
+        function saveSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '/bestbuy-save-sprice',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { updates: zeros }
+                        });
+                    }
+                });
+                return;
+            }
             $.ajax({
                 url: '/bestbuy-save-sprice',
                 method: 'POST',

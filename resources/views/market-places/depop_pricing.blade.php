@@ -820,7 +820,22 @@
         showToast(`Cleared SPRICE for ${updates.length} SKU(s)`, 'success');
     }
 
-    function saveSpriceUpdates(updates) {
+    function saveSpriceUpdates(updates, opts) {
+        opts = opts || {};
+        if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+            chPromoBatchClearThenSave(updates, function(next) {
+                saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+            }, {
+                wipeFn: function(zeros) {
+                    return $.ajax({
+                        url: "{{ route('depop.pricing.save.sprice') }}",
+                        method: 'POST',
+                        data: { _token: '{{ csrf_token() }}', updates: zeros }
+                    });
+                }
+            });
+            return;
+        }
         $.ajax({
             url: "{{ route('depop.pricing.save.sprice') }}",
             method: 'POST',

@@ -736,7 +736,23 @@
             $('#discount-percentage-input').val('');
         }
 
-        function saveSpriceUpdates(updates) {
+        function saveSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '{{ route("vinted.pricing.save.sprice.batch") }}',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { updates: zeros }
+                        });
+                    }
+                });
+                return;
+            }
             $.ajax({
                 url: '{{ route("vinted.pricing.save.sprice.batch") }}',
                 method: 'POST',
@@ -768,7 +784,22 @@
             showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
-        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
+            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
+            }
+            if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else if (row) row.update({ SPRICE: 0, SGPFT: 0, SPFT: 0, SROI: 0 });
+                $.ajax({
+                    url: '{{ route("vinted.pricing.save.sprice.tabulator") }}',
+                    method: 'POST',
+                    data: { sku, sprice: 0, _token: '{{ csrf_token() }}' }
+                }).always(function() {
+                    saveSpriceWithRetry(sku, sprice, row, 0, true);
+                });
+                return;
+            }
             $.ajax({
                 url: '{{ route("vinted.pricing.save.sprice.tabulator") }}',
                 method: 'POST',
@@ -780,7 +811,7 @@
                     if (response.sgpft_percent !== undefined) row.update({ SGPFT: response.sgpft_percent });
                 },
                 error: function(xhr) {
-                    if (retryCount < 3) setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1), 2000);
+                    if (retryCount < 3) setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1, true), 2000);
                     else showToast(`Failed to save SPRICE for ${sku}`, 'error');
                 }
             });

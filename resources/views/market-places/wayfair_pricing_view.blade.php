@@ -558,7 +558,23 @@
             });
         }
 
-        function saveWayfairSpriceUpdates(updates) {
+        function saveWayfairSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveWayfairSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '{{ route("wayfair.pricing.save.sprice") }}',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { _token: '{{ csrf_token() }}', updates: zeros }
+                        });
+                    }
+                });
+                return;
+            }
             $.ajax({
                 url: '{{ route("wayfair.pricing.save.sprice") }}',
                 method: 'POST',

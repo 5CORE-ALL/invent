@@ -642,7 +642,23 @@
             $('#ae-discount-container').toggle(cnt > 0 && (decreaseModeActive || increaseModeActive));
         }
 
-        function saveSpriceUpdates(updates) {
+        function saveSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '{{ route("shein.pricing.save.sprice") }}',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { updates: zeros }
+                        });
+                    }
+                });
+                return;
+            }
             $.ajax({
                 url: '{{ route("shein.pricing.save.sprice") }}',
                 method: 'POST',

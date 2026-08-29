@@ -46,6 +46,7 @@ class EbayCompetitorItem extends Model
         }
 
         static::whereIn('item_id', $ids)->get()->each(function (self $row) use ($listingId, $live) {
+            $live = \App\Support\Marketplace\EbayShippingCostParser::preferExisting($live, $row->shipping_cost);
             $payload = [
                 'price' => $live['price'] ?? $row->price,
                 'shipping_cost' => $live['shipping_cost'] ?? $row->shipping_cost,

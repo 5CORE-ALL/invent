@@ -2177,7 +2177,23 @@
             }
 
             // Bulk save through one HTTP request (mirrors reverb-save-sprice pattern).
-            function saveSpriceUpdates(updates) {
+            function saveSpriceUpdates(updates, opts) {
+                opts = opts || {};
+                if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                    chPromoBatchClearThenSave(updates, function(next) {
+                        saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                    }, {
+                        wipeFn: function(zeros) {
+                            return $.ajax({
+                                url: "{{ route('newegg.pricing.save.sprice.bulk') }}",
+                                method: 'POST',
+                                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                                data: { updates: zeros }
+                            });
+                        }
+                    });
+                    return;
+                }
                 $.ajax({
                     url: "{{ route('newegg.pricing.save.sprice.bulk') }}",
                     method: 'POST',

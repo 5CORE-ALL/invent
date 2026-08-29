@@ -1715,7 +1715,25 @@
             }
 
             // Retry function for saving SPRICE (only 1 retry for eBay)
-            function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+            function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
+                if (row && Number(sprice) > 0) {
+                    sprice = (typeof chPromoFinalSpriceToSave === 'function')
+                        ? chPromoFinalSpriceToSave(row.getData(), sprice)
+                        : (window.SpriceLmpCap ? SpriceLmpCap.prepare(row.getData(), sprice) : sprice);
+                }
+                if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    else if (row) row.update({ SPRICE: 0, has_custom_sprice: false, SGPFT: 0, SGROI: 0 });
+                    return new Promise((resolve, reject) => {
+                        $.ajax({
+                            url: '/save-sprice-ebay',
+                            method: 'POST',
+                            data: { sku: sku, sprice: 0, skip_push: 1, _token: '{{ csrf_token() }}' }
+                        }).always(function() {
+                            saveSpriceWithRetry(sku, sprice, row, 0, true).then(resolve).catch(reject);
+                        });
+                    });
+                }
                 return new Promise((resolve, reject) => {
                     // Update status to processing
                     if (row) {
@@ -1755,7 +1773,7 @@
                             if (retryCount < 1) {
                                 console.log(`Retrying SKU ${sku} in 2 seconds...`);
                                 setTimeout(() => {
-                                    saveSpriceWithRetry(sku, sprice, row, retryCount + 1)
+                                    saveSpriceWithRetry(sku, sprice, row, retryCount + 1, true)
                                         .then(resolve)
                                         .catch(reject);
                                 }, 2000);

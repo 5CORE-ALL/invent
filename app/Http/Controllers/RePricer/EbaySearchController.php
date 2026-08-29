@@ -85,6 +85,7 @@ class EbaySearchController extends Controller
                     'ebay_domain' => 'ebay.com',
                     '_nkw' => $searchQuery,  // eBay uses _nkw parameter for search
                     '_pgn' => $page,  // eBay pagination
+                    '_stpos' => '10001',
                     'api_key' => $serpApiKey,
                 ]);
 
@@ -160,21 +161,9 @@ class EbaySearchController extends Controller
                         }
                     }
 
-                    // Extract shipping cost
-                    $shippingCost = null;
-                    if (isset($result['shipping']['value'])) {
-                        $shippingCost = $result['shipping']['value'];
-                    } elseif (isset($result['shipping'])) {
-                        $shippingString = is_string($result['shipping']) ? $result['shipping'] : '';
-                        if (stripos($shippingString, 'free') === false) {
-                            preg_match('/[\d,.]+/', $shippingString, $matches);
-                            if (!empty($matches)) {
-                                $shippingCost = str_replace(',', '', $matches[0]);
-                            }
-                        } else {
-                            $shippingCost = 0;
-                        }
-                    }
+                    // Extract shipping cost (missing shipping is unknown, not FREE)
+                    $shippingParsed = \App\Support\Marketplace\EbayShippingCostParser::fromProduct($result);
+                    $shippingCost = $shippingParsed['known'] ? $shippingParsed['cost'] : null;
 
                     // Calculate total price
                     $totalPrice = ($price ?? 0) + ($shippingCost ?? 0);

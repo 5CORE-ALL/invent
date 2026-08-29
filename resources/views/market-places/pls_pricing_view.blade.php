@@ -1712,7 +1712,24 @@
         });
 
         // saveSpriceWithRetry for PLS
-        function plsSaveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+        function plsSaveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
+            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
+            }
+            if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else if (row) row.update({ sprice: 0, sgpft: 0, sroi: 0, has_custom_sprice: false });
+                return new Promise(function(resolve, reject) {
+                    $.ajax({
+                        url: '/save-pls-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: { sku: sku, sprice: 0 }
+                    }).always(function() {
+                        plsSaveSpriceWithRetry(sku, sprice, row, 0, true).then(resolve).catch(reject);
+                    });
+                });
+            }
             return new Promise(function(resolve, reject) {
                 if (row) row.update({ sprice: sprice });
 
@@ -1743,7 +1760,7 @@
                     error: function(xhr) {
                         if (retryCount < 1) {
                             setTimeout(function() {
-                                plsSaveSpriceWithRetry(sku, sprice, row, retryCount + 1).then(resolve).catch(reject);
+                                plsSaveSpriceWithRetry(sku, sprice, row, retryCount + 1, true).then(resolve).catch(reject);
                             }, 2000);
                         } else {
                             reject({ error: true, xhr: xhr });

@@ -1735,7 +1735,23 @@
         }
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
-        function saveSpriceUpdates(updates) {
+        function saveSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '/shopify-b2b/save-sprice',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { updates: zeros }
+                        });
+                    }
+                });
+                return;
+            }
             console.log('Saving SPRICE updates:', updates.length, 'SKUs');
             
             $.ajax({
@@ -1818,9 +1834,24 @@
         }
 
         // SAVE SPRICE to database with retry
-        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
             const maxRetries = 3;
-            
+            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
+            }
+            if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else if (row) row.update({ SPRICE: 0, SGPFT: 0, SROI: 0 });
+                $.ajax({
+                    url: '/shopify-b2b/save-sprice',
+                    method: 'POST',
+                    data: { sku: sku, sprice: 0, _token: '{{ csrf_token() }}' }
+                }).always(function() {
+                    saveSpriceWithRetry(sku, sprice, row, 0, true);
+                });
+                return;
+            }
+
             $.ajax({
                 url: '/shopify-b2b/save-sprice',
                 method: 'POST',
@@ -1847,7 +1878,7 @@
                 },
                 error: function(xhr) {
                     if (retryCount < maxRetries) {
-                        setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1), 2000);
+                        setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1, true), 2000);
                     } else {
                         showToast(`Failed to save SPRICE for ${sku}`, 'error');
                     }

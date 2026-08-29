@@ -152,6 +152,7 @@ class UpdateEbayCompetitorPrices extends Command
                     'ebay_domain' => 'ebay.com',
                     '_nkw' => $searchQuery,
                     '_pgn' => $page,
+                    '_stpos' => '10001',
                     'api_key' => $serpApiKey,
                 ]);
 
@@ -211,7 +212,7 @@ class UpdateEbayCompetitorPrices extends Command
                             $hasChanges = true;
                             $changes['price'] = ['old' => $existing->price, 'new' => $price];
                         }
-                        if ($existing->shipping_cost != $shippingCost) {
+                        if ($shippingCost !== null && $existing->shipping_cost != $shippingCost) {
                             $hasChanges = true;
                             $changes['shipping_cost'] = ['old' => $existing->shipping_cost, 'new' => $shippingCost];
                         }
@@ -229,10 +230,9 @@ class UpdateEbayCompetitorPrices extends Command
 
                         if ($hasChanges) {
                             if (!$isDryRun) {
-                                $existing->update([
+                                $payload = [
                                     'item_id' => $itemId,
                                     'price' => $price,
-                                    'shipping_cost' => $shippingCost,
                                     'condition' => $condition,
                                     'seller_name' => $sellerName,
                                     'seller_rating' => $sellerRating,
@@ -240,7 +240,11 @@ class UpdateEbayCompetitorPrices extends Command
                                     'link' => $link,
                                     'title' => $title,
                                     'image' => $image,
-                                ]);
+                                ];
+                                if ($shippingCost !== null) {
+                                    $payload['shipping_cost'] = $shippingCost;
+                                }
+                                $existing->update($payload);
                             }
                             
                             $this->line("    Updated item {$itemId}: " . json_encode($changes));
@@ -304,19 +308,10 @@ class UpdateEbayCompetitorPrices extends Command
      */
     protected function extractShippingCost($result)
     {
-        if (isset($result['shipping']['value'])) {
-            return $result['shipping']['value'];
-        } elseif (isset($result['shipping'])) {
-            $shippingString = is_string($result['shipping']) ? $result['shipping'] : '';
-            if (stripos($shippingString, 'free') === false) {
-                preg_match('/[\d,.]+/', $shippingString, $matches);
-                if (!empty($matches)) {
-                    return str_replace(',', '', $matches[0]);
-                }
-            } else {
-                return 0;
-            }
-        }
-        return null;
+        $parsed = \App\Support\Marketplace\EbayShippingCostParser::fromProduct(
+            is_array($result) ? $result : []
+        );
+
+        return $parsed['known'] ? $parsed['cost'] : null;
     }
 }

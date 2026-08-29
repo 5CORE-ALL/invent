@@ -3047,6 +3047,9 @@
 
         /** Same as eBay: persist SPRICE = 0, then insert the rule price. */
         function temuPersistClearThenSave(sku, fill, tableRow) {
+            if (tableRow && Number(fill) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                fill = chPromoFinalSpriceToSave(tableRow.getData(), fill);
+            }
             if (tableRow && typeof tableRow.update === 'function') {
                 tableRow.update({ sprice: null, SPRICE: null, sprice_status: 'processing' });
                 try { tableRow.reformat(); } catch (e) { /* ignore */ }

@@ -565,7 +565,22 @@
         setTimeout(() => t.remove(), 3500);
     }
 
-    function tdSaveSpriceUpdates(updates) {
+    function tdSaveSpriceUpdates(updates, opts) {
+        opts = opts || {};
+        if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+            chPromoBatchClearThenSave(updates, function(next) {
+                tdSaveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+            }, {
+                wipeFn: function(zeros) {
+                    return $.ajax({
+                        url: "{{ route('topdawg.save.sprice') }}",
+                        method: 'POST',
+                        data: { _token: '{{ csrf_token() }}', updates: zeros }
+                    });
+                }
+            });
+            return;
+        }
         $.ajax({
             url: "{{ route('topdawg.save.sprice') }}",
             method: 'POST',

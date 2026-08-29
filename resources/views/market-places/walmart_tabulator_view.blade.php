@@ -1145,43 +1145,47 @@
 
                 if (field === 'SPRICE') {
                     const sku = data['(Child) sku'];
-                    const sprice = parseFloat(cell.getValue()) || 0;
-
-                    // Save to database
-                    $.ajax({
-                        url: '/save-walmart-sprice',
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                        },
-                        data: {
-                            sku: sku,
-                            sprice: sprice
-                        },
-                        success: function(response) {
-                            showToast('success', 'SPRICE updated successfully');
-                            
-                            // Update SGPFT, SPFT% and SROI% from server response
-                            if (response.sgpft_percent !== undefined) {
-                                row.update({
-                                    'SGPFT': response.sgpft_percent
-                                });
+                    let sprice = parseFloat(cell.getValue()) || 0;
+                    if (sprice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                        sprice = chPromoFinalSpriceToSave(data, sprice);
+                    }
+                    const persistWalmartSprice = function(val) {
+                        return $.ajax({
+                            url: '/save-walmart-sprice',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                sprice: val
                             }
-                            if (response.spft_percent !== undefined) {
-                                row.update({
-                                    'Spft%': response.spft_percent
-                                });
-                            }
-                            if (response.sroi_percent !== undefined) {
-                                row.update({
-                                    'SROI': response.sroi_percent
-                                });
-                            }
-                        },
-                        error: function(xhr) {
-                            showToast('error', 'Failed to update SPRICE');
+                        });
+                    };
+                    const applyWalmartSaveResponse = function(response) {
+                        showToast('success', 'SPRICE updated successfully');
+                        if (response.sgpft_percent !== undefined) {
+                            row.update({ 'SGPFT': response.sgpft_percent });
                         }
-                    });
+                        if (response.spft_percent !== undefined) {
+                            row.update({ 'Spft%': response.spft_percent });
+                        }
+                        if (response.sroi_percent !== undefined) {
+                            row.update({ 'SROI': response.sroi_percent });
+                        }
+                    };
+                    const failWalmartSave = function() {
+                        showToast('error', 'Failed to update SPRICE');
+                    };
+                    if (sprice > 0) {
+                        if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                        else row.update({ SPRICE: 0, SGPFT: 0, SROI: 0 });
+                        persistWalmartSprice(0).always(function() {
+                            persistWalmartSprice(sprice).done(applyWalmartSaveResponse).fail(failWalmartSave);
+                        });
+                    } else {
+                        persistWalmartSprice(sprice).done(applyWalmartSaveResponse).fail(failWalmartSave);
+                    }
                 } else if (field === 'buybox_price') {
                     const sku = data['(Child) sku'];
                     const buyboxPrice = parseFloat(cell.getValue()) || 0;

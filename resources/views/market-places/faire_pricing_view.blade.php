@@ -843,7 +843,23 @@
             return String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         }
 
-        function saveFaireSpriceUpdates(updates) {
+        function saveFaireSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveFaireSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '{{ route("faire.pricing.save.sprice") }}',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                            data: { _token: '{{ csrf_token() }}', updates: zeros }
+                        });
+                    }
+                });
+                return;
+            }
             frUpdatePushButtonVisibility();
             $.ajax({
                 url: '{{ route("faire.pricing.save.sprice") }}',

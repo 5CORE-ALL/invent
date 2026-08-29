@@ -2488,41 +2488,24 @@
         function saveSpriceUpdates(updates, opts) {
             opts = opts || {};
             if (!updates || !updates.length) return;
-            const fills = updates.filter(function(u) { return Number(u.sprice) > 0; });
-            if (opts.clearFirst !== false && fills.length) {
-                fills.forEach(function(u) {
-                    const rows = (typeof table !== 'undefined' && table)
-                        ? table.searchRows('(Child) sku', '=', u.sku)
-                        : [];
-                    if (rows.length) {
-                        rows[0].update({ SPRICE: 0, has_custom_sprice: false });
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+                chPromoBatchClearThenSave(updates, function(next) {
+                    saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
+                }, {
+                    wipeFn: function(zeros) {
+                        return $.ajax({
+                            url: '/shopify/save-sprice',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                updates: zeros.map(function(u) {
+                                    return { sku: u.sku, sprice: 0, amz_sugg: 0 };
+                                })
+                            }
+                        });
                     }
-                });
-                $.ajax({
-                    url: '/shopify/save-sprice',
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        updates: fills.map(function(u) {
-                            return { sku: u.sku, sprice: 0, amz_sugg: 0 };
-                        })
-                    }
-                }).always(function() {
-                    fills.forEach(function(u) {
-                        const rows = (typeof table !== 'undefined' && table)
-                            ? table.searchRows('(Child) sku', '=', u.sku)
-                            : [];
-                        if (rows.length) {
-                            rows[0].update({
-                                SPRICE: Number(u.sprice),
-                                has_custom_sprice: true,
-                                AMZ_SUGG_APPLIED: !!Number(u.amz_sugg)
-                            });
-                        }
-                    });
-                    saveSpriceUpdates(updates, { clearFirst: false });
                 });
                 return;
             }
@@ -2613,8 +2596,12 @@
         // SAVE SPRICE to database with retry
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
             const maxRetries = 3;
+            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
+            }
             if (!skipClear && !(retryCount > 0) && Number(sprice) > 0) {
-                if (row && typeof row.update === 'function') {
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else if (row && typeof row.update === 'function') {
                     row.update({ SPRICE: 0, has_custom_sprice: false });
                 }
                 $.ajax({
