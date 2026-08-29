@@ -1487,6 +1487,57 @@
         let currentSku = null;
         let table = null; // Global table reference
         let allTableData = []; // Full dataset for ParentExpand
+
+        function ebayCompetitorIsIgnored(item) {
+            if (!item) return false;
+            const v = item.ignored;
+            if (v === true || v === 1 || v === '1') return true;
+            if (typeof v === 'string') {
+                return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
+            }
+            return false;
+        }
+        function ebayL1FromCompetitors(competitors) {
+            let l1 = null;
+            (competitors || []).forEach(function(c) {
+                if (ebayCompetitorIsIgnored(c)) return;
+                const tp = parseFloat(c.total_price) || parseFloat(c.price) || 0;
+                if (tp > 0 && (l1 === null || tp < l1)) l1 = tp;
+            });
+            return l1;
+        }
+        function ebayActiveLmpCount(competitors) {
+            let n = 0;
+            (competitors || []).forEach(function(c) {
+                if (ebayCompetitorIsIgnored(c)) return;
+                const tp = parseFloat(c.total_price) || parseFloat(c.price) || 0;
+                if (tp > 0) n++;
+            });
+            return n;
+        }
+        function ebayEffectiveLmp(row) {
+            if (!row) return 0;
+            const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+            if (entries.length) {
+                const l1 = ebayL1FromCompetitors(entries);
+                return l1 != null && l1 > 0 ? l1 : 0;
+            }
+            return parseFloat(row.lmp_price) || 0;
+        }
+        function ebayApplyL1FromEntries(row) {
+            if (!row || row.is_parent_summary) return row;
+            const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+            if (!entries.length) return row;
+            const l1 = ebayL1FromCompetitors(entries);
+            row.lmp_price = l1;
+            row.lmp_entries_total = ebayActiveLmpCount(entries);
+            if (l1 == null) {
+                row.lmp_link = null;
+                row.lmp_item_id = null;
+                row.lmp_title = null;
+            }
+            return row;
+        }
         /** Average L7 views (rows with E Stock > 0) — drives the L7 View column colours
          *  and the "Avg L7" badge. Recomputed in updateSummary(). */
         let avgL7ViewsGlobal = 0;
@@ -3278,56 +3329,6 @@
                 applyFilters();
             });
 
-            function ebayCompetitorIsIgnored(item) {
-                if (!item) return false;
-                const v = item.ignored;
-                if (v === true || v === 1 || v === '1') return true;
-                if (typeof v === 'string') {
-                    return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
-                }
-                return false;
-            }
-            function ebayL1FromCompetitors(competitors) {
-                let l1 = null;
-                (competitors || []).forEach(function(c) {
-                    if (ebayCompetitorIsIgnored(c)) return;
-                    const tp = parseFloat(c.total_price) || parseFloat(c.price) || 0;
-                    if (tp > 0 && (l1 === null || tp < l1)) l1 = tp;
-                });
-                return l1;
-            }
-            function ebayActiveLmpCount(competitors) {
-                let n = 0;
-                (competitors || []).forEach(function(c) {
-                    if (ebayCompetitorIsIgnored(c)) return;
-                    const tp = parseFloat(c.total_price) || parseFloat(c.price) || 0;
-                    if (tp > 0) n++;
-                });
-                return n;
-            }
-            function ebayEffectiveLmp(row) {
-                if (!row) return 0;
-                const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
-                if (entries.length) {
-                    const l1 = ebayL1FromCompetitors(entries);
-                    return l1 != null && l1 > 0 ? l1 : 0;
-                }
-                return parseFloat(row.lmp_price) || 0;
-            }
-            function ebayApplyL1FromEntries(row) {
-                if (!row || row.is_parent_summary) return row;
-                const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
-                if (!entries.length) return row;
-                const l1 = ebayL1FromCompetitors(entries);
-                row.lmp_price = l1;
-                row.lmp_entries_total = ebayActiveLmpCount(entries);
-                if (l1 == null) {
-                    row.lmp_link = null;
-                    row.lmp_item_id = null;
-                    row.lmp_title = null;
-                }
-                return row;
-            }
             function ebay1IsAlertParentRow(data) {
                 return !!(data && (data.is_parent_summary
                     || (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))));
