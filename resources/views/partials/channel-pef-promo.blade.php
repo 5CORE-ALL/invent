@@ -7700,6 +7700,55 @@
             next();
         }
 
+        /** Visible S PRC (live rules + LMP cap) — what Push Prc sends to the listing. */
+        function chPromoPushSpriceAmount(d) {
+            if (!d) return 0;
+            let p = 0;
+            if (typeof chPromoLiveSprice === 'function') {
+                p = Number(chPromoLiveSprice(d)) || 0;
+            }
+            if (!(p > 0)) p = chPromoGetSprice(d);
+            p = chPromoRound2(p);
+            if (window.SpriceLmpCap && p > 0) {
+                const cap = SpriceLmpCap.apply(d, p);
+                if (cap && cap.shown > 0) p = chPromoRound2(cap.shown);
+            }
+            return p > 0 ? p : 0;
+        }
+
+        function chPromoQueueSpricePushes(ready) {
+            const items = [];
+            (ready || []).forEach(function(r) {
+                const d = r.row.getData();
+                const sku = chPromoSku(d);
+                const price = r.price > 0 ? chPromoRound2(r.price) : chPromoPushSpriceAmount(d);
+                if (!sku || !(price > 0)) return;
+                r.row.update({
+                    PUSH_PRC_STATUS: 'processing',
+                    SPRICE_STATUS: 'queued',
+                    push_prc: 'processing',
+                    PUSH_PRC_VALUE: price,
+                });
+                chPromoRefreshPushCell(r.row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing S PRC…');
+                items.push({ sku: sku, price: price, row: r.row });
+            });
+            if (!items.length) {
+                chPromoToast('error', 'S PRC required');
+                return false;
+            }
+            if (typeof enqueueChannelPushSpriceClient === 'function') {
+                const n = enqueueChannelPushSpriceClient(items, { force: true });
+                if (n > 0) return true;
+                if (window._chPushSpriceLiveAllowed === false) return false;
+            }
+            if (typeof enqueueChannelPushSprice === 'function') {
+                enqueueChannelPushSprice(items, { exclusive: true, immediate: true });
+                return true;
+            }
+            chPromoToast('error', 'S PRC push is not available');
+            return false;
+        }
+
         function pushChannelStdPrcWithPromos($btn, row) {
             const selected = collectChPromoSelectedRows();
             const clickedKey = chPromoSkuKey(chPromoSku(row.getData()));
@@ -7713,41 +7762,15 @@
 
             const d = row.getData();
             const sku = chPromoSku(d);
-            const plan = computeChannelPushPrcPlan(d);
-            if (!sku || !plan || !(plan.std > 0)) {
-                chPromoToast('error', 'Std Prc required — Push Prc sends listing = Std, then coupon (CPN%)');
+            const price = chPromoPushSpriceAmount(d);
+            if (!sku || !(price > 0)) {
+                chPromoToast('error', 'S PRC required — Push Prc sends S PRC to the live listing');
                 return;
             }
-            if (!confirm(
-                (chPromoPushQueueEnabled
-                    ? ('Queue Push Prc for ' + sku + ' in background?\n\n')
-                    : ('Push Prc for ' + sku + '?\n\n'))
-                + chPromoPushPrcStepsText(plan)
-                + '\nMax $' + plan.max.toFixed(2)
-                + ' · Min $' + plan.min.toFixed(2)
-                + ' · Biz $' + plan.business.toFixed(2)
-                + (chPromoPushQueueEnabled
-                    ? '\n\nYou can refresh or queue more SKUs while it runs.'
-                    : (!chPromoCfg.pushPriceUrl ? '\n\n(Push URL not configured — will save promo only)' : ''))
-            )) {
-                chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
+            if (!confirm('Push S PRC $' + price.toFixed(2) + ' to eBay for ' + sku + '?')) {
                 return;
             }
-
-            row.update({ PUSH_PRC_STATUS: 'processing', push_prc: 'processing' });
-            chPromoRefreshPushCell(row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
-            setChPromoPushPrcProgress({
-                active: true, done: 0, total: 1, ok: 0, fail: 0, pct: 8,
-                cancelable: true, title: 'Pushing',
-                msg: sku + ' · starting…',
-            });
-
-            if (chPromoPushQueueEnabled) {
-                applyChannelPushPrcToSpriceRow(row, plan, null);
-                queueChannelPushPrcItems([planToChannelPushPrcQueueItem(d, plan)]);
-                return;
-            }
-            runChannelPushPrcSequential([{ row: row, d: d, plan: plan }]);
+            chPromoQueueSpricePushes([{ row: row, price: price }]);
         }
 
         function bulkPushChannelPrcSelected() {
@@ -7762,44 +7785,19 @@
             }
             const ready = [];
             targets.forEach(function(t) {
-                const d = t.row.getData();
-                const plan = computeChannelPushPrcPlan(d);
-                if (plan && plan.std > 0) {
-                    ready.push({ row: t.row, d: d, plan: plan });
-                }
+                const price = chPromoPushSpriceAmount(t.row.getData());
+                if (price > 0) ready.push({ row: t.row, price: price });
             });
             const skipped = targets.length - ready.length;
             if (!ready.length) {
-                chPromoToast('error', 'Selected SKUs need Std Prc (Push Prc: Std → coupon CPN%)');
+                chPromoToast('error', 'Selected SKUs need S PRC');
                 return;
             }
             if (!confirm(
-                (chPromoPushQueueEnabled
-                    ? ('Queue Push Prc for ' + ready.length + ' selected SKU(s) in background?')
-                    : ('Push Prc for ' + ready.length + ' selected SKU(s)?'))
-                + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
-                + '\n\n1) Push Std Prc as listing price'
-                + (chPromoPushPrcHasSaleCoupon()
-                    ? '\n2) Coupon campaign from CPN%'
-                    : '')
-                + (chPromoPushQueueEnabled
-                    ? '\n\nSafe to refresh — progress continues. You can select more and queue again.'
-                    : (!chPromoCfg.pushPriceUrl ? '\n\n(Push URL not configured — will save promo only)' : ''))
+                'Push S PRC to eBay for ' + ready.length + ' selected SKU(s)?'
+                + (skipped ? ('\n(' + skipped + ' skipped — no S PRC)') : '')
             )) return;
-
-            if (chPromoPushQueueEnabled) {
-                const items = ready.map(function(r) {
-                    r.row.update({ PUSH_PRC_STATUS: 'processing', push_prc: 'processing' });
-                    chPromoRefreshPushCell(r.row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing Std → coupon…');
-                    applyChannelPushPrcToSpriceRow(r.row, r.plan, null);
-                    return planToChannelPushPrcQueueItem(r.d, r.plan);
-                });
-                if (table) table.redraw(true);
-                queueChannelPushPrcItems(items);
-                return;
-            }
-
-            runChannelPushPrcSequential(ready);
+            chPromoQueueSpricePushes(ready);
         }
 
         function clearAndAutopopulateChannelSprice() {
@@ -8947,7 +8945,7 @@
             };
         }
 
-        /** Push Prc — listing = Std, then coupon from CPN%. Select rows, then header or cell push. */
+        /** Push Prc — S PRC only to the live listing. Select rows, then header or cell push. */
         function channelPromoPushPrcColumn() {
             return {
                 title: 'Push Prc',
@@ -8956,20 +8954,16 @@
                 hozAlign: 'center',
                 vertAlign: 'middle',
                 headerSort: true,
-                headerTooltip: 'Push Prc — send Std as listing price, then coupon from CPN%. Select SKUs and click this header (or a selected cell) to bulk push.',
+                headerTooltip: 'Push Prc — send S PRC to the live eBay listing. Select SKUs and click this header (or a selected cell) to bulk push.',
                 sorter: function(a, b, aRow, bRow) {
-                    const val = function(row) {
-                        const plan = computeChannelPushPrcPlan(row);
-                        return (plan && plan.effective > 0) ? plan.effective : 0;
-                    };
-                    return val(aRow.getData()) - val(bRow.getData());
+                    return chPromoPushSpriceAmount(aRow.getData()) - chPromoPushSpriceAmount(bRow.getData());
                 },
                 titleFormatter: function() {
                     return chPromoHeaderWithDelete(
                         'Push Prc',
                         'ch-promo-push-prc-header-btn',
                         'ch-promo-push-prc-header-del',
-                        'Bulk Push Prc for selected SKUs',
+                        'Bulk Push S PRC for selected SKUs',
                         'Hide the Push Prc column'
                     );
                 },
@@ -8991,41 +8985,38 @@
                     const d = cell.getRow().getData() || {};
                     if (!chPromoIsChildRow(d)) return '';
                     const sku = chPromoSku(d);
-                    const plan = computeChannelPushPrcPlan(d);
-                    const status = String(d.PUSH_PRC_STATUS || '');
-                    const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : (plan ? plan.effective : null);
+                    const price = chPromoPushSpriceAmount(d);
+                    const status = String(d.PUSH_PRC_STATUS || d.SPRICE_STATUS || '');
+                    const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : price;
                     const dot = chPromoHistoryDotHtml(sku, 'push_prc', histVal);
-                    if (!plan || !(plan.std > 0)) {
+                    if (!(price > 0)) {
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
-                            + dot + '<span style="color:#adb5bd;" title="Std Prc required">—</span></span>';
+                            + dot + '<span style="color:#adb5bd;" title="S PRC required">—</span></span>';
                     }
                     let icon = '<i class="fas fa-upload"></i>';
                     let color = '#FF9900';
-                    let tip = chPromoPushPrcStepsText(plan)
-                        + '\nMax $' + plan.max.toFixed(2)
-                        + ' · Min $' + plan.min.toFixed(2)
-                        + ' · Biz $' + plan.business.toFixed(2);
-                    if (status === 'processing') {
+                    let tip = 'Push S PRC $' + price.toFixed(2) + ' to eBay listing';
+                    if (status === 'processing' || status === 'queued') {
                         icon = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
                         color = '#ffc107';
-                        tip = 'Pushing Std → coupon…';
+                        tip = 'Pushing S PRC…';
                     } else if (status === 'error') {
                         icon = '<i class="fa-solid fa-xmark"></i>';
                         color = '#dc3545';
-                        tip = 'Last Push Prc failed — click to retry';
+                        tip = 'Last S PRC push failed — click to retry';
                     } else if (status === 'pushed') {
                         icon = '<i class="fa-solid fa-check-double"></i>';
                         color = '#28a745';
-                        const last = Number(d.PUSH_PRC_VALUE) || plan.effective;
-                        tip = 'Pushed $' + Number(last).toFixed(2) + ' — click to push again';
+                        const last = Number(d.PUSH_PRC_VALUE) || price;
+                        tip = 'Pushed S PRC $' + Number(last).toFixed(2) + ' — click to push again';
                     }
                     return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
                         + dot
                         + '<span style="font-weight:600;font-size:11px;color:#212529;">$'
-                        + plan.effective.toFixed(2) + '</span>'
+                        + price.toFixed(2) + '</span>'
                         + '<button type="button" class="btn btn-sm p-0 ch-promo-push-prc-btn" '
                         + 'data-sku="' + chPromoEscAttr(sku) + '" '
-                        + 'data-price="' + plan.effective.toFixed(2) + '" '
+                        + 'data-price="' + price.toFixed(2) + '" '
                         + 'title="' + chPromoEscAttr(tip) + '" '
                         + 'style="border:none;background:none;cursor:pointer;color:' + color
                         + ';padding:0;line-height:1;vertical-align:middle;">'
@@ -9042,7 +9033,8 @@
                     e.preventDefault();
                     if (btn.disabled) return false;
                     const d = cell.getRow().getData() || {};
-                    if (String(d.PUSH_PRC_STATUS || '') === 'processing') return false;
+                    const st = String(d.PUSH_PRC_STATUS || d.SPRICE_STATUS || '');
+                    if (st === 'processing' || st === 'queued') return false;
                     pushChannelStdPrcWithPromos($(btn), cell.getRow());
                     return false;
                 },

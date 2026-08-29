@@ -672,12 +672,17 @@
                 const patch = {};
                 if (ok) {
                     patch.SPRICE_STATUS = 'pushed';
+                    patch.PUSH_PRC_STATUS = 'pushed';
+                    patch.push_prc = 'pushed';
                     if (live > 0) {
                         patch[CH_PUSH_SPRICE_PRICE_FIELD] = live;
                         patch['eBay Price'] = live;
+                        patch.PUSH_PRC_VALUE = live;
                     }
                 } else {
                     patch.SPRICE_STATUS = 'error';
+                    patch.PUSH_PRC_STATUS = 'error';
+                    patch.push_prc = 'error';
                     const err = String(errMsg || '').toLowerCase();
                     if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
                         patch.listing_status = 'ENDED';
@@ -694,7 +699,8 @@
                 }
                 chPushClientPatchDatasets(item.sku, patch);
             }
-            function enqueueChannelPushSpriceClient(items) {
+            function enqueueChannelPushSpriceClient(items, opts) {
+                opts = opts || {};
                 if (!CH_PUSH_SPRICE_LIVE) {
                     chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
                     return 0;
@@ -708,6 +714,7 @@
                     if (!sku || !(price > 0)) return;
                     const key = sku.toUpperCase();
                     const dedupe = key + '|' + price.toFixed(2);
+                    if (opts.force) chPushClientPushed.delete(dedupe);
                     if (chPushClientPushed.has(dedupe)) return;
                     chPushClientQ = chPushClientQ.filter(function(it) {
                         return String(it.sku).toUpperCase() !== key;
