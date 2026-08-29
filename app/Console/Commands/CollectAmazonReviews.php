@@ -294,9 +294,12 @@ class CollectAmazonReviews extends Command
             }
         }
 
+        $monitor->setProcessed($updated + $skipped + $failed);
         $monitor->setUpdated($updated);
         $monitor->setSkipped($skipped);
         $monitor->setFailed($failed);
+        // ASINs with no rating are a normal skip, not a missed update.
+        $monitor->setExpected($updated + $failed);
         if ($updated > 0) {
             $monitor->markApiConnected(true);
         }
