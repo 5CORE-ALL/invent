@@ -17,9 +17,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Pull avg star rating + review count for Amazon SKUs via Advertising API
- * (Brand Posts product list → customerReviewSummary), with SP-API Catalog
- * customerReviews, then live SerpApi amazon_product (the Amazon PDP rating),
- * then Jungle Scout as last resort.
+ * (Brand Posts), SP-API Catalog, Jungle Scout, then SerpApi amazon_product
+ * only for ASINs Jungle Scout does not have a rating for.
  */
 class CollectAmazonReviews extends Command
 {
@@ -29,10 +28,10 @@ class CollectAmazonReviews extends Command
         {--chunk=20 : ASINs per Ads Brand Posts request}
         {--limit=0 : Max SKUs to process (0 = all)}
         {--sku= : Optional single SKU}
-        {--ads-only : Do not fall back to SP-API / SerpApi / Jungle Scout}
-        {--no-serp : Skip SerpApi live Amazon PDP ratings}';
+        {--ads-only : Do not fall back to SP-API / Jungle Scout / SerpApi}
+        {--no-serp : Skip SerpApi for ASINs Jungle Scout does not cover}';
 
-    protected $description = 'Collect Amazon avg rating + review count via Ads API, SP-API, live Amazon (SerpApi), then Jungle Scout';
+    protected $description = 'Collect Amazon avg rating + review count via Ads API, SP-API, Jungle Scout, then SerpApi for gaps';
 
     protected string $monitorJobName = 'Amazon Collect Reviews';
 
@@ -121,7 +120,7 @@ class CollectAmazonReviews extends Command
                 $useBrandPosts = false;
                 $short = $this->shortApiError($e);
                 $this->warn('Ads Brand Posts unavailable (skipping for this run): '.$short);
-                $this->warn('→ Continuing with live Amazon PDP / Jungle Scout fallbacks.');
+                $this->warn('→ Continuing with Jungle Scout, then SerpApi for ASINs JS does not cover.');
                 Log::warning('amazon:collect-reviews Ads Brand Posts disabled for run', [
                     'error' => $e->getMessage(),
                 ]);
@@ -210,28 +209,48 @@ class CollectAmazonReviews extends Command
                 }
             }
 
-            $this->info('Chunk done — live Amazon API hits: '.$this->countLiveReviews($reviewByAsin, $asinChunk).'/'.count($asinChunk));
-        }
-
-        // 3) One live Amazon PDP rating per variation family (shoppers see one family rating)
-        if (! $adsOnly && ! $this->option('no-serp')) {
-            $filled = $this->fillMissingFromFamilySerp($asins, $reviewByAsin);
-            if ($filled > 0) {
-                $monitor->markApiConnected(true);
-                $this->info("SerpApi family fill: {$filled} ASIN(s)");
-            }
-        }
-
-        // 4) Last resort — Jungle Scout cache (often weeks stale vs the Amazon PDP)
-        if (! $adsOnly) {
-            foreach ($asins as $asin) {
-                if (isset($reviewByAsin[$asin])) {
-                    continue;
+            // 3) Jungle Scout (primary fallback when Ads / SP-API miss)
+            if (! $adsOnly) {
+                foreach ($asinChunk as $asin) {
+                    if (isset($reviewByAsin[$asin])) {
+                        continue;
+                    }
+                    $js = $this->jungleScoutReviewForAsin($asin);
+                    if ($js !== null) {
+                        $reviewByAsin[$asin] = $js;
+                    }
                 }
-                $js = $this->jungleScoutReviewForAsin($asin);
-                if ($js !== null) {
-                    $reviewByAsin[$asin] = $js;
+            }
+
+            $found = 0;
+            foreach ($asinChunk as $asin) {
+                if (isset($reviewByAsin[$asin])) {
+                    $found++;
+                }
+            }
+            $this->info('Chunk done — reviews found for '.$found.'/'.count($asinChunk).' ASINs');
+        }
+
+        // 4) SerpApi amazon_product — only ASINs Jungle Scout (and Ads/SP) did not cover
+        if (! $adsOnly && ! $this->option('no-serp')) {
+            $missing = array_values(array_filter($asins, static fn ($asin) => ! isset($reviewByAsin[$asin])));
+            $this->info('SerpApi fallback for '.count($missing).' ASIN(s) with no Jungle Scout rating...');
+            $serpFilled = 0;
+            foreach ($missing as $asin) {
+                $serp = $this->serpApiReviewForAsin($asin);
+                if ($serp !== null) {
+                    $reviewByAsin[$asin] = $serp;
+                    $serpFilled++;
+                    $monitor->markApiConnected(true);
                 } else {
+                    $skipped++;
+                }
+                usleep(200000);
+            }
+            $this->info("SerpApi filled {$serpFilled}/".count($missing).' ASINs');
+        } elseif (! $adsOnly) {
+            foreach ($asins as $asin) {
+                if (! isset($reviewByAsin[$asin])) {
                     $skipped++;
                 }
             }
@@ -380,155 +399,6 @@ class CollectAmazonReviews extends Command
 
             return null;
         }
-    }
-
-    /**
-     * @param  array<string, array{rating: mixed, review_count: int, source: string}>  $reviewByAsin
-     * @param  list<string>  $asinChunk
-     */
-    private function countLiveReviews(array $reviewByAsin, array $asinChunk): int
-    {
-        $n = 0;
-        foreach ($asinChunk as $asin) {
-            if (isset($reviewByAsin[$asin])) {
-                $n++;
-            }
-        }
-
-        return $n;
-    }
-
-    /**
-     * Amazon shows one rating for a variation family. Fetch the parent (or first
-     * child) once via SerpApi and copy that PDP rating onto every family ASIN.
-     *
-     * @param  list<string>  $asins
-     * @param  array<string, array{rating: mixed, review_count: int, source: string}>  $reviewByAsin
-     */
-    private function fillMissingFromFamilySerp(array $asins, array &$reviewByAsin): int
-    {
-        $families = $this->variationFamilyMap($asins);
-        $filled = 0;
-        $fetchedKey = [];
-
-        foreach ($families as $familyKey => $members) {
-            $missing = [];
-            $live = null;
-            foreach ($members as $member) {
-                if (! in_array($member, $asins, true) && $member !== $familyKey) {
-                    continue;
-                }
-                if (isset($reviewByAsin[$member]) && $this->isLiveReviewSource($reviewByAsin[$member]['source'] ?? '')) {
-                    $live = $reviewByAsin[$member];
-                } elseif (in_array($member, $asins, true) && ! isset($reviewByAsin[$member])) {
-                    $missing[] = $member;
-                }
-            }
-            if ($missing === [] && $live === null) {
-                continue;
-            }
-            if ($live === null) {
-                if (isset($fetchedKey[$familyKey])) {
-                    $live = $fetchedKey[$familyKey];
-                } else {
-                    $probeAsin = in_array($familyKey, $asins, true) ? $familyKey : ($missing[0] ?? $members[0] ?? null);
-                    $live = $probeAsin ? $this->serpApiReviewForAsin($probeAsin) : null;
-                    $fetchedKey[$familyKey] = $live;
-                    usleep(200000);
-                }
-            }
-            if ($live === null) {
-                continue;
-            }
-            foreach ($members as $member) {
-                if (! in_array($member, $asins, true)) {
-                    continue;
-                }
-                if (isset($reviewByAsin[$member]) && $this->isLiveReviewSource($reviewByAsin[$member]['source'] ?? '')) {
-                    continue;
-                }
-                $reviewByAsin[$member] = $live;
-                $filled++;
-            }
-        }
-
-        // ASINs with no Jungle Scout family row — still try the PDP once
-        foreach ($asins as $asin) {
-            if (isset($reviewByAsin[$asin])) {
-                continue;
-            }
-            $serp = $this->serpApiReviewForAsin($asin);
-            if ($serp !== null) {
-                $reviewByAsin[$asin] = $serp;
-                $filled++;
-            }
-            usleep(200000);
-        }
-
-        return $filled;
-    }
-
-    /**
-     * @param  list<string>  $asins
-     * @return array<string, list<string>>  familyKey => member ASINs
-     */
-    private function variationFamilyMap(array $asins): array
-    {
-        $upper = array_values(array_unique(array_map(static fn ($a) => strtoupper(trim((string) $a)), $asins)));
-        if ($upper === []) {
-            return [];
-        }
-
-        $rows = JungleScoutProductData::query()
-            ->orderByDesc('id')
-            ->get(['asin', 'data']);
-
-        $families = [];
-        $seen = [];
-        foreach ($rows as $row) {
-            $asin = strtoupper(trim((string) $row->asin));
-            if ($asin === '' || isset($seen[$asin])) {
-                continue;
-            }
-            $seen[$asin] = true;
-            $data = is_array($row->data) ? $row->data : (json_decode($row->data ?? '[]', true) ?: []);
-            if (! is_array($data)) {
-                $data = [];
-            }
-            $parent = strtoupper(trim((string) ($data['parent_asin'] ?? '')));
-            $key = $parent !== '' ? $parent : $asin;
-            $families[$key][$asin] = true;
-            if ($parent !== '') {
-                $families[$key][$parent] = true;
-            }
-            $variants = $data['variants'] ?? [];
-            if (is_array($variants)) {
-                foreach ($variants as $variant) {
-                    $v = strtoupper(trim((string) $variant));
-                    if ($v !== '') {
-                        $families[$key][$v] = true;
-                    }
-                }
-            }
-        }
-
-        foreach ($upper as $asin) {
-            if (! isset($seen[$asin])) {
-                $families[$asin][$asin] = true;
-            }
-        }
-
-        $out = [];
-        foreach ($families as $key => $members) {
-            $out[$key] = array_keys($members);
-        }
-
-        return $out;
-    }
-
-    private function isLiveReviewSource(string $source): bool
-    {
-        return in_array($source, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon'], true);
     }
 
     /**
