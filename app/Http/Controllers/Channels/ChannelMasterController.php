@@ -10328,8 +10328,7 @@ class ChannelMasterController extends Controller
             'Miss'       => $mapMissCounts['miss'],
             'NMap'       => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
-            // CVR pre-computed from /temu-decrease's temu_l30 ÷ product_clicks so the
-            // /all-marketplace-master Temu row matches the page's CVR badge exactly.
+            // CVR = /temu1-data sold ÷ Views (temu_view_data, once per goods_id).
             // The Qty cell still shows order-level total_quantity (semantic preserved).
             'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
             ...$this->getChannelHealthAndReviewsStub(),

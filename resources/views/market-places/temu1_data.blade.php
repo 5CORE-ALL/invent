@@ -627,7 +627,7 @@
                         <span class="badge bg-danger fs-6 p-2 temu-badge-history" id="avg-cvr-badge"
                             data-badge-metric="avg_cvr_pct" data-badge-label="CVR %"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="CVR = (Sold / T Clicks) × 100">CVR: 0%</span>
+                            title="CVR = (Sold / Views) × 100 — Views from temu_view_data, once per Goods ID">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
                             data-badge-metric="total_views" data-badge-label="Views"
                             style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
@@ -3538,7 +3538,7 @@
             const avgNpft = avgGprft - adsPercentForNpft;
             const avgNroi = avgGroi - adsPercentForNpft;
             const cvrTotalSold = totalTemuL30;
-            const qtyPerViews = totalTClicks > 0 ? (cvrTotalSold / totalTClicks) * 100 : 0;
+            const qtyPerViews = totalViews > 0 ? (cvrTotalSold / totalViews) * 100 : 0;
 
             $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());

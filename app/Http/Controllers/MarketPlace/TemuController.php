@@ -3448,7 +3448,7 @@ class TemuController extends Controller
                 $roiPercent = TemuShopifySalesService::computeGroiPercent((float) $temuPrice, (float) $percentage, (float) $lp, (float) $temuShip);
                 
                 // CVR% = Temu L30 / Views × 100.
-                // Views = Seller Center clicks + Ads Views (same number as the Views column).
+                // Views = same as the Views column: o_clicks (temu_view_data) or product_clicks.
                 $tClicks = (int) $productClicks + (int) $adClicks;
                 $tClicksL7 = (int) $productClicksL7 + (int) $adClicksL7;
                 // T Click Growth % = ((T7 daily pace / T30 daily pace) − 1) × 100
@@ -3456,7 +3456,13 @@ class TemuController extends Controller
                 $tClicksGrowth = ($tClicks > 0 && $tClicksL7 > 0)
                     ? round(((($tClicksL7 / 7) / ($tClicks / 30)) - 1) * 100, 1)
                     : null;
-                $cvrDenom = (int) $productClicks + (int) $adsViews;
+                // Temu 1: same Views as the column (o_clicks || product_clicks+ads).
+                // Temu 2: leave the existing sheet + ads Views denom unchanged.
+                $cvrDenom = $isTemu2Pricing
+                    ? ((int) $productClicks + (int) $adsViews)
+                    : ((int) $oClicks > 0
+                        ? (int) $oClicks
+                        : ((int) $productClicks + (int) $adsViews));
                 $cvrPercent = $cvrDenom > 0 ? ($temuL30 / $cvrDenom) * 100 : 0;
                 // Temu L60 = from orders window; Temu 2: sales only (no ad fallback)
                 $temuL60 = $temuL60FromSales > 0
@@ -3971,6 +3977,8 @@ class TemuController extends Controller
                     $productClicksL7 = 0;
                     $productClicksL7ToL14 = 0;
                     $hasReq = false;
+                    $cvrViewsByGoodsId = [];
+                    $cvrViewsNoGid = 0;
                     foreach ($children as $c) {
                         $inv += (float) ($c['inventory'] ?? 0);
                         $ovl30 += (float) ($c['ovl30'] ?? 0);
@@ -3986,6 +3994,14 @@ class TemuController extends Controller
                         if ($nr !== 'NR' && $nr !== 'NRL') {
                             $hasReq = true;
                         }
+                        $childO = (int) ($c['o_clicks'] ?? 0);
+                        $childViews = $childO > 0 ? $childO : (int) ($c['product_clicks'] ?? 0);
+                        $childGid = trim((string) ($c['goods_id'] ?? ''));
+                        if ($childGid !== '') {
+                            $cvrViewsByGoodsId[$childGid] = $childViews;
+                        } else {
+                            $cvrViewsNoGid += $childViews;
+                        }
                     }
 
                     $row['inventory'] = $inv;
@@ -3999,7 +4015,11 @@ class TemuController extends Controller
                     $row['product_clicks_l7'] = $productClicksL7;
                     $row['product_clicks_l7_to_l14'] = $productClicksL7ToL14;
                     $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
-                    $row['cvr_percent'] = $productClicks > 0 ? round(($temuL30 / $productClicks) * 100, 2) : 0;
+                    $cvrViews = $cvrViewsNoGid;
+                    foreach ($cvrViewsByGoodsId as $childViews) {
+                        $cvrViews += (int) $childViews;
+                    }
+                    $row['cvr_percent'] = $cvrViews > 0 ? round(($temuL30 / $cvrViews) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
 
@@ -6632,13 +6652,11 @@ class TemuController extends Controller
             $totalAds = 0;
             $totalNpft = 0;
             $totalNroi = 0;
-            $totalCvr = 0;
             $totalDil = 0;
             $totalSpend = 0;
             $totalViews = 0;
             $totalTemuL30 = 0;
             $totalInv = 0;
-            $cvrCount = 0;
             $dilCount = 0;
             $zeroSoldCount = 0;
             $missingCount = 0;
@@ -6673,12 +6691,7 @@ class TemuController extends Controller
                 $totalNpft += floatval($row['npft_percent'] ?? 0);
                 $totalNroi += floatval($row['nroi_percent'] ?? 0);
                 
-                // CVR% (only count non-zero values)
-                $cvr = floatval($row['cvr_percent'] ?? 0);
-                if ($cvr > 0) {
-                    $totalCvr += $cvr;
-                    $cvrCount++;
-                }
+                // CVR is computed after the loop: sold ÷ views (once per goods_id).
                 
                 // DIL% (only count non-zero values)
                 $dil = floatval($row['dil_percent'] ?? 0);
@@ -6687,10 +6700,8 @@ class TemuController extends Controller
                     $dilCount++;
                 }
                 
-                // Ad spend and views
+                // Ad spend (views / sold / CVR are computed on all SKUs below)
                 $totalSpend += floatval($row['spend'] ?? 0);
-                $totalViews += intval($row['product_clicks'] ?? 0);
-                $totalTemuL30 += $temuL30;
                 
                 // Inventory and counts
                 $inventory = floatval($row['inventory'] ?? 0);
@@ -6745,7 +6756,31 @@ class TemuController extends Controller
             $avgAds = $totalProducts > 0 ? $totalAds / $totalProducts : 0;
             $avgNpft = $totalProducts > 0 ? $totalNpft / $totalProducts : 0;
             $avgNroi = $totalProducts > 0 ? $totalNroi / $totalProducts : 0;
-            $avgCvr = $cvrCount > 0 ? $totalCvr / $cvrCount : 0;
+            // Same as /temu1-data CVR badge and channel:calculate-data:
+            // sold ÷ Views, Views = o_clicks || product_clicks, once per goods_id, skip PARENT.
+            $viewsByGoodsId = [];
+            $totalViews = 0;
+            $totalTemuL30 = 0;
+            foreach ($products as $row) {
+                $sku = strtoupper(trim((string) ($row['sku'] ?? $row['(Child) sku'] ?? '')));
+                $isParent = ! empty($row['is_parent']) || str_contains($sku, 'PARENT');
+                if ($isParent) {
+                    continue;
+                }
+                $oClicks = (int) ($row['o_clicks'] ?? 0);
+                $rowViews = $oClicks > 0 ? $oClicks : (int) ($row['product_clicks'] ?? 0);
+                $gid = trim((string) ($row['goods_id'] ?? ''));
+                if ($gid !== '') {
+                    $viewsByGoodsId[$gid] = $rowViews;
+                } else {
+                    $totalViews += $rowViews;
+                }
+                $totalTemuL30 += (int) ($row['temu_l30'] ?? 0);
+            }
+            foreach ($viewsByGoodsId as $views) {
+                $totalViews += (int) $views;
+            }
+            $avgCvr = $totalViews > 0 ? ($totalTemuL30 / $totalViews) * 100 : 0;
             $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
             
             // Store ALL metrics in JSON (flexible!)
