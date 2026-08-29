@@ -367,6 +367,21 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/help-desk-faqs/{help_desk_faq}', [\App\Http\Controllers\HelpDeskFaqController::class, 'destroy'])->name('help-desk-faqs.destroy');
 });
 
+// Supplier Portal — public (no login). Share /supplier-portal with suppliers.
+Route::get('/supplier-portal', [\App\Http\Controllers\SupplierPortalController::class, 'index'])->name('supplier-portal.index');
+Route::get('/supplier-portal/download/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'download'])->name('supplier-portal.download');
+
+Route::middleware(['auth'])->prefix('supplier-portal/manage')->name('supplier-portal.admin.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\SupplierPortalAdminController::class, 'index'])->name('index');
+    Route::post('/settings', [\App\Http\Controllers\SupplierPortalAdminController::class, 'updateSettings'])->name('settings');
+    Route::delete('/hero', [\App\Http\Controllers\SupplierPortalAdminController::class, 'destroyHero'])->name('hero.destroy');
+    Route::post('/assets', [\App\Http\Controllers\SupplierPortalAdminController::class, 'storeAsset'])->name('assets.store');
+    Route::put('/assets/{asset}', [\App\Http\Controllers\SupplierPortalAdminController::class, 'updateAsset'])->name('assets.update');
+    Route::delete('/assets/{asset}', [\App\Http\Controllers\SupplierPortalAdminController::class, 'destroyAsset'])->name('assets.destroy');
+});
+
+Route::get('/supplier-portal/{category}', [\App\Http\Controllers\SupplierPortalController::class, 'section'])->name('supplier-portal.section');
+
 // STEP 2: PUBLIC AI ROUTES (no auth)
 // Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])->name('ai.download.sample'); // temporarily disabled
 

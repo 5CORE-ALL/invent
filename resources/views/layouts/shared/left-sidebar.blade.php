@@ -171,6 +171,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('supplier-portal.admin.index') }}" class="side-nav-link {{ request()->routeIs('supplier-portal.admin.*') ? 'active' : '' }}">
+                    <i class="ri-building-2-line"></i>
+                    <span>Supplier Portal</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('missing.listing') }}" class="side-nav-link missing-listing-nav">
                     <i class="ri-error-warning-line"></i>
                     <span>Missing Listing</span>
