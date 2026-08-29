@@ -200,23 +200,23 @@ class UpdateEbaySkuCompetitorPrices extends Command
 
         foreach ($listingMap as $listingId => $competitorIds) {
             $index++;
-            $live = $fetcher->fetchByListingId($listingId);
-
-            if (!$live) {
-                $liveFailed++;
-                $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: no live data");
-                usleep(500000);
-                continue;
-            }
-
             $competitors = EbaySkuCompetitor::whereIn('id', $competitorIds)->get();
+            $anyLive = false;
+
             foreach ($competitors as $competitor) {
+                $live = $fetcher->fetchByListingId($listingId, $competitor->sku, $competitor->product_link);
+                if (!$live) {
+                    continue;
+                }
+                $anyLive = true;
+
                 $oldPrice = floatval($competitor->price ?? 0);
                 $oldShipping = floatval($competitor->shipping_cost ?? 0);
                 $originalItemId = $competitor->item_id;
                 $newImage = $live['image'] ?? null;
                 $imageChanged = !empty($newImage) && empty($competitor->image);
                 $priceChanged = $oldPrice != $live['price'] || $oldShipping != $live['shipping_cost'];
+                $variationNote = !empty($live['variation_label']) ? " [{$live['variation_label']}]" : '';
 
                 if (!$isDryRun) {
                     $competitor->update([
@@ -243,12 +243,17 @@ class UpdateEbaySkuCompetitorPrices extends Command
                 }
 
                 if ($priceChanged) {
-                    $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: \${$oldPrice} → \${$live['price']} (SKU: {$competitor->sku})");
+                    $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: \${$oldPrice} → \${$live['price']} (SKU: {$competitor->sku}){$variationNote}");
                     $liveUpdated++;
                 } elseif ($imageChanged) {
                     $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: image saved (SKU: {$competitor->sku})");
                     $imagesUpdated++;
                 }
+            }
+
+            if (!$anyLive) {
+                $liveFailed++;
+                $this->line("  [{$index}/" . count($listingMap) . "] Listing {$listingId}: no live data");
             }
 
             usleep(500000);

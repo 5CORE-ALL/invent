@@ -5018,7 +5018,7 @@ class EbayController extends Controller
                             continue;
                         }
 
-                        $live = $fetcher->fetchByListingId($listingId);
+                        $live = $fetcher->fetchByListingId($listingId, $sku, $competitor->product_link);
                         if (!$live) {
                             continue;
                         }

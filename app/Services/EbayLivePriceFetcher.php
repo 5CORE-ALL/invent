@@ -2,11 +2,16 @@
 
 namespace App\Services;
 
+use App\Support\Marketplace\EbayCompetitorVariationMatcher;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class EbayLivePriceFetcher
 {
+    /** @var array<string, list<array<string, mixed>>> */
+    private array $variationCache = [];
+
     public function getApiKey(): ?string
     {
         $key = config('services.serpapi.key');
@@ -21,6 +26,19 @@ class EbayLivePriceFetcher
         }
 
         if (preg_match('/\/itm\/(\d+)/', $url, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    public function extractVariationIdFromUrl(?string $url): ?string
+    {
+        if (!$url) {
+            return null;
+        }
+
+        if (preg_match('/[?&]var=(\d+)/i', $url, $matches)) {
             return $matches[1];
         }
 
@@ -46,11 +64,86 @@ class EbayLivePriceFetcher
     }
 
     /**
+     * Fetch the current Buy-It-Now price for an eBay listing.
+     * When $sku has a pack size (e.g. "MS DBL 4PCS") and the listing is a
+     * variation, use that variation's BIN — not the unselected default price.
+     *
+     * @return array{listing_id: string, price: float, shipping_cost: float, total_price: float, title: ?string, link: ?string, image: ?string, variation_label?: ?string}|null
+     */
+    public function fetchByListingId(string $listingId, ?string $sku = null, ?string $productLink = null): ?array
+    {
+        $variationId = $this->extractVariationIdFromUrl($productLink);
+        $packQty = EbayCompetitorVariationMatcher::extractPackQty($sku);
+
+        if ($variationId || $packQty) {
+            $matched = EbayCompetitorVariationMatcher::pick(
+                $this->fetchVariations($listingId),
+                $sku,
+                $variationId
+            );
+
+            if ($matched && (float) ($matched['price'] ?? 0) > 0) {
+                $price = round((float) $matched['price'], 2);
+                $shipping = round((float) ($matched['shipping_cost'] ?? 0), 2);
+                $label = EbayCompetitorVariationMatcher::shortLabel($matched);
+                $title = $matched['title'] ?? null;
+                if ($title && $label !== '' && stripos($title, '['.$label.']') === false) {
+                    $title = $title.' ['.$label.']';
+                }
+
+                Log::info('EbayLivePriceFetcher: using matched variation price', [
+                    'listing_id' => $listingId,
+                    'sku' => $sku,
+                    'variation_label' => $label,
+                    'price' => $price,
+                ]);
+
+                return [
+                    'listing_id' => $listingId,
+                    'price' => $price,
+                    'shipping_cost' => $shipping,
+                    'total_price' => round($price + $shipping, 2),
+                    'title' => $title,
+                    'link' => $matched['link'] ?? $this->variationLink($listingId, $matched),
+                    'image' => $matched['image'] ?? null,
+                    'variation_label' => $label !== '' ? $label : null,
+                ];
+            }
+        }
+
+        return $this->fetchSerpApiProduct($listingId);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function fetchVariations(string $listingId): array
+    {
+        if (array_key_exists($listingId, $this->variationCache)) {
+            return $this->variationCache[$listingId];
+        }
+
+        $variations = $this->fetchVariationsFromBrowseApi($listingId);
+        if (! $this->hasPackLabeledVariation($variations)) {
+            $shopping = $this->fetchVariationsFromShoppingApi($listingId);
+            if ($shopping !== []) {
+                $variations = $shopping;
+            } elseif ($variations === []) {
+                $variations = $this->fetchVariationsFromListingHtml($listingId);
+            }
+        }
+
+        $this->variationCache[$listingId] = $variations;
+
+        return $variations;
+    }
+
+    /**
      * Fetch the current Buy-It-Now price for an eBay listing via SerpApi.
      *
      * @return array{listing_id: string, price: float, shipping_cost: float, total_price: float, title: ?string, link: ?string, image: ?string}|null
      */
-    public function fetchByListingId(string $listingId): ?array
+    private function fetchSerpApiProduct(string $listingId): ?array
     {
         $apiKey = $this->getApiKey();
         if (!$apiKey) {
@@ -108,6 +201,517 @@ class EbayLivePriceFetcher
         }
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchVariationsFromBrowseApi(string $listingId): array
+    {
+        $token = $this->getBrowseAccessToken();
+        if (!$token) {
+            return [];
+        }
+
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders(['X-EBAY-C-MARKETPLACE-ID' => 'EBAY_US'])
+                ->timeout(25)
+                ->get('https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group', [
+                    'item_group_id' => $listingId,
+                ]);
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            $items = $response->json('items') ?? [];
+            if (!is_array($items) || $items === []) {
+                return [];
+            }
+
+            $variations = [];
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $price = $this->numericPrice($item['price']['value'] ?? $item['price'] ?? null);
+                if ($price === null) {
+                    continue;
+                }
+
+                $aspects = $item['localizedAspects'] ?? [];
+                $labels = [];
+                if (is_array($aspects)) {
+                    foreach ($aspects as $aspect) {
+                        $value = trim((string) ($aspect['value'] ?? ''));
+                        if ($value === '') {
+                            continue;
+                        }
+                        $name = (string) ($aspect['name'] ?? '');
+                        if (preg_match('/pack|quantity|qty|count|pieces/i', $name) && preg_match('/^\d+$/', $value)) {
+                            $labels[] = $value.'PCS';
+                        } else {
+                            $labels[] = $value;
+                        }
+                    }
+                }
+
+                $shipping = 0.0;
+                $option = $item['shippingOptions'][0] ?? null;
+                if (is_array($option)) {
+                    if (isset($option['shippingCost']['value'])) {
+                        $shipping = (float) $option['shippingCost']['value'];
+                    } elseif (strcasecmp((string) ($option['shippingCostType'] ?? ''), 'FREE') === 0) {
+                        $shipping = 0.0;
+                    }
+                }
+
+                $itemId = (string) ($item['itemId'] ?? '');
+                $varId = null;
+                if (preg_match('/\|(\d+)$/', $itemId, $match)) {
+                    $varId = $match[1];
+                }
+
+                $variations[] = [
+                    'id' => $varId ?? $itemId,
+                    'item_id' => $itemId,
+                    'label' => implode(' / ', $labels),
+                    'price' => $price,
+                    'shipping_cost' => $shipping,
+                    'title' => $item['title'] ?? null,
+                    'image' => $item['image']['imageUrl'] ?? null,
+                    'link' => $item['itemWebUrl'] ?? $this->variationLink($listingId, ['id' => $varId]),
+                ];
+            }
+
+            return $variations;
+        } catch (\Throwable $e) {
+            Log::warning('EbayLivePriceFetcher: Browse variation fetch failed', [
+                'listing_id' => $listingId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchVariationsFromShoppingApi(string $listingId): array
+    {
+        $appId = config('services.ebay.app_id') ?: config('services.ebay2.app_id') ?: config('services.ebay3.app_id');
+        if (!$appId) {
+            return [];
+        }
+
+        try {
+            $response = Http::timeout(25)->get('https://open.api.ebay.com/shopping', [
+                'callname' => 'GetSingleItem',
+                'responseencoding' => 'JSON',
+                'appid' => $appId,
+                'siteid' => 0,
+                'version' => 1157,
+                'ItemID' => $listingId,
+                'IncludeSelector' => 'Variations,Details,ShippingCosts',
+            ]);
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            $item = $response->json('Item') ?? [];
+            if (!is_array($item)) {
+                return [];
+            }
+
+            $raw = $item['Variations']['Variation'] ?? [];
+            if ($raw === [] || $raw === null) {
+                return [];
+            }
+            if (isset($raw['StartPrice']) || isset($raw['VariationSpecifics'])) {
+                $raw = [$raw];
+            }
+
+            $shipping = $this->numericPrice(
+                $item['ShippingCostSummary']['ShippingServiceCost']['Value']
+                    ?? $item['ShippingCostSummary']['ShippingServiceCost']
+                    ?? 0
+            ) ?? 0.0;
+
+            $title = $item['Title'] ?? null;
+            $image = $item['PictureURL'][0] ?? (is_string($item['PictureURL'] ?? null) ? $item['PictureURL'] : null);
+            $variations = [];
+
+            foreach ($raw as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $price = $this->numericPrice($row['StartPrice']['Value'] ?? $row['StartPrice'] ?? null);
+                if ($price === null) {
+                    continue;
+                }
+
+                $specifics = $row['VariationSpecifics']['NameValueList'] ?? [];
+                if (isset($specifics['Name'])) {
+                    $specifics = [$specifics];
+                }
+                $labels = [];
+                foreach ((array) $specifics as $specific) {
+                    $value = $specific['Value'] ?? null;
+                    if (is_array($value)) {
+                        $value = implode(', ', $value);
+                    }
+                    $value = trim((string) $value);
+                    if ($value !== '') {
+                        $labels[] = $value;
+                    }
+                }
+
+                $variations[] = [
+                    'id' => (string) ($row['VariationSpecifics']['NameValueList']['Value'] ?? ''),
+                    'item_id' => (string) ($row['SKU'] ?? ''),
+                    'label' => implode(' / ', $labels),
+                    'price' => $price,
+                    'shipping_cost' => $shipping,
+                    'title' => $title,
+                    'image' => is_string($image) ? $image : null,
+                    'link' => "https://www.ebay.com/itm/{$listingId}",
+                ];
+            }
+
+            return $variations;
+        } catch (\Throwable $e) {
+            Log::warning('EbayLivePriceFetcher: Shopping variation fetch failed', [
+                'listing_id' => $listingId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchVariationsFromListingHtml(string $listingId): array
+    {
+        try {
+            $response = Http::timeout(20)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (compatible; InventLmp/1.0)',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                ])
+                ->get("https://www.ebay.com/itm/{$listingId}");
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            $msku = $this->extractMskuObject($response->body());
+            if ($msku === []) {
+                return [];
+            }
+
+            return $this->variationsFromMsku($listingId, $msku);
+        } catch (\Throwable $e) {
+            Log::warning('EbayLivePriceFetcher: HTML variation fetch failed', [
+                'listing_id' => $listingId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractMskuObject(string $html): array
+    {
+        $needle = '"variationsMap"';
+        $pos = strpos($html, $needle);
+        if ($pos === false) {
+            return [];
+        }
+
+        $start = $pos;
+        $depth = 0;
+        for ($i = $pos; $i >= 0; $i--) {
+            $char = $html[$i];
+            if ($char === '}') {
+                $depth++;
+            } elseif ($char === '{') {
+                if ($depth === 0) {
+                    $start = $i;
+                    break;
+                }
+                $depth--;
+            }
+        }
+
+        $json = $this->extractJsonObjectAt($html, $start);
+        if ($json === null) {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+
+        return is_array($decoded) && isset($decoded['variationsMap']) ? $decoded : [];
+    }
+
+    private function extractJsonObjectAt(string $html, int $start): ?string
+    {
+        if (!isset($html[$start]) || $html[$start] !== '{') {
+            return null;
+        }
+
+        $depth = 0;
+        $inString = false;
+        $escape = false;
+        $length = strlen($html);
+        for ($i = $start; $i < $length; $i++) {
+            $char = $html[$i];
+            if ($inString) {
+                if ($escape) {
+                    $escape = false;
+                } elseif ($char === '\\') {
+                    $escape = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+                continue;
+            }
+            if ($char === '"') {
+                $inString = true;
+                continue;
+            }
+            if ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($html, $start, $i - $start + 1);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $msku
+     * @return list<array<string, mixed>>
+     */
+    private function variationsFromMsku(string $listingId, array $msku): array
+    {
+        $variationsMap = $msku['variationsMap'] ?? [];
+        $menuItemMap = $msku['menuItemMap'] ?? [];
+        $combos = $msku['variationCombinations'] ?? [];
+        $selectMenus = $msku['selectMenus'] ?? [];
+        if (!is_array($variationsMap) || $variationsMap === []) {
+            return [];
+        }
+
+        $variations = [];
+        $comboEntries = is_array($combos) && $combos !== [] ? $combos : ['_' => null];
+
+        foreach ($comboEntries as $comboKey => $comboId) {
+            $variantId = $comboId !== null ? (string) $comboId : (string) $comboKey;
+            $variant = $variationsMap[$variantId] ?? $variationsMap[(string) $comboId] ?? null;
+            if (!is_array($variant) && is_array($variationsMap[$comboKey] ?? null)) {
+                $variant = $variationsMap[$comboKey];
+                $variantId = (string) $comboKey;
+            }
+            if (!is_array($variant)) {
+                continue;
+            }
+
+            $price = $this->priceFromMskuVariant($variant);
+            if ($price === null) {
+                continue;
+            }
+
+            $labels = [];
+            if (is_string($comboKey) && $comboKey !== '_' && is_array($menuItemMap)) {
+                foreach (preg_split('/_/', $comboKey) ?: [] as $menuId) {
+                    $menuItem = $menuItemMap[(string) $menuId] ?? $menuItemMap[(int) $menuId] ?? null;
+                    if (!is_array($menuItem)) {
+                        continue;
+                    }
+                    $name = trim((string) ($menuItem['displayName'] ?? $menuItem['valueName'] ?? ''));
+                    if ($name !== '') {
+                        $labels[] = $name;
+                    }
+                }
+            }
+            if ($labels === [] && is_array($selectMenus)) {
+                foreach ($selectMenus as $menu) {
+                    $name = trim((string) ($menu['selectedValueDisplayName'] ?? ''));
+                    if ($name !== '') {
+                        $labels[] = $name;
+                    }
+                }
+            }
+
+            $variations[] = [
+                'id' => $variantId,
+                'item_id' => $variantId,
+                'label' => implode(' / ', $labels),
+                'price' => $price,
+                'shipping_cost' => 0.0,
+                'title' => null,
+                'image' => null,
+                'link' => $this->variationLink($listingId, ['id' => $variantId]),
+            ];
+        }
+
+        if ($variations === [] && is_array($variationsMap)) {
+            foreach ($variationsMap as $variantId => $variant) {
+                if (!is_array($variant)) {
+                    continue;
+                }
+                $price = $this->priceFromMskuVariant($variant);
+                if ($price === null) {
+                    continue;
+                }
+                $variations[] = [
+                    'id' => (string) $variantId,
+                    'item_id' => (string) $variantId,
+                    'label' => (string) ($variant['displayName'] ?? $variantId),
+                    'price' => $price,
+                    'shipping_cost' => 0.0,
+                    'title' => null,
+                    'image' => null,
+                    'link' => $this->variationLink($listingId, ['id' => (string) $variantId]),
+                ];
+            }
+        }
+
+        return $variations;
+    }
+
+    /**
+     * @param  array<string, mixed>  $variant
+     */
+    private function priceFromMskuVariant(array $variant): ?float
+    {
+        $bin = $variant['binModel']['price'] ?? $variant['price'] ?? null;
+        if (is_array($bin)) {
+            if (isset($bin['amount'])) {
+                return $this->numericPrice($bin['amount']);
+            }
+            if (isset($bin['value'])) {
+                return $this->numericPrice($bin['value']);
+            }
+            $text = $bin['textSpans'][0]['text'] ?? $bin['text'] ?? null;
+            if (is_string($text)) {
+                return $this->numericPrice($text);
+            }
+        }
+
+        return $this->numericPrice($bin);
+    }
+
+    /**
+     * @param  array<string, mixed>  $variation
+     */
+    private function variationLink(string $listingId, array $variation): string
+    {
+        $varId = trim((string) ($variation['id'] ?? ''));
+        if ($varId !== '' && preg_match('/^\d+$/', $varId)) {
+            return "https://www.ebay.com/itm/{$listingId}?var={$varId}";
+        }
+
+        return "https://www.ebay.com/itm/{$listingId}";
+    }
+
+    private function getBrowseAccessToken(): ?string
+    {
+        $pairs = [
+            [config('services.ebay.app_id'), config('services.ebay.cert_id')],
+            [config('services.ebay2.app_id'), config('services.ebay2.cert_id')],
+            [config('services.ebay3.app_id'), config('services.ebay3.cert_id')],
+        ];
+
+        foreach ($pairs as [$clientId, $clientSecret]) {
+            $clientId = trim((string) $clientId);
+            $clientSecret = trim((string) $clientSecret);
+            if ($clientId === '' || $clientSecret === '') {
+                continue;
+            }
+
+            $cacheKey = 'ebay_lmp_browse_token_'.md5($clientId);
+            $cached = Cache::get($cacheKey);
+            if (is_string($cached) && $cached !== '') {
+                return $cached;
+            }
+
+            try {
+                $response = Http::asForm()
+                    ->withBasicAuth($clientId, $clientSecret)
+                    ->timeout(20)
+                    ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                        'grant_type' => 'client_credentials',
+                        'scope' => 'https://api.ebay.com/oauth/api_scope',
+                    ]);
+
+                if ($response->failed()) {
+                    continue;
+                }
+
+                $token = trim((string) ($response->json('access_token') ?? ''));
+                $expiresIn = (int) ($response->json('expires_in') ?? 7200);
+                if ($token === '') {
+                    continue;
+                }
+
+                Cache::put($cacheKey, $token, now()->addSeconds(max(60, $expiresIn - 60)));
+
+                return $token;
+            } catch (\Throwable $e) {
+                Log::warning('EbayLivePriceFetcher: Browse token failed', [
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $variations
+     */
+    private function hasPackLabeledVariation(array $variations): bool
+    {
+        foreach ($variations as $variation) {
+            if (EbayCompetitorVariationMatcher::extractPackQty((string) ($variation['label'] ?? '')) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function numericPrice(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_int($value) || is_float($value)) {
+            return $value > 0 ? round((float) $value, 2) : null;
+        }
+        if (!is_string($value)) {
+            return null;
+        }
+        if (preg_match('/[\d,.]+/', $value, $matches)) {
+            $amount = (float) str_replace(',', '', $matches[0]);
+
+            return $amount > 0 ? round($amount, 2) : null;
+        }
+
+        return null;
+    }
+
     private function extractPrice(array $product): ?float
     {
         if (isset($product['buy']['buy_it_now']['price']['amount'])) {
@@ -138,22 +742,18 @@ class EbayLivePriceFetcher
 
         $option = $shipping['options'][0] ?? null;
         if (is_array($option)) {
-            // Explicit free flag (older SerpApi shape)
             if (!empty($option['free'])) {
                 return 0.0;
             }
 
-            // Current ebay_product shape: shipping.options[0].price.amount
             if (isset($option['price']['amount'])) {
                 return (float) $option['price']['amount'];
             }
 
-            // Legacy shape: shipping.options[0].cost.amount
             if (isset($option['cost']['amount'])) {
                 return (float) $option['cost']['amount'];
             }
 
-            // String like "US $10.00" / "Free"
             foreach (['price', 'cost', 'via'] as $key) {
                 $raw = $option[$key] ?? null;
                 if (is_string($raw)) {
@@ -182,9 +782,6 @@ class EbayLivePriceFetcher
         return 0.0;
     }
 
-  /**
-   * Extract the best product image URL from SerpApi ebay_product response.
-   */
     private function extractImage(array $product): ?string
     {
         if (!empty($product['thumbnail']) && is_string($product['thumbnail'])) {
