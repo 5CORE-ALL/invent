@@ -3167,6 +3167,36 @@
                 return +(roundedDollar - 0.51).toFixed(2);
             }
 
+            /** Same as eBay: persist SPRICE = 0, then insert the rule price. */
+            function amazonPersistClearThenSave(sku, fill, row) {
+                if (row && typeof row.update === 'function') {
+                    row.update({ SPRICE: 0, has_custom_sprice: false });
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
+                const token = $('meta[name="csrf-token"]').attr('content');
+                const deferred = $.Deferred();
+                const wipe = $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token },
+                    data: { sku: sku, sprice: 0, _token: token }
+                });
+                wipe.always(function() {
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': token },
+                        data: { sku: sku, sprice: fill, _token: token }
+                    }).done(function(res) {
+                        deferred.resolve(res);
+                    }).fail(function(xhr) {
+                        deferred.reject(xhr);
+                    });
+                });
+                return deferred.promise();
+            }
+            window.amazonPersistClearThenSave = amazonPersistClearThenSave;
+
             // Apply Discount/Increase/Same-Price Button
             $('#apply-discount-btn').on('click', function() {
                 const rawInput = $('#discount-percentage-input').val();
@@ -3250,18 +3280,8 @@
                             }
                             const newPriceNum = amazonCapSpriceToLmp(row.getData(), parseFloat(newPrice.toFixed(2)));
                             
-                            // Update SPRICE via AJAX
-                            $.ajax({
-                                url: '/save-amazon-sprice',
-                                method: 'POST',
-                                headers: {
-                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                },
-                                data: {
-                                    sku: sku,
-                                    sprice: newPriceNum
-                                },
-                                success: function(response) {
+                            amazonPersistClearThenSave(sku, newPriceNum, row)
+                                .done(function(response) {
                                     successCount++;
                                     
                                     // Update row so SPRICE column shows the new value (use number so formatter works)
@@ -3296,16 +3316,15 @@
                                             showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                                         }
                                     }
-                                },
-                                error: function(xhr) {
+                                })
+                                .fail(function() {
                                     errorCount++;
                                     if (successCount + errorCount === totalToProcess) {
                                         const actionText = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Discount');
                                         $('#apply-discount-btn').prop('disabled', false).html(`<i class="fas fa-check"></i> Apply ${actionText}`);
                                         showToast('error', `Applied to ${successCount} SKU${successCount > 1 ? 's' : ''}, ${errorCount} failed`);
                                     }
-                                }
-                            });
+                                });
                         } else {
                             errorCount++;
                             if (successCount + errorCount === totalToProcess) {
@@ -3439,12 +3458,8 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
                 rowsToProcess.forEach(function(item) {
-                    $.ajax({
-                        url: '/save-amazon-sprice',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { sku: item.sku, sprice: item.sprice },
-                        success: function(response) {
+                    amazonPersistClearThenSave(item.sku, item.sprice, item.row)
+                        .done(function(response) {
                             successCount++;
                             const updateData = {
                                 'SPRICE': response.data || item.sprice,
@@ -3457,11 +3472,11 @@
                             if (response.sgroi_percent !== undefined) updateData['SGROI'] = response.sgroi_percent;
                             item.row.update(updateData);
                             item.row.reformat();
-                        },
-                        error: function() {
+                        })
+                        .fail(function() {
                             errorCount++;
-                        },
-                        complete: function() {
+                        })
+                        .always(function() {
                             if (successCount + errorCount === total) {
                                 $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
@@ -3478,8 +3493,7 @@
                                     updateSelectedCount();
                                 }
                             }
-                        }
-                    });
+                        });
                 });
             });
 
@@ -3557,12 +3571,8 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
                 rowsToProcess.forEach(function(item) {
-                    $.ajax({
-                        url: '/save-amazon-sprice',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { sku: item.sku, sprice: item.sprice },
-                        success: function(response) {
+                    amazonPersistClearThenSave(item.sku, item.sprice, item.row)
+                        .done(function(response) {
                             successCount++;
                             const updateData = {
                                 'SPRICE': response.data || item.sprice,
@@ -3575,11 +3585,11 @@
                             if (response.sgroi_percent !== undefined) updateData['SGROI'] = response.sgroi_percent;
                             item.row.update(updateData);
                             item.row.reformat();
-                        },
-                        error: function() {
+                        })
+                        .fail(function() {
                             errorCount++;
-                        },
-                        complete: function() {
+                        })
+                        .always(function() {
                             if (successCount + errorCount === total) {
                                 $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
@@ -3596,8 +3606,7 @@
                                     updateSelectedCount();
                                 }
                             }
-                        }
-                    });
+                        });
                 });
             });
 
@@ -3768,18 +3777,12 @@
                 if (Math.abs(current - num) < 0.0001) return;
 
                 $input.prop('disabled', true);
-                $.ajax({
-                    url: '/save-amazon-sprice',
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: { sku: sku, sprice: num },
-                    success: function(response) {
+                const tabRow = table.getRows().find(function(r) {
+                    return (r.getData()['(Child) sku'] || '') === sku;
+                });
+                amazonPersistClearThenSave(sku, num, tabRow || null)
+                    .done(function(response) {
                         showToast('success', 'SPRICE updated successfully');
-                        const tabRow = table.getRows().find(function(r) {
-                            return (r.getData()['(Child) sku'] || '') === sku;
-                        });
                         if (tabRow) {
                             const u = {
                                 SPRICE: num,
@@ -3806,15 +3809,15 @@
                         if (pk) {
                             showParentPricingBreakdownModal(pk);
                         }
-                    },
-                    error: function(xhr) {
+                        $input.prop('disabled', false);
+                    })
+                    .fail(function(xhr) {
                         var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to update SPRICE';
                         showToast('error', msg);
                         const sp = parseFloat(rowData.SPRICE) || 0;
                         $input.val(sp > 0 ? sp.toFixed(2) : '');
                         $input.prop('disabled', false);
-                    }
-                });
+                    });
             }
 
             $(document).on('keydown', '.parent-modal-sprice-input', function(e) {
@@ -4980,20 +4983,9 @@
                     const sku = data['(Child) sku'];
                     value = amazonCapSpriceToLmp(data, value);
                     row.update({ SPRICE: value });
-                    $.ajax({
-                        url: '/save-amazon-sprice',
-                        method: 'POST',
-                        headers: {
-                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                        },
-                        data: {
-                            sku: sku,
-                            sprice: value
-                        },
-                        success: function(response) {
+                    amazonPersistClearThenSave(sku, value, row)
+                        .done(function(response) {
                             showToast('success', 'SPRICE updated successfully');
-                            // Update SPRICE in row data using the exact value from database response
-                            // This prevents float precision issues
                             const updates = { 'SPRICE': response.data || value };
                             if (response.sgpft_percent !== undefined) {
                                 updates['SGPFT'] = response.sgpft_percent;
@@ -5008,11 +5000,10 @@
                                 updates['SGROI'] = response.sgroi_percent;
                             }
                             row.update(updates);
-                        },
-                        error: function(xhr) {
+                        })
+                        .fail(function() {
                             showToast('error', 'Failed to update SPRICE');
-                        }
-                    });
+                        });
                 } else if (field === 'Listed' || field === 'Live' || field === 'APlus') {
                     const sku = data['(Child) sku'];
                     $.ajax({

@@ -2856,7 +2856,46 @@
         }
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
-        function saveSpriceUpdates(updates) {
+        function saveSpriceUpdates(updates, opts) {
+            opts = opts || {};
+            if (!updates || !updates.length) return;
+            const fills = updates.filter(function(u) { return Number(u.sprice) > 0; });
+            if (opts.clearFirst !== false && fills.length) {
+                fills.forEach(function(u) {
+                    const rows = (typeof table !== 'undefined' && table)
+                        ? table.searchRows('(Child) sku', '=', u.sku)
+                        : [];
+                    if (rows.length) {
+                        rows[0].update({ SPRICE: 0, has_custom_sprice: false });
+                    }
+                });
+                $.ajax({
+                    url: '/reverb-save-sprice',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        updates: fills.map(function(u) {
+                            return { sku: u.sku, sprice: 0 };
+                        })
+                    }
+                }).always(function() {
+                    fills.forEach(function(u) {
+                        const rows = (typeof table !== 'undefined' && table)
+                            ? table.searchRows('(Child) sku', '=', u.sku)
+                            : [];
+                        if (rows.length) {
+                            rows[0].update({
+                                SPRICE: Number(u.sprice),
+                                has_custom_sprice: true
+                            });
+                        }
+                    });
+                    saveSpriceUpdates(updates, { clearFirst: false });
+                });
+                return;
+            }
             $.ajax({
                 url: '/reverb-save-sprice',
                 method: 'POST',
@@ -2954,10 +2993,30 @@
         }
 
         // SAVE SPRICE to database with retry
-        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0) {
+        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
             const maxRetries = 3;
             if (window.SpriceLmpCap && row && typeof row.getData === 'function') {
                 sprice = SpriceLmpCap.prepare(row.getData(), sprice);
+            }
+            if (!skipClear && !(retryCount > 0) && Number(sprice) > 0) {
+                if (row && typeof row.update === 'function') {
+                    row.update({ SPRICE: 0, has_custom_sprice: false });
+                }
+                $.ajax({
+                    url: '/reverb-save-sprice',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        sprice: 0,
+                        _token: '{{ csrf_token() }}'
+                    }
+                }).always(function() {
+                    if (row && typeof row.update === 'function') {
+                        row.update({ SPRICE: sprice, has_custom_sprice: true });
+                    }
+                    saveSpriceWithRetry(sku, sprice, row, 0, true);
+                });
+                return;
             }
             
             $.ajax({
@@ -2982,7 +3041,7 @@
                 },
                 error: function(xhr) {
                     if (retryCount < maxRetries) {
-                        setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1), 2000);
+                        setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1, true), 2000);
                     } else {
                         showToast(`Failed to save SPRICE for ${sku}`, 'error');
                     }

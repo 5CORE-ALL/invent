@@ -3655,6 +3655,16 @@
         function chPromoIsTemuPromoChannel() {
             return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
         }
+        /** Persist SPRICE = 0, then insert the rule price (eBay/Temu/Shopify B2C/Doba/Reverb/TikTok apply). */
+        function chPromoShouldPersistClearThenSprice() {
+            return chPromoIsTemuPromoChannel()
+                || CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                || CHANNEL_PROMO_CHANNEL === 'doba'
+                || CHANNEL_PROMO_CHANNEL === 'doba_withoutship'
+                || CHANNEL_PROMO_CHANNEL === 'reverb'
+                || CHANNEL_PROMO_CHANNEL === 'tiktok'
+                || CHANNEL_PROMO_CHANNEL === 'tiktok2';
+        }
         /** Temu discounted start: Std × (1 − T Promo). Never stored S PRC. */
         function chPromoTemuDiscountedStart(d) {
             if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
@@ -6035,7 +6045,7 @@
                 extra.sku = job.sku;
                 extra.row = job.row;
                 extra.rowData = job.row && typeof job.row.getData === 'function' ? job.row.getData() : extra.rowData;
-                const saveRes = chPromoIsTemuPromoChannel()
+                const saveRes = chPromoShouldPersistClearThenSprice()
                     ? await chPromoPersistClearThenSprice(job.row, job.price, true, extra)
                     : (job.row
                         ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
@@ -6296,7 +6306,7 @@
                     extra.sku = job.sku;
                     extra.row = job.row;
                     extra.rowData = job.row && typeof job.row.getData === 'function' ? job.row.getData() : extra.rowData;
-                    const saveRes = chPromoIsTemuPromoChannel()
+                    const saveRes = chPromoShouldPersistClearThenSprice()
                         ? await chPromoPersistClearThenSprice(job.row, job.price, true, extra)
                         : (job.row
                             ? await Promise.resolve(saveChannelSpriceAndPromo(job.row, job.price, true, extra))
@@ -6626,7 +6636,7 @@
                     }
                     extra.row = job.row;
                     extra.sku = job.sku;
-                    if (chPromoIsTemuPromoChannel()) {
+                    if (chPromoShouldPersistClearThenSprice()) {
                         await chPromoPersistClearThenSprice(job.row, job.price, true, extra);
                     } else {
                         await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
@@ -7075,7 +7085,7 @@
                         return;
                     }
                     const extra = { cpn_pct: job.cpn, row: job.row, sku: job.sku };
-                    if (chPromoIsTemuPromoChannel()) {
+                    if (chPromoShouldPersistClearThenSprice()) {
                         await chPromoPersistClearThenSprice(job.row, job.price, true, extra);
                     } else {
                         await saveChannelSpriceAndPromo(job.row, job.price, true, extra);
@@ -7211,7 +7221,7 @@
                 _dsc_applied: pct,
             }, chPromoSpricePatch(newPrice)));
             const extra = { dsc: pct, appr: true, row: row };
-            if (chPromoIsTemuPromoChannel()) {
+            if (chPromoShouldPersistClearThenSprice()) {
                 chPromoPersistClearThenSprice(row, newPrice, true, extra);
             } else {
                 saveChannelSpriceAndPromo(row, newPrice, true, extra);
@@ -7292,7 +7302,7 @@
                         : chPromoGetSprice(d);
                     extra.row = item.row;
                     extra.sku = chPromoSku(d);
-                    if (chPromoIsTemuPromoChannel()) {
+                    if (chPromoShouldPersistClearThenSprice()) {
                         await chPromoPersistClearThenSprice(item.row, savePrice, true, extra);
                     } else {
                         await saveChannelSpriceAndPromo(item.row, savePrice, true, extra);
@@ -7347,7 +7357,7 @@
                     item.row.update(patchOnly);
                     extra.row = item.row;
                     extra.sku = chPromoSku(d);
-                    if (chPromoIsTemuPromoChannel()) {
+                    if (chPromoShouldPersistClearThenSprice()) {
                         await chPromoPersistClearThenSprice(item.row, 0, true, extra);
                     } else {
                         await saveChannelSpriceAndPromo(item.row, 0, true, extra);
@@ -7371,7 +7381,7 @@
                 item.row.update(Object.assign({}, chPromoSpricePatch(newPrice), patch));
                 extra.row = item.row;
                 extra.sku = chPromoSku(item.row.getData());
-                if (chPromoIsTemuPromoChannel()) {
+                if (chPromoShouldPersistClearThenSprice()) {
                     await chPromoPersistClearThenSprice(item.row, newPrice, true, extra);
                 } else {
                     await saveChannelSpriceAndPromo(item.row, newPrice, true, extra);
@@ -8041,7 +8051,7 @@
                     next();
                 };
                 const extra = { row: item.row, sku: sku };
-                if (chPromoIsTemuPromoChannel()) {
+                if (chPromoShouldPersistClearThenSprice()) {
                     chPromoPersistClearThenSprice(item.row, fill, true, extra).then(persistFill, persistFail);
                 } else {
                     saveChannelSprice(sku, fill, true, extra).done(persistFill).fail(persistFail);
@@ -8178,7 +8188,7 @@
             const current = chPromoRound2(chPromoGetSprice(d));
             const hadValue = current > 0;
             if (hadValue && current === fill && opts.persist === false) return null;
-            if (chPromoIsTemuPromoChannel() && opts.persist !== false) {
+            if (chPromoShouldPersistClearThenSprice() && opts.persist !== false) {
                 row.update(chPromoSpricePatch(0));
             } else {
                 row.update(chPromoSpricePatch(fill));
@@ -8198,7 +8208,7 @@
                 row: row,
                 sku: sku,
             };
-            if (chPromoIsTemuPromoChannel()) {
+            if (chPromoShouldPersistClearThenSprice()) {
                 row.update(chPromoSpricePatch(0));
                 chPromoPersistClearThenSprice(row, fill, true, extra).then(function(saveRes) {
                     chPromoApplySpriceSavePatch(row, fill, saveRes);
@@ -8350,7 +8360,7 @@
                         cpn_pct: job.cpn,
                     };
                     let saveRes;
-                    if (chPromoIsTemuPromoChannel()) {
+                    if (chPromoShouldPersistClearThenSprice()) {
                         extra.rowData = job.row && typeof job.row.getData === 'function' ? job.row.getData() : extra.rowData;
                         saveRes = await chPromoPersistClearThenSprice(job.row, job.price, true, extra);
                     } else if (job.row) {

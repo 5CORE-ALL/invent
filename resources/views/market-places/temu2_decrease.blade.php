@@ -2720,7 +2720,6 @@
 
                 tableRow.update({ sprice: newPrice, sprice_status: 'processing' });
                 tableRow.reformat();
-                temuQueueSpricePushAfterSave(sku, newPrice, tableRow);
 
                 tasks.push({ sku: sku, newPrice: newPrice, tableRow: tableRow, originalSPrice: originalSPrice });
             });
@@ -2732,7 +2731,7 @@
             }
 
             tasks.forEach(t => {
-                saveSpriceWithRetry(t.sku, t.newPrice, t.tableRow)
+                temuPersistClearThenSave(t.sku, t.newPrice, t.tableRow)
                     .then(() => {
                         updatedCount++;
                         if (updatedCount + errorCount === tasks.length) {
@@ -2858,7 +2857,6 @@
                     sprice_status: 'processing'
                 });
                 tableRow.reformat();
-                temuQueueSpricePushAfterSave(sku, newSPrice, tableRow);
                 jobs.push({ sku: sku, sprice: newSPrice, tableRow: tableRow, originalSPrice: originalSPrice });
             });
 
@@ -2869,7 +2867,7 @@
 
             const total = jobs.length;
             jobs.forEach(function(job) {
-                saveSpriceWithRetry(job.sku, job.sprice, job.tableRow)
+                temuPersistClearThenSave(job.sku, job.sprice, job.tableRow)
                     .then(function() {
                         updatedCount++;
                         if (updatedCount + errorCount === total) {
@@ -3094,7 +3092,9 @@
                         if (targetRow) {
                             try { targetRow.reformat(); } catch (e) { /* ignore */ }
                         }
-                        temuQueueSpricePushAfterSave(sku, newPriceNum, targetRow || row);
+                        if (newPriceNum > 0) {
+                            temuQueueSpricePushAfterSave(sku, newPriceNum, targetRow || row);
+                        }
                         resolve(response);
                     },
                     error: function(xhr) {
@@ -3115,6 +3115,28 @@
                     }
                 });
             });
+        }
+
+        /** Same as eBay / Temu 1: persist SPRICE = 0, then insert the rule price. */
+        function temuPersistClearThenSave(sku, fill, tableRow) {
+            if (tableRow && typeof tableRow.update === 'function') {
+                tableRow.update({ sprice: null, SPRICE: null, sprice_status: 'processing' });
+                try { tableRow.reformat(); } catch (e) { /* ignore */ }
+            }
+            const wipe = $.ajax({
+                url: '/temu2-pricing/save-sprice',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    sprice: 0,
+                    skip_push: 1,
+                    _token: '{{ csrf_token() }}'
+                }
+            });
+            const insert = function() {
+                return saveSpriceWithRetry(sku, fill, tableRow);
+            };
+            return wipe.then(insert, insert);
         }
 
         function applyDiscount() {
@@ -3197,10 +3219,9 @@
                         }
                         ruled = parseFloat(Number(ruled).toFixed(2));
                         temuSyncSpriceUi(sku, ruled, tableRow, { sprice_status: 'processing' });
-                        temuQueueSpricePushAfterSave(sku, ruled, tableRow);
                         
                         const actionLabel = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
-                        saveSpriceWithRetry(sku, ruled, tableRow)
+                        temuPersistClearThenSave(sku, ruled, tableRow)
                             .then((response) => {
                                 updatedCount++;
                                 if (updatedCount + errorCount === totalSkus) {
@@ -3238,36 +3259,49 @@
             }
 
             let updatedCount = 0;
-            const updates = [];
+            let errorCount = 0;
+            const jobs = [];
             const targetPrice = 26.99;
 
             selectedSkus.forEach(sku => {
                 const rows = table.searchRows("sku", "=", sku);
-                
-                if (rows.length > 0) {
-                    const row = rows[0];
-                    
-                    // Update the row with new SPRICE
-                    row.update({ 
-                        sprice: targetPrice
-                    });
-                    row.reformat();
-                    
-                    // Add to batch update
-                    updates.push({
-                        sku: sku,
-                        sprice: targetPrice
-                    });
-                    
-                    updatedCount++;
-                }
+                if (!rows.length) return;
+                const row = rows[0];
+                const originalSPrice = parseFloat(row.getData().sprice) || 0;
+                row.update({
+                    sprice: targetPrice,
+                    sprice_status: 'processing'
+                });
+                row.reformat();
+                jobs.push({ sku: sku, sprice: targetPrice, tableRow: row, originalSPrice: originalSPrice });
             });
-            
-            if (updates.length > 0) {
-                saveTemuSprice2699Updates(updates);
+
+            if (!jobs.length) {
+                showToast('No selected SKUs to update', 'warning');
+                return;
             }
-            
-            showToast(`SPRICE set to $26.99 for ${updatedCount} SKU(s)`, updatedCount > 0 ? 'success' : 'error');
+
+            const total = jobs.length;
+            jobs.forEach(function(job) {
+                temuPersistClearThenSave(job.sku, job.sprice, job.tableRow)
+                    .then(function() {
+                        updatedCount++;
+                        if (updatedCount + errorCount === total) {
+                            showToast('SPRICE $26.99 saved for ' + updatedCount + ' SKU(s)'
+                                + (errorCount ? (', ' + errorCount + ' failed') : ''), errorCount ? 'error' : 'success');
+                        }
+                    })
+                    .catch(function() {
+                        errorCount++;
+                        if (job.tableRow) {
+                            job.tableRow.update({ sprice: job.originalSPrice });
+                            job.tableRow.reformat();
+                        }
+                        if (updatedCount + errorCount === total) {
+                            showToast('SPRICE $26.99 saved for ' + updatedCount + ' SKU(s), ' + errorCount + ' failed', 'error');
+                        }
+                    });
+            });
         }
 
         function saveTemuSprice2699Updates(updates) {
@@ -5771,27 +5805,16 @@
                         ? temuPrepareSpriceForSave(data, typed, { use_passed_as_discounted: typed > 0 })
                         : typed);
 
-                row.update({ sprice: newSprice });
+                row.update({ sprice: newSprice, sprice_status: 'processing' });
                 row.reformat();
-                
-                $.ajax({
-                    url: '/temu2-pricing/save-sprice',
-                    method: 'POST',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        sku: data['sku'],
-                        sprice: newSprice
-                    },
-                    success: function(response) {
+
+                temuPersistClearThenSave(data['sku'], newSprice, row)
+                    .then(function() {
                         showToast('SPRICE saved successfully', 'success');
-                        if (typeof temuQueueSpricePushAfterSave === 'function') {
-                            temuQueueSpricePushAfterSave(data['sku'], newSprice, row);
-                        }
-                    },
-                    error: function(xhr) {
+                    })
+                    .catch(function() {
                         showToast('Failed to save SPRICE', 'error');
-                    }
-                });
+                    });
             }
 
         });

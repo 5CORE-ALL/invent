@@ -779,26 +779,25 @@
         function saveAmzSpriceFromPromo(row, sprice, silent, extra) {
             const d = row.getData();
             const sku = amzPefSku(d);
-            let val = amzPefRound2(sprice);
+            const requested = Number(sprice);
+            let val = requested > 0 ? amzPefRound2(sprice) : 0;
             if (val > 0) {
                 if (typeof amazonCapSpriceToLmp === 'function') val = amazonCapSpriceToLmp(d, val);
                 else if (window.SpriceLmpCap) val = SpriceLmpCap.prepare(d, val);
                 val = amzPefRound2(val);
             }
             extra = extra || {};
-            if (!sku) return;
-            const payload = { sku: sku, _token: amzPefCsrf() };
+            if (!sku) return $.Deferred().reject().promise();
+            const payload = { sku: sku, sprice: val, _token: amzPefCsrf() };
             if (val > 0) {
-                payload.sprice = val;
                 row.update({ SPRICE: val });
+            } else {
+                row.update({ SPRICE: 0, has_custom_sprice: false });
             }
             if (extra.prmt_pct !== undefined && extra.prmt_pct !== null) {
                 payload.prmt_pct = Number(extra.prmt_pct) || 0;
             }
-            if (payload.sprice === undefined && payload.prmt_pct === undefined) {
-                return;
-            }
-            $.ajax({
+            return $.ajax({
                 url: '/save-amazon-sprice',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
@@ -822,6 +821,37 @@
                 }
             });
         }
+
+        /** Wipe stored S PRC (persist 0), then insert the rule price. Same as eBay apply. */
+        function amzPersistClearThenSprice(row, fill, silent, extra) {
+            extra = extra || {};
+            const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+            const sku = amzPefSku(d);
+            if (!sku) return $.Deferred().resolve().promise();
+            if (row && typeof row.update === 'function') {
+                row.update({ SPRICE: 0, has_custom_sprice: false });
+                try { row.reformat(); } catch (e) { /* ignore */ }
+            }
+            const deferred = $.Deferred();
+            const wipe = $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { sku: sku, sprice: 0, _token: amzPefCsrf() },
+            });
+            const insert = function() {
+                const req = saveAmzSpriceFromPromo(row, fill, silent, extra);
+                if (req && typeof req.done === 'function') {
+                    req.done(function(res) { deferred.resolve(res); })
+                        .fail(function(xhr) { deferred.reject(xhr); });
+                } else {
+                    deferred.resolve(req || null);
+                }
+            };
+            wipe.always(insert);
+            return deferred.promise();
+        }
+        window.amzPersistClearThenSprice = amzPersistClearThenSprice;
         function collectAmzPefSelectedRows() {
             if (!table) return [];
             const effective = (typeof selectedRows !== 'undefined' && selectedRows)
@@ -1655,7 +1685,7 @@
                 _dsc_applied: pct,
                 SPRICE: newPrice,
             });
-            saveAmzSpriceFromPromo(row, newPrice, true);
+            amzPersistClearThenSprice(row, newPrice, true);
             if (table) table.redraw(true);
             return true;
         }
@@ -1699,7 +1729,7 @@
                     }
                     item.row.update(patch);
                     if (kind === 'prmt') {
-                        saveAmzSpriceFromPromo(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: 0 });
+                        amzPersistClearThenSprice(item.row, Number(d.SPRICE) || 0, true, { prmt_pct: 0 });
                     }
                     skipped++;
                     continue;
@@ -1718,7 +1748,7 @@
                 item.row.update(patch);
                 const extra = {};
                 if (kind === 'prmt') extra.prmt_pct = promo.value;
-                saveAmzSpriceFromPromo(item.row, newPrice, true, extra);
+                amzPersistClearThenSprice(item.row, newPrice, true, extra);
                 ok++;
             }
             amzPefToast(
@@ -2088,12 +2118,12 @@
                 if (!plan || !(plan.effective > 0)) { skipped++; continue; }
                 if (opts.skipWhenNoSale && plan.sale == null) {
                     applyAmzPushPrcToSpriceRow(item.row, plan, null);
-                    saveAmzSpriceFromPromo(item.row, plan.effective, true, { prmt_pct: plan.prmt });
+                    amzPersistClearThenSprice(item.row, plan.effective, true, { prmt_pct: plan.prmt });
                     ok++;
                     continue;
                 }
                 applyAmzPushPrcToSpriceRow(item.row, plan, null);
-                saveAmzSpriceFromPromo(item.row, plan.effective, true, { prmt_pct: plan.prmt });
+                amzPersistClearThenSprice(item.row, plan.effective, true, { prmt_pct: plan.prmt });
                 ok++;
             }
             if (table) {
@@ -2202,7 +2232,7 @@
                 const latest = amzRuleSpricePersistLatest[job.sku];
                 if (latest && latest.plan) job.plan = latest.plan;
                 amzRuleSpricePersistActive++;
-                saveAmzPushPrcSprice(job.sku, job.plan, { recordPushPrc: false })
+                amzPersistClearThenSprice(job.row, job.plan.effective, true, { prmt_pct: job.plan.prmt })
                     .done(function(saveRes) {
                         applyAmzPushPrcToSpriceRow(job.row, job.plan, saveRes);
                     })
@@ -2399,7 +2429,7 @@
                     next();
                     return;
                 }
-                saveAmzPushPrcSprice(amzPefSku(item.d), plan, { recordPushPrc: false })
+                amzPersistClearThenSprice(item.row, plan.effective, true, { prmt_pct: plan.prmt })
                     .done(function(saveRes) {
                         applyAmzPushPrcToSpriceRow(item.row, plan, saveRes);
                         ok++;

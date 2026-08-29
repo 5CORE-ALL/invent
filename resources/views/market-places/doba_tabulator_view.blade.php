@@ -919,6 +919,62 @@
                 updatePushButtonVisibility(); // Update push button count when select all changes
             });
 
+            /** Same as eBay: persist SPRICE = 0, then insert the rule price. */
+            function dobaPersistClearThenSave(sku, fill, row) {
+                const token = $('meta[name="csrf-token"]').attr('content');
+                const fillPrice = Number(fill && fill.sprice != null ? fill.sprice : fill);
+                const fillData = (fill && typeof fill === 'object')
+                    ? fill
+                    : { sprice: fillPrice };
+                if (!(fillPrice > 0)) {
+                    return $.ajax({
+                        url: '/doba/save-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': token },
+                        data: Object.assign({ sku: sku, _token: token }, fillData)
+                    });
+                }
+                if (row && typeof row.update === 'function') {
+                    row.update({ sprice: 0, s_self_pick: 0, spft: 0, sroi: 0 });
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
+                const deferred = $.Deferred();
+                const wipe = $.ajax({
+                    url: '/doba/save-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token },
+                    data: {
+                        sku: sku,
+                        sprice: 0,
+                        spft_percent: 0,
+                        sroi_percent: 0,
+                        s_self_pick: 0,
+                        _token: token
+                    }
+                });
+                wipe.always(function() {
+                    if (row && typeof row.update === 'function') {
+                        const restore = { sprice: fillPrice };
+                        if (fillData.spft_percent != null) restore.spft = Number(fillData.spft_percent);
+                        if (fillData.sroi_percent != null) restore.sroi = Number(fillData.sroi_percent);
+                        if (fillData.s_self_pick != null) restore.s_self_pick = Number(fillData.s_self_pick);
+                        row.update(restore);
+                        try { row.reformat(); } catch (e) { /* ignore */ }
+                    }
+                    $.ajax({
+                        url: '/doba/save-sprice',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': token },
+                        data: Object.assign({ sku: sku, _token: token }, fillData)
+                    }).done(function(res) {
+                        deferred.resolve(res);
+                    }).fail(function(xhr) {
+                        deferred.reject(xhr);
+                    });
+                });
+                return deferred.promise();
+            }
+
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
                 const $applyBtn = $(this);
@@ -982,37 +1038,31 @@
                             spftValue = ((newPrice * 0.95) - ship - lp) / newPrice * 100;
                             sroiValue = ((newPrice * 0.95) - ship - lp) / lp * 100;
                         }
-                        $.ajax({
-                            url: '/doba/save-sprice',
-                            method: 'POST',
-                            data: {
-                                _token: $('meta[name="csrf-token"]').attr('content'),
-                                sku: sku,
+                        dobaPersistClearThenSave(sku, {
+                            sprice: newPrice,
+                            spft_percent: spftValue.toFixed(2),
+                            sroi_percent: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue
+                        }, row)
+                        .done(function() {
+                            row.update({
                                 sprice: newPrice,
-                                spft_percent: spftValue.toFixed(2),
-                                sroi_percent: sroiValue.toFixed(2),
-                                s_self_pick: selfPickValue
-                            },
-                            success: function() {
-                                row.update({
-                                    sprice: newPrice,
-                                    'doba Price': newPrice,
-                                    s_self_pick: selfPickValue,
-                                    spft: spftValue,
-                                    sroi: sroiValue,
-                                    apply_status: 'applied'
-                                });
-                                successCount++;
-                                currentIndex++;
-                                setTimeout(processNextSamePrice, 100);
-                            },
-                            error: function(xhr) {
-                                console.error('Same price save error:', sku, xhr.responseText);
-                                row.update({ apply_status: 'error' });
-                                errorCount++;
-                                currentIndex++;
-                                setTimeout(processNextSamePrice, 100);
-                            }
+                                'doba Price': newPrice,
+                                s_self_pick: selfPickValue,
+                                spft: spftValue,
+                                sroi: sroiValue,
+                                apply_status: 'applied'
+                            });
+                            successCount++;
+                            currentIndex++;
+                            setTimeout(processNextSamePrice, 100);
+                        })
+                        .fail(function(xhr) {
+                            console.error('Same price save error:', sku, xhr && xhr.responseText);
+                            row.update({ apply_status: 'error' });
+                            errorCount++;
+                            currentIndex++;
+                            setTimeout(processNextSamePrice, 100);
                         });
                     }
                     processNextSamePrice();
@@ -1112,39 +1162,30 @@
                             sroiValue = ((newPrice * 0.95) - ship - lp) / lp * 100;
                         }
                         
-                        // Save to database
-                        $.ajax({
-                            url: '/doba/save-sprice',
-                            method: 'POST',
-                            data: {
-                                _token: $('meta[name="csrf-token"]').attr('content'),
-                                sku: sku,
+                        dobaPersistClearThenSave(sku, {
+                            sprice: newPrice,
+                            spft_percent: spftValue.toFixed(2),
+                            sroi_percent: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue
+                        }, row)
+                        .done(function() {
+                            row.update({
                                 sprice: newPrice,
-                                spft_percent: spftValue.toFixed(2),
-                                sroi_percent: sroiValue.toFixed(2),
-                                s_self_pick: selfPickValue
-                            },
-                            success: function(response) {
-                                // Update row with new values and show double tick
-                                row.update({ 
-                                    sprice: newPrice, 
-                                    s_self_pick: selfPickValue,
-                                    spft: spftValue,
-                                    sroi: sroiValue,
-                                    apply_status: 'applied' 
-                                });
-                                successCount++;
-                                currentIndex++;
-                                // Small delay before next to avoid overwhelming
-                                setTimeout(processNextSku, 100);
-                            },
-                            error: function(xhr) {
-                                console.error('Save error for SKU:', sku, xhr.responseText);
-                                row.update({ apply_status: 'error' });
-                                errorCount++;
-                                currentIndex++;
-                                setTimeout(processNextSku, 100);
-                            }
+                                s_self_pick: selfPickValue,
+                                spft: spftValue,
+                                sroi: sroiValue,
+                                apply_status: 'applied'
+                            });
+                            successCount++;
+                            currentIndex++;
+                            setTimeout(processNextSku, 100);
+                        })
+                        .fail(function(xhr) {
+                            console.error('Save error for SKU:', sku, xhr && xhr.responseText);
+                            row.update({ apply_status: 'error' });
+                            errorCount++;
+                            currentIndex++;
+                            setTimeout(processNextSku, 100);
                         });
                     } else {
                         errorCount++;
@@ -1297,36 +1338,30 @@
 
                     row.update({ apply_status: 'applying' });
 
-                    $.ajax({
-                        url: '/doba/save-sprice',
-                        method: 'POST',
-                        data: {
-                            _token: $('meta[name="csrf-token"]').attr('content'),
-                            sku: sku,
+                    dobaPersistClearThenSave(sku, {
+                        sprice: newPrice,
+                        spft_percent: spftValue.toFixed(2),
+                        sroi_percent: sroiValue.toFixed(2),
+                        s_self_pick: selfPickValue
+                    }, row)
+                    .done(function () {
+                        row.update({
                             sprice: newPrice,
-                            spft_percent: spftValue.toFixed(2),
-                            sroi_percent: sroiValue.toFixed(2),
-                            s_self_pick: selfPickValue
-                        },
-                        success: function () {
-                            row.update({
-                                sprice: newPrice,
-                                s_self_pick: selfPickValue,
-                                spft: spftValue,
-                                sroi: sroiValue,
-                                apply_status: 'applied'
-                            });
-                            successCount++;
-                            currentIndex++;
-                            setTimeout(processNext, 60);
-                        },
-                        error: function (xhr) {
-                            console.error('Target back-solve save error:', sku, xhr.responseText);
-                            row.update({ apply_status: 'error' });
-                            errorCount++;
-                            currentIndex++;
-                            setTimeout(processNext, 60);
-                        }
+                            s_self_pick: selfPickValue,
+                            spft: spftValue,
+                            sroi: sroiValue,
+                            apply_status: 'applied'
+                        });
+                        successCount++;
+                        currentIndex++;
+                        setTimeout(processNext, 60);
+                    })
+                    .fail(function (xhr) {
+                        console.error('Target back-solve save error:', sku, xhr && xhr.responseText);
+                        row.update({ apply_status: 'error' });
+                        errorCount++;
+                        currentIndex++;
+                        setTimeout(processNext, 60);
                     });
                 }
 
@@ -1439,28 +1474,18 @@
                         
                         row.reformat();
                         
-                        // Save to database
-                        $.ajax({
-                            url: '/doba/save-sprice',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: {
-                                sku: sku,
-                                sprice: suggestedPrice.toFixed(2),
-                                spft_percent: spftValue.toFixed(2),
-                                sroi_percent: sroiValue.toFixed(2),
-                                s_self_pick: selfPickValue.toFixed(2),
-                                push_status: null,
-                                _token: $('meta[name="csrf-token"]').attr('content')
-                            },
-                            success: function() {
-                                console.log('Amz - 30% price applied for SKU:', sku);
-                            },
-                            error: function(xhr) {
-                                console.error('Failed to save Amz - 30% price for SKU:', sku, xhr.responseText);
-                            }
+                        dobaPersistClearThenSave(sku, {
+                            sprice: suggestedPrice.toFixed(2),
+                            spft_percent: spftValue.toFixed(2),
+                            sroi_percent: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue.toFixed(2),
+                            push_status: null
+                        }, row)
+                        .done(function() {
+                            console.log('Amz - 30% price applied for SKU:', sku);
+                        })
+                        .fail(function(xhr) {
+                            console.error('Failed to save Amz - 30% price for SKU:', sku, xhr && xhr.responseText);
                         });
                         
                         appliedCount++;
@@ -1518,28 +1543,18 @@
                         
                         row.reformat();
                         
-                        // Save to database
-                        $.ajax({
-                            url: '/doba/save-sprice',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: {
-                                sku: sku,
-                                sprice: suggestedPrice.toFixed(2),
-                                spft_percent: spftValue.toFixed(2),
-                                sroi_percent: sroiValue.toFixed(2),
-                                s_self_pick: selfPickValue.toFixed(2),
-                                push_status: null,
-                                _token: $('meta[name="csrf-token"]').attr('content')
-                            },
-                            success: function() {
-                                console.log('Amz - 25% price applied for SKU:', sku);
-                            },
-                            error: function(xhr) {
-                                console.error('Failed to save Amz - 25% price for SKU:', sku, xhr.responseText);
-                            }
+                        dobaPersistClearThenSave(sku, {
+                            sprice: suggestedPrice.toFixed(2),
+                            spft_percent: spftValue.toFixed(2),
+                            sroi_percent: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue.toFixed(2),
+                            push_status: null
+                        }, row)
+                        .done(function() {
+                            console.log('Amz - 25% price applied for SKU:', sku);
+                        })
+                        .fail(function(xhr) {
+                            console.error('Failed to save Amz - 25% price for SKU:', sku, xhr && xhr.responseText);
                         });
                         
                         appliedCount++;
@@ -3088,26 +3103,19 @@
                             </button>`;
                         }
                         
-                        // Save to backend with S(PP) and reset push_status
-                        $.ajax({
-                            url: '/doba/save-sprice',
-                            method: 'POST',
-                            data: {
-                                _token: $('meta[name="csrf-token"]').attr('content'),
-                                sku: sku,
-                                sprice: sprice,
-                                spft_percent: spft,
-                                sroi_percent: sroi,
-                                s_self_pick: sSelfPick,
-                                push_status: null
-                            },
-                            success: function(response) {
-                                showToast('success', 'SPRICE updated successfully');
-                            },
-                            error: function(xhr) {
-                                showToast('danger', 'Failed to update SPRICE');
-                                console.error(xhr);
-                            }
+                        dobaPersistClearThenSave(sku, {
+                            sprice: sprice,
+                            spft_percent: spft,
+                            sroi_percent: sroi,
+                            s_self_pick: sSelfPick,
+                            push_status: null
+                        }, cell.getRow())
+                        .done(function() {
+                            showToast('success', 'SPRICE updated successfully');
+                        })
+                        .fail(function(xhr) {
+                            showToast('danger', 'Failed to update SPRICE');
+                            console.error(xhr);
                         });
                     }
                 }

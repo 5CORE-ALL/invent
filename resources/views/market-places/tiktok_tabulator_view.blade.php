@@ -2319,11 +2319,7 @@
                     updates.push({ sku: item.sku, sprice: sprice });
                 });
 
-                $.ajax({
-                    url: TTP_CFG.saveSprice,
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: { updates: updates },
+                saveSpriceUpdates(updates, {
                     success: function(res) {
                         if (res && res.success) {
                             showToast(`SPRICE saved for ${updates.length} SKU(s) @ ${opts.label}`, 'success');
@@ -2331,12 +2327,8 @@
                             showToast('Failed to save SPRICE updates', 'error');
                         }
                     },
-                    error: function() {
-                        showToast('Error saving SPRICE updates', 'error');
-                    },
                     complete: function() {
                         $btn.prop('disabled', false).html(opts.btnHtml);
-                        // Wipe selection so the next batch starts clean.
                         selectedSkus.clear();
                         $('.sku-select-checkbox').prop('checked', false);
                         $('#select-all-checkbox').prop('checked', false);
@@ -2710,7 +2702,46 @@
                 });
             }
 
-            function saveSpriceUpdates(updates) {
+            function saveSpriceUpdates(updates, opts) {
+                opts = opts || {};
+                if (!updates || !updates.length) return;
+                const fills = updates.filter(function(u) { return Number(u.sprice) > 0; });
+                if (opts.clearFirst !== false && fills.length) {
+                    fills.forEach(function(u) {
+                        const rows = (typeof table !== 'undefined' && table)
+                            ? table.searchRows('(Child) sku', '=', u.sku)
+                            : [];
+                        if (rows.length) {
+                            rows[0].update({ SPRICE: 0, has_custom_sprice: false });
+                        }
+                    });
+                    $.ajax({
+                        url: TTP_CFG.saveSprice,
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            updates: fills.map(function(u) {
+                                return { sku: u.sku, sprice: 0 };
+                            })
+                        }
+                    }).always(function() {
+                        fills.forEach(function(u) {
+                            const rows = (typeof table !== 'undefined' && table)
+                                ? table.searchRows('(Child) sku', '=', u.sku)
+                                : [];
+                            if (rows.length) {
+                                rows[0].update({
+                                    SPRICE: Number(u.sprice),
+                                    has_custom_sprice: true
+                                });
+                            }
+                        });
+                        saveSpriceUpdates(updates, Object.assign({}, opts, { clearFirst: false }));
+                    });
+                    return;
+                }
                 $.ajax({
                     url: TTP_CFG.saveSprice,
                     method: 'POST',
@@ -2728,6 +2759,7 @@
                                 console.warn('Some updates had errors:', response.errors);
                             }
                         }
+                        if (typeof opts.success === 'function') opts.success(response);
                     },
                     error: function(xhr) {
                         console.error('Error saving SPRICE updates:', xhr);
@@ -2736,6 +2768,10 @@
                             errorMessage += ': ' + xhr.responseJSON.error;
                         }
                         showToast(errorMessage, 'error');
+                        if (typeof opts.error === 'function') opts.error(xhr);
+                    },
+                    complete: function() {
+                        if (typeof opts.complete === 'function') opts.complete();
                     }
                 });
             }
