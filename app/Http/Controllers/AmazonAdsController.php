@@ -9,6 +9,7 @@ use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsPauseRule;
+use App\Support\AmazonAdsSbgtDoubleRule;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
@@ -69,7 +70,7 @@ class AmazonAdsController extends Controller
      * @var list<string>
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
-        'Inv', 'INV', 'ovl30', 'dil', 'price', 'ruleStatus',
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'ruleStatus', 'sbgt', 'dsbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
     ];
@@ -168,7 +169,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `sbgt` follows `bgt` when the table has campaign budget.
+     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `sbgt` then `dsbgt` follow `bgt` when the table has campaign budget.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -261,19 +262,22 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // SBGT immediately after BGT (same scope: table has campaign budget).
+        // SBGT then D SBGT immediately after BGT (same scope: table has campaign budget).
         if (in_array('campaignBudgetAmount', self::orderedColumnsForTable($table), true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbgt'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbgt' && $c !== 'dsbgt'));
             $idxBgtForSbgt = array_search('bgt', $ordered, true);
             if ($idxBgtForSbgt !== false) {
-                array_splice($ordered, $idxBgtForSbgt + 1, 0, ['sbgt']);
+                array_splice($ordered, $idxBgtForSbgt + 1, 0, ['sbgt', 'dsbgt']);
             }
         }
 
         $idxBgt = array_search('bgt', $ordered, true);
         if ($idxBgt !== false && in_array('clicks', $ordered, true)) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'clicks'));
-            $idxAfterBgt = array_search('sbgt', $ordered, true);
+            $idxAfterBgt = array_search('dsbgt', $ordered, true);
+            if ($idxAfterBgt === false) {
+                $idxAfterBgt = array_search('sbgt', $ordered, true);
+            }
             if ($idxAfterBgt === false) {
                 $idxAfterBgt = array_search('bgt', $ordered, true);
             }
@@ -1147,7 +1151,8 @@ class AmazonAdsController extends Controller
         }
         $needL30ForAcosSbgt = in_array('cost', $columns, true)
             || in_array('ACOS', $columns, true)
-            || in_array('sbgt', $columns, true);
+            || in_array('sbgt', $columns, true)
+            || in_array('dsbgt', $columns, true);
         // Always fetch the L30 slice: badge totals (Spend / Sold / Sales / Clicks) all read distinct-campaign L30 values from it.
         $l30SliceMap = self::fetchL30SummarySliceMap($table, $dbColumns, $stubRows);
         $l30SpendMap = [];
@@ -2591,6 +2596,7 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtRule' => AmazonAcosSbgtRule::resolvedRule(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
+            'amazonAdsSbgtDoubleRule' => AmazonAdsSbgtDoubleRule::resolvedRule(),
         ]);
     }
 
@@ -2638,6 +2644,55 @@ class AmazonAdsController extends Controller
         
         return response()->json([
             'message' => 'BGT rule saved. SBGT on the grid will use the new ACOS → tier mapping after reload.',
+            'rule' => $freshRule,
+            'status' => 200,
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Current Dil + Amazon L30 → SBGT multiplier overlay (SBGT DOUBLE modal).
+     */
+    public function getSbgtDoubleRule(): JsonResponse
+    {
+        AmazonAdsSbgtDoubleRule::forgetResolvedCache();
+
+        return response()->json([
+            'rule' => AmazonAdsSbgtDoubleRule::resolvedRule(),
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Persist Dil bands / Amazon L30 threshold / multiplier; grid and SBGT push use it on top of the BGT rule.
+     */
+    public function saveSbgtDoubleRule(Request $request): JsonResponse
+    {
+        try {
+            $normalized = AmazonAdsSbgtDoubleRule::normalizeRule($request->all());
+            AmazonAdsSbgtDoubleRule::persistRule($normalized);
+            AmazonAdsSbgtDoubleRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save SBGT Double rule.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        $freshRule = AmazonAdsSbgtDoubleRule::resolvedRule();
+
+        return response()->json([
+            'message' => 'SBGT Double rule saved. Matching Dil + Amazon L30 rows will use the new multiplier after reload.',
             'rule' => $freshRule,
             'status' => 200,
             'timestamp' => time(),
@@ -3191,7 +3246,8 @@ class AmazonAdsController extends Controller
         $lSpendMap = $needLSpendMap ? self::fetchL7L2L1SpendMap($table, $dbColumns, $rows) : [];
         $needL30ForAcosSbgt = in_array('cost', $columns, true)
             || in_array('ACOS', $columns, true)
-            || in_array('sbgt', $columns, true);
+            || in_array('sbgt', $columns, true)
+            || in_array('dsbgt', $columns, true);
         $needL30Slice = ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true)))
             || (in_array('Prchase', $columns, true) && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true)))
             || (in_array('sales30d', $columns, true) && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)))
@@ -3225,7 +3281,7 @@ class AmazonAdsController extends Controller
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
         $needRuleStatus = in_array('ruleStatus', $columns, true);
-        $needSkuMetrics = $needRuleStatus;
+        $needSkuMetrics = $needRuleStatus || in_array('sbgt', $columns, true) || in_array('dsbgt', $columns, true);
         foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
             if (in_array($skuCol, $columns, true)) {
                 $needSkuMetrics = true;
@@ -3386,7 +3442,7 @@ class AmazonAdsController extends Controller
                 }
                 unset($arr['purchases30d'], $arr['purchases']);
             }
-            if ((in_array('sales30d', $columns, true) || in_array('ACOS', $columns, true) || in_array('sbgt', $columns, true))
+            if ((in_array('sales30d', $columns, true) || in_array('ACOS', $columns, true) || in_array('sbgt', $columns, true) || in_array('dsbgt', $columns, true))
                 && $cid !== ''
                 && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true))) {
                 if (in_array('sales30d', $columns, true) && $l30SliceMap !== [] && $lkSalesRow !== '' && array_key_exists($lkSalesRow, $l30SliceMap)) {
@@ -3431,7 +3487,7 @@ class AmazonAdsController extends Controller
                 }
                 $arr['ACOS'] = self::computedAcosPercentFromReportRow($acosRow, $dbColumns);
             }
-            if (in_array('sbgt', $columns, true)) {
+            if (in_array('sbgt', $columns, true) || in_array('dsbgt', $columns, true)) {
                 $sbgtRow = $rowArr;
                 if (in_array('cost', $dbColumns, true) && array_key_exists('cost', $arr)) {
                     $sbgtRow['cost'] = $arr['cost'];
@@ -3447,7 +3503,21 @@ class AmazonAdsController extends Controller
                         $sbgtRow['sales'] = $arr['sales'];
                     }
                 }
-                $arr['sbgt'] = self::computedSbgtFromReportRow($sbgtRow, $dbColumns);
+                $baseSbgt = self::computedSbgtFromReportRow($sbgtRow, $dbColumns);
+                $cnSbgt = trim((string) ($rowArr['campaignName'] ?? ''));
+                $mSbgt = ($cnSbgt !== '' && isset($skuMetricsByCampaign[$cnSbgt]))
+                    ? $skuMetricsByCampaign[$cnSbgt]
+                    : [];
+                if ((! isset($mSbgt['dil']) || ! is_numeric($mSbgt['dil'])) && isset($arr['dil']) && is_numeric($arr['dil'])) {
+                    $mSbgt['dil'] = (float) $arr['dil'];
+                }
+                $overlay = AmazonAdsSbgtDoubleRule::apply($baseSbgt, $mSbgt);
+                $arr['sbgt'] = $baseSbgt;
+                $arr['dsbgt'] = ! empty($overlay['doubled']) ? $overlay['sbgt'] : null;
+                $arr['sbgt_doubled'] = $overlay['doubled'];
+                $arr['sbgt_double_reason'] = $overlay['reason'];
+                $arr['sbgt_double_mult'] = $overlay['multiplier'];
+                $arr['amz_l30'] = isset($mSbgt['l30']) && is_numeric($mSbgt['l30']) ? (float) $mSbgt['l30'] : null;
             }
             if (in_array('Cvr', $columns, true)) {
                 $soldForCvr = $arr['Prchase'] ?? null;
@@ -3809,9 +3879,9 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Bulk-look up the L30 row's computed SBGT tier (1–12) for each campaign_id, using the same
-     * ACOS-based rule the grid applies via {@see computedSbgtFromReportRow()}. Used as a fallback
-     * when the page-supplied row has no SBGT (zero-traffic day → null cost/sales → null tier).
+     * Bulk-look up the L30 row's computed SBGT tier for each campaign_id, using the same
+     * ACOS-based BGT rule plus {@see AmazonAdsSbgtDoubleRule} overlay the grid applies.
+     * Used as a fallback when the page-supplied row has no SBGT.
      *
      * @param  list<string>  $cids
      * @return array<string, int>
@@ -3836,6 +3906,17 @@ class AmazonAdsController extends Controller
             ->where('report_date_range', 'L30')
             ->get();
 
+        $names = [];
+        foreach ($rows as $r) {
+            $cn = trim((string) ($r->campaignName ?? ''));
+            if ($cn !== '') {
+                $names[] = $cn;
+            }
+        }
+        $skuMetricsByCampaign = $names !== []
+            ? AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names)
+            : [];
+
         $out = [];
         foreach ($rows as $r) {
             $cid = (string) $r->campaign_id;
@@ -3843,6 +3924,10 @@ class AmazonAdsController extends Controller
                 continue;
             }
             $tier = self::computedSbgtFromReportRow((array) $r, $dbColumns);
+            $cn = trim((string) ($r->campaignName ?? ''));
+            $m = ($cn !== '' && isset($skuMetricsByCampaign[$cn])) ? $skuMetricsByCampaign[$cn] : [];
+            $overlay = AmazonAdsSbgtDoubleRule::apply($tier, $m);
+            $tier = $overlay['sbgt'];
             if ($tier !== null && $tier > 0) {
                 $out[$cid] = (int) $tier;
             }
@@ -4161,7 +4246,7 @@ class AmazonAdsController extends Controller
             ], 400);
         }
 
-        $allowedTiers = AmazonAcosSbgtRule::allowedSbgtTierValues();
+        $allowedTiers = AmazonAdsSbgtDoubleRule::allowedPushTierValues();
         $l30SbgtByCid = self::lookupL30SbgtByCampaignIds(
             'amazon_sp_campaign_reports',
             self::extractCampaignIdsFromPushRows($rows)
@@ -4290,7 +4375,7 @@ class AmazonAdsController extends Controller
             ], 400);
         }
 
-        $allowedTiers = AmazonAcosSbgtRule::allowedSbgtTierValues();
+        $allowedTiers = AmazonAdsSbgtDoubleRule::allowedPushTierValues();
         $l30SbgtByCid = self::lookupL30SbgtByCampaignIds(
             'amazon_sb_campaign_reports',
             self::extractCampaignIdsFromPushRows($rows)

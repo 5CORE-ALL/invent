@@ -247,6 +247,7 @@
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbgtDoubleRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbgtDoubleRuleModal" title="SBGT Double: Dil column colors × multiplier (runs with the BGT rule)">SBGT DOUBLE</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS% bands">PAUSE RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is high or price is below your threshold">PR</button>
@@ -445,6 +446,53 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsSbgtDoubleRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbgtDoubleRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsSbgtDoubleRuleModalLabel">SBGT Double — Dil color + Amazon L30</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Runs <strong>at the same time</strong> as BGT / SBID / Pause / PR. Bands are the same
+                        <strong>Dil column colors</strong> as this table (red / yellow / green / pink / gray).
+                        Turn a color on and set its multiplier. Also requires Amazon L30 ≤ the threshold.
+                    </p>
+                    <div class="row g-2 mb-3 align-items-end">
+                        <div class="col-auto">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="amazonAdsSbgtDoubleEnabled" checked>
+                                <label class="form-check-label small" for="amazonAdsSbgtDoubleEnabled">Enable overlay</label>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small mb-0" for="amazonAdsSbgtDoubleAmzL30">Amazon L30 ≤</label>
+                            <input type="number" step="1" min="0" class="form-control form-control-sm" id="amazonAdsSbgtDoubleAmzL30" value="0">
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsSbgtDoubleRuleTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:50px;">On</th>
+                                    <th>Band</th>
+                                    <th style="width:150px;">SBGT multiplier</th>
+                                </tr>
+                            </thead>
+                            <tbody id="amazonAdsSbgtDoubleBandsBody"></tbody>
+                        </table>
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsSbgtDoubleRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbgtDoubleRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -656,6 +704,8 @@
             var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
+            var sbgtDoubleRuleGetUrl = @json(route('amazon.ads.sbgt-double-rule'));
+            var sbgtDoubleRuleSaveUrl = @json(route('amazon.ads.sbgt-double-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
@@ -666,6 +716,7 @@
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
+            window.amazonAdsSbgtDoubleRule = @json($amazonAdsSbgtDoubleRule ?? null);
 
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var table = null;
@@ -674,9 +725,9 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'amz_l30', 'sbgt_doubled', 'sbgt_double_reason', 'sbgt_double_mult'];
             var NON_ORDERABLE_COLUMNS = [];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'bgt', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'bgt', 'sbgt', 'dsbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -725,6 +776,18 @@
                 }
                 return '#6b7280';
             }
+            function amzSbgtDoubleMults() {
+                var dbl = window.amazonAdsSbgtDoubleRule || {};
+                if (dbl.enabled === false) return [];
+                var bands = Array.isArray(dbl.bands) ? dbl.bands : [];
+                var out = [];
+                for (var i = 0; i < bands.length; i++) {
+                    if (bands[i] && bands[i].enabled === false) continue;
+                    var m = parseFloat(bands[i] && bands[i].multiplier);
+                    if (isFinite(m) && m > 0 && out.indexOf(m) === -1) out.push(m);
+                }
+                return out;
+            }
             function amzAllowedSbgtTiers() {
                 var bands = amzBgtRuleBands();
                 var out = [];
@@ -732,6 +795,15 @@
                     var t = parseInt(bands[i].sbgt, 10);
                     if (!isNaN(t) && t > 0 && out.indexOf(t) === -1) out.push(t);
                 }
+                var extra = [];
+                var mults = amzSbgtDoubleMults();
+                for (var m = 0; m < mults.length; m++) {
+                    for (var i = 0; i < out.length; i++) {
+                        var d = Math.round(out[i] * mults[m]);
+                        if (d > 0 && out.indexOf(d) === -1 && extra.indexOf(d) === -1) extra.push(d);
+                    }
+                }
+                out = out.concat(extra);
                 out.sort(function (x, y) { return x - y; });
                 return out;
             }
@@ -782,12 +854,31 @@
                 var r = Math.round(n);
                 return '<span class="fw-semibold" style="color:' + amzAcosTierColor(r) + ';">' + r + '%</span>';
             }
+            function amzDilTextColor(row) {
+                var inv = parseFloat(row && row.Inv);
+                if (!isFinite(inv) || inv === 0) return '#6c757d';
+                var ovl30 = parseFloat(row && row.ovl30) || 0;
+                var dil = (ovl30 / inv) * 100;
+                if (dil < 16.66) return '#a00211';
+                if (dil < 25) return '#ffc107';
+                if (dil < 50) return '#28a745';
+                return '#e83e8c';
+            }
             function fmtSbgt(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
                 var t = parseInt(v, 10);
                 if (isNaN(t)) return amzDash();
                 return '<span class="fw-semibold" style="color:' + amzSbgtTierColor(t) + ';">' + t + '</span>';
+            }
+            function fmtDsbgt(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var tip = (row && row.sbgt_double_reason) ? String(row.sbgt_double_reason) : 'SBGT Double';
+                return '<span class="fw-semibold" style="color:' + amzDilTextColor(row) + ';" title="' + amzEsc(tip) + '">' + t + '</span>';
             }
             function fmtUtilPercent(cell) {
                 var td = cell.getElement();
@@ -868,11 +959,7 @@
                 }
                 var ovl30 = parseFloat(row.ovl30) || 0;
                 var dil = (ovl30 / inv) * 100;
-                var color = '#e83e8c';
-                if (dil < 16.66) color = '#a00211';
-                else if (dil < 25) color = '#ffc107';
-                else if (dil < 50) color = '#28a745';
-                return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(dil) + '%</span>';
+                return '<span style="color: ' + amzDilTextColor(row) + '; font-weight: 600;">' + Math.round(dil) + '%</span>';
             }
             function fmtSkuPrice(cell) {
                 var row = cell.getRow().getData();
@@ -950,7 +1037,15 @@
                 if (c === 'last_sbid') { col.title = 'Lbid'; col.formatter = fmtSbid; return; }
                 if (c === 'sbid') { col.title = 'SBID'; col.formatter = fmtSbid; return; }
                 if (c === 'bgt') { col.title = 'BGT'; col.formatter = fmtDashNumberRaw; return; }
-                if (c === 'sbgt') { col.title = 'SBGT'; col.formatter = fmtSbgt; return; }
+                if (c === 'sbgt') { col.title = 'SBGT'; col.formatter = fmtSbgt; col.width = 56; col.minWidth = 50; return; }
+                if (c === 'dsbgt') {
+                    col.title = 'D SBGT';
+                    col.headerTooltip = 'SBGT Double — normal SBGT × Dil-color multiplier when the overlay matches';
+                    col.formatter = fmtDsbgt;
+                    col.width = 64;
+                    col.minWidth = 56;
+                    return;
+                }
                 if (c === 'Prchase') { col.title = 'Sold'; col.formatter = fmtDashInt; return; }
                 if (c === 'Cvr') { col.title = 'Cvr'; col.formatter = fmtCvr; return; }
                 if (c === 'ACOS') { col.title = 'ACOS'; col.formatter = fmtAcos; return; }
@@ -1298,6 +1393,8 @@
                 return null;
             }
             function amzPickSbgtTierFromRow(row) {
+                var d = parseInt(row.dsbgt, 10);
+                if (!isNaN(d) && amzAllowedSbgtTiers().indexOf(d) !== -1) return d;
                 var t = parseInt(row.sbgt, 10);
                 if (isNaN(t)) return null;
                 return amzAllowedSbgtTiers().indexOf(t) !== -1 ? t : null;
@@ -1737,6 +1834,123 @@
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
                         .finally(function () { bgtSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- SBGT Double: fixed Dil column colors + per-color multiplier ----
+            var AMZ_DIL_COLOR_BANDS = [
+                { key: 'red', label: 'Dil red', color: '#a00211', enabled: true, multiplier: 2 },
+                { key: 'yellow', label: 'Dil yellow', color: '#ffc107', enabled: false, multiplier: 2 },
+                { key: 'green', label: 'Dil green', color: '#28a745', enabled: true, multiplier: 2 },
+                { key: 'pink', label: 'Dil pink', color: '#e83e8c', enabled: false, multiplier: 2 },
+                { key: 'gray', label: 'Dil gray', color: '#6c757d', enabled: false, multiplier: 2 }
+            ];
+            var amzSbgtDoubleBands = [];
+            function amzEscAttr(s) {
+                return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            }
+            function amzRenderSbgtDoubleBands(bands) {
+                var tbody = document.getElementById('amazonAdsSbgtDoubleBandsBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                (bands || []).forEach(function (band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-center"><input class="form-check-input" type="checkbox"' + (band.enabled === false ? '' : ' checked') + ' data-dbl-idx="' + i + '" data-dbl-field="enabled"></td>'
+                        + '<td><span class="fw-semibold" style="color:' + amzEscAttr(band.color) + ';">' + amzEsc(band.label) + '</span></td>'
+                        + '<td><input type="number" step="0.1" min="1" max="20" class="form-control form-control-sm" value="' + (band.multiplier != null ? band.multiplier : '') + '" data-dbl-idx="' + i + '" data-dbl-field="multiplier"></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('[data-dbl-idx][data-dbl-field]').forEach(function (el) {
+                    var apply = function () {
+                        var idx = +this.dataset.dblIdx, fld = this.dataset.dblField;
+                        if (!amzSbgtDoubleBands[idx]) return;
+                        if (fld === 'enabled') amzSbgtDoubleBands[idx].enabled = !!this.checked;
+                        else amzSbgtDoubleBands[idx][fld] = this.value === '' ? '' : parseFloat(this.value);
+                    };
+                    el.addEventListener('input', apply);
+                    el.addEventListener('change', apply);
+                });
+            }
+            function amzFillSbgtDoubleForm(rule) {
+                var r = rule || {};
+                var en = document.getElementById('amazonAdsSbgtDoubleEnabled');
+                var l30 = document.getElementById('amazonAdsSbgtDoubleAmzL30');
+                if (en) en.checked = r.enabled !== false;
+                if (l30 && r.amz_l30_max != null) l30.value = String(r.amz_l30_max);
+                var saved = {};
+                (Array.isArray(r.bands) ? r.bands : []).forEach(function (b) {
+                    if (b && b.key) saved[String(b.key)] = b;
+                });
+                amzSbgtDoubleBands = AMZ_DIL_COLOR_BANDS.map(function (def) {
+                    var b = saved[def.key] || {};
+                    return {
+                        key: def.key,
+                        label: def.label,
+                        color: def.color,
+                        enabled: Object.prototype.hasOwnProperty.call(b, 'enabled') ? b.enabled !== false : def.enabled,
+                        multiplier: b.multiplier != null ? Number(b.multiplier) : def.multiplier
+                    };
+                });
+                amzRenderSbgtDoubleBands(amzSbgtDoubleBands);
+            }
+            function amzRefreshSbgtDoubleRuleFromServer(cb) {
+                fetch(sbgtDoubleRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsSbgtDoubleRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var sbgtDoubleModalEl = document.getElementById('amazonAdsSbgtDoubleRuleModal');
+            if (sbgtDoubleModalEl) {
+                sbgtDoubleModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsSbgtDoubleRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshSbgtDoubleRuleFromServer(function () { amzFillSbgtDoubleForm(window.amazonAdsSbgtDoubleRule || {}); });
+                });
+            }
+            var sbgtDoubleSaveBtn = document.getElementById('amazonAdsSbgtDoubleRuleSaveBtn');
+            if (sbgtDoubleSaveBtn) {
+                sbgtDoubleSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsSbgtDoubleRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var l30El = document.getElementById('amazonAdsSbgtDoubleAmzL30');
+                    var enEl = document.getElementById('amazonAdsSbgtDoubleEnabled');
+                    var amzL30 = l30El ? parseFloat(String(l30El.value).trim()) : NaN;
+                    if (!isFinite(amzL30)) { if (err) { err.textContent = 'Amazon L30 must be numeric.'; err.classList.remove('d-none'); } return; }
+                    var bands = (amzSbgtDoubleBands || []).map(function (b) {
+                        return {
+                            key: String(b.key || ''),
+                            enabled: b.enabled !== false,
+                            multiplier: (b.multiplier === '' || b.multiplier == null) ? NaN : parseFloat(b.multiplier)
+                        };
+                    });
+                    for (var i = 0; i < bands.length; i++) {
+                        var b = bands[i];
+                        if (!b.key || !isFinite(b.multiplier)) {
+                            if (err) { err.textContent = (amzSbgtDoubleBands[i] && amzSbgtDoubleBands[i].label ? amzSbgtDoubleBands[i].label : 'A Dil color') + ' needs a numeric multiplier.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                    }
+                    var payload = { enabled: !!(enEl && enEl.checked), amz_l30_max: amzL30, bands: bands };
+                    sbgtDoubleSaveBtn.disabled = true;
+                    fetch(sbgtDoubleRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(payload)
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var body = out.body || {};
+                            if (!out.ok || body.status === 422 || body.status === 500) { if (err) { err.textContent = body.message || body.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsSbgtDoubleRule = body.rule || window.amazonAdsSbgtDoubleRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(sbgtDoubleModalEl); if (inst) inst.hide(); }
+                            amzUpdatePushButtons();
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { sbgtDoubleSaveBtn.disabled = false; });
                 });
             }
 

@@ -3509,6 +3509,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/push-sb-sbgts', [AmazonAdsController::class, 'pushSbSbgts'])->name('amazon.ads.push-sb-sbgts');
     Route::get('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'getBgtRule'])->name('amazon.ads.bgt-rule');
     Route::post('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'saveBgtRule'])->name('amazon.ads.bgt-rule.save');
+    Route::get('/amazon-ads/sbgt-double-rule', [AmazonAdsController::class, 'getSbgtDoubleRule'])->name('amazon.ads.sbgt-double-rule');
+    Route::post('/amazon-ads/sbgt-double-rule', [AmazonAdsController::class, 'saveSbgtDoubleRule'])->name('amazon.ads.sbgt-double-rule.save');
     Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
     Route::get('/amazon-ads/pause-rule', [AmazonAdsController::class, 'getPauseRule'])->name('amazon.ads.pause-rule');
