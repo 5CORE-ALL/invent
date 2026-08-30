@@ -16,20 +16,46 @@
     .amz-fbm-targeting .tabulator-row { min-height: 36px; }
     .amz-fbm-targeting .tabulator-row:hover { background-color: #f8fafc !important; }
     .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
-    .amz-fbm-targeting .aft-target-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-    .amz-fbm-targeting .aft-chip {
-        display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 999px;
-        background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; font-size: 12px;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
     .amz-fbm-targeting .aft-count-badge {
         display: inline-block; padding: 2px 10px; border-radius: 999px;
         background: #1d4ed8; border: 1px solid #1e40af; color: #fff;
         font-size: 12px; font-weight: 700; cursor: pointer;
     }
     .amz-fbm-targeting .aft-count-badge:hover { background: #1e40af; }
-    .amz-fbm-targeting .aft-empty { color: #94a3b8; font-size: 12px; }
-    .amz-fbm-targeting .aft-modal-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 420px; overflow-y: auto; }
+    .aft-empty { color: #94a3b8; font-size: 13px; }
+    #aft-modal-targets.aft-modal-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 420px;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+    #aft-modal-targets .aft-chip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: 8px;
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        color: #1e293b;
+        font-size: 13px;
+        line-height: 1.35;
+    }
+    #aft-modal-targets .aft-chip-text { flex: 1; min-width: 0; word-break: break-word; }
+    #aft-modal-targets .aft-chip-match {
+        flex-shrink: 0;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #1d4ed8;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
 </style>
 @endsection
 
@@ -164,7 +190,13 @@
                 listEl.innerHTML = '<span class="aft-empty">No targets yet</span>';
             } else {
                 listEl.innerHTML = list.map(function (t) {
-                    return '<span class="aft-chip" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</span>';
+                    const raw = String(t || '').trim();
+                    const m = raw.match(/^(.*)\s+\(([A-Za-z][A-Za-z0-9_/ -]{1,20})\)$/);
+                    const text = m ? m[1].trim() : raw;
+                    const match = m ? m[2].trim() : '';
+                    return '<div class="aft-chip"><span class="aft-chip-text">' + escapeHtml(text) + '</span>' +
+                        (match ? '<span class="aft-chip-match">' + escapeHtml(match) + '</span>' : '') +
+                        '</div>';
                 }).join('');
             }
         }
