@@ -1280,6 +1280,16 @@
             return base + shipCost;
         }
 
+        /** Same test as LMP column red: INV > 0 and Price > landed L1. */
+        function amazonPriceGtLandedLmp(data) {
+            if (!data || data.is_parent_summary) return false;
+            if (window.PriceGtLmpBadge && PriceGtLmpBadge.isParentRow(data)) return false;
+            const inv = parseFloat(data.INV) || 0;
+            const price = parseFloat(data.price) || 0;
+            const lmp = lmpWithShipping(data);
+            return inv > 0 && price > 0 && lmp > 0 && price > lmp;
+        }
+
         function amazonCapSpriceToLmp(rowData, sprice) {
             // 0 Sold Dil → GROI target must stay visible. LMP cap made Pink 70%
             // look like a normal LMP price (this SKU: $112.99 / 27% SGROI).
@@ -4497,9 +4507,12 @@
                             }
 
                             const priceFormatted = '$' + price.toFixed(2);
-                            const tri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(price, lmpPrice) : '');
-                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpPrice) : '');
-                            if (lmpPrice > 0 && price > lmpPrice) {
+                            const lmpCmp = (typeof lmpWithShipping === 'function')
+                                ? lmpWithShipping(rowData)
+                                : lmpPrice;
+                            const tri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(price, lmpCmp) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpCmp) : '');
+                            if (lmpCmp > 0 && price > lmpCmp) {
                                 return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>${tri}`;
                             }
                             return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri;
@@ -5471,7 +5484,7 @@
                 }
                 if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
                     table.addFilter(function(data) {
-                        return PriceGtLmpBadge.hasRedTriangle(data, 'price');
+                        return amazonPriceGtLandedLmp(data);
                     });
                 }
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
@@ -5528,12 +5541,11 @@
                             zeroSoldCount++;
                         }
 
-                        const price = parseFloat(row['price'] || 0);
-                        const lmpPrice = parseFloat(row['lmp_price'] || 0);
-                        if (lmpPrice > 0 && price > lmpPrice) {
+                        if (amazonPriceGtLandedLmp(row)) {
                             prcGtLmpCount++;
                         }
 
+                        const price = parseFloat(row['price'] || 0);
                         const inv = parseFloat(row['INV'] || 0);
                         const nrValue = row['NR'] || '';
                         const isMissingAmazon = row['is_missing_amazon'] || false;
@@ -5584,7 +5596,7 @@
                     LmpMissingBadge.update('#amazon-lmp-missing-badge', allData, 'amazon');
                 }
                 if (window.PriceGtLmpBadge) {
-                    PriceGtLmpBadge.update('#amazon-price-gt-lmp-badge', allData, 'amazon', 'price');
+                    PriceGtLmpBadge.update('#amazon-price-gt-lmp-badge', allData, 'amazon', 'price', lmpWithShipping);
                 }
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#amazon-price-lt80-lmp-badge', allData, 'amazon', 'price');

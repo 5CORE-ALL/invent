@@ -57,7 +57,8 @@
             for (var j = 0; j < row.lmp_entries.length; j++) {
                 var e = row.lmp_entries[j] || {};
                 if (entryIgnored(e)) continue;
-                var p = num(e.total_price != null ? e.total_price : (e.price != null ? e.price : e.lmp));
+                var p = num(e.landed_price != null ? e.landed_price
+                    : (e.total_price != null ? e.total_price : (e.price != null ? e.price : e.lmp)));
                 if (isFinite(p) && p > 0 && (!isFinite(lowest) || p < lowest)) lowest = p;
             }
             return lowest;
@@ -65,18 +66,18 @@
         return firstNum(row, ['lmp_price', 'lmp', 'LMP', 'LMP 1', 'lmp_1']);
     }
 
-    function hasRedTriangle(row, priceField) {
+    function hasRedTriangle(row, priceField, getLmp) {
         if (!row || isParentRow(row)) return false;
         if (!(invOf(row) > 0)) return false;
         var price = priceOf(row, priceField);
-        var lmp = lmpOf(row);
+        var lmp = (typeof getLmp === 'function') ? num(getLmp(row)) : lmpOf(row);
         return isFinite(price) && price > 0 && isFinite(lmp) && lmp > 0 && price > lmp;
     }
 
-    function count(rows, priceField) {
+    function count(rows, priceField, getLmp) {
         var n = 0;
         (rows || []).forEach(function (row) {
-            if (hasRedTriangle(row, priceField)) n++;
+            if (hasRedTriangle(row, priceField, getLmp)) n++;
         });
         return n;
     }
@@ -119,8 +120,8 @@
         }
     }
 
-    function update(target, rows, channelKey, priceField) {
-        var n = count(rows, priceField);
+    function update(target, rows, channelKey, priceField, getLmp) {
+        var n = count(rows, priceField, getLmp);
         paint(target, n);
         if (channelKey) report(channelKey, n);
         return n;
