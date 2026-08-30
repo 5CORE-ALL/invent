@@ -1219,6 +1219,10 @@
         }
         function ebay2ComputeSgroiFromSprice(rowData) {
             if (!rowData) return null;
+            if (typeof chPromoZeroSoldDisplayGroi === 'function') {
+                const target = chPromoZeroSoldDisplayGroi(rowData);
+                if (target != null) return target;
+            }
             const price = ebay2SpriceAmount(rowData);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;

@@ -4467,6 +4467,25 @@
             if (!chPromoIsZeroSoldRow(d)) return null;
             return chPromoRoiForZeroSoldDil(chPromoZeroSoldDilPct(d));
         }
+        /**
+         * When S PRC is the 0 Sold rule price, show the Dil target (50/60/70).
+         * $0.01 rounding on tiny LP can compute 71 for a 70 target — that is not a different rule.
+         */
+        function chPromoZeroSoldDisplayGroi(d) {
+            if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) return null;
+            if (!d || typeof chPromoIsZeroSoldRow !== 'function' || !chPromoIsZeroSoldRow(d)) return null;
+            if (!(chPromoLp(d) > 0)) return null;
+            const roi = chPromoZeroSoldGroiForRow(d);
+            if (roi == null || !isFinite(Number(roi))) return null;
+            const rule = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
+            if (!(rule > 0)) return null;
+            let used = 0;
+            if (typeof chPromoLiveSprice === 'function') used = Number(chPromoLiveSprice(d)) || 0;
+            if (!(used > 0) && typeof chPromoGetSprice === 'function') used = Number(chPromoGetSprice(d)) || 0;
+            if (!(used > 0)) return null;
+            if (typeof chPromoNearlyEqual === 'function' && !chPromoNearlyEqual(used, rule)) return null;
+            return Number(roi);
+        }
         /** S PRC from the 0 Sold Dil→Target GROI% rule. 0 if the row is not 0-sold or cannot be priced. */
         function chPromoZeroSoldRuleSprice(d) {
             if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) return 0;
@@ -6876,13 +6895,7 @@
                 seen.add(sku);
                 const slab = chPromoDilSlabKey(chPromoDil(d));
                 const prev = chPromoDilLastSlab[sku];
-                if (!forceAll) {
-                    if (!prev) {
-                        chPromoDilLastSlab[sku] = slab;
-                        return;
-                    }
-                    if (prev === slab) return;
-                }
+                if (!forceAll && prev && prev === slab) return;
                 out.push({ row: row, d: d });
             }
             if (typeof table !== 'undefined' && table && typeof chPromoEachTableRow === 'function') {
@@ -7006,13 +7019,7 @@
                 seen.add(sku);
                 const slab = chPromoCvrSlabKey(chPromoCvr(d));
                 const prev = chPromoCvrLastSlab[sku];
-                if (!forceAll) {
-                    if (!prev) {
-                        chPromoCvrLastSlab[sku] = slab;
-                        return;
-                    }
-                    if (prev === slab) return;
-                }
+                if (!forceAll && prev && prev === slab) return;
                 out.push({ row: row, d: d });
             }
             if (typeof table !== 'undefined' && table && typeof chPromoEachTableRow === 'function') {
@@ -8611,6 +8618,48 @@
                 skip_push: extra.skip_push != null ? extra.skip_push : true,
             }, extra));
         }
+        let chPromoAllEbayRulesBusy = false;
+        /** eBay 1/2/3 page load: Dil vs PRMT → CVR vs CPN → 0 Sold (clear S PRC) → refill S PRC. */
+        async function chPromoRunAllEbayRulesOnLoad() {
+            if (!chPromoIsEbayChannel() || chPromoAllEbayRulesBusy) return;
+            chPromoAllEbayRulesBusy = true;
+            try {
+                if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {
+                    chPromoSyncEbayPrmtColumnFromSlabs();
+                }
+                if (typeof chPromoSyncEbayCpnColumnFromSlabs === 'function') {
+                    chPromoSyncEbayCpnColumnFromSlabs();
+                }
+                if (typeof chPromoRunDilPrmtAutoApply === 'function') {
+                    await chPromoRunDilPrmtAutoApply({ force: false, silent: true });
+                }
+                if (typeof chPromoRunCvrCpnAutoApply === 'function') {
+                    await chPromoRunCvrCpnAutoApply({ force: false, silent: true });
+                }
+                if (typeof chPromoRunZeroSoldDilAutoApply === 'function') {
+                    await chPromoRunZeroSoldDilAutoApply({ force: true });
+                }
+                const clearOnce = chPromoShouldClearStoredOnce();
+                const livePushOn = chPromoPageReloadPushAllowed();
+                autopopulateEbaySpriceFromStdPrmtCpn({
+                    overwrite: true,
+                    persist: true,
+                    silent: true,
+                    force: true,
+                    skip_push: !livePushOn,
+                });
+                if (clearOnce) chPromoMarkStoredClearedOnce();
+                if (livePushOn) {
+                    if (chPromoIsTemuPromoChannel() && typeof scanAndQueueTemuListingPush === 'function') {
+                        scanAndQueueTemuListingPush(chPromoSafeTable());
+                    } else {
+                        chPromoQueueReloadSpricePush({ delay: 500 });
+                    }
+                }
+            } finally {
+                chPromoAllEbayRulesBusy = false;
+            }
+        }
         function chPromoTryQueueAfterSlabs() {
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
             if (!chPromoEbaySpriceSlabsReady()) return;
@@ -8641,6 +8690,10 @@
             }
             if (typeof chPromoSyncEbayCpnColumnFromSlabs === 'function') {
                 chPromoSyncEbayCpnColumnFromSlabs();
+            }
+            if (chPromoIsEbayChannel()) {
+                chPromoRunAllEbayRulesOnLoad();
+                return;
             }
             if (typeof chPromoScheduleCvrCpnAutoApply === 'function') {
                 chPromoScheduleCvrCpnAutoApply();
@@ -8689,24 +8742,12 @@
             tbl.on('dataLoaded', function() {
                 chPromoSyncEbayPrmtColumnFromSlabs();
                 chPromoSyncEbayCpnColumnFromSlabs();
-                if (typeof chPromoScheduleCvrCpnAutoApply === 'function') {
-                    chPromoScheduleCvrCpnAutoApply();
-                }
-                if (typeof chPromoScheduleZeroSoldDilAutoApply === 'function') {
-                    chPromoScheduleZeroSoldDilAutoApply();
-                }
                 runPageLoadSpriceQueue();
             });
             try {
                 if ((typeof tbl.getDataCount === 'function' ? tbl.getDataCount() : 0) > 0) {
                     chPromoSyncEbayPrmtColumnFromSlabs();
                     chPromoSyncEbayCpnColumnFromSlabs();
-                    if (typeof chPromoScheduleCvrCpnAutoApply === 'function') {
-                        chPromoScheduleCvrCpnAutoApply();
-                    }
-                    if (typeof chPromoScheduleZeroSoldDilAutoApply === 'function') {
-                        chPromoScheduleZeroSoldDilAutoApply();
-                    }
                     runPageLoadSpriceQueue();
                 }
             } catch (e) { /* wait for dataLoaded */ }
@@ -10390,6 +10431,7 @@
         window.chPromoSyncEbayPrmtColumnFromSlabs = chPromoSyncEbayPrmtColumnFromSlabs;
         window.chPromoDilColorBand = chPromoDilColorBand;
         window.chPromoZeroSoldGroiForRow = chPromoZeroSoldGroiForRow;
+        window.chPromoZeroSoldDisplayGroi = chPromoZeroSoldDisplayGroi;
         window.chPromoZeroSoldRuleSprice = chPromoZeroSoldRuleSprice;
         window.chPromoIsZeroSoldRow = chPromoIsZeroSoldRow;
         window.chPromoListingDil = chPromoListingDil;
