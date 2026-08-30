@@ -2226,19 +2226,23 @@
                     headerSort: true,
                     sorter: function(a, b, aRow, bRow) {
                         const val = function(row) {
-                            const plan = (typeof computeAmzPushPrcPlan === 'function')
-                                ? computeAmzPushPrcPlan(row)
-                                : null;
+                            const plan = (typeof amzPushPrcPlanForQueue === 'function')
+                                ? amzPushPrcPlanForQueue(row)
+                                : ((typeof computeAmzPushPrcPlan === 'function')
+                                    ? computeAmzPushPrcPlan(row)
+                                    : null);
                             return (plan && plan.effective > 0) ? plan.effective : 0;
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'Push Prc: Your=Std. 0 Sold → Sale=GROI. Sold → Sale=Std−(PRMT+CVR Disc+Rev Disc+CVR UP/DN). Sale=Biz=Min. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std. 0 Sold → Sale=GROI. Sold → Sale=Std−(PRMT+CVR Disc+Rev Disc+CVR UP/DN), LMP-capped to match S PRC. Sale=Biz=Min. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
                         const sku = amzPefSku(d);
-                        const plan = computeAmzPushPrcPlan(d);
+                        const plan = (typeof amzPushPrcPlanForQueue === 'function')
+                            ? amzPushPrcPlanForQueue(d)
+                            : computeAmzPushPrcPlan(d);
                         const status = String(d.PUSH_PRC_STATUS || '');
                         const histVal = d.PUSH_PRC_VALUE != null ? d.PUSH_PRC_VALUE : (plan ? plan.effective : null);
                         const dot = amzPefPromoHistoryDotHtml(sku, 'push_prc', histVal);
@@ -2354,6 +2358,7 @@
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.cvrUpDn) parts.push('CVR UP/DN ' + (plan.cvrUpDn > 0 ? '+' : '') + plan.cvrUpDn + '%');
+            if (plan.lmpCapped) parts.push('LMP cap');
             return parts.length ? ' (' + parts.join(' + ') + ')' : '';
         }
         /**
@@ -2400,6 +2405,47 @@
                 totalDisc: stack.totalDisc,
                 effective: effective,
             };
+        }
+        /**
+         * Sale / Min / Biz / effective must match visible S PRC (LMP-capped,
+         * except 0 Sold). Tick used to compare Price to the uncapped sale
+         * (this SKU: $15.95) while S PRC showed $12.99 — click looked dead.
+         */
+        function amzLmpAlignPushPrcPlan(plan, d) {
+            if (!plan || !(plan.effective > 0)) return plan;
+            const origEffective = Number(plan.effective) || 0;
+            const capped = (typeof amzFinalSpriceToSave === 'function')
+                ? amzFinalSpriceToSave(d, plan.effective)
+                : ((typeof amzCapRuleSprice === 'function') ? amzCapRuleSprice(d, plan.effective) : plan.effective);
+            if (!(capped > 0)) return plan;
+            plan.effective = capped;
+            if (plan.sale != null) {
+                const saleCap = (typeof amzFinalSpriceToSave === 'function')
+                    ? amzFinalSpriceToSave(d, plan.sale)
+                    : capped;
+                plan.sale = saleCap > 0 ? saleCap : capped;
+            } else if (plan.std > 0 && capped + 0.0001 < plan.std) {
+                plan.sale = capped;
+            }
+            const saleBase = plan.sale != null ? plan.sale : capped;
+            plan.min = saleBase;
+            plan.business = saleBase;
+            plan.lmpCapped = (origEffective - capped) > 0.009;
+            return plan;
+        }
+        function amzPushPrcPlanForQueue(d) {
+            const plan = computeAmzPushPrcPlan(d);
+            return amzLmpAlignPushPrcPlan(plan, d);
+        }
+        function amzListingAlreadyAtPushTarget(d, plan) {
+            const target = (plan && plan.effective > 0)
+                ? plan.effective
+                : ((typeof amzDisplayedSprice === 'function') ? amzDisplayedSprice(d) : 0);
+            if (typeof amazonListingPriceEqualsSprice === 'function') {
+                return amazonListingPriceEqualsSprice(d, target);
+            }
+            return Number(d && d.price) > 0 && target > 0
+                && Math.round(Number(d.price) * 100) === Math.round(Number(target) * 100);
         }
         /** @deprecated use computeAmzPushPrcPlan — kept for any leftover callers */
         function computeAmzPushPrcFromStd(d) {
@@ -2607,11 +2653,8 @@
             return Math.abs((Number(stored) || 0) - live) > 0.009;
         }
         function amzRuleSpricePlanForRow(d) {
-            const plan = computeAmzPushPrcPlan(d);
+            const plan = amzPushPrcPlanForQueue(d);
             if (!plan || !(plan.effective > 0)) return null;
-            const live = amzCapRuleSprice(d, plan.effective);
-            if (!(live > 0)) return null;
-            plan.effective = live;
             return plan;
         }
         function amzDrainRuleSpricePersist() {
@@ -3124,16 +3167,12 @@
 
             const d = row.getData();
             const sku = amzPefSku(d);
-            const plan = computeAmzPushPrcPlan(d);
+            const plan = amzPushPrcPlanForQueue(d);
             if (!sku || !plan || !(plan.std > 0)) {
                 amzPefToast('error', 'Set Std Prc first (optional PRMT% / CVR Discount for Sale)');
                 return;
             }
-            const liveEq = (typeof amazonListingPriceEqualsSprice === 'function')
-                ? amazonListingPriceEqualsSprice(d, plan.effective)
-                : (Number(d.price) > 0 && Number(plan.effective) > 0
-                    && Math.round(Number(d.price) * 100) === Math.round(Number(plan.effective) * 100));
-            if (liveEq) {
+            if (amzListingAlreadyAtPushTarget(d, plan)) {
                 amzPefToast('success', sku + ': Price already equals S PRC — left unchanged');
                 return;
             }
@@ -3168,13 +3207,9 @@
             let alreadyEqual = 0;
             targets.forEach(function(t) {
                 const d = t.row.getData();
-                const plan = computeAmzPushPrcPlan(d);
+                const plan = amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.std > 0)) return;
-                const liveEq = (typeof amazonListingPriceEqualsSprice === 'function')
-                    ? amazonListingPriceEqualsSprice(d, plan.effective)
-                    : (Number(d.price) > 0 && Number(plan.effective) > 0
-                        && Math.round(Number(d.price) * 100) === Math.round(Number(plan.effective) * 100));
-                if (liveEq) {
+                if (amzListingAlreadyAtPushTarget(d, plan)) {
                     alreadyEqual++;
                     return;
                 }
@@ -3256,7 +3291,7 @@
                 const sku = amzPefSku(d);
                 const key = sku.toUpperCase();
                 if (!sku || seen[key]) return;
-                const plan = computeAmzPushPrcPlan(d);
+                const plan = amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.effective > 0)) return;
                 const live = amzPefRound2(Number(d.price) || 0);
                 if (!(live > 0) || amzPefNearlyEqual(plan.effective, live)) return;
