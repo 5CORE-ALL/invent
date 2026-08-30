@@ -104,7 +104,8 @@
     window.isPmParentRowData = function (d) {
         if (!d) return false;
         if (d.is_parent_summary === true || d.is_parent_row === true || d.is_parent === true) return true;
-        var keys = ['SKU', 'sku', '(Child) sku', 'Sku', 'Parent'];
+        // Do not check Parent: child SKUs store the parent name there ("PARENT GSTOOL I").
+        var keys = ['SKU', 'sku', '(Child) sku', 'Sku'];
         for (var i = 0; i < keys.length; i++) {
             var v = d[keys[i]];
             if (v != null && String(v).toUpperCase().includes('PARENT')) return true;

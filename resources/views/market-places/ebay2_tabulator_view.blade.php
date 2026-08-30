@@ -1179,6 +1179,10 @@
          * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
          */
         function ebay2SpriceAmount(rowData) {
+            if (typeof chPromoLiveSprice === 'function') {
+                const live = Number(chPromoLiveSprice(rowData));
+                if (isFinite(live) && live > 0) return live;
+            }
             if (typeof chPromoSavedOrLiveSprice === 'function') {
                 const saved = Number(chPromoSavedOrLiveSprice(rowData));
                 if (isFinite(saved) && saved > 0) return saved;
@@ -1381,7 +1385,7 @@
 
         function linkedLmpSkuFormatter(cell) {
             const row = cell.getRow().getData();
-            if (row.is_parent_summary || (row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT'))) return '';
+            if (isEbay2TabulatorParentRow(row)) return '';
             const rowSku = rowSkuForLinkLmp(row);
             let skus = row.linked_lmp_skus || [];
             if (typeof skus === 'string') { try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; } }
@@ -1404,7 +1408,7 @@
 
         function linkedLmpSkuAddFormatter(cell) {
             const row = cell.getRow().getData();
-            if (row.is_parent_summary || (row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT'))) return '';
+            if (isEbay2TabulatorParentRow(row)) return '';
             const rowSku = rowSkuForLinkLmp(row);
             if (!rowSku) return '';
             return `<div class="d-flex align-items-center justify-content-center py-1">
@@ -1570,12 +1574,12 @@
         }
         function isEbay2TabulatorParentRow(data) {
             if (!data) return false;
-            if (typeof window.isPmParentRowData === 'function' && window.isPmParentRowData(data)) return true;
             if (data.is_parent_summary || data.is_parent_row || data.is_parent) return true;
+            // Child SKUs have Parent = "PARENT GSTOOL I" — that is the parent name, not a parent row.
+            // Do not use isPmParentRowData here: it treats Parent containing "PARENT" as a parent row
+            // and blanked the LMP column (avg of "children" that never matched).
             const sku = String(data['(Child) sku'] || data.SKU || data.sku || '').toUpperCase();
-            if (sku.includes('PARENT')) return true;
-            const p = data.Parent;
-            return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+            return sku.indexOf('PARENT') !== -1;
         }
         /** Slice the full dataset for ALL / Parents / SKU so PARENT rows cannot leak through SKU view. */
         function ebay2RowsForViewMode(viewMode, rows) {
@@ -3348,7 +3352,7 @@
                 rowFormatter: function(row) {
                     const el = row.getElement();
                     const d = row.getData();
-                    if (isEbay2TabulatorParentRow(d) || (window.isPmParentRowData && window.isPmParentRowData(d))) {
+                    if (isEbay2TabulatorParentRow(d)) {
                         el.classList.add('parent-row');
                         el.classList.add('pm-parent-row');
                     } else {
@@ -3543,7 +3547,7 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const isParent = isEbay2TabulatorParentRow(rowData);
                             const yesterday = parseFloat(rowData.inv_yesterday);
                             const hasYesterday = isFinite(yesterday);
                             let dotColor = '#6c757d';
@@ -3575,7 +3579,7 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const isParent = isEbay2TabulatorParentRow(rowData);
                             const yesterday = parseFloat(rowData.l30_yesterday);
                             const hasYesterday = isFinite(yesterday);
                             let dotColor = '#6c757d';
@@ -3739,7 +3743,7 @@
                             // ≤3.5 keep 1 decimal; >3.5 round to whole number
                             const fmtCvr = (n) => (n > 3.5 ? String(Math.round(n)) : n.toFixed(1)) + '%';
                             let arrowHtml = '';
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const isParent = isEbay2TabulatorParentRow(rowData);
                             if (!isParent) {
                                 let arrowColor = '#6c757d';
                                 let arrowIcon = 'fa-minus';
@@ -3883,7 +3887,7 @@
                                 ? LmpIgnore.effectiveLmp(rowData)
                                 : (parseFloat(rowData['lmp_price'] || 0) || 0);
                             const sku = rowData['(Child) sku'] || '';
-                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const isParent = isEbay2TabulatorParentRow(rowData);
                             const overLmp = lmpPrice > 0 && value > lmpPrice;
                             const redTri = overLmp
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
@@ -4042,13 +4046,16 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            if (window.ParentExpand) {
+                            const isParent = typeof isEbay2TabulatorParentRow === 'function'
+                                && isEbay2TabulatorParentRow(rowData);
+                            if (isParent && window.ParentExpand) {
                                 const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, { dataset: allTableData });
                                 if (avgHtml !== null) return avgHtml;
                             }
                             return (window.LmpIgnore && typeof LmpIgnore.columnHtml === 'function')
                                 ? LmpIgnore.columnHtml(rowData, {
                                     colorVsPrice: true,
+                                    parentAvg: false,
                                     parentOpts: { dataset: typeof allTableData !== 'undefined' ? allTableData : undefined }
                                 })
                                 : '';
@@ -4098,12 +4105,10 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC is the saved value after Apply (clear, then save). Same $ as DB. Red triangle = saved S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "S PRC is the live rule price (Std − PRMT − CPN, LMP-capped). Same $ as Push Prc Sale. Red triangle = S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
-                                ? chPromoSavedOrLiveSprice(rowData)
-                                : (parseFloat(rowData.SPRICE) || 0);
+                            let sprice = ebay2SpriceAmount(rowData);
                             if (!(sprice > 0)) {
                                 return '';
                             }
@@ -4695,7 +4700,7 @@
                 if (cvrFilter !== 'all') {
                     const slabs = { low: 3.5, mid: 7, high: 13, yellow_start: 0.01, pink_after: 13.01 };
                     table.addFilter(function(data) {
-                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT')) return true;
+                        if (isEbay2TabulatorParentRow(data)) return true;
                         const cvr = (typeof amazonRowCvrL30 === 'function')
                             ? amazonRowCvrL30(data)
                             : (parseFloat(data['SCVR']) || 0);
