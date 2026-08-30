@@ -96,7 +96,7 @@
         el.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + value.toLocaleString();
         if (dot) el.insertBefore(dot, el.firstChild);
         el.setAttribute('data-live-value', String(value));
-        el.style.backgroundColor = value === 0 ? '#28a745' : '#dc3545';
+        el.style.backgroundColor = '#dc3545';
         el.style.color = '#fff';
         el.style.fontWeight = '700';
     }
