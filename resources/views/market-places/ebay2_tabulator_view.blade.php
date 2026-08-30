@@ -3618,15 +3618,14 @@
                                     return INV === 0 ? 0 : (OVL30 / INV) * 100;
                                 })();
 
-                            if (!(dil > 0)) return '<span style="color: #a00211; font-weight: 600;">0%</span>';
+                            if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
 
                             let color = '';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                            if (dil < 25) color = '#a00211';
                             else if (dil >= 25 && dil < 50) color = '#28a745';
                             else color = '#e83e8c';
 
-                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Dil vs PRMT">${Math.round(dil)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as eBay 1 / Dil vs PRMT">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },
