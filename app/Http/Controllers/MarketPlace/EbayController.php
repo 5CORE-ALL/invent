@@ -1282,52 +1282,14 @@ class EbayController extends Controller
             // Site-specific promo columns from ebay_data_view (PEF_PRMT_PCT / PEF_CPN_PCT / PUSH_PRC_*)
             $row = app(ChannelPromoPricingService::class)->applyToRow($row, $ebay1PromoMap, (string) $pm->sku);
 
-            $lmpEntries = collect();
-            foreach ($linkedLmpSkus as $linkedSku) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim($linkedSku)));
-                $entries = $lmpDetailsLookup->get($key);
-                if ($entries instanceof \Illuminate\Support\Collection) {
-                    $lmpEntries = $lmpEntries->merge($entries);
-                }
-            }
-            // Same listing on a linked SKU inherits Ignore so refresh does not revive L1.
-            $lmpEntries = \App\Models\EbaySkuCompetitor::applyIgnoreToSameItemIds($lmpEntries);
-            $lmpEntries = $lmpEntries
-                ->unique(fn($e) => $e->item_id ?? spl_object_id($e))
-                ->sortBy('total_price')
-                ->values();
-
-            // L1 / column count ignore flagged competitors
-            $lowestLmp = $lmpEntries->first(fn ($e) => ! \App\Models\EbaySkuCompetitor::isIgnored($e));
-            $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price))
-                ? (is_numeric($lowestLmp->total_price) ? floatval($lowestLmp->total_price) : null)
-                : null;
-            $row['lmp_link'] = $lowestLmp->product_link ?? null;
-            $row['lmp_item_id'] = $lowestLmp->item_id ?? null;
-            $row['lmp_title'] = $lowestLmp->product_title ?? null;
-            $row['lmp_entries'] = $lmpEntries
-                ->map(function ($entry) {
-                    return [
-                        'id' => $entry->id,
-                        'item_id' => $entry->item_id,
-                        'price' => floatval($entry->price ?? 0),
-                        'shipping_cost' => floatval($entry->shipping_cost ?? 0),
-                        'total_price' => floatval($entry->total_price ?? 0),
-                        'ignored' => \App\Models\EbaySkuCompetitor::isIgnored($entry),
-                        'link' => $entry->product_link,
-                        'title' => $entry->product_title,
-                    ];
-                })
-                ->toArray();
-            $row['lmp_entries_total'] = $lmpEntries
-                ->filter(fn ($e) => ! \App\Models\EbaySkuCompetitor::isIgnored($e) && (float) ($e->total_price ?? 0) > 0)
-                ->count();
-            $lowestIgnored = $row['lmp_entries_total'] === 0
-                ? $lmpEntries->first(fn ($e) => (float) ($e->total_price ?? 0) > 0)
-                : null;
-            $row['lmp_ignored_price'] = ($lowestIgnored && is_numeric($lowestIgnored->total_price ?? null))
-                ? floatval($lowestIgnored->total_price)
-                : null;
+            // Same merge / ignore / landed dedupe as the LMP modal (do not unique()
+            // the cheapest sibling copy — that kept stale FREE $49.99 as L1).
+            \App\Models\EbaySkuCompetitor::applyLinkedGroupToRow(
+                $row,
+                (string) $pm->sku,
+                $lmpDetailsLookup,
+                $linkedLmpSkus
+            );
 
             $row["E Dil%"] = ($row["eBay L30"] && $row["INV"] > 0)
                 ? round(($row["eBay L30"] / $row["INV"]), 2)
@@ -5091,7 +5053,11 @@ class EbayController extends Controller
                 $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
             }
 
-            $competitors = $this->backfillEbayLmpShipping($competitors);
+            // Live/cached ship repair is Pull-only. Opening the modal must stay DB-only
+            // so L1 matches the outer column after refresh.
+            if ($request->boolean('refresh')) {
+                $competitors = $this->backfillEbayLmpShipping($competitors);
+            }
 
             $competitors = $competitors
                 ->filter(function ($comp) {
@@ -5361,7 +5327,13 @@ class EbayController extends Controller
             $competitor->shipping_cost = $shipCost;
             $competitor->total_price = round($price + $shipCost, 2);
             try {
-                $competitor->save();
+                $asinKey = strtolower(trim((string) ($listingId ?: $competitor->item_id)));
+                if ($asinKey !== '') {
+                    \App\Models\EbaySkuCompetitor::persistShippingForItemId($asinKey, $shipCost, 'ebay');
+                    $competitor->refresh();
+                } else {
+                    $competitor->save();
+                }
                 \App\Models\EbayCompetitorItem::syncLiveListingData(
                     (string) $listingId,
                     $competitor->item_id !== null ? (string) $competitor->item_id : null,

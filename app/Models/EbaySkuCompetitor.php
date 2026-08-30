@@ -362,8 +362,8 @@ class EbaySkuCompetitor extends Model
 
     /**
      * Merge competitor rows from multiple SKUs, keeping one row per eBay item_id.
-     * When the same listing was pulled onto sibling SKUs (4PCS vs 2PCS, WH vs BLK),
-     * keep the row that belongs to $preferSku so L1 is that variation's BIN.
+     * A sibling copy with recorded shipping beats a stale FREE total on the same
+     * listing (grid unique() used to keep $49.99 FREE and revive it after refresh).
      *
      * @param  iterable<mixed>  $competitors
      */
@@ -381,28 +381,69 @@ class EbaySkuCompetitor extends Model
                 continue;
             }
 
-            if ($prefer !== '') {
-                $existingMatch = self::normalizeSkuKey($byItemId[$key]->sku ?? '') === $prefer;
-                $candidateMatch = self::normalizeSkuKey($competitor->sku ?? '') === $prefer;
-                if ($candidateMatch && ! $existingMatch) {
-                    $byItemId[$key] = $competitor;
-                    continue;
-                }
-                if ($existingMatch && ! $candidateMatch) {
-                    continue;
-                }
-            }
-
-            $existingPrice = (float) ($byItemId[$key]->total_price ?? 0);
-            $candidatePrice = (float) ($competitor->total_price ?? 0);
-
-            if ($candidatePrice > 0 && ($existingPrice <= 0 || $candidatePrice < $existingPrice)) {
-                $byItemId[$key] = $competitor;
-            }
+            $byItemId[$key] = self::preferCompetitorCopy($byItemId[$key], $competitor, $prefer);
         }
 
         return collect(array_values($byItemId))
             ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
             ->values();
+    }
+
+    /**
+     * Write shipping onto every copy of this item_id so a sibling FREE row cannot
+     * become L1 after refresh.
+     */
+    public static function persistShippingForItemId(string $itemId, float $shipCost, string $marketplace = 'ebay'): int
+    {
+        $itemId = strtolower(trim($itemId));
+        if ($itemId === '' || $shipCost <= 0) {
+            return 0;
+        }
+
+        $n = 0;
+        $rows = self::query()
+            ->where('marketplace', $marketplace)
+            ->whereRaw('LOWER(TRIM(item_id)) = ?', [$itemId])
+            ->get();
+        foreach ($rows as $row) {
+            $price = (float) ($row->price ?? 0);
+            $row->shipping_cost = $shipCost;
+            $row->total_price = $price > 0 ? round($price + $shipCost, 2) : (float) $row->total_price;
+            $row->save();
+            $n++;
+        }
+
+        return $n;
+    }
+
+    private static function preferCompetitorCopy(object $existing, object $candidate, string $prefer): object
+    {
+        $existingShip = (float) ($existing->shipping_cost ?? 0);
+        $candidateShip = (float) ($candidate->shipping_cost ?? 0);
+        if ($candidateShip > 0 && $existingShip <= 0) {
+            return $candidate;
+        }
+        if ($existingShip > 0 && $candidateShip <= 0) {
+            return $existing;
+        }
+
+        if ($prefer !== '') {
+            $existingMatch = self::normalizeSkuKey($existing->sku ?? '') === $prefer;
+            $candidateMatch = self::normalizeSkuKey($candidate->sku ?? '') === $prefer;
+            if ($candidateMatch && ! $existingMatch) {
+                return $candidate;
+            }
+            if ($existingMatch && ! $candidateMatch) {
+                return $existing;
+            }
+        }
+
+        $existingPrice = (float) ($existing->total_price ?? 0);
+        $candidatePrice = (float) ($candidate->total_price ?? 0);
+        if ($candidatePrice > 0 && ($existingPrice <= 0 || $candidatePrice < $existingPrice)) {
+            return $candidate;
+        }
+
+        return $existing;
     }
 }
