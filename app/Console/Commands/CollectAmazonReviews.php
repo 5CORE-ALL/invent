@@ -31,9 +31,10 @@ class CollectAmazonReviews extends Command
         {--limit=0 : Max SKUs to process (0 = all)}
         {--sku= : Optional single SKU}
         {--ads-only : Do not fall back to SP-API / Jungle Scout / SerpApi}
-        {--no-serp : Skip SerpApi live Amazon PDP ratings}';
+        {--no-serp : Skip SerpApi live Amazon PDP ratings}
+        {--serp-only : Write only SerpApi / live sources (do not write Jungle Scout)}';
 
-    protected $description = 'Collect Amazon avg rating + review count via Ads, SP-API, Jungle Scout, then live SerpApi (overwrites stale JS)';
+    protected $description = 'Collect Amazon avg rating + review count via Ads, SP-API, cached/live SerpApi, then Jungle Scout gaps';
 
     protected string $monitorJobName = 'Amazon Collect Reviews';
 
@@ -217,8 +218,8 @@ class CollectAmazonReviews extends Command
                 }
             }
 
-            // 3) Jungle Scout (primary fallback when Ads / SP-API miss)
-            if (! $adsOnly) {
+            // 3) Jungle Scout (gap fill only — never used when --serp-only)
+            if (! $adsOnly && ! $this->option('serp-only')) {
                 foreach ($asinChunk as $asin) {
                     if (isset($reviewByAsin[$asin])) {
                         continue;
@@ -239,9 +240,10 @@ class CollectAmazonReviews extends Command
             $this->info('Chunk done — reviews found for '.$found.'/'.count($asinChunk).' ASINs');
         }
 
-        // 4) Live Amazon PDP via SerpApi — fills JS gaps AND overwrites stale JS
-        //    (JS often has an old child rating; amazon.com shows one family rating).
+        // 4) SerpApi amazon.com PDP — cache first, then live if quota remains.
+        //    Overwrites Jungle Scout (JS child ratings are often stale vs the family PDP).
         if (! $adsOnly && ! $this->option('no-serp')) {
+            $this->disableLiveSerpIfNoQuota();
             $filled = $this->overwriteWithSerpApi($asins, $reviewByAsin);
             if ($filled > 0) {
                 $monitor->markApiConnected(true);
@@ -293,6 +295,14 @@ class CollectAmazonReviews extends Command
                             $q->where('channel', 'Amazon')->orWhereNull('channel')->orWhere('channel', '');
                         })
                         ->first();
+
+                    $payloadSource = (string) ($payload['source'] ?? '');
+                    if ($existing && $this->isLiveReviewSource((string) $existing->source) && ! $this->isLiveReviewSource($payloadSource)) {
+                        continue;
+                    }
+                    if ($this->option('serp-only') && ! $this->isLiveReviewSource($payloadSource)) {
+                        continue;
+                    }
 
                     if ($existing) {
                         $existing->fill($attrs);
@@ -381,10 +391,13 @@ class CollectAmazonReviews extends Command
                 'api_key' => $apiKey,
             ]);
 
-            if ($response->status() === 429) {
+            $data = $response->json();
+            $err = is_array($data) ? strtolower((string) ($data['error'] ?? '')) : '';
+            if ($response->status() === 429 || str_contains($err, 'run out of searches')) {
                 $this->serpLiveDisabled = true;
-                $this->warn('SerpApi 429 — stopping live searches for this run (cache only).');
-                Log::warning('amazon:collect-reviews SerpApi 429, live calls disabled');
+                $msg = $err !== '' ? $err : '429 rate limit';
+                $this->warn('SerpApi stopped live searches: '.$msg);
+                Log::warning('amazon:collect-reviews SerpApi live disabled', ['error' => $msg]);
 
                 return null;
             }
@@ -393,12 +406,12 @@ class CollectAmazonReviews extends Command
                 return null;
             }
 
-            $data = $response->json();
             $parsed = $this->parseSerpProductResults(is_array($data) ? $data : []);
             $this->storeSerpReviewCache($asin, $data, $parsed, $response->status());
             if ($parsed !== null) {
                 $this->serpLiveHits++;
             }
+            usleep(1000000);
 
             return $parsed;
         } catch (\Throwable $e) {
@@ -422,31 +435,29 @@ class CollectAmazonReviews extends Command
             return $fromRuntime;
         }
 
-        if (! Schema::hasTable('serp_api_raw_responses')) {
-            return null;
+        if (Schema::hasTable('serp_api_raw_responses')) {
+            try {
+                $row = SerpApiRawResponse::query()
+                    ->where('success', true)
+                    ->where('search_query', $asin)
+                    ->where('marketplace', 'amazon_product')
+                    ->orderByDesc('id')
+                    ->first();
+                if ($row) {
+                    $body = is_string($row->raw_body) ? json_decode($row->raw_body, true) : null;
+                    $parsed = $this->parseSerpProductResults(is_array($body) ? $body : []);
+                    if ($parsed !== null) {
+                        Cache::put($cacheKey, $parsed, now()->addHours(24));
+
+                        return $parsed;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // fall through to stored search-index
+            }
         }
 
-        try {
-            $row = SerpApiRawResponse::query()
-                ->where('success', true)
-                ->where('search_query', $asin)
-                ->where('marketplace', 'amazon_product')
-                ->where('created_at', '>=', Carbon::now()->subHours(24))
-                ->orderByDesc('id')
-                ->first();
-            if (! $row) {
-                return null;
-            }
-            $body = is_string($row->raw_body) ? json_decode($row->raw_body, true) : null;
-            $parsed = $this->parseSerpProductResults(is_array($body) ? $body : []);
-            if ($parsed !== null) {
-                Cache::put($cacheKey, $parsed, now()->addHours(24));
-            }
-
-            return $parsed;
-        } catch (\Throwable $e) {
-            return null;
-        }
+        return null;
     }
 
     /**
@@ -543,7 +554,9 @@ class CollectAmazonReviews extends Command
             $live = $this->liveFamilyRating($targets, $reviewByAsin);
             if ($live === null) {
                 $probe = in_array($familyKey, $targets, true) ? $familyKey : $targets[0];
-                $this->line('SerpApi '.$probe.' (family '.$familyKey.', '.count($targets).' ASINs, cache-first)');
+                if (! $this->serpLiveDisabled) {
+                    $this->line('SerpApi '.$probe.' (family '.$familyKey.', '.count($targets).' ASINs, cache-first)');
+                }
                 $live = $this->serpApiReviewForAsin($probe);
             }
             if ($live === null) {
@@ -552,7 +565,7 @@ class CollectAmazonReviews extends Command
 
             foreach ($targets as $asin) {
                 $src = $reviewByAsin[$asin]['source'] ?? '';
-                if (in_array($src, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'], true)) {
+                if ($this->isLiveReviewSource((string) $src)) {
                     continue;
                 }
                 $reviewByAsin[$asin] = $live;
@@ -579,7 +592,7 @@ class CollectAmazonReviews extends Command
                 continue;
             }
             $src = (string) ($row['source'] ?? '');
-            if (in_array($src, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'], true)) {
+            if ($this->isLiveReviewSource($src)) {
                 return $row;
             }
         }
@@ -656,6 +669,53 @@ class CollectAmazonReviews extends Command
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<string>  $sources
+     */
+    private function isLiveReviewSource(string $source): bool
+    {
+        return in_array($source, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'], true);
+    }
+
+    private function disableLiveSerpIfNoQuota(): void
+    {
+        if ($this->serpLiveDisabled) {
+            return;
+        }
+
+        $apiKey = (string) config('services.serpapi.key');
+        if ($apiKey === '') {
+            $this->serpLiveDisabled = true;
+            $this->warn('SerpApi key missing — cache only.');
+
+            return;
+        }
+
+        try {
+            $acct = Http::timeout(15)->get('https://serpapi.com/account.json', [
+                'api_key' => $apiKey,
+            ])->json();
+            if (! is_array($acct)) {
+                return;
+            }
+            $left = (int) ($acct['total_searches_left'] ?? $acct['plan_searches_left'] ?? 0);
+            $used = (int) ($acct['this_month_usage'] ?? 0);
+            $plan = (int) ($acct['searches_per_month'] ?? 0);
+            if ($left <= 0) {
+                $this->serpLiveDisabled = true;
+                $this->warn("SerpApi has 0 searches left ({$used}/{$plan}). Live pull skipped — cache only.");
+                Log::warning('amazon:collect-reviews SerpApi quota empty', [
+                    'used' => $used,
+                    'plan' => $plan,
+                ]);
+            } else {
+                $this->info("SerpApi searches left: {$left}");
+            }
+        } catch (\Throwable $e) {
+            $this->warn('SerpApi account check failed — will attempt live until 429.');
+        }
     }
 
     /**
