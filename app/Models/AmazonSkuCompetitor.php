@@ -202,6 +202,67 @@ class AmazonSkuCompetitor extends Model
         return \Illuminate\Support\Facades\DB::table($table)->where('id', $id)->exists();
     }
 
+    /**
+     * Persist Ignore onto every row with this ASIN so a sibling copy cannot
+     * revive L1 after refresh (same idea as eBay applyIgnoreToSameItemIds).
+     */
+    public static function persistIgnoredForAsin(string $asin, bool $ignored): int
+    {
+        $asin = strtoupper(trim($asin));
+        if ($asin === '' || ! preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+            return 0;
+        }
+
+        $table = (new static)->getTable();
+        if (! \Illuminate\Support\Facades\Schema::hasColumn($table, 'ignored')) {
+            return 0;
+        }
+
+        return (int) \Illuminate\Support\Facades\DB::table($table)
+            ->whereRaw('UPPER(TRIM(asin)) = ?', [$asin])
+            ->update([
+                'ignored' => $ignored ? 1 : 0,
+                'updated_at' => now(),
+            ]);
+    }
+
+    /**
+     * If any copy of an ASIN is ignored, treat every copy as ignored for L1.
+     *
+     * @param  iterable<mixed>  $items
+     */
+    public static function applyIgnoreToSameAsins($items): \Illuminate\Support\Collection
+    {
+        $collection = collect($items)->values();
+        $ignoredAsins = [];
+        foreach ($collection as $item) {
+            if (! self::isIgnored($item)) {
+                continue;
+            }
+            $asin = strtoupper(trim((string) (is_object($item) ? ($item->asin ?? '') : ($item['asin'] ?? ''))));
+            if ($asin !== '') {
+                $ignoredAsins[$asin] = true;
+            }
+        }
+        if ($ignoredAsins === []) {
+            return $collection;
+        }
+
+        return $collection->map(function ($item) use ($ignoredAsins) {
+            $asin = strtoupper(trim((string) (is_object($item) ? ($item->asin ?? '') : ($item['asin'] ?? ''))));
+            if ($asin === '' || ! isset($ignoredAsins[$asin])) {
+                return $item;
+            }
+            if (is_object($item)) {
+                $item->ignored = true;
+            } elseif (is_array($item)) {
+                $item['ignored'] = 1;
+            }
+
+            return $item;
+        })->values();
+    }
+
     public static function lowestFromCollection($items)
     {
         // L1 = lowest non-ignored by landed (price + paid delivery; FREE = no add)
@@ -282,7 +343,8 @@ class AmazonSkuCompetitor extends Model
         $seen = [];
         $unique = [];
 
-        foreach ($competitors as $competitor) {
+        // Keep the lowest landed copy of each ASIN (merge order must not pick a stale sibling).
+        foreach (self::sortCollectionByNumericPrice($competitors) as $competitor) {
             $asin = strtoupper(trim((string) ($competitor->asin ?? '')));
             $key = $asin !== '' ? $asin : 'id:' . ($competitor->id ?? spl_object_id($competitor));
             if (isset($seen[$key])) {
@@ -292,7 +354,7 @@ class AmazonSkuCompetitor extends Model
             $unique[] = $competitor;
         }
 
-        return self::sortCollectionByNumericPrice($unique);
+        return collect($unique)->values();
     }
 
     /**

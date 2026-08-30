@@ -1281,6 +1281,12 @@
         }
 
         function amazonCapSpriceToLmp(rowData, sprice) {
+            // 0 Sold Dil → GROI target must stay visible. LMP cap made Pink 70%
+            // look like a normal LMP price (this SKU: $112.99 / 27% SGROI).
+            if (typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(rowData)) {
+                const raw = parseFloat(sprice);
+                return (raw > 0) ? +Number(raw).toFixed(2) : raw;
+            }
             if (window.SpriceLmpCap) return SpriceLmpCap.prepare(rowData, sprice, lmpWithShipping);
             const lmp = lmpWithShipping(rowData);
             let s = parseFloat(sprice);
@@ -4517,7 +4523,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Always the live rule price (0 Sold GROI, or Std − PRMT − CVR Disc − Rev Disc − CVR UP/DN). Stored S PRC is overwritten to match. Red = reduced, Yellow = hold, Green = increase vs Amz price. S PRC ≥ LMP is capped at LMP and keeps a red triangle after push.",
+                        headerTooltip: "Read-only. Always the live rule price (0 Sold Dil → GROI, or Std − PRMT − CVR Disc − Rev Disc − CVR UP/DN). 0 Sold is not LMP-capped (Pink Dil → 70% GROI). Other rows: S PRC ≥ LMP is capped at LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4527,19 +4533,28 @@
 
                             if (!(sprice > 0)) return '';
 
-                            const cap = window.SpriceLmpCap
+                            const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(rowData);
+                            const lmpNow = lmpWithShipping(rowData);
+                            const cap = (!zeroSold && window.SpriceLmpCap)
                                 ? SpriceLmpCap.apply(rowData, sprice, lmpWithShipping)
                                 : null;
-                            const atOrAboveLmp = cap
-                                ? cap.alert
-                                : (lmpWithShipping(rowData) > 0 && sprice + 0.0001 >= lmpWithShipping(rowData));
-                            if (cap && cap.shown > 0) sprice = cap.shown;
-                            else if (atOrAboveLmp) sprice = amazonCapSpriceToLmp(rowData, sprice);
+                            const atOrAboveLmp = zeroSold
+                                ? (lmpNow > 0 && sprice + 0.0001 >= lmpNow)
+                                : (cap
+                                    ? cap.alert
+                                    : (lmpNow > 0 && sprice + 0.0001 >= lmpNow));
+                            if (!zeroSold) {
+                                if (cap && cap.shown > 0) sprice = cap.shown;
+                                else if (atOrAboveLmp) sprice = amazonCapSpriceToLmp(rowData, sprice);
+                            }
 
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
                             const redTri = atOrAboveLmp
-                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>')
+                                ? (zeroSold
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="0 Sold Dil GROI — above LMP $'
+                                        + lmpNow.toFixed(2) + ' (not capped)"></i>'
+                                    : (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>'))
                                 : '';
                             const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
                                 && currentPrice.toFixed(2) !== sprice.toFixed(2))
@@ -6658,11 +6673,16 @@
                     reqData.refresh = 1;
                 }
                 
-                // Fetch competitors from backend (merged across Sku Link LMP group)
+                // POST so linked SKUs + ids cannot be truncated on GET (that made
+                // Pull L1 look like $75 while refresh still used the sibling $29).
                 $.ajax({
                     url: '/amazon/competitors',
-                    method: 'GET',
+                    method: 'POST',
                     traditional: true,
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '',
+                        'Accept': 'application/json'
+                    },
                     data: reqData,
                     // Parallel ASIN pool — usually finishes in one or two rounds
                     timeout: refreshFromApi ? 90000 : 60000,

@@ -2410,6 +2410,9 @@
         function amzCapRuleSprice(d, price) {
             let n = Number(price) || 0;
             if (!(n > 0)) return 0;
+            if (typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d)) {
+                return amzPefRound2(n);
+            }
             if (typeof amazonCapSpriceToLmp === 'function') {
                 n = amazonCapSpriceToLmp(d, n);
             } else if (window.SpriceLmpCap) {

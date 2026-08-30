@@ -467,6 +467,7 @@ class OverallAmazonController extends Controller
                 }
             }
 
+            $allLmpEntries = AmazonSkuCompetitor::applyIgnoreToSameAsins($allLmpEntries);
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
 
             $row['lmp_entries'] = $allLmpEntries
@@ -4458,6 +4459,7 @@ class OverallAmazonController extends Controller
                 ->get();
             $competitors = AmazonSkuCompetitor::dedupeByAsin($competitors->merge($byIds));
         }
+        $competitors = AmazonSkuCompetitor::applyIgnoreToSameAsins($competitors);
         $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
         $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, [], true))->values();
         $lowest = null;
@@ -4496,10 +4498,16 @@ class OverallAmazonController extends Controller
                 $linkedSkus = [];
             }
 
-            $groupSkus = array_values(array_unique(array_filter(array_map(
-                fn ($value) => trim((string) $value),
-                array_merge([$sku], $linkedSkus)
-            ))));
+            // Same Sku Link LMP group the outer table uses. Do not trust the
+            // client list alone — GET query strings get truncated and then Pull
+            // L1 (e.g. $75) does not match refresh L1 (sibling $29).
+            $groupSkus = $this->expandLinkedLmpSkuGroup($sku);
+            if ($groupSkus === []) {
+                $groupSkus = array_values(array_unique(array_filter(array_map(
+                    fn ($value) => trim((string) $value),
+                    array_merge([$sku], $linkedSkus)
+                ))));
+            }
 
             $ids = $request->input('ids', []);
             if (is_string($ids) && trim($ids) !== '') {
@@ -4552,6 +4560,17 @@ class OverallAmazonController extends Controller
                         continue;
                     }
                     $livePrice = isset($live['price']) ? (float) $live['price'] : 0.0;
+                    $stockText = isset($live['stock']) ? (string) $live['stock'] : '';
+                    $stockQty = array_key_exists('stock_quantity', $live) ? $live['stock_quantity'] : null;
+                    $liveOos = ($stockQty !== null && (int) $stockQty === 0)
+                        || preg_match('/\bout\s+of\s+stock\b/i', $stockText);
+                    if ($liveOos) {
+                        $oosAsin = strtoupper(trim((string) $asin));
+                        if ($oosAsin !== '') {
+                            AmazonSkuCompetitor::persistIgnoredForAsin($oosAsin, true);
+                        }
+                        continue;
+                    }
                     if ($livePrice <= 0) {
                         continue;
                     }
@@ -4607,24 +4626,18 @@ class OverallAmazonController extends Controller
                     }
                 }
 
-                $competitors = $competitors
-                    ->map(function ($comp) {
-                        try {
-                            return $comp->refresh();
-                        } catch (\Throwable $e) {
-                            return $comp;
-                        }
-                    })
-                    ->filter(function ($comp) {
-                        return (float) ($comp->price ?? 0) > 0;
-                    })
-                    ->sortBy(function ($comp) {
-                        return AmazonSkuCompetitor::landedPrice($comp) ?? PHP_FLOAT_MAX;
-                    })
-                    ->values();
+                $competitors = AmazonSkuCompetitor::getCompetitorsForSkus($groupSkus, 'amazon');
+                if ($ids !== []) {
+                    $byIds = AmazonSkuCompetitor::query()
+                        ->whereIn('id', $ids)
+                        ->wherePositivePrice()
+                        ->get();
+                    $competitors = AmazonSkuCompetitor::dedupeByAsin($competitors->merge($byIds));
+                }
             }
 
             // Same mapped rows the Outer LMP column uses (ignored from DB).
+            $competitors = AmazonSkuCompetitor::applyIgnoreToSameAsins($competitors);
             $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
             $mapped = $competitors->map(fn ($comp) => $this->mapAmazonLmpEntry($comp, [], true))->values();
             $lowest = null;
@@ -4671,7 +4684,15 @@ class OverallAmazonController extends Controller
         if ($id < 1) {
             return response()->json(['success' => false, 'error' => 'Valid ID is required'], 400);
         }
-        if (! AmazonSkuCompetitor::persistIgnored($id, $ignored)) {
+        $row = AmazonSkuCompetitor::query()->find($id);
+        if (! $row) {
+            return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
+        }
+        $asin = strtoupper(trim((string) ($row->asin ?? '')));
+        $persisted = $asin !== ''
+            ? AmazonSkuCompetitor::persistIgnoredForAsin($asin, $ignored) > 0
+            : AmazonSkuCompetitor::persistIgnored($id, $ignored);
+        if (! $persisted && ! AmazonSkuCompetitor::persistIgnored($id, $ignored)) {
             return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
         }
 
@@ -4681,6 +4702,7 @@ class OverallAmazonController extends Controller
             'message' => $ignored ? 'Ignored for L1' : 'Included in L1',
             'sku' => $sku,
             'id' => $id,
+            'asin' => $asin !== '' ? $asin : null,
         ]);
     }
 
