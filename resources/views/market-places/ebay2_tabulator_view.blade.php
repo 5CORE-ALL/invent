@@ -1148,13 +1148,13 @@
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
     @include('partials.price-lt80-lmp-badge-script')
-    @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         /** Stored in DB table channel_tabulator_column_settings (shared for all users). */
         const TABULATOR_COLUMN_CHANNEL = 'ebay2_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
+        @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         /** L30 units sold from ebay2_orders (period='l30'). Same value rendered into the
          *  S Qty badge and the eBay 2 row's Qty cell on /all-marketplace-master. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
