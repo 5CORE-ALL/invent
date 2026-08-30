@@ -114,6 +114,13 @@
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaignStatus"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="ruleStatus"] .tabulator-col-title { white-space: nowrap !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
+        #amz-ads-raw-wrap .amz-camp-skus-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 16px; height: 16px; padding: 0; margin-left: 4px; flex-shrink: 0;
+            border: 1px solid #93c5fd; border-radius: 50%; background: #eff6ff;
+            color: #2563eb; font-size: 9px; line-height: 1; cursor: pointer;
+        }
+        #amz-ads-raw-wrap .amz-camp-skus-btn:hover { background: #2563eb; color: #fff; border-color: #2563eb; }
         /* Pagination footer */
         #amz-ads-raw-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important; border-top: 1px solid #e2e8f0 !important; padding: 10px 16px !important;
@@ -399,6 +406,37 @@
                                 </tr>
                             </thead>
                             <tbody id="amazonAdsU7HistoryTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsCampaignSkusModal" tabindex="-1" aria-labelledby="amazonAdsCampaignSkusModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsCampaignSkusModalLabel">Campaign SKUs</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2" id="amazonAdsCampaignSkusModalSub"></p>
+                    <div id="amazonAdsCampaignSkusLoading" class="small text-muted">Loading…</div>
+                    <p class="small text-danger mb-0 d-none" id="amazonAdsCampaignSkusError" role="alert"></p>
+                    <div class="table-responsive" style="max-height: 60vh;">
+                        <table class="table table-sm table-striped mb-0 d-none" id="amazonAdsCampaignSkusTable">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>ASIN</th>
+                                    <th>State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="amazonAdsCampaignSkusTableBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -711,6 +749,7 @@
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
             var pauseRuleSaveUrl = @json(route('amazon.ads.pause-rule.save'));
             var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
+            var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
@@ -939,9 +978,17 @@
                 var s = (v === null || v === undefined) ? '' : String(v);
                 var esc = amzEsc(s);
                 var attr = esc.replace(/'/g, '&#39;');
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var cid = row && row.campaign_id != null ? String(row.campaign_id).trim() : '';
+                var plus = cid !== ''
+                    ? '<button type="button" class="amz-camp-skus-btn" title="Show SKUs on this campaign"'
+                        + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">'
+                        + '<i class="fas fa-plus"></i></button>'
+                    : '';
                 var copy = '<i class="fas fa-copy amz-copy-name" role="button" tabindex="0" title="Copy campaign name"'
                          + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
                 return '<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">'
+                     + plus
                      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>' + copy + '</span>';
             }
             function fmtSkuInv(cell) {
@@ -1340,6 +1387,75 @@
                 var tbl = (rawSources[activeRawSourceKey] && rawSources[activeRawSourceKey].table) ? rawSources[activeRawSourceKey].table : 'export';
                 var d = new Date().toISOString().slice(0, 10);
                 table.download('csv', 'Amazon_' + tbl + '_Export_' + d + '.csv');
+            });
+
+            var amzCampSkusCache = {};
+            function amzOpenCampaignSkus(cid, cname) {
+                var title = document.getElementById('amazonAdsCampaignSkusModalLabel');
+                var sub = document.getElementById('amazonAdsCampaignSkusModalSub');
+                var load = document.getElementById('amazonAdsCampaignSkusLoading');
+                var err = document.getElementById('amazonAdsCampaignSkusError');
+                var tbl = document.getElementById('amazonAdsCampaignSkusTable');
+                var body = document.getElementById('amazonAdsCampaignSkusTableBody');
+                if (title) title.textContent = 'Campaign SKUs';
+                if (sub) sub.textContent = cname || cid;
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (tbl) tbl.classList.add('d-none');
+                if (body) body.innerHTML = '';
+                if (load) { load.classList.remove('d-none'); load.textContent = 'Loading…'; }
+                var modalEl = document.getElementById('amazonAdsCampaignSkusModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                function render(skus) {
+                    if (load) load.classList.add('d-none');
+                    if (title) title.textContent = 'Campaign SKUs (' + skus.length + ')';
+                    if (!skus.length) {
+                        if (load) { load.classList.remove('d-none'); load.textContent = 'No product-ad SKUs pulled for this campaign.'; }
+                        return;
+                    }
+                    if (!body || !tbl) return;
+                    body.innerHTML = skus.map(function (s) {
+                        var state = String(s.state || '—');
+                        var color = state.toUpperCase() === 'ENABLED' ? '#16a34a' : (state.toUpperCase() === 'PAUSED' ? '#dc2626' : '#6b7280');
+                        return '<tr>'
+                            + '<td class="fw-semibold">' + amzEsc(s.sku || '—') + '</td>'
+                            + '<td>' + amzEsc(s.asin || '—') + '</td>'
+                            + '<td><span style="color:' + color + ';font-weight:600;">' + amzEsc(state) + '</span></td>'
+                            + '</tr>';
+                    }).join('');
+                    tbl.classList.remove('d-none');
+                }
+                if (amzCampSkusCache[cid]) { render(amzCampSkusCache[cid]); return; }
+                fetch(campaignSkusUrl + '?campaign_id=' + encodeURIComponent(cid), {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                })
+                    .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                    .then(function (out) {
+                        var skus = (out.body && Array.isArray(out.body.skus)) ? out.body.skus : [];
+                        if (!out.ok) {
+                            if (load) load.classList.add('d-none');
+                            if (err) { err.textContent = (out.body && out.body.message) ? out.body.message : 'Could not load SKUs.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        amzCampSkusCache[cid] = skus;
+                        render(skus);
+                    })
+                    .catch(function () {
+                        if (load) load.classList.add('d-none');
+                        if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
+                    });
+            }
+            document.addEventListener('click', function (e) {
+                var plus = e.target.closest ? e.target.closest('.amz-camp-skus-btn') : null;
+                if (plus) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzOpenCampaignSkus(plus.getAttribute('data-campaign-id') || '', plus.getAttribute('data-campaign-name') || '');
+                    return;
+                }
             });
 
             // Copy-to-clipboard for campaign name icon

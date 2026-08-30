@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
+use App\Models\AmazonAdsCampaignSku;
 use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsCampaignSkuMetrics;
@@ -2650,6 +2651,55 @@ class AmazonAdsController extends Controller
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', '0');
+    }
+
+    /**
+     * Advertised SKUs on one campaign from {@see AmazonAdsCampaignSku} (amazon_ads_campaign_skus pull).
+     */
+    public function campaignSkus(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['message' => 'Provide campaign_id.', 'skus' => []], 422);
+        }
+        if (! Schema::hasTable('amazon_ads_campaign_skus')) {
+            return response()->json(['message' => 'Campaign SKU table is missing. Run amazon:ads-pull-product-ads.', 'skus' => []], 404);
+        }
+
+        $rows = AmazonAdsCampaignSku::query()
+            ->where('campaign_id', $cid)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderBy('sku')
+            ->get(['sku', 'asin', 'state', 'ad_id']);
+
+        $seen = [];
+        $skus = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '' || isset($seen[$sku])) {
+                continue;
+            }
+            $seen[$sku] = true;
+            $skus[] = [
+                'sku' => $sku,
+                'asin' => $row->asin ? (string) $row->asin : null,
+                'state' => $row->state ? (string) $row->state : null,
+            ];
+        }
+
+        $name = AmazonAdsCampaignSku::query()
+            ->where('campaign_id', $cid)
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->value('campaign_name');
+
+        return response()->json([
+            'campaign_id' => $cid,
+            'campaign_name' => $name,
+            'skus' => $skus,
+            'count' => count($skus),
+        ]);
     }
 
     /**

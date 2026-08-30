@@ -3498,6 +3498,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-amazon-price', action: [OverallAmazonController::class, 'updatePrice'])->name('amazon.priceChange');
 
     Route::get('/amazon-ads/all', [AmazonAdsController::class, 'index'])->name('amazon.ads.all');
+    Route::get('/amazon-ads/campaign-skus', [AmazonAdsController::class, 'campaignSkus'])->name('amazon.ads.campaign-skus');
     Route::get('/amazon-ads/fbm-targeting', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'index'])->name('amazon.ads.fbm-targeting');
     Route::get('/amazon-ads/fbm-targeting/data', [\App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::class, 'data'])->name('amazon.ads.fbm-targeting.data');
     Route::match(['get', 'post'], '/amazon-ads/raw-data/{source}', [AmazonAdsController::class, 'rawData'])->name('amazon.ads.raw-data');

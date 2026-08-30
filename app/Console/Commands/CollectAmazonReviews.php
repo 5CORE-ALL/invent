@@ -6,19 +6,21 @@ use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonProductReview;
 use App\Models\JungleScoutProductData;
+use App\Models\SerpApiRawResponse;
 use App\Services\AmazonAdsService;
 use App\Services\AmazonSpApiService;
 use App\Services\CronMonitor\CronExecutionContext;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
  * Pull avg star rating + review count for Amazon SKUs via Advertising API
- * (Brand Posts), SP-API Catalog, Jungle Scout, then SerpApi amazon_product
- * only for ASINs Jungle Scout does not have a rating for.
+ * (Brand Posts), SP-API Catalog, Jungle Scout, then live SerpApi amazon.com
+ * ratings (overwrites stale Jungle Scout when the PDP returns a rating).
  */
 class CollectAmazonReviews extends Command
 {
@@ -29,11 +31,17 @@ class CollectAmazonReviews extends Command
         {--limit=0 : Max SKUs to process (0 = all)}
         {--sku= : Optional single SKU}
         {--ads-only : Do not fall back to SP-API / Jungle Scout / SerpApi}
-        {--no-serp : Skip SerpApi for ASINs Jungle Scout does not cover}';
+        {--no-serp : Skip SerpApi live Amazon PDP ratings}';
 
-    protected $description = 'Collect Amazon avg rating + review count via Ads API, SP-API, Jungle Scout, then SerpApi for gaps';
+    protected $description = 'Collect Amazon avg rating + review count via Ads, SP-API, Jungle Scout, then live SerpApi (overwrites stale JS)';
 
     protected string $monitorJobName = 'Amazon Collect Reviews';
+
+    private bool $serpLiveDisabled = false;
+
+    private int $serpCacheHits = 0;
+
+    private int $serpLiveHits = 0;
 
     public function handle(): int
     {
@@ -120,7 +128,7 @@ class CollectAmazonReviews extends Command
                 $useBrandPosts = false;
                 $short = $this->shortApiError($e);
                 $this->warn('Ads Brand Posts unavailable (skipping for this run): '.$short);
-                $this->warn('→ Continuing with Jungle Scout, then SerpApi for ASINs JS does not cover.');
+                $this->warn('→ Continuing with Jungle Scout, then cached/live SerpApi for Amazon PDP ratings.');
                 Log::warning('amazon:collect-reviews Ads Brand Posts disabled for run', [
                     'error' => $e->getMessage(),
                 ]);
@@ -231,24 +239,17 @@ class CollectAmazonReviews extends Command
             $this->info('Chunk done — reviews found for '.$found.'/'.count($asinChunk).' ASINs');
         }
 
-        // 4) SerpApi amazon_product — only ASINs Jungle Scout (and Ads/SP) did not cover
+        // 4) Live Amazon PDP via SerpApi — fills JS gaps AND overwrites stale JS
+        //    (JS often has an old child rating; amazon.com shows one family rating).
         if (! $adsOnly && ! $this->option('no-serp')) {
-            $missing = array_values(array_filter($asins, static fn ($asin) => ! isset($reviewByAsin[$asin])));
-            $this->info('SerpApi fallback for '.count($missing).' ASIN(s) with no Jungle Scout rating...');
-            $serpFilled = 0;
-            foreach ($missing as $asin) {
-                $serp = $this->serpApiReviewForAsin($asin);
-                if ($serp !== null) {
-                    $reviewByAsin[$asin] = $serp;
-                    $serpFilled++;
-                    $monitor->markApiConnected(true);
-                } else {
-                    $skipped++;
-                }
-                usleep(200000);
+            $filled = $this->overwriteWithSerpApi($asins, $reviewByAsin);
+            if ($filled > 0) {
+                $monitor->markApiConnected(true);
             }
-            $this->info("SerpApi filled {$serpFilled}/".count($missing).' ASINs');
-        } elseif (! $adsOnly) {
+            $this->info("SerpApi ratings applied to {$filled} ASIN(s) (cache={$this->serpCacheHits}, live={$this->serpLiveHits})");
+        }
+
+        if (! $adsOnly) {
             foreach ($asins as $asin) {
                 if (! isset($reviewByAsin[$asin])) {
                     $skipped++;
@@ -343,54 +344,63 @@ class CollectAmazonReviews extends Command
     }
 
     /**
-     * Live amazon.com PDP rating via SerpApi (engine=amazon_product).
+     * Amazon PDP rating: Laravel cache → stored SerpApi body → one live
+     * SerpApi search (no_cache=false so SerpApi reuses its own cached search).
      *
-     * @return array{rating: float, review_count: int, source: string}|null
+     * @return array{rating: float|null, review_count: int, source: string}|null
      */
     private function serpApiReviewForAsin(string $asin): ?array
     {
         $asin = strtoupper(trim($asin));
+        if ($asin === '') {
+            return null;
+        }
+
+        $cached = $this->cachedSerpReview($asin);
+        if ($cached !== null) {
+            $this->serpCacheHits++;
+
+            return $cached;
+        }
+
+        if ($this->serpLiveDisabled) {
+            return null;
+        }
+
         $apiKey = (string) config('services.serpapi.key');
-        if ($asin === '' || $apiKey === '') {
+        if ($apiKey === '') {
             return null;
         }
 
         try {
-            $response = null;
-            for ($attempt = 0; $attempt < 3; $attempt++) {
-                $response = Http::timeout(25)->get('https://serpapi.com/search', [
-                    'engine' => 'amazon_product',
-                    'amazon_domain' => 'amazon.com',
-                    'asin' => $asin,
-                    'api_key' => $apiKey,
-                ]);
-                if ($response->status() !== 429) {
-                    break;
-                }
-                sleep(5 * ($attempt + 1));
-            }
-            if (! $response || ! $response->successful()) {
-                return null;
-            }
-            $data = $response->json();
-            if (! is_array($data) || ! empty($data['error'])) {
-                return null;
-            }
-            $pr = $data['product_results'] ?? null;
-            if (! is_array($pr)) {
-                return null;
-            }
-            $rating = isset($pr['rating']) && is_numeric($pr['rating']) ? (float) $pr['rating'] : null;
-            $reviews = isset($pr['reviews']) && is_numeric($pr['reviews']) ? (int) $pr['reviews'] : null;
-            if ($rating === null && $reviews === null) {
+            $response = Http::timeout(25)->get('https://serpapi.com/search', [
+                'engine' => 'amazon_product',
+                'amazon_domain' => 'amazon.com',
+                'asin' => $asin,
+                'no_cache' => 'false',
+                'api_key' => $apiKey,
+            ]);
+
+            if ($response->status() === 429) {
+                $this->serpLiveDisabled = true;
+                $this->warn('SerpApi 429 — stopping live searches for this run (cache only).');
+                Log::warning('amazon:collect-reviews SerpApi 429, live calls disabled');
+
                 return null;
             }
 
-            return [
-                'rating' => $rating !== null ? round($rating, 2) : null,
-                'review_count' => $reviews ?? 0,
-                'source' => 'serpapi_amazon',
-            ];
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $data = $response->json();
+            $parsed = $this->parseSerpProductResults(is_array($data) ? $data : []);
+            $this->storeSerpReviewCache($asin, $data, $parsed, $response->status());
+            if ($parsed !== null) {
+                $this->serpLiveHits++;
+            }
+
+            return $parsed;
         } catch (\Throwable $e) {
             Log::warning('amazon:collect-reviews SerpApi failed', [
                 'asin' => $asin,
@@ -399,6 +409,253 @@ class CollectAmazonReviews extends Command
 
             return null;
         }
+    }
+
+    /**
+     * @return array{rating: float|null, review_count: int, source: string}|null
+     */
+    private function cachedSerpReview(string $asin): ?array
+    {
+        $cacheKey = $this->serpCacheKey($asin);
+        $fromRuntime = Cache::get($cacheKey);
+        if (is_array($fromRuntime) && array_key_exists('review_count', $fromRuntime)) {
+            return $fromRuntime;
+        }
+
+        if (! Schema::hasTable('serp_api_raw_responses')) {
+            return null;
+        }
+
+        try {
+            $row = SerpApiRawResponse::query()
+                ->where('success', true)
+                ->where('search_query', $asin)
+                ->where('marketplace', 'amazon_product')
+                ->where('created_at', '>=', Carbon::now()->subHours(24))
+                ->orderByDesc('id')
+                ->first();
+            if (! $row) {
+                return null;
+            }
+            $body = is_string($row->raw_body) ? json_decode($row->raw_body, true) : null;
+            $parsed = $this->parseSerpProductResults(is_array($body) ? $body : []);
+            if ($parsed !== null) {
+                Cache::put($cacheKey, $parsed, now()->addHours(24));
+            }
+
+            return $parsed;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array{rating: float|null, review_count: int, source: string}|null  $parsed
+     */
+    private function storeSerpReviewCache(string $asin, mixed $data, ?array $parsed, int $httpStatus): void
+    {
+        if ($parsed !== null) {
+            Cache::put($this->serpCacheKey($asin), $parsed, now()->addHours(24));
+        }
+
+        if (! Schema::hasTable('serp_api_raw_responses') || ! is_array($data)) {
+            return;
+        }
+
+        try {
+            $body = json_encode($data);
+            if ($body === false) {
+                return;
+            }
+            SerpApiRawResponse::create([
+                'search_query' => $asin,
+                'page' => 1,
+                'marketplace' => 'amazon_product',
+                'request_params' => [
+                    'engine' => 'amazon_product',
+                    'amazon_domain' => 'amazon.com',
+                    'asin' => $asin,
+                    'no_cache' => 'false',
+                    'api_key' => '(cached)',
+                ],
+                'http_status' => $httpStatus,
+                'raw_body' => $body,
+                'success' => $httpStatus >= 200 && $httpStatus < 300 && empty($data['error']),
+            ]);
+        } catch (\Throwable $e) {
+            // Cache write is best-effort — do not fail the reviews run.
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{rating: float|null, review_count: int, source: string}|null
+     */
+    private function parseSerpProductResults(array $data): ?array
+    {
+        if ($data === [] || ! empty($data['error'])) {
+            return null;
+        }
+        $pr = $data['product_results'] ?? null;
+        if (! is_array($pr)) {
+            return null;
+        }
+        $rating = isset($pr['rating']) && is_numeric($pr['rating']) ? (float) $pr['rating'] : null;
+        $reviews = isset($pr['reviews']) && is_numeric($pr['reviews']) ? (int) $pr['reviews'] : null;
+        if ($rating === null && $reviews === null) {
+            return null;
+        }
+
+        return [
+            'rating' => $rating !== null ? round($rating, 2) : null,
+            'review_count' => $reviews ?? 0,
+            'source' => 'serpapi_amazon',
+        ];
+    }
+
+    private function serpCacheKey(string $asin): string
+    {
+        return 'serpapi:amazon_product:rating:'.strtoupper($asin);
+    }
+
+    /**
+     * One cached/live SerpApi lookup per variation family. Overwrites Jungle Scout.
+     * Never retries 429 (that burns the SerpApi token).
+     *
+     * @param  list<string>  $asins
+     * @param  array<string, array{rating: mixed, review_count: int, source: string}>  $reviewByAsin
+     */
+    private function overwriteWithSerpApi(array $asins, array &$reviewByAsin): int
+    {
+        $families = $this->variationFamilyMap($asins);
+        $filled = 0;
+
+        foreach ($families as $familyKey => $members) {
+            $targets = array_values(array_filter(
+                $members,
+                static fn ($asin) => in_array($asin, $asins, true)
+            ));
+            if ($targets === []) {
+                continue;
+            }
+
+            $live = $this->liveFamilyRating($targets, $reviewByAsin);
+            if ($live === null) {
+                $probe = in_array($familyKey, $targets, true) ? $familyKey : $targets[0];
+                $this->line('SerpApi '.$probe.' (family '.$familyKey.', '.count($targets).' ASINs, cache-first)');
+                $live = $this->serpApiReviewForAsin($probe);
+            }
+            if ($live === null) {
+                continue;
+            }
+
+            foreach ($targets as $asin) {
+                $src = $reviewByAsin[$asin]['source'] ?? '';
+                if (in_array($src, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'], true)) {
+                    continue;
+                }
+                $reviewByAsin[$asin] = $live;
+                $filled++;
+            }
+        }
+
+        return $filled;
+    }
+
+    /**
+     * Reuse a rating we already stored this run (or earlier) so a family
+     * does not spend another SerpApi search.
+     *
+     * @param  list<string>  $targets
+     * @param  array<string, array{rating: mixed, review_count: int, source: string}>  $reviewByAsin
+     * @return array{rating: mixed, review_count: int, source: string}|null
+     */
+    private function liveFamilyRating(array $targets, array $reviewByAsin): ?array
+    {
+        foreach ($targets as $asin) {
+            $row = $reviewByAsin[$asin] ?? null;
+            if (! is_array($row)) {
+                continue;
+            }
+            $src = (string) ($row['source'] ?? '');
+            if (in_array($src, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'], true)) {
+                return $row;
+            }
+        }
+
+        try {
+            $existing = AmazonProductReview::query()
+                ->whereIn('asin', $targets)
+                ->whereIn('source', ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'])
+                ->whereNotNull('product_rating')
+                ->orderByDesc('fetched_at')
+                ->orderByDesc('id')
+                ->first();
+            if ($existing) {
+                return [
+                    'rating' => (float) $existing->product_rating,
+                    'review_count' => (int) ($existing->review_count ?? 0),
+                    'source' => (string) $existing->source,
+                ];
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $asins
+     * @return array<string, list<string>>
+     */
+    private function variationFamilyMap(array $asins): array
+    {
+        $upper = array_values(array_unique(array_map(
+            static fn ($a) => strtoupper(trim((string) $a)),
+            $asins
+        )));
+        $rows = JungleScoutProductData::query()->orderByDesc('id')->get(['asin', 'data']);
+
+        $families = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $asin = strtoupper(trim((string) $row->asin));
+            if ($asin === '' || isset($seen[$asin])) {
+                continue;
+            }
+            $seen[$asin] = true;
+            $data = is_array($row->data) ? $row->data : (json_decode($row->data ?? '[]', true) ?: []);
+            if (! is_array($data)) {
+                $data = [];
+            }
+            $parent = strtoupper(trim((string) ($data['parent_asin'] ?? '')));
+            $key = $parent !== '' ? $parent : $asin;
+            $families[$key][$asin] = true;
+            if ($parent !== '') {
+                $families[$key][$parent] = true;
+            }
+            foreach ((array) ($data['variants'] ?? []) as $variant) {
+                $v = strtoupper(trim((string) $variant));
+                if ($v !== '') {
+                    $families[$key][$v] = true;
+                }
+            }
+        }
+
+        foreach ($upper as $asin) {
+            if (! isset($seen[$asin])) {
+                $families[$asin][$asin] = true;
+            }
+        }
+
+        $out = [];
+        foreach ($families as $key => $members) {
+            $out[$key] = array_keys($members);
+        }
+
+        return $out;
     }
 
     /**
