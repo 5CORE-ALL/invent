@@ -77,7 +77,7 @@
                 faire: 1, pls: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c)$/.test(CH_PUSH_SPRICE_CHANNEL);
-            const CH_PUSH_SPRICE_PULL_DELAY_MS = /ebay/.test(CH_PUSH_SPRICE_CHANNEL) ? 60000 : 8000;
+            const CH_PUSH_SPRICE_PULL_DELAY_MS = 0;
             const CH_PUSH_SPRICE_CHUNK = 200;
             const CH_PUSH_SPRICE_PUSH_URL = ({
                 ebay1: '/push-ebay-price-tabulator',
@@ -393,45 +393,83 @@
                 });
                 return out;
             }
-            function applyChannelPushSpricePullResults(results) {
-                if (!Array.isArray(results) || !results.length) return;
-                const tasks = results.filter(function(r) {
-                    return r && r.success && Number(r.price) > 0 && !r.skipped;
-                }).map(function(r) {
-                    return { sku: r.sku, status: 'ok', ebay_price: Number(r.price), price: Number(r.price) };
+            function applyChannelPushSpricePullResults(results, expectedBySku) {
+                if (!Array.isArray(results) || !results.length) return [];
+                const stale = [];
+                const tasks = [];
+                results.forEach(function(r) {
+                    if (!r || !r.success || !(Number(r.price) > 0) || r.skipped) return;
+                    const live = Number(r.price);
+                    const key = String(r.sku || '').toUpperCase();
+                    const expected = expectedBySku && key ? Number(expectedBySku[key]) : 0;
+                    if (expected > 0 && Math.abs(live - expected) > 0.05) {
+                        stale.push(r.sku);
+                        return;
+                    }
+                    tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live });
                 });
-                if (!tasks.length) return;
-                applyChannelPushSpriceTasks(tasks);
+                if (tasks.length) applyChannelPushSpriceTasks(tasks);
+                return stale;
+            }
+            function chPushSpriceExpectedBySku(skus) {
+                const out = {};
+                (skus || []).forEach(function(sku) {
+                    const row = typeof chPushSpriceFindRowBySku === 'function'
+                        ? chPushSpriceFindRowBySku(sku)
+                        : null;
+                    const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
+                    const expected = Number(d.SPRICE || d.PUSH_PRC_VALUE || d.sprice || 0);
+                    if (expected > 0) out[String(sku).toUpperCase()] = expected;
+                });
+                return out;
             }
             function chPushSpricePullAfterPush(skus) {
                 if (!skus || !skus.length) return;
                 if (!CH_PUSH_SPRICE_CAN_PULL) return;
                 clearTimeout(chPushSpricePullAfterPush._t);
                 const n = skus.length;
-                chPushSpricePullAfterPush._t = setTimeout(function() {
+                const expectedBySku = chPushSpriceExpectedBySku(skus);
+                const retryMs = [0, 2000, 4000];
+                function runPull(attempt, pending) {
+                    if (!pending || !pending.length) return;
                     $.ajax({
                         url: CH_PUSH_SPRICE_URL + '/pull',
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
-                        data: { _token: chPushSpriceCsrf(), skus: skus },
+                        data: { _token: chPushSpriceCsrf(), skus: pending },
                         timeout: 300000,
                     }).done(function(resp) {
                         const results = resp && Array.isArray(resp.results) ? resp.results : [];
-                        applyChannelPushSpricePullResults(results);
+                        const stale = applyChannelPushSpricePullResults(results, expectedBySku);
                         const pulled = Number(resp && resp.ok_count) || 0;
                         const skipped = Number(resp && resp.skip_count) || 0;
-                        if (pulled > 0) {
+                        if (stale.length && attempt + 1 < retryMs.length) {
+                            chPushSpricePullAfterPush._t = setTimeout(function() {
+                                runPull(attempt + 1, stale);
+                            }, retryMs[attempt + 1]);
+                            return;
+                        }
+                        if (pulled > 0 && !stale.length) {
                             chPushSpriceToast('success', 'Pulled live Price for ' + pulled + ' SKU(s)');
+                        } else if (stale.length) {
+                            chPushSpriceToast('success', 'Pushed ' + n + ' SKU(s) — live Price still catching up');
                         } else if (!skipped) {
                             chPushSpriceToast('error', (resp && resp.message) || 'Live Price pull failed');
                         }
                     }).fail(function(xhr) {
+                        if (attempt + 1 < retryMs.length) {
+                            chPushSpricePullAfterPush._t = setTimeout(function() {
+                                runPull(attempt + 1, pending);
+                            }, retryMs[attempt + 1]);
+                            return;
+                        }
                         chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Live Price pull failed');
                     });
-                }, CH_PUSH_SPRICE_PULL_DELAY_MS);
-                if (/ebay/.test(CH_PUSH_SPRICE_CHANNEL)) {
-                    chPushSpriceToast('success', 'eBay Price pull in 1 min for ' + n + ' pushed SKU(s)');
                 }
+                chPushSpriceToast('success', 'Pulling live Price for ' + n + ' SKU(s)…');
+                chPushSpricePullAfterPush._t = setTimeout(function() {
+                    runPull(0, skus.slice());
+                }, CH_PUSH_SPRICE_PULL_DELAY_MS);
             }
             function stopChannelPushSpricePoll() {
                 if (chPushSpricePollTimer) {

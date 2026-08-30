@@ -3008,27 +3008,69 @@
         function queueAmzPostPushPull(skus) {
             if (!skus || !skus.length) return;
             clearTimeout(queueAmzPostPushPull._t);
-            amzPefToast('success', 'Amazon Price pull in ~90s for ' + skus.length + ' pushed SKU(s)');
-            queueAmzPostPushPull._t = setTimeout(function() {
+            amzPefToast('success', 'Pulling live Amazon Price for ' + skus.length + ' SKU(s)…');
+            const expected = {};
+            (skus || []).forEach(function(sku) {
+                if (!table || !sku) return;
+                table.getRows().some(function(row) {
+                    const d = row.getData();
+                    if (!d || String(amzPefSku(d)).toUpperCase() !== String(sku).toUpperCase()) return false;
+                    const want = Number(typeof amzDisplayedSprice === 'function' ? amzDisplayedSprice(d) : d.SPRICE) || 0;
+                    if (want > 0) expected[String(sku).toUpperCase()] = want;
+                    return true;
+                });
+            });
+            const retryMs = [0, 2000, 4000];
+            function runPull(attempt, pending) {
+                if (!pending || !pending.length) return;
                 $.ajax({
                     url: '/amazon-pull-pushed-prices',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                    data: { _token: amzPefCsrf(), skus: skus },
+                    data: { _token: amzPefCsrf(), skus: pending },
                     timeout: 300000,
                 }).done(function(resp) {
-                    applyAmzPulledPrices(resp && resp.results);
-                    const pulled = Number(resp && resp.ok_count) || 0;
+                    const results = (resp && resp.results) || [];
+                    const fresh = [];
+                    const stale = [];
+                    results.forEach(function(r) {
+                        if (!r || !r.success || !(Number(r.price) > 0) || !r.sku) return;
+                        const want = Number(expected[String(r.sku).toUpperCase()]) || 0;
+                        if (want > 0 && Math.abs(Number(r.price) - want) > 0.05) {
+                            stale.push(r.sku);
+                            return;
+                        }
+                        fresh.push(r);
+                    });
+                    applyAmzPulledPrices(fresh);
+                    if (stale.length && attempt + 1 < retryMs.length) {
+                        queueAmzPostPushPull._t = setTimeout(function() {
+                            runPull(attempt + 1, stale);
+                        }, retryMs[attempt + 1]);
+                        return;
+                    }
+                    const pulled = fresh.length;
                     amzPefToast(
-                        pulled ? 'success' : 'error',
+                        pulled ? 'success' : (stale.length ? 'success' : 'error'),
                         pulled
                             ? ('Pulled live Price for ' + pulled + ' SKU(s)')
-                            : ((resp && resp.message) || 'Amazon Price pull failed')
+                            : (stale.length
+                                ? ('Pushed ' + skus.length + ' SKU(s) — live Price still catching up')
+                                : ((resp && resp.message) || 'Amazon Price pull failed'))
                     );
                 }).fail(function(xhr) {
+                    if (attempt + 1 < retryMs.length) {
+                        queueAmzPostPushPull._t = setTimeout(function() {
+                            runPull(attempt + 1, pending);
+                        }, retryMs[attempt + 1]);
+                        return;
+                    }
                     amzPefToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Amazon Price pull failed');
                 });
-            }, 90000);
+            }
+            queueAmzPostPushPull._t = setTimeout(function() {
+                runPull(0, skus.slice());
+            }, 0);
         }
 
         function stopAmzPushPrcPoll() {

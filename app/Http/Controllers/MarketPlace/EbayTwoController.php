@@ -26,6 +26,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\EbaySkuCompetitor;
 use App\Services\ChannelPromoPricingService;
+use App\Services\PefEbayPricePullService;
 use App\Services\LmpSkuGroupService;
 use App\Support\Marketplace\EbayListingEnded;
 use Illuminate\Support\Facades\DB;
@@ -2395,23 +2396,23 @@ class EbayTwoController extends Controller
             );
 
             if (isset($result['success']) && $result['success']) {
-                // Trust ReviseItem — a follow-up GetItem doubles eBay Trading calls.
-                $ebayMetric->ebay_price = $priceFloat;
+                $live = $this->ebay2PullLivePrice($sku, $priceFloat);
+                $ebayMetric->ebay_price = $live;
                 $ebayMetric->save();
 
                 $this->saveSpriceStatus($sku, 'pushed');
-                Log::info('[EbayTwoController] eBay2 price push successful', [
+                Log::info('[EbayTwoController] eBay2 price push successful and live price pulled', [
                     'sku'     => $sku,
                     'price'   => $priceFloat,
-                    'ebay_price' => $priceFloat,
+                    'ebay_price' => $live,
                     'item_id' => $ebayMetric->item_id,
                 ]);
                 return response()->json([
                     'success'   => true,
                     'message'   => 'Price updated successfully on eBay2',
-                    'new_price' => $priceFloat,
-                    'price'     => $priceFloat,
-                    'ebay_price'=> $priceFloat,
+                    'new_price' => $live,
+                    'price'     => $live,
+                    'ebay_price'=> $live,
                 ]);
             }
 
@@ -2453,6 +2454,35 @@ class EbayTwoController extends Controller
             ]);
             return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
+    }
+
+    private function ebay2PullLivePrice(string $sku, float $fallback): float
+    {
+        try {
+            $pulled = app(PefEbayPricePullService::class)->pullOne($sku, 'ebay2');
+            $live = isset($pulled['price']) ? (float) $pulled['price'] : 0;
+            if (! empty($pulled['success']) && $live > 0 && abs($live - $fallback) < 0.05) {
+                return round($live, 2);
+            }
+            if (! empty($pulled['success']) && $live > 0) {
+                Log::info('[EbayTwoController] GetItem after push still stale — keeping revised price', [
+                    'sku' => $sku,
+                    'pushed' => $fallback,
+                    'getitem' => $live,
+                ]);
+            }
+            Log::warning('[EbayTwoController] GetItem after S PRC push failed', [
+                'sku' => $sku,
+                'message' => $pulled['message'] ?? 'pull failed',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[EbayTwoController] GetItem after S PRC push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return round($fallback, 2);
     }
 
     private function saveSpriceStatus($sku, $status)
