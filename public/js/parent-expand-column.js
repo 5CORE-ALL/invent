@@ -77,9 +77,8 @@
         var skuField = state.opts.skuField;
         var parentField = state.opts.parentField;
         var sku = String(data[skuField] != null ? data[skuField] : (data.SKU || data.sku || '')).toUpperCase();
-        if (sku.includes('PARENT')) return true;
-        var p = data[parentField];
-        return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+        // Child SKUs store the parent name in Parent ("PARENT GSTOOL I") — that is not a parent row.
+        return sku.includes('PARENT');
     }
 
     function isParentRow(data) {
@@ -368,6 +367,13 @@
     function parentAvgLmpHtml(parentRow, opts) {
         opts = opts || {};
         if (!parentRow || !isParentRow(parentRow)) return null;
+        var sku = String(
+            parentRow['(Child) sku'] != null ? parentRow['(Child) sku'] : (parentRow.SKU || parentRow.sku || '')
+        ).toUpperCase();
+        if (sku && sku.indexOf('PARENT') === -1
+            && !parentRow.is_parent_summary && !parentRow.is_parent_row && !parentRow.is_parent) {
+            return null;
+        }
 
         var result = avgChildField(parentRow, opts);
         if (!result || result.count === 0 || result.avg === null) {

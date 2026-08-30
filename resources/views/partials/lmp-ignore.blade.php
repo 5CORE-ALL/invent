@@ -64,6 +64,13 @@
             function lmpIgnoreSkuKey(s) {
                 return String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
             }
+            /** Parent summary only. Child SKUs have Parent = "PARENT GSTOOL I" — that is not a parent row. */
+            function lmpIgnoreIsParentRow(rowData) {
+                if (!rowData) return false;
+                if (rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return true;
+                const sku = String(rowData['(Child) sku'] || rowData.SKU || rowData.sku || '');
+                return sku.toUpperCase().indexOf('PARENT') !== -1;
+            }
             const LmpIgnore = {
                 header: function() {
                     return '<th class="text-center" title="Ignore for L1">Ignore</th>';
@@ -147,7 +154,7 @@
                 },
                 columnHtml: function(rowData, opts) {
                     opts = opts || {};
-                    if (window.ParentExpand && opts.parentAvg !== false) {
+                    if (window.ParentExpand && opts.parentAvg !== false && lmpIgnoreIsParentRow(rowData)) {
                         const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, opts.parentOpts || {});
                         if (avgHtml !== null) return avgHtml;
                     }
