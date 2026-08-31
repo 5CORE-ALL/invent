@@ -448,9 +448,11 @@
                         </div>
                         <div class="alert alert-info mb-2">
                             <small>
-                                Expected columns: <strong>Item #</strong>, <strong>Seller Part #</strong>,
-                                <strong>Sessions</strong>, <strong>Page Views</strong>, <strong>Units Sold</strong>.
-                                Matched to the pricing table by Seller Part #, then Item #.
+                                Use Newegg Seller Portal <strong>Item Performance</strong> (not a product catalog).
+                                Required: <strong>Seller Part #</strong> (or Item #) plus <strong>Sessions</strong> or <strong>Page Views</strong>.
+                                <a href="{{ route('newegg.pricing.views.sample') }}" class="alert-link">
+                                    <i class="fa fa-download"></i> Download sample
+                                </a>
                             </small>
                         </div>
                         <div class="alert alert-warning mb-0">

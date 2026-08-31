@@ -1171,6 +1171,19 @@ class NeweggPricingController extends Controller
         return [$lp, $ship];
     }
 
+    public function downloadViewsSample()
+    {
+        $csv = implode("\n", [
+            'Item #,Title,Seller Part #,SBN Inventory,SBS Inventory,Sessions,Session Percentage,Page Views,Page Views Percentage,Orders Sold,Sales,Units Sold,Unit Session Percentage',
+            '9SIBFJ5KTEST,Example Mic Cover,SPONGE,0,577,146,5.16,149,5.20,17,172.95,17,11.26',
+        ])."\n";
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="newegg-views-sample.csv"',
+        ]);
+    }
+
     /**
      * Upload Newegg Seller Portal item-performance sheet.
      * Truncates newegg_listing_views, then inserts the new file.
@@ -1208,8 +1221,15 @@ class NeweggPricingController extends Controller
                 ], 400);
             }
             if (! in_array('page_views', $fieldByIndex, true) && ! in_array('sessions', $fieldByIndex, true)) {
+                $preview = $this->viewsHeaderPreview($rawHeaders);
+                if ($this->isProductCatalogSheet($rawHeaders)) {
+                    return response()->json([
+                        'error' => 'Wrong file. This is a product catalog (Goods ID / Base price / Category) — it has no Sessions or Page Views. In Newegg Seller Portal export Item Performance (columns: Item #, Seller Part #, Sessions, Page Views). Or download the sample from the Views upload dialog.',
+                    ], 400);
+                }
+
                 return response()->json([
-                    'error' => 'Could not find Page Views or Sessions columns. Headers: '.$this->viewsHeaderPreview($rawHeaders),
+                    'error' => 'Could not find Page Views or Sessions columns. Headers: '.$preview,
                 ], 400);
             }
 
@@ -1471,6 +1491,21 @@ class NeweggPricingController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * Temu / listing catalog exports have SKU but no traffic columns.
+     *
+     * @param  array<int, mixed>  $headers
+     */
+    private function isProductCatalogSheet(array $headers): bool
+    {
+        $joined = strtolower(implode(' ', array_map(fn ($v) => (string) $v, $headers)));
+        $n = preg_replace('/[^a-z0-9]+/', '', $joined) ?? '';
+
+        return str_contains($n, 'goodsid')
+            || str_contains($n, 'contributiongoods')
+            || (str_contains($n, 'baseprice') && str_contains($n, 'categoryid'));
     }
 
     /**

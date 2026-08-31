@@ -3645,6 +3645,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/newegg-pricing-save-nr', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveNr'])->name('newegg.pricing.save.nr');
     Route::post('/newegg-pricing-save-links', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'saveLinks'])->name('newegg.pricing.save.links');
     Route::post('/newegg-pricing-upload-views', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'uploadViews'])->name('newegg.pricing.upload.views');
+    Route::get('/newegg-pricing-views-sample', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'downloadViewsSample'])->name('newegg.pricing.views.sample');
     // LMP modal endpoints for /newegg-pricing-view — talks to newegg_sku_competitors
     Route::get('/newegg/competitors', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getCompetitors'])->name('newegg.competitors.get');
     Route::post('/newegg/competitors', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'addCompetitor'])->name('newegg.competitors.add');
