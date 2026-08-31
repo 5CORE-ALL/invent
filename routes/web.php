@@ -810,6 +810,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
+        Route::get('/products/shopify-search', [\App\Http\Controllers\MarketplaceController::class, 'searchShopifySkus'])->name('marketplace.products.shopify.search');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/link', [\App\Http\Controllers\MarketplaceController::class, 'linkProduct'])->name('marketplace.products.link')->whereNumber('shopifySku');
