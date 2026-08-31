@@ -425,6 +425,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('shopify-b2c:rule-sprice-apply')
+            ->twiceDaily(11, 19)
+            ->name('shopify-b2c-rule-sprice-after-metrics')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('app:snapshot-shopify-b2c-badges')
             ->twiceDaily(11, 19)
             ->name('shopify-b2c-badge-snapshot')
@@ -868,6 +875,15 @@ class Kernel extends ConsoleKernel
             ->dailyAt('04:05')
             ->timezone('America/New_York')
             ->name('amazon-cvr-cpn-auto-push-4am-et')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Shopify B2C Dil / PRMT / CVR Disc / 0 Sold → save SPRICE (page not required).
+        $schedule->command('shopify-b2c:rule-sprice-apply')
+            ->dailyAt('04:10')
+            ->timezone('America/New_York')
+            ->name('shopify-b2c-rule-sprice-apply-4am-et')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
