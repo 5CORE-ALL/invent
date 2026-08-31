@@ -5144,7 +5144,8 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $noAds = ['doba', 'purchasingpower', 'topdawg', 'shein', 'faire', 'temu2', 'alibaba'];
-        $noShip = ['faire', 'topdawg', 'purchasingpower'];
+        // Prepaid-label channels: ship is not a seller cost, so GPFT/GROI/NPFT/NROI ignore it.
+        $noShip = ['faire', 'topdawg', 'purchasingpower', 'wayfair', 'doba'];
         $out = [];
 
         foreach (MarketplaceManagerRegistry::channels() as $channel) {
@@ -5218,6 +5219,10 @@ class SalesOrderFulfillmentController extends Controller
         $isTemu = ! empty($ctx['is_temu']);
         $isTemu2 = ! empty($ctx['is_temu2']);
         $noAds = ! empty($ctx['no_ads']) || $isTemu2;
+        $shipKey = (string) ($ctx['ship_key'] ?? 'ship');
+        if ($shipKey === 'none' || in_array($slug, ['faire', 'topdawg', 'purchasingpower', 'wayfair', 'doba'], true)) {
+            $ship = 0.0;
+        }
 
         if ($isTemu || $isTemu2) {
             $rPrice = TemuShopifySalesService::computeRPrice($price);
