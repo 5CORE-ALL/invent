@@ -3522,10 +3522,12 @@
                 const ovl30 = Number(d.ovl30 != null ? d.ovl30 : d.L30) || 0;
                 return (ovl30 / inv) * 100;
             }
-            // AliExpress / Shein / Wayfair: dil_percent is already 0–100 (e.g. 1.5 = 1.5%).
-            // Do NOT ×100 — that maps low Dil into the 24%+ slab and forces PRMT% = 0.
+            // AliExpress / Shein / Wayfair / Newegg / Faire / PLS: Dil is already 0–100
+            // (e.g. 1.5 = 1.5%). Do NOT ×100 — that maps 1–2% into the >25% slab and
+            // forces PRMT% = 0, so S PRC skips the Dil vs PRMT discount rule.
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein'
-                || CHANNEL_PROMO_CHANNEL === 'wayfair') {
+                || CHANNEL_PROMO_CHANNEL === 'wayfair' || CHANNEL_PROMO_CHANNEL === 'newegg'
+                || CHANNEL_PROMO_CHANNEL === 'faire' || CHANNEL_PROMO_CHANNEL === 'pls') {
                 let dil = Number(d.dil_percent != null ? d.dil_percent : d[chPromoCfg.dilField]);
                 if (isFinite(dil)) return dil;
                 if (inv <= 0) return 0;
@@ -3560,10 +3562,13 @@
                 return (ovl30 / inv) * 100;
             }
             let dil = Number(d[chPromoCfg.dilField]);
-            if (!isFinite(dil)) {
-                const l30 = Number(d['eBay L30'] || d.L30 || d['MC L30'] || d['W_L30'] || d['B2B L30'] || 0) || 0;
-                dil = inv > 0 ? (l30 / inv) : 0;
+            if (isFinite(dil)) {
+                // Stored Dil columns are already 0–100. Only convert a unit-interval
+                // ratio from the L30/INV fallback below.
+                return dil;
             }
+            const l30 = Number(d['eBay L30'] || d.L30 || d['MC L30'] || d['W_L30'] || d['B2B L30'] || 0) || 0;
+            dil = inv > 0 ? (l30 / inv) : 0;
             if (dil > 0 && dil <= 2) dil = dil * 100;
             return dil;
         }
@@ -3576,11 +3581,12 @@
         function chPromoUsesAmazonCvrDisc() {
             return !!CHANNEL_PROMO_USES_AMAZON_CVR_DISC;
         }
-        /** Live PRMT% from Dil slabs (eBay / AE / Shein / TikTok Amazon map). */
+        /** Live PRMT% from Dil slabs (eBay / AE / Shein / Newegg / TikTok Amazon map). */
         function chPromoUsesLiveDilPrmtSlabs() {
             return chPromoIsEbayChannel()
                 || CHANNEL_PROMO_CHANNEL === 'aliexpress'
                 || CHANNEL_PROMO_CHANNEL === 'shein'
+                || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || chPromoUsesAmazonDilPrmtSlabs();
         }
         /** Live cvr % from CVR vs CPN slabs (eBay). Amazon CVR Disc has its own column path. */
