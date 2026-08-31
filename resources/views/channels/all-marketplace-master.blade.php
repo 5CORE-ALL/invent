@@ -4689,8 +4689,7 @@
                 $('#adChartModalTitle').text(`${channel} - ${adTypeLabel} ${metricLabel} (Rolling ${adChartRangeLabel(currentChartDays)})`);
 
                 // Show modal
-                const modal = new bootstrap.Modal(document.getElementById('adBreakdownChartModal'));
-                modal.show();
+                openAdBreakdownChartModal();
 
                 if (!hasData) {
                     $('#adBreakdownChartContainer').hide();
@@ -4830,11 +4829,21 @@
                 const label = metricLabels[metricKey] || metricKey;
                 $('#adChartModalTitle').text(`${channel} - ${label} (Rolling ${adChartRangeLabel(currentChartDays)})`);
 
-                // Show modal
-                const modal = new bootstrap.Modal(document.getElementById('adBreakdownChartModal'));
-                modal.show();
+                // Show modal (getOrCreateInstance — new Modal() throws if one already exists)
+                openAdBreakdownChartModal();
 
                 loadAdBreakdownChart();
+            }
+
+            function openAdBreakdownChartModal() {
+                const el = document.getElementById('adBreakdownChartModal');
+                if (!el || typeof bootstrap === 'undefined') {
+                    console.error('Y Sales / metric chart modal cannot open: missing #adBreakdownChartModal or bootstrap');
+                    return;
+                }
+                el.style.zIndex = '10050';
+                const inst = bootstrap.Modal.getOrCreateInstance(el);
+                inst.show();
             }
 
             // Range dropdown change handler
@@ -4889,14 +4898,16 @@
             }
 
             // Badge click handler — show overall (all channels) metric trend
-            $(document).on('click', '.badge-chart-link', function() {
+            $(document).on('click', '.badge-chart-link', function(e) {
                 const metricKey = $(this).data('metric');
+                if (!metricKey) return;
                 // Prefer data-exact-value (set when badges update) so compact "326K" is not
                 // misread as 326. Fall back to parsing the visible text (supports K/M).
                 let badgeValue = parseFloat($(this).attr('data-exact-value'));
                 if (isNaN(badgeValue)) {
                     badgeValue = parseBadgeDisplayValue($(this).find('span[id]').first().text());
                 }
+                e.preventDefault();
                 showMetricChart('All', metricKey, badgeValue);
             });
 
