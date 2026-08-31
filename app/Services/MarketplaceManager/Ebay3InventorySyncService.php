@@ -137,6 +137,7 @@ class Ebay3InventorySyncService
         if (! empty($invResult['success'])) {
             $this->updateLocalStock($inventoryRows);
             $this->updateLocalPlatformQuantities($inventoryRows);
+            app(Ebay3LiveListingsService::class)->clearCache();
 
             return [
                 'updated' => (int) ($invResult['pushed'] ?? count($inventoryRows)),
@@ -323,6 +324,7 @@ class Ebay3InventorySyncService
             if ($updated > 0) {
                 $this->updateLocalStock($inventoryRows);
                 $this->updateLocalPlatformQuantities($inventoryRows);
+                app(Ebay3LiveListingsService::class)->clearCache();
             } elseif ($failed > 0) {
                 Log::warning('Ebay3InventorySyncService: inventory push failed', $invResult);
             }
