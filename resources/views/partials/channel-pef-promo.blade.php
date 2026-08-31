@@ -6719,6 +6719,9 @@
                         } else if (chPromoInv(d) > 0) {
                             item.row.update(Object.assign({}, patch, chPromoSpricePatch(0)));
                             newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { prmt: prmt });
+                            if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                                newPrice = chPromoFinalSpriceToSave(item.row.getData(), newPrice);
+                            }
                             if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                             skipSprice = false;
                         }
@@ -7163,7 +7166,10 @@
                             cpn_pct: String(cpn),
                             _cpn_pct_applied: 0,
                         }, chPromoSpricePatch(0)));
-                        const newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { cpn: 0 });
+                        let newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { cpn: 0 });
+                        if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                            newPrice = chPromoFinalSpriceToSave(item.row.getData(), newPrice);
+                        }
                         const patch = { cpn_pct: String(cpn), _cpn_pct_applied: 0 };
                         if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                         item.row.update(patch);
@@ -7180,7 +7186,10 @@
                         cpn_pct: String(cpn),
                         _cpn_pct_applied: cpn,
                     }, chPromoSpricePatch(0)));
-                    const newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { cpn: cpn });
+                    let newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { cpn: cpn });
+                    if (newPrice > 0 && typeof chPromoFinalSpriceToSave === 'function') {
+                        newPrice = chPromoFinalSpriceToSave(item.row.getData(), newPrice);
+                    }
                     const patch = { cpn_pct: String(cpn), _cpn_pct_applied: cpn };
                     if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                     item.row.update(patch);
@@ -8297,7 +8306,9 @@
             extra = extra || {};
             const finish = function(p) {
                 if (!(p >= 0.01)) return 0;
-                return extra.skip_lmp_cap ? chPromoRound2(p) : chPromoCapSpriceToLmp(d, p, extra);
+                let out = extra.skip_lmp_cap ? chPromoRound2(p) : chPromoCapSpriceToLmp(d, p, extra);
+                if (!extra.skip_amz_floor) out = chPromoFloorShopifySpriceToAmz(d, out);
+                return out;
             };
             if (typeof chPromoZeroSoldRuleSprice === 'function') {
                 const zeroSold = chPromoZeroSoldRuleSprice(d);
@@ -8434,31 +8445,30 @@
                     ? zeroSold
                     : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
                 if (!(fill > 0)) return;
+                const finalFill = (typeof chPromoFinalSpriceToSave === 'function')
+                    ? chPromoFinalSpriceToSave(d, fill)
+                    : fill;
                 const current = chPromoGetSprice(d);
                 const live = chPromoLivePrice(d);
                 const prmt = chPromoEbayPrmtUsed(d);
                 const cpn = chPromoEbayCpnUsed(d);
                 const needsFill = !!opts.force
                     || !(current > 0)
-                    || (overwrite && !chPromoNearlyEqual(current, fill));
+                    || (overwrite && !chPromoNearlyEqual(current, finalFill));
                 const needsPush = !forceSkipPush && livePushOn && (
                     (chPromoIsTemuPromoChannel() && typeof temuListingNeedsPush === 'function')
-                        ? temuListingNeedsPush(d, fill)
-                        : (live > 0 && !chPromoNearlyEqual(fill, live))
+                        ? temuListingNeedsPush(d, finalFill)
+                        : (live > 0 && !chPromoNearlyEqual(finalFill, live))
                 );
                 if (!needsFill && !needsPush) return;
                 queuedKeys.add(key);
-                const wipeFirst = persist && chPromoShouldPersistClearThenSprice();
-                const patch = Object.assign(
-                    wipeFirst ? chPromoSpricePatch(0) : chPromoSpricePatch(fill),
-                    {
-                        prmt_pct: String(prmt),
-                        _prmt_pct_applied: prmt,
-                        cpn_pct: String(cpn),
-                        _cpn_pct_applied: cpn,
-                    }
-                );
-                if (!livePushOn) patch['eBay Price'] = fill;
+                const patch = Object.assign(chPromoSpricePatch(finalFill), {
+                    prmt_pct: String(prmt),
+                    _prmt_pct_applied: prmt,
+                    cpn_pct: String(cpn),
+                    _cpn_pct_applied: cpn,
+                });
+                if (!livePushOn) patch['eBay Price'] = finalFill;
                 if (row && typeof row.update === 'function') {
                     row.update(patch);
                 } else if (d) {
@@ -8468,7 +8478,7 @@
                 jobs.push({
                     row: row || null,
                     sku: sku,
-                    price: fill,
+                    price: finalFill,
                     prmt: prmt,
                     cpn: cpn,
                     skip_push: !needsPush,

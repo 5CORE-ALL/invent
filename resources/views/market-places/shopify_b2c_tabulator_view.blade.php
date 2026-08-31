@@ -1551,6 +1551,86 @@
         return s > 0 ? Math.round(s * 100) / 100 : 0;
     }
 
+    /** Amazon-style: leftover stored S PRC cannot win — write the visible rule onto the row, then save. */
+    function shopifyB2cWriteRuleSpriceOnRow(row, opts) {
+        opts = opts || {};
+        if (!row || typeof row.getData !== 'function') return 0;
+        const d = row.getData() || {};
+        if (isShopifyB2cParentRow(d)) return 0;
+        if (shopifyB2cIsAmzSuggApplied(d)) return 0;
+        const shown = shopifyB2cShownSprice(d);
+        if (!(shown > 0)) return 0;
+        const stored = parseFloat(d.SPRICE) || 0;
+        if (!opts.force && Math.abs(stored - shown) < 0.005) return 0;
+        row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, AMZ_SUGG_APPLIED: false });
+        shopifyB2cApplySpriceMetricsToRow(row, shown);
+        if (opts.persist === false) return shown;
+        const sku = d['(Child) sku'] || d.sku;
+        if (!sku) return shown;
+        if (typeof chPromoPersistClearThenSprice === 'function') {
+            chPromoPersistClearThenSprice(row, shown, true, { skip_push: true, sku: sku, row: row })
+                .then(function(res) {
+                    if (typeof chPromoApplySpriceSavePatch === 'function') {
+                        chPromoApplySpriceSavePatch(row, shown, res, sku);
+                    }
+                })
+                .catch(function() {
+                    shopifyB2cApplySpriceMetricsToRow(row, shown);
+                });
+        } else {
+            saveSpriceWithRetry(sku, shown, row);
+        }
+        return shown;
+    }
+
+    function shopifyB2cApplyRuleSpriceToAllRows(opts) {
+        opts = opts || {};
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return 0;
+        let changed = 0;
+        (table.getRows('all') || []).forEach(function(row) {
+            if (shopifyB2cWriteRuleSpriceOnRow(row, opts)) changed++;
+        });
+        if (changed) {
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+        }
+        return changed;
+    }
+    window.shopifyB2cApplyRuleSpriceToAllRows = shopifyB2cApplyRuleSpriceToAllRows;
+
+    function shopifyB2cSpriceEditor(cell, onRendered, success, cancel) {
+        const data = cell.getRow().getData();
+        const shown = shopifyB2cShownSprice(data);
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.step = '0.01';
+        input.value = shown > 0 ? shown.toFixed(2) : '';
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.padding = '2px 4px';
+        function commit() {
+            const v = parseFloat(input.value);
+            success(isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0);
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancel();
+            }
+        });
+        onRendered(function() {
+            input.focus();
+            input.select();
+            if (shown > 0) input.value = shown.toFixed(2);
+        });
+        return input;
+    }
+
     function shopifyB2cSpricePending(data) {
         const shown = shopifyB2cShownSprice(data);
         const price = parseFloat(data && data.Price) || 0;
@@ -3347,13 +3427,9 @@
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
-                    editor: "number",
+                    editor: shopifyB2cSpriceEditor,
                     editable: function(cell) {
                         return !isShopifyB2cParentRow(cell.getRow().getData());
-                    },
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
                     },
                     sorter: "number",
                     headerTooltip: "Same as Amazon: if Dil / PRMT / CVR Disc / 0 Sold / Std rules apply, S PRC is cleared first, then the rule price is written and saved (no leftover overwrite). S PRC = Std × (1 − (PRMT% + CVR Disc%)/100), or 0 Sold → Target GROI. Below A Price is raised to Amz. Sugg Amz keeps A Price. Click edits the shown rule price. Outer GROI/GPFT/PFT/NROI + Diff preview until Push. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
@@ -4243,6 +4319,7 @@
                 }
                 if (typeof loadShopifyB2cBadgePrevDay === 'function') loadShopifyB2cBadgePrevDay();
                 if (typeof loadChartJs === 'function') loadChartJs();
+                shopifyB2cApplyRuleSpriceToAllRows({ persist: true });
             }, 100);
         });
 
