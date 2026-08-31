@@ -8,6 +8,7 @@ use App\Jobs\RunChannelPushCpnJob;
 use App\Jobs\RunChannelPushPrcJob;
 use App\Jobs\RunChannelPushPrmtJob;
 use App\Jobs\RunChannelPushSpriceJob;
+use App\Jobs\RunShopifyB2cRuleSpriceApplyJob;
 use App\Models\AmazonDataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayDataView;
@@ -1266,6 +1267,8 @@ class ChannelPromoPricingController extends Controller
             'prmt'
         );
 
+        $this->queueShopifyB2cRuleSpriceApply();
+
         return response()->json(['success' => true, 'channel' => $channel, 'shared' => true, 'rules' => $rules]);
     }
 
@@ -1337,6 +1340,10 @@ class ChannelPromoPricingController extends Controller
             $incoming,
             'groi'
         );
+
+        if ($channel === 'shopify_b2c') {
+            $this->queueShopifyB2cRuleSpriceApply();
+        }
 
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
@@ -1411,6 +1418,10 @@ class ChannelPromoPricingController extends Controller
             $incoming,
             'cpn'
         );
+
+        if ($channel === 'shopify_b2c') {
+            $this->queueShopifyB2cRuleSpriceApply();
+        }
 
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
@@ -1763,6 +1774,16 @@ class ChannelPromoPricingController extends Controller
             'is_default' => $matched === 0,
             'rules' => $rules,
         ]);
+    }
+
+    /** Recalc + save Shopify B2C S PRC in the background (page does not need to stay open). */
+    private function queueShopifyB2cRuleSpriceApply(): void
+    {
+        try {
+            RunShopifyB2cRuleSpriceApplyJob::dispatch();
+        } catch (\Throwable $e) {
+            Log::warning('[ShopifyB2cRuleSpriceApply] dispatch failed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
