@@ -8,6 +8,7 @@ use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\NeweggDataView;
 use App\Models\NeweggItem;
+use App\Models\NeweggListingView;
 use App\Models\NeweggPricing;
 use App\Models\NeweggSkuCompetitor;
 use App\Models\ProductMaster;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class NeweggPricingController extends Controller
 {
@@ -58,10 +60,12 @@ class NeweggPricingController extends Controller
             }
         }
 
-        // 4) Newegg catalog titles keyed by exact then normalized SKU.
+        // 4) Newegg catalog titles + item # keyed by exact then normalized SKU.
         $titleByExact = [];
         $titleByNorm = [];
-        foreach (NeweggItem::query()->select('seller_part_number', 'title')->get() as $it) {
+        $itemNoByExact = [];
+        $itemNoByNorm = [];
+        foreach (NeweggItem::query()->select('seller_part_number', 'title', 'newegg_item_number')->get() as $it) {
             $exact = $this->exactSkuKey($it->seller_part_number);
             $norm = $this->normalizeSkuKey($it->seller_part_number);
             if ($exact !== '' && ! isset($titleByExact[$exact])) {
@@ -69,6 +73,36 @@ class NeweggPricingController extends Controller
             }
             if ($norm !== '' && !isset($titleByNorm[$norm])) {
                 $titleByNorm[$norm] = $it->title;
+            }
+            $itemNo = strtoupper(trim((string) ($it->newegg_item_number ?? '')));
+            if ($itemNo !== '') {
+                if ($exact !== '' && ! isset($itemNoByExact[$exact])) {
+                    $itemNoByExact[$exact] = $itemNo;
+                }
+                if ($norm !== '' && ! isset($itemNoByNorm[$norm])) {
+                    $itemNoByNorm[$norm] = $itemNo;
+                }
+            }
+        }
+
+        // 4b) Uploaded Newegg Seller Portal views sheet (truncated on each upload).
+        $viewsByExact = [];
+        $viewsByNorm = [];
+        $viewsByItem = [];
+        if (Schema::hasTable('newegg_listing_views')) {
+            foreach (NeweggListingView::all() as $viewRow) {
+                $exact = $this->exactSkuKey((string) ($viewRow->seller_part_number ?? ''));
+                $norm = $this->normalizeSkuKey((string) ($viewRow->seller_part_number ?? ''));
+                $itemNo = strtoupper(trim((string) ($viewRow->item_number ?? '')));
+                if ($exact !== '' && ! isset($viewsByExact[$exact])) {
+                    $viewsByExact[$exact] = $viewRow;
+                }
+                if ($norm !== '' && ! isset($viewsByNorm[$norm])) {
+                    $viewsByNorm[$norm] = $viewRow;
+                }
+                if ($itemNo !== '' && ! isset($viewsByItem[$itemNo])) {
+                    $viewsByItem[$itemNo] = $viewRow;
+                }
             }
         }
 
@@ -171,6 +205,16 @@ class NeweggPricingController extends Controller
             $price = $newegg && $newegg->selling_price !== null ? (float) $newegg->selling_price : null;
             $l30   = (int) ($neweggL30ByExact[$exact] ?? $neweggL30ByNorm[$norm] ?? 0);
 
+            $itemNo = strtoupper(trim((string) ($newegg?->newegg_item_number ?? '')));
+            if ($itemNo === '') {
+                $itemNo = $itemNoByExact[$exact] ?? $itemNoByNorm[$norm] ?? '';
+            }
+            $viewRow = $viewsByExact[$exact] ?? $viewsByNorm[$norm] ?? ($itemNo !== '' ? ($viewsByItem[$itemNo] ?? null) : null);
+            $pageViews = (int) ($viewRow?->page_views ?? 0);
+            $sessions = (int) ($viewRow?->sessions ?? 0);
+            $views = $pageViews > 0 ? $pageViews : $sessions;
+            $cvr = $views > 0 ? round(($l30 / $views) * 100, 2) : 0;
+
             // DIL% = overall sell-through = OVL30 / INV * 100 (same as "OV DIL" elsewhere).
             $dil = $inv > 0 ? round(($ovl30 / $inv) * 100, 0) : 0;
 
@@ -255,6 +299,9 @@ class NeweggPricingController extends Controller
                 'price'              => $price !== null ? round($price, 2) : null,
                 'a_price'            => $aPrice,
                 'l30'                => $l30,
+                'views'              => $views,
+                'sessions'           => $sessions,
+                'cvr'                => $cvr,
                 'lp'                 => round($lp, 2),
                 'ship'               => round($ship, 2),
                 'pft'                => $price !== null ? round($pftEach, 2) : null,
@@ -1124,6 +1171,260 @@ class NeweggPricingController extends Controller
         return [$lp, $ship];
     }
 
+    /**
+     * Upload Newegg Seller Portal item-performance sheet.
+     * Truncates newegg_listing_views, then inserts the new file.
+     * Views = Page Views (fallback Sessions). CVR = L30 / Views × 100.
+     */
+    public function uploadViews(Request $request)
+    {
+        $request->validate([
+            'views_file' => 'required|file',
+        ]);
+
+        try {
+            set_time_limit(300);
+            ini_set('memory_limit', '512M');
+
+            $rows = $this->parseViewsFile($request->file('views_file'));
+            if (empty($rows)) {
+                return response()->json(['error' => 'File is empty'], 400);
+            }
+
+            $headerIndex = $this->findViewsHeaderRow($rows);
+            $rawHeaders = array_values($rows[$headerIndex] ?? []);
+            $fieldByIndex = $this->mapViewsHeaders($rawHeaders);
+            if (! in_array('seller_part_number', $fieldByIndex, true) && ! in_array('item_number', $fieldByIndex, true)) {
+                return response()->json([
+                    'error' => 'Could not find Seller Part # or Item # in the header row.',
+                ], 400);
+            }
+
+            $aggregated = [];
+            $skipped = 0;
+            foreach (array_slice($rows, $headerIndex + 1) as $row) {
+                $row = array_values($row);
+                if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
+                    $skipped++;
+                    continue;
+                }
+
+                $mapped = [];
+                foreach ($fieldByIndex as $idx => $field) {
+                    if ($field === null) {
+                        continue;
+                    }
+                    $mapped[$field] = $row[$idx] ?? '';
+                }
+
+                $sellerPart = trim((string) ($mapped['seller_part_number'] ?? ''));
+                $itemNumber = trim((string) ($mapped['item_number'] ?? ''));
+                if ($sellerPart === '' && $itemNumber === '') {
+                    $skipped++;
+                    continue;
+                }
+
+                $key = $sellerPart !== ''
+                    ? 'sku:'.$this->exactSkuKey($sellerPart)
+                    : 'item:'.strtoupper($itemNumber);
+
+                if (! isset($aggregated[$key])) {
+                    $aggregated[$key] = [
+                        'seller_part_number' => $sellerPart !== '' ? $sellerPart : null,
+                        'item_number' => $itemNumber !== '' ? $itemNumber : null,
+                        'title' => $this->nullableString($mapped['title'] ?? null),
+                        'sbn_inventory' => 0,
+                        'sbs_inventory' => 0,
+                        'sessions' => 0,
+                        'session_pct' => 0,
+                        'page_views' => 0,
+                        'page_view_pct' => 0,
+                        'orders_sold' => 0,
+                        'sales' => 0,
+                        'units_sold' => 0,
+                        'unit_session_pct' => 0,
+                    ];
+                }
+
+                $aggregated[$key]['sbn_inventory'] += $this->toInt($mapped['sbn_inventory'] ?? 0);
+                $aggregated[$key]['sbs_inventory'] += $this->toInt($mapped['sbs_inventory'] ?? 0);
+                $aggregated[$key]['sessions'] += $this->toInt($mapped['sessions'] ?? 0);
+                $aggregated[$key]['page_views'] += $this->toInt($mapped['page_views'] ?? 0);
+                $aggregated[$key]['orders_sold'] += $this->toInt($mapped['orders_sold'] ?? 0);
+                $aggregated[$key]['units_sold'] += $this->toInt($mapped['units_sold'] ?? 0);
+                $aggregated[$key]['sales'] += $this->toDecimal($mapped['sales'] ?? 0);
+                if ($aggregated[$key]['session_pct'] == 0) {
+                    $aggregated[$key]['session_pct'] = $this->toDecimal($mapped['session_pct'] ?? 0);
+                }
+                if ($aggregated[$key]['page_view_pct'] == 0) {
+                    $aggregated[$key]['page_view_pct'] = $this->toDecimal($mapped['page_view_pct'] ?? 0);
+                }
+                if ($aggregated[$key]['unit_session_pct'] == 0) {
+                    $aggregated[$key]['unit_session_pct'] = $this->toDecimal($mapped['unit_session_pct'] ?? 0);
+                }
+                if (empty($aggregated[$key]['title']) && ! empty($mapped['title'])) {
+                    $aggregated[$key]['title'] = $this->nullableString($mapped['title']);
+                }
+                if (empty($aggregated[$key]['item_number']) && $itemNumber !== '') {
+                    $aggregated[$key]['item_number'] = $itemNumber;
+                }
+            }
+
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+            NeweggListingView::truncate();
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+            Log::info('Newegg listing views table truncated before import');
+
+            $imported = 0;
+            foreach (array_chunk(array_values($aggregated), 200) as $chunk) {
+                $now = now();
+                $insert = [];
+                foreach ($chunk as $row) {
+                    $insert[] = array_merge($row, [
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
+                NeweggListingView::insert($insert);
+                $imported += count($insert);
+            }
+
+            return response()->json([
+                'success' => "Imported {$imported} view rows (replaced previous upload, skipped {$skipped})",
+                'imported' => $imported,
+                'skipped' => $skipped,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error importing Newegg views sheet: '.$e->getMessage());
+
+            return response()->json(['error' => 'Error importing file: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     */
+    private function findViewsHeaderRow(array $rows): int
+    {
+        foreach ($rows as $i => $row) {
+            $joined = strtolower(implode(' ', array_map(fn ($v) => (string) $v, $row)));
+            $hasSeller = str_contains($joined, 'seller part') || str_contains($joined, 'sellerpart');
+            $hasTraffic = str_contains($joined, 'page view') || str_contains($joined, 'session');
+            $hasItem = str_contains($joined, 'item #') || str_contains($joined, 'item#');
+            if (($hasSeller || $hasItem) && $hasTraffic) {
+                return (int) $i;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  array<int, mixed>  $headers
+     * @return array<int, string|null>
+     */
+    private function mapViewsHeaders(array $headers): array
+    {
+        $usedPageViews = false;
+        $map = [];
+        foreach ($headers as $idx => $header) {
+            $n = strtolower(trim((string) $header));
+            $n = preg_replace('/[^a-z0-9%#]+/', '', $n) ?? '';
+
+            $field = null;
+            if (str_contains($n, 'unitsession')) {
+                $field = 'unit_session_pct';
+            } elseif (preg_match('/sessionp|session%|sessionpercent/', $n)) {
+                $field = 'session_pct';
+            } elseif (preg_match('/pageview.*%|pageviewpercent|pageviewsp/', $n)) {
+                $field = 'page_view_pct';
+            } elseif ($n === 'item' || str_starts_with($n, 'item#') || $n === 'itemnumber' || $n === 'neitem') {
+                $field = 'item_number';
+            } elseif ($n === 'title' || $n === 'productname' || $n === 'producttitle') {
+                $field = 'title';
+            } elseif (str_contains($n, 'sellerpart') || $n === 'sku') {
+                $field = 'seller_part_number';
+            } elseif (str_contains($n, 'sbninven') || $n === 'sbn') {
+                $field = 'sbn_inventory';
+            } elseif (str_contains($n, 'sbsinven') || $n === 'sbs') {
+                $field = 'sbs_inventory';
+            } elseif ($n === 'sessions' || $n === 'session') {
+                $field = 'sessions';
+            } elseif ($n === 'pageview' || $n === 'pageviews' || $n === 'views') {
+                $field = $usedPageViews ? 'page_view_pct' : 'page_views';
+                $usedPageViews = true;
+            } elseif (str_contains($n, 'ordersso') || str_contains($n, 'ordersold')) {
+                $field = 'orders_sold';
+            } elseif ($n === 'sales') {
+                $field = 'sales';
+            } elseif (str_contains($n, 'unitssold')) {
+                $field = 'units_sold';
+            }
+
+            $map[(int) $idx] = $field;
+        }
+
+        return $map;
+    }
+
+    private function parseViewsFile($file): array
+    {
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+
+        if (in_array($extension, ['xlsx', 'xls'], true)) {
+            try {
+                $spreadsheet = IOFactory::load($file->getPathName());
+                $sheet = $spreadsheet->getActiveSheet();
+                $rows = $sheet->toArray();
+
+                return array_values(array_filter($rows, function ($row) {
+                    return count(array_filter($row, fn ($v) => trim((string) $v) !== '')) > 0;
+                }));
+            } catch (\Throwable $e) {
+                Log::warning('Newegg views Excel parse failed, trying text: '.$e->getMessage());
+            }
+        }
+
+        $content = file_get_contents($file->getRealPath());
+        $content = preg_replace('/^\x{FEFF}/u', '', (string) $content);
+        $firstLine = explode("\n", (string) $content)[0] ?? '';
+        $delimiter = (strpos($firstLine, "\t") !== false) ? "\t" : ',';
+        $rows = array_map(fn ($line) => str_getcsv($line, $delimiter), explode("\n", (string) $content));
+
+        return array_values(array_filter($rows, function ($row) {
+            return count($row) > 0 && count(array_filter($row, fn ($v) => trim((string) $v) !== '')) > 0;
+        }));
+    }
+
+    private function toInt($value): int
+    {
+        if ($value === null || $value === '') {
+            return 0;
+        }
+
+        $s = preg_replace('/[^0-9.\-]/', '', (string) $value);
+
+        return (int) $s;
+    }
+
+    private function toDecimal($value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+
+        $s = preg_replace('/[^0-9.\-]/', '', (string) $value);
+
+        return round((float) $s, 2);
+    }
+
+    private function nullableString($value): ?string
+    {
+        $s = trim((string) ($value ?? ''));
+
+        return $s !== '' ? $s : null;
+    }
+
     public function getColumnVisibility()
     {
         try {
@@ -1135,6 +1436,7 @@ class NeweggPricingController extends Controller
                 '_select' => false,
                 'sku' => true, 'title' => false, 'inv' => true, 'ovl30' => true,
                 'dil' => true, 'price' => true, 'a_price' => true, 'l30' => true,
+                'views' => true, 'cvr' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,
                 'sprice' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
                 'lmp_price' => true, 'lmp_diff_pct' => true,

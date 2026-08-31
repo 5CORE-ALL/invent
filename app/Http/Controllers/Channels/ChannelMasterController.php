@@ -2703,19 +2703,31 @@ class ChannelMasterController extends Controller
     private function shopifyB2xSalesForPacificDate(bool $isB2b, string $ymd): ?float
     {
         $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
-        if (! Schema::hasTable($table)) {
+        $sum = 0.0;
+        if (Schema::hasTable($table)) {
+            $day = Carbon::parse($ymd, 'America/Los_Angeles');
+            $sum = (float) DB::table($table)
+                ->where('order_date', '>=', $day->copy()->startOfDay())
+                ->where('order_date', '<=', $day->copy()->endOfDay())
+                ->where('financial_status', '!=', 'refunded')
+                ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
+                ->value('revenue');
+        } elseif ($isB2b) {
             return null;
         }
 
-        $day = Carbon::parse($ymd, 'America/Los_Angeles');
-        $sum = (float) DB::table($table)
-            ->where('order_date', '>=', $day->copy()->startOfDay())
-            ->where('order_date', '<=', $day->copy()->endOfDay())
-            ->where('financial_status', '!=', 'refunded')
-            ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
-            ->value('revenue');
+        if ($sum > 0) {
+            return round($sum, 2);
+        }
 
-        return round($sum, 2);
+        // shopify_b2c_daily_data has lagged (last row 2026-08-26). Historical
+        // Shopify B2C Y Sales snapshots match /shopify direct net_sales, so
+        // fall back there instead of plotting $0 (Aug 29).
+        if (! $isB2b) {
+            return $this->shopifyRawNetSalesForPacificDate($ymd);
+        }
+
+        return 0.0;
     }
 
     /**

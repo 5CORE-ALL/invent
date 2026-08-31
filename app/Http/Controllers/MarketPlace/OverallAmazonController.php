@@ -196,8 +196,8 @@ class OverallAmazonController extends Controller
                 }
                 $amzReviewsBySku[$k] = $rr;
                 $compact = AmazonDatasheet::normalizeSkuForLookup($k);
-                if ($compact !== '' && $compact !== $k) {
-                    $amzReviewsBySku[$compact] = $rr;
+                if ($compact !== '') {
+                    $amzReviewsBySku['_c:'.$compact][] = $rr;
                 }
             }
         } catch (\Throwable $e) {
@@ -333,11 +333,14 @@ class OverallAmazonController extends Controller
             $row = [];
 
             // Reviews column: amazon:collect-reviews → amazon_product_reviews (avg rating + count)
+            // Prefer the exact Product Master SKU so "WF 672 1 PC" does not
+            // inherit a compact-key collision from "WF 672 1PC".
             $amzRev = $amzReviewsBySku[$sku]
                 ?? $amzReviewsBySku[$skuClean]
-                ?? $amzReviewsBySku[$amazonSheetKey]
-                ?? $amzReviewsBySku[$skuLookupKey]
-                ?? null;
+                ?? $this->pickAmazonReviewForSku(
+                    (string) $pm->sku,
+                    $amzReviewsBySku['_c:'.$amazonSheetKey] ?? $amzReviewsBySku['_c:'.$skuLookupKey] ?? []
+                );
             $row['amz_avg_rating'] = $amzRev && $amzRev->product_rating !== null
                 ? (float) $amzRev->product_rating
                 : null;
@@ -3009,6 +3012,27 @@ class OverallAmazonController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * @param  list<AmazonProductReview>  $candidates
+     */
+    private function pickAmazonReviewForSku(string $productSku, array $candidates): ?AmazonProductReview
+    {
+        if ($candidates === []) {
+            return null;
+        }
+        $want = AmazonDatasheet::normalizeSkuSpaces($productSku);
+        if ($want === '') {
+            return $candidates[0] ?? null;
+        }
+        foreach ($candidates as $row) {
+            if (AmazonDatasheet::normalizeSkuSpaces((string) ($row->sku ?? '')) === $want) {
+                return $row;
+            }
+        }
+
+        return $candidates[0] ?? null;
     }
 
     public function amazonTabulatorView(Request $request)

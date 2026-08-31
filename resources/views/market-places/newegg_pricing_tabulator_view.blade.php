@@ -112,6 +112,10 @@
                             style="color: black; font-weight: bold;" title="Overall PFT% = Σ profit / Σ sales">GPFT: 0%</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge"
                             style="color: black; font-weight: bold;">L30: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge"
+                            style="color: black; font-weight: bold;" title="Σ uploaded Page Views (fallback Sessions)">Views: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
+                            style="color: black; font-weight: bold;" title="CVR = Σ L30 ÷ Σ Views × 100">CVR: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="newegg-blue-triangle-badge"
@@ -197,6 +201,15 @@
                         <option value="pink">Pink 50%+</option>
                     </select>
 
+                    <select id="cvr-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
+                        title="CVR = L30 ÷ Views × 100">
+                        <option value="all">CVR</option>
+                        <option value="red">Red &lt;4%</option>
+                        <option value="yellow">Yellow 4-7%</option>
+                        <option value="green">Green 7-13%</option>
+                        <option value="pink">Pink 13%+</option>
+                    </select>
+
                     <div class="dropdown d-inline-block flex-shrink-0">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
@@ -212,6 +225,10 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-success flex-shrink-0" id="export-btn" title="Export">
                         <i class="fa fa-file-excel"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary flex-shrink-0" data-bs-toggle="modal"
+                        data-bs-target="#uploadViewsModal" title="Upload Newegg Views sheet (replaces previous upload)">
+                        <i class="fa fa-upload"></i> Views
                     </button>
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'newegg'])
 
@@ -414,6 +431,42 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'newegg'])
+
+    <div class="modal fade" id="uploadViewsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Upload Newegg Views</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadViewsForm" action="{{ route('newegg.pricing.upload.views') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Seller Portal sheet</label>
+                            <input type="file" class="form-control" name="views_file" accept=".xlsx,.xls,.csv,.txt" required>
+                        </div>
+                        <div class="alert alert-info mb-2">
+                            <small>
+                                Expected columns: <strong>Item #</strong>, <strong>Seller Part #</strong>,
+                                <strong>Sessions</strong>, <strong>Page Views</strong>, <strong>Units Sold</strong>.
+                                Matched to the pricing table by Seller Part #, then Item #.
+                            </small>
+                        </div>
+                        <div class="alert alert-warning mb-0">
+                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This replaces the previous Views upload (old rows are truncated).
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewsForm" class="btn btn-primary">
+                        <i class="fa fa-upload me-1"></i>Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -435,6 +488,7 @@
         let pftFilter    = 'all';   // 'all' | 'negative' | '0-10'…'30-40' | '40plus'
         let roiFilter    = 'all';   // 'all' | 'lt40' | '40-75' | '75-125' | 'gt125'
         let dilFilter    = 'all';   // 'all' | 'red' | 'green' | 'pink'
+        let cvrFilter    = 'all';   // 'all' | 'red' | 'yellow' | 'green' | 'pink'
 
         // Range helper for numeric bucket filters.
         function inRange(n, lo, hi) { return n >= lo && n < hi; }
@@ -492,6 +546,19 @@
                 case 'green': return n >= 25 && n < 50;
                 case 'pink':  return n >= 50;
                 default:      return true;
+            }
+        }
+
+        // CVR color buckets — same bands as the CVR column (Shein / AliExpress).
+        function cvrMatches(pct, color) {
+            if (color === 'all') return true;
+            const n = parseFloat(pct) || 0;
+            switch (color) {
+                case 'red':    return n <= 4;
+                case 'yellow': return n > 4 && n <= 7;
+                case 'green':  return n > 7 && n <= 13;
+                case 'pink':   return n > 13;
+                default:       return true;
             }
         }
 
@@ -1123,6 +1190,24 @@
                             return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
                         }
                     },
+                    { title: "Views", field: "views", hozAlign: "center", sorter: "number", width: 70,
+                        headerTooltip: "Uploaded Page Views (fallback Sessions). Replaced on each Views sheet upload.",
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue()) || 0;
+                            return v > 0 ? `<span style="font-weight:700;">${v.toLocaleString()}</span>` : '0';
+                        }
+                    },
+                    { title: "CVR", field: "cvr", hozAlign: "center", sorter: "number", width: 65,
+                        headerTooltip: "CVR = L30 ÷ Views × 100",
+                        formatter: function(cell) {
+                            const cvr = parseFloat(cell.getValue()) || 0;
+                            let color = '#a00211';
+                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
+                            else if (cvr > 13) color = '#e83e8c';
+                            return `<span style="color:${color};font-weight:600;">${cvr.toFixed(1)}%</span>`;
+                        }
+                    },
                     {
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
@@ -1598,6 +1683,7 @@
                     if (!pftMatches(row.pft_pct, pftFilter)) return false;
                     if (!roiMatches(row.roi,     roiFilter)) return false;
                     if (!dilMatches(row.dil,     dilFilter)) return false;
+                    if (!cvrMatches(row.cvr,     cvrFilter)) return false;
 
                     // Sold badge filters
                     const l30Val = parseInt(row.l30) || 0;
@@ -1679,6 +1765,7 @@
             $('#pft-filter')      .on('change', function() { pftFilter       = $(this).val(); applyNeFilters(); });
             $('#roi-filter')      .on('change', function() { roiFilter       = $(this).val(); applyNeFilters(); });
             $('#dil-filter')      .on('change', function() { dilFilter       = $(this).val(); applyNeFilters(); });
+            $('#cvr-filter')      .on('change', function() { cvrFilter       = $(this).val(); applyNeFilters(); });
 
             // ── SPRICE bulk tools (single Price Mode dropdown) ────────────────
             function syncSpriceModeBtn() {
@@ -2229,12 +2316,14 @@
             function updateSummary() {
                 const data = table.getData("active");
                 let totalL30 = 0;
+                let totalViews = 0;
                 let totalPftAmt = 0, totalSalesAmt = 0, totalCogsAmt = 0;
 
                 data.forEach(row => {
                     if (!row.sku) return;
                     const l30 = parseInt(row.l30) || 0;
                     totalL30 += l30;
+                    totalViews += parseInt(row.views) || 0;
                     const price = parseFloat(row.price);
                     if (!isNaN(price) && price > 0) {
                         const pftEach = parseFloat(row.pft) || 0;
@@ -2247,10 +2336,13 @@
 
                 const pftPct = totalSalesAmt > 0 ? (totalPftAmt / totalSalesAmt) * 100 : 0;
                 const roiPct = totalCogsAmt > 0 ? (totalPftAmt / totalCogsAmt) * 100 : 0;
+                const avgCvr = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
 
                 $('#total-sales-amt-badge').text('Sales: $' + totalSalesAmt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }));
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(pftPct) + '%');
                 $('#total-l30-badge').text('L30: ' + totalL30.toLocaleString());
+                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                $('#avg-cvr-badge').text('CVR: ' + avgCvr.toFixed(1) + '%');
                 $('#roi-percent-badge').text('ROI%: ' + Math.round(roiPct) + '%');
 
                 // Sold / Missing / Map counted over full dataset (stable regardless of active filter).
@@ -2386,6 +2478,35 @@
 
             $('#export-btn').on('click', function() {
                 table.download("csv", "newegg_pricing.csv");
+            });
+
+            $('#uploadViewsForm').on('submit', function(e) {
+                e.preventDefault();
+                const form = this;
+                const formData = new FormData(form);
+                const $btn = $('button[form="uploadViewsForm"]');
+                const original = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading...');
+                $.ajax({
+                    url: $(form).attr('action'),
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(res) {
+                        showToast(res.success || 'Views uploaded.', 'success');
+                        $('#uploadViewsModal').modal('hide');
+                        form.reset();
+                        table.setData();
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Error uploading Views sheet';
+                        showToast(msg, 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(original);
+                    }
+                });
             });
 
             // LMP column: View N / + Add

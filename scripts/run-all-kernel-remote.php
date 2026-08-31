@@ -150,6 +150,7 @@ $others = [
     'app:amazon-sp-campaign-reports',
     'app:amazon-sb-campaign-reports',
     'app:amazon-sd-campaign-reports',
+    'amazon:ads-pull-product-ads',
     'app:amazon-sp-keyword-reports',
     'app:amazon-sp-negative-keywords --prune',
     'amazon:auto-update-over-kw-bids',

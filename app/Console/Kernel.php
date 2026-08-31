@@ -1179,6 +1179,7 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('app:amazon-sp-campaign-reports', 'amazon-sp-campaign-reports', '18:00');
         $retryFiveTimesUntil('app:amazon-sb-campaign-reports', 'amazon-sb-campaign-reports', '18:05');
         $retryFiveTimesUntil('app:amazon-sd-campaign-reports', 'amazon-sd-campaign-reports', '18:10');
+        $retryFiveTimesUntil('amazon:ads-pull-product-ads', 'amazon-ads-pull-product-ads', '18:12');
 
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');

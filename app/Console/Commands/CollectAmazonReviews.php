@@ -29,10 +29,11 @@ class CollectAmazonReviews extends Command
     protected $signature = 'amazon:collect-reviews
         {--chunk=20 : ASINs per Ads Brand Posts request}
         {--limit=0 : Max SKUs to process (0 = all)}
-        {--sku= : Optional single SKU}
+        {--sku= : Optional SKU(s), comma-separated}
         {--ads-only : Do not fall back to SP-API / Jungle Scout / SerpApi}
         {--no-serp : Skip SerpApi live Amazon PDP ratings}
-        {--serp-only : Write only SerpApi / live sources (do not write Jungle Scout)}';
+        {--serp-only : Write only SerpApi / live sources (do not write Jungle Scout)}
+        {--pdp : Fetch amazon.com PDP HTML when SerpApi has no rating}';
 
     protected $description = 'Collect Amazon avg rating + review count via Ads, SP-API, cached/live SerpApi, then Jungle Scout gaps';
 
@@ -43,6 +44,10 @@ class CollectAmazonReviews extends Command
     private int $serpCacheHits = 0;
 
     private int $serpLiveHits = 0;
+
+    private bool $pdpLiveDisabled = false;
+
+    private int $pdpHits = 0;
 
     public function handle(): int
     {
@@ -65,6 +70,12 @@ class CollectAmazonReviews extends Command
         $chunkSize = max(1, min(20, (int) $this->option('chunk')));
         $limit = max(0, (int) $this->option('limit'));
         $onlySku = trim((string) $this->option('sku'));
+        $skuList = $onlySku === ''
+            ? []
+            : array_values(array_filter(array_map(
+                static fn ($s) => strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $s))),
+                explode(',', $onlySku)
+            )));
         $adsOnly = (bool) $this->option('ads-only');
         $now = Carbon::now();
 
@@ -75,8 +86,12 @@ class CollectAmazonReviews extends Command
             ->where('asin', '!=', '')
             ->orderBy('id');
 
-        if ($onlySku !== '') {
-            $query->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($onlySku)]);
+        if ($skuList !== []) {
+            $query->where(function ($q) use ($skuList) {
+                foreach ($skuList as $sku) {
+                    $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$sku]);
+                }
+            });
         }
 
         $rows = $query->get(['id', 'sku', 'asin']);
@@ -94,6 +109,10 @@ class CollectAmazonReviews extends Command
                 continue;
             }
             $bySkuNorm[$skuNorm] = ['sku' => $skuRaw, 'asin' => $asin];
+        }
+
+        if ($skuList !== []) {
+            $this->expandSkuSetWithVariationSiblings($bySkuNorm);
         }
 
         $monitor->setFetched(count($bySkuNorm));
@@ -248,7 +267,7 @@ class CollectAmazonReviews extends Command
             if ($filled > 0) {
                 $monitor->markApiConnected(true);
             }
-            $this->info("SerpApi ratings applied to {$filled} ASIN(s) (cache={$this->serpCacheHits}, live={$this->serpLiveHits})");
+            $this->info("SerpApi ratings applied to {$filled} ASIN(s) (cache={$this->serpCacheHits}, live={$this->serpLiveHits}, pdp={$this->pdpHits})");
         }
 
         if (! $adsOnly) {
@@ -559,6 +578,13 @@ class CollectAmazonReviews extends Command
                 }
                 $live = $this->serpApiReviewForAsin($probe);
             }
+            if ($live === null && $this->shouldUseAmazonPdp()) {
+                $probe = in_array($familyKey, $targets, true) ? $familyKey : $targets[0];
+                if (! $this->pdpLiveDisabled) {
+                    $this->line('Amazon PDP '.$probe.' (family '.$familyKey.')');
+                }
+                $live = $this->amazonPdpReviewForAsin($probe);
+            }
             if ($live === null) {
                 continue;
             }
@@ -677,6 +703,167 @@ class CollectAmazonReviews extends Command
     private function isLiveReviewSource(string $source): bool
     {
         return in_array($source, ['amazon_ads_bp', 'amazon_sp_catalog', 'serpapi_amazon', 'amazon_pdp'], true);
+    }
+
+    private function shouldUseAmazonPdp(): bool
+    {
+        if ((bool) $this->option('ads-only')) {
+            return false;
+        }
+
+        return (bool) $this->option('pdp') || trim((string) $this->option('sku')) !== '';
+    }
+
+    /**
+     * When a targeted --sku run hits one child, also refresh the other
+     * ASINs in that Jungle Scout / Amazon variation family.
+     *
+     * @param  array<string, array{sku: string, asin: string}>  $bySkuNorm
+     */
+    private function expandSkuSetWithVariationSiblings(array &$bySkuNorm): void
+    {
+        $asins = [];
+        foreach ($bySkuNorm as $entry) {
+            $asins[$entry['asin']] = true;
+        }
+        if ($asins === []) {
+            return;
+        }
+
+        $familyAsins = [];
+        foreach ($this->variationFamilyMap(array_keys($asins)) as $members) {
+            $overlap = false;
+            foreach ($members as $asin) {
+                if (isset($asins[$asin])) {
+                    $overlap = true;
+                    break;
+                }
+            }
+            if (! $overlap) {
+                continue;
+            }
+            foreach ($members as $asin) {
+                $familyAsins[$asin] = true;
+            }
+        }
+        if ($familyAsins === []) {
+            return;
+        }
+
+        $extra = AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull('asin')
+            ->where('asin', '!=', '')
+            ->get(['sku', 'asin']);
+        $added = 0;
+        foreach ($extra as $row) {
+            $asin = strtoupper(trim((string) $row->asin));
+            if (! isset($familyAsins[$asin])) {
+                continue;
+            }
+            $skuRaw = trim(str_replace("\xC2\xA0", ' ', (string) $row->sku));
+            $skuNorm = strtoupper($skuRaw);
+            if ($skuNorm === '' || isset($bySkuNorm[$skuNorm])) {
+                continue;
+            }
+            $bySkuNorm[$skuNorm] = ['sku' => $skuRaw, 'asin' => $asin];
+            $added++;
+        }
+        if ($added > 0) {
+            $this->info("Added {$added} variation-family sibling SKU(s)");
+        }
+    }
+
+    /**
+     * Live amazon.com PDP rating from the product page HTML.
+     * Used when SerpApi has no quota / cache miss on a targeted SKU run.
+     *
+     * @return array{rating: float|null, review_count: int, source: string}|null
+     */
+    private function amazonPdpReviewForAsin(string $asin): ?array
+    {
+        $asin = strtoupper(trim($asin));
+        if ($asin === '' || $this->pdpLiveDisabled) {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(25)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept' => 'text/html,application/xhtml+xml',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                ])
+                ->get('https://www.amazon.com/dp/'.$asin);
+
+            $html = (string) $response->body();
+            $blocked = ! $response->successful()
+                || stripos($html, 'Type the characters you see') !== false
+                || stripos($html, 'api-services-support@amazon.com') !== false
+                || (stripos($html, 'continue shopping') !== false && stripos($html, 'click the button') !== false)
+                || strlen($html) < 2500;
+
+            if ($blocked) {
+                $this->pdpLiveDisabled = true;
+                $this->warn('Amazon PDP blocked — stopping HTML fallback for this run.');
+
+                return null;
+            }
+
+            $parsed = $this->parseAmazonPdpHtml($html);
+            if ($parsed !== null) {
+                $this->pdpHits++;
+            }
+            usleep(1200000);
+
+            return $parsed;
+        } catch (\Throwable $e) {
+            Log::warning('amazon:collect-reviews Amazon PDP failed', [
+                'asin' => $asin,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return array{rating: float|null, review_count: int, source: string}|null
+     */
+    private function parseAmazonPdpHtml(string $html): ?array
+    {
+        $rating = null;
+        $reviews = null;
+
+        if (preg_match('/"ratingValue"\s*:\s*"?(\d+(?:\.\d+)?)"?/', $html, $m)) {
+            $rating = (float) $m[1];
+        }
+        if (preg_match('/"reviewCount"\s*:\s*"?(\d+)"?/', $html, $m)) {
+            $reviews = (int) $m[1];
+        }
+        if ($rating === null && preg_match('/(\d(?:\.\d)?)\s+out of 5 stars/i', $html, $m)) {
+            $rating = (float) $m[1];
+        }
+        if ($reviews === null && preg_match('/([\d,]+)\s+global ratings/i', $html, $m)) {
+            $reviews = (int) str_replace(',', '', $m[1]);
+        }
+        if ($reviews === null && preg_match('/acrCustomerReviewText[^>]*>\s*([\d,]+)\s+ratings/i', $html, $m)) {
+            $reviews = (int) str_replace(',', '', $m[1]);
+        }
+
+        if ($rating === null && $reviews === null) {
+            return null;
+        }
+        if ($rating !== null && ($rating < 1 || $rating > 5)) {
+            return null;
+        }
+
+        return [
+            'rating' => $rating !== null ? round($rating, 2) : null,
+            'review_count' => $reviews ?? 0,
+            'source' => 'amazon_pdp',
+        ];
     }
 
     private function disableLiveSerpIfNoQuota(): void
