@@ -927,7 +927,7 @@
             'wireless' => 'Wireless',
             'electric' => 'Electric',
             'gcc' => 'GCC',
-            'rohs' => 'RoHs',
+            'rohs' => 'RoHS',
             'blanket' => 'Blanket',
             'bluetooth' => 'Bluetooth',
             'logo' => 'Logo',
@@ -972,7 +972,7 @@
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="wireless" data-kpi-key="badge:compliance-master|missing_wireless" data-kpi-label="Wireless" data-kpi-value="0" title="Show rows with Wireless REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Wireless <span id="cm-summary-wireless">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="electric" data-kpi-key="badge:compliance-master|missing_electric" data-kpi-label="Electric" data-kpi-value="0" title="Show rows with Electric REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Electric <span id="cm-summary-electric">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="gcc" data-kpi-key="badge:compliance-master|missing_gcc" data-kpi-label="GCC" data-kpi-value="0" title="Show rows with GCC REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>GCC <span id="cm-summary-gcc">(0)</span></button>
-                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="rohs" data-kpi-key="badge:compliance-master|missing_rohs" data-kpi-label="RoHs" data-kpi-value="0" title="Show rows with RoHs REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>RoHs <span id="cm-summary-rohs">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="rohs" data-kpi-key="badge:compliance-master|missing_rohs" data-kpi-label="RoHS" data-kpi-value="0" title="Show rows with RoHS REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>RoHS <span id="cm-summary-rohs">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="blanket" data-kpi-key="badge:compliance-master|missing_blanket" data-kpi-label="Blanket" data-kpi-value="0" title="Show rows with Blanket REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Blanket <span id="cm-summary-blanket">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="bluetooth" data-kpi-key="badge:compliance-master|missing_bluetooth" data-kpi-label="Bluetooth" data-kpi-value="0" title="Show rows with Bluetooth REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Bluetooth <span id="cm-summary-bluetooth">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="logo" data-kpi-key="badge:compliance-master|missing_logo" data-kpi-label="Logo" data-kpi-value="0" title="Show rows with Logo REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Logo <span id="cm-summary-logo">(0)</span></button>
@@ -2049,7 +2049,7 @@
                 wireless: 'Wireless',
                 electric: 'Electric',
                 gcc: 'GCC',
-                rohs: 'RoHs',
+                rohs: 'RoHS',
                 blanket: 'Blanket',
                 bluetooth: 'Bluetooth',
                 logo: 'Logo',
@@ -2422,7 +2422,7 @@
                     wireless: 'Show rows with Wireless REQ',
                     electric: 'Show rows with Electric REQ',
                     gcc: 'Show rows with GCC REQ',
-                    rohs: 'Show rows with RoHs REQ',
+                    rohs: 'Show rows with RoHS REQ',
                     blanket: 'Show rows with Blanket REQ',
                     bluetooth: 'Show rows with Bluetooth REQ',
                     logo: 'Show rows with Logo REQ',
@@ -2812,7 +2812,7 @@
 
             function runComplianceExcelExport(btn) {
                     // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"];
+                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -2843,7 +2843,7 @@
                         "GCC": {
                             key: "gcc"
                         },
-                        "RoHs": {
+                        "RoHS": {
                             key: "rohs"
                         },
                         "Blanket": {
@@ -2948,7 +2948,7 @@
                                 // Adjust width based on column type
                                 if (["Parent", "SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
-                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHs", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
+                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph"].includes(col)) {
                                     return { wch: 15 };
                                 } else {
                                     return { wch: 10 }; // Default width for numeric columns
@@ -3205,7 +3205,7 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data
                     const sampleData = [
-                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHs', 'Blanket', 'Bluetooth', 'Logo', 'Graph'],
+                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHS', 'Blanket', 'Bluetooth', 'Logo', 'Graph'],
                         ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
                         ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A'],
                         ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ']
@@ -3222,7 +3222,7 @@
                         { wch: 12 }, // Wireless
                         { wch: 12 }, // Electric
                         { wch: 12 }, // GCC
-                        { wch: 12 }, // RoHs
+                        { wch: 12 }, // RoHS
                         { wch: 12 }, // Blanket
                         { wch: 12 }, // Bluetooth
                         { wch: 12 }, // Logo

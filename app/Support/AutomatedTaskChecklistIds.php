@@ -64,6 +64,94 @@ class AutomatedTaskChecklistIds
         ];
     }
 
+    /**
+     * Copy the checklist questionnaire from one automated-task template to another.
+     * The clone gets its own form row and CL id; submissions are not copied.
+     *
+     * @return string|null New CL id, or null if the source has no form
+     */
+    public static function cloneFormToAutomateTask(int $sourceAutomateTaskId, int $targetAutomateTaskId, ?int $actorUserId = null): ?string
+    {
+        if ($sourceAutomateTaskId < 1 || $targetAutomateTaskId < 1 || $sourceAutomateTaskId === $targetAutomateTaskId) {
+            return null;
+        }
+
+        if (! Schema::hasTable('automate_task_checklist_forms')) {
+            return null;
+        }
+
+        $source = AutomateTaskChecklistForm::query()
+            ->where('automate_task_id', $sourceAutomateTaskId)
+            ->first();
+
+        if (! $source) {
+            return null;
+        }
+
+        $existing = AutomateTaskChecklistForm::query()
+            ->where('automate_task_id', $targetAutomateTaskId)
+            ->first();
+
+        $sourceClId = self::ensureOnForm($source);
+
+        if ($existing) {
+            $clId = self::ensureOnForm($existing);
+            self::restampTemplateLink7($targetAutomateTaskId, $sourceClId, $clId);
+
+            return $clId;
+        }
+
+        $except = ['id', 'automate_task_id', 'created_at', 'updated_at'];
+        if (Schema::hasColumn('automate_task_checklist_forms', 'cl_id')) {
+            $except[] = 'cl_id';
+        }
+
+        $clone = $source->replicate($except);
+        $clone->automate_task_id = $targetAutomateTaskId;
+        $clone->created_by = $actorUserId ?: $source->created_by;
+        $clone->updated_by = $actorUserId ?: $source->updated_by;
+        if (Schema::hasColumn('automate_task_checklist_forms', 'cl_id')) {
+            $clone->cl_id = null;
+        }
+        $clone->save();
+
+        $clId = self::ensureOnForm($clone);
+        self::restampTemplateLink7($targetAutomateTaskId, $sourceClId, $clId);
+        self::applyToTemplateAndFiredTasks($targetAutomateTaskId, $clId);
+
+        return $clId;
+    }
+
+    /**
+     * After a template is duplicated, replace a copied source CL id on link7
+     * with the new form's CL id. Leave real URLs untouched.
+     */
+    protected static function restampTemplateLink7(int $automateTaskId, string $sourceClId, string $newClId): void
+    {
+        if (! Schema::hasTable('automate_tasks') || $newClId === '') {
+            return;
+        }
+
+        $template = DB::table('automate_tasks')->where('id', $automateTaskId)->first();
+        if (! $template) {
+            return;
+        }
+
+        $link7 = trim((string) ($template->link7 ?? ''));
+        $sourceClId = trim($sourceClId);
+        $shouldReplace = $link7 === ''
+            || ($sourceClId !== '' && strcasecmp($link7, $sourceClId) === 0);
+
+        if (! $shouldReplace) {
+            return;
+        }
+
+        DB::table('automate_tasks')->where('id', $automateTaskId)->update([
+            'link7' => $newClId,
+            'updated_at' => now(),
+        ]);
+    }
+
     public static function findFormByClId(string $clId): ?AutomateTaskChecklistForm
     {
         $clId = strtoupper(trim($clId));

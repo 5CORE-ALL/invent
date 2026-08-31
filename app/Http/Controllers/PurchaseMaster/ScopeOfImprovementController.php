@@ -5,6 +5,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 use App\Http\Controllers\Controller;
 use App\Models\ScopeOfImprovement;
 use App\Models\User;
+use App\Support\SuperAdminAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -15,9 +16,48 @@ class ScopeOfImprovementController extends Controller
      */
     private const ADD_ISSUE_EMAIL = 'president@5core.com';
 
-    private function canAddIssue(): bool
+    private function canAddIssue(?User $user = null): bool
     {
-        return strtolower(Auth::user()->email ?? '') === self::ADD_ISSUE_EMAIL;
+        $user ??= Auth::user();
+
+        return strtolower($user->email ?? '') === self::ADD_ISSUE_EMAIL;
+    }
+
+    /**
+     * Seniors, management, directors, and admins may see every assigned
+     * record (any score / any user). Everyone else still sees only their own.
+     */
+    private function canViewAllRecords(?User $user = null): bool
+    {
+        $user ??= Auth::user();
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->canAddIssue($user)) {
+            return true;
+        }
+
+        if (SuperAdminAccess::is($user) || SuperAdminAccess::isTaskAdmin($user)) {
+            return true;
+        }
+
+        $role = strtolower(trim((string) ($user->role ?? '')));
+        if (in_array($role, ['senior', 'director', 'admin', 'manager', 'superadmin'], true)) {
+            return true;
+        }
+
+        $org = strtolower(trim((string) ($user->org_level ?? '')));
+        if (in_array($org, ['director', 'mgr'], true)) {
+            return true;
+        }
+
+        $designation = strtolower(trim((string) ($user->designation ?? '')));
+        if ($designation !== '' && preg_match('/\b(senior|sr\.?\s*manager|manager|management|director)\b/', $designation)) {
+            return true;
+        }
+
+        return false;
     }
 
     public function index()
@@ -25,17 +65,19 @@ class ScopeOfImprovementController extends Controller
         $users = User::orderBy('name')->get(['id', 'name', 'email']);
 
         $canAddIssue = $this->canAddIssue();
+        $canViewAll = $this->canViewAllRecords();
         $currentUserId = Auth::id();
 
-        return view('purchase-master.scope-of-improvement.index', compact('users', 'canAddIssue', 'currentUserId'));
+        return view('purchase-master.scope-of-improvement.index', compact('users', 'canAddIssue', 'canViewAll', 'currentUserId'));
     }
 
     public function data()
     {
         $query = ScopeOfImprovement::with('user:id,name,email');
 
-        // Everyone except the president sees only their own records.
-        if (!$this->canAddIssue()) {
+        // Regular team members see only their own records. Seniors,
+        // management, and the president see every assigned record.
+        if (!$this->canViewAllRecords()) {
             $query->where('user_id', Auth::id());
         }
 

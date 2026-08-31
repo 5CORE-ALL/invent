@@ -556,6 +556,7 @@
             const updateBase = @json(url('scope-of-improvement/update'));
             const deleteBase = @json(url('scope-of-improvement/delete'));
             const isPresident   = @json($canAddIssue);
+            const canViewAll    = @json($canViewAll ?? false);
             const currentUserId = @json($currentUserId);
 
             const modalEl = document.getElementById('soiModal');
@@ -626,14 +627,23 @@
                 return `<span class="soi-text-cell">${esc(value)}</span>`;
             }
 
-            function actionFormatter() {
-                return `
-                    <button type="button" class="soi-action-btn is-edit soi-edit" title="Edit">
+            function actionFormatter(cell) {
+                const d = cell.getRow().getData();
+                const isOwn = String(d.user_id) === String(currentUserId);
+                let html = '';
+                if (isPresident || isOwn) {
+                    html += `
+                    <button type="button" class="soi-action-btn is-edit soi-edit" title="${isPresident ? 'Edit' : 'Update progress'}">
                         <i class="fas fa-pen"></i>
-                    </button>
+                    </button>`;
+                }
+                if (isPresident) {
+                    html += `
                     <button type="button" class="soi-action-btn is-delete soi-delete" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>`;
+                }
+                return html || '<span class="text-muted">&mdash;</span>';
             }
 
             // ---- Build the Tabulator table ----
@@ -647,7 +657,9 @@
                 pagination: 'local',
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100],
-                placeholder: 'No records yet. Click the floating button to add one.',
+                placeholder: canViewAll
+                    ? 'No records yet. Click the floating button to add one.'
+                    : 'No issues assigned to you yet.',
                 columns: [
                     {
                         title: '#',

@@ -7,10 +7,19 @@
     <style>
         .tabulator-col .tabulator-col-sorter { display: none !important; }
 
-        /* Compact, scannable table */
+        /* Compact, scannable table — header stays 2 lines (title + filter) */
         .tabulator { font-size: 12px; }
         .tabulator .tabulator-header .tabulator-col { background: #1f2937; color: #fff; }
-        .tabulator .tabulator-header .tabulator-col .tabulator-col-title { font-size: 11px; font-weight: 600; padding: 6px 4px; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 2px 4px !important; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
+            font-size: 11px; font-weight: 600; padding: 2px 4px !important;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2;
+        }
+        .tabulator .tabulator-header .tabulator-header-filter input,
+        .tabulator .tabulator-header .tabulator-header-filter select {
+            height: 22px !important; min-height: 22px !important;
+            padding: 0 4px !important; font-size: 11px !important;
+        }
         .tabulator .tabulator-row.tabulator-row-even { background-color: #fafbfc; }
         .tabulator .tabulator-row:hover { background-color: #eef5ff !important; }
 
@@ -32,10 +41,63 @@
 
         .stars { color:#f5b301; letter-spacing:1px; }
 
-        /* Stat cards */
-        .stat-card { border:0; border-radius:10px; transition:.15s; }
-        .stat-card:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.08); }
-        .stat-card .stat-icon { width:42px; height:42px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+        /* Compact 2-line page header (avoid theme 75px .page-title-box line-height) */
+        .reviews-page-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 2px 0 6px;
+            min-height: 0;
+        }
+        .reviews-page-head .reviews-title {
+            font-size: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            margin: 0;
+            white-space: nowrap;
+        }
+        .reviews-page-head .breadcrumb {
+            margin: 0;
+            padding: 0;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
+        .reviews-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 3px 8px;
+            line-height: 1.15;
+            white-space: nowrap;
+        }
+        .reviews-stat .stat-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+        }
+        .reviews-stat .stat-label { font-size: 10px; color: #6c757d; }
+        .reviews-stat .stat-value { font-size: 13px; font-weight: 700; }
+
+        .reviews-toolbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 6px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .reviews-toolbar .form-select { flex: 0 0 auto; }
+        #summary-stats { flex: 0 0 auto; }
+        #summary-stats .badge { font-size: 11px; font-weight: 700; padding: 4px 8px; }
 
         .review-clip { display:inline-block; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; cursor:pointer; }
 
@@ -45,69 +107,53 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared.page-title', [
-        'page_title' => 'Review Intelligence Master',
-        'sub_title'  => 'Centralized SKU review analytics across all marketplaces',
-    ])
+    <div class="reviews-page-head">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <h4 class="reviews-title">Review Intelligence Master</h4>
+            <span class="reviews-stat" title="Total Reviews">
+                <span class="stat-icon bg-primary-subtle text-primary"><i class="fa fa-comment-dots"></i></span>
+                <span>
+                    <span class="stat-label">Reviews</span>
+                    <span class="stat-value">{{ number_format($dashStats['total_reviews'] ?? 0) }}</span>
+                </span>
+            </span>
+            <span class="reviews-stat" title="Negative %">
+                <span class="stat-icon bg-danger-subtle text-danger"><i class="fa fa-triangle-exclamation"></i></span>
+                <span>
+                    <span class="stat-label">Negative</span>
+                    <span class="stat-value">{{ $dashStats['negative_pct'] ?? 0 }}%</span>
+                </span>
+            </span>
+            <span class="reviews-stat" title="Top Issue">
+                <span class="stat-icon bg-warning-subtle text-warning"><i class="fa fa-bug"></i></span>
+                <span>
+                    <span class="stat-label">Top Issue</span>
+                    <span class="stat-value text-capitalize">{{ str_replace('_',' ', $dashStats['top_issue'] ?? 'N/A') }}</span>
+                    <span class="stat-label">{{ $dashStats['top_issue_count'] ?? 0 }}</span>
+                </span>
+            </span>
+            <span class="reviews-stat" title="Open Alerts">
+                <span class="stat-icon bg-info-subtle text-info"><i class="fa fa-bell"></i></span>
+                <span>
+                    <span class="stat-label">Alerts</span>
+                    <span class="stat-value">{{ $dashStats['open_alerts'] ?? 0 }}</span>
+                </span>
+            </span>
+        </div>
+        <ol class="breadcrumb d-none d-xl-flex">
+            <li class="breadcrumb-item"><a href="javascript: void(0);">5Core</a></li>
+            <li class="breadcrumb-item"><a href="javascript: void(0);">SKU review analytics</a></li>
+            <li class="breadcrumb-item active">Review Intelligence Master</li>
+        </ol>
+    </div>
 
     <div class="toast-container"></div>
-
-    {{-- ============================ Summary Stat Cards ============================ --}}
-    <div class="row g-3 mb-3">
-        <div class="col-md-3 col-6">
-            <div class="card stat-card bg-white shadow-sm">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-primary-subtle text-primary"><i class="fa fa-comment-dots"></i></div>
-                    <div>
-                        <div class="text-muted small">Total Reviews</div>
-                        <h4 class="mb-0">{{ number_format($dashStats['total_reviews'] ?? 0) }}</h4>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="card stat-card bg-white shadow-sm">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-danger-subtle text-danger"><i class="fa fa-triangle-exclamation"></i></div>
-                    <div>
-                        <div class="text-muted small">Negative %</div>
-                        <h4 class="mb-0">{{ $dashStats['negative_pct'] ?? 0 }}%</h4>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="card stat-card bg-white shadow-sm">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-warning-subtle text-warning"><i class="fa fa-bug"></i></div>
-                    <div>
-                        <div class="text-muted small">Top Issue</div>
-                        <h6 class="mb-0 text-capitalize">{{ str_replace('_',' ', $dashStats['top_issue'] ?? 'N/A') }}</h6>
-                        <small class="text-muted">{{ $dashStats['top_issue_count'] ?? 0 }} reports</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="card stat-card bg-white shadow-sm">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-info-subtle text-info"><i class="fa fa-bell"></i></div>
-                    <div>
-                        <div class="text-muted small">Open Alerts</div>
-                        <h4 class="mb-0">{{ $dashStats['open_alerts'] ?? 0 }}</h4>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     {{-- ============================ Main Card ============================ --}}
     <div class="row">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <h4 class="mb-3">SKU Reviews</h4>
-
-                <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <div class="card-body py-2">
+                <div class="reviews-toolbar">
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                                 id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -132,53 +178,48 @@
                         <i class="fa fa-rotate"></i> Refresh
                     </button>
 
-                    <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
-                        <select id="filter_marketplace" class="form-select form-select-sm" style="width:auto">
-                            <option value="">All Marketplaces</option>
-                        </select>
-                        <select id="filter_rating" class="form-select form-select-sm" style="width:auto">
-                            <option value="">All Ratings</option>
-                            <option value="1">★ 1</option>
-                            <option value="2">★★ 2</option>
-                            <option value="3">★★★ 3</option>
-                            <option value="4">★★★★ 4</option>
-                            <option value="5">★★★★★ 5</option>
-                        </select>
-                        <select id="filter_sentiment" class="form-select form-select-sm" style="width:auto">
-                            <option value="">All Sentiments</option>
-                            <option value="positive">Positive</option>
-                            <option value="neutral">Neutral</option>
-                            <option value="negative">Negative</option>
-                        </select>
-                        <select id="filter_issue" class="form-select form-select-sm" style="width:auto">
-                            <option value="">All Issues</option>
-                            <option value="quality">Quality</option>
-                            <option value="packaging">Packaging</option>
-                            <option value="shipping">Shipping</option>
-                            <option value="service">Service</option>
-                            <option value="wrong_item">Wrong Item</option>
-                            <option value="missing_parts">Missing Parts</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                </div>
+                    <select id="filter_marketplace" class="form-select form-select-sm" style="width:auto">
+                        <option value="">All Marketplaces</option>
+                    </select>
+                    <select id="filter_rating" class="form-select form-select-sm" style="width:auto">
+                        <option value="">All Ratings</option>
+                        <option value="1">★ 1</option>
+                        <option value="2">★★ 2</option>
+                        <option value="3">★★★ 3</option>
+                        <option value="4">★★★★ 4</option>
+                        <option value="5">★★★★★ 5</option>
+                    </select>
+                    <select id="filter_sentiment" class="form-select form-select-sm" style="width:auto">
+                        <option value="">All Sentiments</option>
+                        <option value="positive">Positive</option>
+                        <option value="neutral">Neutral</option>
+                        <option value="negative">Negative</option>
+                    </select>
+                    <select id="filter_issue" class="form-select form-select-sm" style="width:auto">
+                        <option value="">All Issues</option>
+                        <option value="quality">Quality</option>
+                        <option value="packaging">Packaging</option>
+                        <option value="shipping">Shipping</option>
+                        <option value="service">Service</option>
+                        <option value="wrong_item">Wrong Item</option>
+                        <option value="missing_parts">Missing Parts</option>
+                        <option value="other">Other</option>
+                    </select>
 
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Filtered Summary</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="badge-total" style="color:#fff;font-weight:bold">Total: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="badge-positive" style="color:#fff;font-weight:bold">Positive: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="badge-neutral" style="color:#000;font-weight:bold">Neutral: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="badge-negative" style="color:#fff;font-weight:bold">Negative: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="badge-avg" style="color:#fff;font-weight:bold">Avg Rating: 0.0</span>
-                        <span class="badge bg-dark fs-6 p-2" id="badge-flagged" style="color:#fff;font-weight:bold">Flagged: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="badge-skus" style="color:#fff;font-weight:bold">Unique SKUs: 0</span>
+                    <div id="summary-stats" class="d-flex flex-wrap gap-1 ms-auto">
+                        <span class="badge bg-primary" id="badge-total" style="color:#fff">Total: 0</span>
+                        <span class="badge bg-success" id="badge-positive" style="color:#fff">Positive: 0</span>
+                        <span class="badge bg-warning" id="badge-neutral" style="color:#000">Neutral: 0</span>
+                        <span class="badge bg-danger" id="badge-negative" style="color:#fff">Negative: 0</span>
+                        <span class="badge bg-info" id="badge-avg" style="color:#fff">Avg: 0.0</span>
+                        <span class="badge bg-dark" id="badge-flagged" style="color:#fff">Flagged: 0</span>
+                        <span class="badge bg-secondary" id="badge-skus" style="color:#fff">SKUs: 0</span>
                     </div>
                 </div>
             </div>
 
             <div class="card-body" style="padding:0;">
-                <div id="reviews-table-wrapper" style="height: calc(100vh - 380px); display:flex; flex-direction:column;">
+                <div id="reviews-table-wrapper" style="height: calc(100vh - 210px); display:flex; flex-direction:column;">
                     <div class="p-2 bg-light border-bottom">
                         <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU…">
                     </div>
@@ -405,9 +446,9 @@
             document.getElementById('badge-positive').textContent = 'Positive: ' + pos.toLocaleString();
             document.getElementById('badge-neutral').textContent  = 'Neutral: '  + neu.toLocaleString();
             document.getElementById('badge-negative').textContent = 'Negative: ' + neg.toLocaleString();
-            document.getElementById('badge-avg').textContent      = 'Avg Rating: ' + avg;
+            document.getElementById('badge-avg').textContent      = 'Avg: ' + avg;
             document.getElementById('badge-flagged').textContent  = 'Flagged: '  + flagged.toLocaleString();
-            document.getElementById('badge-skus').textContent     = 'Unique SKUs: ' + skuSet.size.toLocaleString();
+            document.getElementById('badge-skus').textContent     = 'SKUs: ' + skuSet.size.toLocaleString();
         }
 
         // -----------------------------------------------------------------

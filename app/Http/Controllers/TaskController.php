@@ -2731,6 +2731,7 @@ class TaskController extends Controller
                 }
 
                 $duplicatedCount = 0;
+                $checklistsCopied = 0;
                 foreach ($tasksToDuplicate as $task) {
                     $taskArray = (array) $task;
                     unset($taskArray['id']); // Remove ID so a new one is created
@@ -2749,11 +2750,32 @@ class TaskController extends Controller
                         $taskArray['assignor'] = $duplicateAssignorEmail;
                     }
 
-                    \DB::table('automate_tasks')->insert($taskArray);
+                    $sourceClMeta = AutomatedTaskChecklistIds::metaForAutomateTask((int) $task->id);
+                    if ($sourceClMeta) {
+                        $copiedLink7 = trim((string) ($taskArray['link7'] ?? ''));
+                        if ($copiedLink7 === '' || strcasecmp($copiedLink7, $sourceClMeta['cl_id']) === 0) {
+                            $taskArray['link7'] = '';
+                        }
+                    }
+
+                    $copiedClId = \DB::transaction(function () use ($task, $taskArray) {
+                        $newTaskId = (int) \DB::table('automate_tasks')->insertGetId($taskArray);
+                        return AutomatedTaskChecklistIds::cloneFormToAutomateTask(
+                            (int) $task->id,
+                            $newTaskId,
+                            Auth::id()
+                        );
+                    });
+                    if ($copiedClId) {
+                        $checklistsCopied++;
+                    }
                     $duplicatedCount++;
                 }
 
                 $msg = "$duplicatedCount task(s) duplicated successfully!";
+                if ($checklistsCopied > 0) {
+                    $msg .= " $checklistsCopied checklist(s) copied.";
+                }
                 if ($duplicateAssigneeEmail !== null) {
                     $msg .= ' All copies use the selected assignee.';
                 }

@@ -169,7 +169,7 @@ class BadgeDataCatalog
                 'missing_wireless' => 'Wireless',
                 'missing_electric' => 'Electric',
                 'missing_gcc' => 'GCC',
-                'missing_rohs' => 'RoHs',
+                'missing_rohs' => 'RoHS',
                 'missing_blanket' => 'Blanket',
                 'missing_bluetooth' => 'Bluetooth',
                 'missing_logo' => 'Logo',

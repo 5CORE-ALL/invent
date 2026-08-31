@@ -1607,6 +1607,26 @@
                 return parseDepartmentList(r.department);
             }
 
+            // Stored values stay canonical (e.g. "Carrier Issue") for filters/saves.
+            // These labels match the Responsible Dept dropdown in the issue modal.
+            const DEPARTMENT_DISPLAY_LABELS = {
+                'Carrier': 'Carrier Claims',
+                'Carrier Issue': 'Carrier Scan Issue',
+                'Carrier and Claim': 'Carrier Claims',
+                'Carriers Claims': 'Carrier Claims',
+            };
+
+            function formatDepartmentLabel(name) {
+                const t = String(name ?? '').trim();
+                if (!t) return '';
+                if (DEPARTMENT_DISPLAY_LABELS[t]) return DEPARTMENT_DISPLAY_LABELS[t];
+                const lower = t.toLowerCase();
+                for (const key in DEPARTMENT_DISPLAY_LABELS) {
+                    if (key.toLowerCase() === lower) return DEPARTMENT_DISPLAY_LABELS[key];
+                }
+                return t;
+            }
+
             function linkHrefFromText(text) {
                 const t = String(text || '').trim();
                 if (!t) return '';
@@ -1987,12 +2007,13 @@
                     ? (action1Remark ? action1 + ' — ' + action1Remark : action1)
                     : action1Remark;
 
-                const departments = (Array.isArray(d.departments) && d.departments.length)
-                    ? d.departments.join(', ')
-                    : (function () {
-                        const list = parseDepartmentList(d.department);
-                        return list && list.length ? list.join(', ') : (d.department || '');
-                    })();
+                const departments = (function () {
+                    const list = (Array.isArray(d.departments) && d.departments.length)
+                        ? d.departments
+                        : parseDepartmentList(d.department);
+                    if (list && list.length) return list.map(formatDepartmentLabel).join(', ');
+                    return formatDepartmentLabel(d.department || '');
+                })();
 
                 const createdAtDisplay = String(d.created_at_pacific || d.created_at_display || d.created_at || '').trim();
 
@@ -2187,9 +2208,10 @@
 
                 const tbody = '<tbody>' + rows.map(function (r) {
                     const ref = r.issue_ref || (r.orders_on_hold_issue_id != null ? String(r.orders_on_hold_issue_id) : '');
-                    const depts = (Array.isArray(r.departments) && r.departments.length)
-                        ? r.departments.join(', ')
-                        : (r.department || '');
+                    const deptList = (Array.isArray(r.departments) && r.departments.length)
+                        ? r.departments
+                        : parseDepartmentList(r.department);
+                    const depts = deptList.map(formatDepartmentLabel).join(', ');
 
                     const action = String(r.action_1 || '').trim();
                     const actionRemark = String(r.action_1_remark || '').trim();
@@ -2311,7 +2333,7 @@
                 const otherNote = String(d.department_other_note || '').trim();
                 return '<div class="dept-stack">' +
                     list.map(function (x) {
-                        let html = '<span class="dept-pill">' + escapeHtml(x) + '</span>';
+                        let html = '<span class="dept-pill">' + escapeHtml(formatDepartmentLabel(x)) + '</span>';
                         if (String(x).trim() === 'Other' && otherNote) {
                             html += '<div class="small text-muted mt-1" style="max-width:160px;white-space:normal;line-height:1.25;">' +
                                 escapeHtml(otherNote) + '</div>';
@@ -3179,7 +3201,7 @@
                 depts.forEach(d => {
                     const opt = document.createElement('option');
                     opt.value = d;
-                    opt.textContent = d + ' (' + counts[d] + ')';
+                    opt.textContent = formatDepartmentLabel(d) + ' (' + counts[d] + ')';
                     if (d === prev) opt.selected = true;
                     sel.appendChild(opt);
                 });
