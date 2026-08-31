@@ -157,9 +157,7 @@ class NeweggApiService
             ?? data_get($invJson, 'ResponseBody.Inventory');
 
         $priceJson = is_array($info['price'] ?? null) ? $info['price'] : [];
-        $price = data_get($priceJson, 'PriceList.Price.0.SellingPrice')
-            ?? data_get($priceJson, 'PriceList.0.SellingPrice')
-            ?? data_get($priceJson, 'SellingPrice');
+        $price = $this->extractSellingPrice($priceJson);
 
         if ($sku === '') {
             // Seller Part # lookup when product_id was an Item #, fall back to product_id.
@@ -509,6 +507,150 @@ class NeweggApiService
             'Value'       => $value,
             'CountryList' => ['CountryCode' => array_values($countries)],
         ]);
+    }
+
+    /**
+     * USA (or $country) SellingPrice from a Get Item Price JSON payload.
+     */
+    public function extractSellingPrice(?array $json, string $country = 'USA'): ?float
+    {
+        $row = $this->extractPriceRowForCountry($json, $country);
+        if ($row === null || ! isset($row['SellingPrice']) || ! is_numeric($row['SellingPrice'])) {
+            return null;
+        }
+
+        return round((float) $row['SellingPrice'], 2);
+    }
+
+    /**
+     * Price row for a destination country. Supports the live envelope
+     * (PriceList.Price[]) and the documented wrappers.
+     *
+     * @param  array<mixed>|null  $json
+     * @return array<string, mixed>|null
+     */
+    public function extractPriceRowForCountry(?array $json, string $country = 'USA'): ?array
+    {
+        $country = strtoupper(trim($country));
+
+        foreach ($this->priceResultCandidates($json) as $result) {
+            if (! is_array($result)) {
+                continue;
+            }
+
+            $priceList = data_get($result, 'PriceList');
+            if (! is_array($priceList) || $priceList === []) {
+                continue;
+            }
+
+            $prices = array_is_list($priceList)
+                ? $priceList
+                : data_get($priceList, 'Price', $priceList);
+
+            if (is_array($prices) && ! array_is_list($prices)) {
+                $prices = [$prices];
+            }
+
+            $fallback = null;
+            foreach ($prices as $p) {
+                if (! is_array($p)) {
+                    continue;
+                }
+                $fallback ??= $p;
+                if ($country !== '' && strtoupper((string) data_get($p, 'CountryCode')) === $country) {
+                    return $p;
+                }
+            }
+
+            return $fallback;
+        }
+
+        return null;
+    }
+
+    /**
+     * GET live SellingPrice and write it back to newegg_pricing (including raw JSON).
+     */
+    public function refreshStoredSellingPrice(string $sellerPartNumber, string $country = 'USA'): ?float
+    {
+        $sellerPartNumber = trim($sellerPartNumber);
+        if ($sellerPartNumber === '') {
+            return null;
+        }
+
+        $res = $this->getItemPrice($sellerPartNumber, [$country]);
+        if (! empty($res['blocked_by_cloudflare']) || ! is_array($res['json'] ?? null)) {
+            return null;
+        }
+
+        $row = $this->extractPriceRowForCountry($res['json'], $country);
+        $price = ($row !== null && isset($row['SellingPrice']) && is_numeric($row['SellingPrice']))
+            ? round((float) $row['SellingPrice'], 2)
+            : null;
+
+        if ($price === null) {
+            return null;
+        }
+
+        $payload = [
+            'selling_price' => $price,
+            'price_raw_json' => $res['json'],
+        ];
+        if (isset($row['MAP']) && is_numeric($row['MAP'])) {
+            $payload['map'] = round((float) $row['MAP'], 2);
+        }
+        if (isset($row['Currency'])) {
+            $payload['currency'] = $row['Currency'];
+        }
+        if (array_key_exists('OnPromotion', $row)) {
+            $payload['on_promotion'] = $row['OnPromotion'];
+        }
+
+        \App\Models\NeweggPricing::query()
+            ->where('seller_part_number', $sellerPartNumber)
+            ->update($payload);
+
+        return $price;
+    }
+
+    /**
+     * @param  array<mixed>|null  $json
+     * @return list<mixed>
+     */
+    private function priceResultCandidates(?array $json): array
+    {
+        if (! is_array($json)) {
+            return [];
+        }
+
+        if (array_is_list($json)) {
+            return $json;
+        }
+
+        $obj = $json;
+        $wrappers = ['NeweggAPIResponse', 'ResponseBody', 'PriceResult', 'InventoryResult'];
+        $changed = true;
+        while ($changed) {
+            $changed = false;
+            foreach ($wrappers as $key) {
+                if (isset($obj[$key]) && is_array($obj[$key]) && ! array_is_list($obj[$key])) {
+                    $obj = $obj[$key];
+                    $changed = true;
+                    break;
+                }
+            }
+        }
+
+        $list = data_get($obj, 'ItemPriceResultList.ItemPriceResult')
+            ?? data_get($obj, 'PriceResultList.PriceResult')
+            ?? data_get($obj, 'ItemPriceList.ItemPrice')
+            ?? data_get($obj, 'ResponseList');
+
+        if (is_array($list)) {
+            return array_is_list($list) ? $list : [$list];
+        }
+
+        return [$obj];
     }
 
     /**

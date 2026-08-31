@@ -44,19 +44,29 @@ class NeweggPricingController extends Controller
         // 2) Shopify data (INV + overall L30) keyed by the exact PM SKU.
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // 3) Newegg pricing keyed by a normalized SKU (special-char-insensitive match).
+        // 3) Newegg pricing — exact SKU first, then normalized (keep "." so 1.5FT ≠ 15FT).
+        $neweggByExact = [];
         $neweggByNorm = [];
         foreach (NeweggPricing::all() as $p) {
+            $exact = $this->exactSkuKey($p->seller_part_number);
             $norm = $this->normalizeSkuKey($p->seller_part_number);
+            if ($exact !== '' && ! isset($neweggByExact[$exact])) {
+                $neweggByExact[$exact] = $p;
+            }
             if ($norm !== '' && !isset($neweggByNorm[$norm])) {
                 $neweggByNorm[$norm] = $p;
             }
         }
 
-        // 4) Newegg catalog titles keyed by normalized SKU.
+        // 4) Newegg catalog titles keyed by exact then normalized SKU.
+        $titleByExact = [];
         $titleByNorm = [];
         foreach (NeweggItem::query()->select('seller_part_number', 'title')->get() as $it) {
+            $exact = $this->exactSkuKey($it->seller_part_number);
             $norm = $this->normalizeSkuKey($it->seller_part_number);
+            if ($exact !== '' && ! isset($titleByExact[$exact])) {
+                $titleByExact[$exact] = $it->title;
+            }
             if ($norm !== '' && !isset($titleByNorm[$norm])) {
                 $titleByNorm[$norm] = $it->title;
             }
@@ -82,13 +92,19 @@ class NeweggPricingController extends Controller
             Log::warning('Newegg L30 query failed: '.$e->getMessage());
         }
 
+        $neweggL30ByExact = [];
         $neweggL30ByNorm = [];
         foreach ($neweggL30Raw as $spn => $qty) {
-            $norm = $this->normalizeSkuKey($spn);
+            $exact = $this->exactSkuKey((string) $spn);
+            $norm = $this->normalizeSkuKey((string) $spn);
+            $qty = (int) $qty;
+            if ($exact !== '') {
+                $neweggL30ByExact[$exact] = ($neweggL30ByExact[$exact] ?? 0) + $qty;
+            }
             if ($norm === '') {
                 continue;
             }
-            $neweggL30ByNorm[$norm] = ($neweggL30ByNorm[$norm] ?? 0) + (int) $qty;
+            $neweggL30ByNorm[$norm] = ($neweggL30ByNorm[$norm] ?? 0) + $qty;
         }
 
         // 6) User-entered SPRICE / SPFT / SROI overlay (newegg_data_views), keyed by exact SKU.
@@ -101,6 +117,7 @@ class NeweggPricingController extends Controller
             ->keyBy(fn ($r) => strtoupper((string) $r->sku));
 
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('newegg', $skus);
+        $neweggApi = app(NeweggApiService::class);
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -144,15 +161,18 @@ class NeweggPricingController extends Controller
                 continue;
             }
 
+            $exact   = $this->exactSkuKey((string) $sku);
             $norm    = $this->normalizeSkuKey($sku);
-            $newegg  = $neweggByNorm[$norm] ?? null;
+            $newegg  = $neweggByExact[$exact] ?? $neweggByNorm[$norm] ?? null;
             $shopify = $shopifyData[$sku] ?? null;
 
             $inv   = (float) ($shopify->inv ?? 0);
             $ovl30 = (float) ($shopify->quantity ?? 0);
 
-            $price = $newegg && $newegg->selling_price !== null ? (float) $newegg->selling_price : null;
-            $l30   = (int) ($neweggL30ByNorm[$norm] ?? 0);
+            // Price = last Newegg API SellingPrice (price_raw_json), not a later
+            // local overwrite from push / Shopify sync (promo lock can diverge).
+            $price = $this->listedSellingPrice($newegg, $neweggApi);
+            $l30   = (int) ($neweggL30ByExact[$exact] ?? $neweggL30ByNorm[$norm] ?? 0);
 
             // DIL% = overall sell-through = OVL30 / INV * 100 (same as "OV DIL" elsewhere).
             $dil = $inv > 0 ? round(($ovl30 / $inv) * 100, 0) : 0;
@@ -231,7 +251,7 @@ class NeweggPricingController extends Controller
             $row = [
                 'sku'                => $sku,
                 'image'              => $image ?: null,
-                'title'              => $titleByNorm[$norm] ?? null,
+                'title'              => $titleByExact[$exact] ?? $titleByNorm[$norm] ?? null,
                 'inv'                => (int) $inv,
                 'ovl30'              => (int) $ovl30,
                 'dil'                => $dil,
@@ -571,11 +591,17 @@ class NeweggPricingController extends Controller
             }
 
             // Build a SKU → SellerPartNumber index once (avoids N queries).
+            $spnByExact = [];
             $spnByNorm = [];
             foreach (NeweggPricing::query()->select('seller_part_number')->get() as $row) {
-                $norm = $this->normalizeSkuKey((string) $row->seller_part_number);
+                $spn = (string) $row->seller_part_number;
+                $exact = $this->exactSkuKey($spn);
+                $norm = $this->normalizeSkuKey($spn);
+                if ($exact !== '' && ! isset($spnByExact[$exact])) {
+                    $spnByExact[$exact] = $spn;
+                }
                 if ($norm !== '' && !isset($spnByNorm[$norm])) {
-                    $spnByNorm[$norm] = (string) $row->seller_part_number;
+                    $spnByNorm[$norm] = $spn;
                 }
             }
 
@@ -593,8 +619,9 @@ class NeweggPricingController extends Controller
                     $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'Price must be > 0'];
                     continue;
                 }
+                $exact = $this->exactSkuKey($sku);
                 $norm = $this->normalizeSkuKey($sku);
-                $spn = $spnByNorm[$norm] ?? null;
+                $spn = $spnByExact[$exact] ?? $spnByNorm[$norm] ?? null;
                 if (!$spn) {
                     $errors[] = ['sku' => $sku, 'success' => false, 'error' => 'No Newegg listing (SPN) found for SKU'];
                     continue;
@@ -629,9 +656,14 @@ class NeweggPricingController extends Controller
                 $success = (bool) ($r['success'] ?? false);
                 if ($success) {
                     $pushed++;
-                    NeweggPricing::where('seller_part_number', $spn)->update([
-                        'selling_price' => $priceBySpn[$spn] ?? null,
-                    ]);
+                    $live = $newegg->refreshStoredSellingPrice($spn, 'USA');
+                    $stored = $live ?? ($priceBySpn[$spn] ?? null);
+                    if ($live === null && $stored !== null) {
+                        NeweggPricing::where('seller_part_number', $spn)->update([
+                            'selling_price' => $stored,
+                        ]);
+                    }
+                    $priceBySpn[$spn] = $stored;
                 }
                 $results[] = [
                     'sku'     => $localSku,
@@ -738,8 +770,40 @@ class NeweggPricingController extends Controller
     }
 
     /**
-     * Normalize a SKU for special-char-insensitive matching: drop everything
-     * that isn't a letter or digit (spaces, slashes, dashes, etc.) and uppercase.
+     * Live Newegg SellingPrice from the last Get Item Price payload, else column.
+     */
+    private function listedSellingPrice(?NeweggPricing $newegg, NeweggApiService $api): ?float
+    {
+        if (! $newegg) {
+            return null;
+        }
+
+        $country = strtoupper((string) ($newegg->country_code ?: 'USA'));
+        $raw = is_array($newegg->price_raw_json) ? $newegg->price_raw_json : null;
+        $fromApi = $api->extractSellingPrice($raw, $country);
+        if ($fromApi !== null) {
+            return $fromApi;
+        }
+
+        return $newegg->selling_price !== null ? (float) $newegg->selling_price : null;
+    }
+
+    /**
+     * Case-insensitive SKU with NBSP folded to space (keeps punctuation).
+     */
+    private function exactSkuKey(?string $sku): string
+    {
+        if ($sku === null || $sku === '') {
+            return '';
+        }
+
+        $sku = str_replace(["\u{00A0}", "\u{202F}", "\u{2007}"], ' ', $sku);
+
+        return strtoupper(preg_replace('/\s+/', ' ', trim($sku)) ?? '');
+    }
+
+    /**
+     * Special-char-insensitive match, but keep decimal points so "1.5FT" ≠ "15FT".
      * e.g. "1/4M-3/8M Camera Screw 5Pcs" => "14M38MCAMERASCREW5PCS".
      */
     private function normalizeSkuKey(?string $sku): string
@@ -748,7 +812,9 @@ class NeweggPricingController extends Controller
             return '';
         }
 
-        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $sku));
+        $sku = str_replace(["\u{00A0}", "\u{202F}", "\u{2007}"], ' ', $sku);
+
+        return strtoupper(preg_replace('/[^A-Za-z0-9.]/', '', $sku) ?? '');
     }
 
     /**
