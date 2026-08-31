@@ -23,6 +23,8 @@ use App\Http\Controllers\MarketPlace\Temu2SyncController;
 use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
+use App\Models\ShopifySku;
+use App\Services\MarketplaceManager\MarketplaceListingInstantMapService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Jobs\FetchMarketplaceShopifyTrackingJob;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
@@ -230,6 +232,50 @@ class MarketplaceController extends Controller
         }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
+    }
+
+    /**
+     * Instantly map a Shopify SKU to this marketplace listing (auto by SKU, or pasted marketplace id).
+     */
+    public function linkProduct(Request $request, string $marketplace, int $shopifySku): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if (! in_array($marketplace, self::SUPPORTED_MARKETPLACES, true)) {
+            abort(404, 'Marketplace not found');
+        }
+
+        $row = ShopifySku::query()->findOrFail($shopifySku);
+        $sku = trim((string) $row->sku);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU missing on this Shopify row.'], 422);
+        }
+
+        $marketplaceId = trim((string) $request->input('marketplace_id', ''));
+        $skuId = trim((string) $request->input('sku_id', ''));
+        $result = app(MarketplaceListingInstantMapService::class)->link(
+            $marketplace,
+            $sku,
+            $marketplaceId !== '' ? $marketplaceId : null,
+            $skuId !== '' ? $skuId : null
+        );
+
+        if (empty($result['success'])) {
+            return response()->json($result, 422);
+        }
+
+        $inventory = null;
+        try {
+            $invResponse = $this->syncProductInventory($request, $marketplace, $shopifySku);
+            $inventory = $invResponse->getData(true);
+        } catch (\Throwable $e) {
+            $inventory = [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+        $result['inventory'] = is_array($inventory) ? $inventory : null;
+
+        return response()->json($result);
     }
 
     public function acceptOrder(Request $request, string $marketplace, int $order): JsonResponse

@@ -116,6 +116,11 @@
                 </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
+                @if($connected && empty($linked))
+                    <button type="button" class="btn btn-sm btn-success js-mm-link-sku" data-id="{{ $shopifySkuId }}" data-sku="{{ e($s['sku'] ?? '') }}">
+                        <i class="ri-link"></i> Link to Amz
+                    </button>
+                @endif
                 @if($connected)
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-ae" data-id="{{ $shopifySkuId }}">
                         <i class="ri-download-cloud-line"></i> Pull from Amz
@@ -173,8 +178,8 @@
 
         @if(!$linked)
             <div class="alert alert-secondary small">
-                This Shopify SKU is not linked in <code>amazon_products</code> yet.
-                Go to <a href="{{ route('marketplace.products', 'amazon') }}">Listings</a> and click <strong>Sync Amz link map</strong> to match SKUs.
+                This Shopify SKU is not linked on Amz yet.
+                Click <strong>Link to Amz</strong> to match it (auto by seller SKU, or paste an ASIN).
             </div>
         @endif
 
@@ -417,4 +422,5 @@ document.getElementById('btn-sync-inventory')?.addEventListener('click', functio
     });
 });
 </script>
+@include('marketplace._listings-instant-map-js')
 @endsection

@@ -46,6 +46,7 @@
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
+                    @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Alibaba link map
                     </button>
@@ -153,28 +154,27 @@
                                         @endif
                                     </td>
                                     <td class="small">{{ $p->product_id ?? '—' }}</td>
-                                    <td class="small">
-                                        @php $stVal = $p->mp_state ?? $p->tiktok_state ?? $p->temu_state ?? null; @endphp
-                                        @if(!empty($stVal))
-                                            @php $st = strtolower((string)$stVal); @endphp
-                                            <span class="badge {{ $st === 'active' ? 'bg-success-subtle text-success' : ($st === 'inactive' ? 'bg-warning-subtle text-warning' : 'bg-light text-muted') }}">{{ $stVal }}</span>
-                                        @else
-                                            —
-                                        @endif
-                                    </td>
-                                    <td class="small">{{ !empty($p->inactive_reason) ? $p->inactive_reason : '—' }}</td>
+                                    <td class="small">
+                                        @php $stVal = $p->mp_state ?? $p->tiktok_state ?? $p->temu_state ?? null; @endphp
+                                        @if(!empty($stVal))
+                                            @php $st = strtolower((string)$stVal); @endphp
+                                            <span class="badge {{ $st === 'active' ? 'bg-success-subtle text-success' : ($st === 'inactive' ? 'bg-warning-subtle text-warning' : 'bg-light text-muted') }}">{{ $stVal }}</span>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                    <td class="small">{{ !empty($p->inactive_reason) ? $p->inactive_reason : '—' }}</td>
                                     <td>{{ $p->shopify_quantity ?? '—' }}</td>
                                     <td>{{ $p->ae_quantity ?? $p->quantity ?? '—' }}</td>
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
-                                        @if(($p->listing_status ?? '') === 'not_in_shopify')
-                                            <span class="badge bg-warning-subtle text-warning">Not in Shopify</span>
-                                        @elseif($p->linked)
-                                            <span class="badge bg-success-subtle text-success">Linked</span>
-                                        @else
-                                            <span class="badge bg-light text-muted">Not linked</span>
-                                        @endif
+                                        @include('marketplace._listings-link-cell', [
+                                            'linked' => $p->linked,
+                                            'listingStatus' => $p->listing_status ?? '',
+                                            'shopifySkuId' => $p->shopify_sku_id ?? null,
+                                            'sku' => $p->sku ?? '',
+                                        ])
                                     </td>
                                 </tr>
                             @empty
@@ -291,4 +291,5 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     runPage(true);
 });
 </script>
+@include('marketplace._listings-instant-map-js')
 @endsection

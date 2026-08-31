@@ -812,6 +812,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
+        Route::post('/products/{shopifySku}/link', [\App\Http\Controllers\MarketplaceController::class, 'linkProduct'])->name('marketplace.products.link')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/sync-inventory', [\App\Http\Controllers\MarketplaceController::class, 'syncProductInventory'])->name('marketplace.products.sync.inventory')->whereNumber('shopifySku');
         Route::get('/products/{shopifySku}/listing-editor', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'listingEditor'])
             ->name('marketplace.reverb.listing.editor')

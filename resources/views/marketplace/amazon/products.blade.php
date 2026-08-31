@@ -9,7 +9,9 @@
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
             <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs Amz quantity (same qty, or gap at most max(3 units, 3% of Shopify)).
             <strong>Active SKU / Inactive SKU</strong> = actual Amz seller portal status (not inventory match).
-            <em>Refresh live</em> warms Amz status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
+            <em>Fetch new listings</em> pulls new Shopify SKUs into this table.
+            Use <em>Link</em> on an unlinked row to match Shopify inventory to Amz (auto by seller SKU, or paste an ASIN).
+            <em>Refresh live</em> warms Amz status.
         </p>
 
         @if(!empty($shopifyCatalogSyncedAt))
@@ -59,6 +61,7 @@
                             <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
                         </button>
                     @endif
+                    @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Amz link map
                     </button>
@@ -190,13 +193,12 @@
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
-                                        @if(($p->listing_status ?? '') === 'not_in_shopify')
-                                            <span class="badge bg-warning-subtle text-warning">Not in Shopify</span>
-                                        @elseif($p->linked)
-                                            <span class="badge bg-success-subtle text-success">Linked</span>
-                                        @else
-                                            <span class="badge bg-light text-muted">Not linked</span>
-                                        @endif
+                                        @include('marketplace._listings-link-cell', [
+                                            'linked' => $p->linked,
+                                            'listingStatus' => $p->listing_status ?? '',
+                                            'shopifySkuId' => $p->shopify_sku_id ?? null,
+                                            'sku' => $p->sku ?? '',
+                                        ])
                                     </td>
                                 </tr>
                             @empty
@@ -362,4 +364,5 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     tick();
 });
 </script>
+@include('marketplace._listings-instant-map-js')
 @endsection
