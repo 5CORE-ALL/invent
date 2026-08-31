@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\NeweggItem;
 use App\Models\NeweggOrderItem;
 use App\Models\NeweggPricing;
+use App\Models\ProductMaster;
 use App\Services\NeweggApiService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ class FetchNeweggItemData extends Command
     protected $signature = 'newegg:item-data
         {--sku= : A single seller part number to fetch}
         {--skus= : Comma-separated list of seller part numbers}
-        {--source=auto : Where to pull the SKU list from: auto, catalog (newegg_items), or orders (newegg_order_items)}
+        {--source=auto : Where to pull the SKU list from: auto, catalog (newegg_items + product master), or orders (newegg_order_items)}
         {--country=USA : Destination country code for price (ISO 3-letter)}
         {--save : Persist results to the database}
         {--only-missing : Only process SKUs that do not yet have a selling_price in newegg_pricing}
@@ -68,8 +69,20 @@ class FetchNeweggItemData extends Command
                 count($chunk) === 1 ? '' : 's'
             ));
 
-            $priceRes = $this->callBatch(fn () => $newegg->getBatchPrice($chunk, [$country]));
-            $invRes   = $this->callBatch(fn () => $newegg->getBatchInventory($chunk));
+            [$priceRes, $priceDropped] = $this->requestBatchUntilValid(
+                fn (array $c) => $newegg->getBatchPrice($c, [$country]),
+                $chunk,
+                $newegg
+            );
+            [$invRes, $invDropped] = $this->requestBatchUntilValid(
+                fn (array $c) => $newegg->getBatchInventory($c),
+                $chunk,
+                $newegg
+            );
+            $droppedKeys = [];
+            foreach (array_merge($priceDropped, $invDropped) as $bad) {
+                $droppedKeys[$newegg->batchSellerPartKey($bad)] = true;
+            }
 
             if ($priceRes['blocked_by_cloudflare'] || $invRes['blocked_by_cloudflare']) {
                 $this->error('Blocked by Cloudflare. Run this from a Newegg-whitelisted server.');
@@ -93,6 +106,10 @@ class FetchNeweggItemData extends Command
 
             foreach ($chunk as $sku) {
                 $key       = $newegg->batchSellerPartKey($sku);
+                if (isset($droppedKeys[$key])) {
+                    $tally['invalid sku'] = ($tally['invalid sku'] ?? 0) + 1;
+                    continue;
+                }
                 $priceItem = $priceBySku[$key] ?? null;
                 $invItem   = $invBySku[$key] ?? null;
 
@@ -191,6 +208,63 @@ class FetchNeweggItemData extends Command
         return $fn();
     }
 
+    /**
+     * Drop Values Newegg rejects (CE003 max length, etc.) and retry the rest
+     * so one bad Product Master "SKU" cannot blank a whole batch.
+     *
+     * @param  callable(list<string>): array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}  $fn
+     * @param  list<string>  $chunk
+     * @return array{0: array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}, 1: list<string>}
+     */
+    private function requestBatchUntilValid(callable $fn, array $chunk, NeweggApiService $newegg): array
+    {
+        $working = $chunk;
+        $dropped = [];
+        $res = ['ok' => true, 'status' => 200, 'blocked_by_cloudflare' => false, 'json' => null, 'raw' => '', 'error' => null];
+
+        for ($attempt = 0; $attempt < 8 && $working !== []; $attempt++) {
+            $res = $this->callBatch(fn () => $fn($working));
+            if (! empty($res['blocked_by_cloudflare']) || ($res['ok'] ?? false)) {
+                return [$res, $dropped];
+            }
+
+            $invalid = $this->invalidBatchValue($res);
+            if ($invalid === null) {
+                return [$res, $dropped];
+            }
+
+            $invalidKey = $newegg->batchSellerPartKey($invalid);
+            $before = count($working);
+            $working = array_values(array_filter(
+                $working,
+                fn ($s) => $newegg->batchSellerPartKey($s) !== $invalidKey
+            ));
+            if (count($working) === $before) {
+                return [$res, $dropped];
+            }
+
+            $dropped[] = $invalid;
+            $this->warn('  Skipping invalid Newegg SPN: '.$invalid);
+        }
+
+        return [$res, $dropped];
+    }
+
+    /**
+     * @param  array{ok?:bool,json:?array,raw?:string,error?:?string}  $res
+     */
+    private function invalidBatchValue(array $res): ?string
+    {
+        $text = (string) ($res['error'] ?? '');
+        $text .= ' '.$this->extractError($res['json'] ?? null);
+        $text .= ' '.($res['raw'] ?? '');
+        if (preg_match("/The value '([^']+)' is invalid according to its datatype/i", $text, $m)) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
     private function formatDuration(float $seconds): string
     {
         if ($seconds < 60) {
@@ -222,7 +296,7 @@ class FetchNeweggItemData extends Command
         $source = strtolower((string) $this->option('source'));
         $skus   = [];
 
-        // catalog = all listed SKUs from the Item Basic Info report (newegg_items).
+        // catalog = listed SKUs from the Item Basic Info report (newegg_items).
         if ($source === 'catalog' || $source === 'auto') {
             $skus = NeweggItem::query()
                 ->whereNotNull('seller_part_number')
@@ -242,6 +316,20 @@ class FetchNeweggItemData extends Command
                 ->all();
         }
 
+        // The Item Basic Info catalog lags live listings. Also pull Product Master
+        // SKUs so rows on /newegg-pricing-view (e.g. CS 06 2W WoG) get a Price.
+        if ($source === 'catalog' || $source === 'auto') {
+            $pmSkus = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->where('sku', 'not like', '%PARENT%')
+                ->pluck('sku')
+                ->all();
+            $skus = array_merge($skus, $pmSkus);
+        }
+
+        $skus = $this->uniqueSellerPartNumbers($skus);
+
         // Optionally skip SKUs that already have a price stored.
         if ($this->option('only-missing') && !empty($skus)) {
             $priced = NeweggPricing::whereNotNull('selling_price')
@@ -252,6 +340,34 @@ class FetchNeweggItemData extends Command
         }
 
         return $skus;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    private function uniqueSellerPartNumbers(array $skus): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper(preg_replace('/\s+/', ' ', str_replace(["\u{00A0}", "\u{202F}", "\u{2007}"], ' ', $sku)) ?? '');
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            // Newegg Seller Part# max length is 40; longer PM "SKUs" (titles) fail the batch.
+            if (strlen($sku) > 40) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
     }
 
     /**
