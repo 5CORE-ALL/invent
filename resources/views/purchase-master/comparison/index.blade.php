@@ -2921,6 +2921,8 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentSiblingsData = { parent: null, siblings: [], count: 0 };
     const SIBLINGS_SYNC_STORAGE_KEY = 'comparison.siblingsSync';
     let siblingsSyncEnabled = false;
+    let sheetReadyForAutoSave = false;
+    let sheetExpectedUpdatedAt = '';
     try {
         siblingsSyncEnabled = localStorage.getItem(SIBLINGS_SYNC_STORAGE_KEY) === '1';
     } catch (e) {
@@ -3019,10 +3021,31 @@ document.addEventListener('DOMContentLoaded', function () {
         return comparisonBulkEditSkus.filter(Boolean);
     }
 
+    function isBucketComparisonParent(parent) {
+        const text = String(parent || '').trim().toLowerCase();
+        if (!text) {
+            return false;
+        }
+        const buckets = ['sourcing', 'source', 'misc', 'miscellaneous', 'other', 'new', 'tbd', 'n/a', 'na', '-', 'none', 'parent', 'parents'];
+        if (buckets.includes(text)) {
+            return true;
+        }
+        return text.startsWith('parent sourc') || text.startsWith('parent source');
+    }
+
     function siblingSkusForSave(row) {
+        const parent = String(currentSiblingsData?.parent || row?.parent || '').trim();
+        if (isBucketComparisonParent(parent)) {
+            const currentSku = String(row?.sku || currentCdRow?.sku || '').trim();
+            return currentSku ? [currentSku] : [];
+        }
         const fromPayload = Array.isArray(currentSiblingsData?.siblings)
             ? currentSiblingsData.siblings.filter(Boolean)
             : [];
+        if (fromPayload.length > 20) {
+            const currentSku = String(row?.sku || currentCdRow?.sku || '').trim();
+            return currentSku ? [currentSku] : [];
+        }
         if (fromPayload.length) {
             return fromPayload;
         }
@@ -3071,7 +3094,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const count = Number(currentSiblingsData.count) || siblings.length;
         const otherCount = Math.max(0, count - 1);
         const parent = String(currentSiblingsData.parent || currentCdRow?.parent || '').trim();
-        const canSync = otherCount > 0 && parent !== '';
+        const canSync = otherCount > 0 && parent !== '' && !isBucketComparisonParent(parent) && count <= 20;
 
         if (countEl) {
             countEl.textContent = String(count);
@@ -3085,9 +3108,11 @@ document.addEventListener('DOMContentLoaded', function () {
         badge.classList.toggle('is-disabled', !canSync);
 
         if (!canSync) {
-            badge.title = parent
-                ? 'No sibling SKUs under this parent'
-                : 'No parent available for sibling sync';
+            badge.title = isBucketComparisonParent(parent)
+                ? `Parent "${parent}" is a shared bucket — sibling sync is disabled so one save cannot wipe unrelated SKUs`
+                : (parent
+                    ? 'No sibling SKUs under this parent'
+                    : 'No parent available for sibling sync');
         } else if (siblingsSyncEnabled) {
             badge.title = `Syncing sheet to ${count} sibling SKU(s) under parent ${parent}`;
         } else {
@@ -3096,8 +3121,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function setSiblingsSyncEnabled(enabled, { persist = true, triggerSave = false } = {}) {
+        const parent = String(currentSiblingsData?.parent || currentCdRow?.parent || '').trim();
         const canSync = (Number(currentSiblingsData?.count) || 0) > 1
-            && String(currentSiblingsData?.parent || currentCdRow?.parent || '').trim() !== '';
+            && parent !== ''
+            && !isBucketComparisonParent(parent)
+            && (Number(currentSiblingsData?.count) || 0) <= 20;
         siblingsSyncEnabled = !!(enabled && canSync);
 
         if (persist) {
@@ -8012,14 +8040,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function scheduleAutoSaveComparisonSheet(delay = 1200, options) {
-        if (sheetEditorHydrating || !currentCdRow) return;
+        if (sheetEditorHydrating || !sheetReadyForAutoSave || !currentCdRow) return;
         sheetAutoSaveOpts = Object.assign({ rerender: false, refreshTable: false }, options || {});
         clearTimeout(sheetAutoSaveTimer);
         sheetAutoSaveTimer = setTimeout(() => autoSaveComparisonSheet(sheetAutoSaveOpts), delay);
     }
 
     function autoSaveComparisonSheet(options) {
-        if (sheetEditorHydrating || !currentCdRow) return;
+        if (sheetEditorHydrating || !sheetReadyForAutoSave || !currentCdRow) return;
         const opts = Object.assign({ rerender: false, refreshTable: false }, options || sheetAutoSaveOpts || {});
         if (sheetSaveInFlight) {
             sheetSaveQueued = true;
@@ -8050,12 +8078,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Persist URL metadata only — Google Sheet is pull-only via C Link Refresh.
                 google_sheet_url: document.getElementById('comparison-cd-google-url').value.trim(),
                 google_sheet_tab: document.getElementById('comparison-cd-google-tab').value.trim() || 'Sheet1',
+                expected_updated_at: sheetExpectedUpdatedAt || '',
             }),
         })
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
                 throw new Error(data.message || 'Save failed.');
+            }
+            if (data.updated_at_iso) {
+                sheetExpectedUpdatedAt = String(data.updated_at_iso);
             }
             currentSheetFormats = normalizeSheetFormats(data.formats || currentSheetFormats);
             const returnedCells = sanitizeSheetCellsForUi(data.cells || cells);
@@ -8091,7 +8123,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function applySheetPayload(data, row) {
         sheetEditorHydrating = true;
+        sheetReadyForAutoSave = false;
         cancelScheduledAutoSave();
+        sheetExpectedUpdatedAt = String(data?.updated_at_iso || data?.updated_at || '');
 
         const clink = (row?.clink || data.clink || '').trim();
         // Same C link as the comparison table / Forecast column — never a leftover google_sheet_url.
@@ -8134,6 +8168,7 @@ document.addEventListener('DOMContentLoaded', function () {
             : String(row?.category || currentCdRow?.category || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
         loadComparisonSuppliersForCategory(categoryNames);
         sheetEditorHydrating = false;
+        sheetReadyForAutoSave = true;
 
         // Apply Dim/Wt rows after the page is responsive (cancel prior timer on rapid SKU switches).
         const applySku = String(row?.sku || currentCdRow?.sku || '');
@@ -8256,6 +8291,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(err => {
             sheetEditorHydrating = true;
+            sheetReadyForAutoSave = false;
             cancelScheduledAutoSave();
             currentSheetFormats = normalizeSheetFormats({});
             renderSheetEditor([]);
@@ -10756,6 +10792,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         currentCdRow = row;
         cancelScheduledAutoSave();
+        sheetReadyForAutoSave = false;
+        sheetExpectedUpdatedAt = '';
         sheetEditorHydrating = false;
         lmpLoadedForSku = null;
         selectedSheetRow = null;

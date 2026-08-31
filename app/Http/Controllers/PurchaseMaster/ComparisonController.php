@@ -183,10 +183,18 @@ class ComparisonController extends Controller
                 }
             }
 
-            $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+            // Sheet-view / explicit SKU list does not need a full-catalog LMP scan.
+            // Loading every Amazon/eBay competitor here was OOM/timeouting getData
+            // and the fallback empty editor then autosaved over real sheets.
+            if ($skuList !== []) {
+                $lmpLookups = ['details' => collect(), 'lowest' => collect()];
+                $ebayLmpLookups = ['details' => collect(), 'lowest' => collect()];
+            } else {
+                $lmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
+                $ebayLmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
+            }
             $lmpDetailsLookup = $lmpLookups['details'];
             $lmpLowestLookup = $lmpLookups['lowest'];
-            $ebayLmpLookups = EbaySkuCompetitor::buildGroupedLookup('ebay');
             $ebayLmpLowestLookup = $ebayLmpLookups['lowest'];
 
             $historySummary = $this->buildHistorySummaryMap($skus);
@@ -570,6 +578,7 @@ class ComparisonController extends Controller
             'sheet_file' => $this->sheetStorage->pathForSku($sheetSku),
             'updated_by' => $record?->updated_by,
             'updated_at' => $record?->updated_at?->format('m-d-Y H:i'),
+            'updated_at_iso' => $record?->updated_at?->toIso8601String(),
         ]);
     }
 
@@ -589,9 +598,9 @@ class ComparisonController extends Controller
                 ->value('parent') ?? ''));
         }
 
-        if ($parentTrim === '') {
+        if ($parentTrim === '' || $this->isBucketComparisonParent($parentTrim)) {
             return [
-                'parent' => null,
+                'parent' => $this->isBucketComparisonParent($parentTrim) ? $parentTrim : null,
                 'siblings' => $skuTrim !== '' ? [$skuTrim] : [],
                 'count' => $skuTrim !== '' ? 1 : 0,
             ];
@@ -1029,6 +1038,7 @@ class ComparisonController extends Controller
             'formats.cols' => 'nullable|array',
             'google_sheet_url' => 'nullable|string|max:2000',
             'google_sheet_tab' => 'nullable|string|max:120',
+            'expected_updated_at' => 'nullable|string',
         ]);
 
         $sku = trim($validated['sku']);
@@ -1037,6 +1047,20 @@ class ComparisonController extends Controller
         $bulkEditSkus = is_array($validated['bulk_edit_skus'] ?? null) ? $validated['bulk_edit_skus'] : [];
         $cells = ComparisonData::normalizeCells($validated['cells']);
         $cells = $this->sheetService->ensureLeadColumns($cells);
+
+        $existingForGuard = $this->sheetStorage->cellsForSku($sku);
+        if (! is_array($existingForGuard)) {
+            $existingRecord = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
+            $existingForGuard = is_array($existingRecord?->sheet_data['cells'] ?? null)
+                ? $existingRecord->sheet_data['cells']
+                : [];
+        }
+        if ($this->isDestructiveSheetOverwrite($existingForGuard, $cells)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Save blocked: this grid looks empty/default and would wipe a fuller saved sheet. Reload the page and try again.',
+            ], 409);
+        }
         // Keep the editor's column order on save. Reordering here (lowest-price
         // first) used to desync quiet saves: the DOM stayed in the old order
         // while memory adopted the shuffled grid, so extra/manual cells vanished.
@@ -1062,7 +1086,17 @@ class ComparisonController extends Controller
         $oldCells = $record?->sheet_data['cells'] ?? [];
 
         $this->linkedSkuGroupService->reset();
-        $this->persistSheetForLinkedGroup($sku, $linkedSkus, $parent, $cells, $url, $tab, $user, $formats, $bulkEditSkus);
+        $this->persistSheetForLinkedGroup(
+            $sku,
+            $linkedSkus,
+            $parent,
+            $cells,
+            $url,
+            $tab,
+            $user,
+            $formats,
+            $bulkEditSkus
+        );
 
         ComparisonHistory::logChange(
             $sku,
@@ -1080,6 +1114,7 @@ class ComparisonController extends Controller
             'cells' => $this->sheetStorage->cellsForBrowser($cells, $sku),
             'formats' => $formats,
             'auto_formats' => $autoFormats,
+            'updated_at_iso' => now()->toIso8601String(),
         ]);
     }
 
@@ -2940,6 +2975,105 @@ class ComparisonController extends Controller
     }
 
     /**
+     * Catch-all parents (e.g. "sourcing") are not a real product family.
+     * Sibling-sync used to copy one sheet onto every SKU in that bucket.
+     */
+    private function isBucketComparisonParent(string $parent): bool
+    {
+        $parent = strtolower(trim($parent));
+        if ($parent === '') {
+            return false;
+        }
+
+        $buckets = [
+            'sourcing', 'source', 'misc', 'miscellaneous', 'other', 'new',
+            'tbd', 'n/a', 'na', '-', 'none', 'parent', 'parents',
+        ];
+        if (in_array($parent, $buckets, true)) {
+            return true;
+        }
+
+        if (str_starts_with($parent, 'parent sourc') || str_starts_with($parent, 'parent source')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Count meaningful filled cells, ignoring spec labels and chrome headers.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     */
+    private function sheetFilledCellScore(array $cells): int
+    {
+        if ($cells === []) {
+            return 0;
+        }
+
+        $specCol = $this->sheetService->detectSpecColumnIndex($cells);
+        $score = 0;
+        $headerSkip = ['amazon', 'amz', '5 core', '5core', '5-core', 'critical', 'qc', 'product photo'];
+
+        foreach ($cells as $rowIndex => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            foreach ($row as $colIndex => $value) {
+                if ((int) $colIndex === $specCol) {
+                    continue;
+                }
+                $text = is_string($value) ? $value : (string) $value;
+                if ($text === '') {
+                    continue;
+                }
+                if (str_starts_with($text, 'data:image/') || str_starts_with($text, '[cmp-photo:') || str_starts_with($text, '[embedded-image:')) {
+                    $score += 5;
+                    continue;
+                }
+                $trim = strtolower(trim($text));
+                if ($trim === '' || in_array($trim, ['normal', 'critical', 'important'], true)) {
+                    continue;
+                }
+                if ($rowIndex === 0 && in_array($trim, $headerSkip, true)) {
+                    continue;
+                }
+                $score += 1;
+            }
+        }
+
+        return $score;
+    }
+
+    /**
+     * True when incoming looks like a blank/default template that would erase a richer sheet.
+     *
+     * @param  array<int, array<int, string>>  $existing
+     * @param  array<int, array<int, string>>  $incoming
+     */
+    private function isDestructiveSheetOverwrite(array $existing, array $incoming): bool
+    {
+        $existingScore = $this->sheetFilledCellScore($existing);
+        $incomingScore = $this->sheetFilledCellScore($incoming);
+        $existingRows = count($existing);
+        $incomingRows = count($incoming);
+
+        if ($existingScore < 12 && $existingRows < 20) {
+            return false;
+        }
+
+        if ($incomingScore <= 8 && $incomingRows <= 16 && $existingScore >= 12) {
+            return true;
+        }
+
+        if ($existingRows >= 20 && $incomingRows <= 16 && $incomingScore < (int) ($existingScore * 0.4)) {
+            return true;
+        }
+
+        return $existingScore >= 20 && $incomingScore < (int) ($existingScore * 0.35);
+    }
+
+    /**
      * @param  array<int, array<int, string>>  $left
      * @param  array<int, array<int, string>>  $right
      */
@@ -3142,6 +3276,13 @@ class ComparisonController extends Controller
         // linked group overwrote sibling files and made a blank-sheet edit
         // disappear on the next load.
         if ($linkedSkus === []) {
+            return $primarySku !== '' ? [$primarySku] : [];
+        }
+
+        $productParent = trim((string) (ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($primarySku)])
+            ->value('parent') ?? ''));
+        if ($this->isBucketComparisonParent($productParent) || count($linkedSkus) > 20) {
             return $primarySku !== '' ? [$primarySku] : [];
         }
 
@@ -3356,7 +3497,16 @@ class ComparisonController extends Controller
         ?array $formats,
         array $bulkEditSkus = []
     ): void {
-        foreach ($this->persistSkuTargets($primarySku, $linkedSkus, $bulkEditSkus) as $targetSku) {
+        $targets = $this->persistSkuTargets($primarySku, $linkedSkus, $bulkEditSkus);
+        foreach ($targets as $targetSku) {
+            $isPrimary = strcasecmp(trim($targetSku), trim($primarySku)) === 0;
+            if (! $isPrimary) {
+                $existingTarget = $this->sheetStorage->cellsForSku($targetSku)
+                    ?? (ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($targetSku))])->first()?->sheet_data['cells'] ?? []);
+                if ($this->isDestructiveSheetOverwrite(is_array($existingTarget) ? $existingTarget : [], $cells)) {
+                    continue;
+                }
+            }
             $targetParent = (string) (ProductMaster::query()
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($targetSku))])
                 ->value('parent') ?? $parent);
