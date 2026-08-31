@@ -17,6 +17,7 @@ use App\Services\MarketplaceManager\Ebay3OrderDetailService;
 use App\Services\MarketplaceManager\Ebay3OrderPushService;
 use App\Services\MarketplaceManager\Ebay3OrderSyncService;
 use App\Services\MarketplaceManager\Ebay3TrackingSyncService;
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplacePortalStatusTabs;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
@@ -199,29 +200,30 @@ class Ebay3SyncController extends Controller
                 $liveShopify = MarketplaceListingStockResolver::catalogShopifyQtyMapForSkus($mismatchQty);
             }
             $metricMap = $this->ebay3MetricMapForSkus($mismatchQty);
-            $productIds = [];
-            $idToSku = [];
+            $needKeys = [];
             foreach ($mismatchQty as $sku) {
                 $metric = $metricMap[$sku] ?? null;
                 if (! $this->isShopifySkuLinkedOnEbay3($metric, (string) $sku)) {
                     continue;
                 }
+                $needKeys[] = (string) $sku;
                 $pid = (string) ($metric->product_id ?? '');
-                if ($pid === '') {
-                    continue;
+                if ($pid !== '') {
+                    $needKeys[] = $pid;
                 }
-                $productIds[] = $pid;
-                $idToSku[$pid] = (string) $sku;
             }
             $liveMpByUpper = [];
-            if ($productIds !== []) {
-                foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($productIds)), 0, 80)) as $pid => $row) {
-                    $sku = $idToSku[(string) $pid] ?? trim((string) ($row['sku'] ?? ''));
-                    if ($sku === '' || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
+            $seenLiveSku = [];
+            if ($needKeys !== []) {
+                foreach ($liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needKeys)), 0, 160)) as $row) {
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    $skuKey = strtoupper($sku);
+                    if ($sku === '' || isset($seenLiveSku[$skuKey]) || ! array_key_exists('inventory', $row) || $row['inventory'] === null) {
                         continue;
                     }
+                    $seenLiveSku[$skuKey] = true;
                     $qty = (int) $row['inventory'];
-                    $liveMpByUpper[strtoupper($sku)] = $qty;
+                    $liveMpByUpper[$skuKey] = $qty;
                     $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
                     if ($norm !== '') {
                         $liveMpByUpper[$norm] = $qty;
@@ -373,10 +375,14 @@ class Ebay3SyncController extends Controller
                 if (! $metric || ! $this->isShopifySkuLinkedOnEbay3($metric, (string) $sku)) {
                     continue;
                 }
-                $needIds[] = (string) $metric->product_id;
+                $needIds[] = (string) $sku;
+                $pid = (string) ($metric->product_id ?? '');
+                if ($pid !== '') {
+                    $needIds[] = $pid;
+                }
             }
             if ($needIds !== []) {
-                $pageLiveByProduct = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 50));
+                $pageLiveByProduct = $liveService->liveDetailsByProductIds(array_slice(array_values(array_unique($needIds)), 0, 100));
             }
         }
 
@@ -392,7 +398,11 @@ class Ebay3SyncController extends Controller
                 ? MarketplaceListingStockResolver::qtyFromMap($aeStockMap, $sku, $metricSku)
                 : null;
             $cached = $this->aeCachedRowForSku($sku, $stateIndex);
-            $live = ($pid !== '' && isset($pageLiveByProduct[$pid])) ? $pageLiveByProduct[$pid] : null;
+            $live = MarketplaceListingStockResolver::liveListingRowForSku(
+                $pageLiveByProduct,
+                $sku,
+                $pid !== '' ? $pid : null
+            );
             $state = (string) ($live['state'] ?? $cached['state'] ?? '');
             if ($linked) {
                 $aeQty = MarketplaceListingStockResolver::displayedMarketplaceQty(
@@ -572,7 +582,7 @@ class Ebay3SyncController extends Controller
 
         $item = is_array($info['Item'] ?? null) ? $info['Item'] : (is_array($info) ? $info : []);
         $title = trim((string) ($item['Title'] ?? $metric->ebay_title ?? ''));
-        $qty = $item['Quantity'] ?? $item['QuantityAvailable'] ?? null;
+        $qty = EbayLiveListingMapper::quantityFromGetItem($item, $sku);
         $price = $item['StartPrice'] ?? $item['SellingStatus']['CurrentPrice'] ?? null;
         if (is_array($price)) {
             $price = $price['@content'] ?? $price['#text'] ?? $price['_'] ?? reset($price);

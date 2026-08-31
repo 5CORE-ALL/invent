@@ -2,6 +2,8 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\ShopifySku;
+
 /**
  * Map ebay_*_metrics rows to MM live listing state from seller listing_status only.
  */
@@ -54,5 +56,106 @@ final class EbayLiveListingMapper
             'price' => isset($row->ebay_price) && $row->ebay_price !== null ? (float) $row->ebay_price : null,
             'inactive_reason' => $reason,
         ];
+    }
+
+    /**
+     * Index live rows by seller SKU (always) and parent item id (first variation only).
+     * Last-write-wins on product_id would show every sibling the same qty.
+     *
+     * @param  array<int, array{product_id?: string, sku?: string}>  $rows
+     * @param  list<string>  $ids
+     * @return array<string, array{product_id?: string, sku?: string}>
+     */
+    public static function indexDetailsForIds(array $rows, array $ids): array
+    {
+        $wanted = [];
+        foreach ($ids as $id) {
+            $id = trim((string) $id);
+            if ($id === '') {
+                continue;
+            }
+            $wanted[$id] = true;
+            $wanted[strtoupper($id)] = true;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($id);
+            if ($norm !== '') {
+                $wanted[$norm] = true;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $pid = trim((string) ($row['product_id'] ?? ''));
+            $skuUpper = strtoupper($sku);
+            $skuNorm = $sku !== '' ? ShopifySku::normalizeSkuForShopifyLookup($sku) : '';
+            $hit = ($pid !== '' && isset($wanted[$pid]))
+                || ($sku !== '' && isset($wanted[$sku]))
+                || ($skuUpper !== '' && isset($wanted[$skuUpper]))
+                || ($skuNorm !== '' && isset($wanted[$skuNorm]));
+            if (! $hit) {
+                continue;
+            }
+            if ($sku !== '') {
+                $out[$sku] = $row;
+                $out[$skuUpper] = $row;
+                if ($skuNorm !== '') {
+                    $out[$skuNorm] = $row;
+                }
+            }
+            if ($pid !== '' && ! isset($out[$pid])) {
+                $out[$pid] = $row;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per-SKU qty from GetItem. Variation listings must not use parent Quantity
+     * (often a sum or another sibling) for this seller SKU.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public static function quantityFromGetItem(array $item, string $sku): ?int
+    {
+        $skuNorm = strtoupper(trim($sku));
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (is_array($vars) && $vars !== []) {
+            if (isset($vars['SKU']) || isset($vars['Quantity']) || isset($vars['QuantityAvailable'])) {
+                $vars = [$vars];
+            }
+            foreach ($vars as $variation) {
+                if (! is_array($variation)) {
+                    continue;
+                }
+                $vSku = strtoupper(trim((string) ($variation['SKU'] ?? '')));
+                if ($vSku === '' || $vSku !== $skuNorm) {
+                    continue;
+                }
+                foreach (['Quantity', 'QuantityAvailable'] as $key) {
+                    if (isset($variation[$key]) && is_numeric($variation[$key])) {
+                        return (int) $variation[$key];
+                    }
+                }
+
+                return null;
+            }
+
+            return null;
+        }
+
+        foreach (['Quantity', 'QuantityAvailable'] as $key) {
+            if (isset($item[$key]) && is_numeric($item[$key])) {
+                return (int) $item[$key];
+            }
+        }
+
+        return null;
     }
 }

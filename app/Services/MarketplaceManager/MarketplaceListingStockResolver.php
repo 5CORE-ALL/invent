@@ -847,8 +847,8 @@ final class MarketplaceListingStockResolver
     }
 
     /**
-     * Tab classification stock map. Local DB qty is what listings columns use
-     * after inventory sync; warm live cache fills SKUs local omitted.
+     * Tab classification stock map. Live per-SKU qty wins (same number the
+     * listings columns show); local fills SKUs the live cache omitted.
      * Live `--`/null inventory is NOT filled from local — that is a mismatch
      * against in-stock Shopify (Shein Pending, empty eBay qty, etc.).
      *
@@ -859,8 +859,8 @@ final class MarketplaceListingStockResolver
     public static function classifyStockMapFromLiveOrLocal(?array $liveRows, array $localMap): array
     {
         $merged = self::mergeLocalAndLiveStockMaps(
-            self::stockMapFromLiveListingRows($liveRows),
-            $localMap
+            $localMap,
+            self::stockMapFromLiveListingRows($liveRows)
         );
         foreach (self::nullInventoryKeysFromLiveListingRows($liveRows) as $key) {
             $merged[$key] = 0;
@@ -902,6 +902,60 @@ final class MarketplaceListingStockResolver
         }
 
         return array_keys($keys);
+    }
+
+    /**
+     * Live listing row for one seller SKU. Never use a sibling variation that
+     * only shares the same parent item / product id.
+     *
+     * @param  array<string, array<string, mixed>>  $byKey
+     * @return array<string, mixed>|null
+     */
+    public static function liveListingRowForSku(array $byKey, string $sku, ?string $productId = null): ?array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $candidates = [$sku, strtoupper($sku)];
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && ! in_array($norm, $candidates, true)) {
+            $candidates[] = $norm;
+        }
+
+        foreach ($candidates as $key) {
+            if ($key === '' || ! isset($byKey[$key]) || ! is_array($byKey[$key])) {
+                continue;
+            }
+            $row = $byKey[$key];
+            $rowSku = trim((string) ($row['sku'] ?? ''));
+            if ($rowSku === '' || self::skusReferToSameListing($rowSku, $sku)) {
+                return $row;
+            }
+        }
+
+        $productId = trim((string) $productId);
+        if ($productId !== '' && isset($byKey[$productId]) && is_array($byKey[$productId])) {
+            $row = $byKey[$productId];
+            $rowSku = trim((string) ($row['sku'] ?? ''));
+            if ($rowSku === '' || self::skusReferToSameListing($rowSku, $sku)) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    protected static function skusReferToSameListing(string $a, string $b): bool
+    {
+        if (strcasecmp(trim($a), trim($b)) === 0) {
+            return true;
+        }
+        $na = ShopifySku::normalizeSkuForShopifyLookup($a);
+        $nb = ShopifySku::normalizeSkuForShopifyLookup($b);
+
+        return $na !== '' && $na === $nb;
     }
 
     /**

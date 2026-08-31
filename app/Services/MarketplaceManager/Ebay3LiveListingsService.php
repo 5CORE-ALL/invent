@@ -98,16 +98,7 @@ final class Ebay3LiveListingsService
             return [];
         }
 
-        $all = $this->all();
-        $out = [];
-        foreach ($all as $row) {
-            if (in_array($row['product_id'], $ids, true) || in_array($row['sku'], $ids, true)) {
-                $out[$row['product_id']] = $row;
-                $out[$row['sku']] = $row;
-            }
-        }
-
-        return $out;
+        return EbayLiveListingMapper::indexDetailsForIds($this->all(), $ids);
     }
 
     /**
