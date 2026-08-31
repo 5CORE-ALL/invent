@@ -213,7 +213,15 @@ class NeweggPricingController extends Controller
             $pageViews = (int) ($viewRow?->page_views ?? 0);
             $sessions = (int) ($viewRow?->sessions ?? 0);
             $views = $pageViews > 0 ? $pageViews : $sessions;
+            $sheetUnits = (int) ($viewRow?->units_sold ?? 0);
+            $sheetCvr = (float) ($viewRow?->unit_session_pct ?? 0);
+            if ($l30 <= 0 && $sheetUnits > 0) {
+                $l30 = $sheetUnits;
+            }
             $cvr = $views > 0 ? round(($l30 / $views) * 100, 2) : 0;
+            if ($cvr <= 0 && $sheetCvr > 0) {
+                $cvr = round($sheetCvr, 2);
+            }
 
             // DIL% = overall sell-through = OVL30 / INV * 100 (same as "OV DIL" elsewhere).
             $dil = $inv > 0 ? round(($ovl30 / $inv) * 100, 0) : 0;
@@ -229,8 +237,12 @@ class NeweggPricingController extends Controller
             $dv      = $dataViews[$sku] ?? null;
             $dvValue = $dv ? (is_array($dv->value) ? $dv->value : []) : [];
             $sprice  = isset($dvValue['SPRICE']) ? (float) $dvValue['SPRICE'] : null;
-            $spft    = isset($dvValue['SPFT']) ? (float) $dvValue['SPFT'] : null;
-            $sroi    = isset($dvValue['SROI']) ? (float) $dvValue['SROI'] : null;
+            $spft    = isset($dvValue['SPFT'])
+                ? (float) $dvValue['SPFT']
+                : (isset($dvValue['SGPFT']) ? (float) $dvValue['SGPFT'] : null);
+            $sroi    = isset($dvValue['SROI'])
+                ? (float) $dvValue['SROI']
+                : (isset($dvValue['SGROI']) ? (float) $dvValue['SGROI'] : null);
             $nr      = $dvValue['NR'] ?? 'REQ';
             $buyerLink  = $dvValue['BUYER_LINK'] ?? null;
             $sellerLink = $dvValue['SELLER_LINK'] ?? null;
@@ -289,6 +301,24 @@ class NeweggPricingController extends Controller
                 }
             }
 
+            // SGPFT / SGROI use the same take-home as GPFT / GROI, on the price the
+            // grid shows (saved SPRICE, else Std, then Amz floor). Same $ as Price
+            // → copy GPFT / GROI so the pairs cannot drift.
+            $shownSprice = $sprice !== null && $sprice > 0 ? $sprice : $stdPrc;
+            if ($shownSprice !== null && $shownSprice > 0 && $aPrice !== null && $shownSprice < $aPrice) {
+                $shownSprice = $aPrice;
+            }
+            if ($shownSprice !== null && $shownSprice > 0) {
+                if ($price !== null && abs($shownSprice - $price) < 0.005) {
+                    $spft = $pftPct;
+                    $sroi = $roi !== null ? (float) $roi : 0.0;
+                } else {
+                    $sProfit = ($shownSprice * $factor) - $lp - $ship;
+                    $spft = round(($sProfit / $shownSprice) * 100, 1);
+                    $sroi = $lp > 0 ? (float) round(($sProfit / $lp) * 100, 0) : 0.0;
+                }
+            }
+
             $row = [
                 'sku'                => $sku,
                 'image'              => $image ?: null,
@@ -317,6 +347,7 @@ class NeweggPricingController extends Controller
                 'sprice'             => $sprice,
                 'spft'               => $spft,
                 'sroi'               => $sroi,
+                '_margin'            => $factor,
                 'nr'                 => $nr,
                 'buyer_link'         => $buyerLink,
                 'seller_link'        => $sellerLink,
@@ -395,8 +426,11 @@ class NeweggPricingController extends Controller
             $dv     = NeweggDataView::firstOrNew(['sku' => $sku]);
             $values = is_array($dv->value) ? $dv->value : [];
 
-            if ($sprice === null || $sprice === '') {
-                unset($values['SPRICE'], $values['SPFT'], $values['SROI']);
+            if ($sprice === null || $sprice === '' || (float) $sprice === 0.0) {
+                unset($values['SPRICE'], $values['SPFT'], $values['SROI'], $values['SGPFT'], $values['SGROI']);
+                if ($sprice !== null && $sprice !== '' && (float) $sprice === 0.0) {
+                    $values['SPRICE'] = 0;
+                }
             } else {
                 $sprice = (float) $sprice;
                 $profit = ($sprice * $factor) - $lp - $ship;
@@ -413,6 +447,9 @@ class NeweggPricingController extends Controller
                 'sprice'  => $values['SPRICE'] ?? null,
                 'spft'    => $values['SPFT'] ?? null,
                 'sroi'    => $values['SROI'] ?? null,
+                'sgpft_percent' => $values['SPFT'] ?? null,
+                'spft_percent'  => $values['SPFT'] ?? null,
+                'sroi_percent'  => $values['SROI'] ?? null,
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving Newegg SPRICE: ' . $e->getMessage());
@@ -511,6 +548,9 @@ class NeweggPricingController extends Controller
                         'sprice' => $values['SPRICE'] ?? null,
                         'spft'   => $values['SPFT']   ?? null,
                         'sroi'   => $values['SROI']   ?? null,
+                        'sgpft_percent' => $values['SPFT'] ?? null,
+                        'spft_percent'  => $values['SPFT'] ?? null,
+                        'sroi_percent'  => $values['SROI'] ?? null,
                     ];
                     $savedCount++;
                 } catch (\Throwable $rowEx) {
@@ -1732,7 +1772,7 @@ class NeweggPricingController extends Controller
                 'sprice' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
                 'lmp_price' => true, 'lmp_diff_pct' => true,
                 'linked_lmp_skus' => true, 'linked_lmp_sku_add' => true,
-                'map' => true, 'missing_l' => true, 'map_status' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
+                'map' => true, 'available_quantity' => true, 'currency' => false, 'status' => true,
             ];
 
             if (file_exists($filePath)) {

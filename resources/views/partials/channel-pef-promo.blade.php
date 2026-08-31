@@ -1344,7 +1344,7 @@
                 saveSpriceUrl: '/newegg-pricing-save-sprice',
                 pushPriceUrl: null,
                 priceField: 'price',
-                cvrField: 'CVR%',
+                cvrField: 'cvr',
                 dilField: 'dil',
                 invField: 'inv',
                 skuField: 'sku',
@@ -3592,9 +3592,10 @@
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || chPromoUsesAmazonDilPrmtSlabs();
         }
-        /** Live cvr % from CVR vs CPN slabs (eBay). Amazon CVR Disc has its own column path. */
+        /** Live cvr % from CVR vs CPN slabs (eBay / Newegg). Amazon CVR Disc has its own column path. */
         function chPromoUsesLiveCvrCpnSlabs() {
-            return chPromoIsEbayChannel() && !chPromoUsesAmazonCvrDisc();
+            return (chPromoIsEbayChannel() || CHANNEL_PROMO_CHANNEL === 'newegg')
+                && !chPromoUsesAmazonCvrDisc();
         }
         function chPromoHasSaleQty(d) {
             if (chPromoIsEbayChannel()) return chPromoEbayListingSaleQty(d) > 0;
@@ -3692,8 +3693,11 @@
             return out;
         }
         function chPromoCvr(d) {
+            if (!d) return 0;
             const f = chPromoCfg.cvrField;
-            let cvr = Number(d[f]);
+            let cvr = Number(f ? d[f] : NaN);
+            if (isFinite(cvr) && cvr >= 0) return cvr;
+            cvr = Number(d.cvr);
             if (isFinite(cvr) && cvr >= 0) return cvr;
             cvr = Number(d.CVR_L30);
             if (isFinite(cvr) && cvr >= 0) return cvr;
@@ -3704,7 +3708,8 @@
             cvr = Number(d.CVR);
             if (isFinite(cvr) && cvr >= 0) return cvr;
             const views = Number(d.Views || d.Sess30 || d.views || d.t_views || 0) || 0;
-            const l30 = Number(d['RV L30'] || d['eBay L30'] || d['B2B L30'] || d['MC L30'] || d['W_L30'] || d['TT L30'] || d.L30 || 0) || 0;
+            const l30 = Number(d['RV L30'] || d['eBay L30'] || d['B2B L30'] || d['MC L30']
+                || d['W_L30'] || d['TT L30'] || d.L30 || d.l30 || 0) || 0;
             if (views > 0) return chPromoRound2((l30 / views) * 100);
             const sold = Number((chPromoCfg.soldField && d[chPromoCfg.soldField]) || d.al30 || d.sold || 0) || 0;
             const ov = chPromoOvl30(d);
@@ -4422,6 +4427,8 @@
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
             raw = Number(d && d.percentage);
             if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
+            raw = Number(d && d.factor);
+            if (isFinite(raw) && raw > 0) return raw > 1 ? (raw / 100) : raw;
             if (typeof getRowMarginFactor === 'function') {
                 try {
                     raw = Number(getRowMarginFactor(d));
@@ -4635,7 +4642,7 @@
         function chPromoApplySpriceSavePatch(row, fill, saveRes, sku) {
             const updates = Object.assign({}, chPromoSpricePatch(fill));
             if (saveRes && (saveRes.sgpft_percent !== undefined || saveRes.sroi_percent !== undefined
-                || saveRes.snroi_percent !== undefined)) {
+                || saveRes.snroi_percent !== undefined || saveRes.spft !== undefined)) {
                 updates.SGPFT = saveRes.sgpft_percent;
                 updates['Spft%'] = saveRes.spft_percent;
                 updates.SPFT = saveRes.spft_percent;
@@ -4647,9 +4654,18 @@
                 updates.sroi_percent = saveRes.sroi_percent;
                 if (saveRes.sgpft_percent !== undefined) {
                     updates.sgpft = saveRes.sgpft_percent;
+                    updates.spft = saveRes.sgpft_percent;
+                } else if (saveRes.spft !== undefined) {
+                    updates.spft = saveRes.spft;
+                    if (updates.SGPFT == null) updates.SGPFT = saveRes.spft;
+                    if (updates.sgpft == null) updates.sgpft = saveRes.spft;
                 }
                 updates.sgprft_percent = saveRes.sgprft_percent != null ? saveRes.sgprft_percent : saveRes.sgpft_percent;
-                updates.spft_percent = saveRes.spft_percent;
+                updates.spft_percent = saveRes.spft_percent != null ? saveRes.spft_percent : saveRes.spft;
+                if (saveRes.sroi !== undefined && updates.sroi == null) {
+                    updates.sroi = saveRes.sroi;
+                    updates.SROI = saveRes.sroi;
+                }
             }
             if (saveRes && saveRes.ebay_price != null) {
                 const live = parseFloat(saveRes.ebay_price);
@@ -4691,6 +4707,8 @@
                     updates.SROI = sroi;
                     updates.sgpft = sgpft;
                     updates.SGPFT = sgpft;
+                    updates.spft = sgpft;
+                    updates.SPFT = sgpft;
                 }
             }
             if (row && typeof row.update === 'function') {

@@ -5,8 +5,16 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .tabulator-col.tabulator-sortable .tabulator-col-title {
+        /* Global CSS hides Tabulator sort arrows. Whole header must stay clickable. */
+        #newegg-pricing-table .tabulator-header .tabulator-col.tabulator-sortable,
+        #newegg-pricing-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-content,
+        #newegg-pricing-table .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             cursor: pointer;
+            pointer-events: auto;
+        }
+        #newegg-pricing-table .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="asc"] .tabulator-col-title,
+        #newegg-pricing-table .tabulator-header .tabulator-col.tabulator-sortable[aria-sort="desc"] .tabulator-col-title {
+            text-decoration: underline;
         }
         .editable-cell {
             cursor: pointer;
@@ -138,12 +146,6 @@
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge"
                             style="color: black; font-weight: bold;" title="Overall ROI% = Σ profit / Σ COGS">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="ne-missing-badge"
-                            style="color: white; font-weight: bold; cursor: pointer;" title="Not listed on Newegg, REQ, INV &gt; 0 — click to filter">Missing L: 0</span>
-                        <span class="badge fs-6 p-2" id="ne-map-badge"
-                            style="background-color: #198754; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≈ Newegg stock — click to filter">Map: 0</span>
-                        <span class="badge fs-6 p-2" id="ne-nmap-badge"
-                            style="background-color: #a71d2a; color: white; font-weight: bold; cursor: pointer;" title="Listed, REQ, INV ≠ Newegg stock — click to filter">N Map: 0</span>
                     </div>
                 </div>
 
@@ -668,7 +670,7 @@
         function moneyCol(title, field, visible = true) {
             return {
                 title, field, visible,
-                hozAlign: "right", sorter: "number",
+                hozAlign: "right", sorter: "number", headerSort: true,
                 formatter: "money",
                 formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
             };
@@ -686,8 +688,6 @@
             return `<span style="color:${color}; font-weight:bold;">${n.toFixed(0)}%</span>`;
         }
 
-        // ── Missing-listing / mapping state + helpers (same rules as map-issues) ──
-        let neMissingActive = false, neMapActive = false, neNMapActive = false;
         let neZeroSoldActive = false, neMoreSoldActive = false;
         let blueTriangleFilterActive = false;
         let amzTriangleFilterActive = false;
@@ -731,6 +731,45 @@
             return neApplyAmzFloor(data, nePriceBeforeAmzFloor(data));
         }
 
+        function neRowFactor(data) {
+            const fromRow = parseFloat(data && (data.factor != null ? data.factor : data._margin));
+            if (isFinite(fromRow) && fromRow > 0) return fromRow > 1 ? fromRow / 100 : fromRow;
+            if (typeof chPromoTakehomeMargin === 'function') {
+                const m = Number(chPromoTakehomeMargin(data));
+                if (isFinite(m) && m > 0) return m > 1 ? m / 100 : m;
+            }
+            return 0.80;
+        }
+
+        /** Same take-home math as backend GPFT / GROI: (price × factor − LP − Ship). */
+        function neTakehomeMetrics(data, price) {
+            const p = Math.round((Number(price) || 0) * 100) / 100;
+            if (!(p > 0)) return { gpft: null, groi: null };
+            const lp = parseFloat(data && data.lp) || 0;
+            const ship = parseFloat(data && data.ship) || 0;
+            const factor = neRowFactor(data);
+            const profit = (p * factor) - lp - ship;
+            return {
+                gpft: Math.round((profit / p) * 1000) / 10,
+                groi: lp > 0 ? Math.round((profit / lp) * 100) : 0
+            };
+        }
+
+        function neLivePriceMetrics(data) {
+            return neTakehomeMetrics(data, parseFloat(data && data.price) || 0);
+        }
+
+        /** SGPFT / SGROI from the visible S PRC. Same $ as Price → same GPFT / GROI. */
+        function neSpriceMetrics(data, spriceOpt) {
+            const sprice = spriceOpt != null ? Number(spriceOpt) : neShownSprice(data);
+            if (!(sprice > 0)) return { spft: null, sroi: null };
+            const live = parseFloat(data && data.price) || 0;
+            const m = (live > 0 && Math.round(sprice * 100) === Math.round(live * 100))
+                ? neLivePriceMetrics(data)
+                : neTakehomeMetrics(data, sprice);
+            return { spft: m.gpft, sroi: m.groi };
+        }
+
         function neHasAmzFloor(data) {
             if (!data || !data.sku) return false;
             const before = nePriceBeforeAmzFloor(data);
@@ -772,36 +811,6 @@
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
             });
             syncNeAmzTriangleBadgeState();
-        }
-
-        function neNr(row) {
-            return String((row && row.nr) || 'REQ').trim().toUpperCase();
-        }
-
-        // INV vs Newegg stock = Map when diff ≤ 3 units (when 3% of INV < 3) else within rounded 3%.
-        function neWithinMapTolerance(inv, neStock) {
-            const i = parseFloat(inv) || 0;
-            const s = parseFloat(neStock) || 0;
-            if (i <= 0) return true;
-            const diff = Math.abs(i - s);
-            if (i * 0.03 < 3) return diff <= 3;
-            return Math.round((diff / i) * 100) <= 3;
-        }
-
-        // Missing L — not listed on Newegg, REQ, INV > 0.
-        function neRowMissingL(row) {
-            if (!row) return false;
-            const inv = parseFloat(row.inv) || 0;
-            return !row.on_newegg && neNr(row) === 'REQ' && inv > 0;
-        }
-
-        // Map status — listed, REQ, INV > 0, Newegg stock > 0. Returns 'map' | 'nmap' | ''.
-        function neMapStatus(row) {
-            if (!row || !row.on_newegg) return '';
-            const inv = parseFloat(row.inv) || 0;
-            const neStock = parseFloat(row.available_quantity) || 0;
-            if (neNr(row) !== 'REQ' || inv <= 0 || neStock <= 0) return '';
-            return neWithinMapTolerance(inv, neStock) ? 'map' : 'nmap';
         }
 
         // ── Sku Link LMP (shared sku.link.lmp.* routes — same as TikTok / Shein) ──
@@ -1189,8 +1198,11 @@
             table = new Tabulator("#newegg-pricing-table", {
                 ajaxURL: "/newegg-pricing-data",
                 ajaxSorting: false,
-                headerSortClickElement: "header",
-                columnDefaults: { headerSort: true },
+                sortMode: "local",
+                filterMode: "local",
+                /* Icons are hidden globally — native header sort is wired below via click. */
+                headerSortClickElement: "icon",
+                columnDefaults: { headerSort: true, headerSortStartingDir: "desc" },
                 height: "100%",
                 layout: "fitData",
                 responsiveLayout: false,
@@ -1229,21 +1241,23 @@
                         }
                     },
                     {
-                        title: "Image", field: "image", hozAlign: "center", sorter: "string", frozen: true,
+                        title: "Image", field: "image", hozAlign: "center", sorter: "string", headerSort: true, frozen: true,
                         formatter: function(cell) {
                             const v = cell.getValue();
                             if (!v) return '';
                             return `<img src="${v}" class="ne-thumb" alt="img" loading="lazy">`;
                         }
                     },
-                    { title: "SKU", field: "sku", frozen: true, sorter: "string", headerFilter: "input", headerFilterPlaceholder: "Search SKU...", cssClass: "text-primary fw-bold" },
+                    { title: "SKU", field: "sku", frozen: true, sorter: "string", headerSort: true, cssClass: "text-primary fw-bold" },
                     {
                         title: "B/S", field: "bs", hozAlign: "center", frozen: true,
+                        headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
-                            const score = function(d) {
+                            const score = function(row) {
+                                const d = row && row.getData ? (row.getData() || {}) : {};
                                 return (d.buyer_link ? 1 : 0) + (d.seller_link ? 1 : 0);
                             };
-                            return score(aRow.getData()) - score(bRow.getData());
+                            return score(aRow) - score(bRow);
                         },
                         cssClass: "editable-cell",
                         formatter: function(cell) {
@@ -1396,14 +1410,16 @@
                         hozAlign: "center",
                         width: 70,
                         headerSortStartingDir: "desc",
+                        headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
-                            const calc = function(rd) {
+                            const calc = function(row) {
+                                const rd = row && row.getData ? (row.getData() || {}) : {};
                                 const lmp = parseFloat(rd.lmp_price || 0);
                                 const price = parseFloat(rd.price || 0);
                                 if (!lmp || lmp <= 0) return -Infinity;
                                 return ((lmp - price) / lmp) * 100;
                             };
-                            return calc(aRow.getData()) - calc(bRow.getData());
+                            return calc(aRow) - calc(bRow);
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -1421,6 +1437,7 @@
                         hozAlign: "left",
                         headerHozAlign: "center",
                         width: 200,
+                        headerSort: true,
                         sorter: function(a, b) {
                             const n = (v) => Array.isArray(v) ? v.length : 0;
                             return n(a) - n(b);
@@ -1456,9 +1473,9 @@
                     {
                         title: "GROI", field: "roi", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined) return '';
-                            const n = parseFloat(v) || 0;
+                            const m = neLivePriceMetrics(cell.getRow().getData());
+                            const n = m.groi;
+                            if (n === null || !isFinite(n)) return '';
                             // Same ROI color bands as /ebay
                             let color = '#d63384';
                             if (n < 40) color = '#a00211';
@@ -1470,9 +1487,9 @@
                     {
                         title: "GPFT", field: "pft_pct", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined) return '';
-                            const n = parseFloat(v) || 0;
+                            const m = neLivePriceMetrics(cell.getRow().getData());
+                            const n = m.gpft;
+                            if (n === null || !isFinite(n)) return '';
                             // Same GPFT color bands as /ebay
                             let color = '#e83e8c';
                             if (n < 10) color = '#a00211';
@@ -1484,7 +1501,12 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
-                        title: "SPrice", field: "sprice", hozAlign: "right", sorter: "number",
+                        title: "SPrice", field: "sprice", hozAlign: "right", headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const ad = aRow && aRow.getData ? aRow.getData() : {};
+                            const bd = bRow && bRow.getData ? bRow.getData() : {};
+                            return (neShownSprice(ad) || 0) - (neShownSprice(bd) || 0);
+                        },
                         editor: "number", editorParams: { min: 0, step: 0.01 },
                         cssClass: "editable-cell",
                         headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
@@ -1534,37 +1556,19 @@
                         }
                     },
                     {
-                        title: "Missing L", field: "missing_l", hozAlign: "center",
+                        title: "SGROI", field: "sroi", hozAlign: "right", headerSort: true,
+                        accessor: function(value, data) {
+                            return neSpriceMetrics(data).sroi;
+                        },
                         sorter: function(a, b, aRow, bRow) {
-                            const av = neRowMissingL(aRow.getData()) ? 1 : 0;
-                            const bv = neRowMissingL(bRow.getData()) ? 1 : 0;
-                            return av - bv;
+                            const av = neSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
+                            const bv = neSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
+                            return (av == null ? -Infinity : av) - (bv == null ? -Infinity : bv);
                         },
                         formatter: function(cell) {
-                            return neRowMissingL(cell.getRow().getData())
-                                ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
-                                : '';
-                        }
-                    },
-                    {
-                        title: "Map", field: "map_status", hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const order = { map: 2, nmap: 1 };
-                            return (order[neMapStatus(aRow.getData())] || 0) - (order[neMapStatus(bRow.getData())] || 0);
-                        },
-                        formatter: function(cell) {
-                            const st = neMapStatus(cell.getRow().getData());
-                            if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
-                            if (st === 'nmap') return '<span style="color:#dc3545;font-weight:bold;">N Map</span>';
-                            return '';
-                        }
-                    },
-                    {
-                        title: "SGROI", field: "sroi", hozAlign: "right", sorter: "number",
-                        formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined || v === '') return '';
-                            const n = parseFloat(v) || 0;
+                            const m = neSpriceMetrics(cell.getRow().getData());
+                            if (m.sroi === null || !isFinite(m.sroi)) return '';
+                            const n = m.sroi;
                             // Same ROI color bands as /ebay
                             let color = '#d63384';
                             if (n < 40) color = '#a00211';
@@ -1574,11 +1578,19 @@
                         }
                     },
                     {
-                        title: "SGPFT", field: "spft", hozAlign: "right", sorter: "number",
+                        title: "SGPFT", field: "spft", hozAlign: "right", headerSort: true,
+                        accessor: function(value, data) {
+                            return neSpriceMetrics(data).spft;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = neSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).spft;
+                            const bv = neSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).spft;
+                            return (av == null ? -Infinity : av) - (bv == null ? -Infinity : bv);
+                        },
                         formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined || v === '') return '';
-                            const n = parseFloat(v) || 0;
+                            const m = neSpriceMetrics(cell.getRow().getData());
+                            if (m.spft === null || !isFinite(m.spft)) return '';
+                            const n = m.spft;
                             // Same GPFT color bands as /ebay
                             let color = '#e83e8c';
                             if (n < 10) color = '#a00211';
@@ -1627,6 +1639,30 @@
                     { title: "Currency", field: "currency", visible: false, sorter: "string" }
                 ]
             });
+
+            (function bindNeweggHeaderSort() {
+                const root = document.getElementById('newegg-pricing-table');
+                if (!root || root._neHeaderSortBound) return;
+                root._neHeaderSortBound = true;
+                const skip = { _select: 1, linked_lmp_sku_add: 1 };
+                root.addEventListener('click', function(e) {
+                    if (e.target.closest('.tabulator-header-filter, .tabulator-col-resize-handle, input, select, textarea, button, a')) return;
+                    const colEl = e.target.closest('.tabulator-header .tabulator-col');
+                    if (!colEl) return;
+                    const field = colEl.getAttribute('tabulator-field');
+                    if (!field || skip[field]) return;
+                    let col;
+                    try { col = table.getColumn(field); } catch (err) { return; }
+                    if (!col) return;
+                    const cur = (table.getSorters() || []).find(function(s) { return s.field === field; });
+                    const dir = (cur && cur.dir === 'desc') ? 'asc' : 'desc';
+                    try {
+                        table.setSort([{ column: field, dir: dir }]);
+                    } catch (err) {
+                        console.warn('Newegg header sort failed for', field, err);
+                    }
+                });
+            })();
 
             // Floating image preview on thumbnail hover.
             const imgPreview = document.getElementById('ne-img-preview');
@@ -1762,7 +1798,7 @@
             });
 
             // Combined filter: SKU/Title search + INV / N Stock / NR / Status / PFT / ROI / DIL
-            // dropdowns + active Missing L / Map / N Map badge.
+            // dropdowns + sold / triangle badges.
             function applyNeFilters() {
                 const search = ($('#sku-search').val() || '').trim().toLowerCase();
                 table.setFilter(function(row) {
@@ -1808,11 +1844,6 @@
                     const l30Val = parseInt(row.l30) || 0;
                     if (neZeroSoldActive && l30Val !== 0) return false;
                     if (neMoreSoldActive && l30Val <= 0) return false;
-
-                    // Missing / Map / N Map badge filters
-                    if (neMissingActive && !neRowMissingL(row)) return false;
-                    if (neMapActive && neMapStatus(row) !== 'map') return false;
-                    if (neNMapActive && neMapStatus(row) !== 'nmap') return false;
                     if (blueTriangleFilterActive && !neHasBlueTriangle(row)) return false;
                     if (amzTriangleFilterActive && !neHasAmzFloor(row)) return false;
 
@@ -1834,27 +1865,15 @@
             function updateBadgeStyles() {
                 setNeBadgeActive($('#zero-sold-count-badge'), neZeroSoldActive);
                 setNeBadgeActive($('#more-sold-count-badge'), neMoreSoldActive);
-                setNeBadgeActive($('#ne-missing-badge'), neMissingActive);
-                setNeBadgeActive($('#ne-map-badge'), neMapActive);
-                setNeBadgeActive($('#ne-nmap-badge'), neNMapActive);
             }
 
             function neOnSummaryFilterBadgeClick(type) {
                 if (type === 'zero-sold') {
                     neZeroSoldActive = !neZeroSoldActive;
-                    neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                    neMoreSoldActive = false;
                 } else if (type === 'more-sold') {
                     neMoreSoldActive = !neMoreSoldActive;
-                    neZeroSoldActive = neMissingActive = neMapActive = neNMapActive = false;
-                } else if (type === 'missing') {
-                    neMissingActive = !neMissingActive;
-                    neZeroSoldActive = neMoreSoldActive = neMapActive = neNMapActive = false;
-                } else if (type === 'map') {
-                    neMapActive = !neMapActive;
-                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neNMapActive = false;
-                } else if (type === 'nmap') {
-                    neNMapActive = !neNMapActive;
-                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = false;
+                    neZeroSoldActive = false;
                 }
                 if (blueTriangleFilterActive) blueTriangleFilterActive = false;
                 if (amzTriangleFilterActive) amzTriangleFilterActive = false;
@@ -1866,13 +1885,10 @@
 
             $('#zero-sold-count-badge').on('click', function() { neOnSummaryFilterBadgeClick('zero-sold'); });
             $('#more-sold-count-badge').on('click', function() { neOnSummaryFilterBadgeClick('more-sold'); });
-            $('#ne-missing-badge').on('click', function() { neOnSummaryFilterBadgeClick('missing'); });
-            $('#ne-map-badge').on('click', function() { neOnSummaryFilterBadgeClick('map'); });
-            $('#ne-nmap-badge').on('click', function() { neOnSummaryFilterBadgeClick('nmap'); });
             $('#newegg-blue-triangle-badge').on('click', function() {
                 blueTriangleFilterActive = !blueTriangleFilterActive;
                 if (blueTriangleFilterActive) {
-                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                    neZeroSoldActive = neMoreSoldActive = false;
                     amzTriangleFilterActive = false;
                 }
                 applyNeFilters();
@@ -1881,7 +1897,7 @@
             $('#newegg-amz-triangle-badge').on('click', function() {
                 amzTriangleFilterActive = !amzTriangleFilterActive;
                 if (amzTriangleFilterActive) {
-                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                    neZeroSoldActive = neMoreSoldActive = false;
                     blueTriangleFilterActive = false;
                 }
                 applyNeFilters();
@@ -2480,21 +2496,13 @@
                 $('#avg-cvr-badge').text('CVR: ' + avgCvr.toFixed(1) + '%');
                 $('#roi-percent-badge').text('ROI%: ' + Math.round(roiPct) + '%');
 
-                // Sold / Missing / Map counted over full dataset (stable regardless of active filter).
-                let zeroSold = 0, moreSold = 0, missingCount = 0, mapCount = 0, nmapCount = 0;
+                // Sold counted over full dataset (stable regardless of active filter).
+                let zeroSold = 0, moreSold = 0;
                 table.getData().forEach(row => {
                     if (!row.sku) return;
                     const l30 = parseInt(row.l30) || 0;
                     if (l30 === 0) zeroSold++;
                     else moreSold++;
-
-                    if (neRowMissingL(row)) {
-                        missingCount++;
-                    } else {
-                        const st = neMapStatus(row);
-                        if (st === 'map') mapCount++;
-                        else if (st === 'nmap') nmapCount++;
-                    }
                 });
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSold.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
@@ -2509,9 +2517,6 @@
                 );
                 $('#newegg-amz-triangle-badge').text('Amz ' + amzTriangleCount.toLocaleString());
                 if (typeof syncNeTriangleBadgeState === 'function') syncNeTriangleBadgeState();
-                $('#ne-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
-                $('#ne-map-badge').text('Map: ' + mapCount.toLocaleString());
-                $('#ne-nmap-badge').text('N Map: ' + nmapCount.toLocaleString());
             }
 
             const COL_URL = '/newegg-pricing-column-visibility';
