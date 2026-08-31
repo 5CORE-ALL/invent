@@ -194,7 +194,7 @@ class ProductMasterController extends Controller
         $row['shopify_quantity'] = $shopifySku?->quantity ?? null;
         $row['Values'] = $product->Values;
 
-        return $row;
+        return $this->applyFreightAlias($row);
     }
 
     /**
@@ -219,6 +219,14 @@ class ProductMasterController extends Controller
             $existing[$key] = $val;
         }
 
+        $existing = $this->applyFreightAlias($existing);
+
+        foreach (['frght', 'cbm', 'lp', 'l', 'w', 'h'] as $key) {
+            if (array_key_exists($key, $existing) && ($existing[$key] === null || $existing[$key] === '')) {
+                unset($existing[$key]);
+            }
+        }
+
         return $existing;
     }
 
@@ -232,6 +240,19 @@ class ProductMasterController extends Controller
         }
 
         return is_numeric($value) && (float) $value > 0;
+    }
+
+    /**
+     * Header label is "FRG"; missing-data saves sometimes wrote Values.frg instead of frght.
+     */
+    protected function applyFreightAlias(array $row): array
+    {
+        if ((empty($row['frght']) || $row['frght'] === null || $row['frght'] === '')
+            && ! empty($row['frg'])) {
+            $row['frght'] = $row['frg'];
+        }
+
+        return $row;
     }
 
     public function getViewProductData(Request $request)
@@ -330,6 +351,7 @@ class ProductMasterController extends Controller
                     $row = array_merge($row, $values);
                 }
             }
+            $row = $this->applyFreightAlias($row);
 
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
@@ -670,6 +692,7 @@ class ProductMasterController extends Controller
                 $product->parent = $newParent;
                 $product->Values = $this->mergeProductMasterValues($oldValues, $values);
                 $product->save();
+                $product->refresh();
 
                 // Only delete old image after successful update and if a new image was uploaded
                 if ($newImageUploaded && $oldImagePath && file_exists($oldImagePath)) {
@@ -943,6 +966,9 @@ class ProductMasterController extends Controller
             }
 
             $field = $validated['field'];
+            if (in_array(strtolower((string) $field), ['frg', 'freight'], true)) {
+                $field = 'frght';
+            }
 
             // Barcode lives on product_master.barcode (not Values JSON).
             if (! $isImageField && $field === 'barcode') {

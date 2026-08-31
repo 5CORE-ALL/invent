@@ -1778,7 +1778,30 @@
 
                 if (i >= 0) {
                     const oldSku = tableData[i].SKU || tableData[i].sku;
-                    Object.assign(tableData[i], row);
+                    const prev = tableData[i];
+                    const incoming = { ...row };
+                    // Store response can include null L/W/H/FRGHT from the modal.
+                    // Never let those overwrite freight already on the row.
+                    ['frght', 'frg', 'l', 'w', 'h', 'cbm', 'lp', 'verified_data'].forEach(k => {
+                        if (incoming[k] === null || incoming[k] === '' || incoming[k] === undefined) {
+                            delete incoming[k];
+                        }
+                    });
+                    if (incoming.Values && typeof incoming.Values === 'object') {
+                        incoming.Values = { ...incoming.Values };
+                        ['frght', 'frg', 'l', 'w', 'h', 'cbm', 'lp', 'verified_data'].forEach(k => {
+                            if (incoming.Values[k] === null || incoming.Values[k] === '') {
+                                delete incoming.Values[k];
+                            }
+                        });
+                    }
+                    Object.assign(tableData[i], incoming);
+                    ['frght', 'frg', 'l', 'w', 'h', 'cbm', 'lp'].forEach(k => {
+                        const next = tableData[i][k];
+                        if ((next === null || next === '' || next === undefined) && prev[k] != null && prev[k] !== '') {
+                            tableData[i][k] = prev[k];
+                        }
+                    });
                     if (sku) {
                         tableData[i].SKU = sku;
                         tableData[i].sku = sku;
@@ -7008,6 +7031,8 @@
                     "LP": "lp",
                     "CP$": "cp",
                     "FRGHT": "frght",
+                    "FRG": "frght",
+                    "Freight": "frght",
                     "SHIP": "ship",
                     "TEMU SHIP": "temu_ship",
                     "MOQ": "moq",
