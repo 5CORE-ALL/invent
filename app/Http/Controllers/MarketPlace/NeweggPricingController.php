@@ -1171,6 +1171,22 @@ class NeweggPricingController extends Controller
         return [$lp, $ship];
     }
 
+    public function importViewsFromPath(string $path)
+    {
+        if (! is_file($path)) {
+            return ['error' => 'File not found: '.$path];
+        }
+
+        $file = new \Illuminate\Http\UploadedFile($path, basename($path), null, null, true);
+        $request = Request::create('/newegg-pricing-upload-views', 'POST');
+        $request->files->set('views_file', $file);
+
+        $response = $this->uploadViews($request);
+        $payload = $response->getData(true);
+
+        return is_array($payload) ? $payload : ['error' => 'Import failed'];
+    }
+
     public function downloadViewsSample()
     {
         $csv = implode("\n", [
@@ -1204,9 +1220,12 @@ class NeweggPricingController extends Controller
                 return response()->json(['error' => 'File is empty'], 400);
             }
 
+            $rows = $this->normalizeTabularRows($rows);
             $headerIndex = $this->findViewsHeaderRow($rows);
             $rawHeaders = array_values($rows[$headerIndex] ?? []);
-            $fieldByIndex = $this->mapViewsHeaders($rawHeaders);
+            $fieldByIndex = $this->isNeweggItemPerformanceHeaders($rawHeaders)
+                ? $this->neweggItemPerformanceColumnMap(count($rawHeaders))
+                : $this->mapViewsHeaders($rawHeaders);
             if (! in_array('page_views', $fieldByIndex, true) && ! in_array('sessions', $fieldByIndex, true)) {
                 $fieldByIndex = $this->applyNeweggViewsPositionalFallback($rawHeaders, $fieldByIndex);
             }
@@ -1441,6 +1460,79 @@ class NeweggPricingController extends Controller
     }
 
     /**
+     * Seller Portal Item Performance export:
+     * Item # | Title | Seller Part # | SBN Inventory | SBS Inventory |
+     * Sessions | Session Percentage | Page Views | Page Views Percentage |
+     * Orders Sold | Sales | Units Sold | Unit Session Percentage
+     *
+     * @param  array<int, mixed>  $headers
+     */
+    private function isNeweggItemPerformanceHeaders(array $headers): bool
+    {
+        $joined = strtolower(implode("\t", array_map(fn ($v) => (string) $v, $headers)));
+        $hasSeller = str_contains($joined, 'seller part');
+        $hasTraffic = str_contains($joined, 'page view') || str_contains($joined, 'session');
+
+        return $hasSeller && $hasTraffic;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function neweggItemPerformanceColumnMap(int $count): array
+    {
+        $layout = [
+            0 => 'item_number',
+            1 => 'title',
+            2 => 'seller_part_number',
+            3 => 'sbn_inventory',
+            4 => 'sbs_inventory',
+            5 => 'sessions',
+            6 => 'session_pct',
+            7 => 'page_views',
+            8 => 'page_view_pct',
+            9 => 'orders_sold',
+            10 => 'sales',
+            11 => 'units_sold',
+            12 => 'unit_session_pct',
+        ];
+        $map = [];
+        for ($i = 0; $i < max($count, 13); $i++) {
+            $map[$i] = $layout[$i] ?? null;
+        }
+
+        return $map;
+    }
+
+    /**
+     * If Excel/CSV collapsed a TSV line into one cell, split on tabs.
+     *
+     * @param  array<int, array<int, mixed>>  $rows
+     * @return array<int, array<int, mixed>>
+     */
+    private function normalizeTabularRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $row = array_values($row);
+            if (count($row) <= 2) {
+                $joined = implode("\t", array_map(fn ($v) => (string) $v, $row));
+                $joined = preg_replace('/^\x{FEFF}/u', '', $joined) ?? $joined;
+                if (substr_count($joined, "\t") >= 8) {
+                    $out[] = str_getcsv($joined, "\t");
+                    continue;
+                }
+            }
+            if (isset($row[0])) {
+                $row[0] = preg_replace('/^\x{FEFF}/u', '', (string) $row[0]);
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
      * Screenshot / Seller Portal order when headers are truncated or unlabeled.
      *
      * @param  array<int, mixed>  $headers
@@ -1557,22 +1649,42 @@ class NeweggPricingController extends Controller
                 }
 
                 if ($bestRows !== []) {
-                    return $bestRows;
+                    return $this->normalizeTabularRows($bestRows);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Newegg views Excel parse failed, trying text: '.$e->getMessage());
             }
         }
 
-        $content = file_get_contents($file->getRealPath());
+        return $this->parseViewsTextFile((string) $file->getRealPath());
+    }
+
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    private function parseViewsTextFile(string $path): array
+    {
+        $content = file_get_contents($path);
         $content = preg_replace('/^\x{FEFF}/u', '', (string) $content);
         $firstLine = explode("\n", (string) $content)[0] ?? '';
         $delimiter = (strpos($firstLine, "\t") !== false) ? "\t" : ',';
-        $rows = array_map(fn ($line) => str_getcsv($line, $delimiter), explode("\n", (string) $content));
 
-        return array_values(array_filter($rows, function ($row) {
+        $rows = [];
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            $rows = array_map(fn ($line) => str_getcsv($line, $delimiter), explode("\n", (string) $content));
+        } else {
+            while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                $rows[] = $row;
+            }
+            fclose($handle);
+        }
+
+        $rows = array_values(array_filter($rows, function ($row) {
             return count($row) > 0 && count(array_filter($row, fn ($v) => trim((string) $v) !== '')) > 0;
         }));
+
+        return $this->normalizeTabularRows($rows);
     }
 
     private function toInt($value): int
