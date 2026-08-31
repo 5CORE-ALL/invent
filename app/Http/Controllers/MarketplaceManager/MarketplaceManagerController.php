@@ -250,7 +250,7 @@ class MarketplaceManagerController extends Controller
     /**
      * Shared Shopify live master refresh (once for all marketplaces).
      */
-    public function refreshShopify(): RedirectResponse
+    public function refreshShopify(Request $request): RedirectResponse|JsonResponse
     {
         WarmShopifyLiveCatalogCache::dispatch();
         Cache::put(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY, [
@@ -258,9 +258,19 @@ class MarketplaceManagerController extends Controller
             'queued_at' => now()->toDateTimeString(),
         ], 3600);
 
+        $message = 'Shopify live catalog refresh queued. SKUs + qty will update for all marketplaces shortly.';
+
+        if ($request->wantsJson() || $request->ajax() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'queued' => true,
+                'message' => $message,
+            ]);
+        }
+
         return redirect()
             ->route('marketplace.manager.index')
-            ->with('success', 'Shopify live catalog refresh queued. SKUs + qty will update for all marketplaces shortly.');
+            ->with('success', $message);
     }
 
     public function refreshShopifyStatus(): JsonResponse

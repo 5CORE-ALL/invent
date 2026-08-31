@@ -2443,6 +2443,129 @@ class AmazonSpApiService
     }
 
     /**
+     * Resolve a seller SKU against Listings Items API and return ASIN + summaries.
+     *
+     * @return array{seller_sku: string, asin: string, title: ?string, quantity: ?int, status: ?string}|null
+     */
+    public function lookupListingBySellerSku(string $sellerSku): ?array
+    {
+        $sellerSku = trim($sellerSku);
+        if ($sellerSku === '' || ! $this->isConfigured()) {
+            return null;
+        }
+
+        $accessToken = $this->getAccessToken();
+        if (empty($accessToken)) {
+            return null;
+        }
+
+        $matchedSku = $this->findAmazonSkuFormat($sellerSku, $accessToken);
+        if (empty($matchedSku)) {
+            $matchedSku = $sellerSku;
+        }
+
+        $hit = $this->fetchListingsItemSummaries((string) $matchedSku, $accessToken);
+        if ($hit !== null) {
+            return $hit;
+        }
+
+        if (strcasecmp((string) $matchedSku, $sellerSku) !== 0) {
+            return $this->fetchListingsItemSummaries($sellerSku, $accessToken);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{seller_sku: string, asin: string, title: ?string, quantity: ?int, status: ?string}|null
+     */
+    protected function fetchListingsItemSummaries(string $sellerSku, string $accessToken): ?array
+    {
+        $sellerId = config('services.amazon_sp.seller_id');
+        $marketplaceId = $this->marketplaceId ?? config('services.amazon_sp.marketplace_id');
+        if (empty($sellerId) || empty($marketplaceId)) {
+            return null;
+        }
+
+        try {
+            $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($sellerSku)
+                .'?marketplaceIds='.rawurlencode((string) $marketplaceId)
+                .'&includedData='.rawurlencode('summaries,fulfillmentAvailability');
+
+            $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+            ])->get($url);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $body = $response->json();
+            if (! is_array($body) || ! empty($body['errors'])) {
+                return null;
+            }
+
+            $asin = $this->asinFromListingsItemBody($body);
+            $summary = is_array($body['summaries'][0] ?? null) ? $body['summaries'][0] : [];
+            $title = trim((string) ($summary['itemName'] ?? $summary['item_name'] ?? ''));
+            $statusList = $summary['status'] ?? [];
+            $status = is_array($statusList) ? strtolower(trim((string) ($statusList[0] ?? ''))) : strtolower(trim((string) $statusList));
+            $qty = null;
+            $fa = $body['fulfillmentAvailability'][0] ?? [];
+            if (isset($fa['quantity']) && is_numeric($fa['quantity'])) {
+                $qty = (int) $fa['quantity'];
+            }
+
+            return [
+                'seller_sku' => trim((string) ($body['sku'] ?? $sellerSku)),
+                'asin' => $asin,
+                'title' => $title !== '' ? $title : null,
+                'quantity' => $qty,
+                'status' => $status !== '' ? $status : null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon SP-API listing lookup failed', [
+                'sku' => $sellerSku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    protected function asinFromListingsItemBody(array $body): string
+    {
+        foreach ($body['summaries'] ?? [] as $summary) {
+            if (! is_array($summary)) {
+                continue;
+            }
+            $asin = strtoupper(trim((string) ($summary['asin'] ?? $summary['ASIN'] ?? '')));
+            if (preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+                return $asin;
+            }
+        }
+
+        $identifiers = $body['identifiers'] ?? [];
+        if (is_array($identifiers)) {
+            foreach ($identifiers as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $asin = strtoupper(trim((string) ($row['identifier'] ?? $row['asin'] ?? '')));
+                if (preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+                    return $asin;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Get full Listings Item details from Listings Items API v2021-08-01.
      * Include: attributes, offers, fulfillmentAvailability, productTypes.
      * Maps: quantity, handling_time, your_price, minimum_advertised_price, list_price,

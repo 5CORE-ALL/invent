@@ -65,6 +65,7 @@
                             <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
                         </button>
                     @endif
+                    @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Reverb link map
                     </button>
@@ -203,13 +204,12 @@
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
-                                        @if(($p->listing_status ?? '') === 'not_in_shopify')
-                                            <span class="badge bg-warning-subtle text-warning">Not in Shopify</span>
-                                        @elseif($p->linked)
-                                            <span class="badge bg-success-subtle text-success">Linked</span>
-                                        @else
-                                            <span class="badge bg-light text-muted">Not linked</span>
-                                        @endif
+                                        @include('marketplace._listings-link-cell', [
+                                            'linked' => $p->linked,
+                                            'listingStatus' => $p->listing_status ?? '',
+                                            'shopifySkuId' => $p->shopify_sku_id ?? null,
+                                            'sku' => $p->sku ?? '',
+                                        ])
                                     </td>
                                     <td class="text-center" onclick="event.stopPropagation();">
                                         @if($canViewListing)
@@ -947,4 +947,5 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     tick();
 });
 </script>
+@include('marketplace._listings-instant-map-js')
 @endsection

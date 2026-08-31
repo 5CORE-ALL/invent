@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\AmazonListingStatus;
+use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -168,6 +169,142 @@ class AmazonLinkMapSyncService
     }
 
     /**
+     * Map one Shopify SKU to Amazon instantly: local catalog, then SP-API, then optional ASIN paste.
+     *
+     * @return array{success: bool, needs_id?: bool, product_id?: string, source?: string, message: string, id_label?: string}
+     */
+    public function linkSku(string $sku, ?string $asinOverride = null): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.', 'id_label' => 'Amazon ASIN'];
+        }
+        if (! Schema::hasTable('amazon_listing_statuses')) {
+            return ['success' => false, 'message' => 'amazon_listing_statuses table missing.', 'id_label' => 'Amazon ASIN'];
+        }
+
+        $asinOverride = strtoupper(trim((string) $asinOverride));
+        if ($asinOverride !== '' && ! preg_match('/^[A-Z0-9]{10}$/', $asinOverride)) {
+            return [
+                'success' => false,
+                'needs_id' => true,
+                'message' => 'ASIN must be 10 letters/numbers (example B0XXXXXXXX).',
+                'id_label' => 'Amazon ASIN',
+            ];
+        }
+
+        $asin = $asinOverride;
+        $source = $asin !== '' ? 'manual' : '';
+        $title = null;
+        $quantity = null;
+        $status = null;
+
+        if ($asin === '') {
+            $raw = $this->lookupRawRowForSku($sku);
+            if ($raw) {
+                $asin = $this->asinFromRawRow($raw);
+                if ($asin !== '') {
+                    $source = 'amazon_listings_raw';
+                    $title = trim((string) ($raw->item_name ?? '')) ?: null;
+                    if (isset($raw->quantity) && $raw->quantity !== null && $raw->quantity !== '') {
+                        $quantity = (int) $raw->quantity;
+                    }
+                }
+            }
+        }
+
+        $live = null;
+        if ($asin === '' && $this->amazonApi->isConfigured()) {
+            $live = $this->amazonApi->lookupListingBySellerSku($sku);
+            if (is_array($live)) {
+                $asin = strtoupper(trim((string) ($live['asin'] ?? '')));
+                $title = $title ?? ($live['title'] ?? null);
+                $quantity = $quantity ?? ($live['quantity'] ?? null);
+                $status = $live['status'] ?? null;
+                if ($asin !== '') {
+                    $source = 'sp-api';
+                } elseif (trim((string) ($live['seller_sku'] ?? '')) !== '') {
+                    $source = 'sp-api';
+                }
+            }
+        }
+
+        $asinOk = $asin !== '' && (bool) preg_match('/^[A-Z0-9]{10}$/', $asin);
+        if (! $asinOk && $source !== 'sp-api') {
+            return [
+                'success' => false,
+                'needs_id' => true,
+                'message' => 'This SKU is not in the Amz catalog yet. Paste the 10-character ASIN to map it, or list the SKU on Amazon first.',
+                'id_label' => 'Amazon ASIN',
+            ];
+        }
+
+        $this->persistLinkedSku($sku, $asinOk ? $asin : '', [
+            'title' => $title,
+            'quantity' => $quantity,
+            'status' => $status,
+        ]);
+
+        $productId = $asinOk ? $asin : ('AMZ:'.$sku);
+
+        return [
+            'success' => true,
+            'product_id' => $productId,
+            'source' => $source,
+            'message' => $asinOk
+                ? 'Linked '.$sku.' to Amz ASIN '.$asin.'.'
+                : 'Linked '.$sku.' to the Amz seller SKU (ASIN not in the API response).',
+            'id_label' => 'Amazon ASIN',
+        ];
+    }
+
+    /**
+     * @param  array{title?: ?string, quantity?: int|null, status?: ?string}  $meta
+     */
+    public function persistLinkedSku(string $sku, string $asin, array $meta = []): void
+    {
+        $asin = strtoupper(trim($asin));
+        $existing = AmazonListingStatus::query()
+            ->where('sku', $sku)
+            ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first();
+
+        $value = $existing ? AmazonListingStatusHelper::valueArray($existing) : [];
+        if (preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+            $value['asin'] = $asin;
+            $value['product_id'] = $asin;
+            $value['buyer_link'] = $value['buyer_link'] ?? ('https://www.amazon.com/dp/'.$asin);
+        } else {
+            $value['product_id'] = $value['product_id'] ?? ('AMZ:'.$sku);
+        }
+        $value['listed'] = $value['listed'] ?? 'Listed';
+        $status = strtolower(trim((string) ($meta['status'] ?? '')));
+        if ($status !== '') {
+            $value['listing_status'] = in_array($status, ['buyable', 'discoverable'], true) ? 'active' : $status;
+        } else {
+            $value['listing_status'] = $value['listing_status'] ?? 'active';
+        }
+        if (! empty($meta['title'])) {
+            $value['title'] = $meta['title'];
+        }
+        if (isset($meta['quantity']) && $meta['quantity'] !== null && $meta['quantity'] !== '') {
+            $value['quantity'] = (int) $meta['quantity'];
+        }
+        $value['linked_at'] = now()->toDateTimeString();
+
+        if ($existing) {
+            $existing->sku = $sku;
+            $existing->value = $value;
+            $existing->save();
+        } else {
+            AmazonListingStatus::query()->create([
+                'sku' => $sku,
+                'value' => $value,
+            ]);
+        }
+    }
+
+    /**
      * Create/update amazon_listing_statuses from amazon_listings_raw (source of Active Amazon listings).
      */
     public function upsertFromListingsRaw(): int
@@ -269,6 +406,31 @@ class AmazonLinkMapSyncService
         } catch (\Throwable $e) {
             Log::warning('AmazonLinkMapSyncService: listings refresh failed', ['error' => $e->getMessage()]);
         }
+    }
+
+    protected function lookupRawRowForSku(string $sku): ?object
+    {
+        if (! Schema::hasTable('amazon_listings_raw')) {
+            return null;
+        }
+
+        $candidates = array_values(array_unique(array_filter([
+            $sku,
+            strtoupper($sku),
+            ShopifySku::normalizeSkuForShopifyLookup($sku),
+        ])));
+
+        $row = DB::table('amazon_listings_raw')
+            ->where(function ($q) use ($candidates) {
+                $q->whereIn('seller_sku', $candidates);
+                foreach ($candidates as $candidate) {
+                    $q->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [strtoupper($candidate)]);
+                }
+            })
+            ->orderByDesc('id')
+            ->first();
+
+        return $row ?: null;
     }
 
     protected function lookupAsinFromListingsRaw(string $sku): string

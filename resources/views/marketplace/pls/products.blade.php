@@ -62,6 +62,7 @@
                             <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
                         </button>
                     @endif
+                    @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync PLS catalog
                     </button>
@@ -196,11 +197,12 @@
                                     <td>{{ isset($p->shopify_price) ? number_format((float)$p->shopify_price, 2) : '—' }}</td>
                                     <td>{{ isset($p->price) ? number_format((float)$p->price, 2) : '—' }}</td>
                                     <td>
-                                        @if($p->linked)
-                                            <span class="badge bg-success-subtle text-success">Linked</span>
-                                        @else
-                                            <span class="badge bg-light text-muted">Not linked</span>
-                                        @endif
+                                        @include('marketplace._listings-link-cell', [
+                                            'linked' => $p->linked,
+                                            'listingStatus' => $p->listing_status ?? '',
+                                            'shopifySkuId' => $p->shopify_sku_id ?? null,
+                                            'sku' => $p->sku ?? '',
+                                        ])
                                     </td>
                                 </tr>
                             @empty
@@ -315,4 +317,5 @@ document.getElementById('btn-refresh-pricing')?.addEventListener('click', functi
     'confirm' => 'Sync Inv SKU Mismatch SKUs from live Shopify → PLS right now (no queue)? This runs in batches and may take a few minutes.',
     'limit' => 5,
 ])
+@include('marketplace._listings-instant-map-js')
 @endsection
