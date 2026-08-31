@@ -1685,21 +1685,6 @@
         return '#e83e8c';
     }
 
-    /** Live % plus the S PRC what-if when S PRC ≠ Price. */
-    function shopifyB2cOuterPctHtml(livePct, sPct, colorFn, liveLabel, sLabel) {
-        const live = isFinite(livePct) ? livePct : 0;
-        const color = colorFn(live);
-        const liveHtml = '<span style="color:' + color + ';font-weight:600;">' + live.toFixed(0) + '%</span>';
-        if (!isFinite(sPct) || Math.round(sPct) === Math.round(live)) return liveHtml;
-        const sColor = colorFn(sPct);
-        const tip = (liveLabel || 'Live') + ' ' + live.toFixed(0) + '% → '
-            + (sLabel || 'S PRC') + ' ' + sPct.toFixed(0) + '%';
-        return '<span title="' + tip + '" style="display:inline-flex;flex-direction:column;align-items:center;line-height:1.15;">'
-            + liveHtml
-            + '<span style="color:' + sColor + ';font-size:10px;font-weight:600;">' + sPct.toFixed(0) + '%</span>'
-            + '</span>';
-    }
-
     let table = null;
     let allTableData = []; // Full dataset for ParentExpand
     let lmpMissingFilterActive = false;
@@ -3296,13 +3281,9 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
                         const percent = parseFloat(cell.getValue());
                         if (percent === null || percent === undefined || !isFinite(percent)) return '';
-                        const sm = shopifyB2cSpricePending(rowData)
-                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
-                            : null;
-                        return shopifyB2cOuterPctHtml(percent, sm ? sm.SROI : percent, shopifyB2cGroiColor, 'GROI', 'SROI');
+                        return `<span style="color: ${shopifyB2cGroiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3312,13 +3293,9 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
                         const percent = parseFloat(cell.getValue());
                         if (percent === null || percent === undefined || !isFinite(percent)) return '';
-                        const sm = shopifyB2cSpricePending(rowData)
-                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
-                            : null;
-                        return shopifyB2cOuterPctHtml(percent, sm ? sm.SGPFT : percent, shopifyB2cGpftColor, 'GPFT', 'SGPFT');
+                        return `<span style="color: ${shopifyB2cGpftColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3331,10 +3308,7 @@
                         const rowData = cell.getRow().getData();
                         const ads = parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
                         const npft = (parseFloat(rowData['GPFT%']) || 0) - ads;
-                        const sm = shopifyB2cSpricePending(rowData)
-                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
-                            : null;
-                        return shopifyB2cOuterPctHtml(npft, sm ? sm.SNPFT : npft, shopifyB2cGpftColor, 'PFT', 'SNPFT');
+                        return `<span style="color: ${shopifyB2cGpftColor(npft)}; font-weight: 600;">${npft.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3351,10 +3325,7 @@
                             rowData['Ship_productmaster'],
                             shopifyChannelAdsPct()
                         );
-                        const sm = shopifyB2cSpricePending(rowData)
-                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
-                            : null;
-                        return shopifyB2cOuterPctHtml(nroi, sm ? sm.SNROI : nroi, shopifyB2cGroiColor, 'NROI', 'SNROI');
+                        return `<span style="color: ${shopifyB2cGroiColor(nroi)}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
