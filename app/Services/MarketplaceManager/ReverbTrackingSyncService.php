@@ -158,8 +158,8 @@ class ReverbTrackingSyncService
         $rows = ReverbOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
-            ->orderByDesc('id')
-            ->limit($limit * 5)
+            ->orderBy('id')
+            ->limit($limit * 12)
             ->get(['id', 'order_id', 'order_number', 'shopify_order_id', 'status']);
 
         $unique = [];
@@ -206,7 +206,7 @@ class ReverbTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('reverb');
 
-        return (bool) ($settings['order']['push_tracking_to_reverb'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_reverb'] ?? true);
     }
 
     /**

@@ -222,8 +222,8 @@ class SheinTrackingSyncService
         $rows = SheinOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
-            ->orderByDesc('id')
-            ->limit($limit * 5)
+            ->orderBy('id')
+            ->limit($limit * 12)
             ->get(['id', 'order_id', 'shopify_order_id', 'status']);
 
         $unique = [];
@@ -270,7 +270,7 @@ class SheinTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('shein');
 
-        return (bool) ($settings['order']['push_tracking_to_shein'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_shein'] ?? true);
     }
 
     /**

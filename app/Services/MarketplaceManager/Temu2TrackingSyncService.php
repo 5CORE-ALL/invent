@@ -223,7 +223,7 @@ class Temu2TrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('temu2');
 
-        return (bool) ($settings['order']['push_tracking_to_temu2'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_temu2'] ?? true);
     }
 
     /**

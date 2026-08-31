@@ -17,13 +17,15 @@ use Illuminate\Support\Facades\Log;
  */
 class SyncTemuTrackingJob implements ShouldQueue, ShouldBeUnique
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, FulfillsShopifyBeforeChannelTracking;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
-    public int $timeout = 900;
+    public int $timeout = 850;
 
-    public int $uniqueFor = 1000;
+    public int $uniqueFor = 900;
+
+    public array $backoff = [20, 60, 120];
 
     public function __construct(
         public bool $respectSettings = true,
@@ -45,8 +47,7 @@ class SyncTemuTrackingJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $result = $sync->syncPending($this->limit);
-
-        Log::info('SyncTemuTrackingJob: completed', $result);
+        $this->fulfillShopifyCopiesFirst('temu', $this->limit);
+        $this->runTrackingSafely(fn () => $sync->syncPending($this->limit));
     }
 }

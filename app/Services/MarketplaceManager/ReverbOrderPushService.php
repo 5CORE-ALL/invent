@@ -14,6 +14,7 @@ class ReverbOrderPushService
 {
     use SyncsShopifyOrderAddress;
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
 
     public ?string $lastFailureReason = null;
 
@@ -207,7 +208,7 @@ class ReverbOrderPushService
     {
         $settings ??= MarketplaceSyncSettings::getFor('reverb');
 
-        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? true);
     }
 
     /**
@@ -247,6 +248,7 @@ class ReverbOrderPushService
             if ($localLinked) {
                 $this->linkReverbOrderToShopify($orderRef, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedMarketplaceOrder('reverb', (int) $order->id, ['order_ref' => $orderRef]);
 
                 return (string) $localLinked;
             }
@@ -282,6 +284,7 @@ class ReverbOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('reverb', (int) $order->id, ['order_ref' => $orderRef]);
 
             return (string) $existing['id'];
         }
@@ -316,6 +319,7 @@ class ReverbOrderPushService
         }
 
         $this->linkReverbOrderToShopify($orderRef !== '' ? $orderRef : (string) $order->orderRef(), $shopifyOrderId);
+        $this->fulfillShopifyForImportedMarketplaceOrder('reverb', (int) ($order->fresh()?->id ?? $order->id), ['order_ref' => $orderRef]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

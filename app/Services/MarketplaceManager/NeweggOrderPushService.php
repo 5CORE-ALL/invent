@@ -14,6 +14,7 @@ class NeweggOrderPushService
 {
     use SyncsShopifyOrderAddress;
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
 
     public ?string $lastFailureReason = null;
 
@@ -217,7 +218,7 @@ class NeweggOrderPushService
     {
         $settings ??= MarketplaceSyncSettings::getFor('newegg');
 
-        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? true);
     }
 
     public function importToShopify(NeweggOrderMetric $order): ?string
@@ -240,6 +241,7 @@ class NeweggOrderPushService
             if ($localLinked) {
                 $this->linkNeweggOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedMarketplaceOrder('newegg', (int) $order->id, ['order_id' => $orderId]);
 
                 return (string) $localLinked;
             }
@@ -276,6 +278,7 @@ class NeweggOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('newegg', (int) $order->id, ['order_id' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -310,6 +313,7 @@ class NeweggOrderPushService
         }
 
         $this->linkNeweggOrderToShopify($orderId !== '' ? $orderId : (string) $order->order_id, $shopifyOrderId);
+        $this->fulfillShopifyForImportedMarketplaceOrder('newegg', (int) ($order->fresh()?->id ?? $order->id), ['order_id' => $orderId]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

@@ -194,8 +194,8 @@ class NeweggTrackingSyncService
         $rows = NeweggOrderMetric::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
-            ->orderByDesc('id')
-            ->limit($limit * 5)
+            ->orderBy('id')
+            ->limit($limit * 12)
             ->get(['id', 'order_id', 'shopify_order_id', 'status']);
 
         $unique = [];
@@ -242,7 +242,7 @@ class NeweggTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('newegg');
 
-        return (bool) ($settings['order']['push_tracking_to_newegg'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_newegg'] ?? true);
     }
 
     /**

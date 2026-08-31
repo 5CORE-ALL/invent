@@ -241,7 +241,7 @@ class FaireTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('faire');
 
-        return (bool) ($settings['order']['push_tracking_to_faire'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_faire'] ?? true);
     }
 
     /**

@@ -66,6 +66,6 @@ class BestBuyTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('bestbuy');
 
-        return (bool) ($settings['order']['push_tracking_to_bestbuy'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_bestbuy'] ?? true);
     }
 }

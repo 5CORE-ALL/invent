@@ -19,11 +19,11 @@ class SyncNeweggAddressJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
-    public int $timeout = 900;
+    public int $timeout = 850;
 
-    public int $uniqueFor = 1000;
+    public int $uniqueFor = 900;
 
     public function __construct(
         public bool $respectSettings = true,

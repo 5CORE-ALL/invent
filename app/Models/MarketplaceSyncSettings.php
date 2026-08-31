@@ -100,7 +100,7 @@ class MarketplaceSyncSettings extends Model
     {
         $settings ??= self::getFor('shein');
 
-        return (bool) ($settings['order']['auto_accept_on_shein'] ?? false);
+        return (bool) ($settings['order']['auto_accept_on_shein'] ?? true);
     }
 
     public static function defaults(?string $marketplace = null): array
@@ -237,8 +237,8 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
                 'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'tiktok', 'amazon'], true),
-                // Shein: Pending → To Be Shipped via export-address handleType=2 (off until enabled in Settings).
-                'auto_accept_on_shein' => false,
+                // Shein: Pending → To Be Shipped via export-address handleType=2 (ON so Shopify gets ship-to).
+                'auto_accept_on_shein' => true,
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',

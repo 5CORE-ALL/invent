@@ -15,6 +15,7 @@ class TikTok2OrderPushService
     use FindsExistingShopifyOrderByChannelRef;
     use ResolvesTikTokOrderRawJson;
     use SyncsShopifyOrderAddress;
+    use FulfillsShopifyAfterImport;
 
     public ?string $lastFailureReason = null;
 
@@ -46,6 +47,7 @@ class TikTok2OrderPushService
                 $fresh = $order->fresh() ?? $order;
                 $fresh->shopify_order_id = (string) $localLinked;
                 $this->syncShippingAddressToShopify($fresh);
+                $this->fulfillShopifyForImportedMarketplaceOrder('tiktok2', (int) $fresh->id, ['order_id' => $orderId]);
 
                 return (string) $localLinked;
             }
@@ -85,6 +87,7 @@ class TikTok2OrderPushService
             $fresh = $order->fresh() ?? $order;
             $fresh->shopify_order_id = (string) $existing['id'];
             $this->syncShippingAddressToShopify($fresh);
+            $this->fulfillShopifyForImportedMarketplaceOrder('tiktok2', (int) $fresh->id, ['order_id' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -127,6 +130,11 @@ class TikTok2OrderPushService
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);
         }
+
+        $fresh = $order->fresh() ?? $order;
+        $fresh->shopify_order_id = $shopifyOrderId;
+        $this->syncShippingAddressToShopify($fresh);
+        $this->fulfillShopifyForImportedMarketplaceOrder('tiktok2', (int) $fresh->id, ['order_id' => $orderId]);
 
         return $shopifyOrderId;
     }

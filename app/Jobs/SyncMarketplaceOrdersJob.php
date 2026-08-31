@@ -24,11 +24,13 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
-    public int $timeout = 1700;
+    public int $timeout = 1100;
 
-    public int $uniqueFor = 1800;
+    public int $uniqueFor = 1200;
+
+    public array $backoff = [30, 120, 300];
 
     public function __construct(
         public string $marketplace,
@@ -103,14 +105,29 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 'output' => trim(Artisan::output()),
             ]);
 
-            // After order fetch/import, backfill missing Shopify addresses when enabled.
+            // After order fetch/import, backfill addresses then fulfill Shopify + push tracking.
             $this->queueAddressSyncIfEnabled($slug);
+            $this->queueTrackingSync($slug);
         } catch (\Throwable $e) {
             Log::error('SyncMarketplaceOrdersJob: failed', [
                 'marketplace' => $slug,
                 'error' => $e->getMessage(),
             ]);
-            throw $e;
+            // Do not rethrow: ShouldBeUnique would keep the lock and skip the next cycle.
+            $this->queueAddressSyncIfEnabled($slug);
+            $this->queueTrackingSync($slug);
+        }
+    }
+
+    protected function queueTrackingSync(string $slug): void
+    {
+        try {
+            \App\Services\MarketplaceManager\MarketplaceChannelFulfillmentHub::dispatchTrackingJob($slug, 40);
+        } catch (\Throwable $e) {
+            Log::warning('SyncMarketplaceOrdersJob: could not queue tracking sync', [
+                'marketplace' => $slug,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

@@ -604,7 +604,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(9)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-orders')

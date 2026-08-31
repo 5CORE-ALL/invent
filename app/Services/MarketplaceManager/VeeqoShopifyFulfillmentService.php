@@ -86,7 +86,7 @@ class VeeqoShopifyFulfillmentService
                 $tn,
                 (string) ($result['carrier'] ?? '')
             );
-            $this->pushEbayTrackingAfterShopify($marketplace, $orderId, $result);
+            $this->pushChannelTrackingAfterShopify($marketplace, $orderId, $result);
         }
 
         return $result;
@@ -412,6 +412,50 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Fulfill Shopify copies for one channel (Veeqo/GOFO), then the hub pushes
+     * tracking back to that marketplace. Used by each channel's tracking cron
+     * so a missing Shopify label cannot starve Newegg/TikTok/Shein/etc.
+     *
+     * @return array{checked: int, fulfilled: int, skipped: int, failed: int, message: string}
+     */
+    public function syncPendingUnfulfilledForMarketplace(string $marketplace, int $limit = 40): array
+    {
+        $marketplace = strtolower(trim($marketplace));
+        $limit = max(1, min(200, $limit));
+        $ids = $this->pendingLinkedOrderIds($marketplace, $limit);
+        $checked = 0;
+        $fulfilled = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($ids as $orderId) {
+            $orderId = (int) $orderId;
+            if ($orderId < 1) {
+                continue;
+            }
+            $checked++;
+            $result = $this->fulfillMarketplaceOrder($marketplace, $orderId);
+            $this->rememberAutoFetchResult($marketplace, $orderId, $result);
+            if (! empty($result['success']) && ($result['action'] ?? '') === 'shopify_fulfilled') {
+                $fulfilled++;
+            } elseif (! empty($result['skipped']) || (($result['action'] ?? '') === 'already_on_shopify')) {
+                $skipped++;
+            } else {
+                $failed++;
+            }
+            usleep(120000);
+        }
+
+        return [
+            'checked' => $checked,
+            'fulfilled' => $fulfilled,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Fetch tracking ({$marketplace}): checked {$checked}, fulfilled {$fulfilled}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    /**
      * Unfulfilled Marketplace Manager Shopify copies (any channel), even when
      * the local marketplace table has no shopify_order_id yet.
      *
@@ -464,11 +508,11 @@ class VeeqoShopifyFulfillmentService
                     if ($amazonId !== '') {
                         $this->linkAmazonOrderToShopify($amazonId, $shopifyId);
                     }
-                    $this->pushEbayTrackingForShopifyOrder($order, $shopifyId, $result);
+                    $this->pushChannelTrackingForShopifyOrder($order, $shopifyId, $result);
                 } elseif ($action === 'already_on_shopify') {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addDays(7));
-                    $this->pushEbayTrackingForShopifyOrder($order, $shopifyId, $result);
+                    $this->pushChannelTrackingForShopifyOrder($order, $shopifyId, $result);
                 } elseif (in_array($action, ['tracking_not_found', 'not_linked'], true)) {
                     $skipped++;
                     Cache::put($cacheKey, 1, now()->addMinutes(8));
@@ -1831,8 +1875,8 @@ class VeeqoShopifyFulfillmentService
                 ->where(function ($q) use ($since) {
                     $q->where('order_date', '>=', $since)->orWhere('created_at', '>=', $since);
                 })
-                ->orderByDesc('id')
-                ->limit(max(80, $limit * 12))
+                ->orderBy('id')
+                ->limit(max(80, $limit * 40))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->all();
@@ -1905,14 +1949,17 @@ class VeeqoShopifyFulfillmentService
                 'wayfair' => 'po_number',
                 'doba' => 'order_no',
                 'purchasingpower' => 'order_number',
-                'bestbuy', 'macy', 'aliexpress', 'alibaba', 'topdawg' => 'order_id',
+                'temu', 'temu2' => 'parent_order_sn',
+                'bestbuy', 'macy', 'aliexpress', 'alibaba', 'topdawg',
+                'newegg', 'shein', 'reverb', 'tiktok', 'tiktok2', 'faire',
+                'ebay1', 'ebay2', 'ebay3' => 'order_id',
                 default => null,
             };
 
             if ($uniqueCol && Schema::hasColumn($table, $uniqueCol)) {
                 $ids = [];
                 $seen = [];
-                foreach ($query->orderByDesc('id')->limit($limit * 16)->get(['id', $uniqueCol]) as $row) {
+                foreach ($query->orderBy('id')->limit($limit * 40)->get(['id', $uniqueCol]) as $row) {
                     $key = trim((string) ($row->{$uniqueCol} ?? ''));
                     if ($key === '' || isset($seen[$key])) {
                         continue;
@@ -1924,8 +1971,8 @@ class VeeqoShopifyFulfillmentService
                 return $this->filterAutoFetchCandidates($marketplace, $ids, $limit);
             }
 
-            $ids = $query->orderByDesc('id')
-                ->limit(max(40, $limit * 12))
+            $ids = $query->orderBy('id')
+                ->limit(max(80, $limit * 40))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->all();
@@ -1984,7 +2031,7 @@ class VeeqoShopifyFulfillmentService
         }
         if (in_array($action, ['tracking_not_found', 'not_linked', 'unsupported'], true)
             || (! empty($result['skipped']) && $action !== 'shopify_fulfilled')) {
-            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'miss'), 1, now()->addMinutes(25));
+            Cache::put($this->autoFetchCacheKey($marketplace, $orderId, 'miss'), 1, now()->addMinutes(8));
         }
     }
 
@@ -2072,6 +2119,8 @@ class VeeqoShopifyFulfillmentService
                 'wayfair' => WayfairDailyData::class,
                 'purchasingpower' => PurchasingPowerSale::class,
                 'doba' => DobaDailyData::class,
+                'tiktok' => TiktokOrder::class,
+                'tiktok2' => Tiktok2Order::class,
                 default => null,
             };
             if ($class === null) {
@@ -2123,91 +2172,18 @@ class VeeqoShopifyFulfillmentService
     /**
      * @param  array<string, mixed>  $result
      */
-    protected function pushEbayTrackingAfterShopify(string $marketplace, int $orderId, array $result): void
+    protected function pushChannelTrackingAfterShopify(string $marketplace, int $orderId, array $result): void
     {
-        $marketplace = strtolower(trim($marketplace));
-        if (! in_array($marketplace, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            return;
-        }
-        if (trim((string) ($result['tracking'] ?? '')) === '') {
-            return;
-        }
-
-        $class = match ($marketplace) {
-            'ebay1' => Ebay1OrderMetric::class,
-            'ebay2' => Ebay2OrderMetric::class,
-            'ebay3' => Ebay3OrderMetric::class,
-            default => null,
-        };
-        if ($class === null) {
-            return;
-        }
-
-        try {
-            $line = $class::query()->find($orderId);
-            if ($line === null) {
-                return;
-            }
-            app(EbaySellFulfillmentTracking::class)->pushForChannel($marketplace, $line);
-        } catch (\Throwable $e) {
-            Log::warning('VeeqoShopifyFulfillmentService: eBay tracking push after Shopify failed', [
-                'marketplace' => $marketplace,
-                'order_id' => $orderId,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        app(MarketplaceChannelFulfillmentHub::class)->pushAfterShopifyTracking($marketplace, $orderId, $result);
     }
 
     /**
      * @param  array<string, mixed>  $shopifyOrder
      * @param  array<string, mixed>  $result
      */
-    protected function pushEbayTrackingForShopifyOrder(array $shopifyOrder, string $shopifyOrderId, array $result): void
+    protected function pushChannelTrackingForShopifyOrder(array $shopifyOrder, string $shopifyOrderId, array $result): void
     {
-        if (trim((string) ($result['tracking'] ?? '')) === '') {
-            return;
-        }
-
-        $hay = strtolower(trim((string) ($shopifyOrder['tags'] ?? '')).' '.trim((string) ($shopifyOrder['note'] ?? '')));
-        foreach (['ebay1', 'ebay2', 'ebay3'] as $slug) {
-            if (! preg_match('/(?:^|[\s,])'.preg_quote($slug, '/').'-([^\s,]+)/i', $hay, $m)) {
-                continue;
-            }
-            $ebayOrderId = trim((string) ($m[1] ?? ''));
-            if ($ebayOrderId === '') {
-                continue;
-            }
-            $class = match ($slug) {
-                'ebay1' => Ebay1OrderMetric::class,
-                'ebay2' => Ebay2OrderMetric::class,
-                'ebay3' => Ebay3OrderMetric::class,
-                default => null,
-            };
-            if ($class === null) {
-                continue;
-            }
-            try {
-                $line = $class::query()
-                    ->where('order_id', $ebayOrderId)
-                    ->orWhere('order_number', $ebayOrderId)
-                    ->orderBy('id')
-                    ->first();
-                if ($line === null) {
-                    continue;
-                }
-                if (trim((string) ($line->shopify_order_id ?? '')) === '') {
-                    $line->shopify_order_id = $shopifyOrderId;
-                    $line->save();
-                }
-                app(EbaySellFulfillmentTracking::class)->pushForChannel($slug, $line);
-            } catch (\Throwable $e) {
-                Log::warning('VeeqoShopifyFulfillmentService: eBay tracking push from Shopify copy failed', [
-                    'marketplace' => $slug,
-                    'ebay_order_id' => $ebayOrderId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        app(MarketplaceChannelFulfillmentHub::class)->pushAfterShopifyCopy($shopifyOrder, $shopifyOrderId, $result);
     }
 
     /**
