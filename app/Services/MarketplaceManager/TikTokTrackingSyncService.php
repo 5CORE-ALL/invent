@@ -151,8 +151,8 @@ class TikTokTrackingSyncService
             ->where('shopify_order_id', '!=', '')
             ->whereNull('tracking_pushed_at')
             ->whereIn('order_status', self::TRACKING_ELIGIBLE_STATUSES)
-            ->orderByDesc('id')
-            ->limit($limit * 5)
+            ->orderBy('id')
+            ->limit($limit * 12)
             ->get(['id', 'order_id', 'shopify_order_id', 'order_status', 'tracking_pushed_at']);
 
         $unique = [];

@@ -66,6 +66,6 @@ class PurchasingPowerTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('purchasingpower');
 
-        return (bool) ($settings['order']['push_tracking_to_purchasingpower'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_purchasingpower'] ?? true);
     }
 }

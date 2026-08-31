@@ -14,6 +14,7 @@ class SheinOrderPushService
 {
     use FindsExistingShopifyOrderByChannelRef;
     use SyncsShopifyOrderAddress;
+    use FulfillsShopifyAfterImport;
 
     public ?string $lastFailureReason = null;
 
@@ -79,6 +80,26 @@ class SheinOrderPushService
             ? $orderPayload['shipping_address']
             : [];
         $address1 = trim((string) ($shipping['address1'] ?? ''));
+
+        if ($address1 === '' && $this->orderDetailService->isPendingOrder($order) && SheinOrderDetailService::canAutoAccept()) {
+            try {
+                $this->orderDetailService->acceptOrderOnShein($orderId);
+                $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
+                $order->refresh();
+                $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
+                $detail = $this->formatter->formatOrder($orderRoot, $lines, $order);
+                $orderPayload = $this->formatter->buildShopifyOrderPayload($detail, $lines, ['shein']);
+                $shipping = is_array($orderPayload['shipping_address'] ?? null)
+                    ? $orderPayload['shipping_address']
+                    : [];
+                $address1 = trim((string) ($shipping['address1'] ?? ''));
+            } catch (\Throwable $e) {
+                Log::warning('SheinOrderPushService: accept-before-address failed', [
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         if ($address1 === '') {
             return [
@@ -218,7 +239,7 @@ class SheinOrderPushService
     {
         $settings ??= MarketplaceSyncSettings::getFor('shein');
 
-        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? true);
     }
 
     public function importToShopify(SheinOrderMetric $order): ?string
@@ -242,6 +263,7 @@ class SheinOrderPushService
             if ($localLinked) {
                 $this->linkSheinOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedMarketplaceOrder('shein', (int) $order->id, ['order_id' => $orderId]);
 
                 return (string) $localLinked;
             }
@@ -279,6 +301,7 @@ class SheinOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('shein', (int) $order->id, ['order_id' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -319,6 +342,7 @@ class SheinOrderPushService
                 'pushed_to_shopify_at' => now(),
                 'import_status' => 'imported',
             ]);
+        $this->fulfillShopifyForImportedMarketplaceOrder('shein', (int) ($order->fresh()?->id ?? $order->id), ['order_id' => $order->order_id]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

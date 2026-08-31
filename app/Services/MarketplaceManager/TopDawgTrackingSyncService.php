@@ -67,6 +67,6 @@ class TopDawgTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('topdawg');
 
-        return (bool) ($settings['order']['push_tracking_to_topdawg'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_topdawg'] ?? true);
     }
 }

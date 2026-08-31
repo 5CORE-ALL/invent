@@ -66,6 +66,6 @@ class MacyTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('macy');
 
-        return (bool) ($settings['order']['push_tracking_to_macy'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_macy'] ?? true);
     }
 }

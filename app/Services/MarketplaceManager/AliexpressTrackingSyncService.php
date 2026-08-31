@@ -215,9 +215,9 @@ class AliexpressTrackingSyncService
                         'ORDER_CANCEL',
                     ]);
             })
-            ->orderByDesc('order_date')
-            ->orderByDesc('id')
-            ->limit($limit * 5)
+            ->orderBy('order_date')
+            ->orderBy('id')
+            ->limit($limit * 12)
             ->pluck('order_id', 'shopify_order_id');
 
         $uniqueOrderIds = [];
@@ -275,7 +275,7 @@ class AliexpressTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('aliexpress');
 
-        return (bool) ($settings['order']['push_tracking_to_aliexpress'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_aliexpress'] ?? true);
     }
 
     /**

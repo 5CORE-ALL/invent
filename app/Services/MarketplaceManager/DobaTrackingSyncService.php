@@ -66,6 +66,6 @@ class DobaTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('doba');
 
-        return (bool) ($settings['order']['push_tracking_to_doba'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_doba'] ?? true);
     }
 }

@@ -66,6 +66,6 @@ class WayfairTrackingSyncService
     {
         $settings ??= MarketplaceSyncSettings::getFor('wayfair');
 
-        return (bool) ($settings['order']['push_tracking_to_wayfair'] ?? false);
+        return (bool) ($settings['order']['push_tracking_to_wayfair'] ?? true);
     }
 }
