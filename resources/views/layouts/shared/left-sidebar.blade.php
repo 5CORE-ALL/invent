@@ -260,6 +260,17 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ url('/linked-mismatch-sku') }}" class="side-nav-link linked-mismatch-sku-nav">
+                    <i class="ri-links-line"></i>
+                    <span>Linked mismatch SKU</span>
+                    @php
+                        $linkedMismatchSkuCount = \App\Support\Marketplace\MappingChannelCounts::cachedLinkedMismatchTotalOrZero();
+                    @endphp
+                    <span class="badge rounded-pill ms-auto linked-mismatch-sku-badge" title="Linked mismatch SKU inventory from all Marketplace Manager listings">{{ number_format($linkedMismatchSkuCount) }}</span>
+                </a>
+            </li>
+
             {{-- Audit --}}
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#auditMaster" aria-expanded="false"
@@ -3255,6 +3266,22 @@
         right: auto !important;
         transform: none !important;
         background-color: #d97706 !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    .side-nav a.linked-mismatch-sku-nav {
+        padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
+    }
+    .side-nav a.linked-mismatch-sku-nav > .linked-mismatch-sku-badge {
+        position: static !important;
+        display: inline-block;
+        vertical-align: middle;
+        margin: 0 0 0 0.35rem !important;
+        top: auto !important;
+        right: auto !important;
+        transform: none !important;
+        background-color: #a71d2a !important;
         color: #fff !important;
         font-weight: 700;
     }

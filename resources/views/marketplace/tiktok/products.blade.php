@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'tiktok', 'heading' => 'TikTok Shop Listings'])
         <p class="text-muted mb-3">
             Seller Center <strong>Active</strong> counts <strong>products</strong> (a combined listing is 1). This page counts <strong>Shopify SKUs</strong>.
-            Linked here ≈ Inv SKU Match + Inv SKU Mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
-            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs TikTok quantity (same qty, or gap at most max(3 units, 3% of Shopify)).
+            Linked here ≈ Inv SKU Match + Linked mismatch SKU + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
+            <strong>Inv SKU Match / Linked mismatch SKU</strong> = Shopify vs TikTok quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify).
             <strong>Active SKU / Inactive SKU</strong> = actual TikTok seller portal status (not inventory match).
             App has {{ $counts['tiktok_products'] ?? 0 }} TikTok products / {{ $counts['tiktok_skus'] ?? 0 }} linked SKUs.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
@@ -36,7 +36,7 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Inv SKU Mismatch
+                        {{ $products->total() }} Linked mismatch SKU
                     @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'matched_inactive')
@@ -58,7 +58,7 @@
                     @endif
                     @if(($linkTab ?? '') === 'mismatch')
                         <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
-                            <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
+                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
                         </button>
                     @endif
                     @include('marketplace._listings-fetch-new')
@@ -109,7 +109,7 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>
@@ -312,7 +312,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 </script>
 @include('marketplace._sync-mismatch-now', [
     'url' => route('marketplace.manager.tiktok.sync.mismatch.inventory'),
-    'confirm' => "Sync Inv SKU Mismatch SKUs from live Shopify → TikTok Shop right now (batched, no queue)?",
+    'confirm' => "Push the actual live Shopify quantity to every Linked mismatch SKU on TikTok Shop right now (batched, no queue)?",
     'limit' => 1,
 ])
 @include('marketplace._listings-instant-map-js')

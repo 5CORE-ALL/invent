@@ -31,6 +31,10 @@ class MappingChannelCounts
 
     public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v7';
 
+    public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v1';
+
+    public const LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY = 'linked_mismatch_sku_master_rows_v1';
+
     /**
      * Channels shown on /map-issues.
      * mi_key marks MapIssues channels that have SKU-level detail pages.
@@ -62,6 +66,9 @@ class MappingChannelCounts
         'tiktokshop' => ['label' => 'TikTok Shop', 'loader' => 'tiktok'],
         'tiktok2' => ['label' => 'TikTok 2', 'loader' => 'tiktok2'],
         'tiktokshop2' => ['label' => 'TikTok 2', 'loader' => 'tiktok2'],
+        'doba' => ['label' => 'Doba', 'loader' => 'doba'],
+        'purchasingpower' => ['label' => 'Purchasing Power', 'loader' => 'purchasingpower'],
+        'alibaba' => ['label' => 'Alibaba', 'loader' => 'alibaba'],
     ];
 
     public static function normalize(string $channel): string
@@ -142,6 +149,8 @@ class MappingChannelCounts
             Cache::forget(self::API_STATUS_CACHE_KEY);
             Cache::forget(self::INACTIVE_TOTAL_CACHE_KEY);
             Cache::forget(self::INACTIVE_MASTER_ROWS_CACHE_KEY);
+            Cache::forget(self::LINKED_MISMATCH_TOTAL_CACHE_KEY);
+            Cache::forget(self::LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY);
             Cache::forget('inactive_listings_total_v5');
             Cache::forget('inactive_listings_master_rows_v5');
             Cache::forget('inactive_listings_total_v6');
@@ -182,6 +191,7 @@ class MappingChannelCounts
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
             'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
+            'doba', 'purchasingpower', 'alibaba',
         ];
 
         foreach ($order as $slug) {
@@ -289,6 +299,7 @@ class MappingChannelCounts
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
             'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
+            'doba', 'purchasingpower', 'alibaba',
         ];
 
         foreach ($order as $slug) {
@@ -323,6 +334,107 @@ class MappingChannelCounts
             $ttl = MarketplacePortalInactiveCount::$portalSyncIncomplete ? 1 : 10;
             Cache::put(self::INACTIVE_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes($ttl));
             self::storeInactiveTotal((int) collect($rows)->sum('inactive_listings'));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $rows;
+    }
+
+    public static function cachedLinkedMismatchTotalOrZero(): int
+    {
+        try {
+            $cached = Cache::get(self::LINKED_MISMATCH_TOTAL_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        try {
+            $rows = Cache::get(self::LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY);
+            if (is_array($rows) && $rows !== []) {
+                return (int) collect($rows)->sum('linked_mismatch_sku');
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return 0;
+    }
+
+    public static function storeLinkedMismatchTotal(int $total): void
+    {
+        try {
+            Cache::put(self::LINKED_MISMATCH_TOTAL_CACHE_KEY, $total, now()->addMinutes(30));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * Master rows: Marketplace Manager Linked mismatch SKU tab counts.
+     *
+     * @return list<array{channel: string, channel_slug: string, image: ?string, linked_mismatch_sku: int, detail_url: string, listings_url: ?string, has_sku_detail: bool, api_status: string, api_connected: bool, api_updated_at: ?string, api_label: string}>
+     */
+    public static function linkedMismatchMasterRows(bool $useCache = false): array
+    {
+        if ($useCache) {
+            try {
+                $cached = Cache::get(self::LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY);
+                if (is_array($cached) && $cached !== []) {
+                    return $cached;
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        $mismatchCounts = self::collectListingsLinkedMismatchCounts();
+        $apiStatuses = self::collectApiStatuses();
+        $logos = self::logoMap();
+        $displayNames = self::displayNameMap();
+        $seen = [];
+        $rows = [];
+        $order = [
+            'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
+            'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
+            'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
+            'doba', 'purchasingpower', 'alibaba',
+        ];
+
+        foreach ($order as $slug) {
+            if (! isset(self::$sources[$slug]) || isset($seen[$slug])) {
+                continue;
+            }
+            $seen[$slug] = true;
+            $label = $displayNames[$slug] ?? self::$sources[$slug]['label'];
+            $api = $apiStatuses[$slug] ?? [
+                'api_status' => 'red',
+                'api_connected' => false,
+                'api_updated_at' => null,
+                'api_label' => 'API not linked',
+            ];
+
+            $rows[] = [
+                'channel' => $label,
+                'channel_slug' => $slug,
+                'image' => $logos[$slug] ?? null,
+                'linked_mismatch_sku' => (int) ($mismatchCounts[$slug] ?? 0),
+                'detail_url' => url('/linked-mismatch-sku/channel/'.$slug),
+                'listings_url' => self::listingsUrlForSlug($slug),
+                'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
+                'api_status' => $api['api_status'],
+                'api_connected' => $api['api_connected'],
+                'api_updated_at' => $api['api_updated_at'],
+                'api_label' => $api['api_label'],
+            ];
+        }
+
+        try {
+            Cache::put(self::LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY, $rows, now()->addMinutes(10));
+            self::storeLinkedMismatchTotal((int) collect($rows)->sum('linked_mismatch_sku'));
         } catch (\Throwable $e) {
             // ignore
         }
@@ -644,6 +756,36 @@ class MappingChannelCounts
                 $counts[$slug] = (int) $seenMm[$mm];
             } catch (\Throwable $e) {
                 Log::warning("MappingChannelCounts {$slug} listings mismatch failed: ".$e->getMessage());
+                $counts[$slug] = (int) ($seenMm[$mm] ?? 0);
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Linked mismatch SKU tab counts from Marketplace Manager listings.
+     *
+     * @return array<string, int>
+     */
+    public static function collectListingsLinkedMismatchCounts(): array
+    {
+        $counts = [];
+        $match = app(MarketplaceListingQtyMatchService::class);
+        $seenMm = [];
+
+        foreach (self::$sources as $slug => $meta) {
+            $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+            if ($mm === null) {
+                continue;
+            }
+            try {
+                if (! array_key_exists($mm, $seenMm)) {
+                    $seenMm[$mm] = $match->mismatchCount($mm);
+                }
+                $counts[$slug] = (int) $seenMm[$mm];
+            } catch (\Throwable $e) {
+                Log::warning("MappingChannelCounts {$slug} linked mismatch failed: ".$e->getMessage());
                 $counts[$slug] = (int) ($seenMm[$mm] ?? 0);
             }
         }

@@ -7,7 +7,7 @@
         @include('marketplace._page-heading', ['slug' => 'shein', 'heading' => 'Shein Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs Shein quantity (same qty, or gap at most max(3 units, 3% of Shopify)).
+            <strong>Inv SKU Match / Linked mismatch SKU</strong> = Shopify vs Shein quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify).
             <strong>Active SKU / Inactive SKU</strong> = actual Shein seller portal status (not inventory match).
             <em>Refresh live</em> warms Shein status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
@@ -34,7 +34,7 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Inv SKU Mismatch
+                        {{ $products->total() }} Linked mismatch SKU
                     @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'matched_inactive')
@@ -56,7 +56,7 @@
                     @endif
                     @if(($linkTab ?? '') === 'mismatch')
                         <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
-                            <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
+                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
                         </button>
                     @endif
                     @include('marketplace._listings-fetch-new')
@@ -113,7 +113,7 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>
@@ -315,7 +315,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 </script>
 @include('marketplace._sync-mismatch-now', [
     'url' => route('marketplace.manager.shein.sync.mismatch.inventory'),
-    'confirm' => 'Sync Inv SKU Mismatch SKUs from live Shopify → Shein right now (no queue)? This looks up Shein skuCode then pushes qty.',
+    'confirm' => 'Push the actual live Shopify quantity to every Linked mismatch SKU on Shein right now (no queue)? This looks up Shein skuCode then pushes qty.',
     'limit' => 1,
 ])
 @include('marketplace._listings-instant-map-js')
