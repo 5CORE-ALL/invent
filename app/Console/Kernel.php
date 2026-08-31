@@ -772,7 +772,7 @@ class Kernel extends ConsoleKernel
         $ist($schedule->command('newegg:item-data --save --source=catalog')
             ->cron('30 */3 * * *')
             ->name('fetch-newegg-item-prices')
-            ->withoutOverlapping(170)
+            ->withoutOverlapping(15)
             ->runInBackground()
             ->appendOutputTo($log));
 

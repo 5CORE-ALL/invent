@@ -26,8 +26,9 @@ class FetchNeweggItemData extends Command
         {--country=USA : Destination country code for price (ISO 3-letter)}
         {--save : Persist results to the database}
         {--only-missing : Only process SKUs that do not yet have a selling_price in newegg_pricing}
-        {--sleep=200 : Milliseconds to wait between SKUs (rate limiting)}
-        {--raw : Print raw JSON for each SKU}';
+        {--chunk=100 : SKUs per Get Batch Price / Get Batch Inventory call (max 100)}
+        {--sleep=0 : Milliseconds to wait between batches}
+        {--raw : Print raw JSON for each batch}';
 
     protected $description = 'Fetch Newegg item price + inventory from the API into the newegg_pricing table';
 
@@ -41,9 +42,14 @@ class FetchNeweggItemData extends Command
             return self::FAILURE;
         }
 
+        $chunkSize = min(100, max((int) $this->option('chunk'), 1));
+        $chunks    = array_chunk($skus, $chunkSize);
+        $started   = microtime(true);
+
         $this->info('Fetching Newegg item data for ' . count($skus) . ' SKU(s)...');
         $this->line('  SellerID: ' . (config('services.newegg.seller_id') ?: '(not set)'));
         $this->line('  Country:  ' . $country);
+        $this->line('  Mode:     batch (' . $chunkSize . ' SKUs/request, ' . count($chunks) . ' batch(es))');
         $this->newLine();
 
         $sleepMs   = max((int) $this->option('sleep'), 0);
@@ -51,81 +57,101 @@ class FetchNeweggItemData extends Command
         $saved     = 0;
         $tally     = [];
         $withPrice = 0;
-        $verbose   = !$this->option('save') || count($skus) <= 50;
+        $verbose   = count($skus) <= 50;
 
-        foreach ($skus as $sku) {
-            $invRes   = $newegg->getItemInventory($sku);
-            $priceRes = $newegg->getItemPrice($sku, [$country]);
+        foreach ($chunks as $batchIndex => $chunk) {
+            $this->line(sprintf(
+                '  Batch %d/%d (%d SKU%s)...',
+                $batchIndex + 1,
+                count($chunks),
+                count($chunk),
+                count($chunk) === 1 ? '' : 's'
+            ));
 
-            if ($invRes['blocked_by_cloudflare'] || $priceRes['blocked_by_cloudflare']) {
+            $priceRes = $this->callBatch(fn () => $newegg->getBatchPrice($chunk, [$country]));
+            $invRes   = $this->callBatch(fn () => $newegg->getBatchInventory($chunk));
+
+            if ($priceRes['blocked_by_cloudflare'] || $invRes['blocked_by_cloudflare']) {
                 $this->error('Blocked by Cloudflare. Run this from a Newegg-whitelisted server.');
                 return self::FAILURE;
             }
 
-            $inv      = $this->extractInventory($invRes['json']);
-            $invErr   = $this->extractError($invRes['json']);
-            $price    = $newegg->extractPriceRowForCountry($priceRes['json'], $country);
-            $priceErr = $this->extractError($priceRes['json']);
-            $priceParent = $this->unwrap($priceRes['json']);
-
             if ($this->option('raw')) {
-                $this->line("SKU {$sku} inventory: " . json_encode($invRes['json'], JSON_UNESCAPED_SLASHES));
-                $this->line("SKU {$sku} price:     " . json_encode($priceRes['json'], JSON_UNESCAPED_SLASHES));
+                $this->line('  price:     ' . json_encode($priceRes['json'], JSON_UNESCAPED_SLASHES));
+                $this->line('  inventory: ' . json_encode($invRes['json'], JSON_UNESCAPED_SLASHES));
             }
 
-            $priceStatus = $price !== null ? 'ok' : ($priceErr ?: 'no data');
-            $tally[$priceStatus] = ($tally[$priceStatus] ?? 0) + 1;
-            if ($price !== null) {
-                $withPrice++;
+            $priceBySku = $newegg->indexBatchItemsBySellerPartNumber(
+                $newegg->extractBatchItemList($priceRes['json'])
+            );
+            $invBySku = $newegg->indexBatchItemsBySellerPartNumber(
+                $newegg->extractBatchItemList($invRes['json'])
+            );
+
+            $priceBatchErr = ($priceRes['ok'] ?? false) ? null : ($priceRes['error'] ?: $this->extractError($priceRes['json']) ?: ('HTTP '.($priceRes['status'] ?? 0)));
+            $invBatchErr   = ($invRes['ok'] ?? false) ? null : ($invRes['error'] ?: $this->extractError($invRes['json']) ?: ('HTTP '.($invRes['status'] ?? 0)));
+
+            foreach ($chunk as $sku) {
+                $key       = $newegg->batchSellerPartKey($sku);
+                $priceItem = $priceBySku[$key] ?? null;
+                $invItem   = $invBySku[$key] ?? null;
+
+                $price    = $priceItem ? $newegg->extractPriceRowForCountry($priceItem, $country) : null;
+                $inv      = $invItem ? $newegg->extractInventoryRowForCountry($invItem, $country) : null;
+                $priceErr = $price !== null ? null : ($priceBatchErr ?: ($priceItem ? 'no country row' : 'no data'));
+
+                $priceStatus = $price !== null ? 'ok' : ($priceErr ?: 'no data');
+                $tally[$priceStatus] = ($tally[$priceStatus] ?? 0) + 1;
+                if ($price !== null) {
+                    $withPrice++;
+                }
+
+                if ($verbose) {
+                    $rows[] = [
+                        $sku,
+                        $inv['AvailableQuantity'] ?? ($invBatchErr ?: '—'),
+                        isset($inv['Active']) ? (string) $inv['Active'] : '—',
+                        $price['SellingPrice'] ?? '—',
+                        $price['MAP'] ?? '—',
+                        $price['Currency'] ?? '—',
+                        $priceStatus,
+                    ];
+                }
+
+                if ($this->option('save') && ($price !== null || $inv !== null)) {
+                    $itemNumber = $priceItem['ItemNumber'] ?? ($inv['ItemNumber'] ?? null);
+
+                    NeweggPricing::updateOrCreate(
+                        ['seller_part_number' => $sku, 'country_code' => $price['CountryCode'] ?? $country],
+                        [
+                            'newegg_item_number'   => $itemNumber,
+                            'currency'             => $price['Currency'] ?? null,
+                            'active'               => $price['Active'] ?? null,
+                            'msrp'                 => $this->num($price['MSRP'] ?? null),
+                            'map'                  => $this->num($price['MAP'] ?? null),
+                            'checkout_map'         => $price['CheckoutMAP'] ?? null,
+                            'selling_price'        => $this->num($price['SellingPrice'] ?? null),
+                            'enable_free_shipping' => $price['EnableFreeShipping'] ?? null,
+                            'on_promotion'         => $price['OnPromotion'] ?? null,
+                            'limit_quantity'       => $price['LimitQuantity'] ?? null,
+                            'available_quantity'   => $inv['AvailableQuantity'] ?? null,
+                            'fulfillment_option'   => $inv['FulfillmentOption'] ?? null,
+                            'inventory_active'     => $inv['Active'] ?? null,
+                            'warehouse_allocation' => $inv['WarehouseAllocation'] ?? null,
+                            'price_raw_json'       => $priceItem,
+                            'inventory_raw_json'   => $invItem,
+                        ]
+                    );
+                    $saved++;
+                }
             }
 
-            if ($verbose) {
-                $rows[] = [
-                    $sku,
-                    $inv['AvailableQuantity'] ?? ($invErr ?: '—'),
-                    isset($inv['Active']) ? (string) $inv['Active'] : '—',
-                    $price['SellingPrice'] ?? '—',
-                    $price['MAP'] ?? '—',
-                    $price['Currency'] ?? '—',
-                    $priceStatus,
-                ];
-            }
-
-            // Persist price + inventory together (one row per SKU + country).
-            if ($this->option('save') && ($price !== null || $inv !== null)) {
-                $itemNumber = data_get($priceParent, 'ItemNumber') ?? ($inv['ItemNumber'] ?? null);
-
-                NeweggPricing::updateOrCreate(
-                    ['seller_part_number' => $sku, 'country_code' => $price['CountryCode'] ?? $country],
-                    [
-                        'newegg_item_number'   => $itemNumber,
-                        // price
-                        'currency'             => $price['Currency'] ?? null,
-                        'active'               => $price['Active'] ?? null,
-                        'msrp'                 => $this->num($price['MSRP'] ?? null),
-                        'map'                  => $this->num($price['MAP'] ?? null),
-                        'checkout_map'         => $price['CheckoutMAP'] ?? null,
-                        'selling_price'        => $this->num($price['SellingPrice'] ?? null),
-                        'enable_free_shipping' => $price['EnableFreeShipping'] ?? null,
-                        'on_promotion'         => $price['OnPromotion'] ?? null,
-                        'limit_quantity'       => $price['LimitQuantity'] ?? null,
-                        // inventory
-                        'available_quantity'   => $inv['AvailableQuantity'] ?? null,
-                        'fulfillment_option'   => $inv['FulfillmentOption'] ?? null,
-                        'inventory_active'     => $inv['Active'] ?? null,
-                        'warehouse_allocation' => $inv['WarehouseAllocation'] ?? null,
-                        // raw (store the full API responses for traceability/debugging)
-                        'price_raw_json'       => $priceRes['json'],
-                        'inventory_raw_json'   => $invRes['json'],
-                    ]
-                );
-                $saved++;
-            }
-
-            if ($sleepMs > 0) {
+            if ($sleepMs > 0 && $batchIndex < count($chunks) - 1) {
                 usleep($sleepMs * 1000);
             }
         }
+
+        $elapsed = microtime(true) - $started;
 
         $this->newLine();
         if ($verbose && !empty($rows)) {
@@ -133,13 +159,13 @@ class FetchNeweggItemData extends Command
             $this->newLine();
         }
 
-        // Price status breakdown so it's clear why some SKUs have no price.
         $this->info('Price status breakdown:');
         ksort($tally);
         foreach ($tally as $status => $n) {
             $this->line(sprintf('  %-40s %d', $status, $n));
         }
         $this->line(sprintf('  %-40s %d / %d', 'TOTAL with price', $withPrice, count($skus)));
+        $this->line(sprintf('  %-40s %s', 'Elapsed', $this->formatDuration($elapsed)));
 
         $this->newLine();
         if ($this->option('save')) {
@@ -149,6 +175,32 @@ class FetchNeweggItemData extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  callable(): array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}  $fn
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    private function callBatch(callable $fn): array
+    {
+        $res = $fn();
+        if (($res['ok'] ?? false) || ! empty($res['blocked_by_cloudflare'])) {
+            return $res;
+        }
+
+        return $fn();
+    }
+
+    private function formatDuration(float $seconds): string
+    {
+        if ($seconds < 60) {
+            return sprintf('%.1fs', $seconds);
+        }
+
+        $mins = (int) floor($seconds / 60);
+        $secs = $seconds - ($mins * 60);
+
+        return sprintf('%dm %.1fs', $mins, $secs);
     }
 
     /** @return list<string> */

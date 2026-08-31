@@ -510,6 +510,175 @@ class NeweggApiService
     }
 
     /**
+     * Get Batch Price (international) — up to 100 seller part numbers per call.
+     *   POST /marketplace/contentmgmt/item/international/pricelist?sellerid=XXXX
+     *
+     * @param  list<string>  $values
+     * @param  list<string>  $countries
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function getBatchPrice(array $values, array $countries = ['USA'], int $type = 1): array
+    {
+        $values = $this->normalizeBatchValues($values);
+
+        return $this->request('POST', '/marketplace/contentmgmt/item/international/pricelist', [], [
+            'Type'        => (string) $type,
+            'Values'      => $values,
+            'CountryList' => array_values($countries),
+        ]);
+    }
+
+    /**
+     * Get Batch Inventory (international) — up to 100 seller part numbers per call.
+     *   POST /marketplace/contentmgmt/item/international/inventorylist?sellerid=XXXX
+     *
+     * @param  list<string>  $values
+     * @return array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}
+     */
+    public function getBatchInventory(array $values, int $type = 1): array
+    {
+        $values = $this->normalizeBatchValues($values);
+
+        return $this->request('POST', '/marketplace/contentmgmt/item/international/inventorylist', [], [
+            'Type'   => (string) $type,
+            'Values' => $values,
+        ]);
+    }
+
+    /**
+     * Item rows from a Get Batch Price / Get Batch Inventory envelope.
+     *
+     * @param  array<mixed>|null  $json
+     * @return list<array<string, mixed>>
+     */
+    public function extractBatchItemList(?array $json): array
+    {
+        if (! is_array($json)) {
+            return [];
+        }
+
+        $list = data_get($json, 'ResponseBody.ItemList')
+            ?? data_get($json, 'NeweggAPIResponse.ResponseBody.ItemList')
+            ?? data_get($json, 'ItemList');
+
+        if (! is_array($list) || $list === []) {
+            return [];
+        }
+
+        if (! array_is_list($list)) {
+            $list = [$list];
+        }
+
+        return array_values(array_filter($list, 'is_array'));
+    }
+
+    /**
+     * Index batch items by a normalized Seller Part #.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return array<string, array<string, mixed>>
+     */
+    public function indexBatchItemsBySellerPartNumber(array $items): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $key = $this->batchSellerPartKey((string) ($item['SellerPartNumber'] ?? ''));
+            if ($key !== '' && ! isset($out[$key])) {
+                $out[$key] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    public function batchSellerPartKey(string $value): string
+    {
+        $value = trim(str_replace(["\u{00A0}", "\u{202F}", "\u{2007}"], ' ', $value));
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return strtoupper($value);
+    }
+
+    /**
+     * Inventory fields for one country from a batch (or single-item) payload.
+     *
+     * @param  array<mixed>|null  $json
+     * @return array<string, mixed>|null
+     */
+    public function extractInventoryRowForCountry(?array $json, string $country = 'USA'): ?array
+    {
+        if (! is_array($json)) {
+            return null;
+        }
+
+        $country = strtoupper(trim($country));
+        $item = $json;
+        if (isset($json['ResponseBody']['ItemList']) || isset($json['ItemList'])) {
+            $items = $this->extractBatchItemList($json);
+            $item = $items[0] ?? null;
+            if (! is_array($item)) {
+                return null;
+            }
+        }
+
+        $alloc = $item['InventoryAllocation'] ?? $item['WarehouseAllocation'] ?? null;
+        if (is_array($alloc) && $alloc !== []) {
+            $rows = array_is_list($alloc) ? $alloc : [$alloc];
+            $fallback = null;
+            $match = null;
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $fallback ??= $row;
+                if ($country !== '' && strtoupper((string) ($row['WarehouseLocation'] ?? '')) === $country) {
+                    $match = $row;
+                    break;
+                }
+            }
+            $picked = $match ?? $fallback;
+            if (is_array($picked)) {
+                return [
+                    'SellerPartNumber'     => $item['SellerPartNumber'] ?? null,
+                    'ItemNumber'           => $item['ItemNumber'] ?? null,
+                    'AvailableQuantity'    => $picked['AvailableQuantity'] ?? $item['AvailableQuantity'] ?? null,
+                    'FulfillmentOption'    => $picked['FulfillmentOption'] ?? $item['FulfillmentOption'] ?? null,
+                    'Active'               => $item['Active'] ?? $item['InventoryActive'] ?? null,
+                    'WarehouseAllocation'  => $rows,
+                ];
+            }
+        }
+
+        if (array_key_exists('AvailableQuantity', $item)
+            || array_key_exists('SellerPartNumber', $item)
+            || array_key_exists('ItemNumber', $item)) {
+            return $item;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<mixed>  $values
+     * @return list<string>
+     */
+    private function normalizeBatchValues(array $values): array
+    {
+        $out = [];
+        foreach ($values as $value) {
+            $value = trim((string) $value);
+            if ($value !== '') {
+                $out[] = $value;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
      * USA (or $country) SellingPrice from a Get Item Price JSON payload.
      */
     public function extractSellingPrice(?array $json, string $country = 'USA'): ?float
@@ -644,6 +813,7 @@ class NeweggApiService
         $list = data_get($obj, 'ItemPriceResultList.ItemPriceResult')
             ?? data_get($obj, 'PriceResultList.PriceResult')
             ?? data_get($obj, 'ItemPriceList.ItemPrice')
+            ?? data_get($obj, 'ItemList')
             ?? data_get($obj, 'ResponseList');
 
         if (is_array($list)) {

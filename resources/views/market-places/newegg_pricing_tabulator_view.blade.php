@@ -1117,6 +1117,12 @@
                     { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
                     { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
                     { title: "DIL %", field: "dil", hozAlign: "center", sorter: "number", formatter: dilFormatter },
+                    { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue()) || 0;
+                            return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
+                        }
+                    },
                     {
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
@@ -1276,14 +1282,22 @@
                             }
                         },
                     },
-                    { title: "L30", field: "l30", hozAlign: "center", sorter: "number",
+                    {
+                        title: "GROI", field: "roi", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
-                            const v = parseInt(cell.getValue()) || 0;
-                            return v > 0 ? `<span style="color:#28a745;font-weight:bold;">${v}</span>` : '0';
+                            const v = cell.getValue();
+                            if (v === null || v === undefined) return '';
+                            const n = parseFloat(v) || 0;
+                            // Same ROI color bands as /ebay
+                            let color = '#d63384';
+                            if (n < 40) color = '#a00211';
+                            else if (n < 75) color = '#ffc107';
+                            else if (n < 125) color = '#28a745';
+                            return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
                         }
                     },
                     {
-                        title: "Pft %", field: "pft_pct", hozAlign: "right", sorter: "number",
+                        title: "GPFT", field: "pft_pct", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
                             const v = cell.getValue();
                             if (v === null || v === undefined) return '';
@@ -1295,20 +1309,6 @@
                             else if (n < 30) color = '#ffc107';
                             else if (n < 50) color = '#28a745';
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(1)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "ROI %", field: "roi", hozAlign: "right", sorter: "number",
-                        formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined) return '';
-                            const n = parseFloat(v) || 0;
-                            // Same ROI color bands as /ebay
-                            let color = '#d63384';
-                            if (n < 40) color = '#a00211';
-                            else if (n < 75) color = '#ffc107';
-                            else if (n < 125) color = '#28a745';
-                            return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
                         }
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
@@ -1360,7 +1360,21 @@
                         }
                     },
                     {
-                        title: "SPft %", field: "spft", hozAlign: "right", sorter: "number",
+                        title: "SGROI", field: "sroi", hozAlign: "right", sorter: "number",
+                        formatter: function(cell) {
+                            const v = cell.getValue();
+                            if (v === null || v === undefined || v === '') return '';
+                            const n = parseFloat(v) || 0;
+                            // Same ROI color bands as /ebay
+                            let color = '#d63384';
+                            if (n < 40) color = '#a00211';
+                            else if (n < 75) color = '#ffc107';
+                            else if (n < 125) color = '#28a745';
+                            return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "SGPFT", field: "spft", hozAlign: "right", sorter: "number",
                         formatter: function(cell) {
                             const v = cell.getValue();
                             if (v === null || v === undefined || v === '') return '';
@@ -1372,20 +1386,6 @@
                             else if (n < 30) color = '#ffc107';
                             else if (n < 50) color = '#28a745';
                             return `<span style="color:${color};font-weight:bold;">${n.toFixed(1)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "SROI %", field: "sroi", hozAlign: "right", sorter: "number",
-                        formatter: function(cell) {
-                            const v = cell.getValue();
-                            if (v === null || v === undefined || v === '') return '';
-                            const n = parseFloat(v) || 0;
-                            // Same ROI color bands as /ebay
-                            let color = '#d63384';
-                            if (n < 40) color = '#a00211';
-                            else if (n < 75) color = '#ffc107';
-                            else if (n < 125) color = '#28a745';
-                            return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
                         }
                     },
                     {

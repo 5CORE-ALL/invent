@@ -117,7 +117,6 @@ class NeweggPricingController extends Controller
             ->keyBy(fn ($r) => strtoupper((string) $r->sku));
 
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('newegg', $skus);
-        $neweggApi = app(NeweggApiService::class);
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -169,9 +168,7 @@ class NeweggPricingController extends Controller
             $inv   = (float) ($shopify->inv ?? 0);
             $ovl30 = (float) ($shopify->quantity ?? 0);
 
-            // Price = last Newegg API SellingPrice (price_raw_json), not a later
-            // local overwrite from push / Shopify sync (promo lock can diverge).
-            $price = $this->listedSellingPrice($newegg, $neweggApi);
+            $price = $newegg && $newegg->selling_price !== null ? (float) $newegg->selling_price : null;
             $l30   = (int) ($neweggL30ByExact[$exact] ?? $neweggL30ByNorm[$norm] ?? 0);
 
             // DIL% = overall sell-through = OVL30 / INV * 100 (same as "OV DIL" elsewhere).
@@ -767,25 +764,6 @@ class NeweggPricingController extends Controller
             Log::error('Error saving Newegg B/S links: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => 'Failed to save'], 500);
         }
-    }
-
-    /**
-     * Live Newegg SellingPrice from the last Get Item Price payload, else column.
-     */
-    private function listedSellingPrice(?NeweggPricing $newegg, NeweggApiService $api): ?float
-    {
-        if (! $newegg) {
-            return null;
-        }
-
-        $country = strtoupper((string) ($newegg->country_code ?: 'USA'));
-        $raw = is_array($newegg->price_raw_json) ? $newegg->price_raw_json : null;
-        $fromApi = $api->extractSellingPrice($raw, $country);
-        if ($fromApi !== null) {
-            return $fromApi;
-        }
-
-        return $newegg->selling_price !== null ? (float) $newegg->selling_price : null;
     }
 
     /**
