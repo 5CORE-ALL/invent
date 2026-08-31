@@ -604,4 +604,82 @@ class MarketplaceListingInstantMapService
             ]);
         }
     }
+
+    /**
+     * Push Shopify qty for one newly linked SKU using MarketplaceLiveInventoryRules
+     * (percent / max cap / never invent stock). Explicit Link does not require the
+     * bulk inventory_sync setting to be on.
+     *
+     * @return array{success: bool, updated: int, failed: int, skipped: int, message: string}
+     */
+    public function pushInventory(string $slug, string $sku): array
+    {
+        $sku = trim($sku);
+        $empty = ['success' => false, 'updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'SKU missing.'];
+        if ($sku === '') {
+            return $empty;
+        }
+
+        try {
+            $result = match (strtolower($slug)) {
+                'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                'pls' => app(PlsInventorySyncService::class)->syncSkusFromShopify([$sku]),
+                default => null,
+            };
+        } catch (\Throwable $e) {
+            Log::warning('MarketplaceListingInstantMapService: inventory push failed', [
+                'slug' => $slug,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'updated' => 0,
+                'failed' => 1,
+                'skipped' => 0,
+                'message' => $e->getMessage(),
+            ];
+        }
+
+        if (! is_array($result)) {
+            return [
+                'success' => false,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => 'Inventory push is not available for this marketplace.',
+            ];
+        }
+
+        $updated = (int) ($result['updated'] ?? 0);
+        $failed = (int) ($result['failed'] ?? 0);
+
+        return [
+            'success' => $updated > 0 || $failed === 0,
+            'updated' => $updated,
+            'failed' => $failed,
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => (string) ($result['message'] ?? 'Inventory push finished.'),
+        ];
+    }
 }

@@ -263,19 +263,48 @@ class MarketplaceController extends Controller
             return response()->json($result, 422);
         }
 
-        $inventory = null;
-        try {
-            $invResponse = $this->syncProductInventory($request, $marketplace, $shopifySku);
-            $inventory = $invResponse->getData(true);
-        } catch (\Throwable $e) {
-            $inventory = [
-                'success' => false,
-                'message' => $e->getMessage(),
-            ];
-        }
-        $result['inventory'] = is_array($inventory) ? $inventory : null;
+        $result['inventory'] = app(MarketplaceListingInstantMapService::class)->pushInventory($marketplace, $sku);
 
         return response()->json($result);
+    }
+
+    /**
+     * Search live Shopify SKUs so the Link modal can pick the product to map.
+     */
+    public function searchShopifySkus(Request $request, string $marketplace): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if (! in_array($marketplace, self::SUPPORTED_MARKETPLACES, true)) {
+            abort(404, 'Marketplace not found');
+        }
+
+        $q = trim((string) $request->query('q', ''));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['rows' => []]);
+        }
+
+        $like = '%'.addcslashes($q, '%_\\').'%';
+        $rows = ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($w) use ($like) {
+                $w->where('sku', 'like', $like)
+                    ->orWhere('product_title', 'like', $like);
+            })
+            ->orderBy('sku')
+            ->limit(15)
+            ->get(['id', 'sku', 'product_title', 'available_to_sell']);
+
+        return response()->json([
+            'rows' => $rows->map(static function (ShopifySku $row) {
+                return [
+                    'id' => (int) $row->id,
+                    'sku' => (string) $row->sku,
+                    'title' => (string) ($row->product_title ?? ''),
+                    'qty' => $row->available_to_sell !== null ? (int) $row->available_to_sell : null,
+                ];
+            })->values(),
+        ]);
     }
 
     public function acceptOrder(Request $request, string $marketplace, int $order): JsonResponse
