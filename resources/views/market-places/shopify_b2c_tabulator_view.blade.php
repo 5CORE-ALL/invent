@@ -2276,7 +2276,7 @@
                 if (want > 0) expectedBySku[String(sku).toUpperCase()] = want;
             });
             const csrf = $('meta[name="csrf-token"]').attr('content');
-            const retryMs = [400, 2000, 4000];
+            const retryMs = [2500, 4000, 7000];
             function runPull(attempt, pending) {
                 if (!pending || !pending.length) return;
                 $.ajax({
@@ -2464,13 +2464,13 @@
                             item.row.update({ SPRICE_STATUS: 'error' });
                         }
                         item.row.reformat();
-                        setTimeout(next, 300);
+                        setTimeout(next, 700);
                     },
                     error: function() {
                         failCount++;
                         item.row.update({ SPRICE_STATUS: 'error' });
                         item.row.reformat();
-                        setTimeout(next, 300);
+                        setTimeout(next, 700);
                     }
                 });
             }

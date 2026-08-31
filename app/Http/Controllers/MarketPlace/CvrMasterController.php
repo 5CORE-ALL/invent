@@ -8211,8 +8211,12 @@ class CvrMasterController extends Controller
             $result = \App\Http\Controllers\UpdatePriceApiController::updateShopifyVariantPrice($variantId, $price);
 
             if ($result['status'] === 'success') {
-                // Only push to Shopify API - do not update local shopify_skus.price (main table)
                 $verifiedPrice = $result['verified_price'] ?? $price;
+                $shopifyRecord->price = $verifiedPrice;
+                if (Schema::hasColumn('shopify_skus', 'b2c_price')) {
+                    $shopifyRecord->b2c_price = $verifiedPrice;
+                }
+                $shopifyRecord->save();
                 $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $verifiedPrice);
                 
                 Log::info('CVR Master - Shopify B2C price push successful', [

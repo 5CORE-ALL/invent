@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Jobs\UpdateEbaySPriceJob;
 use Illuminate\Http\Request;
+use App\Services\ShopifyAdminCallGate;
 use App\Services\ShopifyPlsTokenService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
@@ -16,34 +16,7 @@ class UpdatePriceApiController extends Controller
     public static function updateShopifyVariantPrice($variantId, $newPrice, $store = 'b2c')
     {
         try {
-            // Shopify rate limiting (2 calls/sec) via default cache store. On production, a missing or
-            // unwritable storage/framework/cache/data tree causes file cache to throw — do not fail the
-            // price update; fall back to the per-request delay below + HTTP 429 retries.
-            $rateLimitKey = 'shopify_api_rate_limit';
-            try {
-                $now = now();
-                $windowStart = $now->copy()->startOfSecond();
-
-                $recentCalls = Cache::get($rateLimitKey, []);
-                $recentCalls = array_filter($recentCalls, function ($timestamp) use ($windowStart) {
-                    return $timestamp >= $windowStart->timestamp;
-                });
-
-                if (count($recentCalls) >= 2) {
-                    $waitTime = 1000000 - ($now->micro);
-                    usleep($waitTime + 100000);
-                    $recentCalls = [];
-                }
-
-                $recentCalls[] = now()->timestamp;
-                Cache::put($rateLimitKey, $recentCalls, 2);
-            } catch (\Throwable $e) {
-                Log::warning('Shopify price update: rate-limit cache unavailable, continuing without coordinated throttle', [
-                    'error' => $e->getMessage(),
-                    'hint' => 'Ensure storage/framework/cache/data exists and is writable by the web user, or set CACHE_DRIVER=redis (or database).',
-                ]);
-            }
-
+            @set_time_limit(120);
             Log::info('Shopify price update started', [
                 'variant_id' => $variantId,
                 'new_price' => $newPrice,
@@ -95,21 +68,18 @@ class UpdatePriceApiController extends Controller
                 'price_formatted' => $priceFormatted
             ]);
 
-            // API enforces ~2 calls/sec; small gap before first attempt reduces immediate 429 when
-            // multiple features fire back-to-back (Amazon tab + CVR + other jobs).
-            usleep(600000);
-
             $response = null;
             $statusCode = 0;
             $responseBody = null;
-            $maxAttempts = 4;
-            $baseDelayMs = 700; // Shopify allows low burst; back off quickly on 429.
+            $maxAttempts = 8;
 
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                ShopifyAdminCallGate::acquire($store);
                 $response = Http::withHeaders([
                     "X-Shopify-Access-Token" => $accessToken,
                     "Content-Type" => "application/json",
-                ])->put($url, $payload);
+                ])->timeout(45)->connectTimeout(20)->put($url, $payload);
+                ShopifyAdminCallGate::record($response, $store);
 
                 $statusCode = $response->status();
                 $responseBody = $response->json();
@@ -121,18 +91,15 @@ class UpdatePriceApiController extends Controller
                     'max_attempts' => $maxAttempts,
                 ]);
 
-                if ($statusCode !== 429) {
+                if (! ShopifyAdminCallGate::isRateLimited($response)) {
                     break;
                 }
 
                 if ($attempt < $maxAttempts) {
-                    $retryAfterSec = (int) ($response->header('Retry-After') ?? 0);
-                    $sleepMs = $retryAfterSec > 0 ? ($retryAfterSec * 1000) : ($baseDelayMs * $attempt);
-                    Log::warning("$storeName API rate limited (429), retrying", [
+                    Log::warning("$storeName API rate limited, waiting on cache gate then retrying", [
                         'attempt' => $attempt,
-                        'sleep_ms' => $sleepMs,
+                        'variant_id' => $variantId,
                     ]);
-                    usleep($sleepMs * 1000);
                 }
             }
 

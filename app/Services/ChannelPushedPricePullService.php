@@ -249,7 +249,7 @@ class ChannelPushedPricePullService
             }
 
             if ($i < count($skus) - 1) {
-                usleep(350000);
+                usleep(150000);
             }
         }
 
@@ -265,20 +265,18 @@ class ChannelPushedPricePullService
         }
 
         $url = rtrim($storeUrl, '/').'/admin/api/2025-01/variants/'.rawurlencode($variantId).'.json';
-        $maxAttempts = 4;
+        $maxAttempts = 10;
         $response = null;
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            ShopifyAdminCallGate::acquire(ShopifyAdminCallGate::STORE_B2C);
             $response = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
             ])->timeout(45)->connectTimeout(20)->get($url);
+            ShopifyAdminCallGate::record($response, ShopifyAdminCallGate::STORE_B2C);
 
-            if ($response->status() !== 429) {
+            if (! ShopifyAdminCallGate::isRateLimited($response)) {
                 break;
-            }
-            if ($attempt < $maxAttempts) {
-                $retryAfter = (int) ($response->header('Retry-After') ?? 0);
-                usleep(($retryAfter > 0 ? $retryAfter * 1000 : 700 * $attempt) * 1000);
             }
         }
 
