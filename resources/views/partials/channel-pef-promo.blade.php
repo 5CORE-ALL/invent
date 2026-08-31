@@ -4660,6 +4660,16 @@
             } else if (window._chPushSpriceLiveAllowed === false && fill > 0) {
                 updates.SPRICE_STATUS = 'saved';
             }
+            const shopifyPushed = CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                && fill > 0
+                && (
+                    updates.SPRICE_STATUS === 'pushed'
+                    || !!(saveRes && saveRes.shopify_push && saveRes.shopify_push.ok)
+                    || !!(saveRes && saveRes.price_push_success)
+                );
+            if (shopifyPushed && updates.Price == null) {
+                updates.Price = fill;
+            }
             if (fill > 0 && updates.sroi == null && updates.SROI == null && row && typeof row.getData === 'function') {
                 const d = row.getData() || {};
                 const lp = chPromoLp(d);
@@ -4676,7 +4686,13 @@
             }
             if (row && typeof row.update === 'function') {
                 try { row.update(updates); } catch (e) { /* ignore */ }
-                try { row.reformat(); } catch (e) { /* ignore */ }
+                if (shopifyPushed && typeof window.shopifyB2cApplyLivePriceToRow === 'function') {
+                    window.shopifyB2cApplyLivePriceToRow(row, fill, {
+                        SPRICE_STATUS: updates.SPRICE_STATUS || 'pushed'
+                    });
+                } else {
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
             }
             const skuKey = sku || (row && typeof row.getData === 'function'
                 ? chPromoSku(row.getData() || {})
@@ -5532,7 +5548,12 @@
                     const res = await pushChannelPriceAjax(job.sku, job.price);
                     if (res && res.success) {
                         ok++;
-                        job.row.update({ SPRICE_STATUS: 'pushed' });
+                        if (typeof window.shopifyB2cApplyLivePriceToRow === 'function'
+                            && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
+                            window.shopifyB2cApplyLivePriceToRow(job.row, job.price, { SPRICE_STATUS: 'pushed' });
+                        } else {
+                            job.row.update({ SPRICE_STATUS: 'pushed' });
+                        }
                     } else {
                         fail++;
                         job.row.update({ SPRICE_STATUS: 'error' });
@@ -6358,7 +6379,7 @@
                     const sgroiVal = temuMetrics.sgroi_percent != null
                         ? temuMetrics.sgroi_percent
                         : (chPromoIsTemuPromoChannel() ? chPromoTemuSgroiAtSprice(d, fill) : roi);
-                    item.row.update(Object.assign({
+                    const zeroSoldFlags = {
                         ZERO_SOLD_PRC_APPLIED: true,
                         ZERO_SOLD_PRC_GROI: roi,
                         ZERO_SOLD_PRC_DIL_BAND: dilBand,
@@ -6368,13 +6389,16 @@
                         cpn_pct: String(cpn),
                         _cpn_pct_applied: cpn,
                         PEF_CPN_PCT: cpn,
+                    };
+                    item.row.update(Object.assign({}, zeroSoldFlags, chPromoSpricePatch(0)));
+                    item.row.update(Object.assign({
                         sgpft: temuMetrics.sgprft_percent != null ? temuMetrics.sgprft_percent : sgpft,
                         SGPFT: temuMetrics.sgprft_percent != null ? temuMetrics.sgprft_percent : sgpft,
                         sroi: temuMetrics.sroi_percent != null ? temuMetrics.sroi_percent : sroi,
                         SROI: temuMetrics.sroi_percent != null ? temuMetrics.sroi_percent : sroi,
                         sgroi_percent: sgroiVal,
                         SGROI: sgroiVal,
-                    }, chPromoSpricePatch(fill), temuMetrics));
+                    }, zeroSoldFlags, chPromoSpricePatch(fill), temuMetrics));
                     jobs.push({
                         row: item.row,
                         sku: chPromoSku(d),
@@ -6695,10 +6719,8 @@
                         } else if (chPromoInv(d) > 0) {
                             item.row.update(Object.assign({}, patch, chPromoSpricePatch(0)));
                             newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { prmt: prmt });
-                            if (newPrice > 0) {
-                                Object.assign(patch, chPromoSpricePatch(newPrice));
-                                skipSprice = false;
-                            }
+                            if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
+                            skipSprice = false;
                         }
                     } else if (chPromoReverbComboEnabled()) {
                         if (chPromoKeepZeroSoldPrcSprice(d)) {
@@ -6729,7 +6751,7 @@
                     if (prmt > 0) filled++;
                     else skipped++;
                     const prmtSame = chPromoNearlyEqual(prevPrmt, prmt);
-                    const spriceSame = skipSprice || !(newPrice > 0) || chPromoNearlyEqual(prevSprice, newPrice);
+                    const spriceSame = skipSprice || chPromoNearlyEqual(prevSprice, newPrice);
                     if (!prmtSame || !spriceSame) {
                         jobs.push({
                             row: item.row,
@@ -7137,11 +7159,15 @@
                         }
                     }
                     } else if (ebay1) {
-                        const newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: 0 });
+                        item.row.update(Object.assign({
+                            cpn_pct: String(cpn),
+                            _cpn_pct_applied: 0,
+                        }, chPromoSpricePatch(0)));
+                        const newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { cpn: 0 });
                         const patch = { cpn_pct: String(cpn), _cpn_pct_applied: 0 };
                         if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                         item.row.update(patch);
-                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
+                        jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
                     } else {
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0 });
                         jobs.push({ row: item.row, sku: sku, cpn: cpn, price: 0, skipSprice: ebay1 });
@@ -7150,11 +7176,15 @@
                     continue;
                 }
                 if (ebay1) {
-                    const newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { cpn: cpn });
+                    item.row.update(Object.assign({
+                        cpn_pct: String(cpn),
+                        _cpn_pct_applied: cpn,
+                    }, chPromoSpricePatch(0)));
+                    const newPrice = chPromoSpriceFromStdPrmtCpnWith(item.row.getData(), { cpn: cpn });
                     const patch = { cpn_pct: String(cpn), _cpn_pct_applied: cpn };
                     if (newPrice > 0) Object.assign(patch, chPromoSpricePatch(newPrice));
                     item.row.update(patch);
-                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: !(newPrice > 0) });
+                    jobs.push({ row: item.row, sku: sku, cpn: cpn, price: newPrice, skipSprice: false });
                 } else if (chPromoPrmtCpnComboEnabled()) {
                     if (chPromoTemuZeroSoldOwnsSprice(d) || chPromoKeepZeroSoldPrcSprice(d)) {
                         item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: cpn });
@@ -7402,8 +7432,9 @@
                         const recalc = chPromoReverbSpriceFromStdBothPrmt(d, { prmt: 0 });
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
                     } else if ((kind === 'prmt' || kind === 'cpn') && chPromoEbayStdMinusPrmtCpnEnabled()) {
+                        item.row.update(Object.assign({}, patch, chPromoSpricePatch(0)));
                         const recalc = chPromoSpriceFromStdPrmtCpnWith(
-                            d,
+                            item.row.getData(),
                             kind === 'prmt' ? { prmt: 0 } : { cpn: 0 }
                         );
                         if (recalc > 0) Object.assign(patch, chPromoSpricePatch(recalc));
@@ -7435,9 +7466,13 @@
                 let base;
                 let newPrice;
                 if (chPromoEbayStdMinusPrmtCpnEnabled() && (kind === 'prmt' || kind === 'cpn')) {
-                    base = chPromoStdBase(d);
+                    const wipePatch = {};
+                    wipePatch[fieldMeta.field] = displayVal;
+                    wipePatch[fieldMeta.appliedKey] = promo.value;
+                    item.row.update(Object.assign({}, wipePatch, chPromoSpricePatch(0)));
+                    base = chPromoStdBase(item.row.getData());
                     newPrice = chPromoSpriceFromStdPrmtCpnWith(
-                        d,
+                        item.row.getData(),
                         kind === 'prmt' ? { prmt: promo.value } : { cpn: promo.value }
                     );
                 } else if (chPromoPrmtCpnComboEnabled() && (kind === 'prmt' || kind === 'cpn')
@@ -8268,17 +8303,6 @@
                 const zeroSold = chPromoZeroSoldRuleSprice(d);
                 if (zeroSold > 0) return extra.skip_lmp_cap === false ? finish(zeroSold) : chPromoRound2(zeroSold);
             }
-            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
-                && typeof chPromoKeepZeroSoldPrcSprice === 'function'
-                && chPromoKeepZeroSoldPrcSprice(d)) {
-                const stored = chPromoGetSprice(d);
-                if (stored > 0) return finish(stored);
-                if (typeof chPromoZeroSoldGroiForRow === 'function'
-                    && typeof chPromoSpriceFromTargetRoi === 'function') {
-                    const target = chPromoSpriceFromTargetRoi(d, chPromoZeroSoldGroiForRow(d));
-                    if (target > 0) return finish(target);
-                }
-            }
             // AliExpress 0-sold: discount Std (not live Price) so SROI ≈ Target ROI%.
             let price = 0;
             if (typeof chPromoAeZeroSoldStdSprice === 'function') {
@@ -8424,12 +8448,16 @@
                 );
                 if (!needsFill && !needsPush) return;
                 queuedKeys.add(key);
-                const patch = Object.assign(chPromoSpricePatch(fill), {
-                    prmt_pct: String(prmt),
-                    _prmt_pct_applied: prmt,
-                    cpn_pct: String(cpn),
-                    _cpn_pct_applied: cpn,
-                });
+                const wipeFirst = persist && chPromoShouldPersistClearThenSprice();
+                const patch = Object.assign(
+                    wipeFirst ? chPromoSpricePatch(0) : chPromoSpricePatch(fill),
+                    {
+                        prmt_pct: String(prmt),
+                        _prmt_pct_applied: prmt,
+                        cpn_pct: String(cpn),
+                        _cpn_pct_applied: cpn,
+                    }
+                );
                 if (!livePushOn) patch['eBay Price'] = fill;
                 if (row && typeof row.update === 'function') {
                     row.update(patch);
@@ -8619,9 +8647,12 @@
             }, extra));
         }
         let chPromoAllEbayRulesBusy = false;
-        /** eBay 1/2/3 page load: Dil vs PRMT → CVR vs CPN → 0 Sold (clear S PRC) → refill S PRC. */
+        function chPromoUsesAmazonStyleRuleApply() {
+            return chPromoIsEbayChannel() || CHANNEL_PROMO_CHANNEL === 'shopify_b2c';
+        }
+        /** eBay / Shopify B2C page load: Dil vs PRMT → CVR vs Disc → 0 Sold (clear S PRC) → refill S PRC. */
         async function chPromoRunAllEbayRulesOnLoad() {
-            if (!chPromoIsEbayChannel() || chPromoAllEbayRulesBusy) return;
+            if (!chPromoUsesAmazonStyleRuleApply() || chPromoAllEbayRulesBusy) return;
             chPromoAllEbayRulesBusy = true;
             try {
                 if (typeof chPromoSyncEbayPrmtColumnFromSlabs === 'function') {
@@ -8630,16 +8661,17 @@
                 if (typeof chPromoSyncEbayCpnColumnFromSlabs === 'function') {
                     chPromoSyncEbayCpnColumnFromSlabs();
                 }
+                const clearOnce = chPromoShouldClearStoredOnce();
+                const forceSlabs = CHANNEL_PROMO_CHANNEL === 'shopify_b2c' ? !!clearOnce : false;
                 if (typeof chPromoRunDilPrmtAutoApply === 'function') {
-                    await chPromoRunDilPrmtAutoApply({ force: false, silent: true });
+                    await chPromoRunDilPrmtAutoApply({ force: forceSlabs, silent: true });
                 }
                 if (typeof chPromoRunCvrCpnAutoApply === 'function') {
-                    await chPromoRunCvrCpnAutoApply({ force: false, silent: true });
+                    await chPromoRunCvrCpnAutoApply({ force: forceSlabs, silent: true });
                 }
                 if (typeof chPromoRunZeroSoldDilAutoApply === 'function') {
                     await chPromoRunZeroSoldDilAutoApply({ force: true });
                 }
-                const clearOnce = chPromoShouldClearStoredOnce();
                 const livePushOn = chPromoPageReloadPushAllowed();
                 autopopulateEbaySpriceFromStdPrmtCpn({
                     overwrite: true,
@@ -8691,7 +8723,7 @@
             if (typeof chPromoSyncEbayCpnColumnFromSlabs === 'function') {
                 chPromoSyncEbayCpnColumnFromSlabs();
             }
-            if (chPromoIsEbayChannel()) {
+            if (chPromoUsesAmazonStyleRuleApply()) {
                 chPromoRunAllEbayRulesOnLoad();
                 return;
             }

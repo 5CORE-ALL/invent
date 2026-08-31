@@ -1270,6 +1270,7 @@
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
+            var ySalesAllChartPrefetch = null;
             var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
@@ -3942,9 +3943,11 @@
                         const val = Math.round(totalYSales);
                         $el.text('$' + val.toLocaleString('en-US'));
                         setBadgeExact($el, val);
+                        prefetchAllYSalesChart(val);
                     } else {
                         $el.text('NYS');
                         setBadgeExact($el, null);
+                        prefetchAllYSalesChart(0);
                     }
                 })();
                 (function() {
@@ -4701,8 +4704,72 @@
                 loadAdBreakdownChart();
             }
 
+            function prefetchAllYSalesChart(badgeValue) {
+                if (ySalesAllChartPrefetch && ySalesAllChartPrefetch.readyState !== 4) {
+                    return;
+                }
+                ySalesAllChartPrefetch = $.ajax({
+                    url: '/channel-metric-chart-data',
+                    method: 'GET',
+                    data: {
+                        channel: 'all',
+                        metric: 'y_sales',
+                        days: 30,
+                        badge_value: badgeValue
+                    }
+                });
+            }
+
+            function applyMetricChartResponse(response) {
+                adChartAjax = null;
+                $('#adChartLoading').hide();
+                if (response && response.success && response.data && response.data.length > 0) {
+                    $('#adBreakdownChartContainer').show();
+                    renderAdBreakdownChart(response.data);
+                    if (currentChartMode === 'metric') {
+                        loadSalesOrdersItemsBarChart();
+                    } else {
+                        $('#salesOrdersItemsBarContainer').hide();
+                        if (salesOrdersItemsBarChartInstance) {
+                            salesOrdersItemsBarChartInstance.destroy();
+                            salesOrdersItemsBarChartInstance = null;
+                        }
+                    }
+                } else {
+                    $('#adChartNoData').show();
+                    $('#salesOrdersItemsBarContainer').hide();
+                    if (salesOrdersItemsBarChartInstance) {
+                        salesOrdersItemsBarChartInstance.destroy();
+                        salesOrdersItemsBarChartInstance = null;
+                    }
+                }
+            }
+
             // Load chart data (handles both ad-breakdown and channel-metric modes)
             function loadAdBreakdownChart() {
+                // Reuse the All Y Sales prefetch so the badge opens immediately.
+                if (currentChartMode === 'metric'
+                    && currentChartChannel === 'all'
+                    && currentMetricKey === 'y_sales'
+                    && currentChartDays === 30
+                    && ySalesAllChartPrefetch) {
+                    $('#adChartNoData').hide();
+                    $('#adBreakdownChartContainer').hide();
+                    $('#adChartLoading').show();
+                    ySalesAllChartPrefetch
+                        .done(function(response) { applyMetricChartResponse(response); })
+                        .fail(function(xhr, status) {
+                            if (status === 'abort') return;
+                            ySalesAllChartPrefetch = null;
+                            loadAdBreakdownChartFresh();
+                        });
+                    return;
+                }
+
+                loadAdBreakdownChartFresh();
+            }
+
+            function loadAdBreakdownChartFresh() {
                 // Abort any previous in-flight request
                 if (adChartAjax) adChartAjax.abort();
 

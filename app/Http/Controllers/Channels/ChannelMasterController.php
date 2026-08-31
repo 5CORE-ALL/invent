@@ -16002,6 +16002,16 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
+            // All-channel Y Sales badge: snapshots only (no per-channel live order
+            // lookups). The old path called realPacificDayYSales for every channel
+            // × day and made the badge take many seconds to open.
+            if ($isAll && $metric === 'y_sales' && ! $useDailyWindow && ! $useL7Window) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $this->fastAllMarketplaceYSalesChartFromSnapshots($days, $request->input('badge_value')),
+                ]);
+            }
+
             // Metrics that should be averaged (percentages) vs summed (counts/amounts)
             $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
@@ -16179,10 +16189,12 @@ class ChannelMasterController extends Controller
                             }
                             if ($metric === 'y_sales') {
                                 $yCh = $this->allMarketplaceSnapshotKey((string) ($row->channel ?? ''));
-                                $realY = $this->realPacificDayYSales($yCh, $dateKey);
-                                if ($yCh === 'amazon' && $realY !== null) {
-                                    $totalVal += $realY;
-                                    continue;
+                                if ($yCh === 'amazon') {
+                                    $realY = $this->realPacificDayYSales($yCh, $dateKey);
+                                    if ($realY !== null) {
+                                        $totalVal += $realY;
+                                        continue;
+                                    }
                                 }
                             }
                             $totalVal += floatval($sd[$metricKey] ?? 0);
@@ -16340,9 +16352,6 @@ class ChannelMasterController extends Controller
                     }
                 }
 
-                // Y Sales: prefer that Pacific day's orders over the snapshot.
-                // Stored y_sales is often a day behind (fast path never wrote today)
-                // or an older formula (shipping included). Amazon always uses orders.
                 if ($metric === 'y_sales' && ! $isAll) {
                     $snapRow = $rows->first();
                     $sdForY = $summaryData ?? \App\Models\ChannelMasterSummary::decodeSummaryData($snapRow->summary_data ?? []);
@@ -16430,6 +16439,83 @@ class ChannelMasterController extends Controller
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
+    }
+
+    /**
+     * All-marketplace Y Sales chart from channel_master_daily_data.y_sales only.
+     * One lightweight query — no per-channel live order scans.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function fastAllMarketplaceYSalesChartFromSnapshots(int $days, mixed $badgeValue = null): array
+    {
+        $days = $days > 0 ? $days : 30;
+        $cacheKey = 'amm_all_y_sales_chart_d'.$days;
+        $cached = \Cache::get($cacheKey);
+        if (is_array($cached) && $cached !== []) {
+            return $this->pinAllYSalesChartLastPoint($cached, $badgeValue);
+        }
+
+        $tz = 'America/Los_Angeles';
+        $startDate = Carbon::now($tz)->subDays($days + 1)->toDateString();
+
+        $rows = DB::table('channel_master_daily_data')
+            ->where('snapshot_date', '>=', $startDate)
+            ->select([
+                'channel',
+                'snapshot_date',
+                DB::raw("CAST(JSON_UNQUOTE(JSON_EXTRACT(summary_data, '$.y_sales')) AS DECIMAL(14,2)) as y_sales"),
+                DB::raw("CAST(JSON_UNQUOTE(JSON_EXTRACT(summary_data, '$.l30_sales')) AS DECIMAL(14,2)) as l30_sales"),
+            ])
+            ->orderBy('snapshot_date')
+            ->get();
+
+        $byDateChannel = [];
+        foreach ($rows as $row) {
+            $key = $this->allMarketplaceSnapshotKey((string) $row->channel);
+            if ($key === '') {
+                continue;
+            }
+            $y = $row->y_sales !== null ? (float) $row->y_sales : 0.0;
+            $l30 = $row->l30_sales !== null ? (float) $row->l30_sales : 0.0;
+            // Shopify used to persist L30 into y_sales (the $18,812 spike).
+            if (in_array($key, ['shopify', 'shopifyb2c'], true) && $l30 > 0 && abs($y - $l30) < 0.01) {
+                $y = 0.0;
+            }
+            $asOf = Carbon::parse((string) $row->snapshot_date, $tz)->subDay()->toDateString();
+            if (! isset($byDateChannel[$asOf][$key]) || $y > (float) $byDateChannel[$asOf][$key]) {
+                $byDateChannel[$asOf][$key] = $y;
+            }
+        }
+
+        ksort($byDateChannel);
+        $out = [];
+        foreach ($byDateChannel as $asOf => $channels) {
+            $out[] = [
+                'date' => Carbon::parse($asOf, $tz)->format('M d'),
+                'value' => round(array_sum($channels), 2),
+            ];
+        }
+
+        if ($out !== []) {
+            \Cache::put($cacheKey, $out, now()->addMinutes(5));
+        }
+
+        return $this->pinAllYSalesChartLastPoint($out, $badgeValue);
+    }
+
+    /**
+     * @param  list<array{date: string, value: float}>  $chartData
+     * @return list<array{date: string, value: float}>
+     */
+    private function pinAllYSalesChartLastPoint(array $chartData, mixed $badgeValue): array
+    {
+        if ($chartData === [] || $badgeValue === null || $badgeValue === '' || ! is_numeric($badgeValue)) {
+            return $chartData;
+        }
+        $chartData[array_key_last($chartData)]['value'] = round((float) $badgeValue, 2);
+
+        return $chartData;
     }
 
     /**

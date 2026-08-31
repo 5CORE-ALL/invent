@@ -1326,7 +1326,7 @@
         return f === true || f === 1 || f === '1' || f === 'true';
     }
 
-    /** S PRC to show / push. Sugg Amz Prc keeps A Price (no promo formula, no LMP cap). */
+    /** S PRC to show / push. Live Dil/PRMT/0-sold/Std rule wins (Amazon). Sugg Amz keeps A Price. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
@@ -1337,7 +1337,7 @@
             const calc = chPromoLiveSprice(data);
             if (calc > 0) return calc;
         }
-        return stored;
+        return stored > 0 ? Math.round(stored * 100) / 100 : 0;
     }
 
     function shopifyB2cAmzPrice(data) {
@@ -1503,6 +1503,121 @@
 
     function shopifyComputeSnroi(sprice, lp, ship, adsPct) {
         return shopifyComputeNetRoi(sprice, lp, ship, adsPct);
+    }
+
+    /** S-metrics from the same S PRC the cell / push / Diff preview use. */
+    function shopifyB2cComputeSpriceMetrics(data, sprice) {
+        const s = parseFloat(sprice) || 0;
+        const lp = parseFloat(data && data.LP_productmaster) || 0;
+        const ship = parseFloat(data && data.Ship_productmaster) || 0;
+        const ads = shopifyChannelAdsPct();
+        const gross = (s * 0.95) - lp - ship;
+        const sgpft = s > 0 ? (gross / s) * 100 : 0;
+        return {
+            SGPFT: sgpft,
+            SNPFT: sgpft - ads,
+            SROI: lp > 0 ? (gross / lp) * 100 : 0,
+            SNROI: shopifyComputeSnroi(s, lp, ship, ads)
+        };
+    }
+
+    /** Live Price metrics after a successful push (Price becomes S PRC). */
+    function shopifyB2cComputeLivePriceMetrics(data, price) {
+        const p = Math.round((parseFloat(price) || 0) * 100) / 100;
+        const lp = parseFloat(data && data.LP_productmaster) || 0;
+        const ship = parseFloat(data && data.Ship_productmaster) || 0;
+        const qty = parseFloat(data && data['B2B L30']) || 0;
+        const ads = shopifyChannelAdsPct();
+        const gross = (p * 0.95) - lp - ship;
+        const gpft = p > 0 ? (gross / p) * 100 : 0;
+        return {
+            Price: p,
+            'GPFT%': gpft,
+            'ROI%': lp > 0 ? (gross / lp) * 100 : 0,
+            'NROI%': shopifyComputeNetRoi(p, lp, ship, ads),
+            Profit: qty > 0 ? gross * qty : 0,
+            'Sales L30': qty > 0 ? p * qty : 0
+        };
+    }
+
+    function shopifyB2cFinalSprice(data, sprice) {
+        let s = parseFloat(sprice) || 0;
+        if (!(s > 0)) return 0;
+        if (typeof chPromoFinalSpriceToSave === 'function') {
+            s = chPromoFinalSpriceToSave(data, s);
+        } else {
+            s = shopifyB2cApplyAmzFloor(data, s);
+        }
+        return s > 0 ? Math.round(s * 100) / 100 : 0;
+    }
+
+    function shopifyB2cSpricePending(data) {
+        const shown = shopifyB2cShownSprice(data);
+        const price = parseFloat(data && data.Price) || 0;
+        return shown > 0 && price > 0 && Math.round(shown * 100) !== Math.round(price * 100);
+    }
+
+    function shopifyB2cDiffComparePrice(data) {
+        const shown = shopifyB2cShownSprice(data);
+        if (shopifyB2cSpricePending(data)) return shown;
+        const price = parseFloat(data && data.Price) || 0;
+        return price > 0 ? price : shown;
+    }
+
+    function shopifyB2cApplySpriceMetricsToRow(row, sprice) {
+        if (!row || typeof row.update !== 'function') return;
+        const data = row.getData() || {};
+        const s = shopifyB2cFinalSprice(data, sprice);
+        const metrics = shopifyB2cComputeSpriceMetrics(data, s);
+        row.update(Object.assign({
+            SPRICE: s,
+            has_custom_sprice: s > 0,
+            AMZ_SUGG_APPLIED: !!data.AMZ_SUGG_APPLIED && s > 0
+        }, metrics));
+        try { row.reformat(); } catch (e) { /* ignore */ }
+        if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+    }
+
+    function shopifyB2cApplyLivePriceToRow(row, price, extra) {
+        if (!row || typeof row.update !== 'function') return;
+        const data = row.getData() || {};
+        const patch = Object.assign(
+            shopifyB2cComputeLivePriceMetrics(data, price),
+            extra || {}
+        );
+        row.update(patch);
+        try { row.reformat(); } catch (e) { /* ignore */ }
+        if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+    }
+    window.shopifyB2cApplyLivePriceToRow = shopifyB2cApplyLivePriceToRow;
+
+    function shopifyB2cGroiColor(percent) {
+        if (percent < 50) return '#a00211';
+        if (percent >= 50 && percent < 75) return '#ffc107';
+        if (percent >= 75 && percent <= 125) return '#28a745';
+        return '#e83e8c';
+    }
+    function shopifyB2cGpftColor(percent) {
+        if (percent < 10) return '#a00211';
+        if (percent >= 10 && percent < 20) return '#3591dc';
+        if (percent >= 20 && percent < 30) return '#ffc107';
+        if (percent >= 30 && percent < 50) return '#28a745';
+        return '#e83e8c';
+    }
+
+    /** Live % plus the S PRC what-if when S PRC ≠ Price. */
+    function shopifyB2cOuterPctHtml(livePct, sPct, colorFn, liveLabel, sLabel) {
+        const live = isFinite(livePct) ? livePct : 0;
+        const color = colorFn(live);
+        const liveHtml = '<span style="color:' + color + ';font-weight:600;">' + live.toFixed(0) + '%</span>';
+        if (!isFinite(sPct) || Math.round(sPct) === Math.round(live)) return liveHtml;
+        const sColor = colorFn(sPct);
+        const tip = (liveLabel || 'Live') + ' ' + live.toFixed(0) + '% → '
+            + (sLabel || 'S PRC') + ' ' + sPct.toFixed(0) + '%';
+        return '<span title="' + tip + '" style="display:inline-flex;flex-direction:column;align-items:center;line-height:1.15;">'
+            + liveHtml
+            + '<span style="color:' + sColor + ';font-size:10px;font-weight:600;">' + sPct.toFixed(0) + '%</span>'
+            + '</span>';
     }
 
     let table = null;
@@ -1940,6 +2055,7 @@
             saveSpriceUpdates(updates);
             const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
             showToast(`Target ROI ${targetRoiPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
         });
 
         /*
@@ -2023,6 +2139,7 @@
             saveSpriceUpdates(updates);
             const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
             showToast(`Target GPFT ${targetGpftPct}% applied to ${updatedCount} SKU(s)${note}`, 'success');
+            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
         });
 
         // Enter inside Target ROI%/GPFT% inputs triggers Apply S PRC
@@ -2076,8 +2193,12 @@
                     }
 
                     if (row) {
-                        row.update({ SPRICE_STATUS: finalStatus });
-                        row.reformat();
+                        if (finalStatus === 'pushed') {
+                            shopifyB2cApplyLivePriceToRow(row, price, { SPRICE_STATUS: 'pushed' });
+                        } else {
+                            row.update({ SPRICE_STATUS: finalStatus });
+                            row.reformat();
+                        }
                     }
                     if ($btn && $btn.length) {
                         $btn.prop('disabled', false);
@@ -2141,6 +2262,7 @@
                     $btns.prop('disabled', false);
                     $('#push-shopify-prices-btn').html(originalHtml);
                     showToast('Push done: ' + okCount + ' ok, ' + failCount + ' failed', failCount ? 'warning' : 'success');
+                    if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
                     return;
                 }
                 const item = toPush[idx++];
@@ -2160,7 +2282,7 @@
                             item.row.update({ SPRICE_STATUS: 'error' });
                         } else if (shopifyPush.ok) {
                             okCount++;
-                            item.row.update({ SPRICE_STATUS: 'pushed' });
+                            shopifyB2cApplyLivePriceToRow(item.row, item.price, { SPRICE_STATUS: 'pushed' });
                         } else {
                             failCount++;
                             item.row.update({ SPRICE_STATUS: 'error' });
@@ -2408,6 +2530,7 @@
             const action = samePriceModeActive ? 'Same Price' : (increaseModeActive ? 'Increase' : 'Discount');
             showToast(`${action} applied to ${updatedCount} SKU(s)`, 'success');
             $('#discount-percentage-input').val('');
+            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
         }
 
         // Apply Amazon suggested price
@@ -2482,6 +2605,7 @@
             }
             
             showToast(message, updatedCount > 0 ? 'success' : 'warning');
+            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
         }
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
@@ -2591,6 +2715,7 @@
             }
 
             showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
         }
 
         // SAVE SPRICE to database with retry
@@ -2646,6 +2771,8 @@
                     if (response.snroi_percent !== undefined) {
                         row.update({ SNROI: response.snroi_percent });
                     }
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                    if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
                 },
                 error: function(xhr) {
                     if (retryCount < maxRetries) {
@@ -3013,12 +3140,12 @@
                     field: "lmp_diff_pct",
                     hozAlign: "center",
                     width: 70,
-                    headerTooltip: "(Google LMP − Shopify Price) / LMP × 100",
+                    headerTooltip: "(Google LMP − Price) / LMP × 100. When S PRC ≠ Price, Diff previews S PRC (what push will use).",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = function(rd) {
                             if (isShopifyB2cParentRow(rd)) return -Infinity;
                             const lmp = parseFloat(rd.lmp_price || 0);
-                            const price = parseFloat(rd.Price || 0);
+                            const price = shopifyB2cDiffComparePrice(rd);
                             if (!lmp || lmp <= 0) return -Infinity;
                             return ((lmp - price) / lmp) * 100;
                         };
@@ -3029,13 +3156,18 @@
                         if (isShopifyB2cParentRow(rowData)) return '';
 
                         const lmp = parseFloat(rowData.lmp_price || 0);
-                        const price = parseFloat(rowData.Price || 0);
+                        const livePrice = parseFloat(rowData.Price || 0);
+                        const compare = shopifyB2cDiffComparePrice(rowData);
                         if (!lmp || lmp <= 0) {
                             return '<span style="color: #999;">N/A</span>';
                         }
-                        const diff = ((lmp - price) / lmp) * 100;
+                        const diff = ((lmp - compare) / lmp) * 100;
                         const color = diff < 0 ? '#dc3545' : '#28a745';
-                        return '<span style="color:' + color + ';font-weight:600;">' + diff.toFixed(1) + '%</span>';
+                        const pending = shopifyB2cSpricePending(rowData);
+                        const tip = pending
+                            ? ('S PRC $' + compare.toFixed(2) + ' vs LMP (live Price $' + livePrice.toFixed(2) + ')')
+                            : ('Price $' + compare.toFixed(2) + ' vs LMP');
+                        return '<span title="' + tip + '" style="color:' + color + ';font-weight:600;">' + diff.toFixed(1) + '%</span>';
                     }
                 },
                 {
@@ -3084,18 +3216,13 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-
-                        // Same color slabs as Amazon GROI%
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent <= 125) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const rowData = cell.getRow().getData();
+                        const percent = parseFloat(cell.getValue());
+                        if (percent === null || percent === undefined || !isFinite(percent)) return '';
+                        const sm = shopifyB2cSpricePending(rowData)
+                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
+                            : null;
+                        return shopifyB2cOuterPctHtml(percent, sm ? sm.SROI : percent, shopifyB2cGroiColor, 'GROI', 'SROI');
                     },
                     width: 50
                 },
@@ -3105,19 +3232,13 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-
-                        // Same GPFT color slabs as Amazon
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent < 30) color = '#ffc107';
-                        else if (percent >= 30 && percent < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const rowData = cell.getRow().getData();
+                        const percent = parseFloat(cell.getValue());
+                        if (percent === null || percent === undefined || !isFinite(percent)) return '';
+                        const sm = shopifyB2cSpricePending(rowData)
+                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
+                            : null;
+                        return shopifyB2cOuterPctHtml(percent, sm ? sm.SGPFT : percent, shopifyB2cGpftColor, 'GPFT', 'SGPFT');
                     },
                     width: 50
                 },
@@ -3127,20 +3248,13 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Same as Amazon PFT %: GPFT% − channel Ads% (TCOS badge)
                         const rowData = cell.getRow().getData();
-                        const gpft = parseFloat(rowData['GPFT%']) || 0;
                         const ads = parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
-                        const npft = gpft - ads;
-                        
-                        let color = '';
-                        if (npft < 10) color = '#a00211';
-                        else if (npft >= 10 && npft < 20) color = '#3591dc';
-                        else if (npft >= 20 && npft < 30) color = '#ffc107';
-                        else if (npft >= 30 && npft < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${npft.toFixed(0)}%</span>`;
+                        const npft = (parseFloat(rowData['GPFT%']) || 0) - ads;
+                        const sm = shopifyB2cSpricePending(rowData)
+                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
+                            : null;
+                        return shopifyB2cOuterPctHtml(npft, sm ? sm.SNPFT : npft, shopifyB2cGpftColor, 'PFT', 'SNPFT');
                     },
                     width: 50
                 },
@@ -3150,7 +3264,6 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Same Amazon unit formula as SNROI / GROI (with channel Ads%), not qty-gated
                         const rowData = cell.getRow().getData();
                         const nroi = shopifyComputeNetRoi(
                             rowData['Price'],
@@ -3158,14 +3271,10 @@
                             rowData['Ship_productmaster'],
                             shopifyChannelAdsPct()
                         );
-                        
-                        let color = '';
-                        if (nroi < 50) color = '#a00211';
-                        else if (nroi >= 50 && nroi < 75) color = '#ffc107';
-                        else if (nroi >= 75 && nroi <= 125) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
+                        const sm = shopifyB2cSpricePending(rowData)
+                            ? shopifyB2cComputeSpriceMetrics(rowData, shopifyB2cShownSprice(rowData))
+                            : null;
+                        return shopifyB2cOuterPctHtml(nroi, sm ? sm.SNROI : nroi, shopifyB2cGroiColor, 'NROI', 'SNROI');
                     },
                     width: 50
                 },
@@ -3247,7 +3356,7 @@
                         step: 0.01
                     },
                     sorter: "number",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + CVR Disc%)/100). If that S PRC is below A Price, S PRC is raised to Amz (Amz label). If S PRC is above A Price, S PRC is kept. Sugg Amz Prc sets S PRC to A Price (not LMP-capped). Blue triangle = S PRC ≠ Price (hidden when Amz label shows). Red triangle = S PRC capped at LMP.",
+                    headerTooltip: "Same as Amazon: if Dil / PRMT / CVR Disc / 0 Sold / Std rules apply, S PRC is cleared first, then the rule price is written and saved (no leftover overwrite). S PRC = Std × (1 − (PRMT% + CVR Disc%)/100), or 0 Sold → Target GROI. Below A Price is raised to Amz. Sugg Amz keeps A Price. Click edits the shown rule price. Outer GROI/GPFT/PFT/NROI + Diff preview until Push. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3356,18 +3465,11 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-
-                        // Same as Amazon Sroi / GROI% slabs
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent <= 125) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const rowData = cell.getRow().getData();
+                        const shown = shopifyB2cShownSprice(rowData);
+                        if (!(shown > 0)) return '';
+                        const percent = shopifyB2cComputeSpriceMetrics(rowData, shown).SROI;
+                        return `<span style="color: ${shopifyB2cGroiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3377,19 +3479,11 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-
-                        // Same as Amazon S GPFT / GPFT % slabs
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent < 30) color = '#ffc107';
-                        else if (percent >= 30 && percent < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const rowData = cell.getRow().getData();
+                        const shown = shopifyB2cShownSprice(rowData);
+                        if (!(shown > 0)) return '';
+                        const percent = shopifyB2cComputeSpriceMetrics(rowData, shown).SGPFT;
+                        return `<span style="color: ${shopifyB2cGpftColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3399,20 +3493,11 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Same as Amazon SNPFT: SGPFT − channel Ads% (TCOS badge)
                         const rowData = cell.getRow().getData();
-                        const sgpft = parseFloat(rowData['SGPFT']) || 0;
-                        const ads = parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
-                        const snpft = sgpft - ads;
-                        
-                        let color = '';
-                        if (snpft < 10) color = '#a00211';
-                        else if (snpft >= 10 && snpft < 20) color = '#3591dc';
-                        else if (snpft >= 20 && snpft < 30) color = '#ffc107';
-                        else if (snpft >= 30 && snpft < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${snpft.toFixed(0)}%</span>`;
+                        const shown = shopifyB2cShownSprice(rowData);
+                        if (!(shown > 0)) return '';
+                        const snpft = shopifyB2cComputeSpriceMetrics(rowData, shown).SNPFT;
+                        return `<span style="color: ${shopifyB2cGpftColor(snpft)}; font-weight: 600;">${snpft.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3422,22 +3507,11 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        // Same shape as NROI badge / Amazon SNROI: (gross − SPRICE×Ads%) / LP × 100
                         const rowData = cell.getRow().getData();
-                        const snroi = shopifyComputeSnroi(
-                            shopifyB2cShownSprice(rowData),
-                            rowData['LP_productmaster'],
-                            rowData['Ship_productmaster'],
-                            parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0
-                        );
-                        
-                        let color = '';
-                        if (snroi < 50) color = '#a00211';
-                        else if (snroi >= 50 && snroi < 75) color = '#ffc107';
-                        else if (snroi >= 75 && snroi <= 125) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
+                        const shown = shopifyB2cShownSprice(rowData);
+                        if (!(shown > 0)) return '';
+                        const snroi = shopifyB2cComputeSpriceMetrics(rowData, shown).SNROI;
+                        return `<span style="color: ${shopifyB2cGroiColor(snroi)}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -3528,6 +3602,16 @@
             });
         });
 
+        // Click S PRC: editor must show the same value as the formatted cell (LMP cap + Amz floor).
+        table.on('cellEditing', function(cell) {
+            if (cell.getField() !== 'SPRICE') return;
+            const shown = shopifyB2cShownSprice(cell.getRow().getData());
+            setTimeout(function() {
+                const input = cell.getElement() && cell.getElement().querySelector('input');
+                if (input && shown > 0) input.value = shown.toFixed(2);
+            }, 0);
+        });
+
         // SPRICE cell edited - save to database
         table.on('cellEdited', function(cell) {
             const field = cell.getField();
@@ -3573,38 +3657,9 @@
                 const rowData = row.getData();
                 if (isShopifyB2cParentRow(rowData)) return;
                 const sku = rowData['(Child) sku'];
-                let newSprice = shopifyB2cApplyAmzFloor(rowData, parseFloat(cell.getValue()) || 0);
-                
-                // Recalculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
-                const percentage = 0.95; // Shopify B2C margin
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const ads = shopifyChannelAdsPct();
-                
-                // SGPFT = ((SPRICE × 95%) - LP - Ship) / SPRICE × 100
-                const grossProfit = (newSprice * percentage) - lp - ship;
-                const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
-                
-                // SNPFT = SGPFT - ADS
-                const snpft = sgpft - ads;
-                
-                // SROI = Gross Profit / LP × 100
-                const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
-                
-                // SNROI = (suggested gross − SPRICE×Ads%) / LP × 100 (same shape as NROI badge)
-                const snroi = shopifyComputeSnroi(newSprice, lp, ship, ads);
-                
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SNPFT: snpft,
-                    SROI: sroi,
-                    SNROI: snroi,
-                    has_custom_sprice: true,
-                    AMZ_SUGG_APPLIED: false
-                });
-                
-                // Save to database
+                const newSprice = shopifyB2cFinalSprice(rowData, parseFloat(cell.getValue()) || 0);
+                shopifyB2cApplySpriceMetricsToRow(row, newSprice);
+                row.update({ AMZ_SUGG_APPLIED: false });
                 saveSpriceWithRetry(sku, newSprice, row);
             }
         });
@@ -4061,6 +4116,7 @@
             if (typeof syncShopifyB2cSummaryTrendDots === 'function') syncShopifyB2cSummaryTrendDots();
             if (typeof saveShopifyB2cBadgeStatsOnce === 'function') saveShopifyB2cBadgeStatsOnce();
         }
+        window.updateShopifyB2cSummary = updateSummary;
 
         /*
          * Column visibility persists in shared DB table channel_tabulator_column_settings
