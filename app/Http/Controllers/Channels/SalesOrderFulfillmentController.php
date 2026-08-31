@@ -27,6 +27,8 @@ use App\Models\SheinOrderMetric;
 use App\Models\ShopifySku;
 use App\Models\Temu2Order;
 use App\Models\TemuOrder;
+use App\Models\Tiktok2Order;
+use App\Models\TiktokOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
 use App\Jobs\SyncShipmentTrackingStatusJob;
@@ -34,6 +36,7 @@ use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\ChannelTrackingApiFallbackService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\Temu2OrderTrackingPullService;
+use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use App\Services\MarketplaceManager\TemuOrderTrackingPullService;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\ShipmentTrackingService;
@@ -523,6 +526,8 @@ class SalesOrderFulfillmentController extends Controller
                         ? ($statusRaw !== '' ? $statusRaw : '—')
                         : $this->orderStatusLabel($slug, $statusRaw),
                     'sku' => (string) ($n['sku'] ?? ''),
+                    'catalog_sku' => (string) ($n['catalog_sku'] ?? ''),
+                    'display_sku' => (string) ($n['display_sku'] ?? ''),
                     'display_title' => (string) ($n['display_title'] ?? ''),
                     'INV' => 0,
                     'label' => null,
@@ -1685,8 +1690,7 @@ class SalesOrderFulfillmentController extends Controller
 
         $skus = [];
         foreach ($rows as $row) {
-            $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku !== '') {
+            foreach ($this->rowLookupSkus($row) as $sku) {
                 $skus[$sku] = true;
             }
         }
@@ -1698,16 +1702,17 @@ class SalesOrderFulfillmentController extends Controller
         $shopifyBySku = ShopifySku::mapByProductSkus(array_keys($skus));
 
         foreach ($rows as &$row) {
-            $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku === '') {
-                $row['INV'] = 0;
-                $row['sku_image'] = $row['sku_image'] ?? null;
-                continue;
-            }
-            $shopify = $shopifyBySku->get($sku);
-            $row['INV'] = $shopify ? (int) ($shopify->inv ?? 0) : 0;
-            if (empty($row['sku_image']) && $shopify) {
-                $row['sku_image'] = $this->resolveSkuImageUrl($shopify->image_src ?? null);
+            $row['INV'] = 0;
+            foreach ($this->rowLookupSkus($row) as $sku) {
+                $shopify = $shopifyBySku->get($sku);
+                if (! $shopify) {
+                    continue;
+                }
+                $row['INV'] = (int) ($shopify->inv ?? 0);
+                if (empty($row['sku_image'])) {
+                    $row['sku_image'] = $this->resolveSkuImageUrl($shopify->image_src ?? null);
+                }
+                break;
             }
         }
         unset($row);
@@ -3526,6 +3531,16 @@ class SalesOrderFulfillmentController extends Controller
             'purchasingpower' => $query->where('date_created', '>=', $fromDt)->where('date_created', '<=', $toDt),
             'wayfair' => $query->whereDate('po_date', '>=', $fromDate)->whereDate('po_date', '<=', $toDate),
             'doba' => $query->where('order_time', '>=', $fromDt)->where('order_time', '<=', $toDt),
+            'tiktok', 'tiktok2' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
+                $q->where(function (Builder $q2) use ($fromDt, $toDt) {
+                    $q2->where('order_created_at', '>=', $fromDt)
+                        ->where('order_created_at', '<=', $toDt);
+                })->orWhere(function (Builder $q2) use ($fromDt, $toDt) {
+                    $q2->whereNull('order_created_at')
+                        ->where('order_updated_at', '>=', $fromDt)
+                        ->where('order_updated_at', '<=', $toDt);
+                });
+            }),
             default => $query->where(function (Builder $q) use ($fromDate, $toDate, $fromDt, $toDt) {
                 $q->where(function (Builder $q2) use ($fromDate, $toDate) {
                     $q2->whereNotNull('order_date')
@@ -3591,6 +3606,7 @@ class SalesOrderFulfillmentController extends Controller
             'purchasingpower' => 'date_created',
             'wayfair' => 'po_date',
             'doba' => 'order_time',
+            'tiktok', 'tiktok2' => 'order_created_at',
             default => 'order_date',
         };
     }
@@ -3602,6 +3618,7 @@ class SalesOrderFulfillmentController extends Controller
             'temu', 'temu2' => 'order_update_time',
             'bestbuy', 'macy' => 'order_updated_at',
             'purchasingpower', 'wayfair', 'doba' => 'updated_at',
+            'tiktok', 'tiktok2' => 'order_updated_at',
             default => 'updated_at',
         };
     }
@@ -3708,6 +3725,10 @@ class SalesOrderFulfillmentController extends Controller
             'bestbuy', 'macy' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) = ?",
                 ['SHIPPING']
+            ),
+            'tiktok', 'tiktok2' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(order_status, ''))) = ?",
+                ['IN_TRANSIT']
             ),
             default => null,
         };
@@ -3836,6 +3857,16 @@ class SalesOrderFulfillmentController extends Controller
             'bestbuy' => Schema::hasTable('mirakl_daily_data') ? BestBuyOrderMetric::query() : null,
             'macy' => Schema::hasTable('mirakl_daily_data') ? MacyOrderMetric::query() : null,
             'doba' => Schema::hasTable('doba_daily_data') ? DobaDailyData::query() : null,
+            'tiktok' => Schema::hasTable('tiktok_orders')
+                ? TiktokOrder::query()->where(function (Builder $q) {
+                    $q->whereNull('line_item_id')->orWhere('line_item_id', '!=', '__order__');
+                })
+                : null,
+            'tiktok2' => Schema::hasTable('tiktok2_orders')
+                ? Tiktok2Order::query()->where(function (Builder $q) {
+                    $q->whereNull('line_item_id')->orWhere('line_item_id', '!=', '__order__');
+                })
+                : null,
             default => null,
         };
     }
@@ -3904,6 +3935,10 @@ class SalesOrderFulfillmentController extends Controller
                 ['AWAITING_SHIPMENT']
             ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['UNSHIPPED']),
+            'tiktok', 'tiktok2' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?, ?)",
+                ['AWAITING_SHIPMENT', 'AWAITING_COLLECTION', 'PARTIALLY_SHIPPING']
+            ),
             default => null,
         };
 
@@ -3923,6 +3958,7 @@ class SalesOrderFulfillmentController extends Controller
         $cols = match ($slug) {
             'doba' => ['order_status'],
             'temu', 'temu2' => ['parent_order_status_text', 'order_status_text'],
+            'tiktok', 'tiktok2' => ['order_status'],
             default => ['status'],
         };
         foreach ($cols as $col) {
@@ -4019,11 +4055,14 @@ class SalesOrderFulfillmentController extends Controller
                 'order_date' => $order->parent_order_time ?? null,
                 'updated_at' => $order->order_update_time ?? $order->updated_at ?? null,
                 'sku' => (string) ($order->display_sku ?: $order->ext_code ?: $order->product_sku_id ?: ''),
+                'catalog_sku' => (string) ($order->ext_code ?: $order->display_sku ?: $order->product_sku_id ?: ''),
+                'display_sku' => (string) ($order->display_sku ?? ''),
                 'display_title' => (string) ($order->goods_name ?? ''),
                 'quantity' => (int) ($order->quantity ?? 1),
                 'amount' => $this->firstPositiveAmount(
                     $order->order_base_amount ?? null,
-                    $order->order_total_amount ?? null
+                    $order->order_total_amount ?? null,
+                    TemuOrderAmountParser::amountFromOrder($order)
                 ),
                 // Prefer parent PO (matches Temu API / Sites order_id).
                 'order_id' => (string) ($order->parent_order_sn ?: $order->order_sn ?: ''),
@@ -4034,6 +4073,30 @@ class SalesOrderFulfillmentController extends Controller
                 // Filled by temu:pull-tracking / temu2:pull-tracking (Temu OpenAPI).
                 'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) ?: null : null,
                 'tracking_company' => isset($order->carrier) ? trim((string) $order->carrier) ?: null : null,
+                'show_id' => (int) $order->id,
+            ],
+            'tiktok', 'tiktok2' => [
+                'status' => (string) ($order->order_status ?: $order->line_status ?: ''),
+                'order_date' => $order->order_created_at ?? null,
+                'updated_at' => $order->order_updated_at ?? $order->updated_at ?? null,
+                'sku' => (string) ($order->seller_sku ?: $order->sku_id ?: ''),
+                'catalog_sku' => (string) ($order->seller_sku ?: ''),
+                'display_title' => (string) ($order->product_name ?? ''),
+                'quantity' => max(1, (int) ($order->quantity ?? 1)),
+                'amount' => $this->firstPositiveAmount(
+                    $order->order_amount ?? null,
+                    isset($order->sale_price)
+                        ? ((float) $order->sale_price) * max(1, (int) ($order->quantity ?? 1))
+                        : null,
+                    $order->original_price ?? null
+                ),
+                'order_id' => (string) ($order->order_id ?? ''),
+                'order_number' => (string) ($order->order_id ?? ''),
+                'import_status' => (string) ($order->import_status ?? ''),
+                'shopify_order_id' => (string) ($order->shopify_order_id ?? ''),
+                'raw_payload' => $order->raw_json ?? null,
+                'tracking_number' => isset($order->tracking_number) ? trim((string) $order->tracking_number) ?: null : null,
+                'tracking_company' => isset($order->shipping_provider) ? trim((string) $order->shipping_provider) ?: null : null,
                 'show_id' => (int) $order->id,
             ],
             'bestbuy', 'macy' => [
@@ -4155,7 +4218,16 @@ class SalesOrderFulfillmentController extends Controller
             'temu', 'temu2' => $this->firstPositiveAmount(
                 $order->order_base_amount ?? null,
                 $order->order_total_amount ?? null,
+                TemuOrderAmountParser::amountFromOrder($order),
                 $this->amountFromPayload($order->amount_raw_json ?? null),
+                $this->amountFromPayload($order->raw_json ?? null)
+            ),
+            'tiktok', 'tiktok2' => $this->firstPositiveAmount(
+                $order->order_amount ?? null,
+                isset($order->sale_price)
+                    ? ((float) $order->sale_price) * max(1, (int) ($order->quantity ?? 1))
+                    : null,
+                $order->original_price ?? null,
                 $this->amountFromPayload($order->raw_json ?? null)
             ),
             'bestbuy', 'macy' => $this->firstPositiveAmount(
@@ -4183,8 +4255,15 @@ class SalesOrderFulfillmentController extends Controller
                 $order->total_amount ?? null,
                 $order->total_price ?? null,
                 $order->order_total_amount ?? null,
+                $order->order_amount ?? null,
                 $order->item_price ?? null,
-                $this->amountFromPayload($order->raw_payload ?? null)
+                isset($order->sale_price)
+                    ? ((float) $order->sale_price) * max(1, (int) ($order->quantity ?? 1))
+                    : null,
+                isset($order->unit_price)
+                    ? ((float) $order->unit_price) * max(1, (int) ($order->quantity ?? 1))
+                    : null,
+                $this->amountFromPayload($order->raw_payload ?? $order->raw_json ?? null)
             ),
         };
     }
@@ -4253,13 +4332,18 @@ class SalesOrderFulfillmentController extends Controller
             $payload['grand_total'] ?? null,
             $payload['item_price'] ?? null,
             $payload['itemPrice'] ?? null,
+            $payload['sale_price'] ?? null,
+            $payload['order_amount'] ?? null,
+            $payload['goodsAmount'] ?? null,
+            $payload['baseAmount'] ?? null,
             data_get($payload, 'OrderTotal.Amount'),
             data_get($payload, 'orderTotal.amount'),
             data_get($payload, 'pricingSummary.total'),
             data_get($payload, 'pricingSummary.priceSubtotal'),
             data_get($payload, 'paymentSummary.total'),
             data_get($payload, 'lineItemCost.value'),
-            data_get($payload, 'totalFee.amount')
+            data_get($payload, 'totalFee.amount'),
+            TemuOrderAmountParser::pickMoney($payload['parentOrderMap'] ?? [], ['basePriceTotal', 'retailPriceTotal', 'estimatedRevenue', 'customerPaid'])
         );
         if ($direct !== null) {
             return $direct;
@@ -4988,13 +5072,20 @@ class SalesOrderFulfillmentController extends Controller
                 'is_temu2' => false,
                 'no_ads' => false,
             ];
-            $sku = $this->rowLookupSku($row);
-            $norm = $sku !== '' ? ShopifySku::normalizeSkuForShopifyLookup($sku) : '';
-            $listing = ($norm !== '' && isset($priceBySlugNorm[$slug][$norm]))
-                ? (float) $priceBySlugNorm[$slug][$norm]
-                : 0.0;
+            $listing = 0.0;
+            foreach ($this->rowLookupSkus($row) as $lookupSku) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($lookupSku);
+                if ($norm !== '' && isset($priceBySlugNorm[$slug][$norm])) {
+                    $listing = (float) $priceBySlugNorm[$slug][$norm];
+                    break;
+                }
+            }
             $qty = max(1, (int) ($row['quantity'] ?? 1));
             $amount = is_numeric($row['amount'] ?? null) ? (float) $row['amount'] : 0.0;
+            if ($amount <= 0 && $listing > 0) {
+                $amount = round($listing * $qty, 2);
+                $row['amount'] = $amount;
+            }
             $orderUnit = $amount > 0 ? round($amount / $qty, 2) : 0.0;
             $price = $listing > 0 ? $listing : $orderUnit;
 
@@ -5200,19 +5291,41 @@ class SalesOrderFulfillmentController extends Controller
         $skusBySlug = [];
         foreach ($rows as $row) {
             $slug = (string) ($row['mm_slug'] ?? '');
-            $sku = $this->rowLookupSku($row);
-            if ($slug === '' || $sku === '') {
+            if ($slug === '') {
                 continue;
             }
-            $skusBySlug[$slug][$sku] = true;
+            foreach ($this->rowLookupSkus($row) as $sku) {
+                $skusBySlug[$slug][$sku] = true;
+            }
         }
 
         $out = [];
+        $allSkus = [];
+        foreach ($skusBySlug as $skuSet) {
+            foreach (array_keys($skuSet) as $sku) {
+                $allSkus[$sku] = true;
+            }
+        }
+        $shopifyBySku = $allSkus === []
+            ? collect()
+            : ShopifySku::mapByProductSkus(array_keys($allSkus));
+
         foreach ($skusBySlug as $slug => $skuSet) {
             $skus = array_keys($skuSet);
             $map = [];
             foreach ($this->listingPriceSourcesForSlug($slug) as $source) {
                 $map = $map + $this->priceMapFromTable($source[0], $source[1], $source[2], $skus);
+            }
+            foreach ($skus as $sku) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '' || isset($map[$norm])) {
+                    continue;
+                }
+                $shopify = $shopifyBySku->get($sku);
+                $p = $shopify ? (float) ($shopify->price ?? 0) : 0.0;
+                if ($p > 0) {
+                    $map[$norm] = $p;
+                }
             }
             $out[$slug] = $map;
         }
@@ -5233,13 +5346,14 @@ class SalesOrderFulfillmentController extends Controller
             'ebay2' => [['ebay_2_metrics', 'sku', 'ebay_price']],
             'ebay3' => [['ebay_3_metrics', 'sku', 'ebay_price']],
             'temu' => [['temu_metrics', 'sku', 'base_price'], ['temu_pricing', 'sku', 'base_price']],
-            'temu2' => [['temu2_pricing', 'sku', 'base_price']],
+            'temu2' => [['temu2_metrics', 'sku', 'base_price'], ['temu2_pricing', 'sku', 'base_price']],
             'reverb' => [['reverb_products', 'sku', 'price']],
             'shein' => [['shein_pricing_prices', 'sku', 'special_offer_price'], ['shein_pricing_prices', 'sku', 'price']],
             'faire' => [['faire_metric', 'sku', 'price']],
             'doba' => [['doba_daily_data', 'sku', 'anticipated_income']],
             'wayfair' => [['wayfair_daily_data', 'sku', 'unit_price']],
             'aliexpress' => [['aliexpress_pricing_prices', 'sku', 'price']],
+            'alibaba' => [['alibaba_pricing_prices', 'sku', 'price'], ['alibaba_metrics', 'sku', 'price']],
             'topdawg' => [['topdawg_products', 'sku', 'price']],
             'purchasingpower' => [['purchasing_power_products', 'sku', 'price']],
             'bestbuy' => [['bestbuy_price_data', 'sku', 'price'], ['bestbuy_usa_products', 'sku', 'price']],
@@ -5265,8 +5379,12 @@ class SalesOrderFulfillmentController extends Controller
                 return [];
             }
             $map = [];
+            $lookup = array_values(array_unique(array_filter(array_merge(
+                $skus,
+                array_map('strtoupper', $skus)
+            ))));
             DB::table($table)
-                ->whereIn($skuCol, $skus)
+                ->whereIn($skuCol, $lookup)
                 ->get([$skuCol, $priceCol])
                 ->each(function ($r) use (&$map, $skuCol, $priceCol) {
                     $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($r->{$skuCol} ?? ''));
@@ -5284,10 +5402,28 @@ class SalesOrderFulfillmentController extends Controller
 
     protected function rowLookupSku(array $row): string
     {
-        $sku = trim((string) ($row['sku'] ?? ''));
-        $sku = preg_replace('/\s+\+\d+$/', '', $sku) ?? $sku;
+        $skus = $this->rowLookupSkus($row);
 
-        return trim((string) $sku);
+        return $skus[0] ?? '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function rowLookupSkus(array $row): array
+    {
+        $out = [];
+        foreach (['sku', 'catalog_sku', 'display_sku', 'seller_sku', 'ext_code'] as $key) {
+            $sku = trim((string) ($row[$key] ?? ''));
+            $sku = preg_replace('/\s+\+\d+$/', '', $sku) ?? $sku;
+            $sku = trim((string) $sku);
+            if ($sku === '' || isset($out[$sku])) {
+                continue;
+            }
+            $out[$sku] = $sku;
+        }
+
+        return array_values($out);
     }
 
     /**
@@ -5304,13 +5440,20 @@ class SalesOrderFulfillmentController extends Controller
 
         $skus = [];
         foreach ($rows as $row) {
-            $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku !== '') {
+            foreach ($this->rowLookupSkus($row) as $sku) {
                 $skus[$sku] = true;
             }
         }
         if ($skus === []) {
             return $rows;
+        }
+
+        $shopifyBySku = ShopifySku::mapByProductSkus(array_keys($skus));
+        foreach ($shopifyBySku as $shopify) {
+            $ssku = trim((string) ($shopify->sku ?? ''));
+            if ($ssku !== '') {
+                $skus[$ssku] = true;
+            }
         }
 
         $scalar = static function (array $values, string ...$keys) {
@@ -5418,9 +5561,22 @@ class SalesOrderFulfillmentController extends Controller
                 'ship_temu' => null,
                 'ship_bb' => null,
             ];
-            $sku = trim((string) ($row['sku'] ?? ''));
-            $norm = $sku !== '' ? ShopifySku::normalizeSkuForShopifyLookup($sku) : '';
-            $extra = ($norm !== '' && isset($byNorm[$norm])) ? $byNorm[$norm] : $empty;
+            $extra = $empty;
+            foreach ($this->rowLookupSkus($row) as $sku) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '' && isset($byNorm[$norm])) {
+                    $extra = $byNorm[$norm];
+                    break;
+                }
+                $shopify = $shopifyBySku->get($sku);
+                if ($shopify) {
+                    $sNorm = ShopifySku::normalizeSkuForShopifyLookup((string) ($shopify->sku ?? ''));
+                    if ($sNorm !== '' && isset($byNorm[$sNorm])) {
+                        $extra = $byNorm[$sNorm];
+                        break;
+                    }
+                }
+            }
             foreach ($extra as $k => $v) {
                 if (in_array($k, ['l', 'w', 'h', 'wt_act', 'wt_decl'], true)
                     && array_key_exists($k, $row)
