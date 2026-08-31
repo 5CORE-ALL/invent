@@ -769,6 +769,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('newegg:item-data --save --source=catalog')
+            ->cron('30 */3 * * *')
+            ->name('fetch-newegg-item-prices')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('sync:walmart-metrics-data')
             ->everyMinute()
             ->name('sync-walmart-metrics')

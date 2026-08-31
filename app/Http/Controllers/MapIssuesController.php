@@ -1802,12 +1802,12 @@ class MapIssuesController extends Controller
     }
 
     /**
-     * Normalize a SKU the same way the newegg-pricing page does: drop everything that
-     * isn't a letter or digit and uppercase, so listed/stock matching is identical.
+     * Normalize a SKU the same way the newegg-pricing page does: drop spaces/dashes
+     * but keep decimal points so "1.5FT" ≠ "15FT".
      */
     private function normalizeNeweggSku(string $sku): string
     {
-        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $sku) ?? '');
+        return strtoupper(preg_replace('/[^A-Za-z0-9.]/', '', $sku) ?? '');
     }
 
     /**

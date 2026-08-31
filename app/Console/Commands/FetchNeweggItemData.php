@@ -64,7 +64,7 @@ class FetchNeweggItemData extends Command
 
             $inv      = $this->extractInventory($invRes['json']);
             $invErr   = $this->extractError($invRes['json']);
-            $price    = $this->extractPriceForCountry($priceRes['json'], $country);
+            $price    = $newegg->extractPriceRowForCountry($priceRes['json'], $country);
             $priceErr = $this->extractError($priceRes['json']);
             $priceParent = $this->unwrap($priceRes['json']);
 
@@ -287,84 +287,6 @@ class FetchNeweggItemData extends Command
         }
 
         return $obj;
-    }
-
-    /**
-     * Pull the price row for a given country out of PriceList.Price. The price
-     * endpoint may return the result as a top-level list, a single object, or
-     * wrapped under NeweggAPIResponse / ResponseBody / PriceResult /
-     * ResponseList / ItemPriceResultList — handle them all.
-     *
-     * @param  array<mixed>|null  $json
-     * @return array<string,mixed>|null
-     */
-    private function extractPriceForCountry(?array $json, string $country): ?array
-    {
-        foreach ($this->priceResultCandidates($json) as $result) {
-            if (!is_array($result)) {
-                continue;
-            }
-
-            $priceList = data_get($result, 'PriceList');
-            if (!is_array($priceList) || empty($priceList)) {
-                continue;
-            }
-
-            // The live API returns PriceList as a direct array of price rows,
-            // but the docs show PriceList.Price — support both.
-            if (array_is_list($priceList)) {
-                $prices = $priceList;
-            } else {
-                $prices = data_get($priceList, 'Price', $priceList);
-            }
-
-            // A single price comes back as an associative array, not a list.
-            if (is_array($prices) && !array_is_list($prices)) {
-                $prices = [$prices];
-            }
-
-            foreach ($prices as $p) {
-                if (strtoupper((string) data_get($p, 'CountryCode')) === $country) {
-                    return $p;
-                }
-            }
-
-            return $prices[0] ?? null;
-        }
-
-        return null;
-    }
-
-    /**
-     * Normalize the many possible price-response envelopes into a flat list of
-     * candidate "price result" objects (each expected to carry PriceList.Price).
-     *
-     * @param  array<mixed>|null  $json
-     * @return list<mixed>
-     */
-    private function priceResultCandidates(?array $json): array
-    {
-        if (!is_array($json)) {
-            return [];
-        }
-
-        // Top-level list of results (or errors — those just won't have PriceList).
-        if (array_is_list($json)) {
-            return $json;
-        }
-
-        $obj = $this->unwrap($json) ?? $json;
-
-        // Result(s) may sit under a list wrapper.
-        $list = data_get($obj, 'ItemPriceResultList.ItemPriceResult')
-            ?? data_get($obj, 'PriceResultList.PriceResult')
-            ?? data_get($obj, 'ResponseList');
-
-        if (is_array($list)) {
-            return array_is_list($list) ? $list : [$list];
-        }
-
-        return [$obj];
     }
 
     private function num($value): ?float

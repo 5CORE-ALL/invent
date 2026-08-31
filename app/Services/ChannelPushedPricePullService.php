@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\NeweggPricing;
 use App\Models\ShopifySku;
 use App\Models\StoreListingPrice;
 use App\Models\Temu2Metric;
@@ -49,6 +50,10 @@ class ChannelPushedPricePullService
 
         if (in_array($channel, ['temu', 'temu2'], true)) {
             return $this->pullTemu($skus, $channel);
+        }
+
+        if ($channel === 'newegg') {
+            return $this->pullNewegg($skus);
         }
 
         return array_map(static fn ($sku) => [
@@ -366,5 +371,78 @@ class ChannelPushedPricePullService
             : (float) ($ss->b2c_price ?: $ss->price);
 
         return $price > 0 ? $price : null;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string,skipped?:bool}>
+     */
+    private function pullNewegg(array $skus): array
+    {
+        $api = app(NeweggApiService::class);
+        $spnByExact = [];
+        $spnByNorm = [];
+        foreach (NeweggPricing::query()->select('seller_part_number')->get() as $row) {
+            $spn = trim((string) $row->seller_part_number);
+            if ($spn === '') {
+                continue;
+            }
+            $exact = strtoupper(preg_replace('/\s+/', ' ', str_replace(["\u{00A0}", "\u{202F}", "\u{2007}"], ' ', $spn)) ?? '');
+            $norm = strtoupper(preg_replace('/[^A-Za-z0-9.]/', '', $spn) ?? '');
+            if ($exact !== '' && ! isset($spnByExact[$exact])) {
+                $spnByExact[$exact] = $spn;
+            }
+            if ($norm !== '' && ! isset($spnByNorm[$norm])) {
+                $spnByNorm[$norm] = $spn;
+            }
+        }
+
+        $out = [];
+        foreach ($skus as $sku) {
+            $exact = strtoupper(preg_replace('/\s+/', ' ', trim($sku)) ?? '');
+            $norm = strtoupper(preg_replace('/[^A-Za-z0-9.]/', '', $sku) ?? '');
+            $spn = $spnByExact[$exact] ?? $spnByNorm[$norm] ?? null;
+            if (! $spn) {
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => 'newegg',
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => 'No Newegg listing (SPN) found for SKU',
+                ];
+                continue;
+            }
+
+            try {
+                $price = $api->refreshStoredSellingPrice($spn, 'USA');
+                $out[] = [
+                    'success' => $price !== null && $price > 0,
+                    'sku' => $sku,
+                    'marketplace' => 'newegg',
+                    'price' => $price,
+                    'sprice' => null,
+                    'message' => $price !== null
+                        ? ('Pulled Newegg SellingPrice $'.number_format($price, 2))
+                        : 'Newegg SellingPrice not returned',
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Newegg pull failed', [
+                    'sku' => $sku,
+                    'spn' => $spn,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => 'newegg',
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $out;
     }
 }

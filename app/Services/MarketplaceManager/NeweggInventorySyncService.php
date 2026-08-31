@@ -325,6 +325,11 @@ class NeweggInventorySyncService
             $priceUpdated = (int) ($bulk['pushed'] ?? 0);
             if ($priceUpdated > 0) {
                 $this->updateLocalPrices($priceRows);
+                foreach ($bulk['results'] ?? [] as $r) {
+                    if (! empty($r['success']) && ! empty($r['seller_part_number'])) {
+                        $this->neweggApi->refreshStoredSellingPrice((string) $r['seller_part_number'], 'USA');
+                    }
+                }
             }
         }
 
