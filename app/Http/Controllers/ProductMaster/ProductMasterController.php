@@ -197,6 +197,43 @@ class ProductMasterController extends Controller
         return $row;
     }
 
+    /**
+     * Merge incoming modal Values into the existing JSON.
+     * The add/edit form omits L/W/H and other extra keys, so a full replace
+     * would wipe FRGHT, dimensions, shipping, verified_data, etc.
+     */
+    protected function mergeProductMasterValues(array $existing, array $incoming): array
+    {
+        $hasDimensions = $this->hasPositiveNumber($incoming['l'] ?? null)
+            && $this->hasPositiveNumber($incoming['w'] ?? null)
+            && $this->hasPositiveNumber($incoming['h'] ?? null);
+
+        if (! $hasDimensions) {
+            unset($incoming['frght'], $incoming['cbm'], $incoming['lp']);
+        }
+
+        foreach ($incoming as $key => $val) {
+            if ($val === null || $val === '') {
+                continue;
+            }
+            $existing[$key] = $val;
+        }
+
+        return $existing;
+    }
+
+    protected function hasPositiveNumber(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return false;
+        }
+        if (is_string($value)) {
+            $value = trim(str_replace(',', '', $value));
+        }
+
+        return is_numeric($value) && (float) $value > 0;
+    }
+
     public function getViewProductData(Request $request)
     {
         // Fetch all products from the database ordered by parent and SKU
@@ -584,6 +621,9 @@ class ProductMasterController extends Controller
 
                 // Prepare for possible image deletion
                 $oldValues = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                if (! is_array($oldValues)) {
+                    $oldValues = [];
+                }
                 $oldImagePath = ! empty($oldValues['image_path']) ? public_path($oldValues['image_path']) : null;
                 $newImageUploaded = false;
 
@@ -628,7 +668,7 @@ class ProductMasterController extends Controller
 
                 $product->sku = $validated['sku'];
                 $product->parent = $newParent;
-                $product->Values = $values;
+                $product->Values = $this->mergeProductMasterValues($oldValues, $values);
                 $product->save();
 
                 // Only delete old image after successful update and if a new image was uploaded

@@ -2262,11 +2262,12 @@
                             }
                             case "FRGHT":
                                 cell.className = 'text-center';
-                                isMissing = isDataMissing(frght, true);
+                                const displayFrght = (frght !== '' && frght != null) ? frght : item.frght;
+                                isMissing = isDataMissing(displayFrght, true);
                                 if (isMissing) {
                                     cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                 } else {
-                                    const formatted = frght || formatNumber(item.frght, 2);
+                                    const formatted = (frght !== '' && frght != null) ? frght : formatNumber(item.frght, 2);
                                     if (formatted === '-' || formatted === '') {
                                         cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
                                     } else {
@@ -5068,18 +5069,18 @@
 
             // Calculate LP based on CP and FRGHT (FRGHT = CBM * 200; CBM from dimensions)
             function calculateLP() {
+                const lpEl = document.getElementById('lp');
+                if (!lpEl) return;
                 const cp = parseFloat(document.getElementById('cp')?.value) || 0;
                 const w = parseFloat(document.getElementById('w')?.value) || 0;
                 const l = parseFloat(document.getElementById('l')?.value) || 0;
                 const h = parseFloat(document.getElementById('h')?.value) || 0;
-                let cbm = 0;
-                if (w > 0 && l > 0 && h > 0) {
-                    cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
+                // Modal has no L/W/H — do not rewrite LP to CP-only (that also looks like freight vanished).
+                if (!(w > 0 && l > 0 && h > 0)) {
+                    return;
                 }
-                const frght = cbm * 200;
-                const lp = cp + frght;
-                const lpEl = document.getElementById('lp');
-                if (lpEl) lpEl.value = lp.toFixed(2);
+                const cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
+                lpEl.value = (cp + (cbm * 200)).toFixed(2);
             }
             
             // Function to check if SKU already exists in our data
@@ -5174,43 +5175,56 @@
                 formData.append('parent', document.getElementById('parent').value || '');
                 formData.append('sku', document.getElementById('sku').value);
 
-                // Build Values JSON
-                const w = parseFloat(document.getElementById('w')?.value) || 0;
-                const l = parseFloat(document.getElementById('l')?.value) || 0;
-                const h = parseFloat(document.getElementById('h')?.value) || 0;
-                let cbm = null, frght = null;
-                if (w > 0 && l > 0 && h > 0) {
-                    cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
-                    frght = cbm * 200;
-                }
-                const values = {
-                    lp: document.getElementById('lp')?.value || null,
-                    cp: document.getElementById('cp')?.value || null,
-                    frght: frght != null ? frght.toFixed(2) : null,
-                    lps: document.getElementById('lps')?.value || null,
-                    ship: document.getElementById('ship')?.value || null,
-                    temu_ship: document.getElementById('temu_ship')?.value || null,
-                    moq: document.getElementById('moq')?.value || null,
-                    ebay2_ship: document.getElementById('ebay2_ship')?.value || null,
-                    label_qty: document.getElementById('labelQty')?.value || null,
-                    wt_act: document.getElementById('wtAct')?.value || null,
-                    wt_decl: document.getElementById('wtDecl')?.value || null,
-                    l: document.getElementById('l')?.value || null,
-                    w: document.getElementById('w')?.value || null,
-                    h: document.getElementById('h')?.value || null,
-                    cbm: cbm != null ? cbm.toFixed(4) : null,
-                    dc: document.getElementById('dc')?.value || null,
-                    l2_url: document.getElementById('l2Url')?.value || null,
-                    pcs_per_box: document.getElementById('pcbox')?.value || null,
-                    b: document.getElementById('b')?.value || null,
-                    h1: document.getElementById('h1')?.value || null,
-                    weight: document.getElementById('weight')?.value || null,
-                    msrp: document.getElementById('msrp')?.value || null,
-                    map: document.getElementById('map')?.value || null,
-                    status: document.getElementById('status')?.value || null,
-                    unit: document.getElementById('unit')?.value || null,
-                    upc: document.getElementById('upc')?.value || null,
+                // Only send fields that exist on the form and have a value.
+                // L/W/H (and therefore FRGHT/CBM) are not on this modal — sending
+                // null would replace the whole Values JSON and wipe freight.
+                const values = {};
+                const fieldMap = {
+                    lp: 'lp',
+                    cp: 'cp',
+                    lps: 'lps',
+                    ship: 'ship',
+                    temu_ship: 'temu_ship',
+                    moq: 'moq',
+                    ebay2_ship: 'ebay2_ship',
+                    label_qty: 'labelQty',
+                    wt_act: 'wtAct',
+                    wt_decl: 'wtDecl',
+                    l: 'l',
+                    w: 'w',
+                    h: 'h',
+                    dc: 'dc',
+                    l2_url: 'l2Url',
+                    pcs_per_box: 'pcbox',
+                    b: 'b',
+                    h1: 'h1',
+                    weight: 'weight',
+                    msrp: 'msrp',
+                    map: 'map',
+                    status: 'status',
+                    unit: 'unit',
+                    upc: 'upc',
                 };
+                Object.entries(fieldMap).forEach(([key, id]) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const val = String(el.value ?? '').trim();
+                    if (val === '') return;
+                    values[key] = val;
+                });
+
+                const l = parseFloat(values.l);
+                const w = parseFloat(values.w);
+                const h = parseFloat(values.h);
+                if (l > 0 && w > 0 && h > 0) {
+                    const cbm = ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
+                    values.cbm = cbm.toFixed(4);
+                    values.frght = (cbm * 200).toFixed(2);
+                } else {
+                    delete values.cbm;
+                    delete values.frght;
+                    delete values.lp;
+                }
 
                 formData.append('Values', JSON.stringify(values));
                 // The image file is already included by <input name="image">
@@ -5447,6 +5461,7 @@
                     sku: product.SKU || '',
                     parent: product.Parent || '',
                     labelQty: product.label_qty || '1',
+                    lp: product.lp || '',
                     cp: product.cp || '',
                     ship: product.ship || '',
                     temu_ship: product.temu_ship || '',
