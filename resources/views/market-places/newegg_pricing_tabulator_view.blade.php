@@ -84,6 +84,14 @@
             position: relative;
             z-index: 5;
         }
+        .newegg-sprice-amz-lbl {
+            color: #0d6efd;
+            font-weight: 800;
+            font-size: 10px;
+            line-height: 1;
+            margin-left: 3px;
+            cursor: help;
+        }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'newegg'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#neLmpModal'])
     </style>
@@ -122,6 +130,10 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2" id="newegg-amz-triangle-badge"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Amz: S PRC was below A Price and was raised to Amz. Click to filter. Click again to clear.">
+                            Amz 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge"
@@ -678,27 +690,88 @@
         let neMissingActive = false, neMapActive = false, neNMapActive = false;
         let neZeroSoldActive = false, neMoreSoldActive = false;
         let blueTriangleFilterActive = false;
+        let amzTriangleFilterActive = false;
+
+        function neAmzPrice(data) {
+            return parseFloat(data && (data.a_price != null ? data.a_price : (data['A Price'] || data.amazon_price))) || 0;
+        }
+
+        function neApplyAmzFloor(data, sprice) {
+            const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+            const amz = Math.round(neAmzPrice(data) * 100) / 100;
+            if (s > 0 && amz > 0 && s < amz) return amz;
+            return s > 0 ? s : 0;
+        }
+
+        function neDisplayedSpriceRaw(data) {
+            if (!data) return 0;
+            let value = parseFloat(data.sprice || data.SPRICE) || 0;
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = chPromoSpriceFromStdTPromo(data, { skip_amz_floor: true });
+                if (calc > 0) value = calc;
+            } else if (typeof chPromoLiveSprice === 'function') {
+                const calc = chPromoLiveSprice(data);
+                if (calc > 0) value = calc;
+            }
+            return value;
+        }
+
+        function nePriceBeforeAmzFloor(data) {
+            if (!data) return 0;
+            let value = neDisplayedSpriceRaw(data);
+            if (!(value > 0)) return 0;
+            if (window.SpriceLmpCap) {
+                const cap = SpriceLmpCap.apply(data, value);
+                if (cap && cap.shown > 0) value = cap.shown;
+            }
+            return Math.round(value * 100) / 100;
+        }
+
+        function neShownSprice(data) {
+            return neApplyAmzFloor(data, nePriceBeforeAmzFloor(data));
+        }
+
+        function neHasAmzFloor(data) {
+            if (!data || !data.sku) return false;
+            const before = nePriceBeforeAmzFloor(data);
+            const amz = neAmzPrice(data);
+            return before > 0 && amz > 0 && before < amz;
+        }
+
+        function neShowAmzLabel(data) {
+            return neHasAmzFloor(data);
+        }
+
+        function neAmzLabelHtml(data) {
+            if (!neShowAmzLabel(data)) return '';
+            const amz = neAmzPrice(data);
+            const before = nePriceBeforeAmzFloor(data);
+            const title = 'S PRC $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz';
+            return '<span class="newegg-sprice-amz-lbl" title="' + title + '">Amz</span>';
+        }
 
         function neRowSpriceForAlert(data) {
-            if (!data) return 0;
-            let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
-            }
-            return sprice;
+            return neShownSprice(data);
         }
         function neHasBlueTriangle(data) {
             if (!data || !data.sku) return false;
+            if (neShowAmzLabel(data)) return false;
             const sprice = neRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+        }
+        function syncNeAmzTriangleBadgeState() {
+            $('#newegg-amz-triangle-badge').css({
+                outline: amzTriangleFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: amzTriangleFilterActive ? '2px' : ''
+            });
         }
         function syncNeTriangleBadgeState() {
             $('#newegg-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
             });
+            syncNeAmzTriangleBadgeState();
         }
 
         function neNr(row) {
@@ -1414,30 +1487,50 @@
                         title: "SPrice", field: "sprice", hozAlign: "right", sorter: "number",
                         editor: "number", editorParams: { min: 0, step: 0.01 },
                         cssClass: "editable-cell",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            let value = parseFloat(cell.getValue());
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(d);
-                                if (calc > 0) value = calc;
-                            }
+                            let value = nePriceBeforeAmzFloor(d);
                             if (!isFinite(value) || !(value > 0)) return '<span style="color:#bbb;">—</span>';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                            let overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                            let redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                            const amzFloor = neHasAmzFloor(d);
+                            value = neShownSprice(d);
+                            if (!(value > 0)) return '<span style="color:#bbb;">—</span>';
+                            if (amzFloor) {
+                                if (lmp > 0 && value + 0.0001 >= lmp) overLmp = true;
+                                const before = nePriceBeforeAmzFloor(d);
+                                const amz = neAmzPrice(d);
+                                redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2)
+                                    + (overLmp && lmp > 0
+                                        ? ' — raised to Amz $' + value.toFixed(2) + ' (at/above LMP $' + lmp.toFixed(2) + ')'
+                                        : ' — raised to Amz')
+                                    + '"></i>';
+                            }
                             const formatted = '$' + value.toFixed(2);
-                            const priceHtml = overLmp
-                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
-                                : formatted;
-                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                            let priceHtml;
+                            if (amzFloor) {
+                                priceHtml = '<span style="background-color:#fff3cd;color:#b02a37;font-weight:600;padding:2px 6px;border-radius:3px;">'
+                                    + formatted + '</span>';
+                            } else if (overLmp) {
+                                priceHtml = '<span style="color:#dc3545;font-weight:600;padding:2px 6px;border-radius:3px;">'
+                                    + formatted + '</span>';
+                            } else {
+                                priceHtml = '<span style="font-weight:600;padding:2px 6px;border-radius:3px;">'
+                                    + formatted + '</span>';
+                            }
+                            const showAmz = neShowAmzLabel(d);
+                            const amzLbl = neAmzLabelHtml(d);
+                            const blueTri = (!showAmz && live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                + priceHtml + redTri + amzLbl + blueTri + '</span>';
                         }
                     },
                     {
@@ -1610,10 +1703,14 @@
                 }
 
                 if (field === "sprice") {
+                    let savePrice = parseFloat(cell.getValue()) || 0;
+                    if (typeof neApplyAmzFloor === 'function') {
+                        savePrice = neApplyAmzFloor(data, savePrice);
+                    }
                     fetch("{{ route('newegg.pricing.save.sprice') }}", {
                         method: "POST",
                         headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": "{{ csrf_token() }}" },
-                        body: JSON.stringify({ sku: data.sku, sprice: cell.getValue() })
+                        body: JSON.stringify({ sku: data.sku, sprice: savePrice })
                     })
                     .then(r => r.json())
                     .then(res => {
@@ -1717,6 +1814,7 @@
                     if (neMapActive && neMapStatus(row) !== 'map') return false;
                     if (neNMapActive && neMapStatus(row) !== 'nmap') return false;
                     if (blueTriangleFilterActive && !neHasBlueTriangle(row)) return false;
+                    if (amzTriangleFilterActive && !neHasAmzFloor(row)) return false;
 
                     return true;
                 });
@@ -1759,7 +1857,9 @@
                     neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = false;
                 }
                 if (blueTriangleFilterActive) blueTriangleFilterActive = false;
+                if (amzTriangleFilterActive) amzTriangleFilterActive = false;
                 applyNeFilters();
+                syncNeTriangleBadgeState();
             }
 
             $('#sku-search').on('keyup', applyNeFilters);
@@ -1773,6 +1873,16 @@
                 blueTriangleFilterActive = !blueTriangleFilterActive;
                 if (blueTriangleFilterActive) {
                     neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                    amzTriangleFilterActive = false;
+                }
+                applyNeFilters();
+                syncNeTriangleBadgeState();
+            });
+            $('#newegg-amz-triangle-badge').on('click', function() {
+                amzTriangleFilterActive = !amzTriangleFilterActive;
+                if (amzTriangleFilterActive) {
+                    neZeroSoldActive = neMoreSoldActive = neMissingActive = neMapActive = neNMapActive = false;
+                    blueTriangleFilterActive = false;
                 }
                 applyNeFilters();
                 syncNeTriangleBadgeState();
@@ -2248,8 +2358,10 @@
                     const rows = table.searchRows('sku', '=', sku);
                     if (rows.length === 0) return;
                     const d = rows[0].getData();
-                    const price = parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
-                                : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0);
+                    const shown = typeof neShownSprice === 'function' ? neShownSprice(d) : 0;
+                    const price = shown > 0 ? shown
+                                : (parseFloat(d.sprice) > 0 ? parseFloat(d.sprice)
+                                : (parseFloat(d.price) > 0 ? parseFloat(d.price) : 0));
                     if (price <= 0) { skipped.push(sku); return; }
                     updates.push({ sku: sku, price: +price.toFixed(2) });
                 });
@@ -2272,7 +2384,8 @@
                 const updates = [];
                 visible.forEach(d => {
                     if (!d.sku) return;
-                    const sp = parseFloat(d.sprice);
+                    const shown = typeof neShownSprice === 'function' ? neShownSprice(d) : 0;
+                    const sp = shown > 0 ? shown : parseFloat(d.sprice);
                     if (!(sp > 0)) return;
                     updates.push({ sku: d.sku, price: +sp.toFixed(2) });
                 });
@@ -2386,12 +2499,15 @@
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSold.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
                 let blueTriangleCount = 0;
+                let amzTriangleCount = 0;
                 table.getData().forEach(function(row) {
                     if (neHasBlueTriangle(row)) blueTriangleCount++;
+                    if (neHasAmzFloor(row)) amzTriangleCount++;
                 });
                 $('#newegg-blue-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
+                $('#newegg-amz-triangle-badge').text('Amz ' + amzTriangleCount.toLocaleString());
                 if (typeof syncNeTriangleBadgeState === 'function') syncNeTriangleBadgeState();
                 $('#ne-missing-badge').text('Missing L: ' + missingCount.toLocaleString());
                 $('#ne-map-badge').text('Map: ' + mapCount.toLocaleString());

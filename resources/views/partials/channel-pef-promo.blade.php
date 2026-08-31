@@ -3256,9 +3256,12 @@
         window.chPromoFinalSpriceToSave = chPromoFinalSpriceToSave;
         window.chPromoWipeSpriceRow = chPromoWipeSpriceRow;
         window.chPromoBatchClearThenSave = chPromoBatchClearThenSave;
-        /** Shopify B2C: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
+        /** Shopify B2C + Newegg: if S PRC is below A Price, raise it to Amz. Above Amz is kept. */
+        function chPromoUsesAmzSpriceFloor() {
+            return CHANNEL_PROMO_CHANNEL === 'shopify_b2c' || CHANNEL_PROMO_CHANNEL === 'newegg';
+        }
         function chPromoFloorShopifySpriceToAmz(d, sprice) {
-            if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return chPromoRound2(sprice);
+            if (!chPromoUsesAmzSpriceFloor()) return chPromoRound2(sprice);
             const s = chPromoRound2(sprice);
             const amz = chPromoRound2(chPromoAmazonPrice(d));
             if (s > 0 && amz > 0 && s < amz) return amz;
@@ -4882,11 +4885,11 @@
             return isFinite(n) && n >= 0 ? n : 0;
         }
         /**
-         * Shopify B2C: promo S PRC = Std × (1 − (PRMT+CVR Disc)/100) is below Amz (A Price).
+         * Shopify B2C / Newegg: promo S PRC = Std × (1 − (PRMT+CVR Disc)/100) is below Amz (A Price).
          * Shown / saved S PRC is raised to Amz (Amz label).
          */
         function chPromoShopifyPromoBlockedByAmz(d) {
-            if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return false;
+            if (!chPromoUsesAmzSpriceFloor()) return false;
             if (!d || d.is_parent_summary || !chPromoIsChildRow(d)) return false;
             const amz = chPromoAmazonPrice(d);
             if (!(amz > 0)) return false;
