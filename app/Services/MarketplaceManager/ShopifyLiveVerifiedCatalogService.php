@@ -292,7 +292,9 @@ final class ShopifyLiveVerifiedCatalogService
             }
             $mpQty = MarketplaceListingStockResolver::qtyFromMap($marketplaceStockMap, $canonical, (string) $sku);
 
-            if ($shopifyQty <= 0) {
+            if (MarketplaceLiveInventoryRules::marketplaceQtyExceedsShopify($shopifyQty, $mpQty, $marketplace)) {
+                $mismatch[] = $canonical;
+            } elseif ($shopifyQty <= 0) {
                 $zero[] = $canonical;
             } elseif ($mpQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
                 $matched[] = $canonical;

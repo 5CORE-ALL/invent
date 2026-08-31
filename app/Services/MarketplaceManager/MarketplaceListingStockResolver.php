@@ -723,7 +723,9 @@ final class MarketplaceListingStockResolver
                 continue;
             }
 
-            if ($shopifyQty <= 0) {
+            if (MarketplaceLiveInventoryRules::marketplaceQtyExceedsShopify($shopifyQty, $mpQty, $marketplace)) {
+                $stillMismatch[] = $sku;
+            } elseif ($shopifyQty <= 0) {
                 $addZero[] = $sku;
             } elseif (MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
                 $addMatched[] = $sku;
