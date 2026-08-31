@@ -2687,6 +2687,15 @@ class AmazonAdsController extends Controller
                 'state' => $row->state ? (string) $row->state : null,
             ];
         }
+        $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_column($skus, 'sku'));
+        foreach ($skus as $i => $skuRow) {
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $skuRow['sku'])));
+            $hit = $reviews[$key] ?? null;
+            $skus[$i]['amz_avg_rating'] = is_array($hit) && $hit['rating'] !== null
+                ? (float) $hit['rating']
+                : null;
+            $skus[$i]['amz_review_count'] = is_array($hit) ? (int) ($hit['review_count'] ?? 0) : null;
+        }
 
         $name = AmazonAdsCampaignSku::query()
             ->where('campaign_id', $cid)
@@ -3350,6 +3359,17 @@ class AmazonAdsController extends Controller
             }
             $skuMetricsByCampaign = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($ruleNames);
         }
+        $ratingsByCid = [];
+        if ($needRuleStatus) {
+            $ruleCids = [];
+            foreach ($rows as $ruleRow) {
+                $cid = preg_replace('/\D+/', '', trim((string) (((array) $ruleRow)['campaign_id'] ?? ''))) ?: '';
+                if ($cid !== '') {
+                    $ruleCids[] = $cid;
+                }
+            }
+            $ratingsByCid = AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds($ruleCids);
+        }
         $sbHasSpendOrCost = in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true);
         $needSbL1Cpc = $table === 'amazon_sb_campaign_reports'
             && in_array('clicks', $dbColumns, true)
@@ -3593,10 +3613,12 @@ class AmazonAdsController extends Controller
                     }
                     $acosForRule = self::computedAcosPercentFromReportRow($acosRowRule, $dbColumns);
                 }
+                $cidRule = preg_replace('/\D+/', '', trim((string) ($rowArr['campaign_id'] ?? ''))) ?: '';
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
                     'price' => $gmRule['price'],
                     'dil' => $gmRule['dil'],
                     'acos' => is_numeric($acosForRule) ? (float) $acosForRule : null,
+                    'rating' => $ratingsByCid[$cidRule]['rating'] ?? $gmRule['rating'] ?? null,
                 ]);
                 $arr['ruleStatus'] = $decision['status'];
                 $arr['ruleStatusTip'] = $decision['reason'];

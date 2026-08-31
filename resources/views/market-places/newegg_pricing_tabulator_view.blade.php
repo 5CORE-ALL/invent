@@ -5,8 +5,8 @@
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        .tabulator-col .tabulator-col-sorter {
-            display: none !important;
+        .tabulator-col.tabulator-sortable .tabulator-col-title {
+            cursor: pointer;
         }
         .editable-cell {
             cursor: pointer;
@@ -1114,13 +1114,15 @@
             table = new Tabulator("#newegg-pricing-table", {
                 ajaxURL: "/newegg-pricing-data",
                 ajaxSorting: false,
+                headerSortClickElement: "header",
+                columnDefaults: { headerSort: true },
                 height: "100%",
                 layout: "fitData",
                 responsiveLayout: false,
                 pagination: true,
                 paginationMode: "local",
                 paginationSize: 100,
-                paginationSizeSelector: [10, 25, 50, 100, 200],
+                paginationSizeSelector: [10, 25, 50, 100, 200, true],
                 paginationCounter: "rows",
                 placeholder: "No Data Available",
                 ajaxResponse: function(url, params, response) {
@@ -1152,16 +1154,22 @@
                         }
                     },
                     {
-                        title: "Image", field: "image", hozAlign: "center", headerSort: false, frozen: true,
+                        title: "Image", field: "image", hozAlign: "center", sorter: "string", frozen: true,
                         formatter: function(cell) {
                             const v = cell.getValue();
                             if (!v) return '';
                             return `<img src="${v}" class="ne-thumb" alt="img" loading="lazy">`;
                         }
                     },
-                    { title: "SKU", field: "sku", frozen: true, headerFilter: "input", headerFilterPlaceholder: "Search SKU...", cssClass: "text-primary fw-bold" },
+                    { title: "SKU", field: "sku", frozen: true, sorter: "string", headerFilter: "input", headerFilterPlaceholder: "Search SKU...", cssClass: "text-primary fw-bold" },
                     {
-                        title: "B/S", field: "bs", hozAlign: "center", headerSort: false, frozen: true,
+                        title: "B/S", field: "bs", hozAlign: "center", frozen: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const score = function(d) {
+                                return (d.buyer_link ? 1 : 0) + (d.seller_link ? 1 : 0);
+                            };
+                            return score(aRow.getData()) - score(bRow.getData());
+                        },
                         cssClass: "editable-cell",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -1179,7 +1187,7 @@
                             openBsModal(cell.getRow().getData());
                         }
                     },
-                    { title: "Title", field: "title", visible: false, tooltip: true },
+                    { title: "Title", field: "title", visible: false, tooltip: true, sorter: "string" },
                     { title: "INV", field: "inv", hozAlign: "center", sorter: "number" },
                     { title: "N INV", field: "available_quantity", hozAlign: "center", sorter: "number" },
                     { title: "OVL30", field: "ovl30", hozAlign: "center", sorter: "number" },
@@ -1338,7 +1346,10 @@
                         hozAlign: "left",
                         headerHozAlign: "center",
                         width: 200,
-                        headerSort: false,
+                        sorter: function(a, b) {
+                            const n = (v) => Array.isArray(v) ? v.length : 0;
+                            return n(a) - n(b);
+                        },
                         formatter: linkedLmpSkuFormatter,
                         cellClick: function(e, cell) {
                             if (e.target.closest('.sku-link-lmp-remove')) {
@@ -1428,7 +1439,12 @@
                         }
                     },
                     {
-                        title: "Missing L", field: "missing_l", hozAlign: "center", headerSort: false,
+                        title: "Missing L", field: "missing_l", hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = neRowMissingL(aRow.getData()) ? 1 : 0;
+                            const bv = neRowMissingL(bRow.getData()) ? 1 : 0;
+                            return av - bv;
+                        },
                         formatter: function(cell) {
                             return neRowMissingL(cell.getRow().getData())
                                 ? '<span style="color:#c0392b;font-weight:bold;">Missing L</span>'
@@ -1436,7 +1452,11 @@
                         }
                     },
                     {
-                        title: "Map", field: "map_status", hozAlign: "center", headerSort: false,
+                        title: "Map", field: "map_status", hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const order = { map: 2, nmap: 1 };
+                            return (order[neMapStatus(aRow.getData())] || 0) - (order[neMapStatus(bRow.getData())] || 0);
+                        },
                         formatter: function(cell) {
                             const st = neMapStatus(cell.getRow().getData());
                             if (st === 'map') return '<span style="color:#198754;font-weight:bold;">Map</span>';
@@ -1475,7 +1495,7 @@
                     },
                     {
                         title: "NR/REQ", field: "nr", hozAlign: "center",
-                        headerSort: false, cssClass: "editable-cell",
+                        sorter: "string", cssClass: "editable-cell",
                         formatter: function(cell) {
                             const v = cell.getValue() || 'REQ';
                             const color = v === 'NR' ? '#dc3545' : '#28a745';
@@ -1497,7 +1517,7 @@
                         }
                     },
                     {
-                        title: "Status", field: "status", hozAlign: "center",
+                        title: "Status", field: "status", hozAlign: "center", sorter: "string",
                         formatter: function(cell) {
                             const v = cell.getValue() || '';
                             if (!v) return '';
@@ -1509,7 +1529,7 @@
                     },
                     moneyCol("LP", "lp", false),
                     moneyCol("Ship", "ship", false),
-                    { title: "Currency", field: "currency", visible: false }
+                    { title: "Currency", field: "currency", visible: false, sorter: "string" }
                 ]
             });
 

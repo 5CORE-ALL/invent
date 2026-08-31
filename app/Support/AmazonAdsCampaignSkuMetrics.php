@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\AmazonAdsCampaignSku;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonProductReview;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -62,8 +64,8 @@ final class AmazonAdsCampaignSkuMetrics
      * Price and Dil% for pause/PR — same values as the Amazon Ads All grid.
      * Dil = ovl30 ÷ Inv. Price = Amazon list price, or the grey LMP when list price is missing.
      *
-     * @param  array{price?: mixed, dil?: mixed, inv?: mixed, ovl30?: mixed, lmp_price?: mixed}  $m
-     * @return array{price: float|null, dil: float|null}
+     * @param  array{price?: mixed, dil?: mixed, inv?: mixed, ovl30?: mixed, lmp_price?: mixed, rating?: mixed}  $m
+     * @return array{price: float|null, dil: float|null, rating: float|null}
      */
     public static function gridMetricsForPause(array $m): array
     {
@@ -80,11 +82,150 @@ final class AmazonAdsCampaignSkuMetrics
             ? $amazon
             : (($lmp !== null && is_finite($lmp) && $lmp > 0) ? $lmp : null);
 
-        return ['price' => $price, 'dil' => $dil];
+        $rating = isset($m['rating']) && is_numeric($m['rating']) ? (float) $m['rating'] : null;
+        if ($rating !== null && (! is_finite($rating) || $rating <= 0)) {
+            $rating = null;
+        }
+
+        return ['price' => $price, 'dil' => $dil, 'rating' => $rating];
     }
 
     /**
-     * @return array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, ovl30: ?float, lmp_price: ?float}
+     * Avg rating + review count from amazon_product_reviews, keyed by uppercase SKU.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, array{rating: float|null, review_count: int}>
+     */
+    public static function reviewsBySkus(array $skus): array
+    {
+        $want = [];
+        foreach ($skus as $sku) {
+            $k = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $sku)));
+            if ($k !== '') {
+                $want[$k] = true;
+            }
+        }
+        if ($want === [] || ! Schema::hasTable('amazon_product_reviews')) {
+            return [];
+        }
+
+        $rows = AmazonProductReview::query()
+            ->where(function ($q) {
+                $q->where('channel', 'Amazon')->orWhereNull('channel')->orWhere('channel', '');
+            })
+            ->whereNotNull('sku')
+            ->get(['sku', 'product_rating', 'review_count']);
+
+        $exact = [];
+        $compact = [];
+        foreach ($rows as $rr) {
+            $k = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $rr->sku)));
+            if ($k === '') {
+                continue;
+            }
+            $entry = [
+                'rating' => $rr->product_rating !== null ? (float) $rr->product_rating : null,
+                'review_count' => (int) ($rr->review_count ?? 0),
+            ];
+            $exact[$k] = $entry;
+            $ck = AmazonDatasheet::normalizeSkuForLookup($k);
+            if ($ck !== '') {
+                $compact[$ck][] = ['sku' => $k, 'entry' => $entry];
+            }
+        }
+
+        $out = [];
+        foreach (array_keys($want) as $sku) {
+            if (isset($exact[$sku])) {
+                $out[$sku] = $exact[$sku];
+                continue;
+            }
+            $ck = AmazonDatasheet::normalizeSkuForLookup($sku);
+            $cands = $compact[$ck] ?? [];
+            if ($cands === []) {
+                continue;
+            }
+            $spaces = AmazonDatasheet::normalizeSkuSpaces($sku);
+            $picked = null;
+            foreach ($cands as $c) {
+                if (AmazonDatasheet::normalizeSkuSpaces((string) $c['sku']) === $spaces) {
+                    $picked = $c['entry'];
+                    break;
+                }
+            }
+            $out[$sku] = $picked ?? $cands[0]['entry'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Lowest advertised-SKU rating per campaign (amazon_ads_campaign_skus).
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array{rating: float|null, review_count: int|null, sku: string}>
+     */
+    public static function minRatingForCampaignIds(array $campaignIds): array
+    {
+        $cids = [];
+        foreach ($campaignIds as $cid) {
+            $id = preg_replace('/\D+/', '', trim((string) $cid)) ?: '';
+            if ($id !== '') {
+                $cids[$id] = true;
+            }
+        }
+        if ($cids === [] || ! Schema::hasTable('amazon_ads_campaign_skus')) {
+            return [];
+        }
+
+        $rows = AmazonAdsCampaignSku::query()
+            ->whereIn('campaign_id', array_keys($cids))
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['campaign_id', 'sku']);
+
+        $byCid = [];
+        $skus = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            $cid = preg_replace('/\D+/', '', trim((string) ($row->campaign_id ?? ''))) ?: '';
+            if ($sku === '' || $cid === '') {
+                continue;
+            }
+            $byCid[$cid][] = $sku;
+            $skus[] = $sku;
+        }
+        $reviews = self::reviewsBySkus($skus);
+        $out = [];
+        foreach ($byCid as $cid => $list) {
+            $min = null;
+            $count = null;
+            $skuUsed = '';
+            foreach ($list as $sku) {
+                $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+                $hit = $reviews[$key] ?? null;
+                if (! is_array($hit) || $hit['rating'] === null) {
+                    continue;
+                }
+                $rating = (float) $hit['rating'];
+                if ($min === null || $rating < $min) {
+                    $min = $rating;
+                    $count = (int) ($hit['review_count'] ?? 0);
+                    $skuUsed = $sku;
+                }
+            }
+            $out[$cid] = [
+                'rating' => $min,
+                'review_count' => $count,
+                'sku' => $skuUsed,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, ovl30: ?float, lmp_price: ?float, rating: ?float, review_count: ?int}
      */
     private static function emptyMetrics(string $sku): array
     {
@@ -96,6 +237,8 @@ final class AmazonAdsCampaignSkuMetrics
             'l30' => null,
             'ovl30' => null,
             'lmp_price' => null,
+            'rating' => null,
+            'review_count' => null,
         ];
     }
 
@@ -227,10 +370,12 @@ final class AmazonAdsCampaignSkuMetrics
                 $lookupSkus[] = $sku;
             }
         }
+        $lookupSkus = array_values(array_unique($lookupSkus));
         $shopifyByPm = Schema::hasTable('shopify_skus')
-            ? ShopifySku::mapByProductSkus(array_values(array_unique($lookupSkus)))
+            ? ShopifySku::mapByProductSkus($lookupSkus)
             : collect();
-        $lmpByCompact = self::lmpLandedBySkuKeys(array_values(array_unique($lookupSkus)));
+        $lmpByCompact = self::lmpLandedBySkuKeys($lookupSkus);
+        $reviewsBySku = self::reviewsBySkus($lookupSkus);
 
         $out = [];
         foreach ($skuKeys as $key) {
@@ -259,6 +404,7 @@ final class AmazonAdsCampaignSkuMetrics
                         $lmpPrice = $childLmp;
                     }
                 }
+                $rev = self::pickLowestReview($reviewsBySku, $kids);
                 $out[$key] = [
                     'sku' => $key,
                     'price' => $price,
@@ -267,6 +413,8 @@ final class AmazonAdsCampaignSkuMetrics
                     'l30' => $l30,
                     'ovl30' => $ovl30,
                     'lmp_price' => $lmpPrice,
+                    'rating' => $rev['rating'],
+                    'review_count' => $rev['review_count'],
                 ];
                 continue;
             }
@@ -289,6 +437,7 @@ final class AmazonAdsCampaignSkuMetrics
             $ovl30 = $sh !== null ? (float) ($sh->quantity ?? 0) : null;
             $l30 = $sheet !== null ? (float) ($sheet->units_ordered_l30 ?? 0) : null;
 
+            $rev = self::pickLowestReview($reviewsBySku, [$key]);
             $out[$key] = [
                 'sku' => $key,
                 'price' => $price,
@@ -297,10 +446,37 @@ final class AmazonAdsCampaignSkuMetrics
                 'l30' => $l30,
                 'ovl30' => $ovl30,
                 'lmp_price' => $lmpByCompact[AmazonDatasheet::normalizeSkuForLookup($key)] ?? null,
+                'rating' => $rev['rating'],
+                'review_count' => $rev['review_count'],
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, array{rating: float|null, review_count: int}>  $reviewsBySku
+     * @param  list<string>  $skus
+     * @return array{rating: float|null, review_count: int|null}
+     */
+    private static function pickLowestReview(array $reviewsBySku, array $skus): array
+    {
+        $min = null;
+        $count = null;
+        foreach ($skus as $sku) {
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $sku)));
+            $hit = $reviewsBySku[$key] ?? null;
+            if (! is_array($hit) || $hit['rating'] === null) {
+                continue;
+            }
+            $rating = (float) $hit['rating'];
+            if ($min === null || $rating < $min) {
+                $min = $rating;
+                $count = (int) ($hit['review_count'] ?? 0);
+            }
+        }
+
+        return ['rating' => $min, 'review_count' => $count];
     }
 
     /**

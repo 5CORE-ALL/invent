@@ -256,7 +256,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbgtDoubleRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbgtDoubleRuleModal" title="SBGT Double: Dil column colors × multiplier (runs with the BGT rule)">SBGT DOUBLE</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS% bands">PAUSE RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, ACOS%, and Reviews">PAUSE RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is high or price is below your threshold">PR</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
@@ -433,6 +433,7 @@
                                 <tr>
                                     <th>SKU</th>
                                     <th>ASIN</th>
+                                    <th>Reviews</th>
                                     <th>State</th>
                                 </tr>
                             </thead>
@@ -595,7 +596,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS%</h5>
+                    <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS% / Reviews</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -667,6 +668,25 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="acos">
                                 <i class="fas fa-plus me-1"></i>Add band
                             </button>
+                        </div>
+                    </div>
+                    <div class="border rounded p-3 mt-3">
+                        <h6 class="fw-semibold mb-1">Reviews (1–5 ★)</h6>
+                        <p class="small text-muted mb-2">
+                            Uses the lowest Amazon rating among advertised SKUs on the campaign
+                            (same Reviews column as the Campaign SKUs modal).
+                            When enabled, ads pause automatically if that rating is <strong>below</strong> the value.
+                        </p>
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="amazonAdsPauseRuleReviewsEnabled">
+                                <label class="form-check-label small" for="amazonAdsPauseRuleReviewsEnabled">Enable auto-pause</label>
+                            </div>
+                            <div class="input-group input-group-sm" style="max-width: 220px;">
+                                <span class="input-group-text">Below</span>
+                                <input type="number" min="1" max="5" step="0.1" class="form-control" id="amazonAdsPauseRuleReviewsBelow" value="3">
+                                <span class="input-group-text">★</span>
+                            </div>
                         </div>
                     </div>
                     <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPauseRuleModalError" role="alert"></p>
@@ -1390,6 +1410,23 @@
             });
 
             var amzCampSkusCache = {};
+            function amzFormatSkuReviews(s) {
+                var rating = s && s.amz_avg_rating != null ? parseFloat(s.amz_avg_rating) : NaN;
+                if (!isFinite(rating) || rating <= 0) {
+                    return '<span style="color:#6c757d;">—</span>';
+                }
+                var count = parseInt(s.amz_review_count, 10) || 0;
+                var ratingColor = '#a00211';
+                if (rating >= 3 && rating <= 3.5) ratingColor = '#ffc107';
+                else if (rating >= 3.51 && rating <= 3.99) ratingColor = '#3591dc';
+                else if (rating >= 4 && rating <= 4.5) ratingColor = '#28a745';
+                else if (rating > 4.5) ratingColor = '#e83e8c';
+                var countColor = count < 4 ? '#a00211' : '#6c757d';
+                return '<span style="color:' + ratingColor + ';font-weight:600;">'
+                    + '<i class="fa fa-star"></i> ' + rating.toFixed(1)
+                    + ' <span style="color:' + countColor + ';">(' + count.toLocaleString() + ')</span>'
+                    + '</span>';
+            }
             function amzOpenCampaignSkus(cid, cname) {
                 var title = document.getElementById('amazonAdsCampaignSkusModalLabel');
                 var sub = document.getElementById('amazonAdsCampaignSkusModalSub');
@@ -1421,6 +1458,7 @@
                         return '<tr>'
                             + '<td class="fw-semibold">' + amzEsc(s.sku || '—') + '</td>'
                             + '<td>' + amzEsc(s.asin || '—') + '</td>'
+                            + '<td>' + amzFormatSkuReviews(s) + '</td>'
                             + '<td><span style="color:' + color + ';font-weight:600;">' + amzEsc(state) + '</span></td>'
                             + '</tr>';
                     }).join('');
@@ -2201,6 +2239,12 @@
                     });
                     amzRenderPauseSection(sec);
                 });
+                var rev = r.reviews || {};
+                var en = document.getElementById('amazonAdsPauseRuleReviewsEnabled');
+                var below = document.getElementById('amazonAdsPauseRuleReviewsBelow');
+                if (en) en.checked = !!rev.enabled;
+                var belowVal = Number(rev.below);
+                if (below) below.value = isFinite(belowVal) ? String(belowVal) : '3';
             }
             function amzCollectPauseRule() {
                 var out = { pricing: [], dil: [], acos: [] };
@@ -2214,6 +2258,12 @@
                         };
                     });
                 });
+                var en = document.getElementById('amazonAdsPauseRuleReviewsEnabled');
+                var below = document.getElementById('amazonAdsPauseRuleReviewsBelow');
+                out.reviews = {
+                    enabled: !!(en && en.checked),
+                    below: below ? parseFloat(String(below.value).trim()) : NaN
+                };
                 return out;
             }
             function amzPauseRuleValid(payload, err) {
@@ -2231,6 +2281,11 @@
                             return false;
                         }
                     }
+                }
+                var below = payload.reviews && payload.reviews.below;
+                if (!isFinite(below) || below < 1 || below > 5) {
+                    if (err) { err.textContent = 'Reviews threshold must be a number from 1 to 5.'; err.classList.remove('d-none'); }
+                    return false;
                 }
                 return true;
             }

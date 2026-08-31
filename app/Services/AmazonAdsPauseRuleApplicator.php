@@ -47,7 +47,7 @@ class AmazonAdsPauseRuleApplicator
 
         $rule = AmazonAdsPauseRule::resolvedRule();
         if (! AmazonAdsPauseRule::hasBands($rule)) {
-            $stats['errors'][] = 'No pause/activate bands or PR Dil% rule configured — Amazon was not updated.';
+            $stats['errors'][] = 'No pause/activate bands, PR Dil%, or Reviews rule configured — Amazon was not updated.';
             Log::warning('amazon:ads-pause-rule skipped: empty pause rule (no bands / PR off). Refusing to enable/pause campaigns.');
 
             return $stats;
@@ -59,9 +59,13 @@ class AmazonAdsPauseRuleApplicator
             array_column($sb, 'campaignName')
         ), static fn ($n) => is_string($n) && trim($n) !== '')));
         $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names);
+        $ratingsByCid = AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds(array_merge(
+            array_column($sp, 'campaign_id'),
+            array_column($sb, 'campaign_id')
+        ));
 
-        $this->applyChannel('sp', $sp, $rule, $metricsByName, $dryRun, $stats);
-        $this->applyChannel('sb', $sb, $rule, $metricsByName, $dryRun, $stats);
+        $this->applyChannel('sp', $sp, $rule, $metricsByName, $ratingsByCid, $dryRun, $stats);
+        $this->applyChannel('sb', $sb, $rule, $metricsByName, $ratingsByCid, $dryRun, $stats);
 
         return $stats;
     }
@@ -130,7 +134,8 @@ class AmazonAdsPauseRuleApplicator
      * @param  'sp'|'sb'  $channel
      * @param  list<array{campaign_id: string, campaignName: string, campaignStatus: string, acos: ?float}>  $rows
      * @param  array<string, mixed>  $rule
-     * @param  array<string, array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float}>  $metricsByName
+     * @param  array<string, array{sku: string, price: ?float, dil: ?float, inv: ?float, l30: ?float, rating?: ?float}>  $metricsByName
+     * @param  array<string, array{rating: float|null, review_count: int|null, sku: string}>  $ratingsByCid
      * @param  array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}  $stats
      */
     private function applyChannel(
@@ -138,6 +143,7 @@ class AmazonAdsPauseRuleApplicator
         array $rows,
         array $rule,
         array $metricsByName,
+        array $ratingsByCid,
         bool $dryRun,
         array &$stats
     ): void {
@@ -151,10 +157,12 @@ class AmazonAdsPauseRuleApplicator
             }
             $m = $metricsByName[$row['campaignName']] ?? ['price' => null, 'dil' => null, 'sku' => ''];
             $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
+            $cidRating = $ratingsByCid[$row['campaign_id']]['rating'] ?? null;
             $decision = AmazonAdsPauseRule::decide($rule, [
                 'price' => $gm['price'],
                 'dil' => $gm['dil'],
                 'acos' => $row['acos'],
+                'rating' => $cidRating ?? $gm['rating'] ?? null,
             ]);
             $desired = $decision['status'];
             $hits = $decision['hits'] ?? [];

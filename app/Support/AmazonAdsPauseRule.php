@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsPauseRule
 {
-    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v4';
+    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v5';
 
     public const ACTION_PAUSED = 'PAUSED';
 
@@ -27,7 +27,8 @@ final class AmazonAdsPauseRule
      *     pricing: list<array{from: float, to: float, action: string, label: string}>,
      *     dil: list<array{from: float, to: float, action: string, label: string}>,
      *     acos: list<array{from: float, to: float, action: string, label: string}>,
-     *     pr: array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool}
+     *     pr: array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool},
+     *     reviews: array{enabled: bool, below: float}
      * }
      */
     public static function defaults(): array
@@ -37,6 +38,20 @@ final class AmazonAdsPauseRule
             'dil' => [],
             'acos' => [],
             'pr' => self::defaultPr(),
+            'reviews' => self::defaultReviews(),
+        ];
+    }
+
+    /**
+     * Pause when advertised-SKU Amazon rating is below this star value (1–5).
+     *
+     * @return array{enabled: bool, below: float}
+     */
+    public static function defaultReviews(): array
+    {
+        return [
+            'enabled' => false,
+            'below' => 3.0,
         ];
     }
 
@@ -62,11 +77,13 @@ final class AmazonAdsPauseRule
         $r = $rule ?? [];
 
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : [];
+        $reviews = is_array($r['reviews'] ?? null) ? $r['reviews'] : [];
 
         return ($r['pricing'] ?? []) !== []
             || ($r['dil'] ?? []) !== []
             || ($r['acos'] ?? []) !== []
-            || ! empty($pr['enabled']);
+            || ! empty($pr['enabled'])
+            || ! empty($reviews['enabled']);
     }
 
     /**
@@ -125,6 +142,7 @@ final class AmazonAdsPauseRule
             'dil' => self::normalizeBands($input['dil'] ?? []),
             'acos' => self::normalizeBands($input['acos'] ?? []),
             'pr' => self::normalizePr($input['pr'] ?? self::defaultPr()),
+            'reviews' => self::normalizeReviews($input['reviews'] ?? self::defaultReviews()),
         ];
     }
 
@@ -138,6 +156,9 @@ final class AmazonAdsPauseRule
         $existing = self::loadResolvedRule();
         if (! array_key_exists('pr', $rule)) {
             $normalized['pr'] = $existing['pr'] ?? self::defaultPr();
+        }
+        if (! array_key_exists('reviews', $rule)) {
+            $normalized['reviews'] = $existing['reviews'] ?? self::defaultReviews();
         }
         $row = AmazonAdsPauseRuleSetting::query()->orderBy('id')->first();
         if ($row === null) {
@@ -184,7 +205,7 @@ final class AmazonAdsPauseRule
      *     dil?: list<array{from?: float, to?: float, action?: string, label?: string}>,
      *     acos?: list<array{from?: float, to?: float, action?: string, label?: string}>
      * }  $rule
-     * @param  array{price?: float|null, dil?: float|null, acos?: float|null}  $metrics
+     * @param  array{price?: float|null, dil?: float|null, acos?: float|null, rating?: float|null}  $metrics
      * @return array{status: string, reason: string, hits: list<string>}
      */
     public static function decide(?array $rule, array $metrics): array
@@ -240,6 +261,21 @@ final class AmazonAdsPauseRule
                         'reason' => 'PR Price $'.$shown.' < $'.$th,
                     ];
                 }
+            }
+        }
+
+        $reviews = is_array($r['reviews'] ?? null) ? $r['reviews'] : self::defaultReviews();
+        if (! empty($reviews['enabled'])) {
+            $ratingVal = $metrics['rating'] ?? null;
+            $below = (float) ($reviews['below'] ?? 3);
+            if ($ratingVal !== null && $ratingVal !== '' && is_finite((float) $ratingVal) && is_finite($below)
+                && (float) $ratingVal < $below) {
+                $shown = rtrim(rtrim(number_format((float) $ratingVal, 2, '.', ''), '0'), '.');
+                $th = rtrim(rtrim(number_format($below, 2, '.', ''), '0'), '.');
+                $hits[] = [
+                    'action' => self::ACTION_PAUSED,
+                    'reason' => 'Reviews ★'.$shown.' < '.$th,
+                ];
             }
         }
 
@@ -381,5 +417,22 @@ final class AmazonAdsPauseRule
         }
 
         return $n;
+    }
+
+    /**
+     * @param  mixed  $reviews
+     * @return array{enabled: bool, below: float}
+     */
+    private static function normalizeReviews(mixed $reviews): array
+    {
+        $base = self::defaultReviews();
+        if (! is_array($reviews)) {
+            return $base;
+        }
+
+        return [
+            'enabled' => self::normalizePrBool($reviews['enabled'] ?? false),
+            'below' => self::normalizePrNumber($reviews['below'] ?? $base['below'], 'Reviews below', 1, 5),
+        ];
     }
 }

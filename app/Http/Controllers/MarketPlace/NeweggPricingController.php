@@ -1194,9 +1194,22 @@ class NeweggPricingController extends Controller
             $headerIndex = $this->findViewsHeaderRow($rows);
             $rawHeaders = array_values($rows[$headerIndex] ?? []);
             $fieldByIndex = $this->mapViewsHeaders($rawHeaders);
+            if (! in_array('page_views', $fieldByIndex, true) && ! in_array('sessions', $fieldByIndex, true)) {
+                $fieldByIndex = $this->applyNeweggViewsPositionalFallback($rawHeaders, $fieldByIndex);
+            }
+            Log::info('Newegg views upload headers', [
+                'header_index' => $headerIndex,
+                'raw' => $rawHeaders,
+                'mapped' => $fieldByIndex,
+            ]);
             if (! in_array('seller_part_number', $fieldByIndex, true) && ! in_array('item_number', $fieldByIndex, true)) {
                 return response()->json([
-                    'error' => 'Could not find Seller Part # or Item # in the header row.',
+                    'error' => 'Could not find Seller Part # or Item # in the header row. Headers: '.$this->viewsHeaderPreview($rawHeaders),
+                ], 400);
+            }
+            if (! in_array('page_views', $fieldByIndex, true) && ! in_array('sessions', $fieldByIndex, true)) {
+                return response()->json([
+                    'error' => 'Could not find Page Views or Sessions columns. Headers: '.$this->viewsHeaderPreview($rawHeaders),
                 ], 400);
             }
 
@@ -1270,6 +1283,18 @@ class NeweggPricingController extends Controller
                 }
             }
 
+            $trafficSum = 0;
+            foreach ($aggregated as $row) {
+                $trafficSum += (int) ($row['page_views'] ?? 0) + (int) ($row['sessions'] ?? 0);
+            }
+            if ($aggregated === [] || $trafficSum <= 0) {
+                return response()->json([
+                    'error' => 'Sheet parsed but Page Views/Sessions were all 0. Headers: '.$this->viewsHeaderPreview($rawHeaders),
+                    'headers' => $rawHeaders,
+                    'mapped' => $fieldByIndex,
+                ], 400);
+            }
+
             DB::statement('SET FOREIGN_KEY_CHECKS=0;');
             NeweggListingView::truncate();
             DB::statement('SET FOREIGN_KEY_CHECKS=1;');
@@ -1302,21 +1327,32 @@ class NeweggPricingController extends Controller
     }
 
     /**
+     * Pick the row that maps the most Seller Portal columns (skips title/date rows).
+     *
      * @param  array<int, mixed>  $rows
      */
     private function findViewsHeaderRow(array $rows): int
     {
-        foreach ($rows as $i => $row) {
-            $joined = strtolower(implode(' ', array_map(fn ($v) => (string) $v, $row)));
-            $hasSeller = str_contains($joined, 'seller part') || str_contains($joined, 'sellerpart');
-            $hasTraffic = str_contains($joined, 'page view') || str_contains($joined, 'session');
-            $hasItem = str_contains($joined, 'item #') || str_contains($joined, 'item#');
-            if (($hasSeller || $hasItem) && $hasTraffic) {
-                return (int) $i;
+        $best = 0;
+        $bestScore = -1;
+        $limit = min(count($rows), 20);
+        for ($i = 0; $i < $limit; $i++) {
+            $map = $this->mapViewsHeaders(array_values($rows[$i] ?? []));
+            $fields = array_values(array_filter($map));
+            $score = count($fields);
+            if (in_array('seller_part_number', $fields, true) || in_array('item_number', $fields, true)) {
+                $score += 10;
+            }
+            if (in_array('page_views', $fields, true) || in_array('sessions', $fields, true)) {
+                $score += 20;
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $i;
             }
         }
 
-        return 0;
+        return $best;
     }
 
     /**
@@ -1326,38 +1362,55 @@ class NeweggPricingController extends Controller
     private function mapViewsHeaders(array $headers): array
     {
         $usedPageViews = false;
+        $usedSessions = false;
         $map = [];
         foreach ($headers as $idx => $header) {
             $n = strtolower(trim((string) $header));
             $n = preg_replace('/[^a-z0-9%#]+/', '', $n) ?? '';
+            $isPct = str_contains($n, '%') || str_contains($n, 'percent') || str_contains($n, 'pct');
 
             $field = null;
-            if (str_contains($n, 'unitsession')) {
-                $field = 'unit_session_pct';
-            } elseif (preg_match('/sessionp|session%|sessionpercent/', $n)) {
+            if ($n === '' || str_contains($n, 'unitsession')) {
+                $field = $n === '' ? null : 'unit_session_pct';
+            } elseif ((str_contains($n, 'session') && $isPct) || preg_match('/^sessionp/', $n)) {
                 $field = 'session_pct';
-            } elseif (preg_match('/pageview.*%|pageviewpercent|pageviewsp/', $n)) {
+            } elseif (str_contains($n, 'pageview') && $isPct) {
                 $field = 'page_view_pct';
-            } elseif ($n === 'item' || str_starts_with($n, 'item#') || $n === 'itemnumber' || $n === 'neitem') {
-                $field = 'item_number';
-            } elseif ($n === 'title' || $n === 'productname' || $n === 'producttitle') {
-                $field = 'title';
-            } elseif (str_contains($n, 'sellerpart') || $n === 'sku') {
+            } elseif (
+                str_contains($n, 'sellerpart')
+                || $n === 'sku'
+                || $n === 'sellernumber'
+            ) {
                 $field = 'seller_part_number';
-            } elseif (str_contains($n, 'sbninven') || $n === 'sbn') {
+            } elseif (
+                str_contains($n, 'item#')
+                || str_contains($n, 'itemnumber')
+                || $n === 'item'
+                || $n === 'neitem'
+                || str_contains($n, 'neweggitem')
+                || (str_contains($n, 'item') && (str_contains($n, '9si') || str_contains($n, 'nein')))
+            ) {
+                $field = 'item_number';
+            } elseif ($n === 'title' || str_contains($n, 'productname') || str_contains($n, 'producttitle') || $n === 'itemtitle') {
+                $field = 'title';
+            } elseif (str_contains($n, 'sbn')) {
                 $field = 'sbn_inventory';
-            } elseif (str_contains($n, 'sbsinven') || $n === 'sbs') {
+            } elseif (str_contains($n, 'sbs')) {
                 $field = 'sbs_inventory';
-            } elseif ($n === 'sessions' || $n === 'session') {
-                $field = 'sessions';
-            } elseif ($n === 'pageview' || $n === 'pageviews' || $n === 'views') {
+            } elseif (str_contains($n, 'session')) {
+                $field = $usedSessions ? 'session_pct' : 'sessions';
+                $usedSessions = true;
+            } elseif (str_contains($n, 'pageview') || $n === 'views') {
                 $field = $usedPageViews ? 'page_view_pct' : 'page_views';
                 $usedPageViews = true;
-            } elseif (str_contains($n, 'ordersso') || str_contains($n, 'ordersold')) {
+            } elseif (str_contains($n, 'view') && ! str_contains($n, 'review') && ! $isPct) {
+                $field = $usedPageViews ? 'page_view_pct' : 'page_views';
+                $usedPageViews = true;
+            } elseif (str_contains($n, 'orderso') || str_contains($n, 'ordersold')) {
                 $field = 'orders_sold';
-            } elseif ($n === 'sales') {
+            } elseif ($n === 'sales' || $n === 'sale' || $n === 'revenue') {
                 $field = 'sales';
-            } elseif (str_contains($n, 'unitssold')) {
+            } elseif (str_contains($n, 'unitsold') || str_contains($n, 'unitssold') || $n === 'units') {
                 $field = 'units_sold';
             }
 
@@ -1367,6 +1420,78 @@ class NeweggPricingController extends Controller
         return $map;
     }
 
+    /**
+     * Screenshot / Seller Portal order when headers are truncated or unlabeled.
+     *
+     * @param  array<int, mixed>  $headers
+     * @param  array<int, string|null>  $map
+     * @return array<int, string|null>
+     */
+    private function applyNeweggViewsPositionalFallback(array $headers, array $map): array
+    {
+        $sellerIdx = array_search('seller_part_number', $map, true);
+        $titleIdx = array_search('title', $map, true);
+        $count = count($headers);
+
+        $layout = null;
+        if ($sellerIdx === 2 && $count >= 12) {
+            $layout = [
+                0 => 'item_number', 1 => 'title', 2 => 'seller_part_number',
+                3 => 'sbn_inventory', 4 => 'sbs_inventory',
+                5 => 'sessions', 6 => 'session_pct',
+                7 => 'page_views', 8 => 'page_view_pct',
+                9 => 'orders_sold', 10 => 'sales', 11 => 'units_sold', 12 => 'unit_session_pct',
+            ];
+        } elseif ($sellerIdx === 0 && $titleIdx === 1 && $count >= 10) {
+            $layout = [
+                0 => 'seller_part_number', 1 => 'title',
+                2 => 'sbn_inventory', 3 => 'sbs_inventory',
+                4 => 'sessions', 5 => 'session_pct',
+                6 => 'page_views', 7 => 'page_view_pct',
+                8 => 'orders_sold', 9 => 'sales', 10 => 'units_sold', 11 => 'unit_session_pct',
+            ];
+        } elseif ($titleIdx === 1 && $sellerIdx === false && $count >= 12) {
+            $layout = [
+                0 => 'item_number', 1 => 'title', 2 => 'seller_part_number',
+                3 => 'sbn_inventory', 4 => 'sbs_inventory',
+                5 => 'sessions', 6 => 'session_pct',
+                7 => 'page_views', 8 => 'page_view_pct',
+                9 => 'orders_sold', 10 => 'sales', 11 => 'units_sold', 12 => 'unit_session_pct',
+            ];
+        }
+
+        if ($layout === null) {
+            return $map;
+        }
+
+        foreach ($layout as $i => $field) {
+            if (($map[$i] ?? null) === null) {
+                $map[$i] = $field;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<int, mixed>  $headers
+     */
+    private function viewsHeaderPreview(array $headers): string
+    {
+        $parts = [];
+        foreach ($headers as $h) {
+            $s = trim((string) $h);
+            if ($s === '') {
+                continue;
+            }
+            $parts[] = $s;
+        }
+
+        $text = implode(' | ', $parts);
+
+        return $text !== '' ? $text : '(empty header row)';
+    }
+
     private function parseViewsFile($file): array
     {
         $extension = strtolower((string) $file->getClientOriginalExtension());
@@ -1374,12 +1499,31 @@ class NeweggPricingController extends Controller
         if (in_array($extension, ['xlsx', 'xls'], true)) {
             try {
                 $spreadsheet = IOFactory::load($file->getPathName());
-                $sheet = $spreadsheet->getActiveSheet();
-                $rows = $sheet->toArray();
+                $bestRows = [];
+                $bestScore = -1;
+                foreach ($spreadsheet->getAllSheets() as $sheet) {
+                    $rows = array_values(array_filter($sheet->toArray(), function ($row) {
+                        return count(array_filter($row, fn ($v) => trim((string) $v) !== '')) > 0;
+                    }));
+                    if ($rows === []) {
+                        continue;
+                    }
+                    $headerIndex = $this->findViewsHeaderRow($rows);
+                    $map = $this->mapViewsHeaders(array_values($rows[$headerIndex] ?? []));
+                    $fields = array_values(array_filter($map));
+                    $score = count($fields);
+                    if (in_array('page_views', $fields, true) || in_array('sessions', $fields, true)) {
+                        $score += 50;
+                    }
+                    if ($score > $bestScore) {
+                        $bestScore = $score;
+                        $bestRows = $rows;
+                    }
+                }
 
-                return array_values(array_filter($rows, function ($row) {
-                    return count(array_filter($row, fn ($v) => trim((string) $v) !== '')) > 0;
-                }));
+                if ($bestRows !== []) {
+                    return $bestRows;
+                }
             } catch (\Throwable $e) {
                 Log::warning('Newegg views Excel parse failed, trying text: '.$e->getMessage());
             }
