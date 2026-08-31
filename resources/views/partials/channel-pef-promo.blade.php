@@ -5530,6 +5530,7 @@
             const total = jobs.length;
             let ok = 0;
             let fail = 0;
+            const okSkus = [];
             setChPromoPushPrcProgress({
                 active: true, done: 0, total: total, ok: 0, fail: 0,
                 cancelable: true, title: 'Pushing',
@@ -5546,8 +5547,10 @@
                 });
                 try {
                     const res = await pushChannelPriceAjax(job.sku, job.price);
-                    if (res && res.success) {
+                    const pushed = !!(res && (res.success || (res.shopify_push && res.shopify_push.ok)));
+                    if (pushed) {
                         ok++;
+                        okSkus.push(job.sku);
                         if (typeof window.shopifyB2cApplyLivePriceToRow === 'function'
                             && CHANNEL_PROMO_CHANNEL === 'shopify_b2c') {
                             window.shopifyB2cApplyLivePriceToRow(job.row, job.price, { SPRICE_STATUS: 'pushed' });
@@ -5573,6 +5576,11 @@
                 fail && !ok ? 'error' : 'success',
                 '>0 Sold Push: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : '')
             );
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                && okSkus.length
+                && typeof window.shopifyB2cPullAfterPush === 'function') {
+                window.shopifyB2cPullAfterPush(okSkus);
+            }
         }
         async function saveAndApplyChPromoGtSoldPrc(opts) {
             opts = opts || {};
@@ -7882,6 +7890,7 @@
             let fail = 0;
             let i = 0;
             const total = ready.length;
+            const okSkus = [];
             let warnedNoPush = false;
             setChPromoPushPrcProgress({
                 active: true, done: 0, total: total, ok: 0, fail: 0,
@@ -7902,6 +7911,11 @@
                 let toastMsg = 'Push Prc: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : '');
                 if (!chPromoCfg.pushPriceUrl) toastMsg += ' — Push not configured';
                 chPromoToast(fail && !ok ? 'error' : 'success', toastMsg);
+                if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
+                    && okSkus.length
+                    && typeof window.shopifyB2cPullAfterPush === 'function') {
+                    window.shopifyB2cPullAfterPush(okSkus);
+                }
             }
 
             async function next() {
@@ -7973,6 +7987,7 @@
                         item.row.update({ PUSH_PRC_STATUS: 'pushed', PUSH_PRC_VALUE: listing });
                     }
                     ok++;
+                    okSkus.push(sku);
                 } catch (e) {
                     item.row.update({ PUSH_PRC_STATUS: 'error' });
                     fail++;

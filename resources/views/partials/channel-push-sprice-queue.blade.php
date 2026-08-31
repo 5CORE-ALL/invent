@@ -408,7 +408,17 @@
                     }
                     tasks.push({ sku: r.sku, status: 'ok', ebay_price: live, price: live });
                 });
-                if (tasks.length) applyChannelPushSpriceTasks(tasks);
+                if (tasks.length) {
+                    applyChannelPushSpriceTasks(tasks);
+                    if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
+                        && typeof global.shopifyB2cApplyLivePriceToRow === 'function') {
+                        tasks.forEach(function(t) {
+                            if (!t || String(t.status) !== 'ok' || !(Number(t.price) > 0)) return;
+                            const row = chPushSpriceFindRowBySku(t.sku);
+                            if (row) global.shopifyB2cApplyLivePriceToRow(row, t.price, { SPRICE_STATUS: 'pushed' });
+                        });
+                    }
+                }
                 return stale;
             }
             function chPushSpriceExpectedBySku(skus) {

@@ -914,6 +914,7 @@
     const GOOGLE_LMP_DELETE_URL = @json(route('google.lmp.delete'));
     const GOOGLE_SEARCH_URL = @json(route('repricer.google-search.index'));
     const PUSH_SHOPIFY_B2C_PRICE_URL = @json(route('push.shopify.b2c.price'));
+    const PULL_SHOPIFY_B2C_PRICE_URL = @json(route('channel.push-sprice.pull', ['channel' => 'shopify_b2c']));
     /** L30 sales + distinct order count from /shopify (shopify_raw_orders with
      *  marketplace exclusions). Page-level totals — used to drive the Total
      *  Sales and Orders badges so this page agrees with /shopify and the
@@ -2225,6 +2226,110 @@
             clearSpriceForSelected();
         });
 
+        function shopifyB2cFindRowBySku(sku) {
+            const want = String(sku || '').trim().toUpperCase();
+            if (!want || !table) return null;
+            let found = null;
+            function walk(r) {
+                if (found || !r || typeof r.getData !== 'function') return;
+                const d = r.getData() || {};
+                if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = r;
+                if (typeof r.getTreeChildren === 'function') (r.getTreeChildren() || []).forEach(walk);
+            }
+            try { (table.getRows() || []).forEach(walk); } catch (e) { /* ignore */ }
+            return found;
+        }
+
+        function shopifyB2cApplyPulledLivePrice(sku, live) {
+            const p = Math.round((Number(live) || 0) * 100) / 100;
+            if (!(p > 0)) return;
+            const row = shopifyB2cFindRowBySku(sku);
+            if (row) shopifyB2cApplyLivePriceToRow(row, p, { SPRICE_STATUS: 'pushed' });
+            const want = String(sku || '').trim().toUpperCase();
+            function patch(d) {
+                if (!d) return;
+                if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) {
+                    Object.assign(d, shopifyB2cComputeLivePriceMetrics(d, p), { SPRICE_STATUS: 'pushed' });
+                }
+                if (Array.isArray(d._children)) d._children.forEach(patch);
+            }
+            try { (allTableData || []).forEach(patch); } catch (e) { /* ignore */ }
+        }
+
+        /** After a successful push, GET live variant.price from Shopify Admin and write Price. */
+        function shopifyB2cPullAfterPush(skus) {
+            const list = [];
+            const seen = {};
+            (skus || []).forEach(function(sku) {
+                const s = String(sku || '').trim();
+                const key = s.toUpperCase();
+                if (!s || seen[key]) return;
+                seen[key] = true;
+                list.push(s);
+            });
+            if (!list.length) return;
+            const expectedBySku = {};
+            list.forEach(function(sku) {
+                const row = shopifyB2cFindRowBySku(sku);
+                const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
+                const want = Number(typeof shopifyB2cShownSprice === 'function' ? shopifyB2cShownSprice(d) : d.SPRICE) || 0;
+                if (want > 0) expectedBySku[String(sku).toUpperCase()] = want;
+            });
+            const csrf = $('meta[name="csrf-token"]').attr('content');
+            const retryMs = [400, 2000, 4000];
+            function runPull(attempt, pending) {
+                if (!pending || !pending.length) return;
+                $.ajax({
+                    url: PULL_SHOPIFY_B2C_PRICE_URL,
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                    data: { _token: csrf, skus: pending },
+                    timeout: 300000,
+                }).done(function(resp) {
+                    const results = (resp && resp.results) || [];
+                    const stale = [];
+                    let pulled = 0;
+                    results.forEach(function(r) {
+                        if (!r || !r.success || !(Number(r.price) > 0) || !r.sku) return;
+                        const want = Number(expectedBySku[String(r.sku).toUpperCase()]) || 0;
+                        if (want > 0 && Math.abs(Number(r.price) - want) > 0.05) {
+                            stale.push(r.sku);
+                            return;
+                        }
+                        shopifyB2cApplyPulledLivePrice(r.sku, r.price);
+                        pulled++;
+                    });
+                    if (stale.length && attempt + 1 < retryMs.length) {
+                        shopifyB2cPullAfterPush._t = setTimeout(function() {
+                            runPull(attempt + 1, stale);
+                        }, retryMs[attempt + 1]);
+                        return;
+                    }
+                    if (pulled > 0 && !stale.length) {
+                        showToast('Pulled live Price for ' + pulled + ' SKU(s)', 'success');
+                    } else if (stale.length) {
+                        showToast('Pushed ' + list.length + ' SKU(s) — live Price still catching up', 'success');
+                    } else if (!(Number(resp && resp.skip_count) > 0)) {
+                        showToast((resp && resp.message) || 'Shopify Price pull failed', 'error');
+                    }
+                }).fail(function(xhr) {
+                    if (attempt + 1 < retryMs.length) {
+                        shopifyB2cPullAfterPush._t = setTimeout(function() {
+                            runPull(attempt + 1, pending);
+                        }, retryMs[attempt + 1]);
+                        return;
+                    }
+                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Shopify Price pull failed', 'error');
+                });
+            }
+            showToast('Pulling live Price for ' + list.length + ' SKU(s)…', 'success');
+            clearTimeout(shopifyB2cPullAfterPush._t);
+            shopifyB2cPullAfterPush._t = setTimeout(function() {
+                runPull(0, list.slice());
+            }, retryMs[0]);
+        }
+        window.shopifyB2cPullAfterPush = shopifyB2cPullAfterPush;
+
         /** Push one SKU SPRICE to Shopify B2C (same /push-shopify-b2c-price as Amazon tabulator). */
         function pushShopifyB2cPrice(sku, price, $btn, row) {
             if (!sku || !price || price <= 0 || isNaN(price)) {
@@ -2260,10 +2365,13 @@
                     if (row) {
                         if (finalStatus === 'pushed') {
                             shopifyB2cApplyLivePriceToRow(row, price, { SPRICE_STATUS: 'pushed' });
+                            shopifyB2cPullAfterPush([sku]);
                         } else {
                             row.update({ SPRICE_STATUS: finalStatus });
                             row.reformat();
                         }
+                    } else if (finalStatus === 'pushed') {
+                        shopifyB2cPullAfterPush([sku]);
                     }
                     if ($btn && $btn.length) {
                         $btn.prop('disabled', false);
@@ -2321,12 +2429,14 @@
             let idx = 0;
             let okCount = 0;
             let failCount = 0;
+            const okSkus = [];
 
             function next() {
                 if (idx >= toPush.length) {
                     $btns.prop('disabled', false);
                     $('#push-shopify-prices-btn').html(originalHtml);
                     showToast('Push done: ' + okCount + ' ok, ' + failCount + ' failed', failCount ? 'warning' : 'success');
+                    if (okSkus.length) shopifyB2cPullAfterPush(okSkus);
                     if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
                     return;
                 }
@@ -2347,6 +2457,7 @@
                             item.row.update({ SPRICE_STATUS: 'error' });
                         } else if (shopifyPush.ok) {
                             okCount++;
+                            okSkus.push(item.sku);
                             shopifyB2cApplyLivePriceToRow(item.row, item.price, { SPRICE_STATUS: 'pushed' });
                         } else {
                             failCount++;
