@@ -44,12 +44,26 @@ class SyncShopifyOrdersToInventory extends Command
     // ── Shopify credentials ────────────────────────────────────────────────
     private string $storeUrl;
     private string $accessToken;
-    private string $apiVersion = '2024-10';
+    private string $apiVersion;
 
     public function handle(): int
     {
-        $this->storeUrl    = $this->normalizeUrl(config('shopify.store_url', ''));
-        $this->accessToken = trim((string) config('shopify.access_token', ''));
+        $this->storeUrl    = $this->normalizeUrl((string) (
+            config('shopify.store_url')
+            ?: config('services.shopify.store_url')
+            ?: ''
+        ));
+        $this->accessToken = trim((string) (
+            config('shopify.access_token')
+            ?: config('services.shopify.access_token')
+            ?: config('services.shopify.password')
+            ?: ''
+        ));
+        $this->apiVersion = trim((string) (
+            config('services.shopify.api_version')
+            ?: config('shopify.api_version')
+            ?: '2026-01'
+        ), '/');
 
         if (empty($this->storeUrl) || empty($this->accessToken)) {
             $this->error('Missing SHOPIFY_STORE_URL or SHOPIFY_ACCESS_TOKEN in .env / config/shopify.php');
@@ -395,9 +409,38 @@ class SyncShopifyOrdersToInventory extends Command
 
     // ── Upsert batch into apicentral DB ────────────────────────────────────
 
+    /**
+     * Laravel upsert() omits `id`. If AUTO_INCREMENT was dropped, new rows
+     * fail with SQL 1364 and /shopify freezes at the last inserted date.
+     */
+    private function assignMissingRowIds(array &$batch): void
+    {
+        static $needsExplicitId = null;
+
+        if ($needsExplicitId === null) {
+            $col = collect(DB::select('SHOW COLUMNS FROM shopify_raw_orders WHERE Field = ?', ['id']))->first();
+            $extra = strtolower((string) ($col->Extra ?? ''));
+            $needsExplicitId = ! str_contains($extra, 'auto_increment');
+        }
+
+        if (! $needsExplicitId) {
+            return;
+        }
+
+        $next = (int) DB::table('shopify_raw_orders')->max('id') + 1;
+        foreach ($batch as &$row) {
+            if (! isset($row['id'])) {
+                $row['id'] = $next++;
+            }
+        }
+        unset($row);
+    }
+
     private function upsertBatch(array $batch): void
     {
         if (empty($batch)) return;
+
+        $this->assignMissingRowIds($batch);
 
         // Shared columns always refreshed from Shopify.
         $baseUpdateCols = [

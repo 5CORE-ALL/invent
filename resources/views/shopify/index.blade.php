@@ -234,8 +234,15 @@
 
     function fmtDate(v) {
         if (!v) return '';
-        const d = new Date(v);
-        return isNaN(d.getTime()) ? v : d.toLocaleDateString('en-US') + ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
+        const s = String(v);
+        // Date-only values are calendar dates. `new Date('YYYY-MM-DD')` is UTC
+        // midnight and displays as the previous day in US timezones.
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+            const [y, m, d] = s.split('-');
+            return `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
+        }
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-US') + ' ' + d.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
     }
 
     // ── Date pickers ───────────────────────────────────────────────────────

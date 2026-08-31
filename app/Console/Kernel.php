@@ -396,20 +396,24 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('shopify:sync-orders --days=2')
-            ->hourly()
+        // /shopify reads shopify_raw_orders. This must run 24/7 — the IST
+        // 09:00–20:00 window is Pacific night, and the :00 IST stampede was
+        // skipping this job (last success 2026-08-28; no sales after that).
+        $schedule->command('shopify:sync-orders --days=2')
+            ->hourlyAt(12)
+            ->timezone('America/Los_Angeles')
             ->name('shopify-sync-orders-recent')
             ->withoutOverlapping(self::HF_MUTEX_HOURLY)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('shopify:sync-orders --days=60')
+        $schedule->command('shopify:sync-orders --days=60')
             ->dailyAt('09:08')
             ->timezone('Asia/Kolkata')
             ->name('shopify-sync-orders-backfill')
             ->withoutOverlapping(120)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         $ist($schedule->command('app:fetch-shopify-b2b-metrics --days=60')
             ->twiceDaily(10, 18)
