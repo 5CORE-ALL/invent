@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class Ebay2ListingVariationVerifyController extends Controller
 {
-    public const DATA_CACHE_KEY = 'ebay2.listing.variation.verify.data.v5';
+    public const DATA_CACHE_KEY = 'ebay2.listing.variation.verify.data.v6';
 
     public function index()
     {
@@ -26,6 +26,7 @@ class Ebay2ListingVariationVerifyController extends Controller
      *           and that child has Shopify INV > 0. Zero-INV SKUs are not missing.
      * Extra   = SKU on this parent listing that is not a CP Master child of this
      *           parent and is not a child of another CP parent.
+     *           Open Box SKUs are exempt and are never treated as excess.
      */
     public function data(Request $request)
     {
@@ -371,6 +372,9 @@ class Ebay2ListingVariationVerifyController extends Controller
             if (isset($requiredNormToSku[$norm])) {
                 continue;
             }
+            if ($this->isOpenBoxSku($sku) || $this->isOpenBoxSku($norm)) {
+                continue;
+            }
 
             $pmParent = $pmParentByNorm[$norm] ?? null;
             // Belongs to another CP parent — not excess for this group.
@@ -528,6 +532,17 @@ class Ebay2ListingVariationVerifyController extends Controller
         }
 
         return $prefix;
+    }
+
+    private function isOpenBoxSku(string $sku): bool
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm === '') {
+            $norm = strtoupper(trim($sku));
+        }
+
+        return str_contains($norm, 'OPEN BOX')
+            || str_contains(str_replace(' ', '', $norm), 'OPENBOX');
     }
 
     private function skuBelongsToParentFamily(string $skuNorm, string $parentNorm, string $childPrefix): bool
