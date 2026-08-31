@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TemuOrder;
+use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -257,6 +258,11 @@ class FetchTemuOrders extends Command
         // Group by parent (not distinct + orderBy) so ordering by the latest order time is
         // compatible with MySQL ONLY_FULL_GROUP_BY. Recent parents first so a cut-short run
         // still refreshes the newest orders.
+        $backfilled = TemuOrderAmountParser::backfillStoredAmounts(TemuOrder::class);
+        if ($backfilled > 0) {
+            $this->info("Backfilled {$backfilled} Temu amount(s) from stored amount JSON.");
+        }
+
         $parentSns = TemuOrder::whereNotNull('parent_order_sn')
             ->where(function ($q) use ($recentCutoff) {
                 $q->whereNull('amount_fetched_at')
@@ -305,7 +311,7 @@ class FetchTemuOrders extends Command
             }
 
             $rawJson = json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            $amountsByOrderSn = $this->parseAmountResult($result);
+            $amountsByOrderSn = TemuOrderAmountParser::parseResult($result);
 
             $subOrders = TemuOrder::where('parent_order_sn', $parentOrderSn)->get();
             $chunkSize = $this->monitoredChunkSize();
@@ -377,62 +383,11 @@ class FetchTemuOrders extends Command
     }
 
     /**
-     * Defensively extract per-sub-order amounts from a bg.order.amount.query result.
-     * The response wraps amounts in `result`; per-line entries live in one of a few
-     * possible list keys and are keyed by orderSn. Base = goods/product amount (matches
-     * Temu "Base price sales"); total = order/pay amount. Unknown shapes yield an empty
-     * map, in which case the caller keeps the raw JSON and sales fall back to catalog price.
-     *
      * @return array<string, array{base: float|null, total: float|null}>
      */
     private function parseAmountResult(array $result): array
     {
-        $baseKeys = ['goodsAmount', 'baseAmount', 'productAmount', 'skuAmount', 'goodsAmountTotal', 'salesAmount'];
-        $totalKeys = ['orderAmount', 'totalAmount', 'payAmount', 'settleAmount', 'actualAmount'];
-
-        $pick = function (array $entry, array $keys): ?float {
-            foreach ($keys as $k) {
-                if (array_key_exists($k, $entry) && is_scalar($entry[$k]) && $entry[$k] !== '') {
-                    return (float) $entry[$k];
-                }
-            }
-
-            return null;
-        };
-
-        // Find the array of per-order entries (each has an orderSn).
-        $entries = [];
-        foreach (['skuList', 'orderList', 'subOrderList', 'orderAmountList', 'amountList', 'items'] as $listKey) {
-            if (isset($result[$listKey]) && is_array($result[$listKey])) {
-                foreach ($result[$listKey] as $e) {
-                    if (is_array($e) && isset($e['orderSn'])) {
-                        $entries[] = $e;
-                    }
-                }
-                if (! empty($entries)) {
-                    break;
-                }
-            }
-        }
-
-        // Fallback: the result itself represents a single order line.
-        if (empty($entries) && isset($result['orderSn'])) {
-            $entries[] = $result;
-        }
-
-        $out = [];
-        foreach ($entries as $e) {
-            $orderSn = (string) $e['orderSn'];
-            if ($orderSn === '') {
-                continue;
-            }
-            $out[$orderSn] = [
-                'base' => $pick($e, $baseKeys),
-                'total' => $pick($e, $totalKeys),
-            ];
-        }
-
-        return $out;
+        return TemuOrderAmountParser::parseResult($result);
     }
 
     private function statusText($status): ?string
