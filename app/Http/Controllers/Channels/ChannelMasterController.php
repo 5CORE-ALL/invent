@@ -1835,6 +1835,19 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Write the computed Y Sales even when it is $0.
+     * Shopify used to skip zero and keep channel_master_summaries.l30_sales
+     * (e.g. $18,812) as a fake yesterday.
+     */
+    private function applyLiveYSalesAllowZero(array &$row, mixed $ySales): void
+    {
+        if ($ySales === null || $ySales === '') {
+            return;
+        }
+        $row['Y Sales'] = (float) $ySales;
+    }
+
+    /**
      * Cached fast-path rows can already be $0 from a live overlay. Put the
      * saved calculated Y Sales back so the grid does not show NYS.
      *
@@ -1868,17 +1881,15 @@ class ChannelMasterController extends Controller
 
     /**
      * /all-marketplace-master grid = channel_master_calculated_data only.
-     * Live order overlays were painting $0 Y Sales (NYS) and hiding saved rows.
+     * Do not overlay live order/API numbers on page load — refresh happens in
+     * channel:calculate-data, which writes this table.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
-        $rows = $this->overlayLiveTemu2ViewsOnChannelRows($rows);
-
-        return $this->overlayLiveStaleYSalesOnChannelRows($rows);
+        return $this->restoreSavedTableMetricsOnChannelRows($rows);
     }
 
     /**
@@ -1987,7 +1998,7 @@ class ChannelMasterController extends Controller
                     default => null,
                 };
                 if ($value !== null) {
-                    $this->applyLiveYSalesIfPositive($row, $value);
+                    $this->applyLiveYSalesAllowZero($row, $value);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Fast-path Shopify Y Sales overlay failed for '.$name.': '.$e->getMessage());
@@ -3101,7 +3112,7 @@ class ChannelMasterController extends Controller
 
             $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
             if ($ySales !== null) {
-                $this->applyLiveYSalesIfPositive($row, $ySales);
+                $this->applyLiveYSalesAllowZero($row, $ySales);
             }
 
             $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
@@ -6126,9 +6137,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast method: Get channel data from pre-calculated table
-     * This method reads from channel_master_calculated_data table which is updated daily
-     * Much faster than calculating on-the-fly
+     * Fast method: Get channel data from channel_master_calculated_data only.
+     * Page load does not recompute sales/views/reviews. Refresh that table with
+     * php artisan channel:calculate-data.
      */
     public function getViewChannelDataFast(Request $request)
     {
@@ -6164,9 +6175,6 @@ class ChannelMasterController extends Controller
             $cachedPayload = \Cache::get($cacheKey);
             if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
                 $cachedPayload['data'] = $this->applyFastPathLiveSalesOverlays($cachedPayload['data'] ?? []);
-                $cachedPayload['data'] = $this->overlaySnapshotApiViewsOnChannelRows($cachedPayload['data'] ?? []);
-                $cachedPayload['data'] = $this->overlayLiveReverbSpendOnChannelRows($cachedPayload['data'] ?? []);
-                $cachedPayload['data'] = $this->overlayLiveReviewsOnChannelRows($cachedPayload['data'] ?? []);
                 $cachedPayload = $this->ensureInventoryExtrasOnPayload($cachedPayload);
 
                 return response()->json($this->attachCachedDotTrends($cachedPayload));
@@ -6357,14 +6365,10 @@ class ChannelMasterController extends Controller
                 ];
             })->toArray();
 
-            // Cheap defaults only. Heavy overlays belong in channel:calculate-data.
-            // eBay Y/L7 is a small date-window read of ebay{1,2}_order_metrics so a
-            // missed daily fetch cannot leave yesterday at $0 until the next rebuild.
+            // Grid metrics come only from channel_master_calculated_data.
+            // Live order/API overlays run inside channel:calculate-data, not here.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             $formattedData = $this->applyFastPathLiveSalesOverlays($formattedData);
-            $formattedData = $this->overlaySnapshotApiViewsOnChannelRows($formattedData);
-            $formattedData = $this->overlayLiveReverbSpendOnChannelRows($formattedData);
-            $formattedData = $this->overlayLiveReviewsOnChannelRows($formattedData);
 
             if (! $section && ! $paginate) {
                 \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($formattedData);
@@ -6619,6 +6623,7 @@ class ChannelMasterController extends Controller
 
         // Shopify B2C / B2B, Wayfair, Faire, TikTok Shop (tiktok_orders), TikTok 2, Reverb, Mercari, TopDawg
         $extendedYs = [
+            [fn () => $this->computeShopifyDirectYSalesLikeAmazon(), 'shopify', 'Shopify Y Sales'],
             [fn () => $this->computeShopifyB2xYSalesLikeAmazon(false), 'shopifyb2c', 'Shopify B2C Y Sales'],
             [fn () => $this->computeShopifyB2xYSalesLikeAmazon(true), 'shopifyb2b', 'Shopify B2B Y Sales'],
             [fn () => $this->computeWayfairYSalesLikeAmazon(), 'wayfair', 'Wayfair Y Sales'],
@@ -6767,6 +6772,7 @@ class ChannelMasterController extends Controller
         }
 
         $extendedL7 = [
+            [fn () => $this->computeShopifyDirectL7SalesLikeAmazon(), 'shopify', 'Shopify L7 Sales'],
             [fn () => $this->computeShopifyB2xL7SalesLikeAmazon(false), 'shopifyb2c', 'Shopify B2C L7 Sales'],
             [fn () => $this->computeShopifyB2xL7SalesLikeAmazon(true), 'shopifyb2b', 'Shopify B2B L7 Sales'],
             [fn () => $this->computeWayfairL7SalesLikeAmazon(), 'wayfair', 'Wayfair L7 Sales'],
