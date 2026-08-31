@@ -113,8 +113,8 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
-     * Push qty always follows that marketplace's Qty % / max.
-     * $exactShopifyQty only selects the Shopify source (listings overlay); it never skips the %.
+     * Mismatch-tab / mismatch-pass push. $exactShopifyQty writes live Shopify qty
+     * (no Qty % / max). Scheduled sync still follows the channel's Qty % / max.
      *
      * @param  int|string|null  $maxQty
      */
@@ -124,7 +124,33 @@ final class MarketplaceLiveInventoryRules
             return self::qtyWhenMissingFromShopify();
         }
 
+        if ($exactShopifyQty) {
+            return self::qtyFromLiveShopify($shopifyStock, 100, null);
+        }
+
         return self::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+    }
+
+    /**
+     * Shopify must never be lower than marketplace stock (or the Qty % target).
+     */
+    public static function marketplaceQtyExceedsShopify(?int $shopifyQty, ?int $marketplaceQty, ?string $marketplace = null): bool
+    {
+        if ($marketplaceQty === null) {
+            return false;
+        }
+
+        $shopifyQty = (int) ($shopifyQty ?? 0);
+        $marketplaceQty = (int) $marketplaceQty;
+        if ($shopifyQty <= 0) {
+            return $marketplaceQty > 0;
+        }
+
+        $target = $marketplace
+            ? self::expectedMarketplaceQty($shopifyQty, $marketplace)
+            : $shopifyQty;
+
+        return $marketplaceQty > $target;
     }
 
     /**
@@ -272,12 +298,16 @@ final class MarketplaceLiveInventoryRules
     /**
      * Listings / skip rule:
      * Compare marketplace qty to the target for that channel (Qty % of Shopify when $marketplace is set).
-     * Matched when equal, or abs(target − marketplace) ≤ max(3 units, 3% of target).
+     * Marketplace qty above Shopify / target is never a match.
+     * Otherwise matched when equal, or target − marketplace ≤ max(3 units, 3% of target).
      * Missing marketplace qty is never treated as within tolerance.
      */
     public static function qtyWithinMismatchTolerance(int $shopifyQty, ?int $marketplaceQty, ?string $marketplace = null): bool
     {
         if ($marketplaceQty === null) {
+            return false;
+        }
+        if (self::marketplaceQtyExceedsShopify($shopifyQty, $marketplaceQty, $marketplace)) {
             return false;
         }
         $marketplaceQty = (int) $marketplaceQty;
@@ -291,10 +321,10 @@ final class MarketplaceLiveInventoryRules
             return true;
         }
 
-        $diff = abs($target - $marketplaceQty);
+        $diff = $target - $marketplaceQty;
         $threshold = self::mismatchIgnoreThreshold($target);
 
-        return $diff <= $threshold;
+        return $diff >= 0 && $diff <= $threshold;
     }
 
     /**

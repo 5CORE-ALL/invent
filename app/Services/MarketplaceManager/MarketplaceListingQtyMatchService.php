@@ -32,7 +32,7 @@ final class MarketplaceListingQtyMatchService
             'tiktok2', 'tiktokshop2' => 'tiktok2',
             'newegg', 'neweggb2c' => 'newegg',
             'temu', 'temu2', 'shein', 'aliexpress', 'pls', 'wayfair', 'faire',
-            'topdawg', 'amazon', 'reverb' => $slug,
+            'topdawg', 'amazon', 'reverb', 'doba', 'purchasingpower', 'alibaba' => $slug,
             default => null,
         };
     }
@@ -456,6 +456,9 @@ final class MarketplaceListingQtyMatchService
             'amazon' => MarketplaceListingStockResolver::CHANNEL_AMAZON,
             'tiktok' => MarketplaceListingStockResolver::CHANNEL_TIKTOK,
             'tiktok2' => MarketplaceListingStockResolver::CHANNEL_TIKTOK2,
+            'doba' => MarketplaceListingStockResolver::CHANNEL_DOBA,
+            'purchasingpower' => MarketplaceListingStockResolver::CHANNEL_PURCHASINGPOWER,
+            'alibaba' => MarketplaceListingStockResolver::CHANNEL_ALIBABA,
             default => $mmChannel,
         };
 

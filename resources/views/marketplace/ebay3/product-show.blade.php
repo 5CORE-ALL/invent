@@ -29,9 +29,15 @@
     $shopifyQtyShow = $s['available_to_sell'] ?? $s['on_hand'] ?? null;
     $mpQtyShow = $linked ? ($ae['stock'] ?? $l['ae_stock'] ?? null) : null;
     $inventoryMismatch = $linked
-        && $shopifyQtyShow !== null
         && $mpQtyShow !== null
-        && (int) $shopifyQtyShow !== (int) $mpQtyShow;
+        && (
+            \App\Services\MarketplaceManager\MarketplaceLiveInventoryRules::marketplaceQtyExceedsShopify(
+                $shopifyQtyShow !== null ? (int) $shopifyQtyShow : 0,
+                (int) $mpQtyShow,
+                'ebay3'
+            )
+            || ($shopifyQtyShow !== null && (int) $shopifyQtyShow !== (int) $mpQtyShow)
+        );
 
     $shopifyListingRows = [
         'SKU' => '<code>'.e($s['sku'] ?? '—').'</code>',
@@ -134,7 +140,7 @@
         @if(!empty($inventoryMismatch))
             <div class="alert alert-warning py-2 small mb-3">
                 Inventory mismatch: Shopify <strong>{{ (int) $shopifyQtyShow }}</strong> vs eBay 3 <strong>{{ (int) $mpQtyShow }}</strong>.
-                Click <strong>Sync Inventory</strong> to push Shopify qty to eBay 3 now.
+                Shopify qty must not be less than eBay 3 qty. Click <strong>Sync Inventory</strong> to push the actual Shopify quantity to eBay 3 now.
             </div>
         @else
             <div class="alert alert-info py-2 small mb-3">

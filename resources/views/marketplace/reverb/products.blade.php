@@ -7,7 +7,7 @@
         @include('marketplace._page-heading', ['slug' => 'reverb', 'heading' => 'Reverb Listings'])
         <p class="text-muted mb-3">
             <strong>All</strong> = every Shopify live SKU.
-            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs Reverb quantity (same qty, or gap at most max(3 units, 3% of Shopify)).
+            <strong>Inv SKU Match / Linked mismatch SKU</strong> = Shopify vs Reverb quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify).
             <strong>Active SKU / Inactive SKU</strong> = actual Reverb seller portal status (not inventory match).
             <em>Refresh live</em> warms Reverb states. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
@@ -40,7 +40,7 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
-                        {{ $products->total() }} Inv SKU Mismatch
+                        {{ $products->total() }} Linked mismatch SKU
                     @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
                     @elseif(($linkTab ?? '') === 'matched_inactive')
@@ -62,7 +62,7 @@
                     @endif
                     @if(($linkTab ?? '') === 'mismatch')
                         <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
-                            <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
+                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
                         </button>
                     @endif
                     @include('marketplace._listings-fetch-new')
@@ -119,7 +119,7 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>
@@ -901,7 +901,7 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Sync Inv SKU Mismatch SKUs from live Shopify → Reverb right now (no queue)? This runs in batches and may take a few minutes.')) {
+    if (!confirm('Push the actual live Shopify quantity to every Linked mismatch SKU on Reverb right now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;

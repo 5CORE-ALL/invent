@@ -3306,6 +3306,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inactive-listings/channel/{channel}', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channel'])->name('inactive.listings.channel');
     Route::get('/inactive-listings/channel/{channel}/data', [\App\Http\Controllers\MarketPlace\InactiveListingsController::class, 'channelData'])->name('inactive.listings.channel.data');
 
+    // Linked mismatch SKU (master + per-channel SKU pages)
+    Route::get('/linked-mismatch-sku', [\App\Http\Controllers\MarketPlace\LinkedMismatchSkuController::class, 'index'])->name('linked.mismatch.sku');
+    Route::get('/linked-mismatch-sku/channels-data', [\App\Http\Controllers\MarketPlace\LinkedMismatchSkuController::class, 'masterData'])->name('linked.mismatch.sku.channels');
+    Route::get('/linked-mismatch-sku/channel/{channel}', [\App\Http\Controllers\MarketPlace\LinkedMismatchSkuController::class, 'channel'])->name('linked.mismatch.sku.channel');
+    Route::get('/linked-mismatch-sku/channel/{channel}/data', [\App\Http\Controllers\MarketPlace\LinkedMismatchSkuController::class, 'channelData'])->name('linked.mismatch.sku.channel.data');
+
     // Stock Balance
     Route::get('/stock-balance-view', [StockBalanceController::class, 'index'])->name('stock.balance.view');
     Route::get('/stock-balance-tabulator', [StockBalanceController::class, 'tabulatorView'])->name('stock.balance.tabulator');
