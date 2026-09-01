@@ -27,13 +27,6 @@
 @endsection
 
 @section('content')
-    @php
-        $sums = $sums ?? [
-            'count' => 0, 'sold_l30' => 0, 'sold_l1' => 0,
-            'sales_l30' => 0, 'sales_l1' => 0, 'spend_l30' => 0, 'spend_l1' => 0, 'budget' => 0,
-        ];
-        $money = fn ($n) => '$'.number_format((float) $n, 2);
-    @endphp
     @include('layouts.shared.page-title', [
         'page_title' => 'GMV Tiktok Ads Raw Data',
         'sub_title'  => 'All rows saved to tiktok_gmv_ads — no filters',
@@ -44,22 +37,22 @@
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <span class="badge badge-tt-gmv-ads-raw bg-primary" id="stat-tt-gmv-ads-raw">
-                        Rows <span id="total-tt-gmv-ads-raw">{{ number_format((int) $sums['count']) }}</span>
+                        Rows <span id="total-tt-gmv-ads-raw">{{ number_format((int) ($sums['count'] ?? 0)) }}</span>
                     </span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-ad-sold-l30-badge"
-                          style="background-color: #cfe2ff;" title="Sum of Ad sold where report_range is L30">Ad sold L30: {{ number_format((int) $sums['sold_l30']) }}</span>
+                          style="background-color: #cfe2ff;" title="Sum of Ad sold where report_range is L30">Ad sold L30: {{ number_format((int) ($sums['sold_l30'] ?? 0)) }}</span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-ad-sold-l1-badge"
-                          style="background-color: #d7e3fc;" title="Sum of Ad sold where report_range is L1">Ad sold L1: {{ number_format((int) $sums['sold_l1']) }}</span>
+                          style="background-color: #d7e3fc;" title="Sum of Ad sold where report_range is L1">Ad sold L1: {{ number_format((int) ($sums['sold_l1'] ?? 0)) }}</span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-ad-sales-l30-badge"
-                          style="background-color: #9ec5fe;" title="Sum of Ad sales where report_range is L30">Ad sales L30: {{ $money($sums['sales_l30']) }}</span>
+                          style="background-color: #9ec5fe;" title="Sum of Ad sales where report_range is L30">Ad sales L30: ${{ number_format((float) ($sums['sales_l30'] ?? 0), 2) }}</span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-ad-sales-l1-badge"
-                          style="background-color: #b8cfe5;" title="Sum of Ad sales where report_range is L1">Ad sales L1: {{ $money($sums['sales_l1']) }}</span>
+                          style="background-color: #b8cfe5;" title="Sum of Ad sales where report_range is L1">Ad sales L1: ${{ number_format((float) ($sums['sales_l1'] ?? 0), 2) }}</span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-spend-l30-badge"
-                          style="background-color: #a5d6e8;" title="Sum of Spend where report_range is L30">Spend L30: {{ $money($sums['spend_l30']) }}</span>
+                          style="background-color: #a5d6e8;" title="Sum of Spend where report_range is L30">Spend L30: ${{ number_format((float) ($sums['spend_l30'] ?? 0), 2) }}</span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-spend-l1-badge"
-                          style="background-color: #c5e4f3;" title="Sum of Spend where report_range is L1">Spend L1: {{ $money($sums['spend_l1']) }}</span>
+                          style="background-color: #c5e4f3;" title="Sum of Spend where report_range is L1">Spend L1: ${{ number_format((float) ($sums['spend_l1'] ?? 0), 2) }}</span>
                     <span class="badge badge-tt-gmv-ads-raw" id="tt-gmv-budget-badge"
-                          style="background-color: #ffe69c;" title="Sum of Budget (L30 rows, fallback all rows)">Budget: {{ $money($sums['budget']) }}</span>
+                          style="background-color: #ffe69c;" title="Sum of Budget (L30 rows, fallback all rows)">Budget: ${{ number_format((float) ($sums['budget'] ?? 0), 2) }}</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="tt-gmv-ads-raw-csv">
                         <i class="fas fa-download me-1"></i>CSV
                     </button>
@@ -79,10 +72,7 @@
 @section('script-bottom')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
-    const ttGmvServerSums = @json($sums ?? [
-        'count' => 0, 'sold_l30' => 0, 'sold_l1' => 0,
-        'sales_l30' => 0, 'sales_l1' => 0, 'spend_l30' => 0, 'spend_l1' => 0, 'budget' => 0,
-    ]);
+    const ttGmvServerSums = {!! json_encode($sums ?? []) !!};
     function numCol(title, field, width) {
         return {
             title: title,
