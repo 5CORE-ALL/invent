@@ -256,8 +256,9 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbgtDoubleRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbgtDoubleRuleModal" title="SBGT Double: Dil column colors × multiplier (runs with the BGT rule)">SBGT DOUBLE</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, ACOS%, and Reviews">PAUSE RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS%">PAUSE RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is high or price is below your threshold">PR</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsReviewsRuleModal" title="Auto-pause product ads when that SKU's rating is below your number (campaign stays on)">REVIEWS RULE</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -596,7 +597,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS% / Reviews</h5>
+                    <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS%</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -670,25 +671,6 @@
                             </button>
                         </div>
                     </div>
-                    <div class="border rounded p-3 mt-3">
-                        <h6 class="fw-semibold mb-1">Reviews (1–5 ★)</h6>
-                        <p class="small text-muted mb-2">
-                            Uses the lowest Amazon rating among advertised SKUs on the campaign
-                            (same Reviews column as the Campaign SKUs modal).
-                            When enabled, ads pause automatically if that rating is <strong>below</strong> the value.
-                        </p>
-                        <div class="d-flex flex-wrap align-items-center gap-3">
-                            <div class="form-check mb-0">
-                                <input class="form-check-input" type="checkbox" id="amazonAdsPauseRuleReviewsEnabled">
-                                <label class="form-check-label small" for="amazonAdsPauseRuleReviewsEnabled">Enable auto-pause</label>
-                            </div>
-                            <div class="input-group input-group-sm" style="max-width: 220px;">
-                                <span class="input-group-text">Below</span>
-                                <input type="number" min="1" max="5" step="0.1" class="form-control" id="amazonAdsPauseRuleReviewsBelow" value="3">
-                                <span class="input-group-text">★</span>
-                            </div>
-                        </div>
-                    </div>
                     <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPauseRuleModalError" role="alert"></p>
                     <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsPauseRuleModalOk" role="status"></p>
                 </div>
@@ -747,6 +729,41 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsReviewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsReviewsRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsReviewsRuleModalLabel">Reviews Rule — pause product ads</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Does <strong>not</strong> pause the campaign.
+                        Each advertised SKU (Campaign SKUs <strong>+</strong> modal) is checked on its own.
+                        If that SKU’s rating is <strong>below</strong> this number, only that product ad is paused.
+                        Other SKUs on the same campaign stay on. The job also runs daily at 18:25 IST.
+                    </p>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="amazonAdsReviewsEnabled" checked>
+                        <label class="form-check-label small" for="amazonAdsReviewsEnabled">Enable auto-pause of product ads</label>
+                    </div>
+                    <div class="input-group input-group-sm mb-2" style="max-width: 220px;">
+                        <span class="input-group-text">Below</span>
+                        <input type="number" min="1" max="5" step="0.1" class="form-control" id="amazonAdsReviewsBelow" value="3">
+                        <span class="input-group-text">★</span>
+                    </div>
+                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsReviewsRuleModalError" role="alert"></p>
+                    <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsReviewsRuleModalOk" role="status"></p>
+                </div>
+                <div class="modal-footer py-2 d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsReviewsRuleSaveBtn">Save</button>
+                    <button type="button" class="btn btn-sm btn-danger" id="amazonAdsReviewsRuleApplyBtn">Save &amp; apply to Amazon</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -769,6 +786,7 @@
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
             var pauseRuleSaveUrl = @json(route('amazon.ads.pause-rule.save'));
             var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
+            var reviewsRuleSaveUrl = @json(route('amazon.ads.reviews-rule.save'));
             var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
@@ -786,7 +804,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'amz_l30', 'sbgt_doubled', 'sbgt_double_reason', 'sbgt_double_mult'];
             var NON_ORDERABLE_COLUMNS = [];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'bgt', 'sbgt', 'dsbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'sbgt', 'dsbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -1028,6 +1046,22 @@
                 var dil = (ovl30 / inv) * 100;
                 return '<span style="color: ' + amzDilTextColor(row) + '; font-weight: 600;">' + Math.round(dil) + '%</span>';
             }
+            function fmtSkuReviews(cell) {
+                var row = cell.getRow().getData();
+                var rating = parseFloat(cell.getValue());
+                if (!isFinite(rating) || rating <= 0) return amzDash();
+                var count = parseInt(row.review_count, 10) || 0;
+                var ratingColor = '#a00211';
+                if (rating >= 3 && rating <= 3.5) ratingColor = '#ffc107';
+                else if (rating >= 3.51 && rating <= 3.99) ratingColor = '#3591dc';
+                else if (rating >= 4 && rating <= 4.5) ratingColor = '#28a745';
+                else if (rating > 4.5) ratingColor = '#e83e8c';
+                var countColor = count < 4 ? '#a00211' : '#6c757d';
+                return '<span style="color:' + ratingColor + ';font-weight:600;">'
+                    + '<i class="fa fa-star"></i> ' + rating.toFixed(1)
+                    + ' <span style="color:' + countColor + ';">(' + count.toLocaleString() + ')</span>'
+                    + '</span>';
+            }
             function fmtSkuPrice(cell) {
                 var row = cell.getRow().getData();
                 var price = parseFloat(cell.getValue() || 0);
@@ -1084,6 +1118,14 @@
                     col.formatter = fmtSkuPrice;
                     col.width = 70;
                     col.minWidth = 60;
+                    return;
+                }
+                if (c === 'reviews') {
+                    col.title = 'Reviews';
+                    col.headerTooltip = 'Lowest Amazon rating among pulled campaign SKUs (same as the + Campaign SKUs modal)';
+                    col.formatter = fmtSkuReviews;
+                    col.width = 88;
+                    col.minWidth = 72;
                     return;
                 }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
@@ -1448,7 +1490,7 @@
                     if (load) load.classList.add('d-none');
                     if (title) title.textContent = 'Campaign SKUs (' + skus.length + ')';
                     if (!skus.length) {
-                        if (load) { load.classList.remove('d-none'); load.textContent = 'No product-ad SKUs pulled for this campaign.'; }
+                        if (load) { load.classList.remove('d-none'); load.textContent = 'No SKUs found for this campaign (no product ads and the campaign name did not match a parent/SKU).'; }
                         return;
                     }
                     if (!body || !tbl) return;
@@ -1465,7 +1507,9 @@
                     tbl.classList.remove('d-none');
                 }
                 if (amzCampSkusCache[cid]) { render(amzCampSkusCache[cid]); return; }
-                fetch(campaignSkusUrl + '?campaign_id=' + encodeURIComponent(cid), {
+                var skuQs = '?campaign_id=' + encodeURIComponent(cid);
+                if (cname) skuQs += '&campaign_name=' + encodeURIComponent(cname);
+                fetch(campaignSkusUrl + skuQs, {
                     method: 'GET',
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin'
@@ -1477,6 +1521,13 @@
                             if (load) load.classList.add('d-none');
                             if (err) { err.textContent = (out.body && out.body.message) ? out.body.message : 'Could not load SKUs.'; err.classList.remove('d-none'); }
                             return;
+                        }
+                        var src = out.body && out.body.source ? String(out.body.source) : '';
+                        if (sub && src) {
+                            var note = src === 'campaign_name'
+                                ? 'SKUs from campaign name (no Amazon product ads on this campaign).'
+                                : (src === 'sb_ads' ? 'SKUs from SB ads.' : 'SKUs from Amazon product ads.');
+                            sub.textContent = (cname || cid) + ' — ' + note;
                         }
                         amzCampSkusCache[cid] = skus;
                         render(skus);
@@ -2239,12 +2290,6 @@
                     });
                     amzRenderPauseSection(sec);
                 });
-                var rev = r.reviews || {};
-                var en = document.getElementById('amazonAdsPauseRuleReviewsEnabled');
-                var below = document.getElementById('amazonAdsPauseRuleReviewsBelow');
-                if (en) en.checked = !!rev.enabled;
-                var belowVal = Number(rev.below);
-                if (below) below.value = isFinite(belowVal) ? String(belowVal) : '3';
             }
             function amzCollectPauseRule() {
                 var out = { pricing: [], dil: [], acos: [] };
@@ -2258,12 +2303,6 @@
                         };
                     });
                 });
-                var en = document.getElementById('amazonAdsPauseRuleReviewsEnabled');
-                var below = document.getElementById('amazonAdsPauseRuleReviewsBelow');
-                out.reviews = {
-                    enabled: !!(en && en.checked),
-                    below: below ? parseFloat(String(below.value).trim()) : NaN
-                };
                 return out;
             }
             function amzPauseRuleValid(payload, err) {
@@ -2281,11 +2320,6 @@
                             return false;
                         }
                     }
-                }
-                var below = payload.reviews && payload.reviews.below;
-                if (!isFinite(below) || below < 1 || below > 5) {
-                    if (err) { err.textContent = 'Reviews threshold must be a number from 1 to 5.'; err.classList.remove('d-none'); }
-                    return false;
                 }
                 return true;
             }
@@ -2315,6 +2349,7 @@
                             return;
                         }
                         window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
+                        amzRefreshReviewsBtn();
                         var msg = b.message || 'Saved.';
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
@@ -2463,6 +2498,7 @@
                         }
                         window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
                         amzRefreshPrBtn();
+                        amzRefreshReviewsBtn();
                         var msg = b.message || 'Saved.';
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
@@ -2524,6 +2560,132 @@
                 amzSavePrRule(true);
             });
             amzRefreshPrBtn();
+
+            function amzReviewsFromRule(rule) {
+                var rev = (rule && rule.reviews) ? rule.reviews : {};
+                if (Array.isArray(rev)) {
+                    var first = rev.find(function (b) { return b && b.action !== 'ENABLED'; }) || rev[0] || {};
+                    var to = Number(first.to);
+                    return { enabled: rev.length > 0, below: isFinite(to) ? to : 3 };
+                }
+                var below = Number(rev.below);
+                return {
+                    enabled: !!rev.enabled,
+                    below: isFinite(below) ? below : 3
+                };
+            }
+            function amzRefreshReviewsBtn() {
+                var btn = document.getElementById('amazonAdsReviewsRuleBtn');
+                if (!btn) return;
+                var rev = amzReviewsFromRule(window.amazonAdsPauseRule);
+                btn.textContent = rev.enabled ? ('REVIEWS <' + rev.below + '★') : 'REVIEWS RULE';
+                btn.classList.toggle('btn-danger', rev.enabled);
+                btn.classList.toggle('text-white', rev.enabled);
+                btn.classList.toggle('btn-outline-danger', !rev.enabled);
+                btn.title = rev.enabled
+                    ? ('Pause product ads rated below ' + rev.below + '★ — campaign stays on')
+                    : 'Reviews rule — pause low-rated product ads under the campaign';
+            }
+            function amzFillReviewsModal() {
+                var rev = amzReviewsFromRule(window.amazonAdsPauseRule);
+                var below = document.getElementById('amazonAdsReviewsBelow');
+                var en = document.getElementById('amazonAdsReviewsEnabled');
+                if (below) below.value = String(rev.below);
+                if (en) en.checked = rev.enabled;
+            }
+            function amzSaveReviewsRule(apply) {
+                var err = document.getElementById('amazonAdsReviewsRuleModalError');
+                var ok = document.getElementById('amazonAdsReviewsRuleModalOk');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                var belowInput = document.getElementById('amazonAdsReviewsBelow');
+                var en = document.getElementById('amazonAdsReviewsEnabled');
+                var below = belowInput ? parseFloat(String(belowInput.value).trim()) : NaN;
+                if (!isFinite(below) || below < 1 || below > 5) {
+                    if (err) { err.textContent = 'Enter a star number from 1 to 5.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                var saveBtn = document.getElementById('amazonAdsReviewsRuleSaveBtn');
+                var applyBtn = document.getElementById('amazonAdsReviewsRuleApplyBtn');
+                if (saveBtn) saveBtn.disabled = true;
+                if (applyBtn) applyBtn.disabled = true;
+                fetch(reviewsRuleSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        enabled: !!(en && en.checked),
+                        below: below,
+                        apply: !!apply || !!(en && en.checked)
+                    })
+                })
+                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                    .then(function (out) {
+                        var b = out.body || {};
+                        if (!out.ok || b.status === 422 || b.status === 500) {
+                            if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
+                        amzRefreshReviewsBtn();
+                        if (typeof amzCampSkusCache !== 'undefined') amzCampSkusCache = {};
+                        var msg = b.message || 'Saved.';
+                        if (b.apply) {
+                            msg += ' Paused ' + (b.apply.paused || 0) + ' product ad(s)'
+                                + ', unchanged ' + (b.apply.unchanged || 0)
+                                + ', failed ' + (b.apply.failed || 0) + '. Campaigns were not paused.';
+                            var revErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
+                            if (revErrs.length && err) {
+                                err.textContent = revErrs.slice(0, 8).join(' | ');
+                                err.classList.remove('d-none');
+                            }
+                        }
+                        if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
+                        if (!apply && !(en && en.checked) && typeof bootstrap !== 'undefined') {
+                            var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsReviewsRuleModal'));
+                            if (inst) inst.hide();
+                        }
+                        return table ? Promise.resolve(table.setData()) : null;
+                    })
+                    .then(function () { amzRefreshUiSoon(); })
+                    .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                    .finally(function () {
+                        if (saveBtn) saveBtn.disabled = false;
+                        if (applyBtn) applyBtn.disabled = false;
+                    });
+            }
+            var reviewsModalEl = document.getElementById('amazonAdsReviewsRuleModal');
+            if (reviewsModalEl) {
+                reviewsModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsReviewsRuleModalError');
+                    var ok = document.getElementById('amazonAdsReviewsRuleModalOk');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                    fetch(pauseRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (body) {
+                            if (body && body.rule) window.amazonAdsPauseRule = body.rule;
+                            amzFillReviewsModal();
+                            amzRefreshReviewsBtn();
+                        })
+                        .catch(function () { amzFillReviewsModal(); });
+                });
+            }
+            var reviewsSaveBtn = document.getElementById('amazonAdsReviewsRuleSaveBtn');
+            if (reviewsSaveBtn) reviewsSaveBtn.addEventListener('click', function () { amzSaveReviewsRule(false); });
+            var reviewsApplyBtn = document.getElementById('amazonAdsReviewsRuleApplyBtn');
+            if (reviewsApplyBtn) reviewsApplyBtn.addEventListener('click', function () {
+                var belowInput = document.getElementById('amazonAdsReviewsBelow');
+                var en = document.getElementById('amazonAdsReviewsEnabled');
+                var on = !!(en && en.checked);
+                var th = belowInput ? belowInput.value : '3';
+                var msg = on
+                    ? ('Save Reviews Rule (below ' + th + '★) and pause matching product ads on Amazon? Campaigns stay running.')
+                    : 'Save Reviews Rule turned off? Product ads will not be auto-paused by rating.';
+                if (!window.confirm(msg)) return;
+                amzSaveReviewsRule(true);
+            });
+            amzRefreshReviewsBtn();
 
             // ---- initial state ----
             (function () {

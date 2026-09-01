@@ -78,6 +78,10 @@ class TikTokSalesController extends Controller
             }
 
             $latestCarbon = Carbon::parse($latestOrderDate);
+            $closed = Carbon::yesterday('America/Los_Angeles')->endOfDay();
+            if ($latestCarbon->gt($closed)) {
+                $latestCarbon = $closed;
+            }
             $l60StartDate = $latestCarbon->copy()->subDays(59)->startOfDay();
             $l60EndDate = $latestCarbon->copy()->subDays(30)->endOfDay();
             $l30StartDate = $latestCarbon->copy()->subDays(29)->startOfDay();

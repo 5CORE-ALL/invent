@@ -5,10 +5,10 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
-use App\Models\AmazonAdsCampaignSku;
 use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsCampaignSkuMetrics;
+use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbgtDoubleRule;
 use App\Support\AmazonAdsSbidRule;
@@ -61,8 +61,8 @@ class AmazonAdsController extends Controller
         ],
     ];
 
-    /** Inv / ovl30 / dil / price from /amazon-tabulator-view, shown after campaignName. */
-    private const SKU_METRIC_DISPLAY_COLUMNS = ['Inv', 'ovl30', 'dil', 'price'];
+    /** Inv / ovl30 / dil / price / reviews on each campaign row, after campaignName. */
+    private const SKU_METRIC_DISPLAY_COLUMNS = ['Inv', 'ovl30', 'dil', 'price', 'reviews'];
 
     /**
      * Display columns computed after SQL (Shopify metrics, L-spend overlays, pause Rule).
@@ -71,7 +71,7 @@ class AmazonAdsController extends Controller
      * @var list<string>
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
-        'Inv', 'INV', 'ovl30', 'dil', 'price', 'ruleStatus', 'sbgt', 'dsbgt',
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'sbgt', 'dsbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
     ];
@@ -2654,7 +2654,8 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Advertised SKUs on one campaign from {@see AmazonAdsCampaignSku} (amazon_ads_campaign_skus pull).
+     * Advertised SKUs on one campaign: Amazon product ads, then campaign-name fallback
+     * (PARENT … → product_master children) so SB campaigns still show Reviews.
      */
     public function campaignSkus(Request $request): JsonResponse
     {
@@ -2666,27 +2667,11 @@ class AmazonAdsController extends Controller
             return response()->json(['message' => 'Campaign SKU table is missing. Run amazon:ads-pull-product-ads.', 'skus' => []], 404);
         }
 
-        $rows = AmazonAdsCampaignSku::query()
-            ->where('campaign_id', $cid)
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->orderBy('sku')
-            ->get(['sku', 'asin', 'state', 'ad_id']);
-
-        $seen = [];
-        $skus = [];
-        foreach ($rows as $row) {
-            $sku = trim((string) ($row->sku ?? ''));
-            if ($sku === '' || isset($seen[$sku])) {
-                continue;
-            }
-            $seen[$sku] = true;
-            $skus[] = [
-                'sku' => $sku,
-                'asin' => $row->asin ? (string) $row->asin : null,
-                'state' => $row->state ? (string) $row->state : null,
-            ];
-        }
+        $resolved = AmazonAdsCampaignSkuSync::resolveForCampaign(
+            $cid,
+            trim((string) $request->query('campaign_name', ''))
+        );
+        $skus = $resolved['skus'];
         $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_column($skus, 'sku'));
         foreach ($skus as $i => $skuRow) {
             $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $skuRow['sku'])));
@@ -2697,15 +2682,10 @@ class AmazonAdsController extends Controller
             $skus[$i]['amz_review_count'] = is_array($hit) ? (int) ($hit['review_count'] ?? 0) : null;
         }
 
-        $name = AmazonAdsCampaignSku::query()
-            ->where('campaign_id', $cid)
-            ->whereNotNull('campaign_name')
-            ->where('campaign_name', '!=', '')
-            ->value('campaign_name');
-
         return response()->json([
             'campaign_id' => $cid,
-            'campaign_name' => $name,
+            'campaign_name' => $resolved['campaign_name'] !== '' ? $resolved['campaign_name'] : null,
+            'source' => $resolved['source'],
             'skus' => $skus,
             'count' => count($skus),
         ]);
@@ -2940,6 +2920,71 @@ class AmazonAdsController extends Controller
             } catch (\Throwable $e) {
                 return response()->json([
                     'message' => 'PR saved, but Amazon apply failed.',
+                    'error' => $e->getMessage(),
+                    'rule' => $freshRule,
+                    'status' => 500,
+                ], 500);
+            }
+        }
+
+        return response()->json($payload)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
+    /**
+     * Persist Reviews "below ★" threshold. When `apply` is true, pause matching product ads only (not campaigns).
+     */
+    public function saveReviewsRule(Request $request): JsonResponse
+    {
+        try {
+            AmazonAdsPauseRule::persistReviews([
+                'enabled' => $request->boolean('enabled', true),
+                'below' => $request->input('below', 3),
+            ]);
+            AmazonAdsPauseRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Could not save Reviews pause rule', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'message' => 'Could not save Reviews pause rule. '.$e->getMessage(),
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        $freshRule = AmazonAdsPauseRule::resolvedRule();
+        $rev = $freshRule['reviews'] ?? AmazonAdsPauseRule::defaultReviews();
+        $th = rtrim(rtrim(number_format((float) ($rev['below'] ?? 3), 2, '.', ''), '0'), '.');
+        $payload = [
+            'message' => ! empty($rev['enabled'])
+                ? 'Reviews rule saved. Product ads rated below '.$th.'★ will be paused; the campaign stays running.'
+                : 'Reviews rule saved and turned off. Ratings will not auto-pause product ads.',
+            'rule' => $freshRule,
+            'status' => 200,
+            'timestamp' => time(),
+        ];
+
+        if ($request->boolean('apply')) {
+            try {
+                $payload['apply'] = app(AmazonAdsPauseRuleApplicator::class)->applyReviewsProductAds(false);
+                $payload['message'] = 'Reviews rule saved and applied to Amazon.'
+                    .(! empty($rev['enabled'])
+                        ? ' Paused product ads below '.$th.'★ under their campaigns (campaigns were not paused).'
+                        : '');
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => 'Reviews rule saved, but Amazon apply failed.',
                     'error' => $e->getMessage(),
                     'rule' => $freshRule,
                     'status' => 500,
@@ -3360,7 +3405,7 @@ class AmazonAdsController extends Controller
             $skuMetricsByCampaign = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($ruleNames);
         }
         $ratingsByCid = [];
-        if ($needRuleStatus) {
+        if ($needSkuMetrics || $needRuleStatus) {
             $ruleCids = [];
             foreach ($rows as $ruleRow) {
                 $cid = preg_replace('/\D+/', '', trim((string) (((array) $ruleRow)['campaign_id'] ?? ''))) ?: '';
@@ -3492,6 +3537,16 @@ class AmazonAdsController extends Controller
                 if (in_array('price', $columns, true)) {
                     $arr['price'] = $mSku['price'];
                     $arr['lmp_price'] = $mSku['lmp_price'] ?? null;
+                }
+                if (in_array('reviews', $columns, true)) {
+                    $cidRev = preg_replace('/\D+/', '', $cid) ?: '';
+                    $fromAds = $cidRev !== '' ? ($ratingsByCid[$cidRev] ?? null) : null;
+                    $arr['reviews'] = is_array($fromAds) && $fromAds['rating'] !== null
+                        ? (float) $fromAds['rating']
+                        : ($mSku['rating'] ?? null);
+                    $arr['review_count'] = is_array($fromAds) && $fromAds['review_count'] !== null
+                        ? (int) $fromAds['review_count']
+                        : ($mSku['review_count'] ?? null);
                 }
             }
             if (in_array('Prchase', $columns, true)
