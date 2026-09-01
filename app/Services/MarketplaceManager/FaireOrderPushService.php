@@ -7,8 +7,10 @@ use App\Models\FaireOrderMetric;
 use App\Models\ShopifySku;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class FaireOrderPushService
 {
@@ -251,12 +253,22 @@ class FaireOrderPushService
             }
         }
 
+        // Local Shopify catalog already has this Faire order — link, never create.
+        $localShopify = $this->findLocalShopifyFaireCopy($orderId, $orderNumber);
+        if ($localShopify !== null) {
+            $this->linkFaireOrderToShopify($orderId, $localShopify);
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localShopify.' (local Faire catalog).';
+            $this->fulfillShopifyForImportedMarketplaceOrder('faire', (int) $order->id, ['order_id' => $orderId]);
+
+            return $localShopify;
+        }
+
         // Strict Shopify search — refuse to create if check cannot complete.
         $config = $this->shopifyConfig();
         $existing = $this->findExistingShopifyOrderByRefs(
             $config,
             array_values(array_filter([$orderId, $orderNumber])),
-            ['faire-'],
+            ['faire-', 'Faire-'],
             ['faire_order_id'],
             'FaireOrderPushService'
         );
@@ -299,7 +311,7 @@ class FaireOrderPushService
             $config,
             ['order' => $plan['payload']],
             array_values(array_filter([$orderId, $orderNumber])),
-            ['faire-'],
+            ['faire-', 'Faire-'],
             ['faire_order_id'],
             'FaireOrderPushService',
             $order->fresh()?->shopify_order_id
@@ -332,6 +344,61 @@ class FaireOrderPushService
         }
 
         return $shopifyOrderId;
+    }
+
+    /**
+     * Faire orders already in shopify_raw_orders (source/tag Faire) must be linked,
+     * never POSTed again.
+     */
+    protected function findLocalShopifyFaireCopy(string $orderId, string $orderNumber): ?string
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return null;
+        }
+
+        $needles = [];
+        foreach ([$orderId, $orderNumber] as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref !== '') {
+                $needles[$ref] = true;
+            }
+        }
+        $needles = array_keys($needles);
+        if ($needles === []) {
+            return null;
+        }
+
+        try {
+            $query = DB::table('shopify_raw_orders')
+                ->where(function ($q) {
+                    $q->where('source_name', 'faire')
+                        ->orWhere('source_name', 'like', '%faire%')
+                        ->orWhere('tags', 'like', '%Faire%')
+                        ->orWhere('tags', 'like', '%faire%');
+                })
+                ->where(function ($q) use ($needles) {
+                    foreach ($needles as $needle) {
+                        $q->orWhere('tags', 'like', '%faire-'.$needle.'%')
+                            ->orWhere('tags', 'like', '%Faire-'.$needle.'%');
+                        if (strlen($needle) >= 6) {
+                            $q->orWhere('tags', 'like', '%'.$needle.'%')
+                                ->orWhere('order_number', $needle)
+                                ->orWhere('order_number', '#'.$needle);
+                        }
+                    }
+                })
+                ->orderByDesc('order_id');
+
+            $id = $query->value('order_id');
+
+            return $id ? (string) $id : null;
+        } catch (\Throwable $e) {
+            Log::warning('FaireOrderPushService: local Shopify Faire catalog lookup failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     protected function linkFaireOrderToShopify(string $orderId, string $shopifyOrderId): void
