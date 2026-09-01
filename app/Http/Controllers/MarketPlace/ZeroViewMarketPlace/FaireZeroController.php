@@ -8,10 +8,12 @@ use App\Models\ShopifySku;
 use App\Models\FaireDataView;
 use App\Models\FaireListingStatus;
 use App\Models\FaireMetric;
+use App\Models\FaireProductSheet;
 use App\Models\MarketplacePercentage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class FaireZeroController extends Controller
 {
@@ -81,9 +83,17 @@ class FaireZeroController extends Controller
         $faireDataViews = FaireDataView::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
-        // Listed / inventory presence from Faire products API (faire_metric). Views are not on API.
+        // Listed / inventory presence from Faire products API (faire_metric). Views come from Performance sheet upload.
         $faireMetrics = FaireMetric::query()->whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
+
+        $faireSheetViews = Schema::hasTable('faire_products_sheets')
+            ? FaireProductSheet::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->keyBy(fn ($s) => strtoupper(trim((string) $s->sku)))
+            : collect();
 
         $listedCount = 0;
         $zeroInvOfListed = 0;
@@ -132,10 +142,13 @@ class FaireZeroController extends Controller
             }
 
             // --- Views / Zero-View logic ---
-            // Faire products API (faire_metric) has no views field; use DataView if present.
+            // Faire products API has no views; use the latest Performance sheet upload.
             $metricRecord = $faireMetrics[$sku] ?? null;
             $views = null;
-            if (is_array($dataView) && array_key_exists('views', $dataView)) {
+            $sheetRow = $faireSheetViews[$sku] ?? null;
+            if ($sheetRow !== null) {
+                $views = (int) ($sheetRow->views ?? 0);
+            } elseif (is_array($dataView) && array_key_exists('views', $dataView)) {
                 $views = (int) $dataView['views'];
             }
 

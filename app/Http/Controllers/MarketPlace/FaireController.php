@@ -11,12 +11,14 @@ use App\Models\MarketplacePercentage;
 use App\Models\FaireDailyData;
 use App\Models\FaireMetric;
 use App\Models\FaireListingStatus;
+use App\Models\FaireProductSheet;
 use App\Models\AmazonChannelSummary;
 use App\Services\ChannelPromoPricingService;
 use App\Services\FaireApiService;
 use App\Services\MarketplaceManager\FaireLinkMapSyncService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
 use App\Models\AmazonDataView;
@@ -684,6 +686,172 @@ class FaireController extends Controller
         return view('market-places.faire_pricing_view');
     }
 
+    /**
+     * Upload Faire Products → Performance export.
+     * Columns: Product name, SKU, Type, Page views, Orders, Units sold.
+     * Always truncates faire_products_sheets before insert.
+     */
+    public function uploadViews(Request $request)
+    {
+        $request->validate([
+            'views_file' => 'required|file',
+        ]);
+
+        try {
+            set_time_limit(300);
+            ini_set('memory_limit', '512M');
+
+            $rows = $this->parseFaireViewsFile($request->file('views_file'));
+            if ($rows === []) {
+                return response()->json(['error' => 'File is empty'], 400);
+            }
+
+            $headerIndex = $this->findFaireViewsHeaderRow($rows);
+            $rawHeaders = array_values($rows[$headerIndex] ?? []);
+            $fieldByIndex = $this->mapFaireViewsHeaders($rawHeaders);
+            if (! in_array('sku', $fieldByIndex, true) || ! in_array('views', $fieldByIndex, true)) {
+                $fieldByIndex = $this->applyFaireViewsPositionalFallback($rawHeaders, $fieldByIndex);
+            }
+            if (! in_array('sku', $fieldByIndex, true)) {
+                return response()->json([
+                    'error' => 'Could not find SKU column. Headers: '.$this->faireViewsHeaderPreview($rawHeaders),
+                ], 400);
+            }
+            if (! in_array('views', $fieldByIndex, true)) {
+                return response()->json([
+                    'error' => 'Could not find Page views column. Expected Faire Performance export (Product name, SKU, Type, Page views, Orders, Units sold). Headers: '.$this->faireViewsHeaderPreview($rawHeaders),
+                ], 400);
+            }
+
+            $aggregated = [];
+            $skipped = 0;
+            foreach (array_slice($rows, $headerIndex + 1) as $row) {
+                $row = array_values(is_array($row) ? $row : []);
+                if (count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
+                    $skipped++;
+                    continue;
+                }
+
+                $mapped = [];
+                foreach ($fieldByIndex as $idx => $field) {
+                    if ($field === null) {
+                        continue;
+                    }
+                    $mapped[$field] = $row[$idx] ?? '';
+                }
+
+                $sku = trim((string) ($mapped['sku'] ?? ''));
+                if ($sku === '' || strcasecmp($sku, 'Multiple') === 0 || preg_match('#^https?://#i', $sku)) {
+                    $skipped++;
+                    continue;
+                }
+
+                $key = $this->normalizeFaireSkuExact($sku);
+                if ($key === '') {
+                    $skipped++;
+                    continue;
+                }
+
+                if (! isset($aggregated[$key])) {
+                    $aggregated[$key] = [
+                        'sku' => $sku,
+                        'product_name' => $this->nullableFaireViewsString($mapped['product_name'] ?? null),
+                        'type' => $this->nullableFaireViewsString($mapped['type'] ?? null),
+                        'views' => 0,
+                        'orders' => 0,
+                        'units_sold' => 0,
+                    ];
+                }
+
+                $aggregated[$key]['views'] += $this->toFaireViewsInt($mapped['views'] ?? 0);
+                $aggregated[$key]['orders'] += $this->toFaireViewsInt($mapped['orders'] ?? 0);
+                $aggregated[$key]['units_sold'] += $this->toFaireViewsInt($mapped['units_sold'] ?? 0);
+                if (empty($aggregated[$key]['product_name']) && ! empty($mapped['product_name'])) {
+                    $aggregated[$key]['product_name'] = $this->nullableFaireViewsString($mapped['product_name']);
+                }
+                if (empty($aggregated[$key]['type']) && ! empty($mapped['type'])) {
+                    $aggregated[$key]['type'] = $this->nullableFaireViewsString($mapped['type']);
+                }
+            }
+
+            if ($aggregated === []) {
+                return response()->json([
+                    'error' => 'No SKU rows found. Headers: '.$this->faireViewsHeaderPreview($rawHeaders),
+                ], 400);
+            }
+
+            $this->ensureFaireProductsSheetTable();
+
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+            FaireProductSheet::truncate();
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+            Log::info('Faire products sheets table truncated before views import');
+
+            $imported = 0;
+            $nextId = 1;
+            $hasOrders = Schema::hasColumn('faire_products_sheets', 'orders');
+            $hasUnits = Schema::hasColumn('faire_products_sheets', 'units_sold');
+            $hasName = Schema::hasColumn('faire_products_sheets', 'product_name');
+            $hasType = Schema::hasColumn('faire_products_sheets', 'type');
+            $hasFl30 = Schema::hasColumn('faire_products_sheets', 'f_l30');
+
+            foreach (array_chunk(array_values($aggregated), 200) as $chunk) {
+                $now = now();
+                $insert = [];
+                foreach ($chunk as $row) {
+                    $payload = [
+                        'id' => $nextId++,
+                        'sku' => $row['sku'],
+                        'views' => (int) $row['views'],
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                    if ($hasName) {
+                        $payload['product_name'] = $row['product_name'];
+                    }
+                    if ($hasType) {
+                        $payload['type'] = $row['type'];
+                    }
+                    if ($hasOrders) {
+                        $payload['orders'] = (int) $row['orders'];
+                    }
+                    if ($hasUnits) {
+                        $payload['units_sold'] = (int) $row['units_sold'];
+                    }
+                    if ($hasFl30) {
+                        $payload['f_l30'] = (int) $row['units_sold'];
+                    }
+                    $insert[] = $payload;
+                }
+                FaireProductSheet::insert($insert);
+                $imported += count($insert);
+            }
+
+            return response()->json([
+                'success' => "Imported {$imported} view row(s) (previous upload truncated, skipped {$skipped})",
+                'imported' => $imported,
+                'skipped' => $skipped,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error importing Faire views sheet: '.$e->getMessage());
+
+            return response()->json(['error' => 'Error importing file: '.$e->getMessage()], 500);
+        }
+    }
+
+    public function downloadViewsSample()
+    {
+        $tsv = implode("\n", [
+            "Product name\tSKU\tType\tPage views\tOrders\tUnits sold",
+            "5 Core Guitar Stand Floor Adjustable Heavy Duty w Neck Holder for Acoustic Electric Classic Bass\tGSH HD RED\tMusic Accessory\t0\t1\t5",
+            "5 Core 8 Subwoofer Dual 2 Ohm 1000W Car Audio Woofer Driver\tWF 8140 DBL D2\tSpeakers\t5\t1\t4",
+        ])."\n";
+
+        return response($tsv, 200, [
+            'Content-Type' => 'text/tab-separated-values; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="faire-views-sample.txt"',
+        ]);
+    }
 
     /**
      * Sync Faire listings / wholesale price / stock from Faire products API into faire_metric.
@@ -740,6 +908,14 @@ class FaireController extends Controller
 
             $viewMetaBySku = FaireDataView::all()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
+
+            $viewsBySku = Schema::hasTable('faire_products_sheets')
+                ? FaireProductSheet::query()
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku))
+                : collect();
 
             $allNormalizedSkus = collect(array_merge(
                 $salesBySku->keys()->all(),
@@ -813,6 +989,11 @@ class FaireController extends Controller
 
                 $al30 = (float) ($sale->al30 ?? 0);
                 $sales = (float) ($sale->sales ?? 0);
+                $viewSheet = $viewsBySku->get($normalizedSku);
+                $pageViews = $viewSheet ? (int) ($viewSheet->views ?? 0) : 0;
+                $sheetOrders = $viewSheet ? (int) ($viewSheet->orders ?? 0) : 0;
+                $sheetUnits = $viewSheet ? (int) ($viewSheet->units_sold ?? $viewSheet->f_l30 ?? 0) : 0;
+                $cvr = $pageViews > 0 ? round(($sheetUnits / $pageViews) * 100, 2) : 0;
 
                 $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
                 $pushStatus = isset($meta['PUSH_STATUS']) ? trim((string) $meta['PUSH_STATUS']) : null;
@@ -900,6 +1081,10 @@ class FaireController extends Controller
                     'profit' => round($profit, 2),
                     'sales' => round($sales, 2),
                     'al30' => (int) round($al30),
+                    'views' => $pageViews,
+                    'orders' => $sheetOrders,
+                    'units_sold' => $sheetUnits,
+                    'cvr' => $cvr,
                     'lp' => round($lp, 2),
                     'ship' => round($ship, 2),
                     'sprice' => round($sprice, 2),
@@ -1250,6 +1435,7 @@ class FaireController extends Controller
     {
         $sumInv = $sumOvL30 = $sumAeStock = $sumAl30 = $sumSales = 0;
         $sumProfit = 0;
+        $sumViews = $sumOrders = $sumUnits = 0;
 
         foreach ($childRows as $r) {
             $sumInv += (float) ($r['inv'] ?? 0);
@@ -1257,6 +1443,9 @@ class FaireController extends Controller
             $sumAeStock += (float) ($r['ae_stock'] ?? 0);
             $sumAl30 += (float) ($r['al30'] ?? 0);
             $sumSales += (float) ($r['sales'] ?? 0);
+            $sumViews += (float) ($r['views'] ?? 0);
+            $sumOrders += (float) ($r['orders'] ?? 0);
+            $sumUnits += (float) ($r['units_sold'] ?? 0);
             $al30 = (float) ($r['al30'] ?? 0);
             $profit = (float) ($r['profit'] ?? 0);
             $sumProfit += $al30 * $profit;
@@ -1264,6 +1453,7 @@ class FaireController extends Controller
 
         $dilPct = $sumInv > 0 ? round(($sumOvL30 / $sumInv) * 100, 2) : 0;
         $gpftPct = $sumSales > 0 ? (int) round(($sumProfit / $sumSales) * 100) : 0;
+        $parentCvr = $sumViews > 0 ? round(($sumUnits / $sumViews) * 100, 2) : 0;
 
         $key = 'PARENT ' . $parentName;
 
@@ -1283,6 +1473,10 @@ class FaireController extends Controller
             'profit' => round($sumProfit, 2),
             'sales' => round($sumSales, 2),
             'al30' => (int) round($sumAl30),
+            'views' => (int) $sumViews,
+            'orders' => (int) $sumOrders,
+            'units_sold' => (int) $sumUnits,
+            'cvr' => $parentCvr,
             'lp' => '-',
             'ship' => '-',
             'sprice' => '-',
@@ -1354,6 +1548,8 @@ class FaireController extends Controller
         $map = 0;
         $miss = 0;
         $nmap = 0;
+        $totalViews = 0;
+        $totalUnits = 0;
 
         foreach ($rows as $row) {
             if (is_object($row)) {
@@ -1368,6 +1564,8 @@ class FaireController extends Controller
             $isMissingFaire = (bool) ($row['is_missing_faire'] ?? false);
             $rowPrice = (float) ($row['price'] ?? 0);
             $faireStock = (float) ($row['ae_stock'] ?? 0);
+            $totalViews += (int) ($row['views'] ?? 0);
+            $totalUnits += (int) ($row['units_sold'] ?? 0);
 
             if ($inv > 0 && $nrValue === 'REQ') {
                 if ($isMissingFaire) {
@@ -1387,7 +1585,8 @@ class FaireController extends Controller
             'map' => $map,
             'miss' => $miss,
             'nmap' => $nmap,
-            'total_views' => 0,
+            'total_views' => $totalViews,
+            'cvr' => $totalViews > 0 ? round(($totalUnits / $totalViews) * 100, 2) : 0,
         ];
     }
 
@@ -1470,6 +1669,8 @@ class FaireController extends Controller
                 'nmap_count' => $nmapCount,
                 'zero_sold' => $zeroSold,
                 'more_sold' => $moreSold,
+                'total_views' => (int) ($badgeTotals['total_views'] ?? 0),
+                'cvr' => (float) ($badgeTotals['cvr'] ?? 0),
                 'calculated_at' => now()->toDateTimeString(),
             ];
 
@@ -1576,5 +1777,206 @@ class FaireController extends Controller
         Cache::put($key, $visibility, now()->addDays(365));
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * @return list<list<mixed>>
+     */
+    private function parseFaireViewsFile($file): array
+    {
+        $path = $file->getRealPath() ?: $file->getPathname();
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $firstLine = '';
+        if (is_file($path)) {
+            $fh = fopen($path, 'r');
+            if ($fh !== false) {
+                $firstLine = (string) fgets($fh);
+                fclose($fh);
+            }
+        }
+
+        $looksTsv = str_contains($firstLine, "\t")
+            || in_array($ext, ['txt', 'tsv'], true);
+        if ($looksTsv && ! in_array($ext, ['xlsx', 'xls'], true)) {
+            return $this->readFaireDelimitedFile($path, "\t");
+        }
+        if ($ext === 'csv') {
+            $delimiter = str_contains($firstLine, "\t") ? "\t" : ',';
+
+            return $this->readFaireDelimitedFile($path, $delimiter);
+        }
+
+        $spreadsheet = IOFactory::load($path);
+
+        return $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+    }
+
+    /**
+     * @return list<list<mixed>>
+     */
+    private function readFaireDelimitedFile(string $path, string $delimiter): array
+    {
+        $rows = [];
+        $fh = fopen($path, 'r');
+        if ($fh === false) {
+            return [];
+        }
+        while (($row = fgetcsv($fh, 0, $delimiter, '"', '\\')) !== false) {
+            if (isset($row[0])) {
+                $row[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $row[0]);
+            }
+            $rows[] = $row;
+        }
+        fclose($fh);
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<list<mixed>>  $rows
+     */
+    private function findFaireViewsHeaderRow(array $rows): int
+    {
+        $best = 0;
+        $bestScore = -1;
+        $limit = min(count($rows), 15);
+        for ($i = 0; $i < $limit; $i++) {
+            $map = $this->mapFaireViewsHeaders(array_values($rows[$i] ?? []));
+            $fields = array_values(array_filter($map));
+            $score = count($fields);
+            if (in_array('sku', $fields, true)) {
+                $score += 10;
+            }
+            if (in_array('views', $fields, true)) {
+                $score += 20;
+            }
+            if (in_array('units_sold', $fields, true) || in_array('orders', $fields, true)) {
+                $score += 5;
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $i;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * @param  list<mixed>  $headers
+     * @return array<int, string|null>
+     */
+    private function mapFaireViewsHeaders(array $headers): array
+    {
+        $map = [];
+        foreach ($headers as $idx => $header) {
+            $n = $this->normalizeFaireViewsHeader((string) $header);
+            $field = match (true) {
+                $n === 'sku' || $n === 'seller_sku' || $n === 'variant_sku' => 'sku',
+                $n === 'product_name' || $n === 'name' || $n === 'title' => 'product_name',
+                $n === 'type' || $n === 'product_type' || $n === 'category' => 'type',
+                $n === 'page_views' || $n === 'pageviews' || $n === 'views' => 'views',
+                $n === 'orders' || $n === 'order' => 'orders',
+                $n === 'units_sold' || $n === 'units' || $n === 'unit_sold' => 'units_sold',
+                default => null,
+            };
+            $map[(int) $idx] = $field;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  list<mixed>  $rawHeaders
+     * @param  array<int, string|null>  $fieldByIndex
+     * @return array<int, string|null>
+     */
+    private function applyFaireViewsPositionalFallback(array $rawHeaders, array $fieldByIndex): array
+    {
+        $joined = strtolower(implode(' ', array_map(fn ($h) => (string) $h, $rawHeaders)));
+        $looksLikePerformance = str_contains($joined, 'product')
+            && str_contains($joined, 'sku')
+            && (str_contains($joined, 'page') || str_contains($joined, 'view'));
+        if (! $looksLikePerformance && count($rawHeaders) < 4) {
+            return $fieldByIndex;
+        }
+
+        $defaults = [
+            0 => 'product_name',
+            1 => 'sku',
+            2 => 'type',
+            3 => 'views',
+            4 => 'orders',
+            5 => 'units_sold',
+        ];
+        foreach ($defaults as $idx => $field) {
+            if (! isset($fieldByIndex[$idx]) || $fieldByIndex[$idx] === null) {
+                $fieldByIndex[$idx] = $field;
+            }
+        }
+
+        return $fieldByIndex;
+    }
+
+    private function normalizeFaireViewsHeader(string $header): string
+    {
+        $header = strtolower(trim(preg_replace('/^\xEF\xBB\xBF/', '', $header)));
+        $header = preg_replace('/[^a-z0-9]+/', '_', $header) ?? $header;
+
+        return trim($header, '_');
+    }
+
+    /**
+     * @param  list<mixed>  $headers
+     */
+    private function faireViewsHeaderPreview(array $headers): string
+    {
+        $parts = [];
+        foreach ($headers as $h) {
+            $t = trim((string) $h);
+            if ($t !== '') {
+                $parts[] = $t;
+            }
+        }
+
+        return implode(' | ', array_slice($parts, 0, 12));
+    }
+
+    private function toFaireViewsInt($value): int
+    {
+        if ($value === null || $value === '') {
+            return 0;
+        }
+        $cleaned = preg_replace('/[^\d\-]/', '', (string) $value);
+
+        return is_numeric($cleaned) ? (int) $cleaned : 0;
+    }
+
+    private function nullableFaireViewsString($value): ?string
+    {
+        $t = trim((string) $value);
+
+        return $t !== '' ? mb_substr($t, 0, 500) : null;
+    }
+
+    private function ensureFaireProductsSheetTable(): void
+    {
+        if (Schema::hasTable('faire_products_sheets')) {
+            return;
+        }
+
+        Schema::create('faire_products_sheets', function (Blueprint $table) {
+            $table->id();
+            $table->string('sku')->unique()->nullable();
+            $table->string('product_name', 500)->nullable();
+            $table->string('type', 191)->nullable();
+            $table->integer('f_l30')->nullable();
+            $table->integer('f_l60')->nullable();
+            $table->decimal('price', 10, 2)->nullable();
+            $table->integer('views')->nullable();
+            $table->unsignedInteger('orders')->nullable();
+            $table->unsignedInteger('units_sold')->nullable();
+            $table->timestamps();
+        });
     }
 }

@@ -1146,6 +1146,7 @@
 
         let aeFullTableData = [];
         let aeSwapData = false;
+        let aeApplyingFilters = false;
         function aeRowsForType(rowType, rows) {
             const src = Array.isArray(rows) ? rows : [];
             if (rowType === 'parents') return src.filter(function(r) { return aeIsParentRow(r); });
@@ -1163,6 +1164,15 @@
             if (d.is_parent_summary === true || d.is_parent_summary === 1 || d.is_parent_row === true) return true;
             const sku = String(d.sku || d.SKU || d['(Child) sku'] || '').trim().toUpperCase();
             return sku.includes('PARENT');
+        }
+
+        /** Shopify INV. Negative (untracked / -1) counts as 0 so "More than 0" hides it. */
+        function aeInvQty(d) {
+            if (!d) return 0;
+            const raw = d.inv != null ? d.inv : (d.INV != null ? d.INV : d.inventory);
+            const n = parseInt(raw, 10);
+            if (!Number.isFinite(n) || n < 0) return 0;
+            return n;
         }
 
         function aeRowMatchesFilters(d, opts) {
@@ -1185,6 +1195,15 @@
             const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
             const parentRowsBypass = (rowType === 'parents' || rowType === 'all');
 
+            if (rowType === 'parents' && !isParent) return false;
+            if (rowType !== 'parents' && rowType !== 'all' && isParent) return false;
+            if (skuSearch && !(String(d.sku || '').toLowerCase().includes(skuSearch))) return false;
+            if (isParent && parentRowsBypass) return true;
+
+            const invQty = aeInvQty(d);
+            if (invFilter === 'zero' && invQty !== 0) return false;
+            if (invFilter === 'more' && invQty <= 0) return false;
+
             if (opts.skipPlay !== true && typeof isAePlayActive !== 'undefined' && isAePlayActive
                 && typeof aePlayUniqueParents !== 'undefined' && aePlayUniqueParents.length > 0
                 && typeof currentAePlayParentIndex !== 'undefined' && currentAePlayParentIndex >= 0) {
@@ -1193,14 +1212,6 @@
                 const p = normalizeAeParentKey(d.parent);
                 return p === currentKey || p === ('PARENT ' + currentKey);
             }
-
-            if (rowType === 'parents' && !isParent) return false;
-            if (rowType !== 'parents' && rowType !== 'all' && isParent) return false;
-            if (skuSearch && !(String(d.sku || '').toLowerCase().includes(skuSearch))) return false;
-            if (isParent && parentRowsBypass) return true;
-
-            if (invFilter === 'zero' && (parseInt(d.inv, 10) || 0) !== 0) return false;
-            if (invFilter === 'more' && (parseInt(d.inv, 10) || 0) <= 0) return false;
 
             if (gpftFilter !== 'all') {
                 const gpft = parseFloat(d.gpft) || 0;
@@ -1239,7 +1250,7 @@
             }
 
             if (al30Filter !== 'all') {
-                if ((parseInt(d.inv, 10) || 0) <= 0) return false;
+                if (invQty <= 0) return false;
                 const al30 = parseFloat(d.al30) || 0;
                 if (al30Filter === '0' && al30 !== 0) return false;
                 if (al30Filter === '0-10' && !(al30 > 0 && al30 <= 10)) return false;
@@ -1247,7 +1258,7 @@
             }
 
             if (dilColor !== 'all') {
-                const inv = parseFloat(d.inv) || 0;
+                const inv = invQty;
                 const ovL30 = parseFloat(d.ov_l30) || 0;
                 const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
                 if (dilColor === 'red' && !(dil < 25)) return false;
@@ -1256,9 +1267,9 @@
             }
 
             if (soldFilter === 'zero') {
-                if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) === 0)) return false;
+                if (!(invQty > 0 && (parseFloat(d.al30) || 0) === 0)) return false;
             } else if (soldFilter === 'more') {
-                if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) > 0)) return false;
+                if (!(invQty > 0 && (parseFloat(d.al30) || 0) > 0)) return false;
             }
 
             if (opts.skipBadges !== true) {
@@ -1279,6 +1290,7 @@
         }
 
         function applyFilters() {
+            if (aeApplyingFilters) return;
             if (window.ParentExpand && ParentExpand.isExpanded()) {
                 aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return ParentExpand expanded', {});
                 ParentExpand.beforeFilters(function(){ applyFilters(); });
@@ -1289,12 +1301,8 @@
                 return;
             }
 
-            const rowType    = $('#ae-row-type-filter').val() || 'skus';
+            const rowType = $('#ae-row-type-filter').val() || 'skus';
             const full = aeFullTableData.length ? aeFullTableData : allTableData;
-            const desired = aeRowsForType(rowType, full);
-            const current = table.getData() || [];
-            const currentParents = current.filter(function(r) { return aeIsParentRow(r); }).length;
-            const desiredParents = desired.filter(function(r) { return aeIsParentRow(r); }).length;
             if (!aeSwapData && (rowType === 'all' || rowType === 'parents') && full.length && !full.some(function(r) { return aeIsParentRow(r); })) {
                 aeDbgLog('D', 'aliexpress_pricing_view.blade.php:applyFilters', 'reloading pricing-data with parents', { rowType: rowType });
                 aeSwapData = true;
@@ -1304,26 +1312,29 @@
                 }).catch(function() { aeSwapData = false; });
                 return;
             }
-            if (!aeSwapData && currentParents !== desiredParents) {
-                aeDbgLog('D', 'aliexpress_pricing_view.blade.php:applyFilters', 'swapping table data for rowType', {
-                    rowType: rowType, currentParents: currentParents, desiredParents: desiredParents, desiredCount: desired.length
-                });
-                aeSwapData = true;
-                table.setData(desired).then(function() {
-                    aeSwapData = false;
-                    applyFilters();
-                }).catch(function() { aeSwapData = false; });
-                return;
-            }
-            aeDbgLog('B', 'aliexpress_pricing_view.blade.php:applyFilters', 'rowType at filter time', {
-                rowType: rowType, rawVal: $('#ae-row-type-filter').val(), currentParents: currentParents, desiredParents: desiredParents
-            });
 
-            table.setFilter(function(d) {
+            if (!full.length) return;
+
+            const filtered = aeRowsForType(rowType, full).filter(function(d) {
                 return aeRowMatchesFilters(d);
             });
+            aeDbgLog('B', 'aliexpress_pricing_view.blade.php:applyFilters', 'rowType at filter time', {
+                rowType: rowType,
+                rawVal: $('#ae-row-type-filter').val(),
+                invFilter: $('#ae-inv-filter').val(),
+                fullCount: full.length,
+                filteredCount: filtered.length
+            });
 
-            try { table.setPage(1); } catch (e) {}
+            aeApplyingFilters = true;
+            table.setData(filtered).then(function() {
+                aeApplyingFilters = false;
+                try { table.clearFilter(true); } catch (e) {}
+                try { table.setPage(1); } catch (e) {}
+                try { updateSummary(filtered); } catch (e) {}
+            }).catch(function() {
+                aeApplyingFilters = false;
+            });
         }
 
 
@@ -1451,7 +1462,7 @@
                 }
                 const al30   = parseFloat(row.al30)   || 0;
                 const profit = parseFloat(row.profit) || 0;
-                const inv    = parseInt(row.inv, 10) || 0;
+                const inv    = aeInvQty(row);
 
                 totalProfit += al30 * profit;
                 totalSales  += parseFloat(row.sales) || 0;
@@ -1583,9 +1594,7 @@
                 ajaxURL: "/aliexpress/pricing-data",
                 filterMode: "local",
                 paginationMode: "local",
-                initialFilter: [
-                    function(data) { return !aeIsParentRow(data); }
-                ],
+                initialFilter: function(data) { return aeRowMatchesFilters(data); },
                 ajaxResponse: function(url, params, response) {
                     const rows = Array.isArray(response) ? response : [];
                     rows.forEach(function(r) {
@@ -1601,15 +1610,18 @@
                     aeFullTableData = rows;
                     allTableData = rows;
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-                    summaryDataCache = normalizeRows(rows);
-                    try { updateSummary(summaryDataCache); } catch (e) { console.error(e); }
                     const rowType = $('#ae-row-type-filter').val() || 'skus';
-                    const visibleRows = aeRowsForType(rowType, rows);
+                    const visibleRows = aeRowsForType(rowType, rows).filter(function(r) {
+                        return aeRowMatchesFilters(r);
+                    });
+                    summaryDataCache = normalizeRows(rows);
+                    try { updateSummary(visibleRows); } catch (e) { console.error(e); }
                     aeDbgLog('E', 'aliexpress_pricing_view.blade.php:ajaxResponse', 'stripped parents from table payload', {
                         total: rows.length,
                         parentNamed: rows.filter(function(r) { return aeIsParentRow(r); }).length,
                         returned: visibleRows.length,
-                        rowType: rowType
+                        rowType: rowType,
+                        invFilter: $('#ae-inv-filter').val()
                     });
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
                     return visibleRows;
@@ -1759,8 +1771,12 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return `<span style="font-weight:700;">${cell.getValue()}</span>`;
-                            const val = parseInt(cell.getValue(), 10) || 0;
-                            if (val === 0) return `<span style="color:#dc3545;font-weight:600;">0</span>`;
+                            const raw = parseInt(cell.getValue(), 10);
+                            const val = aeInvQty(d);
+                            if (val === 0) {
+                                const shown = Number.isFinite(raw) ? raw : 0;
+                                return `<span style="color:#dc3545;font-weight:600;">${shown}</span>`;
+                            }
                             return `<span style="font-weight:600;">${val}</span>`;
                         }
                     },
@@ -2140,6 +2156,7 @@
                     {
                         title: "SGROI",
                         field: "sroi",
+                        headerTooltip: "Sold (AL30 > 0): Dil vs Target SGROI sets S PRC so this equals the Dil slab target. 0 Sold uses Dil color → Target GROI%. LMP cap on sold rows can lower the shown %.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2181,12 +2198,19 @@
                 dataLoaded: function(data) {
                     if (aeFullTableData.length) {
                         allTableData = aeFullTableData;
-                    } else {
+                    } else if (!aeApplyingFilters && !aeSwapData) {
                         allTableData = Array.isArray(data) ? data : [];
                     }
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
+                    }
+                    if (aeApplyingFilters || aeSwapData) {
+                        try { updateSummary(); } catch (e) { console.error(e); }
+                        if (typeof window.chPromoAutofitColumns === 'function') {
+                            window.chPromoAutofitColumns(table);
+                        }
+                        return;
                     }
                     setTimeout(function() {
                         try {

@@ -12,6 +12,16 @@ class FaireProductSheet extends Model
     protected $table = 'faire_products_sheets';
 
     protected $fillable = [
-        'sku', 'price', 'f_l30', 'f_l60', 'views'
+        'sku',
+        'product_name',
+        'type',
+        'price',
+        'f_l30',
+        'f_l60',
+        'views',
+        'views_l1',
+        'views_l7',
+        'orders',
+        'units_sold',
     ];
 }

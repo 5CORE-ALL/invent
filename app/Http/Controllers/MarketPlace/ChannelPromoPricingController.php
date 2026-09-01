@@ -1348,6 +1348,42 @@ class ChannelPromoPricingController extends Controller
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
+    public function dilSgroiRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return $this->loadRules(
+            $channel.'_dil_vs_sgroi',
+            self::sharedDilSgroiDefaults(),
+            'sgroi'
+        );
+    }
+
+    public function saveDilSgroiRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $rules = $this->persistRules(
+            $channel.'_dil_vs_sgroi',
+            self::sharedDilSgroiDefaults(),
+            $incoming,
+            'sgroi'
+        );
+
+        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+    }
+
     public function gtSoldPrcRules(Request $request, string $channel): JsonResponse
     {
         $channel = strtolower(trim($channel));
@@ -1664,6 +1700,30 @@ class ChannelPromoPricingController extends Controller
             ['key' => 'green', 'label' => 'Green Dil (25–50%)', 'groi' => 60],
             ['key' => 'pink', 'label' => 'Pink Dil (50%+)', 'groi' => 70],
         ];
+    }
+
+    /**
+     * Dil% slabs → Target SGROI% (per-page store `{channel}_dil_vs_sgroi`).
+     * Same Dil bands as Dil vs PRMT. First-time: 70, then −1 each slab.
+     *
+     * @return list<array{key:string,label:string,sgroi:float|int}>
+     */
+    public static function sharedDilSgroiDefaults(): array
+    {
+        $rules = [];
+        $sgroi = 70;
+        for ($min = 0; $min < 24; $min += 3) {
+            $max = $min + 3;
+            $rules[] = [
+                'key' => $min.'-'.$max,
+                'label' => $min === 0 ? '0.01–3%' : ($min.'–'.$max.'%'),
+                'sgroi' => $sgroi,
+            ];
+            $sgroi -= 1;
+        }
+        $rules[] = ['key' => '24-25', 'label' => '24–25%', 'sgroi' => $sgroi];
+
+        return $rules;
     }
 
     private function normalizeRulesChannel(string $channel): ?string

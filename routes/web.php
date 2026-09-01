@@ -5535,6 +5535,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/cvr-up-dn', [ChannelPromoPricingController::class, 'saveCvrUpDnRules'])->name('channel.promo.cvr-up-dn.save');
     Route::get('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'zeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
+    Route::get('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'dilSgroiRules'])->name('channel.promo.dil-sgroi.get');
+    Route::post('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'saveDilSgroiRules'])->name('channel.promo.dil-sgroi.save');
     Route::get('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'gtSoldPrcRules'])->name('channel.promo.gt-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');
@@ -5797,6 +5799,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/faire-pricing', [FaireController::class, 'fairePricingView'])->name('faire.pricing.view');
     Route::get('/faire/pricing-data', [FaireController::class, 'getFairePricingData'])->name('faire.pricing.data');
+    Route::post('/faire/pricing-upload-views', [FaireController::class, 'uploadViews'])->name('faire.pricing.upload.views');
+    Route::get('/faire/pricing-views-sample', [FaireController::class, 'downloadViewsSample'])->name('faire.pricing.views.sample');
     Route::post('/faire/pricing-sync-from-api', [FaireController::class, 'syncPricingFromApi'])->name('faire.pricing.sync.api');
     Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
     Route::post('/faire/push-price', [FaireController::class, 'pushPriceToFaire'])->name('faire.pricing.push.price');

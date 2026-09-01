@@ -184,7 +184,7 @@
                             <option value="40-50">40–50%</option>
                             <option value="50plus">Above 50%</option>
                         </select>
-                        <select id="fr-cvr-filter" class="form-select form-select-sm pricing-filter-item" title="CVR = sold (al30) ÷ OV L30">
+                        <select id="fr-cvr-filter" class="form-select form-select-sm pricing-filter-item" title="CVR = Units sold ÷ Page views (Faire Performance sheet)">
                             <option value="all">CVR%</option>
                             <option value="0-0">0%</option>
                             <option value="0-2">0-2%</option>
@@ -219,6 +219,10 @@
                         </button>
                         <button type="button" id="fr-export-pricing" class="btn btn-sm btn-success pricing-filter-item" title="Export CSV" aria-label="Export CSV">
                             <i class="fas fa-file-csv"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary pricing-filter-item" data-bs-toggle="modal"
+                            data-bs-target="#uploadFaireViewsModal" title="Upload Faire Performance sheet (replaces previous upload)">
+                            <i class="fa fa-upload"></i> Views
                         </button>
                         <div class="dropdown d-inline-block pricing-filter-item">
                             <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" id="frColumnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns" aria-label="Columns">
@@ -323,6 +327,8 @@
                             <span id="frSyncFromApiStatus" class="small text-muted align-self-center text-nowrap" style="flex:0 0 auto;"></span>
                             <span class="badge bg-primary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-total-sales-badge" data-metric="total_sales" style="font-weight:700;cursor:pointer;" title="Click or hover (½s) for daily trend">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-total-fqty-badge" data-metric="total_al30" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend (units)">Sold: 0</span>
+                            <span class="badge bg-info fs-6 p-2" id="fr-total-views-badge" style="font-weight:700;color:#111;" title="Σ Page views from the latest Faire Performance sheet upload">Views: 0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="fr-avg-cvr-badge" style="font-weight:700;" title="CVR = Σ Units sold ÷ Σ Page views × 100 (Faire Performance sheet)">CVR: 0%</span>
                             <span class="badge bg-success fs-6 p-2 d-none fr-badge-chart fr-hover-chart" id="fr-total-profit-badge" data-metric="total_pft" style="font-weight:700;cursor:pointer;" aria-hidden="true" title="View trend">Profit: 0</span>
                             <span class="badge bg-info fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-gpft-badge" data-metric="avg_gpft" style="font-weight:700;color:#111;cursor:pointer;" title="Same as Faire Sales Data: total order-style profit ÷ total sales (0.75×wholesale revenue − LP×qty). Click or hover for trend.">PFt: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2 fr-badge-chart fr-hover-chart" id="fr-avg-roi-badge" data-metric="avg_roi" style="font-weight:700;color:#111;cursor:pointer;" title="Click or hover for daily trend">ROI: 0%</span>
@@ -472,6 +478,44 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'faire'])
+
+    <div class="modal fade" id="uploadFaireViewsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Upload Faire Views</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadFaireViewsForm" action="{{ route('faire.pricing.upload.views') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Faire Performance sheet</label>
+                            <input type="file" class="form-control" name="views_file" accept=".xlsx,.xls,.csv,.txt,.tsv" required>
+                        </div>
+                        <div class="alert alert-info mb-2">
+                            <small>
+                                Use Faire portal <strong>Products → Performance → Export</strong>.
+                                Required columns: <strong>Product name, SKU, Type, Page views, Orders, Units sold</strong>.
+                                <a href="{{ route('faire.pricing.views.sample') }}" class="alert-link">
+                                    <i class="fa fa-download"></i> Download sample
+                                </a>
+                            </small>
+                        </div>
+                        <div class="alert alert-warning mb-0">
+                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This replaces the previous Views upload (old rows are truncated).
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadFaireViewsForm" class="btn btn-primary">
+                        <i class="fa fa-upload me-1"></i>Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -520,6 +564,8 @@
         const frBadgeMetricLabels = {
             total_sales: 'Sales',
             total_al30: 'Sold (units)',
+            total_views: 'Views',
+            cvr: 'CVR%',
             total_pft: 'Profit',
             avg_gpft: 'PFt %',
             avg_roi: 'ROI %',
@@ -527,7 +573,7 @@
             more_sold: '> 0 Sold',
         };
         const frBadgeDollarMetrics = ['total_sales', 'total_pft'];
-        const frBadgePctMetrics = ['avg_gpft', 'avg_roi'];
+        const frBadgePctMetrics = ['avg_gpft', 'avg_roi', 'cvr'];
         let frChartInstance = null;
         let frChartAjax = null;
         let frChartDays = 30;
@@ -1519,6 +1565,7 @@
             if (!rows.length) rows = normalizeRows(summaryDataCache);
 
             let totalSales = 0, totalFqty = 0, totalProfit = 0, totalCogs = 0;
+            let totalViews = 0, totalUnitsSold = 0;
             let zeroSold = 0, moreSold = 0;
 
             rows.forEach(row => {
@@ -1527,10 +1574,14 @@
                 const sales = parseFloat(row.sales) || 0;
                 const lp = parseFloat(row.lp) || 0;
                 const listProfitPerUnit = parseFloat(row.profit) || 0;
+                const views = parseInt(row.views, 10) || 0;
+                const unitsSold = parseInt(row.units_sold, 10) || 0;
 
                 totalSales += sales;
                 totalFqty += fqty;
                 totalCogs += lp * fqty;
+                totalViews += views;
+                totalUnitsSold += unitsSold;
 
                 let rowOrderPft = 0;
                 if (sales > 0 && fqty > 0) {
@@ -1546,8 +1597,11 @@
             const pftPct = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
             const roiPct = totalCogs > 0 ? (totalProfit / totalCogs) * 100 : 0;
 
+            const sheetCvrPct = totalViews > 0 ? (totalUnitsSold / totalViews) * 100 : 0;
             $('#fr-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
             $('#fr-total-fqty-badge').text('Sold: ' + totalFqty.toLocaleString());
+            $('#fr-total-views-badge').text('Views: ' + totalViews.toLocaleString());
+            $('#fr-avg-cvr-badge').text('CVR: ' + (Math.round(sheetCvrPct * 10) / 10) + '%');
             $('#fr-total-profit-badge').text('Profit: ' + Math.round(totalProfit).toLocaleString());
             $('#fr-avg-gpft-badge').text('PFt: ' + Math.round(pftPct) + '%');
             $('#fr-avg-roi-badge').text('ROI: ' + Math.round(roiPct) + '%');
@@ -1753,10 +1807,10 @@
             }
             if (cvrFilter !== 'all') {
                 table.addFilter(function(d) {
-                    const ov = parseFloat(d.ov_l30) || 0;
-                    const sold = parseFloat(d.al30) || 0;
-                    const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
-                    const cvrRounded = Math.round(cvrPercent * 100) / 100;
+                    const cvrPercent = parseFloat(d.cvr);
+                    const cvrRounded = Number.isFinite(cvrPercent)
+                        ? Math.round(cvrPercent * 100) / 100
+                        : 0;
                     if (cvrFilter === '0-0') return cvrRounded === 0;
                     if (cvrFilter === '0-2') return cvrRounded > 0 && cvrRounded <= 2;
                     if (cvrFilter === '2-4') return cvrRounded > 2 && cvrRounded <= 4;
@@ -2154,6 +2208,34 @@
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue(), 10) || 0;
                             return '<span style="font-weight:700;">' + v + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Views', field: 'views', sorter: 'number', hozAlign: 'center', width: 62,
+                        headerTooltip: 'Page views from Faire Products → Performance export. Replaced on each Views sheet upload.',
+                        formatter: function(cell) {
+                            const v = parseInt(cell.getValue(), 10) || 0;
+                            return v > 0
+                                ? '<span style="font-weight:700;">' + v.toLocaleString() + '</span>'
+                                : '0';
+                        }
+                    },
+                    {
+                        title: 'CVR', field: 'cvr', sorter: 'number', hozAlign: 'center', width: 58,
+                        headerTooltip: 'CVR = Units sold ÷ Page views × 100 (Faire Performance sheet)',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            let cvr = parseFloat(cell.getValue());
+                            if (!Number.isFinite(cvr) || cvr < 0) {
+                                const views = parseFloat(d.views) || 0;
+                                const units = parseFloat(d.units_sold) || 0;
+                                cvr = views > 0 ? (units / views) * 100 : 0;
+                            }
+                            let color = '#a00211';
+                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
+                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
+                            else if (cvr > 13) color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + (Math.round(cvr * 10) / 10) + '%</span>';
                         }
                     },
                     {
@@ -2618,6 +2700,39 @@
                 frMoreSoldActive = !frMoreSoldActive;
                 frZeroSoldActive = false;
                 applyFilters();
+            });
+
+            $('#uploadFaireViewsForm').on('submit', function(e) {
+                e.preventDefault();
+                const form = this;
+                const formData = new FormData(form);
+                const $btn = $('button[form="uploadFaireViewsForm"]');
+                const original = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading...');
+                $.ajax({
+                    url: $(form).attr('action'),
+                    method: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    success: function(res) {
+                        const msg = res.success || 'Views uploaded.';
+                        if (window.toastr) toastr.success(msg);
+                        else alert(msg);
+                        $('#uploadFaireViewsModal').modal('hide');
+                        form.reset();
+                        if (table) table.setData('/faire/pricing-data');
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Error uploading Views sheet';
+                        if (window.toastr) toastr.error(msg);
+                        else alert(msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(original);
+                    }
+                });
             });
 
             $('#fr-refresh-pricing').on('click', function() {

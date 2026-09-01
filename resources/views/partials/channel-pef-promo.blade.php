@@ -93,10 +93,12 @@
         }
         #ch-promo-dil-prmt-table .ch-promo-dil-prmt-input,
         #ch-promo-zero-sold-prmt-table .ch-promo-dil-prmt-input,
+        #ch-promo-dil-sgroi-table .ch-promo-dil-sgroi-input,
         #ch-promo-gt-sold-prc-table .ch-promo-gt-sold-pct-input,
         #ch-promo-cvr-cpn-table .ch-promo-cvr-cpn-input,
         #ch-promo-prmt-menu-btn,
-        #ch-promo-dil-vs-prmt-btn {
+        #ch-promo-dil-vs-prmt-btn,
+        #ch-promo-dil-vs-sgroi-btn {
             background: #198754;
             border-color: #198754;
             color: #fff;
@@ -106,6 +108,8 @@
         #ch-promo-prmt-menu-btn.show,
         #ch-promo-dil-vs-prmt-btn:hover,
         #ch-promo-dil-vs-prmt-btn:focus,
+        #ch-promo-dil-vs-sgroi-btn:hover,
+        #ch-promo-dil-vs-sgroi-btn:focus,
         #ch-promo-zero-sold-menu-btn:hover,
         #ch-promo-zero-sold-menu-btn:focus,
         #ch-promo-zero-sold-menu-btn.show {
@@ -654,6 +658,12 @@
                         </ul>
                         @endif
                     </div>
+                    @if(in_array($channelPromoChannel, ['aliexpress', 'shein'], true))
+                    <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-sgroi-btn"
+                        title="Same Dil slabs as Dil vs PRMT. Maps Dil% to Target SGROI%. S PRC auto-updates so SGROI equals the target when AL30 &gt; 0. If AL30 = 0, use 0 Sold.">
+                        <i class="fas fa-sliders-h"></i> SGROI
+                    </button>
+                    @endif
                     @endunless
                     @if($channelPromoShowZeroSoldRules)
                     <div class="btn-group">
@@ -882,6 +892,52 @@
             </div>
         </div>
     </div>
+
+    @if(in_array($channelPromoChannel, ['aliexpress', 'shein'], true))
+    <div class="modal fade" id="chPromoDilVsSgroiModal" tabindex="-1" aria-labelledby="chPromoDilVsSgroiModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="chPromoDilVsSgroiModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> Dil vs Target SGROI
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2" id="ch-promo-dil-sgroi-help">
+                        Same Dil slabs as <strong>Dil vs PRMT</strong>. Map Dil% to <strong>Target SGROI%</strong>.
+                        Dil is <strong>SKU-wise</strong> (OV L30 ÷ INV).
+                        Changing any slab number fills the <strong>Target SGROI%</strong> column.
+                        <strong>S PRC auto-applies</strong> so <strong>SGROI = Target</strong>
+                        (<code>S PRC = (LP × (1 + SGROI%/100) + Ship) / margin</code>)
+                        on selected or visible SKUs with <strong>AL30 &gt; 0</strong> only.
+                        If <strong>AL30 = 0</strong>, this rule is skipped (use <strong>0 Sold</strong>).
+                        <strong>Save Rule</strong> stores the slabs.
+                        If <strong>INV is 0</strong>, this rule is skipped.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="ch-promo-dil-sgroi-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Dil%</th>
+                                    <th style="width:45%;" class="text-end">Target SGROI%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ch-promo-dil-sgroi-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="ch-promo-dil-sgroi-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="ch-promo-dil-sgroi-apply-btn"
+                        title="Save Dil→Target SGROI slabs. S PRC also auto-applies when Dil slab changes.">
+                        <i class="fas fa-save me-1"></i>Save Rule
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     @if($channelPromoShowZeroSoldDilRule)
     <div class="modal fade" id="chPromoZeroSoldVsDilModal" tabindex="-1" aria-labelledby="chPromoZeroSoldVsDilModalLabel" aria-hidden="true">
@@ -3054,6 +3110,22 @@
             { key: 'pink', label: 'Pink Dil (50%+)', groi: 70 },
         ];
         let chPromoZeroSoldDilRules = CH_PEF_ZERO_SOLD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        const CH_PEF_DIL_SGROI_DEFAULTS = (function() {
+            const rules = [];
+            let sgroi = 70;
+            for (let min = 0; min < 24; min += 3) {
+                const max = min + 3;
+                rules.push({
+                    key: min + '-' + max,
+                    label: min === 0 ? '0.01–3%' : (min + '–' + max + '%'),
+                    sgroi: sgroi
+                });
+                sgroi -= 1;
+            }
+            rules.push({ key: '24-25', label: '24–25%', sgroi: sgroi });
+            return rules;
+        })();
+        let chPromoDilSgroiRules = CH_PEF_DIL_SGROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chPromoZeroSoldDilRun = {
             active: false,
             paused: false,
@@ -3487,13 +3559,18 @@
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
+            const dilSgroi = (!zeroSold && typeof chPromoDilSgroiRuleSprice === 'function')
+                ? chPromoDilSgroiRuleSprice(d)
+                : 0;
             const start = zeroSold > 0
                 ? zeroSold
-                : (chPromoIsTemuPromoChannel()
-                    ? chPromoTemuDiscountedStart(d)
-                    : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0));
-            const live = zeroSold > 0
-                ? zeroSold
+                : (dilSgroi > 0
+                    ? dilSgroi
+                    : (chPromoIsTemuPromoChannel()
+                        ? chPromoTemuDiscountedStart(d)
+                        : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0)));
+            const live = (zeroSold > 0 || dilSgroi > 0)
+                ? (zeroSold > 0 ? zeroSold : dilSgroi)
                 : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
             if (!(live > 0)) return 0;
             return chPromoCapSpriceToLmp(d, live);
@@ -3538,6 +3615,9 @@
             }
             if (typeof chPromoScheduleDilPrmtAutoApply === 'function') {
                 chPromoScheduleDilPrmtAutoApply();
+            }
+            if (typeof chPromoScheduleDilSgroiAutoApply === 'function') {
+                chPromoScheduleDilSgroiAutoApply();
             }
         }
         function chPromoSkuDil(d) {
@@ -4371,6 +4451,31 @@
         }
         function chPromoPrmtForDil(dil) {
             return chPromoPrmtForRuleKey(chPromoDilSlabKey(dil));
+        }
+        function chPromoDilSgroiEnabled() {
+            return typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel();
+        }
+        function chPromoSgroiForRuleKey(key) {
+            const rule = chPromoDilSgroiRules.find(function(r) { return r.key === key; });
+            if (!rule) return null;
+            const n = Number(rule.sgroi);
+            return isFinite(n) ? n : null;
+        }
+        /** Dil slab → Target SGROI% for sold SKUs (AL30 > 0, INV > 0). */
+        function chPromoDilSgroiForRow(d) {
+            if (!chPromoDilSgroiEnabled() || !d || !chPromoIsChildRow(d)) return null;
+            if (chPromoInv(d) <= 0) return null;
+            if (typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d)) return null;
+            if (typeof chPromoHasSaleQty === 'function' && !chPromoHasSaleQty(d)) return null;
+            return chPromoSgroiForRuleKey(chPromoDilSlabKey(chPromoDil(d)));
+        }
+        function chPromoDilSgroiRuleSprice(d) {
+            const roi = chPromoDilSgroiForRow(d);
+            if (roi == null) return 0;
+            const target = typeof chPromoSpriceFromTargetRoi === 'function'
+                ? chPromoSpriceFromTargetRoi(d, roi)
+                : 0;
+            return (target > 0) ? chPromoRound2(target) : 0;
         }
         /** Canonical B2B discount from Dil% (0.01–3 → 12, then −1 each 3% slab, 24–25 → 1). */
         function chPromoB2bDiscDefaultForKey(key) {
@@ -5274,6 +5379,321 @@
                 }
                 return res;
             });
+        }
+
+        function cascadeChPromoDilSgroiFromFirst() {
+            const $rows = $('#ch-promo-dil-sgroi-tbody tr');
+            if (!$rows.length) return;
+            const firstVal = parseFloat($rows.eq(0).find('.ch-promo-dil-sgroi-input').val());
+            if (!isFinite(firstVal)) return;
+            $rows.each(function(i) {
+                const sgroi = firstVal - i;
+                const $inp = $(this).find('.ch-promo-dil-sgroi-input');
+                if (i > 0) $inp.val(sgroi);
+                const key = String($(this).attr('data-key') || '');
+                const rule = chPromoDilSgroiRules.find(function(r) { return r.key === key; });
+                if (rule) rule.sgroi = sgroi;
+            });
+        }
+        function chPromoOnDilSgroiNumberChanged(inputEl) {
+            const first = $('#ch-promo-dil-sgroi-tbody .ch-promo-dil-sgroi-input').get(0);
+            if (inputEl === first) {
+                cascadeChPromoDilSgroiFromFirst();
+            } else {
+                readChPromoDilSgroiRulesFromModal();
+            }
+            if (typeof table !== 'undefined' && table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+            if (typeof chPromoScheduleDilSgroiAutoApply === 'function') {
+                chPromoScheduleDilSgroiAutoApply({ force: true, saveRules: true });
+            }
+        }
+        function renderChPromoDilSgroiModalTable() {
+            const $tb = $('#ch-promo-dil-sgroi-tbody');
+            if (!$tb.length) return;
+            $tb.empty();
+            chPromoDilSgroiRules.forEach(function(r, idx) {
+                const sgroi = isFinite(Number(r.sgroi)) ? Number(r.sgroi) : 0;
+                const first = idx === 0;
+                $tb.append(
+                    '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                    + '<td>' + String(r.label || r.key) + '</td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm ch-promo-dil-sgroi-input" '
+                    + 'step="0.1" value="' + sgroi + '" data-idx="' + idx + '"'
+                    + (first ? ' title="Changing this sets following slabs to −1 each"' : '')
+                    + '>'
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readChPromoDilSgroiRulesFromModal() {
+            $('#ch-promo-dil-sgroi-tbody tr').each(function() {
+                const key = String($(this).attr('data-key') || '');
+                const val = parseFloat($(this).find('.ch-promo-dil-sgroi-input').val());
+                const rule = chPromoDilSgroiRules.find(function(r) { return r.key === key; });
+                if (!rule) return;
+                rule.sgroi = isFinite(val) ? val : 0;
+            });
+            return chPromoDilSgroiRules.map(function(r) {
+                return { key: r.key, label: r.label, sgroi: Number(r.sgroi) || 0 };
+            });
+        }
+        async function loadChPromoDilSgroiRules() {
+            if (!chPromoDilSgroiEnabled() || !$('#ch-promo-dil-sgroi-tbody').length) return;
+            $('#ch-promo-dil-sgroi-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: CH_PROMO_RULES_BASE + '/dil-sgroi',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    chPromoDilSgroiRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                }
+                renderChPromoDilSgroiModalTable();
+                $('#ch-promo-dil-sgroi-status').text(res && res.is_default
+                    ? 'Using first-time defaults (70, then −1 each Dil slab). Save Rule stores slabs. S PRC auto-applies when Dil slab changes.'
+                    : 'Loaded Dil vs Target SGROI rules for this page.');
+                if (typeof table !== 'undefined' && table) {
+                    try { table.redraw(true); } catch (e) { /* ignore */ }
+                }
+                if (typeof chPromoScheduleDilSgroiAutoApply === 'function') {
+                    chPromoScheduleDilSgroiAutoApply();
+                }
+                if (typeof updateSummary === 'function') updateSummary();
+            } catch (e) {
+                renderChPromoDilSgroiModalTable();
+                $('#ch-promo-dil-sgroi-status').text('Could not load saved rules — showing defaults.');
+                if (typeof chPromoScheduleDilSgroiAutoApply === 'function') {
+                    chPromoScheduleDilSgroiAutoApply();
+                }
+            }
+        }
+        function saveChPromoDilSgroiRules(opts) {
+            opts = opts || {};
+            const rules = readChPromoDilSgroiRulesFromModal();
+            return $.ajax({
+                url: CH_PROMO_RULES_BASE + '/dil-sgroi',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': chPromoCsrf(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                contentType: 'application/json',
+                data: JSON.stringify({ rules: rules, _token: chPromoCsrf() }),
+            }).then(function(res) {
+                if (res && Array.isArray(res.rules)) {
+                    chPromoDilSgroiRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                    if (!opts.silent) renderChPromoDilSgroiModalTable();
+                }
+                if (!opts.silent) $('#ch-promo-dil-sgroi-status').text('Saved.');
+                if (!opts.fromAutoApply && typeof chPromoScheduleDilSgroiAutoApply === 'function') {
+                    chPromoScheduleDilSgroiAutoApply({ force: true });
+                }
+                return res;
+            });
+        }
+        async function saveChPromoDilSgroiRulesOnly() {
+            const $btn = $('#ch-promo-dil-sgroi-apply-btn');
+            const html = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
+            try {
+                await saveChPromoDilSgroiRules();
+                chPromoToast('success', 'Dil vs Target SGROI rules saved');
+            } catch (xhr) {
+                chPromoToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+            } finally {
+                $btn.prop('disabled', false).html(html);
+            }
+        }
+
+        let chPromoDilSgroiLastSlab = {};
+        let chPromoDilSgroiAutoTimer = null;
+        let chPromoDilSgroiAutoBusy = false;
+        let chPromoDilSgroiAutoPending = null;
+        let chPromoDilSgroiAutoSaveTimer = null;
+        function chPromoDilSgroiSlabStoreKey() {
+            return 'chPromoDilSgroiSlab:' + CHANNEL_PROMO_CHANNEL;
+        }
+        function chPromoLoadDilSgroiLastSlabs() {
+            try {
+                const raw = localStorage.getItem(chPromoDilSgroiSlabStoreKey());
+                const obj = raw ? JSON.parse(raw) : {};
+                chPromoDilSgroiLastSlab = (obj && typeof obj === 'object') ? obj : {};
+            } catch (e) {
+                chPromoDilSgroiLastSlab = {};
+            }
+        }
+        function chPromoSaveDilSgroiLastSlabs() {
+            try {
+                localStorage.setItem(chPromoDilSgroiSlabStoreKey(), JSON.stringify(chPromoDilSgroiLastSlab));
+            } catch (e) { /* ignore quota */ }
+        }
+        function chPromoStampDilSgroiLastSlabs(items) {
+            (items || []).forEach(function(item) {
+                const d = (item && (item.d || (item.row && item.row.getData()))) || {};
+                const sku = chPromoSkuKey(chPromoSku(d));
+                if (!sku) return;
+                chPromoDilSgroiLastSlab[sku] = chPromoDilSlabKey(chPromoDil(d));
+            });
+            chPromoSaveDilSgroiLastSlabs();
+        }
+        function chPromoDilSgroiEligible(d) {
+            return chPromoDilSgroiForRow(d) != null;
+        }
+        function chPromoCollectDilSgroiAutoTargets(forceAll) {
+            const seen = new Set();
+            const out = [];
+            function consider(row, d) {
+                if (!chPromoDilSgroiEligible(d)) return;
+                const sku = chPromoSkuKey(chPromoSku(d));
+                if (!sku || seen.has(sku)) return;
+                seen.add(sku);
+                const slab = chPromoDilSlabKey(chPromoDil(d));
+                const prev = chPromoDilSgroiLastSlab[sku];
+                if (!forceAll && prev && prev === slab) return;
+                out.push({ row: row, d: d });
+            }
+            if (typeof table !== 'undefined' && table && typeof chPromoEachTableRow === 'function') {
+                chPromoEachTableRow(function(row, d) { consider(row, d); });
+            }
+            chPromoDilPrmtDatasetRows().forEach(function(d) {
+                if (!d) return;
+                consider(chPromoDilPrmtRowAdapter(d), d);
+            });
+            chPromoSaveDilSgroiLastSlabs();
+            return out;
+        }
+        function chPromoScheduleDilSgroiAutoApply(opts) {
+            opts = opts || {};
+            if (!chPromoDilSgroiEnabled()) return;
+            if (!Object.keys(chPromoDilSgroiLastSlab).length) chPromoLoadDilSgroiLastSlabs();
+            if (opts.saveRules) {
+                clearTimeout(chPromoDilSgroiAutoSaveTimer);
+                chPromoDilSgroiAutoSaveTimer = setTimeout(function() {
+                    Promise.resolve(saveChPromoDilSgroiRules({ silent: true, fromAutoApply: true }))
+                        .catch(function() { /* keep applying */ });
+                }, 600);
+            }
+            if (chPromoDilSgroiAutoBusy) {
+                chPromoDilSgroiAutoPending = opts;
+                return;
+            }
+            clearTimeout(chPromoDilSgroiAutoTimer);
+            chPromoDilSgroiAutoTimer = setTimeout(function() {
+                chPromoRunDilSgroiAutoApply(opts);
+            }, opts.force ? 300 : 500);
+        }
+        async function applyChPromoDilSgroiToTargets(targets, label, opts) {
+            opts = opts || {};
+            const silent = !!opts.silent;
+            readChPromoDilSgroiRulesFromModal();
+            if (!targets.length) {
+                if (!silent) chPromoToast('error', 'No sold rows (AL30 > 0, INV > 0) to apply Dil vs Target SGROI');
+                return;
+            }
+            const jobs = [];
+            let filled = 0;
+            let skipped = 0;
+            const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                for (let i = 0; i < targets.length; i++) {
+                    const item = targets[i];
+                    const d = item.row.getData();
+                    const roi = chPromoDilSgroiForRow(d);
+                    const target = (roi != null) ? chPromoSpriceFromTargetRoi(d, roi) : 0;
+                    if (!(target > 0)) { skipped++; continue; }
+                    const fill = chPromoFinalSpriceToSave(d, target);
+                    if (!(fill > 0)) { skipped++; continue; }
+                    const prev = chPromoGetSprice(d);
+                    const patch = Object.assign(chPromoSpricePatch(fill), {
+                        DIL_SGROI_APPLIED: true,
+                        DIL_SGROI_TARGET: roi,
+                    });
+                    item.row.update(patch);
+                    filled++;
+                    if (!chPromoNearlyEqual(prev, fill)) {
+                        jobs.push({ row: item.row, sku: chPromoSku(d), price: fill, sgroi: roi });
+                    }
+                }
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            if (jobs.length) {
+                await chPromoMapLimit(jobs, 8, async function(job) {
+                    if (!job.sku) return;
+                    try {
+                        if (chPromoShouldPersistClearThenSprice()) {
+                            await chPromoPersistClearThenSprice(job.row, job.price, true, {
+                                row: job.row,
+                                sku: job.sku,
+                            });
+                        } else {
+                            await saveChannelSpriceAndPromo(job.row, job.price, true, {
+                                row: job.row,
+                                sku: job.sku,
+                            });
+                        }
+                    } catch (e) { /* keep going */ }
+                });
+            }
+            chPromoStampDilSgroiLastSlabs(targets);
+            if (silent) {
+                if (filled || jobs.length) {
+                    chPromoToast(
+                        'success',
+                        'Dil vs Target SGROI: Dil slab changed → S PRC updated on '
+                            + (jobs.length || filled) + ' SKU(s).'
+                    );
+                }
+                if (typeof table !== 'undefined' && table) {
+                    try { table.redraw(true); } catch (e) { /* ignore */ }
+                }
+                return;
+            }
+            chPromoToast(
+                filled ? 'success' : 'error',
+                'Dil vs Target SGROI (' + label + '): S PRC from Target SGROI → ' + filled + ' SKU(s)'
+                    + (skipped ? ('; skipped ' + skipped) : '') + '.'
+            );
+            if (typeof table !== 'undefined' && table) {
+                try { table.redraw(true); } catch (e) { /* ignore */ }
+            }
+        }
+        async function chPromoRunDilSgroiAutoApply(opts) {
+            opts = opts || {};
+            if (!chPromoDilSgroiEnabled()) return;
+            if (chPromoDilSgroiAutoBusy) {
+                chPromoDilSgroiAutoPending = opts;
+                return;
+            }
+            if ((typeof table === 'undefined' || !table) && !chPromoDilPrmtDatasetRows().length) return;
+            const targets = chPromoCollectDilSgroiAutoTargets(!!opts.force);
+            if (!targets.length) {
+                if (chPromoDilSgroiAutoPending) {
+                    const next = chPromoDilSgroiAutoPending;
+                    chPromoDilSgroiAutoPending = null;
+                    chPromoScheduleDilSgroiAutoApply(next);
+                }
+                return;
+            }
+            chPromoDilSgroiAutoBusy = true;
+            try {
+                await applyChPromoDilSgroiToTargets(targets, 'dil-change', { silent: true });
+            } catch (e) {
+                /* next Dil change retries */
+            } finally {
+                chPromoDilSgroiAutoBusy = false;
+                if (chPromoDilSgroiAutoPending) {
+                    const next = chPromoDilSgroiAutoPending;
+                    chPromoDilSgroiAutoPending = null;
+                    chPromoScheduleDilSgroiAutoApply(next);
+                }
+            }
         }
 
         function cascadeChPromoCvrCpnFromInput(inputEl) {
@@ -6885,6 +7305,8 @@
                         }
                     } else if (ebay1PrmtOnly) {
                         if (typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d)) {
+                            skipSprice = true;
+                        } else if (typeof chPromoDilSgroiRuleSprice === 'function' && chPromoDilSgroiRuleSprice(d) > 0) {
                             skipSprice = true;
                         } else if (chPromoInv(d) > 0) {
                             newPrice = chPromoSpriceFromStdPrmtCpnWith(d, { prmt: prmt });
@@ -8641,13 +9063,18 @@
                 const key = chPromoSkuKey(sku);
                 if (!sku || !key || queuedKeys.has(key)) return;
                 const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
+                const dilSgroi = (!zeroSold && typeof chPromoDilSgroiRuleSprice === 'function')
+                    ? chPromoDilSgroiRuleSprice(d)
+                    : 0;
                 const start = zeroSold > 0
                     ? zeroSold
-                    : (chPromoIsTemuPromoChannel()
-                        ? chPromoTemuDiscountedStart(d)
-                        : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d)));
-                const fill = zeroSold > 0
-                    ? zeroSold
+                    : (dilSgroi > 0
+                        ? dilSgroi
+                        : (chPromoIsTemuPromoChannel()
+                            ? chPromoTemuDiscountedStart(d)
+                            : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d))));
+                const fill = (zeroSold > 0 || dilSgroi > 0)
+                    ? (zeroSold > 0 ? zeroSold : dilSgroi)
                     : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
                 if (!(fill > 0)) return;
                 const finalFill = (typeof chPromoFinalSpriceToSave === 'function')
@@ -10055,6 +10482,10 @@
                 chPromoLoadDilLastSlabs();
                 Promise.resolve(loadChPromoDilPrmtRules()).catch(function() { /* defaults */ });
             }
+            if (typeof loadChPromoDilSgroiRules === 'function' && chPromoDilSgroiEnabled()) {
+                chPromoLoadDilSgroiLastSlabs();
+                Promise.resolve(loadChPromoDilSgroiRules()).catch(function() { /* defaults */ });
+            }
             if (CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE && typeof loadChPromoZeroSoldDilRules === 'function') {
                 chPromoLoadZeroSoldLastDilBands();
                 Promise.resolve(loadChPromoZeroSoldDilRules()).then(function() {
@@ -10201,7 +10632,8 @@
                             + (CHANNEL_PROMO_CHANNEL === 'aliexpress'
                                 ? ' with <strong>AL30 &gt; 0</strong> only. If <strong>AL30 = 0</strong>, this rule is skipped (use <strong>0 sold vs ROI</strong>).'
                                 : ' (no AL30 filter — row checkboxes not required).')
-                            + ' <strong>Save Rule</strong> stores the slabs. If INV is 0, PRMT% is <strong>0</strong>.';
+                            + ' <strong>S PRC for sold SKUs comes from <em>Dil vs Target SGROI</em></strong> (the SGROI button), not from this PRMT% table. '
+                            + '<strong>Save Rule</strong> stores the slabs. If INV is 0, PRMT% is <strong>0</strong>.';
                     }
                 } else if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
@@ -10277,6 +10709,19 @@
             $(document).off('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input')
                 .on('input.chPromoDilCascade change.chPromoDilCascade', '#ch-promo-dil-prmt-tbody .ch-promo-dil-prmt-input', function() {
                     chPromoOnDilPrmtNumberChanged(this);
+                });
+
+            $('#ch-promo-dil-vs-sgroi-btn').off('click.chpromo').on('click.chpromo', function(e) {
+                e.preventDefault();
+                const modalEl = document.getElementById('chPromoDilVsSgroiModal');
+                if (!modalEl) return;
+                renderChPromoDilSgroiModalTable();
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+            $('#ch-promo-dil-sgroi-apply-btn').off('click.chpromo').on('click.chpromo', saveChPromoDilSgroiRulesOnly);
+            $(document).off('input.chPromoDilSgroiCascade change.chPromoDilSgroiCascade', '#ch-promo-dil-sgroi-tbody .ch-promo-dil-sgroi-input')
+                .on('input.chPromoDilSgroiCascade change.chPromoDilSgroiCascade', '#ch-promo-dil-sgroi-tbody .ch-promo-dil-sgroi-input', function() {
+                    chPromoOnDilSgroiNumberChanged(this);
                 });
 
             if (CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES) {
@@ -10681,6 +11126,8 @@
         window.chPromoIsEndedListing = chPromoIsEndedListing;
         window.chPromoSpriceFromStdTPromo = chPromoSpriceFromStdTPromo;
         window.chPromoLiveSprice = chPromoLiveSprice;
+        window.chPromoDilSgroiRuleSprice = chPromoDilSgroiRuleSprice;
+        window.chPromoDilSgroiForRow = chPromoDilSgroiForRow;
         window.chPromoOverwriteStoredSpriceFromRules = chPromoOverwriteStoredSpriceFromRules;
         window.applyChannelSpriceFromStdChange = applyChannelSpriceFromStdChange;
         window.chPromoPersistClearThenSprice = chPromoPersistClearThenSprice;
