@@ -17,6 +17,18 @@
         .badge-tt1-ads-raw:not(.bg-primary) {
             color: #000 !important;
         }
+        .tt1-video-title-btn {
+            color: #0d6efd;
+            font-size: 1.1rem;
+            line-height: 1;
+        }
+        .tt1-video-title-btn:hover { color: #0a58ca; }
+        #tt1-video-title-modal-body {
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
     </style>
 @endsection
 
@@ -68,6 +80,18 @@
                            placeholder="Search campaign, product, video, status…">
                 </div>
                 <div id="tt1-ads-raw-table" style="height: calc(100vh - 320px);"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="tt1-video-title-modal" tabindex="-1" aria-labelledby="tt1-video-title-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="tt1-video-title-modal-label">Video title</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="tt1-video-title-modal-body"></div>
             </div>
         </div>
     </div>
@@ -130,7 +154,35 @@
                 { title: 'Product ID', field: 'product_id', minWidth: 140 },
                 { title: 'Report range', field: 'report_range', width: 120, hozAlign: 'center' },
                 { title: 'Creative type', field: 'creative_type', minWidth: 130 },
-                { title: 'Video title', field: 'video_title', minWidth: 200 },
+                {
+                    title: 'Video title',
+                    field: 'video_title',
+                    width: 110,
+                    hozAlign: 'center',
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const v = String(cell.getValue() == null ? '' : cell.getValue()).trim();
+                        if (!v || v === '-' || v.toUpperCase() === 'N/A') {
+                            return '';
+                        }
+                        return '<button type="button" class="btn btn-sm btn-link p-0 tt1-video-title-btn" title="View video title"><i class="fas fa-align-left"></i></button>';
+                    },
+                    cellClick: function(_e, cell) {
+                        const v = String(cell.getValue() == null ? '' : cell.getValue()).trim();
+                        if (!v || v === '-' || v.toUpperCase() === 'N/A') {
+                            return;
+                        }
+                        const row = cell.getRow().getData() || {};
+                        $('#tt1-video-title-modal-label').text((row.campaign_name || 'Video title') + (row.sku ? ' · ' + row.sku : ''));
+                        $('#tt1-video-title-modal-body').text(v);
+                        const el = document.getElementById('tt1-video-title-modal');
+                        if (window.bootstrap && bootstrap.Modal) {
+                            bootstrap.Modal.getOrCreateInstance(el).show();
+                        } else {
+                            $(el).modal('show');
+                        }
+                    },
+                },
                 { title: 'Video ID', field: 'video_id', minWidth: 140 },
                 { title: 'TikTok account', field: 'tiktok_account', minWidth: 150 },
                 { title: 'Time posted', field: 'time_posted', minWidth: 160 },
