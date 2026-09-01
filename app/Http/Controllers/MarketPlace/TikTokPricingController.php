@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Services\TikTok2ShopService;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
+use App\Support\ProductMasterShip;
 
 class TikTokPricingController extends Controller
 {
@@ -599,10 +600,8 @@ class TikTokPricingController extends Controller
             // Add values from product_master
             $values = $productMaster->Values ?: [];
             $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
-            // TikTok 1 → normal product_master ship (same as /price-increase). TikTok 2 → Ship BB (Values ship_bb) only.
-            $ttShip = $isTiktokTwo
-                ? (isset($values["ship_bb"]) ? floatval($values["ship_bb"]) : (isset($productMaster->ship_bb) ? floatval($productMaster->ship_bb) : 0))
-                : floatval($values["ship"] ?? 0);
+            // Shipping Master "Ship" column (ship_base + charges). Never ship_bb / BB Ship.
+            $ttShip = ProductMasterShip::forPricing(is_array($values) ? $values : [], $productMaster);
             $processedItem["Ship_productmaster"] = $ttShip;
             $processedItem["TT Ship"] = $ttShip;
             $processedItem["COGS"] = $values["cogs"] ?? 0;
@@ -1561,11 +1560,8 @@ class TikTokPricingController extends Controller
                 if ($productMaster) {
                     $pmValues = $productMaster->Values ?: [];
                     $lp = $pmValues['lp'] ?? 0;
-                    // TikTok 1 → normal product_master ship (same as /price-increase). TikTok 2 → Ship BB (Values ship_bb) only.
-                    $ttShip = $isTiktokTwo
-                        ? (isset($pmValues['ship_bb']) ? floatval($pmValues['ship_bb']) : (isset($productMaster->ship_bb) ? floatval($productMaster->ship_bb) : 0))
-                        : floatval($pmValues['ship'] ?? 0);
-                    $ship = $ttShip;
+                    // Shipping Master "Ship" column (not BB Ship / ship_bb).
+                    $ship = ProductMasterShip::forPricing(is_array($pmValues) ? $pmValues : [], $productMaster);
                     if ($sprice > 0) {
                         $sgpft = (($sprice * $marginFactor - $lp - $ship) / $sprice) * 100;
                         $values['SGPFT'] = round($sgpft, 2);

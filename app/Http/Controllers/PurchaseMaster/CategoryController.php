@@ -1050,8 +1050,10 @@ class CategoryController extends Controller
                 'ship' => 'nullable|numeric',
                 'ship_base' => 'nullable|numeric',
                 'ship_bb' => 'nullable|numeric',
+                'ship_bb_base' => 'nullable|numeric',
                 'tt_ship' => 'nullable|numeric',
                 'temu_ship' => 'nullable|numeric',
+                'temu_ship_base' => 'nullable|numeric',
                 'ebay2_ship' => 'nullable|numeric',
                 'gofo' => 'nullable|numeric',
                 'temu_gofo' => 'nullable|numeric',
@@ -1158,7 +1160,7 @@ class CategoryController extends Controller
                 }
             }
 
-            foreach (['ship', 'ship_base', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
+            foreach (['ship', 'ship_base', 'ship_bb', 'ship_bb_base', 'tt_ship', 'temu_ship', 'temu_ship_base', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'] as $shipField) {
                 if (array_key_exists($shipField, $validated)) {
                     $v = $validated[$shipField];
                     $values[$shipField] = ($v !== null && $v !== '') ? (float) $v : null;
@@ -1209,6 +1211,8 @@ class CategoryController extends Controller
             }
 
             $this->syncShippingMasterShipTotal($values, $validated, $oldValues);
+            $this->syncShippingMasterTemuShipTotal($values, $validated, $oldValues);
+            $this->syncShippingMasterShipBbTotal($values, $validated, $oldValues);
 
             // Save the updated Values
             $product->Values = $values;
@@ -1311,8 +1315,10 @@ class CategoryController extends Controller
         return [
             'ship' => 'Ship',
             'ship_bb' => 'Ship BB',
+            'ship_bb_base' => 'Ship BB Base',
             'tt_ship' => 'TT 1 Ship',
             'temu_ship' => 'Temu ship',
+            'temu_ship_base' => 'Temu ship Base',
             'temu_gofo' => 'Temu GOFO',
             'ebay2_ship' => 'Ebay2 ship',
             'gofo' => 'GOFO',
@@ -1383,7 +1389,7 @@ class CategoryController extends Controller
             'handling_charge',
             'o_size_charge',
             'pr_charge',
-            'ship', 'ship_base', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship',
+            'ship', 'ship_base', 'ship_bb', 'ship_bb_base', 'tt_ship', 'temu_ship', 'temu_ship_base', 'ebay2_ship',
             'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
         ];
 
@@ -1721,6 +1727,166 @@ class CategoryController extends Controller
         $values['ship'] = $total;
         $validated['ship_base'] = $base;
         $validated['ship'] = $total;
+    }
+
+    /**
+     * Persist Temu ship as slab + handling + o-size (same total the Temu ship column shows).
+     * temu_ship_base keeps the slab rate so later charge edits do not double-count.
+     *
+     * @param  array<string,mixed>  $values
+     * @param  array<string,mixed>  $validated
+     * @param  array<string,mixed>  $oldValues
+     */
+    private function syncShippingMasterTemuShipTotal(array &$values, array &$validated, array $oldValues): void
+    {
+        $chargesTouched = array_key_exists('handling_charge', $validated)
+            || array_key_exists('o_size_charge', $validated)
+            || array_key_exists('label_type', $validated);
+
+        if (array_key_exists('temu_ship', $validated) && array_key_exists('temu_ship_base', $validated)) {
+            return;
+        }
+
+        $chargeAmount = static function (array $src, string $key): float {
+            $raw = $src[$key] ?? 0;
+            if ($raw === null || $raw === '') {
+                return 0.0;
+            }
+
+            return is_numeric($raw) ? (float) $raw : 0.0;
+        };
+
+        if (array_key_exists('temu_ship', $validated) && ! array_key_exists('temu_ship_base', $validated)) {
+            $incoming = $validated['temu_ship'];
+            if ($incoming !== null && $incoming !== '' && is_numeric($incoming)) {
+                $base = (float) $incoming;
+                $total = round(
+                    $base
+                    + $chargeAmount($values, 'handling_charge')
+                    + $chargeAmount($values, 'o_size_charge'),
+                    2
+                );
+                $values['temu_ship_base'] = $base;
+                $values['temu_ship'] = $total;
+                $validated['temu_ship_base'] = $base;
+                $validated['temu_ship'] = $total;
+            }
+
+            return;
+        }
+
+        if (! $chargesTouched) {
+            return;
+        }
+
+        $base = null;
+        if (isset($values['temu_ship_base']) && is_numeric($values['temu_ship_base'])) {
+            $base = (float) $values['temu_ship_base'];
+        } elseif (isset($oldValues['temu_ship_base']) && is_numeric($oldValues['temu_ship_base'])) {
+            $base = (float) $oldValues['temu_ship_base'];
+        } elseif (isset($oldValues['temu_ship']) && is_numeric($oldValues['temu_ship'])) {
+            $oldType = $oldValues['label_type'] ?? '';
+            $compact = strtolower(preg_replace('/[\s_-]+/', '', trim((string) $oldType)));
+            $legacyHalf = 0.0;
+            if ($compact === 'osize') {
+                $legacyHalf = round($chargeAmount($oldValues, 'o_size_charge') * 0.5, 2);
+            }
+            $base = (float) $oldValues['temu_ship'] - $legacyHalf;
+        }
+        if ($base === null) {
+            return;
+        }
+
+        $total = round(
+            $base
+            + $chargeAmount($values, 'handling_charge')
+            + $chargeAmount($values, 'o_size_charge'),
+            2
+        );
+        $values['temu_ship_base'] = $base;
+        $values['temu_ship'] = $total;
+        $validated['temu_ship_base'] = $base;
+        $validated['temu_ship'] = $total;
+    }
+
+    /**
+     * Persist Ship BB as slab + handling + o-size (same total the Ship BB column shows).
+     * ship_bb_base keeps the slab rate so later charge edits do not double-count.
+     *
+     * @param  array<string,mixed>  $values
+     * @param  array<string,mixed>  $validated
+     * @param  array<string,mixed>  $oldValues
+     */
+    private function syncShippingMasterShipBbTotal(array &$values, array &$validated, array $oldValues): void
+    {
+        $chargesTouched = array_key_exists('handling_charge', $validated)
+            || array_key_exists('o_size_charge', $validated)
+            || array_key_exists('label_type', $validated);
+
+        if (array_key_exists('ship_bb', $validated) && array_key_exists('ship_bb_base', $validated)) {
+            return;
+        }
+
+        $chargeAmount = static function (array $src, string $key): float {
+            $raw = $src[$key] ?? 0;
+            if ($raw === null || $raw === '') {
+                return 0.0;
+            }
+
+            return is_numeric($raw) ? (float) $raw : 0.0;
+        };
+
+        if (array_key_exists('ship_bb', $validated) && ! array_key_exists('ship_bb_base', $validated)) {
+            $incoming = $validated['ship_bb'];
+            if ($incoming !== null && $incoming !== '' && is_numeric($incoming)) {
+                $base = (float) $incoming;
+                $total = round(
+                    $base
+                    + $chargeAmount($values, 'handling_charge')
+                    + $chargeAmount($values, 'o_size_charge'),
+                    2
+                );
+                $values['ship_bb_base'] = $base;
+                $values['ship_bb'] = $total;
+                $validated['ship_bb_base'] = $base;
+                $validated['ship_bb'] = $total;
+            }
+
+            return;
+        }
+
+        if (! $chargesTouched) {
+            return;
+        }
+
+        $base = null;
+        if (isset($values['ship_bb_base']) && is_numeric($values['ship_bb_base'])) {
+            $base = (float) $values['ship_bb_base'];
+        } elseif (isset($oldValues['ship_bb_base']) && is_numeric($oldValues['ship_bb_base'])) {
+            $base = (float) $oldValues['ship_bb_base'];
+        } elseif (isset($oldValues['ship_bb']) && is_numeric($oldValues['ship_bb'])) {
+            $oldType = $oldValues['label_type'] ?? '';
+            $compact = strtolower(preg_replace('/[\s_-]+/', '', trim((string) $oldType)));
+            $legacy = 0.0;
+            if ($compact === 'osize') {
+                $legacy = $chargeAmount($oldValues, 'o_size_charge');
+            }
+            $base = (float) $oldValues['ship_bb'] - $legacy;
+        }
+        if ($base === null) {
+            return;
+        }
+
+        $total = round(
+            $base
+            + $chargeAmount($values, 'handling_charge')
+            + $chargeAmount($values, 'o_size_charge'),
+            2
+        );
+        $values['ship_bb_base'] = $base;
+        $values['ship_bb'] = $total;
+        $validated['ship_bb_base'] = $base;
+        $validated['ship_bb'] = $total;
     }
 
     /**

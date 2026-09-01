@@ -1056,6 +1056,15 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // AliExpress Sprice → live listing. Skips SGROI < 40% when that page button is ON.
+        $schedule->command('aliexpress:push-sprice-daily')
+            ->dailyAt('17:15')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-push-sprice-daily-ist')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
     }
 
     /**
@@ -1327,7 +1336,7 @@ class Kernel extends ConsoleKernel
 
         $ist($schedule->command('amazon:store-utilization-counts')
             ->dailyAt('18:20')
-            ->timezone('Asia/Kolkata')
+            ->timezone('Asia/Kolkata')  
             ->name('amazon-utilization-counts')
             ->withoutOverlapping()
             ->runInBackground()

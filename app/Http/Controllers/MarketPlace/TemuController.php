@@ -1431,6 +1431,8 @@ class TemuController extends Controller
                 $parent = $pm ? $pm->parent : '';
                 $lp = 0;
                 $temuShip = 0;
+                $handlingCharge = null;
+                $oSizeCharge = null;
                 if ($pm) {
                     $values = is_array($pm->Values)
                         ? $pm->Values
@@ -1445,6 +1447,8 @@ class TemuController extends Controller
                         $lp = floatval($pm->lp);
                     }
                     $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
+                    $handlingCharge = $values['handling_charge'] ?? null;
+                    $oSizeCharge = $values['o_size_charge'] ?? null;
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
@@ -1464,6 +1468,8 @@ class TemuController extends Controller
                     'fb_price' => round($fbPrice, 2),
                     'lp' => $lp,
                     'temu_ship' => $temuShip,
+                    'handling_charge' => $handlingCharge ?? null,
+                    'o_size_charge' => $oSizeCharge ?? null,
                     'pft' => round($pft, 2),
                     'order_status' => $item->order_status ?? '',
                     'fulfillment_mode' => $item->fulfillment_mode ?? '',
@@ -1541,6 +1547,8 @@ class TemuController extends Controller
                 $parent = $pm ? $pm->parent : '';
                 $lp = 0;
                 $temuShip = 0;
+                $handlingCharge = null;
+                $oSizeCharge = null;
                 if ($pm) {
                     $values = is_array($pm->Values)
                         ? $pm->Values
@@ -1555,6 +1563,8 @@ class TemuController extends Controller
                         $lp = floatval($pm->lp);
                     }
                     $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $pm);
+                    $handlingCharge = $values['handling_charge'] ?? null;
+                    $oSizeCharge = $values['o_size_charge'] ?? null;
                 }
                 $basePrice = $item->base_price_total !== null ? (float)$item->base_price_total : 0;
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
@@ -1574,6 +1584,8 @@ class TemuController extends Controller
                     'fb_price' => round($fbPrice, 2),
                     'lp' => $lp,
                     'temu_ship' => $temuShip,
+                    'handling_charge' => $handlingCharge ?? null,
+                    'o_size_charge' => $oSizeCharge ?? null,
                     'pft' => round($pft, 2),
                     'order_status' => $item->order_status ?? '',
                     'fulfillment_mode' => $item->fulfillment_mode ?? '',
@@ -2389,6 +2401,177 @@ class TemuController extends Controller
         }
 
         $dataView->save();
+    }
+
+    /**
+     * SGPRFT / SROI for a saved SPRICE — same formulas as saveTemuSprice.
+     *
+     * @return array{sgprft: float, sroi: float}
+     */
+    private function temuSpriceMetricsForSku(string $sku, float $sprice): array
+    {
+        $productMaster = ProductMaster::where('sku', $sku)->first()
+            ?? ProductMaster::whereRaw('TRIM(sku) = ?', [$sku])->first();
+
+        $lp = 0.0;
+        $temuShip = 0.0;
+        if ($productMaster) {
+            $values = is_array($productMaster->Values)
+                ? $productMaster->Values
+                : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+            if (! is_array($values)) {
+                $values = [];
+            }
+            foreach ($values as $k => $v) {
+                if (strtolower((string) $k) === 'lp') {
+                    $lp = (float) $v;
+                    break;
+                }
+            }
+            if ($lp === 0.0 && isset($productMaster->lp)) {
+                $lp = (float) $productMaster->lp;
+            }
+            $temuShip = ProductMasterTemuShip::forPricing($values, $productMaster);
+        }
+
+        $margin = TemuShopifySalesService::temuMarginDecimal();
+        $sRecovery = $sprice * 0.88;
+        $profitRoi = $sRecovery * $margin - $lp - $temuShip;
+        $profitPft = $sprice * $margin - $lp - $temuShip;
+        $sgprftPercent = $sprice > 0 ? ($profitPft / $sprice) * 100 : 0.0;
+        $sroiPercent = $lp > 0 ? ($profitRoi / $lp) * 100 : 0.0;
+
+        return [
+            'sgprft' => round($sgprftPercent, 2),
+            'sroi' => round($sroiPercent, 2),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $skus
+     */
+    private function stripTemuSpriceFromValue(array $value): array
+    {
+        foreach ([
+            'sprice', 'SPRICE', 'sgprft_percent', 'sroi_percent',
+            'SGPFT', 'SROI', 'SPFT', 'spft', 'sprice_status', 'spft_percent',
+        ] as $field) {
+            unset($value[$field]);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<int, string>  $skus
+     */
+    private function clearTemuSpriceForSkus(array $skus, bool $isTemu2): int
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            $skus
+        ))));
+        if ($skus === []) {
+            return 0;
+        }
+        if ($isTemu2 && ! Schema::hasTable('temu2_data_view')) {
+            return 0;
+        }
+
+        $modelClass = $isTemu2 ? Temu2DataView::class : TemuDataView::class;
+        $cleared = 0;
+        foreach (array_chunk($skus, 400) as $chunk) {
+            foreach ($modelClass::whereIn('sku', $chunk)->get() as $record) {
+                $value = is_array($record->value)
+                    ? $record->value
+                    : (json_decode((string) ($record->value ?? ''), true) ?: []);
+                if (! is_array($value)) {
+                    $value = [];
+                }
+                $next = $this->stripTemuSpriceFromValue($value);
+                if ($next === $value) {
+                    continue;
+                }
+                $record->value = $next;
+                $record->save();
+                $cleared++;
+            }
+        }
+
+        return $cleared;
+    }
+
+    /**
+     * Clear stored S PRC, then write the rule prices. Display and save use the same number.
+     */
+    public function saveTemuSpriceBatch(Request $request)
+    {
+        return $this->saveTemuChannelSpriceBatch($request, false);
+    }
+
+    /**
+     * Temu 2 batch — same clear-then-rule persist as Temu 1.
+     */
+    public function saveTemu2SpriceBatch(Request $request)
+    {
+        return $this->saveTemuChannelSpriceBatch($request, true);
+    }
+
+    private function saveTemuChannelSpriceBatch(Request $request, bool $isTemu2)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            if (! is_array($updates)) {
+                $updates = [];
+            }
+
+            $normalized = [];
+            $skus = [];
+            foreach ($updates as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $sku = trim((string) ($row['sku'] ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $sprice = isset($row['sprice']) ? (float) $row['sprice'] : 0.0;
+                $skus[] = $sku;
+                $normalized[] = ['sku' => $sku, 'sprice' => $sprice];
+            }
+
+            $cleared = 0;
+            if ($request->boolean('clear_first')) {
+                $cleared += $this->clearTemuSpriceForSkus($skus, $isTemu2);
+            }
+
+            $ok = 0;
+            foreach ($normalized as $row) {
+                $sku = $row['sku'];
+                $sprice = $row['sprice'];
+                if ($sprice > 0) {
+                    $metrics = $this->temuSpriceMetricsForSku($sku, $sprice);
+                    $this->writeTemuChannelSprice($sku, $sprice, $metrics['sgprft'], $metrics['sroi'], $isTemu2);
+                    $ok++;
+                } elseif (! $request->boolean('clear_first')) {
+                    $this->writeTemuChannelSprice($sku, 0, 0, 0, $isTemu2);
+                    $cleared++;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'ok' => $ok,
+                'cleared' => $cleared,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error batch-saving Temu SPRICE: '.$e->getMessage());
+
+            return response()->json([
+                'error' => 'Failed to save SPRICE batch',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -3281,6 +3464,8 @@ class TemuController extends Controller
                 // Get values from product master - check Values JSON first, then direct properties
                 $lp = 0;
                 $temuShip = 0;
+                $handlingCharge = null;
+                $oSizeCharge = null;
                 
                 if ($productMaster) {
                     // Check Values JSON first (like eBay does)
@@ -3302,8 +3487,10 @@ class TemuController extends Controller
                         $lp = floatval($productMaster->LP);
                     }
                     
-                    // Temu ship: use stored per-SKU value if it already exists; otherwise regular ship.
+                    // Temu ship: stored total (slab + handling + o-size) when Shipping Master has saved it.
                     $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
+                    $handlingCharge = $values['handling_charge'] ?? null;
+                    $oSizeCharge = $values['o_size_charge'] ?? null;
                 }
                 
                 // Get image_path (like eBay does)
@@ -3663,6 +3850,8 @@ class TemuController extends Controller
                     'temu_l60' => $temuL60,
                     'dil_percent' => $dilPercent,
                     'temu_ship' => $temuShip,
+                    'handling_charge' => $handlingCharge,
+                    'o_size_charge' => $oSizeCharge,
                     'temu_price' => round($temuPrice, 2),
                     // Temu 1 reference price (populated only on the Temu 2 endpoint).
                     'temu1_base_price' => round((float) $temu1BasePrice, 2),
@@ -6313,41 +6502,19 @@ class TemuController extends Controller
             $dataViewRecords = TemuDataView::whereIn('sku', $skus)->get();
             
             foreach ($dataViewRecords as $record) {
-                $value = $record->value ?? [];
-                
-                // Remove sprice and related calculated fields from value array
-                $fieldsToRemove = [
-                    'sprice',
-                    'spft_percent',
-                    'sroi_percent',
-                    'ship',
-                    'amazon_price_applied_at',
-                    'r_price_applied_at',
-                    'sprice_status'
-                ];
-                
-                $wasModified = false;
-                foreach ($fieldsToRemove as $field) {
-                    if (isset($value[$field])) {
-                        unset($value[$field]);
-                        $wasModified = true;
-                    }
+                $value = is_array($record->value)
+                    ? $record->value
+                    : (json_decode((string) ($record->value ?? ''), true) ?: []);
+                if (! is_array($value)) {
+                    $value = [];
                 }
-                
-                // Update or delete the record
-                if ($wasModified) {
-                    if (empty($value)) {
-                        // If value array is empty, delete the record
-                        $record->delete();
-                    } else {
-                        // Otherwise, update with cleaned value
-                        $record->update([
-                            'value' => $value,
-                            'updated_at' => now()
-                        ]);
-                    }
-                    $cleared++;
+                $next = $this->stripTemuSpriceFromValue($value);
+                if ($next === $value) {
+                    continue;
                 }
+                $record->value = $next;
+                $record->save();
+                $cleared++;
             }
 
             DB::commit();

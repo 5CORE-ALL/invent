@@ -401,8 +401,23 @@
                     }
                 },
                 {
+                    title: "Hdl Charge",
+                    field: "handling_charge",
+                    headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
+                    hozAlign: "right",
+                    width: 90
+                },
+                {
+                    title: "O-Size Charge",
+                    field: "o_size_charge",
+                    headerTooltip: "O-Size Charge saved on Shipping Master (included in Temu Ship)",
+                    hozAlign: "right",
+                    width: 100
+                },
+                {
                     title: "Temu Ship",
                     field: "temu_ship",
+                    headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,

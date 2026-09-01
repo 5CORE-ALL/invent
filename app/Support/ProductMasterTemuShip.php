@@ -3,10 +3,10 @@
 namespace App\Support;
 
 /**
- * Temu ship for /temu-decrease and /temu2-decrease.
- * If Values.temu_ship already exists, use it and leave it (do not replace with regular ship).
- * If it is missing, fall back to regular ship; when Type is O-Size, add 50% of O-Size Charge.
- * Never writes back to Product Master.
+ * Temu ship for /temu-decrease, /temu2-decrease, and other Temu pricing.
+ * Prefers temu_ship_base + handling + o-size (what Shipping Master saves).
+ * If only a legacy stored temu_ship exists, strips the old 50% O-Size add-on
+ * then adds handling + o-size. Never writes back to Product Master.
  */
 class ProductMasterTemuShip
 {
@@ -40,21 +40,57 @@ class ProductMasterTemuShip
 
     /**
      * Rate used on Temu decrease pages and SPRICE / sales math.
+     * Always includes Handling Charge + O-Size Charge when a slab base is known.
      */
     public static function forPricing(?array $values, $pm = null): float
     {
         $values = self::normalizeValues($values, $pm);
+        $handling = self::handlingCharge($values);
+        $oSize = self::oSizeCharge($values);
+
+        $temuBase = self::numericKey($values, 'temu_ship_base');
+        if ($temuBase !== null) {
+            return round($temuBase + $handling + $oSize, 2);
+        }
+
         $stored = self::stored($values, $pm);
         if ($stored !== null) {
-            return round($stored, 2);
+            $base = $stored - self::legacyOSizeHalf($values);
+
+            return round($base + $handling + $oSize, 2);
         }
 
-        $ship = self::regularShip($values, $pm);
-        if (self::isOSize($values)) {
-            $ship += self::oSizeCharge($values) * 0.5;
+        $shipBase = self::numericKey($values, 'ship_base');
+        if ($shipBase !== null) {
+            return round($shipBase + $handling + $oSize, 2);
         }
 
-        return round($ship, 2);
+        return round(self::regularShip($values, $pm), 2);
+    }
+
+    public static function handlingCharge(?array $values, $pm = null): float
+    {
+        $values = self::normalizeValues($values, $pm);
+
+        return self::chargeAmount($values, ['handling_charge', 'Handling Charge', 'handling-charge']);
+    }
+
+    public static function oSizeCharge(?array $values, $pm = null): float
+    {
+        $values = self::normalizeValues($values, $pm);
+
+        return self::chargeAmount($values, ['o_size_charge', 'O-Size Charge', 'o-size-charge']);
+    }
+
+    private static function legacyOSizeHalf(array $values): float
+    {
+        $raw = $values['label_type'] ?? $values['Label Type'] ?? $values['Label_Type'] ?? '';
+        $compact = strtolower(preg_replace('/[\s_-]+/', '', trim((string) $raw)));
+        if ($compact !== 'osize') {
+            return 0.0;
+        }
+
+        return round(self::oSizeCharge($values) * 0.5, 2);
     }
 
     private static function regularShip(array $values, $pm = null): float
@@ -77,22 +113,31 @@ class ProductMasterTemuShip
         return 0.0;
     }
 
-    private static function isOSize(array $values): bool
+    private static function numericKey(array $values, string $key): ?float
     {
-        $raw = $values['label_type'] ?? $values['Label Type'] ?? $values['Label_Type'] ?? '';
-        $compact = strtolower(preg_replace('/[\s_-]+/', '', trim((string) $raw)));
-
-        return $compact === 'osize';
-    }
-
-    private static function oSizeCharge(array $values): float
-    {
-        $raw = $values['o_size_charge'] ?? $values['O-Size Charge'] ?? $values['o-size-charge'] ?? 0;
+        $raw = $values[$key] ?? null;
         if ($raw === null || $raw === '' || ! is_numeric($raw)) {
-            return 0.0;
+            return null;
         }
 
         return (float) $raw;
+    }
+
+    private static function chargeAmount(array $values, array $keys): float
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $values)) {
+                continue;
+            }
+            $raw = $values[$key];
+            if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+                return 0.0;
+            }
+
+            return (float) $raw;
+        }
+
+        return 0.0;
     }
 
     private static function normalizeValues(?array $values, $pm = null): array

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MiraklDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
+use App\Support\ProductMasterShipBb;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -59,11 +60,7 @@ class BestBuySalesController extends Controller
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                // BestBuy uses channel-specific Ship BB (Values['ship_bb']), matching /bestbuy-pricing
-                // and the marketplace_daily_metrics calculation. Falls back to pm->ship_bb column, then 0.
-                $ship = isset($values["ship_bb"])
-                    ? floatval($values["ship_bb"])
-                    : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
+                $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
                 $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 

@@ -52,6 +52,7 @@ use App\Models\EbayTwoDataView;
 use App\Models\Ebay2GeneralReport;
 use App\Models\ADVMastersDailyData;
 use App\Models\MarketplaceDailyMetric;
+use App\Support\ProductMasterShipBb;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -1386,9 +1387,7 @@ class AdsMasterController extends Controller
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
                 $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                // BestBuy uses channel-specific Ship BB (Values['ship_bb']), matching /bestbuy-pricing
-                // and the marketplace_daily_metrics calculation. Falls back to pm->ship_bb column, then 0.
-                $ship = isset($values['ship_bb']) ? (float) $values['ship_bb'] : ($pm->ship_bb ?? 0);
+                $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
             }
 
             // Profit per unit

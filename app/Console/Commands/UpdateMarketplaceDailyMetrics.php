@@ -35,6 +35,7 @@ use App\Services\SheinShopifySalesService;
 use App\Services\TemuShopifySalesService;
 use App\Support\EbayCampaignReportRollup;
 use App\Support\ProductMasterTemuShip;
+use App\Support\ProductMasterShipBb;
 use App\Models\AmazonOrder;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\EbayPromotedListingReport;
@@ -2292,13 +2293,7 @@ class UpdateMarketplaceDailyMetrics extends Command
                     $lp = floatval($pm->lp);
                 }
                 
-                // Get Ship — BestBuy uses channel-specific Ship BB (Values['ship_bb']),
-                // matching /bestbuy-pricing. Falls back to pm->ship_bb column, then 0.
-                if (isset($values['ship_bb'])) {
-                    $ship = (float) $values['ship_bb'];
-                } elseif (isset($pm->ship_bb)) {
-                    $ship = floatval($pm->ship_bb);
-                }
+                $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
                 
                 // Get Weight Act
                 if (isset($values['wt_act'])) {

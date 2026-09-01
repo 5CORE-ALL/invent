@@ -42,6 +42,7 @@ use App\Models\TemuDataView;
 use App\Models\TemuListingStatus;
 use App\Models\WalmartListingStatus;
 use App\Services\AmazonSpApiService;
+use App\Support\ProductMasterTemuShip;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -147,7 +148,7 @@ class MovementPricingMaster extends Controller
             $map  = (float) ($values['map'] ?? 0);
             $lp   = (float) ($values['lp'] ?? 0);
             $ship = (float) ($values['ship'] ?? 0);
-            $temuship = (float) ($values['temu_ship'] ?? 0);
+            $temuship = ProductMasterTemuShip::forPricing($values, $product);
 
             $amazon  = $amazonData[$sku] ?? null;
             $ebay    = $ebayData[$sku] ?? null;
@@ -192,6 +193,8 @@ class MovementPricingMaster extends Controller
                 'LP'      => $lp,
                 'SHIP'    => $ship,
                 'temu_ship' => $temuship,
+                'handling_charge' => $values['handling_charge'] ?? null,
+                'o_size_charge' => $values['o_size_charge'] ?? null,
                 'is_parent' => $isParent,
                 'inv' => $shopifyData->get($sku)?->inv ?? 0,
                 'avgCvr' => $avgCvr,

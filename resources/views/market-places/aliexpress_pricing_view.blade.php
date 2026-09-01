@@ -90,6 +90,41 @@
             outline-offset: 2px;
             box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35);
         }
+        #aliexpress-push-cross-badge.active-filter {
+            outline: 3px solid #ffc107;
+            outline-offset: 2px;
+        }
+        #ae-stop-low-sgroi-btn.is-on {
+            background: #dc3545;
+            color: #fff;
+            border-color: #dc3545;
+        }
+        #ae-stop-low-sgroi-btn .ae-low-sgroi-count {
+            background: #fff;
+            color: #dc3545;
+            font-weight: 700;
+        }
+        #ae-stop-low-sgroi-btn.is-on .ae-low-sgroi-count {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        #ae-stop-low-sgroi-btn #ae-min-sgroi-input {
+            width: 44px;
+            height: 22px;
+            padding: 0 2px;
+            margin: 0 2px;
+            border: 1px solid rgba(0,0,0,0.15);
+            border-radius: 4px;
+            background: #fff;
+            color: #212529;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+            line-height: 20px;
+        }
+        #ae-stop-low-sgroi-btn.is-on #ae-min-sgroi-input {
+            border-color: rgba(255,255,255,0.55);
+        }
 
         /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
         #aeBadgeChartModal.modal {
@@ -204,6 +239,10 @@
                                 style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                                 title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
                                 <i class="fas fa-exclamation-triangle"></i> 0</span>
+                            <span class="badge fs-6 p-2" id="aliexpress-push-cross-badge"
+                                style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Cross rows: Sprice is not pushed (live Price ≠ Sprice). Click to show only those rows. Click again to clear.">
+                                <i class="fa-solid fa-xmark"></i> 0</span>
                         </div>
                     </div>
 
@@ -297,6 +336,25 @@
                             title="Push each selected SKU's SPRICE (or Price if no SPRICE) live to AliExpress">
                             <i class="fas fa-cloud-upload-alt"></i> Ali
                         </button>
+                        <button type="button" id="ae-stop-low-sgroi-btn"
+                            class="btn btn-sm btn-outline-danger {{ !empty($aeStopLowSgroi) ? 'is-on' : '' }}"
+                            data-on="{{ !empty($aeStopLowSgroi) ? '1' : '0' }}"
+                            title="Change the % to set the cutoff. Count matches current filters with SGROI below that %. When ON, the daily cron (17:15 IST) skips those SKUs. Manual Push still works.">
+                            <i class="fas fa-ban"></i> Stop &lt;
+                            <input type="number" id="ae-min-sgroi-input" min="1" max="300" step="1"
+                                value="{{ (int) ($aeMinSgroi ?? 40) }}"
+                                title="SGROI% cutoff — edits the badge, count, filter, and cron">
+                            %
+                            <span class="badge rounded-pill ae-low-sgroi-count" id="ae-low-sgroi-count">0</span>
+                        </button>
+                        <select id="ae-sgroi-filter" class="form-select form-select-sm" style="width:140px;"
+                            title="Filter by SGROI% (same $ as the Sprice column). Matches the Stop badge cutoff.">
+                            <option value="all">All SGROI</option>
+                            <option value="lt40" id="ae-sgroi-filter-lt">SGROI &lt; {{ (int) ($aeMinSgroi ?? 40) }}%</option>
+                            <option value="40-75">SGROI 40–75%</option>
+                            <option value="75-125">SGROI 75–125%</option>
+                            <option value="gt125">SGROI 125%+</option>
+                        </select>
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success" title="Export CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
@@ -473,8 +531,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="aeLmpModalSaveBtn"><i class="fas fa-save me-1"></i> Save</button>
+                    <span id="aeLmpAutosaveStatus" class="me-auto small text-muted">Changes save automatically</span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -553,22 +611,201 @@
         let priceLt80LmpFilterActive = false;
         let lmpMissingFilterActive = false;
         let blueTriangleFilterActive = false;
+        let aePushCrossFilterActive = false;
+        let aeStopLowSgroi = {{ !empty($aeStopLowSgroi) ? 'true' : 'false' }};
+        let AE_MIN_SGROI = {{ (int) ($aeMinSgroi ?? 40) }};
         let aeBadgeHoverTimer = null;
 
-        function aeRowSpriceForAlert(data) {
+        function aeReadMinSgroi() {
+            const n = parseInt($('#ae-min-sgroi-input').val(), 10);
+            if (!isFinite(n) || n < 1) return 40;
+            return Math.min(300, n);
+        }
+        function aeSyncStopSgroiUi() {
+            const n = AE_MIN_SGROI;
+            const $input = $('#ae-min-sgroi-input');
+            if ($input.length && String($input.val()) !== String(n)) $input.val(n);
+            $('#ae-sgroi-filter-lt').text('SGROI < ' + n + '%');
+            $('#ae-stop-low-sgroi-btn').attr('title',
+                'Change the % to set the cutoff. Count = current filters with SGROI < ' + n
+                + '%. When ON, the daily cron (17:15 IST) skips those SKUs. Manual Push still works.');
+            $('#ae-sgroi-filter').attr('title',
+                'Filter by SGROI% (same $ as the Sprice column). Stop cutoff is ' + n + '%.');
+        }
+        function aeSaveStopSgroiGuard(opts) {
+            opts = opts || {};
+            return $.ajax({
+                url: '{{ route("aliexpress.pricing.push.guard") }}',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: {
+                    stop_sgroi_lt_40: aeStopLowSgroi ? 1 : 0,
+                    min_sgroi: AE_MIN_SGROI
+                }
+            }).done(function(res) {
+                if (res && res.min_sgroi != null) AE_MIN_SGROI = parseInt(res.min_sgroi, 10) || AE_MIN_SGROI;
+                aeSyncStopSgroiUi();
+                if (typeof applyFilters === 'function') applyFilters();
+                if (typeof updateSummary === 'function') updateSummary();
+                if (opts.notify) {
+                    aeNotify(aeStopLowSgroi
+                        ? ('Cron will skip SGROI < ' + AE_MIN_SGROI + '%')
+                        : ('Cutoff saved: SGROI < ' + AE_MIN_SGROI + '%'),
+                        'success');
+                }
+            });
+        }
+
+        function aeEntryIsIgnored(e) {
+            if (window.LmpIgnore && typeof LmpIgnore.isIgnored === 'function') {
+                return LmpIgnore.isIgnored(e);
+            }
+            if (!e) return false;
+            const v = e.ignored;
+            if (v === true || v === 1 || v === '1') return true;
+            if (typeof v === 'string') {
+                return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
+            }
+            return false;
+        }
+        function aeLmpLowestFromEntries(entries) {
+            let min = null;
+            let link = null;
+            let ignoredMin = null;
+            (entries || []).forEach(function(e) {
+                const p = parseFloat(e && e.price);
+                if (!(p > 0)) return;
+                if (aeEntryIsIgnored(e)) {
+                    if (ignoredMin === null || p < ignoredMin) ignoredMin = p;
+                    return;
+                }
+                if (min === null || p < min) {
+                    min = p;
+                    link = e.link || link;
+                }
+            });
+            return { lmp: min, lmp_link: link, ignored_price: ignoredMin };
+        }
+        function aeEffectiveLmp(row) {
+            if (!row) return 0;
+            const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+            if (entries.length) {
+                const extra = aeLmpLowestFromEntries(entries);
+                return extra.lmp > 0 ? extra.lmp : 0;
+            }
+            return parseFloat(row.lmp_price || row.lmp || row.LMP) || 0;
+        }
+
+        function aeRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
             let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             if (typeof chPromoLiveSprice === 'function') {
                 const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
-            return sprice;
+            if (!(sprice > 0)) sprice = parseFloat(data.price) || 0;
+            return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
+        }
+        function aeShouldCapSpriceToLmp() {
+            return true;
+        }
+        /** Visible S PRC: 0-sold Target GROI% / 0.80, then LMP-capped (Amazon S PRC column). */
+        function aeVisibleSprice(data) {
+            const raw = aeRuleSpriceRaw(data);
+            if (!(raw > 0)) return 0;
+            if (window.SpriceLmpCap) {
+                const cap = SpriceLmpCap.apply(data, raw, aeEffectiveLmp);
+                if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
+            }
+            const lmp = aeEffectiveLmp(data);
+            if (lmp > 0 && raw + 0.0001 >= lmp) return Math.round(lmp * 100) / 100;
+            return raw;
+        }
+        function aeSpriceMetrics(data, spriceOpt) {
+            const sprice = spriceOpt != null ? Number(spriceOpt) : aeVisibleSprice(data);
+            if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };
+            const zeroSold = typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(data);
+            const margin = zeroSold && typeof chPromoZeroSoldTakehomeMargin === 'function'
+                ? chPromoZeroSoldTakehomeMargin(data)
+                : ((typeof chPromoTakehomeMargin === 'function')
+                    ? chPromoTakehomeMargin(data)
+                    : (parseFloat(data && data._margin) || 1));
+            const lp = (typeof chPromoLp === 'function')
+                ? chPromoLp(data)
+                : (parseFloat(data && data.lp) || 0);
+            const ship = (typeof chPromoShipCost === 'function')
+                ? chPromoShipCost(data)
+                : (parseFloat(data && data.ship) || 0);
+            const sgpft = Math.round(((sprice * margin - ship - lp) / sprice) * 100);
+            const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100) : 0;
+            return { sgpft: sgpft, sroi: sroi };
+        }
+        function aePrepareSpriceToSave(data, sprice) {
+            let shown = Number(sprice) || 0;
+            if (!(shown > 0)) shown = aeVisibleSprice(data) || parseFloat(data && data.price) || 0;
+            if (shown > 0 && window.SpriceLmpCap && aeShouldCapSpriceToLmp(data)) {
+                const cap = SpriceLmpCap.apply(data, shown, aeEffectiveLmp);
+                if (cap && cap.shown > 0) shown = Math.round(cap.shown * 100) / 100;
+            } else if (shown > 0) {
+                shown = Math.round(shown * 100) / 100;
+            }
+            const m = aeSpriceMetrics(data, shown);
+            return { sprice: shown, sgpft: m.sgpft, sroi: m.sroi };
+        }
+        function aeRowSpriceForAlert(data) {
+            return aeVisibleSprice(data);
+        }
+        function aePersistVisibleSprices() {
+            if (typeof chPromoOverwriteStoredSpriceFromRules === 'function') {
+                chPromoOverwriteStoredSpriceFromRules({ silent: true, skip_push: true });
+            }
+            if (!table || typeof table.getRows !== 'function') return;
+            const updates = [];
+            table.getRows().forEach(function(row) {
+                const d = row.getData() || {};
+                if (d.is_parent || !d.sku) return;
+                const shown = aeVisibleSprice(d);
+                if (!(shown > 0)) return;
+                const stored = Math.round((parseFloat(d.sprice || d.SPRICE) || 0) * 100) / 100;
+                if (stored === shown) return;
+                const m = aeSpriceMetrics(d, shown);
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                row.update({ sprice: shown, sgpft: m.sgpft, sroi: m.sroi, SPRICE_STATUS: null, SPRICE_PUSHED_VALUE: null });
+                updates.push({ sku: d.sku, sprice: shown });
+            });
+            if (updates.length) saveSpriceUpdates(updates, { clearFirst: false });
+        }
+        function aeStoredSprice(data) {
+            return Math.round((parseFloat(data && (data.sprice || data.SPRICE)) || 0) * 100) / 100;
+        }
+        function aeSpricePushed(data) {
+            if (!data || data.is_parent) return false;
+            const stored = aeStoredSprice(data);
+            const live = parseFloat(data.price) || 0;
+            if (stored > 0 && live > 0 && Math.round(stored * 100) === Math.round(live * 100)) return true;
+            const st = String(data.SPRICE_STATUS || '').toLowerCase();
+            const pv = parseFloat(data.SPRICE_PUSHED_VALUE);
+            if ((st === 'pushed' || st === 'applied') && pv > 0 && stored > 0
+                && Math.round(pv * 100) === Math.round(stored * 100)) {
+                return true;
+            }
+            return false;
+        }
+        function aeHasPushCross(data) {
+            if (!data || data.is_parent) return false;
+            return !aeSpricePushed(data);
+        }
+        function aeRowSgroi(data) {
+            return aeSpriceMetrics(data).sroi;
         }
         function aeHasBlueTriangle(data) {
             if (!data || data.is_parent) return false;
             const sprice = aeRowSpriceForAlert(data);
             const price = parseFloat(data.price) || 0;
-            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            if (!(sprice > 0) || !(price > 0) || Math.round(sprice * 100) === Math.round(price * 100)) return false;
+            const lmp = aeEffectiveLmp(data);
+            if (lmp > 0 && sprice + 0.0001 >= lmp) return false;
+            return true;
         }
         function syncAeTriangleBadgeState() {
             $('#aliexpress-blue-triangle-badge').css({
@@ -656,7 +893,33 @@
 
         function saveSpriceUpdates(updates, opts) {
             opts = opts || {};
-            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
+            updates = (updates || []).map(function(u) {
+                const next = Object.assign({}, u);
+                if (!(Number(next.sprice) > 0) || !next.sku || !table) return next;
+                let row = null;
+                try {
+                    const rows = table.searchRows('sku', '=', next.sku);
+                    if (rows && rows.length) row = rows[0];
+                } catch (e) { /* ignore */ }
+                const d = row && row.getData ? (row.getData() || {}) : {};
+                const prepared = aePrepareSpriceToSave(d, next.sprice);
+                next.sprice = prepared.sprice;
+                if (row && prepared.sprice > 0) {
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    row.update({
+                        sprice: prepared.sprice,
+                        sgpft: prepared.sgpft,
+                        sroi: prepared.sroi,
+                        SPRICE_STATUS: null,
+                        SPRICE_PUSHED_VALUE: null
+                    });
+                }
+                return next;
+            }).filter(function(u) {
+                return u && u.sku && Number(u.sprice) > 0;
+            });
+            if (!updates.length) return;
+            if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst === true) {
                 chPromoBatchClearThenSave(updates, function(next) {
                     saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
                 }, {
@@ -671,18 +934,22 @@
                 });
                 return;
             }
-            $.ajax({
-                url: '{{ route("aliexpress.pricing.save.sprice") }}',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: { updates: updates },
-                success: function(res) {
-                    if (res.success) console.log('AE SPRICE saved:', res.updated);
-                },
-                error: function(xhr) {
-                    console.error('AE SPRICE save error:', xhr.responseJSON);
-                }
-            });
+            const post = function() {
+                return $.ajax({
+                    url: '{{ route("aliexpress.pricing.save.sprice") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { updates: updates },
+                    success: function(res) {
+                        if (res.success) console.log('AE SPRICE saved:', res.updated);
+                    },
+                    error: function(xhr) {
+                        console.error('AE SPRICE save error:', xhr.responseJSON);
+                    }
+                });
+            };
+            if (typeof chPromoEnqueueSpriceSave === 'function') chPromoEnqueueSpriceSave(post);
+            else post();
         }
 
         function aeSamePriceTargetRows() {
@@ -727,16 +994,9 @@
                         : currentPrice - discountVal;
                 }
                 newSprice = roundToRetailPrice(Math.max(0.99, newSprice));
-
-                const margin = parseFloat(rowData._margin) || 1;
-                const lp     = parseFloat(rowData.lp)   || 0;
-                const ship   = parseFloat(rowData.ship)  || 0;
-                // Same formulas as GPFT / GROI
-                const sgpft  = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100) : 0;
-                const sroi   = lp > 0        ? Math.round(((newSprice * margin - lp - ship)  / lp)       * 100) : 0;
-
-                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
-                updates.push({ sku: sku, sprice: newSprice });
+                const prepared = aePrepareSpriceToSave(rowData, newSprice);
+                row.update({ sprice: prepared.sprice, sgpft: prepared.sgpft, sroi: prepared.sroi });
+                updates.push({ sku: sku, sprice: prepared.sprice });
                 updatedCount++;
             });
 
@@ -900,6 +1160,121 @@
             return sku.includes('PARENT');
         }
 
+        function aeRowMatchesFilters(d, opts) {
+            opts = opts || {};
+            if (!d) return false;
+            if (typeof d.getData === 'function') {
+                try { d = d.getData() || {}; } catch (e) { /* use original */ }
+            }
+            if (!d) return false;
+            const isParent = aeIsParentRow(d);
+            const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
+            const rowType    = $('#ae-row-type-filter').val() || 'skus';
+            const invFilter  = $('#ae-inv-filter').val() || 'all';
+            const gpftFilter = $('#ae-gpft-filter').val() || 'all';
+            const cvrFilter = $('#ae-cvr-filter').val() || 'all';
+            const roiFilter  = $('#ae-roi-filter').val() || 'all';
+            const sgroiFilter = opts.sgroiOverride != null
+                ? opts.sgroiOverride
+                : ($('#ae-sgroi-filter').val() || 'all');
+            const al30Filter = $('#ae-al30-filter').val() || 'all';
+            const soldFilter = $('#ae-sold-filter').val() || 'all';
+            const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
+            const parentRowsBypass = (rowType === 'parents' || rowType === 'all');
+
+            if (opts.skipPlay !== true && typeof isAePlayActive !== 'undefined' && isAePlayActive
+                && typeof aePlayUniqueParents !== 'undefined' && aePlayUniqueParents.length > 0
+                && typeof currentAePlayParentIndex !== 'undefined' && currentAePlayParentIndex >= 0) {
+                const currentKey = aePlayUniqueParents[currentAePlayParentIndex];
+                if (!currentKey) return true;
+                const p = normalizeAeParentKey(d.parent);
+                return p === currentKey || p === ('PARENT ' + currentKey);
+            }
+
+            if (rowType === 'parents' && !isParent) return false;
+            if (rowType !== 'parents' && rowType !== 'all' && isParent) return false;
+            if (skuSearch && !(String(d.sku || '').toLowerCase().includes(skuSearch))) return false;
+            if (isParent && parentRowsBypass) return true;
+
+            if (invFilter === 'zero' && (parseInt(d.inv, 10) || 0) !== 0) return false;
+            if (invFilter === 'more' && (parseInt(d.inv, 10) || 0) <= 0) return false;
+
+            if (gpftFilter !== 'all') {
+                const gpft = parseFloat(d.gpft) || 0;
+                if (gpftFilter === 'negative') { if (!(gpft < 0)) return false; }
+                else if (gpftFilter === '50plus') { if (!(gpft >= 50)) return false; }
+                else if (String(gpftFilter).includes('-')) {
+                    const [min, max] = gpftFilter.split('-').map(Number);
+                    if (!(gpft >= min && gpft < max)) return false;
+                }
+            }
+
+            if (cvrFilter !== 'all') {
+                const cvrRounded = Math.round((parseFloat(d.cvr) || 0) * 100) / 100;
+                if (cvrFilter === '0-0' && cvrRounded !== 0) return false;
+                if (cvrFilter === '0-2' && !(cvrRounded > 0 && cvrRounded <= 2)) return false;
+                if (cvrFilter === '2-4' && !(cvrRounded > 2 && cvrRounded <= 4)) return false;
+                if (cvrFilter === '4-7' && !(cvrRounded > 4 && cvrRounded <= 7)) return false;
+                if (cvrFilter === '7-13' && !(cvrRounded > 7 && cvrRounded <= 13)) return false;
+                if (cvrFilter === '13plus' && !(cvrRounded > 13)) return false;
+            }
+
+            if (roiFilter !== 'all') {
+                const roi = parseFloat(d.groi) || 0;
+                if (roiFilter === 'lt40' && !(roi < 40)) return false;
+                if (roiFilter === '40-75' && !(roi >= 40 && roi < 75)) return false;
+                if (roiFilter === '75-125' && !(roi >= 75 && roi < 125)) return false;
+                if (roiFilter === 'gt125' && !(roi >= 125)) return false;
+            }
+
+            if (sgroiFilter !== 'all') {
+                const sgroi = aeRowSgroi(d);
+                if (sgroiFilter === 'lt40' && !(sgroi < AE_MIN_SGROI)) return false;
+                if (sgroiFilter === '40-75' && !(sgroi >= AE_MIN_SGROI && sgroi < 75)) return false;
+                if (sgroiFilter === '75-125' && !(sgroi >= 75 && sgroi < 125)) return false;
+                if (sgroiFilter === 'gt125' && !(sgroi >= 125)) return false;
+            }
+
+            if (al30Filter !== 'all') {
+                if ((parseInt(d.inv, 10) || 0) <= 0) return false;
+                const al30 = parseFloat(d.al30) || 0;
+                if (al30Filter === '0' && al30 !== 0) return false;
+                if (al30Filter === '0-10' && !(al30 > 0 && al30 <= 10)) return false;
+                if (al30Filter === '10plus' && !(al30 > 10)) return false;
+            }
+
+            if (dilColor !== 'all') {
+                const inv = parseFloat(d.inv) || 0;
+                const ovL30 = parseFloat(d.ov_l30) || 0;
+                const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
+                if (dilColor === 'red' && !(dil < 25)) return false;
+                if (dilColor === 'green' && !(dil >= 25 && dil < 50)) return false;
+                if (dilColor === 'pink' && !(dil >= 50)) return false;
+            }
+
+            if (soldFilter === 'zero') {
+                if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) === 0)) return false;
+            } else if (soldFilter === 'more') {
+                if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) > 0)) return false;
+            }
+
+            if (opts.skipBadges !== true) {
+                if (lmpMissingFilterActive && window.LmpMissingBadge) {
+                    if (LmpMissingBadge.isParentRow(d) || LmpMissingBadge.hasLmp(d)) return false;
+                }
+                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
+                    if (!PriceGtLmpBadge.hasRedTriangle(d, 'price')) return false;
+                }
+                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
+                    if (!PriceLt80LmpBadge.hasPurpleTriangle(d, 'price')) return false;
+                }
+                if (blueTriangleFilterActive && !aeHasBlueTriangle(d)) return false;
+                if (aePushCrossFilterActive && !aeHasPushCross(d)) return false;
+            }
+
+            return true;
+        }
+
         function applyFilters() {
             if (window.ParentExpand && ParentExpand.isExpanded()) {
                 aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return ParentExpand expanded', {});
@@ -911,16 +1286,7 @@
                 return;
             }
 
-            const skuSearch  = ($('#pricing-sku-search').val() || '').toLowerCase().trim();
             const rowType    = $('#ae-row-type-filter').val() || 'skus';
-            const invFilter  = $('#ae-inv-filter').val() || 'all';
-            const gpftFilter = $('#ae-gpft-filter').val() || 'all';
-            const cvrFilter = $('#ae-cvr-filter').val() || 'all';
-            const roiFilter  = $('#ae-roi-filter').val() || 'all';
-            const al30Filter = $('#ae-al30-filter').val() || 'all';
-            const soldFilter = $('#ae-sold-filter').val() || 'all';
-            const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
-            const parentRowsBypass = (rowType === 'parents' || rowType === 'all');
             const full = aeFullTableData.length ? aeFullTableData : allTableData;
             const desired = aeRowsForType(rowType, full);
             const current = table.getData() || [];
@@ -950,100 +1316,8 @@
                 rowType: rowType, rawVal: $('#ae-row-type-filter').val(), currentParents: currentParents, desiredParents: desiredParents
             });
 
-            let aeFilterArgLogged = 0;
             table.setFilter(function(d) {
-                if (aeFilterArgLogged < 2) {
-                    aeFilterArgLogged++;
-                    aeDbgLog('C', 'aliexpress_pricing_view.blade.php:setFilter', 'filter callback arg', {
-                        argType: typeof d,
-                        keys: d && typeof d === 'object' ? Object.keys(d).slice(0, 12) : [],
-                        sku: d && d.sku,
-                        isParent: aeIsParentRow(d)
-                    });
-                }
-                if (!d) return false;
-                const isParent = aeIsParentRow(d);
-
-                if (isAePlayActive && aePlayUniqueParents.length > 0 && currentAePlayParentIndex >= 0) {
-                    const currentKey = aePlayUniqueParents[currentAePlayParentIndex];
-                    if (!currentKey) return true;
-                    const p = normalizeAeParentKey(d.parent);
-                    return p === currentKey || p === ('PARENT ' + currentKey);
-                }
-
-                if (rowType === 'parents' && !isParent) return false;
-                if (rowType !== 'parents' && rowType !== 'all' && isParent) return false;
-
-                if (skuSearch && !(String(d.sku || '').toLowerCase().includes(skuSearch))) return false;
-
-                if (isParent && parentRowsBypass) return true;
-
-                if (invFilter === 'zero' && (parseInt(d.inv, 10) || 0) !== 0) return false;
-                if (invFilter === 'more' && (parseInt(d.inv, 10) || 0) <= 0) return false;
-
-                if (gpftFilter !== 'all') {
-                    const gpft = parseFloat(d.gpft) || 0;
-                    if (gpftFilter === 'negative') { if (!(gpft < 0)) return false; }
-                    else if (gpftFilter === '50plus') { if (!(gpft >= 50)) return false; }
-                    else if (String(gpftFilter).includes('-')) {
-                        const [min, max] = gpftFilter.split('-').map(Number);
-                        if (!(gpft >= min && gpft < max)) return false;
-                    }
-                }
-
-                if (cvrFilter !== 'all') {
-                    const cvrRounded = Math.round((parseFloat(d.cvr) || 0) * 100) / 100;
-                    if (cvrFilter === '0-0' && cvrRounded !== 0) return false;
-                    if (cvrFilter === '0-2' && !(cvrRounded > 0 && cvrRounded <= 2)) return false;
-                    if (cvrFilter === '2-4' && !(cvrRounded > 2 && cvrRounded <= 4)) return false;
-                    if (cvrFilter === '4-7' && !(cvrRounded > 4 && cvrRounded <= 7)) return false;
-                    if (cvrFilter === '7-13' && !(cvrRounded > 7 && cvrRounded <= 13)) return false;
-                    if (cvrFilter === '13plus' && !(cvrRounded > 13)) return false;
-                }
-
-                if (roiFilter !== 'all') {
-                    const roi = parseFloat(d.groi) || 0;
-                    if (roiFilter === 'lt40' && !(roi < 40)) return false;
-                    if (roiFilter === '40-75' && !(roi >= 40 && roi < 75)) return false;
-                    if (roiFilter === '75-125' && !(roi >= 75 && roi < 125)) return false;
-                    if (roiFilter === 'gt125' && !(roi >= 125)) return false;
-                }
-
-                if (al30Filter !== 'all') {
-                    if ((parseInt(d.inv, 10) || 0) <= 0) return false;
-                    const al30 = parseFloat(d.al30) || 0;
-                    if (al30Filter === '0' && al30 !== 0) return false;
-                    if (al30Filter === '0-10' && !(al30 > 0 && al30 <= 10)) return false;
-                    if (al30Filter === '10plus' && !(al30 > 10)) return false;
-                }
-
-                if (dilColor !== 'all') {
-                    const inv = parseFloat(d.inv) || 0;
-                    const ovL30 = parseFloat(d.ov_l30) || 0;
-                    const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red' && !(dil < 25)) return false;
-                    if (dilColor === 'green' && !(dil >= 25 && dil < 50)) return false;
-                    if (dilColor === 'pink' && !(dil >= 50)) return false;
-                }
-
-                if (soldFilter === 'zero') {
-                    if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) === 0)) return false;
-                } else if (soldFilter === 'more') {
-                    if (!((parseInt(d.inv, 10) || 0) > 0 && (parseFloat(d.al30) || 0) > 0)) return false;
-                }
-
-                if (lmpMissingFilterActive && window.LmpMissingBadge) {
-                    if (LmpMissingBadge.isParentRow(d) || LmpMissingBadge.hasLmp(d)) return false;
-                }
-                if (priceGtLmpFilterActive && window.PriceGtLmpBadge) {
-                    if (!PriceGtLmpBadge.hasRedTriangle(d, 'price')) return false;
-                }
-                if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
-                    if (!PriceLt80LmpBadge.hasPurpleTriangle(d, 'price')) return false;
-                }
-                if (blueTriangleFilterActive && !aeHasBlueTriangle(d)) return false;
-
-                return true;
+                return aeRowMatchesFilters(d);
             });
 
             try { table.setPage(1); } catch (e) {}
@@ -1060,6 +1334,7 @@
                         priceGtLmpFilterActive = false;
                         priceLt80LmpFilterActive = false;
                         blueTriangleFilterActive = false;
+                        aePushCrossFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -1074,6 +1349,7 @@
                     if (on) {
                         blueTriangleFilterActive = false;
                         lmpMissingFilterActive = false;
+                        aePushCrossFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -1088,6 +1364,7 @@
                     if (on) {
                         blueTriangleFilterActive = false;
                         lmpMissingFilterActive = false;
+                        aePushCrossFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -1099,6 +1376,19 @@
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 lmpMissingFilterActive = false;
+                aePushCrossFilterActive = false;
+                aeZeroSoldActive = aeMoreSoldActive = false;
+                aeSyncFilterBadgeActiveClasses();
+            }
+            applyFilters();
+        });
+        $('#aliexpress-push-cross-badge').on('click', function() {
+            aePushCrossFilterActive = !aePushCrossFilterActive;
+            if (aePushCrossFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                lmpMissingFilterActive = false;
+                blueTriangleFilterActive = false;
                 aeZeroSoldActive = aeMoreSoldActive = false;
                 aeSyncFilterBadgeActiveClasses();
             }
@@ -1206,6 +1496,19 @@
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncAeTriangleBadgeState === 'function') syncAeTriangleBadgeState();
+            let pushCrossCount = 0;
+            let lowSgroiCount = 0;
+            (table ? table.getData() : rows).forEach(function(row) {
+                if (aeHasPushCross(row)) pushCrossCount++;
+                if (aeRowMatchesFilters(row, { sgroiOverride: 'lt40' })) lowSgroiCount++;
+            });
+            $('#aliexpress-push-cross-badge').html(
+                '<i class="fa-solid fa-xmark"></i> ' + pushCrossCount.toLocaleString()
+            );
+            $('#aliexpress-push-cross-badge').toggleClass('active-filter', aePushCrossFilterActive);
+            $('#ae-low-sgroi-count').text(lowSgroiCount.toLocaleString());
+            $('#ae-stop-low-sgroi-btn').toggleClass('is-on', !!aeStopLowSgroi)
+                .attr('data-on', aeStopLowSgroi ? '1' : '0');
             if ($('#ae-avg-roi-badge').length) {
                 $('#ae-avg-roi-badge').text(`GROI: ${Math.round(avgRoi)}%`);
             }
@@ -1574,8 +1877,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(cell.getValue(), d.lmp_price || d.lmp || d.LMP) : '');
-                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(cell.getValue(), d.lmp_price || d.lmp || d.LMP) : '');
+                            const lmpForTri = aeEffectiveLmp(d);
+                            const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(cell.getValue(), lmpForTri) : '');
+                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(cell.getValue(), lmpForTri) : '');
                             return money(cell.getValue()) + lmpTri + purpleTri;
                         }
                     },
@@ -1593,12 +1897,11 @@
                                     field: 'lmp',
                                     getValue: function(r) {
                                         const entries = r.lmp_entries || [];
-                                        const prices = entries.map(function(e) {
-                                            const p = e.price;
-                                            return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null;
-                                        }).filter(function(p) { return p !== null && p > 0; });
-                                        if (prices.length) return Math.min.apply(null, prices);
-                                        const v = parseFloat(r.lmp);
+                                        if (entries.length) {
+                                            const extra = aeLmpLowestFromEntries(entries);
+                                            return extra.lmp > 0 ? extra.lmp : null;
+                                        }
+                                        const v = parseFloat(r.lmp_price || r.lmp);
                                         return isFinite(v) && v > 0 ? v : null;
                                     }
                                 });
@@ -1606,20 +1909,22 @@
                             }
                             if (row.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const entries = row.lmp_entries || [];
-                            const prices = entries.map(function(e) {
-                                const p = e.price;
-                                return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null;
-                            }).filter(function(p) { return p !== null; });
-                            const lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
-                            const hasLmp = lowest !== null;
+                            const extra = aeLmpLowestFromEntries(entries);
+                            const lowest = extra.lmp;
+                            const hasLmp = lowest !== null && lowest > 0;
                             const displayNum = hasLmp ? (lowest % 1 === 0 ? lowest.toLocaleString() : lowest.toFixed(2)) : '';
-                            const count = entries.length;
+                            const activeCount = entries.filter(function(e) { return !aeEntryIsIgnored(e); }).length;
                             const skuEsc = (row.sku || '').replace(/"/g, '&quot;');
                             const redDot = '<span class="ae-lmp-missing-dot d-inline-flex align-items-center justify-content-center" style="width:14px;height:14px;border-radius:50%;background:#dc3545;box-shadow:0 0 0 1px rgba(0,0,0,.08);"></span>';
                             if (hasLmp) {
-                                const title = displayNum + ' (' + count + ' entries) — click to edit';
+                                const title = displayNum + ' (' + activeCount + ' active) — click to edit';
                                 return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1">' + displayNum + '</span> ' +
                                     '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
+                            }
+                            if (extra.ignored_price > 0) {
+                                const ign = extra.ignored_price % 1 === 0 ? extra.ignored_price.toLocaleString() : extra.ignored_price.toFixed(2);
+                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1" style="text-decoration:line-through;color:#94a3b8;">' + ign + '</span> ' +
+                                    '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="Ignored — not counted. Click to edit"><i class="fas fa-times text-danger"></i></button>';
                             }
                             return '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn d-inline-flex align-items-center justify-content-center border-0" data-sku="' + skuEsc + '" title="No LMP — click to add" style="min-width:auto;line-height:1;">' + redDot + '</button>';
                         },
@@ -1723,7 +2028,6 @@
                         field: "ship",
                         sorter: "number",
                         hozAlign: "right",
-                        visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1736,53 +2040,102 @@
                         field: "sprice",
                         sorter: "number",
                         hozAlign: "right",
-                        editor: "number",
-                        editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100) when a promo or coupon exists. If PRMT% and cvr% are both 0, S PRC stays at the live AliExpress Price (does not copy Amazon Std). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        editable: false,
+                        headerTooltip: "Rule price (0-sold = Target GROI% / 0.80, else Std − PRMT − cvr%), then LMP-capped like Amazon sold S PRC. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let value = parseFloat(cell.getValue()) || 0;
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(d);
-                                if (calc > 0) value = calc;
-                            }
-                            if (!(value > 0)) return '';
+                            const raw = aeRuleSpriceRaw(d);
+                            if (!(raw > 0)) return '';
+                            const lmpNow = aeEffectiveLmp(d);
+                            const cap = window.SpriceLmpCap
+                                ? SpriceLmpCap.apply(d, raw, aeEffectiveLmp)
+                                : null;
+                            let sprice = raw;
+                            const atOrAboveLmp = cap
+                                ? cap.alert
+                                : (lmpNow > 0 && sprice + 0.0001 >= lmpNow);
+                            if (cap && cap.shown > 0) sprice = cap.shown;
+                            else if (atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
+                            if (!(sprice > 0)) return '';
                             const live = parseFloat(d.price) || 0;
-                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
-                            const formatted = money(value);
-                            const priceHtml = overLmp
-                                ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
-                                : `<span style="font-weight:600;">${formatted}</span>`;
-                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                            const redTri = atOrAboveLmp
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                    + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>')
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                            const blueTri = (!atOrAboveLmp && live > 0 && sprice > 0
+                                && Math.round(live * 100) !== Math.round(sprice * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + sprice.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            if (!atOrAboveLmp && live > 0 && Math.round(live * 100) === Math.round(sprice * 100)) {
+                                return '<span style="color:#adb5bd;" title="Same as AliExpress Price">-</span>';
+                            }
+                            const formatted = '$' + sprice.toFixed(2);
+                            const priceHtml = atOrAboveLmp
+                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                                : '<span style="font-weight:600;">' + formatted + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                + priceHtml + blueTri + redTri + '</span>';
+                        }
+                    },
+                    {
+                        title: "Push",
+                        field: "_push",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 52,
+                        headerTooltip: "Double tick = Sprice is live on AliExpress. Cross = not pushed. Click a cross to push that SKU.",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const sku = String(d.sku || '').replace(/"/g, '&quot;');
+                            const status = String(d.SPRICE_STATUS || '').toLowerCase();
+                            if (status === 'processing') {
+                                return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing…"></i>';
+                            }
+                            if (aeSpricePushed(d)) {
+                                return '<i class="fa-solid fa-check-double" style="color:#28a745;font-size:16px;" title="Price pushed — live Price matches Sprice"></i>';
+                            }
+                            const shown = aeVisibleSprice(d) || aeStoredSprice(d);
+                            const title = shown > 0
+                                ? ('Not pushed — click to push $' + shown.toFixed(2))
+                                : 'Not pushed — set Sprice first';
+                            return '<button type="button" class="btn btn-sm ae-push-row-btn" data-sku="' + sku
+                                + '" title="' + title.replace(/"/g, '&quot;')
+                                + '" style="border:none;background:none;color:#dc3545;padding:0;cursor:pointer;font-size:16px;">'
+                                + '<i class="fa-solid fa-xmark"></i></button>';
+                        },
+                        cellClick: function(e, cell) {
+                            const $t = $(e.target);
+                            if (!$t.closest('.ae-push-row-btn').length) return;
+                            e.stopPropagation();
+                            const d = cell.getRow().getData() || {};
+                            if (d.is_parent || aeSpricePushed(d)) return;
+                            const sku = d.sku;
+                            const price = aeStoredSprice(d) || aeVisibleSprice(d);
+                            if (!sku || !(price > 0)) {
+                                aeNotify('Set Sprice first', 'warning');
+                                return;
+                            }
+                            cell.getRow().update({ SPRICE_STATUS: 'processing' });
+                            aePushUpdatesInChunks([{ sku: sku, price: price }], $t.closest('.ae-push-row-btn'));
                         }
                     },
                     {
                         title: "SGROI",
                         field: "sroi",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
+                            const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
+                            return av - bv;
+                        },
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let v = parseFloat(cell.getValue());
-                            if (typeof chPromoLiveSprice === 'function' && typeof chPromoLp === 'function') {
-                                const sprice = chPromoLiveSprice(d);
-                                const lp = chPromoLp(d);
-                                if (sprice > 0 && lp > 0 && typeof chPromoTakehomeMargin === 'function') {
-                                    v = ((sprice * chPromoTakehomeMargin(d) - lp - chPromoShipCost(d)) / lp) * 100;
-                                }
-                            }
+                            const v = aeSpriceMetrics(d).sroi;
                             if (isNaN(v) || v === 0) return '0%';
-                            // Same color ranges as GROI
                             let color;
                             if      (v < 40)  color = '#a00211';
                             else if (v < 75)  color = '#ffc107';
@@ -1794,20 +2147,17 @@
                     {
                         title: "SGPFT",
                         field: "sgpft",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let v = parseFloat(cell.getValue());
-                            if (typeof chPromoLiveSprice === 'function' && typeof chPromoTakehomeMargin === 'function') {
-                                const sprice = chPromoLiveSprice(d);
-                                if (sprice > 0) {
-                                    v = ((sprice * chPromoTakehomeMargin(d) - chPromoLp(d) - chPromoShipCost(d)) / sprice) * 100;
-                                }
-                            }
+                            const v = aeSpriceMetrics(d).sgpft;
                             if (isNaN(v) || v === 0) return '0%';
-                            // Same color coding as GPFT
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
                         }
@@ -1832,6 +2182,15 @@
                             window.chPromoAutofitColumns(table);
                         }
                     }, 0);
+                    setTimeout(function() {
+                        try { aePersistVisibleSprices(); } catch (e) { console.error(e); }
+                    }, 400);
+                    setTimeout(function() {
+                        try { aePersistVisibleSprices(); } catch (e) { console.error(e); }
+                    }, 2000);
+                    setTimeout(function() {
+                        try { aePersistVisibleSprices(); } catch (e) { console.error(e); }
+                    }, 5000);
                 },
                 tableBuilt: function() {
                     if (!$('#ae-row-type-filter').val()) {
@@ -1884,6 +2243,7 @@
             $('#ae-inv-filter').on('change',    function() { applyFilters(); });
             $('#ae-gpft-filter, #ae-cvr-filter').on('change',   function() { applyFilters(); });
             $('#ae-roi-filter').on('change',    function() { applyFilters(); });
+            $('#ae-sgroi-filter').on('change',  function() { applyFilters(); });
             $('#ae-al30-filter').on('change',   function() { applyFilters(); });
             $('#ae-sold-filter').on('change', function() {
                 const v = $(this).val() || 'all';
@@ -1944,11 +2304,9 @@
                     const newSprice = +computed.toFixed(2);
                     if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                    const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp - ship) / newSprice) * 100) : 0;
-                    const sroi  = lp > 0       ? Math.round(((newSprice * margin - lp - ship) / lp)     * 100) : 0;
-
-                    row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
-                    updates.push({ sku: sku, sprice: newSprice });
+                    const prepared = aePrepareSpriceToSave(rowData, newSprice);
+                    row.update({ sprice: prepared.sprice, sgpft: prepared.sgpft, sroi: prepared.sroi });
+                    updates.push({ sku: sku, sprice: prepared.sprice });
                     updatedCount++;
                 });
 
@@ -2031,7 +2389,7 @@
                 updateSelectedCount();
             });
 
-            // SPRICE cell edited – save immediately, recalculate SGPFT + SROI with proper margin
+            // Std Prc cell edited — Sprice is rule-only (not editable).
             table.on('cellEdited', function(cell) {
                 const field = cell.getField();
                 const row = cell.getRow();
@@ -2070,19 +2428,6 @@
                     });
                     return;
                 }
-
-                if (field !== 'sprice') return;
-                if (d.is_parent) return;
-                const sku    = d.sku;
-                const sprice = parseFloat(cell.getValue()) || 0;
-                const margin = parseFloat(d._margin) || 1;
-                const lp     = parseFloat(d.lp)   || 0;
-                const ship   = parseFloat(d.ship)  || 0;
-                // Same formulas as GPFT / GROI
-                const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100) : 0;
-                const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100) : 0;
-                cell.getRow().update({ sgpft: sgpft, sroi: sroi });
-                saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
             });
 
             /*
@@ -2102,7 +2447,7 @@
                         menuId: 'ae-column-dropdown-menu',
                         storageKey: 'aliexpress_col_cats_v1',
                         skipFields: ['_ae_select', '_select'],
-                        alwaysHidden: ['lp', 'ship'],
+                        alwaysHidden: ['lp'],
                         onSave: function() {
                             if (typeof aeSaveColumnVisibilityToServer === 'function') aeSaveColumnVisibilityToServer();
                         }
@@ -2126,7 +2471,7 @@
                         const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
-                            if (!def.field || def.field === '_ae_select' || def.field === 'lp' || def.field === 'ship') return;
+                            if (!def.field || def.field === '_ae_select' || def.field === 'lp') return;
                             const title = (def.title || '').replace(/<[^>]*>/g, '').trim() || def.field;
 
                             const li = document.createElement('li');
@@ -2196,10 +2541,12 @@
                                 }
                             });
                         }
-                        ['lp', 'ship'].forEach(function(field) {
+                        ['lp'].forEach(function(field) {
                             const col = table.getColumn(field);
                             if (col) col.hide();
                         });
+                        const shipCol = table.getColumn('ship');
+                        if (shipCol) shipCol.show();
                     })
                     .catch(err => console.error('Error applying AliExpress column visibility:', err));
             }
@@ -2310,10 +2657,18 @@
                             (res.results || []).filter(r => r.success).forEach(r => {
                                 const rows = table.searchRows('sku', '=', r.sku);
                                 if (rows.length) {
-                                    rows[0].update({ price: r.price });
+                                    rows[0].update({
+                                        price: r.price,
+                                        SPRICE_STATUS: 'pushed',
+                                        SPRICE_PUSHED_VALUE: r.price
+                                    });
                                 }
                             });
-                            (res.results || []).filter(r => !r.success).forEach(r => allFails.push(r));
+                            (res.results || []).filter(r => !r.success).forEach(r => {
+                                allFails.push(r);
+                                const rows = table.searchRows('sku', '=', r.sku);
+                                if (rows.length) rows[0].update({ SPRICE_STATUS: 'error' });
+                            });
                         },
                         error: function(xhr) {
                             const r = xhr.responseJSON || {};
@@ -2322,6 +2677,9 @@
                             totalFailed += chunks[idx].length;
                         },
                         complete: function() {
+                            if (typeof updateSummary === 'function') {
+                                try { updateSummary(); } catch (e) { /* ignore */ }
+                            }
                             next(idx + 1);
                         }
                     });
@@ -2364,6 +2722,34 @@
             }
 
             $('#ae-push-price-btn').on('click', aePushSelectedPrices);
+
+            $('#ae-stop-low-sgroi-btn').on('click', function(e) {
+                if ($(e.target).is('#ae-min-sgroi-input')) return;
+                const next = !aeStopLowSgroi;
+                const $btn = $(this);
+                $btn.prop('disabled', true);
+                aeStopLowSgroi = next;
+                aeSaveStopSgroiGuard({ notify: true }).fail(function() {
+                    aeStopLowSgroi = !next;
+                    aeNotify('Could not save stop-push setting', 'error');
+                }).always(function() {
+                    $btn.prop('disabled', false);
+                });
+            });
+            $('#ae-min-sgroi-input').on('click', function(e) {
+                e.stopPropagation();
+            }).on('change input', function() {
+                AE_MIN_SGROI = aeReadMinSgroi();
+                aeSyncStopSgroiUi();
+                if (typeof applyFilters === 'function') applyFilters();
+                if (typeof updateSummary === 'function') updateSummary();
+            }).on('change', function() {
+                AE_MIN_SGROI = aeReadMinSgroi();
+                aeSaveStopSgroiGuard({ notify: true }).fail(function() {
+                    aeNotify('Could not save SGROI cutoff', 'error');
+                });
+            });
+            aeSyncStopSgroiUi();
 
             function aeSyncPricingApi(mode, $btn) {
                 const originalHtml = $btn.html();
@@ -2462,8 +2848,12 @@
                     tr.remove();
                     aeRenumberLmpRows();
                     aeUpdateLmpLowestHighlight();
+                    aeSaveLmpEntriesNow();
                 });
-                tr.find('.ae-lmp-price, .ae-lmp-link').on('input', function() { aeUpdateLmpLowestHighlight(); });
+                tr.find('.ae-lmp-price, .ae-lmp-link').on('input', function() {
+                    aeUpdateLmpLowestHighlight();
+                    aeScheduleLmpAutosave();
+                });
                 tr.find('.ae-lmp-open-link').on('click', function(e) {
                     e.preventDefault();
                     const href = (tr.find('.ae-lmp-link').val() || '').trim();
@@ -2501,34 +2891,65 @@
                     minTr.find('.ae-lmp-lowest-badge').html(' <span class="badge bg-info">LOWEST</span>');
                 }
             }
-            $('#aeLmpAddRowBtn').on('click', function() {
-                const price = $('#aeLmpNewPrice').val();
-                const link = $('#aeLmpNewLink').val();
-                if (!price && !link) {
-                    aeNotify('Enter Price or Link', 'warning');
-                    return;
-                }
-                aeAppendLmpTableRow($('#aeLmpEntriesContainer'), price || '', link || '');
-                $('#aeLmpNewPrice').val('');
-                $('#aeLmpNewLink').val('');
-            });
-            $('#aeLmpClearFormBtn').on('click', function() {
-                $('#aeLmpNewPrice').val('');
-                $('#aeLmpNewLink').val('');
-            });
-            $('#aeLmpModalSaveBtn').on('click', function() {
+            let aeLmpSaveTimer = null;
+            let aeLmpSaveInFlight = false;
+            let aeLmpSaveQueued = false;
+
+            function aeCollectLmpEntries() {
                 const entries = [];
                 $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function() {
                     const price = $(this).find('.ae-lmp-price').val();
                     const link = $(this).find('.ae-lmp-link').val();
                     const ignored = $(this).find('.lmp-ignore-cb').is(':checked');
-                    if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null, ignored: ignored });
+                    if (price || link) {
+                        entries.push({
+                            price: price ? parseFloat(price) : null,
+                            link: link ? String(link).trim() : null,
+                            ignored: ignored
+                        });
+                    }
                 });
-                if (entries.length === 0) {
-                    aeNotify('Add at least one price or link', 'warning');
+                return entries;
+            }
+            function aeSyncLmpToTable(entries) {
+                if (!table || !aeLmpModalSku) return;
+                const extra = aeLmpLowestFromEntries(entries);
+                try {
+                    const rows = table.searchRows('sku', '=', aeLmpModalSku);
+                    (rows || []).forEach(function(row) {
+                        row.update({
+                            lmp_entries: entries,
+                            lmp: extra.lmp,
+                            lmp_price: extra.lmp,
+                            lmp_link: extra.lmp_link,
+                            lmp_ignored_price: extra.lmp ? null : extra.ignored_price
+                        });
+                        try { row.reformat(); } catch (e) { /* ignore */ }
+                        if (typeof applyChannelSpriceFromStdChange === 'function') {
+                            applyChannelSpriceFromStdChange(row);
+                        }
+                    });
+                } catch (e) { /* ignore */ }
+                if (typeof updateSummary === 'function') {
+                    try { updateSummary(); } catch (e) { /* ignore */ }
+                }
+            }
+            function aeSetLmpAutosaveStatus(text, kind) {
+                const $el = $('#aeLmpAutosaveStatus');
+                if (!$el.length) return;
+                $el.removeClass('text-muted text-success text-danger text-warning');
+                $el.addClass(kind === 'error' ? 'text-danger' : (kind === 'ok' ? 'text-success' : 'text-muted'));
+                $el.text(text);
+            }
+            function aeSaveLmpEntriesNow() {
+                if (!aeLmpModalSku) return;
+                if (aeLmpSaveInFlight) {
+                    aeLmpSaveQueued = true;
                     return;
                 }
-                $(this).prop('disabled', true);
+                const entries = aeCollectLmpEntries();
+                aeLmpSaveInFlight = true;
+                aeSetLmpAutosaveStatus('Saving…', 'muted');
                 $.ajax({
                     url: '{{ route("aliexpress.lmp.save") }}',
                     method: 'POST',
@@ -2539,26 +2960,55 @@
                         lmp_entries: entries
                     },
                     success: function() {
-                        aeNotify('LMP saved successfully', 'success');
-                        bootstrap.Modal.getOrCreateInstance(document.getElementById('aeLmpModal')).hide();
-                        if (table) table.setData('/aliexpress/pricing-data');
+                        aeSetLmpAutosaveStatus('Saved', 'ok');
+                        aeSyncLmpToTable(entries);
                     },
                     error: function() {
+                        aeSetLmpAutosaveStatus('Save failed', 'error');
                         aeNotify('Failed to save LMP', 'error');
                     },
                     complete: function() {
-                        $('#aeLmpModalSaveBtn').prop('disabled', false);
+                        aeLmpSaveInFlight = false;
+                        if (aeLmpSaveQueued) {
+                            aeLmpSaveQueued = false;
+                            aeSaveLmpEntriesNow();
+                        }
                     }
                 });
+            }
+            function aeScheduleLmpAutosave() {
+                clearTimeout(aeLmpSaveTimer);
+                aeLmpSaveTimer = setTimeout(aeSaveLmpEntriesNow, 400);
+            }
+            $('#aeLmpAddRowBtn').on('click', function() {
+                const price = $('#aeLmpNewPrice').val();
+                const link = $('#aeLmpNewLink').val();
+                if (!price && !link) {
+                    aeNotify('Enter Price or Link', 'warning');
+                    return;
+                }
+                aeAppendLmpTableRow($('#aeLmpEntriesContainer'), price || '', link || '');
+                $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewLink').val('');
+                aeUpdateLmpLowestHighlight();
+                aeSaveLmpEntriesNow();
+            });
+            $('#aeLmpClearFormBtn').on('click', function() {
+                $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewLink').val('');
             });
             LmpIgnore.bind({
                 modal: '#aeLmpModal',
                 marketplace: 'aliexpress',
                 sku: function() { return aeLmpModalSku; },
-                onToggled: function() { aeUpdateLmpLowestHighlight(); }
+                onToggled: function() {
+                    aeUpdateLmpLowestHighlight();
+                    aeSaveLmpEntriesNow();
+                }
             });
             $(document).on('change', '#aeLmpModal .lmp-ignore-cb', function() {
                 aeUpdateLmpLowestHighlight();
+                aeSaveLmpEntriesNow();
             });
 
             // ── Badge trend chart (line only — same as Shein / eBay 3) ──────

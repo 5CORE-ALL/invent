@@ -28,6 +28,7 @@ use App\Models\ValidTrackingRate;
 use App\Models\VoilanceRate;
 use App\Models\WaifairProductSheet;
 use App\Models\WalmartMetrics;
+use App\Support\ProductMasterShipBb;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -267,8 +268,11 @@ class AccountHealthMasterDashboardController extends Controller
                     $pm = $productMasters[$sku];
                     $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                     $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                    // Use the channel-specific ship key (e.g. 'ship_bb' for BestBuy). Defaults to generic 'ship'.
-                    $ship = isset($values[$shipKey]) ? (float) $values[$shipKey] : ($pm->{$shipKey} ?? 0);
+                    if ($shipKey === 'ship_bb') {
+                        $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
+                    } else {
+                        $ship = isset($values[$shipKey]) ? (float) $values[$shipKey] : ($pm->{$shipKey} ?? 0);
+                    }
                     $totalLpValue += $lp;
                 }
 

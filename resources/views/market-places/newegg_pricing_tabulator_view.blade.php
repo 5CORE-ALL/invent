@@ -2337,9 +2337,17 @@
                         headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
                         data: { updates: chunks[idx] },
                         success: function(res) {
+                            if (!res || (res.success === false && !(res.pushed > 0))) {
+                                chunks[idx].forEach(u => allFails.push({
+                                    sku: u.sku,
+                                    error: (res && (res.error || res.message)) || 'Newegg did not confirm the price',
+                                }));
+                                totalFailed += chunks[idx].length;
+                                return;
+                            }
                             totalPushed += (res.pushed || 0);
                             totalFailed += (res.failed || 0);
-                            (res.results || []).filter(r => r.success).forEach(r => {
+                            (res.results || []).filter(r => r.success && r.price > 0).forEach(r => {
                                 const rows = table.searchRows('sku', '=', r.sku);
                                 if (rows.length) rows[0].update({ price: r.price });
                             });

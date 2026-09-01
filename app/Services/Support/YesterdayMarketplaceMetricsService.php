@@ -19,6 +19,8 @@ use App\Models\TemuOrder;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
 use App\Services\TemuShopifySalesService;
+use App\Support\ProductMasterShipBb;
+use App\Support\ProductMasterTemuShip;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1653,6 +1655,8 @@ class YesterdayMarketplaceMetricsService
                     $shipBb = (float) $v;
                 }
             }
+            $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
+            $shipBb = ProductMasterShipBb::forPricing($values, $pm);
             $row = ['lp' => $lp, 'ship' => $ship, 'wt' => $wt, 'temu_ship' => $temuShip, 'ship_bb' => $shipBb];
             $this->pmBySku[(string) $pm->sku] = $row;
             $this->pmBySku[strtoupper((string) $pm->sku)] = $row;

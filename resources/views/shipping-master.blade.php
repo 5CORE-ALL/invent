@@ -685,7 +685,8 @@
             outline: none;
         }
 
-        .o-size-charge-input {
+        .o-size-charge-input,
+        .handling-charge-input {
             width: 58px;
             max-width: 70px;
             font-size: 11px;
@@ -696,7 +697,12 @@
             border-radius: 4px;
             background: #fff;
         }
-        .o-size-charge-input:focus {
+        .handling-charge-input {
+            width: 42px;
+            max-width: 50px;
+        }
+        .o-size-charge-input:focus,
+        .handling-charge-input:focus {
             outline: none;
             border-color: #86b7fe;
             box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
@@ -1135,10 +1141,10 @@
                                             <option value="OV-Wt">OV-Wt</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="handling_charge" data-col-label="Handling Charge" class="shipping-rate-header" title="Handling Charge (up to 3 characters)">
+                                    <th data-col-key="handling_charge" data-col-label="Handling Charge" class="shipping-rate-header" title="Handling Charge (up to 3 characters). Added to Ship and Temu ship when numeric.">
                                         <span class="th-vertical-label">Handling<br>Charge</span>
                                     </th>
-                                    <th data-col-key="o_size_charge" data-col-label="O-Size Charge" class="shipping-rate-header" title="O-Size Charge (text input)">
+                                    <th data-col-key="o_size_charge" data-col-label="O-Size Charge" class="shipping-rate-header" title="O-Size Charge. Added to Ship and Temu ship when numeric.">
                                         <span class="th-vertical-label">O-Size<br>Charge</span>
                                     </th>
                                     <th data-col-key="pr_charge" data-col-label="PR Charge" class="shipping-rate-header" title="PR Charge (up to 20 characters)">
@@ -1154,7 +1160,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb" title="When Type is O-Size, Ship BB = Ship BB + O-Size Charge">
+                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb" title="Total Ship BB = Ship BB + Handling Charge + O-Size Charge">
                                         <div class="th-vertical-label">Ship<br>BB</div>
                                         <select id="filterShipBbCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship BB column">
                                             <option value="all">All</option>
@@ -1163,7 +1169,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="When Type is O-Size, Temu ship = Temu ship + 50% of O-Size Charge">
+                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="Total Temu ship = Temu ship + Handling Charge + O-Size Charge">
                                         <div class="th-vertical-label">Temu<br>ship</div>
                                         <select id="filterTemuShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu ship">
                                             <option value="all">All</option>
@@ -1815,7 +1821,7 @@
                             Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
                             Carriers: Ship, Ship BB, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
                             For <strong>Ship</strong>, Apply writes the slab rate + <strong>Handling + O-Size + PR</strong> (same total as the Ship column).
-                            For <strong>Temu ship</strong>, Apply writes the slab rate + <strong>50% of O-Size Charge</strong> when Type is O-Size.
+                            For <strong>Temu ship</strong> and <strong>Ship BB</strong>, Apply writes the slab rate + <strong>Handling + O-Size</strong> (same totals as those columns).
                         </div>
                     </div>
 
@@ -2105,37 +2111,60 @@
 
             /**
              * Ship BB shown in the Ship BB column:
-             * when Type is O-Size, Ship BB + O-Size Charge; otherwise the slab Ship BB.
+             * Ship BB + Handling Charge + O-Size Charge.
              */
             function calcShipBb(item, isParentRow) {
                 if (!item) return null;
                 const base = getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow);
-                const typeRaw = item.label_type ?? (item.Values && item.Values.label_type);
-                if (!isOSizeLabelType(typeRaw)) return base;
-                const oSize = parseChargeAmount(
-                    item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
-                );
+                const handling = itemHandlingAmount(item);
+                const oSize = itemOSizeAmount(item);
                 const baseBlank = base === null || base === undefined || base === '';
-                if (baseBlank && oSize === 0) return base;
-                return parseChargeAmount(base) + oSize;
+                if (baseBlank && handling === 0 && oSize === 0) return base;
+                return parseChargeAmount(base) + handling + oSize;
             }
 
             function shipBbTooltip(item, isParentRow) {
                 const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow));
+                const handling = itemHandlingAmount(item);
+                const oSize = itemOSizeAmount(item);
+                const total = base + handling + oSize;
+                return `Ship BB ${formatNumber(total, 2)} = Ship BB ${formatNumber(base, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)}`;
+            }
+
+            /** Rate written to Product Master for Ship BB (slab + handling + o-size). */
+            function shipBbWriteRate(item, baseRate) {
+                const n = parseFloat(baseRate);
+                if (!Number.isFinite(n)) return null;
+                return Math.round((n + itemHandlingAmount(item) + itemOSizeAmount(item)) * 100) / 100;
+            }
+
+            /** Implied slab base from a stored Ship BB (ship_bb_base, else legacy O-Size strip). */
+            function shipBbStoredBase(item) {
+                if (!item) return null;
+                const baseRaw = item.ship_bb_base ?? (item.Values && item.Values.ship_bb_base);
+                if (baseRaw !== null && baseRaw !== undefined && baseRaw !== '') {
+                    const b = parseFloat(baseRaw);
+                    if (Number.isFinite(b)) return Math.round(b * 100) / 100;
+                }
+                const raw = item.ship_bb;
+                if (raw === null || raw === undefined || raw === '') return null;
+                const n = parseFloat(raw);
+                if (!Number.isFinite(n)) return null;
                 const typeRaw = item.label_type ?? (item.Values && item.Values.label_type);
-                if (!isOSizeLabelType(typeRaw)) return '';
-                const oSize = parseChargeAmount(
-                    item.o_size_charge ?? (item.Values && item.Values.o_size_charge)
-                );
-                const total = base + oSize;
-                return `Ship BB ${formatNumber(total, 2)} = Ship BB ${formatNumber(base, 2)} + O-Size ${formatNumber(oSize, 2)}`;
+                const legacy = isOSizeLabelType(typeRaw) ? itemOSizeAmount(item) : 0;
+                return Math.round((n - legacy) * 100) / 100;
             }
 
             function itemOSizeAmount(item) {
                 return parseChargeAmount(item?.o_size_charge ?? (item?.Values && item.Values.o_size_charge));
             }
 
-            /** 50% of O-Size Charge when Type is O-Size; otherwise 0. */
+            function itemHandlingAmount(item) {
+                return parseChargeAmount(item?.handling_charge ?? (item?.Values && item.Values.handling_charge));
+            }
+
+            /** 50% of O-Size Charge when Type is O-Size; otherwise 0.
+             *  Used only to strip the legacy Temu add-on from older stored values. */
             function itemOSizeHalf(item) {
                 const typeRaw = item?.label_type ?? (item?.Values && item.Values.label_type);
                 if (!item || !isOSizeLabelType(typeRaw)) return 0;
@@ -2144,40 +2173,84 @@
 
             /**
              * Temu ship shown in the Temu ship column:
-             * when Type is O-Size, Temu ship + 50% of O-Size Charge.
+             * Temu ship + Handling Charge + O-Size Charge.
              */
             function calcTemuShip(item, isParentRow) {
                 if (!item) return null;
                 const base = getOuterCarrierDisplayRate(item, 'temu_ship', !!isParentRow);
-                const half = itemOSizeHalf(item);
+                const handling = itemHandlingAmount(item);
+                const oSize = itemOSizeAmount(item);
                 const baseBlank = base === null || base === undefined || base === '';
-                if (baseBlank && half === 0) return base;
-                return parseChargeAmount(base) + half;
+                if (baseBlank && handling === 0 && oSize === 0) return base;
+                return parseChargeAmount(base) + handling + oSize;
             }
 
             function temuShipTooltip(item, isParentRow) {
-                const typeRaw = item?.label_type ?? (item?.Values && item.Values.label_type);
-                if (!isOSizeLabelType(typeRaw)) return '';
                 const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'temu_ship', !!isParentRow));
-                const half = itemOSizeHalf(item);
-                const total = base + half;
-                return `Temu ship ${formatNumber(total, 2)} = Temu ship ${formatNumber(base, 2)} + 50% O-Size ${formatNumber(half, 2)}`;
+                const handling = itemHandlingAmount(item);
+                const oSize = itemOSizeAmount(item);
+                const total = base + handling + oSize;
+                return `Temu ship ${formatNumber(total, 2)} = Temu ship ${formatNumber(base, 2)} + Handling ${formatNumber(handling, 2)} + O-Size ${formatNumber(oSize, 2)}`;
             }
 
-            /** Rate written to Product Master for Temu ship (slab base + 50% O-Size when Type is O-Size). */
+            /** Rate written to Product Master for Temu ship (slab + handling + o-size). */
             function temuShipWriteRate(item, baseRate) {
                 const n = parseFloat(baseRate);
                 if (!Number.isFinite(n)) return null;
-                return Math.round((n + itemOSizeHalf(item)) * 100) / 100;
+                return Math.round((n + itemHandlingAmount(item) + itemOSizeAmount(item)) * 100) / 100;
             }
 
-            /** Implied slab base from a stored Temu ship (strips the 50% O-Size add-on). */
+            /** Implied slab base from a stored Temu ship (temu_ship_base, else legacy strip). */
             function temuShipStoredBase(item) {
-                const raw = item ? item.temu_ship : null;
+                if (!item) return null;
+                const baseRaw = item.temu_ship_base ?? (item.Values && item.Values.temu_ship_base);
+                if (baseRaw !== null && baseRaw !== undefined && baseRaw !== '') {
+                    const b = parseFloat(baseRaw);
+                    if (Number.isFinite(b)) return Math.round(b * 100) / 100;
+                }
+                const raw = item.temu_ship;
                 if (raw === null || raw === undefined || raw === '') return null;
                 const n = parseFloat(raw);
                 if (!Number.isFinite(n)) return null;
                 return Math.round((n - itemOSizeHalf(item)) * 100) / 100;
+            }
+
+            /** Keep in-memory Ship / Temu ship totals in sync after charge edits. */
+            function applyLocalChargeTotals(product) {
+                if (!product) return;
+                if (typeof shipWriteRate === 'function') {
+                    const slab = parseFloat(getOuterCarrierDisplayRate(product, 'ship', false));
+                    if (Number.isFinite(slab)) {
+                        product.ship_base = normalizeSlabRate(slab);
+                        product.ship = shipWriteRate(product, slab);
+                        if (product.Values && typeof product.Values === 'object') {
+                            product.Values.ship_base = product.ship_base;
+                            product.Values.ship = product.ship;
+                        }
+                    }
+                }
+                if (typeof temuShipWriteRate === 'function') {
+                    const slab = parseFloat(getOuterCarrierDisplayRate(product, 'temu_ship', false));
+                    if (Number.isFinite(slab)) {
+                        product.temu_ship_base = normalizeSlabRate(slab);
+                        product.temu_ship = temuShipWriteRate(product, slab);
+                        if (product.Values && typeof product.Values === 'object') {
+                            product.Values.temu_ship_base = product.temu_ship_base;
+                            product.Values.temu_ship = product.temu_ship;
+                        }
+                    }
+                }
+                if (typeof shipBbWriteRate === 'function') {
+                    const slab = parseFloat(getOuterCarrierDisplayRate(product, 'ship_bb', false));
+                    if (Number.isFinite(slab)) {
+                        product.ship_bb_base = normalizeSlabRate(slab);
+                        product.ship_bb = shipBbWriteRate(product, slab);
+                        if (product.Values && typeof product.Values === 'object') {
+                            product.Values.ship_bb_base = product.ship_bb_base;
+                            product.Values.ship_bb = product.ship_bb;
+                        }
+                    }
+                }
             }
 
             /** Rate written to Product Master Ship (slab + handling + o-size + PR). */
@@ -2208,6 +2281,7 @@
             function carrierWriteRate(item, carrierKey, slabRate) {
                 if (carrierKey === 'temu_ship') return temuShipWriteRate(item, slabRate);
                 if (carrierKey === 'ship') return shipWriteRate(item, slabRate);
+                if (carrierKey === 'ship_bb') return shipBbWriteRate(item, slabRate);
                 const n = parseFloat(slabRate);
                 return Number.isFinite(n) ? normalizeSlabRate(n) : null;
             }
@@ -2227,7 +2301,8 @@
                 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_qty',
                 'ship', 'ship_bb', 'temu_ship', 'temu_gofo',
                 'gofo', 'fedex', 'ups', 'usps', 'uni',
-                'fba_ship', 'fba_manual_ship', 'fba_sku', 'label_type', 'o_size_charge',
+                'fba_ship', 'fba_manual_ship', 'fba_sku', 'label_type',
+                'handling_charge', 'o_size_charge',
                 'image_path'
             ];
 
@@ -2617,17 +2692,27 @@
                     }
                     row.appendChild(labelTypeCell);
 
-                    // Handling Charge — optional text, max 3 chars
+                    // Handling Charge — inline text input (saved to Values.handling_charge)
                     const handlingChargeCell = document.createElement('td');
                     handlingChargeCell.className = 'text-center shipping-rate-cell';
                     if (isParentRow) {
                         handlingChargeCell.textContent = '--';
+                    } else if (pkg.isExtraPackage) {
+                        const hcRead = normalizeHandlingCharge(item.handling_charge);
+                        handlingChargeCell.textContent = hcRead || '';
+                        if (hcRead) handlingChargeCell.title = hcRead;
                     } else {
-                        const hcVal = normalizeHandlingCharge(
-                            pkg.isExtraPackage ? item.handling_charge : sourceItem.handling_charge
-                        );
-                        handlingChargeCell.textContent = hcVal || '';
-                        if (hcVal) handlingChargeCell.title = hcVal;
+                        const hcVal = normalizeHandlingCharge(sourceItem.handling_charge);
+                        handlingChargeCell.innerHTML = `
+                            <input type="text" class="handling-charge-input"
+                                maxlength="3"
+                                data-sku="${escapeHtml(sourceItem.SKU || '')}"
+                                data-id="${escapeHtml(String(sourceItem.id || ''))}"
+                                data-prev="${escapeHtml(hcVal)}"
+                                value="${escapeHtml(hcVal)}"
+                                title="Handling Charge (max 3 characters)"
+                                autocomplete="off">
+                        `;
                     }
                     row.appendChild(handlingChargeCell);
 
@@ -5769,17 +5854,33 @@
                         (editIdForShip && String(d.id) === String(editIdForShip))
                         || (editSkuForShip && d.SKU === editSkuForShip)
                     );
-                    if (editItemForShip && typeof shipWriteRate === 'function') {
+                    if (editItemForShip) {
                         const draft = Object.assign({}, editItemForShip, {
                             handling_charge: baseFormData.handling_charge,
                             o_size_charge: baseFormData.o_size_charge,
                             pr_charge: baseFormData.pr_charge,
                             label_type: baseFormData.label_type
                         });
-                        const slab = parseFloat(getOuterCarrierDisplayRate(draft, 'ship', false));
-                        if (Number.isFinite(slab)) {
-                            baseFormData.ship_base = normalizeSlabRate(slab);
-                            baseFormData.ship = shipWriteRate(draft, slab);
+                        if (typeof shipWriteRate === 'function') {
+                            const slab = parseFloat(getOuterCarrierDisplayRate(draft, 'ship', false));
+                            if (Number.isFinite(slab)) {
+                                baseFormData.ship_base = normalizeSlabRate(slab);
+                                baseFormData.ship = shipWriteRate(draft, slab);
+                            }
+                        }
+                        if (typeof temuShipWriteRate === 'function') {
+                            const temuSlab = parseFloat(getOuterCarrierDisplayRate(draft, 'temu_ship', false));
+                            if (Number.isFinite(temuSlab)) {
+                                baseFormData.temu_ship_base = normalizeSlabRate(temuSlab);
+                                baseFormData.temu_ship = temuShipWriteRate(draft, temuSlab);
+                            }
+                        }
+                        if (typeof shipBbWriteRate === 'function') {
+                            const bbSlab = parseFloat(getOuterCarrierDisplayRate(draft, 'ship_bb', false));
+                            if (Number.isFinite(bbSlab)) {
+                                baseFormData.ship_bb_base = normalizeSlabRate(bbSlab);
+                                baseFormData.ship_bb = shipBbWriteRate(draft, bbSlab);
+                            }
                         }
                     }
                     // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
@@ -6260,17 +6361,7 @@
                             if (product.Values && typeof product.Values === 'object') {
                                 product.Values.label_type = labelType;
                             }
-                            if (typeof shipWriteRate === 'function') {
-                                const slab = parseFloat(getOuterCarrierDisplayRate(product, 'ship', false));
-                                if (Number.isFinite(slab)) {
-                                    product.ship_base = normalizeSlabRate(slab);
-                                    product.ship = shipWriteRate(product, slab);
-                                    if (product.Values && typeof product.Values === 'object') {
-                                        product.Values.ship_base = product.ship_base;
-                                        product.Values.ship = product.ship;
-                                    }
-                                }
-                            }
+                            applyLocalChargeTotals(product);
                         }
                         refreshShipTotalCellsForSku(sku);
                         showToast('success', 'Label Type updated');
@@ -6361,17 +6452,7 @@
                         if (product.Values && typeof product.Values === 'object') {
                             product.Values.o_size_charge = product.o_size_charge;
                         }
-                        if (typeof shipWriteRate === 'function') {
-                            const slab = parseFloat(getOuterCarrierDisplayRate(product, 'ship', false));
-                            if (Number.isFinite(slab)) {
-                                product.ship_base = normalizeSlabRate(slab);
-                                product.ship = shipWriteRate(product, slab);
-                                if (product.Values && typeof product.Values === 'object') {
-                                    product.Values.ship_base = product.ship_base;
-                                    product.Values.ship = product.ship;
-                                }
-                            }
-                        }
+                        applyLocalChargeTotals(product);
                     }
                     refreshShipTotalCellsForSku(sku);
                     showToast('success', 'O-Size Charge updated');
@@ -6397,6 +6478,68 @@
                 });
             }
             setupOSizeChargeInputs();
+
+            async function saveHandlingChargeInput(input) {
+                if (!input || input.disabled) return;
+                const sku = input.getAttribute('data-sku');
+                const productId = input.getAttribute('data-id');
+                const prev = normalizeHandlingCharge(input.getAttribute('data-prev'));
+                const next = normalizeHandlingCharge(input.value);
+                input.value = next;
+                if (next === prev) return;
+                input.disabled = true;
+                try {
+                    const response = await fetch('/dim-wt-master/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            product_id: productId ? Number(productId) : undefined,
+                            sku: sku,
+                            handling_charge: next === '' ? null : next
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to update Handling Charge');
+                    }
+                    input.setAttribute('data-prev', next);
+                    const product = tableData.find(d =>
+                        (productId && String(d.id) === String(productId)) || d.SKU === sku
+                    );
+                    if (product) {
+                        product.handling_charge = next === '' ? null : next;
+                        if (product.Values && typeof product.Values === 'object') {
+                            product.Values.handling_charge = product.handling_charge;
+                        }
+                        applyLocalChargeTotals(product);
+                    }
+                    refreshShipTotalCellsForSku(sku);
+                    showToast('success', 'Handling Charge updated');
+                } catch (err) {
+                    input.value = prev;
+                    showToast('danger', err.message || 'Failed to update Handling Charge');
+                } finally {
+                    input.disabled = false;
+                }
+            }
+
+            function setupHandlingChargeInputs() {
+                document.addEventListener('change', function(e) {
+                    if (!e.target || !e.target.classList.contains('handling-charge-input')) return;
+                    saveHandlingChargeInput(e.target);
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (!e.target || !e.target.classList.contains('handling-charge-input')) return;
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                });
+            }
+            setupHandlingChargeInputs();
 
             populateWtActLbFilterOptions();
 
@@ -6511,6 +6654,14 @@
                 if (slabKey && slabRateIndex[carrierKey] && slabRateIndex[carrierKey][slabKey] != null) {
                     return slabRateIndex[carrierKey][slabKey];
                 }
+                if (carrierKey === 'temu_ship' && typeof temuShipStoredBase === 'function') {
+                    const base = temuShipStoredBase(item);
+                    if (base !== null) return base;
+                }
+                if (carrierKey === 'ship_bb' && typeof shipBbStoredBase === 'function') {
+                    const base = shipBbStoredBase(item);
+                    if (base !== null) return base;
+                }
                 return item[carrierKey];
             }
 
@@ -6567,12 +6718,16 @@
                         if (raw === null || raw === undefined || raw === '') {
                             fields[c.key] = writeRate;
                             if (c.key === 'ship') fields.ship_base = rate;
+                            if (c.key === 'temu_ship') fields.temu_ship_base = rate;
+                            if (c.key === 'ship_bb') fields.ship_bb_base = rate;
                             return;
                         }
                         const n = parseFloat(raw);
                         if (!Number.isFinite(n) || normalizeSlabRate(n) !== writeRate) {
                             fields[c.key] = writeRate;
                             if (c.key === 'ship') fields.ship_base = rate;
+                            if (c.key === 'temu_ship') fields.temu_ship_base = rate;
+                            if (c.key === 'ship_bb') fields.ship_bb_base = rate;
                         }
                     });
 
@@ -6658,9 +6813,15 @@
                     if (raw === null || raw === undefined || raw === '') { missing++; return; }
                     let n = parseFloat(raw);
                     if (!Number.isFinite(n)) { missing++; return; }
-                    // Temu ship stored value may include +50% O-Size; compare the implied slab base.
+                    // Temu ship stored value is the column total; compare temu_ship_base / legacy slab.
                     if (carrierKey === 'temu_ship') {
                         const base = temuShipStoredBase(it);
+                        if (base === null) { missing++; return; }
+                        n = base;
+                    }
+                    // Ship BB stored value is the column total; compare ship_bb_base / legacy slab.
+                    if (carrierKey === 'ship_bb') {
+                        const base = shipBbStoredBase(it);
                         if (base === null) { missing++; return; }
                         n = base;
                     }
@@ -6709,8 +6870,8 @@
                     th.style.fontSize = '12px';
                     th.title = c.key === 'ship'
                         ? `${c.label} rate ($) — Apply writes this rate + Handling + O-Size + PR`
-                        : (c.key === 'temu_ship'
-                            ? `${c.label} rate ($) — when Type is O-Size, Apply writes this rate + 50% of O-Size Charge`
+                        : (c.key === 'temu_ship' || c.key === 'ship_bb'
+                            ? `${c.label} rate ($) — Apply writes this rate + Handling + O-Size`
                             : `${c.label} rate ($)`);
                     th.textContent = c.label;
                     headRow.appendChild(th);
@@ -7066,6 +7227,12 @@
                         perSku.get(id).fields[carrierKey] = carrierWriteRate(item, carrierKey, rate);
                         if (carrierKey === 'ship') {
                             perSku.get(id).fields.ship_base = normalizeSlabRate(rate);
+                        }
+                        if (carrierKey === 'temu_ship') {
+                            perSku.get(id).fields.temu_ship_base = normalizeSlabRate(rate);
+                        }
+                        if (carrierKey === 'ship_bb') {
+                            perSku.get(id).fields.ship_bb_base = normalizeSlabRate(rate);
                         }
                         totalWritesPlanned++;
                     });

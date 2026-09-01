@@ -977,23 +977,7 @@ class NeweggApiService
                 continue;
             }
 
-            $priceRow = [
-                'CountryCode'  => $country,
-                'Currency'     => $currency,
-                'SellingPrice' => number_format($price, 2, '.', ''),
-            ];
-            if (isset($i['msrp']) && (float) $i['msrp'] > 0) {
-                $priceRow['MSRP'] = number_format((float) $i['msrp'], 2, '.', '');
-            }
-            if (isset($i['map']) && (float) $i['map'] >= 0) {
-                $priceRow['MAP'] = number_format((float) $i['map'], 2, '.', '');
-            }
-            if (isset($i['checkout_map'])) {
-                $priceRow['CheckoutMAP'] = $i['checkout_map'] ? '1' : '0';
-            }
-            if (isset($i['active'])) {
-                $priceRow['Active'] = $i['active'] ? '1' : '0';
-            }
+            $priceRow = $this->priceUpdateRow($spn, $country, $currency, $price, $i);
 
             // Newegg's XSD: <PriceList><Price>…</Price></PriceList>.  In JSON the
             // repeating <Price> element maps to a "Price" array inside "PriceList".
@@ -1010,10 +994,23 @@ class NeweggApiService
 
             $res = $this->request('POST', '/marketplace/contentmgmt/item/international/price', [], $body);
 
-            $ok = $this->extractItemSuccess($res);
+            $ok = $this->extractPriceUpdateSuccess($res);
             $err = $ok ? null : $this->extractItemError($res);
+            $confirmed = $ok ? $this->extractUpdatedSellingPrice($res, $country) : null;
+            if ($ok && ($confirmed === null || ! $this->pricesMatch($confirmed, $price))) {
+                $confirmed = $this->confirmSellingPriceWithRetry($spn, $price, $country);
+                if ($confirmed === null || ! $this->pricesMatch($confirmed, $price)) {
+                    $ok = false;
+                    $got = $confirmed !== null ? number_format($confirmed, 2, '.', '') : 'n/a';
+                    $err = 'Newegg did not confirm SellingPrice $'.number_format($price, 2, '.', '')
+                        .' (live $'.$got.').';
+                    $confirmed = null;
+                }
+            }
             if ($res['blocked_by_cloudflare']) {
                 $blockedAny = true;
+                $ok = false;
+                $confirmed = null;
                 $err = 'Cloudflare managed challenge (IP not whitelisted for writes).';
             }
 
@@ -1023,6 +1020,7 @@ class NeweggApiService
                 'status'  => $res['status'],
                 'error'   => $err,
                 'raw'     => $res['raw'],
+                'confirmed_price' => $confirmed,
             ];
             if ($ok) {
                 $pushed++;
@@ -1061,11 +1059,167 @@ class NeweggApiService
             return false;
         }
         $flag = $j['NeweggAPIResponse']['IsSuccess'] ?? ($j['IsSuccess'] ?? null);
-        if ($flag === null) {
-            // No IsSuccess field but HTTP 200 + JSON → treat as success.
-            return $res['status'] >= 200 && $res['status'] < 300;
+        if ($this->neweggJsonLooksLikeError($j) && ! $this->neweggFlagIsTrue($flag)) {
+            return false;
         }
-        return $flag === true || strtolower((string) $flag) === 'true';
+        if ($flag === null) {
+            // Official write responses often omit IsSuccess (UpdatePriceResult).
+            return ($res['status'] ?? 0) >= 200 && ($res['status'] ?? 0) < 300
+                && (isset($j['PriceList']) || isset($j['SellerPartNumber'])
+                    || isset($j['UpdatePriceResult']) || isset($j['UpdateInventoryAndPriceResult'])
+                    || isset($j['Result']));
+        }
+        return $this->neweggFlagIsTrue($flag);
+    }
+
+    /**
+     * Price update is successful only when Newegg returned a write result,
+     * not an HTTP 200 error payload ({Code, Message}).
+     *
+     * @param  array{ok:bool,status:int,blocked_by_cloudflare:bool,json:?array,raw:string,error:?string}  $res
+     */
+    private function extractPriceUpdateSuccess(array $res): bool
+    {
+        if (! empty($res['blocked_by_cloudflare'])) {
+            return false;
+        }
+        $j = $res['json'];
+        if (! is_array($j) || $this->neweggJsonLooksLikeError($j)) {
+            return false;
+        }
+        $flag = data_get($j, 'NeweggAPIResponse.IsSuccess') ?? ($j['IsSuccess'] ?? null);
+        if ($flag !== null) {
+            return $this->neweggFlagIsTrue($flag);
+        }
+
+        return ($res['status'] ?? 0) >= 200 && ($res['status'] ?? 0) < 300
+            && (isset($j['PriceList']) || isset($j['SellerPartNumber']) || isset($j['UpdatePriceResult']));
+    }
+
+    private function neweggFlagIsTrue(mixed $flag): bool
+    {
+        return $flag === true || strtolower((string) $flag) === 'true' || $flag === 1 || $flag === '1';
+    }
+
+    /**
+     * @param  array<mixed>|null  $j
+     */
+    private function neweggJsonLooksLikeError(?array $j): bool
+    {
+        if (! is_array($j)) {
+            return false;
+        }
+        if (isset($j['Code']) && (isset($j['Message']) || isset($j['Description']))) {
+            return true;
+        }
+        if (isset($j[0]) && is_array($j[0]) && isset($j[0]['Code'])) {
+            return true;
+        }
+        if (isset($j['Errors']) || is_array(data_get($j, 'NeweggAPIResponse.Errors'))) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array<string, string>
+     */
+    private function priceUpdateRow(string $spn, string $country, string $currency, float $price, array $item): array
+    {
+        $priceRow = [
+            'CountryCode' => $country,
+            'Currency' => $currency,
+            'SellingPrice' => number_format($price, 2, '.', ''),
+        ];
+
+        $existing = $this->extractPriceRowForCountry(
+            $this->getItemPrice($spn, [$country])['json'] ?? null,
+            $country
+        );
+        if (is_array($existing)) {
+            foreach (['MAP', 'CheckoutMAP', 'EnableFreeShipping', 'LimitQuantity', 'MSRP'] as $key) {
+                if (! array_key_exists($key, $existing) || $existing[$key] === null || $existing[$key] === '') {
+                    continue;
+                }
+                $priceRow[$key] = in_array($key, ['CheckoutMAP', 'EnableFreeShipping', 'LimitQuantity'], true)
+                    ? (string) $existing[$key]
+                    : number_format((float) $existing[$key], 2, '.', '');
+            }
+        }
+
+        if (isset($item['msrp']) && (float) $item['msrp'] > 0) {
+            $priceRow['MSRP'] = number_format((float) $item['msrp'], 2, '.', '');
+        }
+        if (isset($item['map']) && (float) $item['map'] >= 0) {
+            $priceRow['MAP'] = number_format((float) $item['map'], 2, '.', '');
+        }
+        if (isset($item['checkout_map'])) {
+            $priceRow['CheckoutMAP'] = $item['checkout_map'] ? '1' : '0';
+        }
+        if (isset($item['active'])) {
+            $priceRow['Active'] = $item['active'] ? '1' : '0';
+        }
+
+        return $priceRow;
+    }
+
+    /**
+     * @param  array{ok?:bool,status?:int,json?:?array}  $res
+     */
+    private function extractUpdatedSellingPrice(array $res, string $country): ?float
+    {
+        $row = $this->extractPriceRowForCountry(is_array($res['json'] ?? null) ? $res['json'] : null, $country);
+        if ($row === null || ! isset($row['SellingPrice']) || ! is_numeric($row['SellingPrice'])) {
+            return null;
+        }
+
+        return round((float) $row['SellingPrice'], 2);
+    }
+
+    private function confirmSellingPriceWithRetry(string $spn, float $expected, string $country): ?float
+    {
+        $last = null;
+        foreach ([250000, 500000, 900000] as $waitUs) {
+            usleep($waitUs);
+            $live = $this->readLiveSellingPrice($spn, $country);
+            if ($live !== null) {
+                $last = $live;
+            }
+            if ($live !== null && $this->pricesMatch($live, $expected)) {
+                return $live;
+            }
+        }
+
+        return $last;
+    }
+
+    public function readLiveSellingPrice(string $sellerPartNumber, string $country = 'USA'): ?float
+    {
+        $sellerPartNumber = trim($sellerPartNumber);
+        if ($sellerPartNumber === '') {
+            return null;
+        }
+        $res = $this->getItemPrice($sellerPartNumber, [$country]);
+        if (! empty($res['blocked_by_cloudflare']) || ! is_array($res['json'] ?? null)) {
+            return null;
+        }
+        $row = $this->extractPriceRowForCountry($res['json'], $country);
+        if ($row === null || ! isset($row['SellingPrice']) || ! is_numeric($row['SellingPrice'])) {
+            return null;
+        }
+
+        return round((float) $row['SellingPrice'], 2);
+    }
+
+    private function pricesMatch(?float $a, ?float $b): bool
+    {
+        if ($a === null || $b === null) {
+            return false;
+        }
+
+        return abs($a - $b) < 0.015;
     }
 
     /**
@@ -1077,9 +1231,16 @@ class NeweggApiService
     {
         $j = $res['json'];
         if (is_array($j)) {
+            if (isset($j['Message']) && is_string($j['Message']) && $j['Message'] !== '') {
+                $code = isset($j['Code']) ? (string) $j['Code'].': ' : '';
+
+                return $code.$j['Message'];
+            }
             // Flat array form: [{"Code":"CE003","Message":"..."}]
             if (isset($j[0]['Message'])) {
-                return (string) $j[0]['Message'];
+                $code = isset($j[0]['Code']) ? (string) $j[0]['Code'].': ' : '';
+
+                return $code.(string) $j[0]['Message'];
             }
             // Envelope form: {NeweggAPIResponse:{Errors:[{Description}]}}
             $errs = data_get($j, 'NeweggAPIResponse.Errors', null);

@@ -46,6 +46,7 @@ use App\Services\FourSellerApiService;
 use App\Services\TemuShopifySalesService;
 use App\Services\VeeqoApiService;
 use App\Support\ProductMasterTemuShip;
+use App\Support\ProductMasterShipBb;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -5522,9 +5523,12 @@ class SalesOrderFulfillmentController extends Controller
                         $ship = (float) $product->ship;
                     }
 
-                    $shipBb = $scalar($values, 'ship_bb');
-                    if (($shipBb === null || $shipBb === '') && isset($product->ship_bb) && is_numeric($product->ship_bb)) {
-                        $shipBb = (float) $product->ship_bb;
+                    $shipBb = ProductMasterShipBb::forPricing($values, $product);
+                    if ($shipBb <= 0) {
+                        $shipBb = $scalar($values, 'ship_bb');
+                        if (($shipBb === null || $shipBb === '') && isset($product->ship_bb) && is_numeric($product->ship_bb)) {
+                            $shipBb = (float) $product->ship_bb;
+                        }
                     }
 
                     $storedTemu = ProductMasterTemuShip::stored($values, $product);

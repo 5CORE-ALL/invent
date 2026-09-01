@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\BestBuyApiService;
+use App\Support\ProductMasterShipBb;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\AmazonChannelSummary;
 use App\Models\ChannelTabulatorColumnSetting;
@@ -221,11 +222,8 @@ class BestBuyPricingController extends Controller
                 $lp = floatval($pm->lp);
             }
 
-        // BestBuy uses channel-specific Ship BB (Values['ship_bb']), NOT the generic ship.
-        // Falls back to pm->ship_bb column, then 0 — matching how Temu uses temu_ship, TT uses tt_ship, etc.
-        $ship = isset($values["ship_bb"])
-            ? floatval($values["ship_bb"])
-            : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
+        // BestBuy uses Ship BB (slab + handling + o-size), matching Shipping Master.
+        $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
 
         // Price and units for calculations
             $price = floatval($row["BB Price"] ?? 0);
@@ -253,6 +251,8 @@ class BestBuyPricingController extends Controller
             $row["percentage"] = $percentage;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
+            $row["handling_charge"] = $values['handling_charge'] ?? null;
+            $row["o_size_charge"] = $values['o_size_charge'] ?? null;
 
             // NR & SPRICE data from dataview
             $row['NR'] = "";
@@ -785,10 +785,7 @@ class BestBuyPricingController extends Controller
                     $lp = floatval($pm->lp);
                 }
 
-                // BestBuy uses channel-specific Ship BB (Values['ship_bb']), NOT the generic ship.
-                $ship = isset($values["ship_bb"])
-                    ? floatval($values["ship_bb"])
-                    : (isset($pm->ship_bb) ? floatval($pm->ship_bb) : 0);
+                $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
 
                 // Get marketplace percentage (80%)
                 $marketplaceData = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();

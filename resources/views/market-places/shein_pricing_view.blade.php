@@ -560,20 +560,128 @@
         let aeMoreSoldActive = false;
         let blueTriangleFilterActive = false;
 
-        function sheinRowSpriceForAlert(data) {
+        function sheinEntryIsIgnored(e) {
+            if (window.LmpIgnore && typeof LmpIgnore.isIgnored === 'function') {
+                return LmpIgnore.isIgnored(e);
+            }
+            if (!e) return false;
+            const v = e.ignored;
+            if (v === true || v === 1 || v === '1') return true;
+            if (typeof v === 'string') {
+                return ['true', 'yes', 'on'].indexOf(v.toLowerCase().trim()) !== -1;
+            }
+            return false;
+        }
+        function sheinLmpLowestFromEntries(entries) {
+            let min = null;
+            let ignoredMin = null;
+            (entries || []).forEach(function(e) {
+                const p = parseFloat(e && e.price);
+                if (!(p > 0)) return;
+                if (sheinEntryIsIgnored(e)) {
+                    if (ignoredMin === null || p < ignoredMin) ignoredMin = p;
+                    return;
+                }
+                if (min === null || p < min) min = p;
+            });
+            return { lmp: min, ignored_price: ignoredMin };
+        }
+        function sheinEffectiveLmp(row) {
+            if (!row) return 0;
+            if (window.LmpIgnore && typeof LmpIgnore.effectiveLmp === 'function') {
+                const n = Number(LmpIgnore.effectiveLmp(row));
+                if (isFinite(n) && n > 0) return n;
+            }
+            const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+            if (entries.length) {
+                const extra = sheinLmpLowestFromEntries(entries);
+                return extra.lmp > 0 ? extra.lmp : 0;
+            }
+            return parseFloat(row.lmp_price || row.lmp || row.LMP) || 0;
+        }
+        function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
             let sprice = parseFloat(data.sprice || data.SPRICE) || 0;
             if (typeof chPromoLiveSprice === 'function') {
                 const calc = chPromoLiveSprice(data);
                 if (calc > 0) sprice = calc;
             }
-            return sprice;
+            if (!(sprice > 0)) sprice = parseFloat(data.special_offer || data.price) || 0;
+            return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
+        }
+        function sheinVisibleSprice(data) {
+            const raw = sheinRuleSpriceRaw(data);
+            if (!(raw > 0)) return 0;
+            if (window.SpriceLmpCap) {
+                const cap = SpriceLmpCap.apply(data, raw, sheinEffectiveLmp);
+                if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
+            }
+            const lmp = sheinEffectiveLmp(data);
+            if (lmp > 0 && raw + 0.0001 >= lmp) return Math.round(lmp * 100) / 100;
+            return raw;
+        }
+        function sheinSpriceMetrics(data, spriceOpt) {
+            const sprice = spriceOpt != null ? Number(spriceOpt) : sheinVisibleSprice(data);
+            if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };
+            const zeroSold = typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(data);
+            const margin = zeroSold && typeof chPromoZeroSoldTakehomeMargin === 'function'
+                ? chPromoZeroSoldTakehomeMargin(data)
+                : ((typeof chPromoTakehomeMargin === 'function')
+                    ? chPromoTakehomeMargin(data)
+                    : (parseFloat(data && data._margin) || 1));
+            const lp = (typeof chPromoLp === 'function')
+                ? chPromoLp(data)
+                : (parseFloat(data && data.lp) || 0);
+            const ship = (typeof chPromoShipCost === 'function')
+                ? chPromoShipCost(data)
+                : (parseFloat(data && data.ship) || 0);
+            const sgpft = Math.round(((sprice * margin - ship - lp) / sprice) * 100);
+            const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100) : 0;
+            return { sgpft: sgpft, sroi: sroi };
+        }
+        function sheinPrepareSpriceToSave(data, sprice) {
+            let shown = Number(sprice) || 0;
+            if (!(shown > 0)) shown = sheinVisibleSprice(data) || parseFloat(data && data.special_offer) || 0;
+            if (shown > 0 && window.SpriceLmpCap) {
+                const cap = SpriceLmpCap.apply(data, shown, sheinEffectiveLmp);
+                if (cap && cap.shown > 0) shown = Math.round(cap.shown * 100) / 100;
+            } else if (shown > 0) {
+                shown = Math.round(shown * 100) / 100;
+            }
+            const m = sheinSpriceMetrics(data, shown);
+            return { sprice: shown, sgpft: m.sgpft, sroi: m.sroi };
+        }
+        function sheinPersistVisibleSprices() {
+            if (typeof chPromoOverwriteStoredSpriceFromRules === 'function') {
+                chPromoOverwriteStoredSpriceFromRules({ silent: true, skip_push: true });
+            }
+            if (!table || typeof table.getRows !== 'function') return;
+            const updates = [];
+            table.getRows().forEach(function(row) {
+                const d = row.getData() || {};
+                if (d.is_parent || !d.sku) return;
+                const shown = sheinVisibleSprice(d);
+                if (!(shown > 0)) return;
+                const stored = Math.round((parseFloat(d.sprice || d.SPRICE) || 0) * 100) / 100;
+                if (stored === shown) return;
+                const m = sheinSpriceMetrics(d, shown);
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                row.update({ sprice: shown, sgpft: m.sgpft, sroi: m.sroi });
+                updates.push({ sku: d.sku, sprice: shown });
+            });
+            if (updates.length) saveSpriceUpdates(updates, { clearFirst: false });
+        }
+        function sheinRowSpriceForAlert(data) {
+            return sheinVisibleSprice(data);
         }
         function sheinHasBlueTriangle(data) {
             if (!data || data.is_parent) return false;
             const sprice = sheinRowSpriceForAlert(data);
             const price = parseFloat(data.special_offer) || 0;
-            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            if (!(sprice > 0) || !(price > 0) || Math.round(sprice * 100) === Math.round(price * 100)) return false;
+            const lmp = sheinEffectiveLmp(data);
+            if (lmp > 0 && sprice + 0.0001 >= lmp) return false;
+            return true;
         }
         function syncSheinTriangleBadgeState() {
             $('#shein-blue-triangle-badge').css({
@@ -644,6 +752,26 @@
 
         function saveSpriceUpdates(updates, opts) {
             opts = opts || {};
+            updates = (updates || []).map(function(u) {
+                const next = Object.assign({}, u);
+                if (!(Number(next.sprice) > 0) || !next.sku || !table) return next;
+                let row = null;
+                try {
+                    const rows = table.searchRows('sku', '=', next.sku);
+                    if (rows && rows.length) row = rows[0];
+                } catch (e) { /* ignore */ }
+                const d = row && row.getData ? (row.getData() || {}) : {};
+                const prepared = sheinPrepareSpriceToSave(d, next.sprice);
+                next.sprice = prepared.sprice;
+                if (row && prepared.sprice > 0) {
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    row.update({ sprice: prepared.sprice, sgpft: prepared.sgpft, sroi: prepared.sroi });
+                }
+                return next;
+            }).filter(function(u) {
+                return u && u.sku && Number(u.sprice) > 0;
+            });
+            if (!updates.length) return;
             if (typeof chPromoBatchClearThenSave === 'function' && opts.clearFirst !== false) {
                 chPromoBatchClearThenSave(updates, function(next) {
                     saveSpriceUpdates(next, Object.assign({}, opts, { clearFirst: false }));
@@ -702,16 +830,11 @@
                         : currentPrice - discountVal;
                 }
                 newSprice = finalizeSprice(newSprice);
+                const prepared = sheinPrepareSpriceToSave(rowData, newSprice);
+                if (!(prepared.sprice > 0)) return;
 
-                const margin = parseFloat(rowData._margin) || 1;
-                const lp     = parseFloat(rowData.lp)   || 0;
-                const ship   = parseFloat(rowData.ship)  || 0;
-                // Same formulas as GPFT / GROI
-                const sgpft  = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const sroi   = lp > 0        ? Math.round(((newSprice * margin - lp - ship)  / lp)       * 100 * 100) / 100 : 0;
-
-                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi });
-                updates.push({ sku: sku, sprice: newSprice });
+                row.update({ sprice: prepared.sprice, sgpft: prepared.sgpft, sroi: prepared.sroi });
+                updates.push({ sku: sku, sprice: prepared.sprice });
                 updatedCount++;
             });
 
@@ -721,18 +844,14 @@
 
         function clearSpriceForSelected() {
             if (!selectedSkus.size) return;
-            if (!confirm(`Clear SPRICE for ${selectedSkus.size} SKU(s)?`)) return;
-            const updates = [];
+            if (!confirm(`Reset Sprice from rules for ${selectedSkus.size} SKU(s)?`)) return;
             table.getRows().forEach(row => {
                 const d = row.getData();
-                if (selectedSkus.has(d.sku) && !d.is_parent) {
-                    row.update({ sprice: 0, sgpft: 0 });
-                    updates.push({ sku: d.sku, sprice: 0 });
-                }
+                if (d.is_parent || !selectedSkus.has(d.sku)) return;
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
             });
-            if (updates.length) saveSpriceUpdates(updates);
+            sheinPersistVisibleSprices();
         }
-
 
         /** Std Prc vs channel price: reduce / hold / increase → red / yellow / green. */
         function sheinStdPrcChangeDotMeta(stdPrc, comparePrice) {
@@ -1028,8 +1147,8 @@
             if (spriceFilter === 'blank') {
                 table.addFilter(function(d) {
                     if (d.is_parent) return true;
-                    const sp = d.sprice;
-                    return sp === null || sp === undefined || sp === '' || parseFloat(sp) === 0 || isNaN(parseFloat(sp));
+                    const sp = sheinVisibleSprice(d);
+                    return !(sp > 0);
                 });
             }
 
@@ -1703,30 +1822,30 @@
                                     dataset: typeof allTableData !== 'undefined' ? allTableData : undefined,
                                     field: 'lmp_price',
                                     getValue: function(r) {
-                                        const entries = Array.isArray(r.lmp_entries) ? r.lmp_entries : [];
-                                        if (!entries.length) {
-                                            const v = parseFloat(r.lmp_price);
-                                            return isFinite(v) && v > 0 ? v : null;
-                                        }
-                                        const prices = entries.map(function(e) { return parseFloat(e.price); })
-                                            .filter(function(n) { return isFinite(n) && n > 0; });
-                                        return prices.length ? Math.min.apply(null, prices) : null;
+                                        const n = sheinEffectiveLmp(r);
+                                        return n > 0 ? n : null;
                                     }
                                 });
                                 if (avgHtml !== null) return avgHtml;
                             }
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const entries = Array.isArray(d.lmp_entries) ? d.lmp_entries : [];
+                            const extra = sheinLmpLowestFromEntries(entries);
+                            const lowest = extra.lmp;
                             const total = entries.length;
-                            if (total === 0) return '<span style="color:#adb5bd;">N/A</span>';
+                            const activeCount = entries.filter(function(e) { return !sheinEntryIsIgnored(e); }).length;
+                            if (!(lowest > 0) && extra.ignored_price > 0) {
+                                return '<span style="text-decoration:line-through;color:#94a3b8;font-weight:600;">' + money(extra.ignored_price) + '</span>'
+                                    + ' <a href="#" class="shein-view-lmp" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" title="Ignored — not counted"><i class="fas fa-times text-danger"></i></a>';
+                            }
+                            if (!(lowest > 0) || total === 0) return '<span style="color:#adb5bd;">N/A</span>';
 
-                            const lowest = Math.min.apply(null, entries.map(e => parseFloat(e.price) || Infinity));
                             const myPrice = parseFloat(d.special_offer) || 0;
                             const priceColor = (myPrice > 0 && lowest < myPrice) ? '#dc3545' : '#28a745';
 
                             let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.15;">';
                             html += '<span style="color:' + priceColor + ';font-weight:700;font-size:14px;">' + money(lowest) + '</span>';
-                            html += '<a href="#" class="shein-view-lmp" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '"' + (d.lmp_entries ? ' data-lmp=\'' + JSON.stringify(d.lmp_entries).replace(/'/g, '&#39;') + '\'' : '') + ' style="color:#0d6efd;text-decoration:none;font-size:11px;"><i class="fa fa-eye"></i> View ' + total + '</a>';
+                            html += '<a href="#" class="shein-view-lmp" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '"' + (d.lmp_entries ? ' data-lmp=\'' + JSON.stringify(d.lmp_entries).replace(/'/g, '&#39;') + '\'' : '') + ' style="color:#0d6efd;text-decoration:none;font-size:11px;"><i class="fa fa-eye"></i> View ' + activeCount + '</a>';
                             html += '</div>';
                             return html;
                         }
@@ -1877,69 +1996,83 @@
                         field: "sprice",
                         sorter: "number",
                         hozAlign: "right",
-                        editor: "number",
-                        editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC > LMP.",
+                        editable: false,
+                        headerTooltip: "Same as AliExpress Analytics. 0-sold = Target GROI% / 0.80, else Std − PRMT − cvr%, then LMP-capped. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Sp. Price (only when below LMP).",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            let value = parseFloat(cell.getValue()) || 0;
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(d);
-                                if (calc > 0) value = calc;
-                            }
-                            if (!(value > 0)) return '';
+                            const raw = sheinRuleSpriceRaw(d);
+                            if (!(raw > 0)) return '';
+                            const lmpNow = sheinEffectiveLmp(d);
+                            const cap = window.SpriceLmpCap
+                                ? SpriceLmpCap.apply(d, raw, sheinEffectiveLmp)
+                                : null;
+                            let sprice = raw;
+                            const atOrAboveLmp = cap
+                                ? cap.alert
+                                : (lmpNow > 0 && sprice + 0.0001 >= lmpNow);
+                            if (cap && cap.shown > 0) sprice = cap.shown;
+                            else if (atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
+                            if (!(sprice > 0)) return '';
                             const live = parseFloat(d.special_offer) || 0;
-                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
-                            const formatted = money(value);
-                            const priceHtml = overLmp
-                                ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
-                                : `<span style="font-weight:600;">${formatted}</span>`;
-                            const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + value.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
+                            const redTri = atOrAboveLmp
+                                ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                    + (lmpNow > 0 ? lmpNow.toFixed(2) : '') + '"></i>')
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                            const blueTri = (!atOrAboveLmp && live > 0 && sprice > 0
+                                && Math.round(live * 100) !== Math.round(sprice * 100))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + sprice.toFixed(2) + ' ≠ Sp. Price $' + live.toFixed(2) + '"></i>'
+                                : '';
+                            if (!atOrAboveLmp && live > 0 && Math.round(live * 100) === Math.round(sprice * 100)) {
+                                return '<span style="color:#adb5bd;" title="Same as Shein Price">-</span>';
+                            }
+                            const formatted = '$' + sprice.toFixed(2);
+                            const priceHtml = atOrAboveLmp
+                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
+                                : '<span style="font-weight:600;">' + formatted + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                                + priceHtml + blueTri + redTri + '</span>';
                         }
                     },
                     {
                         title: "SGPFT",
                         field: "sgpft",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sgpft;
+                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sgpft;
+                            return av - bv;
+                        },
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            const v = sheinSpriceMetrics(d).sgpft;
                             if (isNaN(v) || v === 0) return '0%';
-                            const r = Math.round(v);
-                            // Same color coding as GPFT
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
                         }
                     },
                     {
                         title: "SGroi",
                         field: "sroi",
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
+                            const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
+                            return av - bv;
+                        },
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            const v = sheinSpriceMetrics(d).sroi;
                             if (isNaN(v) || v === 0) return '0%';
-                            const r = Math.round(v);
-                            // Same color ranges as GROI
                             let color;
                             if      (v < 40)  color = '#a00211';
                             else if (v < 75)  color = '#ffc107';
                             else if (v < 125) color = '#28a745';
                             else              color = '#d63384';
-                            return `<span style="color:${color};font-weight:600;">${r}%</span>`;
+                            return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
                         }
                     },
                 ],
@@ -1950,6 +2083,12 @@
                     // Honor the dropdown defaults on first load (e.g. INV "More than 0")
                     // so the table doesn't render every row before the user touches a filter.
                     applyFilters();
+                    setTimeout(function() {
+                        try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
+                    }, 400);
+                    setTimeout(function() {
+                        try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
+                    }, 2000);
                 },
                 dataFiltered: function(filters, rows) {
                     updateSummary(rows);
@@ -2064,20 +2203,7 @@
                     return;
                 }
 
-                if (field !== 'sprice') return;
-                if (d.is_parent) return;
-                const sku    = d.sku;
-                // Always store SPRICE to exactly 2 decimals (UI input may allow more digits).
-                const rawSprice = parseFloat(cell.getValue()) || 0;
-                const sprice = Math.round(rawSprice * 100) / 100;
-                const margin = parseFloat(d._margin) || 1;
-                const lp     = parseFloat(d.lp)   || 0;
-                const ship   = parseFloat(d.ship)  || 0;
-                // Same formulas as GPFT / GROI
-                const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100 * 100) / 100 : 0;
-                const sroi  = lp     > 0 ? Math.round(((sprice * margin - lp - ship)  / lp)    * 100 * 100) / 100 : 0;
-                cell.getRow().update({ sprice: sprice, sgpft: sgpft, sroi: sroi });
-                saveSpriceUpdates([{ sku: sku, sprice: sprice }]);
+                if (field === 'sprice') return;
             });
 
             /*
@@ -2123,7 +2249,9 @@
                     }
                     let sprice = +Number(res.sprice).toFixed(2);
                     if (!isFinite(sprice) || sprice <= 0) return;
-                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+                    const prepared = sheinPrepareSpriceToSave(rd, sprice);
+                    if (!(prepared.sprice > 0)) return;
+                    rowsToProcess.push({ row: r, sku: sku, sprice: prepared.sprice });
                 });
 
                 if (rowsToProcess.length === 0) {
@@ -2147,14 +2275,9 @@
                 const updates = [];
                 rowsToProcess.forEach(function(item) {
                     const rd = item.row.getData();
-                    const margin = parseFloat(rd._margin) || 1;
-                    const lp = parseFloat(rd.lp) || 0;
-                    const ship = parseFloat(rd.ship) || 0;
-                    const sprice = item.sprice;
-                    const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 100 * 100) / 100 : 0;
-                    const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                    item.row.update({ sprice: sprice, sgpft: sgpft, sroi: sroi });
-                    updates.push({ sku: item.sku, sprice: sprice });
+                    const prepared = sheinPrepareSpriceToSave(rd, item.sprice);
+                    item.row.update({ sprice: prepared.sprice, sgpft: prepared.sgpft, sroi: prepared.sroi });
+                    updates.push({ sku: item.sku, sprice: prepared.sprice });
                 });
 
                 $.ajax({

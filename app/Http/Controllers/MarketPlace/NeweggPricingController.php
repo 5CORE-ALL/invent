@@ -670,8 +670,15 @@ class NeweggPricingController extends Controller
     {
         try {
             $updates = $request->input('updates', []);
+            if (! is_array($updates) || $updates === []) {
+                $sku = trim((string) $request->input('sku', ''));
+                $price = $request->input('price');
+                if ($sku !== '' && is_numeric($price)) {
+                    $updates = [['sku' => $sku, 'price' => $price]];
+                }
+            }
             if (!is_array($updates) || count($updates) === 0) {
-                return response()->json(['success' => false, 'error' => 'No updates provided'], 422);
+                return response()->json(['success' => false, 'error' => 'No updates provided', 'message' => 'No updates provided'], 422);
             }
 
             // Build a SKU → SellerPartNumber index once (avoids N queries).
@@ -738,28 +745,47 @@ class NeweggPricingController extends Controller
                 $spn = (string) ($r['seller_part_number'] ?? '');
                 $localSku = $skuBySpn[$spn] ?? $spn;
                 $success = (bool) ($r['success'] ?? false);
-                if ($success) {
+                $confirmed = isset($r['confirmed_price']) && is_numeric($r['confirmed_price'])
+                    ? round((float) $r['confirmed_price'], 2)
+                    : null;
+                $requested = $priceBySpn[$spn] ?? null;
+                if ($success && $confirmed !== null) {
                     $pushed++;
-                    $live = $newegg->refreshStoredSellingPrice($spn, 'USA');
-                    $stored = $live ?? ($priceBySpn[$spn] ?? null);
-                    if ($live === null && $stored !== null) {
-                        NeweggPricing::where('seller_part_number', $spn)->update([
-                            'selling_price' => $stored,
-                        ]);
-                    }
-                    $priceBySpn[$spn] = $stored;
+                    NeweggPricing::where('seller_part_number', $spn)->update([
+                        'selling_price' => $confirmed,
+                    ]);
+                    $priceBySpn[$spn] = $confirmed;
+                } elseif ($success && $requested !== null) {
+                    $pushed++;
+                    NeweggPricing::where('seller_part_number', $spn)->update([
+                        'selling_price' => $requested,
+                    ]);
+                    $priceBySpn[$spn] = $requested;
                 }
                 $results[] = [
                     'sku'     => $localSku,
                     'spn'     => $spn,
                     'success' => $success,
-                    'price'   => $priceBySpn[$spn] ?? null,
+                    'price'   => $success ? ($priceBySpn[$spn] ?? $requested) : null,
                     'error'   => $success ? null : ($r['error'] ?? 'Rejected'),
+                    'message' => $success ? null : ($r['error'] ?? 'Rejected'),
                 ];
             }
 
             // Whole-batch blocked-by-cloudflare gets a clearer HTTP status so
             // the UI can fail-fast instead of treating it as a normal error.
+            $failed = (count($items) - $pushed) + count($errors);
+            $error = $pushed === 0
+                ? ($bulk['error_message'] ?? ($results[0]['error'] ?? 'No prices pushed'))
+                : null;
+            $confirmedPrice = null;
+            foreach ($results as $row) {
+                if (! empty($row['success']) && isset($row['price']) && is_numeric($row['price'])) {
+                    $confirmedPrice = round((float) $row['price'], 2);
+                    break;
+                }
+            }
+
             if ($bulk['blocked_by_cloudflare'] && $pushed === 0) {
                 return response()->json([
                     'success' => false,
@@ -767,19 +793,26 @@ class NeweggPricingController extends Controller
                     'failed'  => count($items),
                     'results' => array_values($results),
                     'error'   => 'Blocked by Cloudflare. Whitelist this server IP in the Newegg Seller Portal.',
+                    'message' => 'Blocked by Cloudflare. Whitelist this server IP in the Newegg Seller Portal.',
                 ], 502);
             }
 
             return response()->json([
-                'success' => $pushed > 0,
+                'success' => $pushed > 0 && $failed === 0,
                 'pushed'  => $pushed,
-                'failed'  => (count($items) - $pushed) + count($errors),
+                'failed'  => $failed,
+                'price'   => $confirmedPrice,
                 'results' => array_values($results),
-                'error'   => ($pushed === 0 ? ($bulk['error_message'] ?? 'No prices pushed') : null),
+                'error'   => $error,
+                'message' => $error,
             ]);
         } catch (\Throwable $e) {
             Log::error('Error pushing Newegg prices: ' . $e->getMessage());
-            return response()->json(['success' => false, 'error' => 'Push failed: ' . $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'error' => 'Push failed: ' . $e->getMessage(),
+                'message' => 'Push failed: ' . $e->getMessage(),
+            ], 500);
         }
     }
 

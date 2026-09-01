@@ -1050,7 +1050,7 @@
         const ADS_ONLY_COLUMN_FIELDS = ['NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold',
             'ad_clicks', 'acos', 'status', 'campaign_name'
         ];
-        // "TT Ship" field is a duplicate of Ship_productmaster — hide it; show one Ship column + checkbox.
+        // "TT Ship" is a duplicate of Normal Ship. Never show BB Ship.
         const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit', 'TT Ship'];
         let table = null;
         let allTableData = [];
@@ -3064,9 +3064,9 @@
                             return `<span style="font-weight: 600;">${value}</span>`;
                         }
                     },
-                    {
+                    ...(TTP_CFG.summaryChannel === 'tiktok2' ? [] : [{
                         // Duplicate of Ship_productmaster — kept for data compat, always hidden.
-                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "TT Ship",
+                        title: "TT Ship",
                         field: "TT Ship",
                         hozAlign: "center",
                         sorter: "number",
@@ -3083,7 +3083,7 @@
                             return '<span style="color:#6c757d;">-</span>';
                             return `$${value.toFixed(2)}`;
                         }
-                    },
+                    }]),
                     {
                         title: "NRA",
                         field: "NR",
@@ -3905,9 +3905,10 @@
                         width: 60
                     },
                     {
-                        // TikTok 1 → normal product_master ship (same as /price-increase). TikTok 2 → ship_bb.
-                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "Ship",
+                        // Shipping Master "Ship" (normal ship), never BB Ship / ship_bb.
+                        title: "Ship",
                         field: "Ship_productmaster",
+                        headerTooltip: "Normal Ship from Shipping Master (not BB Ship)",
                         hozAlign: "center",
                         sorter: "number",
                         visible: true,
@@ -5578,10 +5579,15 @@
                             } catch (e) {}
                         });
                         // Ship column + Columns checkbox (both TikTok pages).
-                        // One-time migrate: legacy prefs hid Ship_productmaster as a duplicate.
+                        // One-time migrate: legacy prefs hid Ship_productmaster as a duplicate
+                        // or kept the old "BB Ship" title.
                         try {
                             const shipCol = table.getColumn('Ship_productmaster');
                             if (shipCol) {
+                                shipCol.updateDefinition({
+                                    title: 'Ship',
+                                    headerTooltip: 'Normal Ship from Shipping Master (not BB Ship)'
+                                });
                                 const v = visibility && typeof visibility === 'object' ? visibility : {};
                                 const migrated = v.ship_col_migrated === true || v.ship_col_migrated === 1 ||
                                     v.ship_col_migrated === '1' || v.ship_col_migrated === 'true';

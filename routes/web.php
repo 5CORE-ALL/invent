@@ -4983,12 +4983,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
+    Route::post('/temu-pricing/save-sprice-batch', [TemuController::class, 'saveTemuSpriceBatch']);
     Route::post('/temu/push-price', [TemuController::class, 'pushTemuPrice'])->name('temu.push.price');
     Route::post('/temu/pull-price', [TemuController::class, 'pullTemuPrice'])->name('temu.pull.price');
     Route::post('/temu2/push-price', [TemuController::class, 'pushTemu2Price'])->name('temu2.push.price');
     Route::post('/temu2/pull-price', [TemuController::class, 'pullTemu2Price'])->name('temu2.pull.price');
     Route::post('/temu2-pricing/update-price', [TemuController::class, 'updateTemu2Price']);
     Route::post('/temu2-pricing/save-sprice', [TemuController::class, 'saveTemu2Sprice']);
+    Route::post('/temu2-pricing/save-sprice-batch', [TemuController::class, 'saveTemu2SpriceBatch']);
     Route::post('/temu2-sync-data-view-from-temu', [TemuController::class, 'syncTemu2DataViewFromTemuDataView'])->name('temu2.sync.dataview');
     Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
     Route::post('/temu-decrease/save-links', [TemuController::class, 'saveTemuDecreaseLinks'])->name('temu.decrease.save.links');
@@ -5646,6 +5648,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
     Route::post('/aliexpress/pricing-sync-api', [AliexpressController::class, 'syncPricingFromApi'])->name('aliexpress.pricing.sync.api');
     Route::post('/aliexpress/pricing-push-price', [AliexpressController::class, 'pushPricingPrice'])->name('aliexpress.pricing.push');
+    Route::post('/aliexpress/push-sgroi-guard', [AliexpressController::class, 'savePushSgroiGuard'])->name('aliexpress.pricing.push.guard');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
     Route::post('/aliexpress/save-links', [AliexpressController::class, 'saveLinks'])->name('aliexpress.pricing.save.links');
     Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');

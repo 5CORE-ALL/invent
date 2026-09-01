@@ -10022,7 +10022,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}"></td>`;
             };
             const shipTitle = channelLmpKey(row.channel) === 'temu'
-                ? 'Auto from Product Master (temu_ship). Not editable.'
+                ? 'Auto from Product Master (temu_ship = slab + Handling + O-Size). Not editable.'
                 : 'Auto from Product Master (ship). Not editable.';
             const readonlyInputCell = (field, value) =>
                 `<td class="comparison-roi-input-cell"><input type="text" class="comparison-roi-input comparison-roi-input-readonly" data-row="${rowIndex}" data-field="${field}" value="${escapeHtmlAttr(value || '')}" readonly tabindex="-1" title="${escapeHtmlAttr(shipTitle)}"></td>`;

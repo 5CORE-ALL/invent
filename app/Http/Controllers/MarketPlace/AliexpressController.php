@@ -16,6 +16,7 @@ use App\Models\AliexpressMetric;
 use App\Models\ChannelMaster;
 use App\Services\AliExpressApiService;
 use App\Services\ChannelPromoPricingService;
+use App\Support\AliexpressPushGuard;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use App\Models\ChannelMasterCalculatedData;
@@ -1124,6 +1125,21 @@ class AliexpressController extends Controller
     {
         return view('market-places.aliexpress_pricing_view', [
             'marginPercent' => $this->resolveAliexpressMarginPercent(),
+            'aeStopLowSgroi' => AliexpressPushGuard::stopLowSgroiEnabled(),
+            'aeMinSgroi' => AliexpressPushGuard::minSgroi(),
+        ]);
+    }
+
+    public function savePushSgroiGuard(Request $request)
+    {
+        $on = $request->boolean('stop_sgroi_lt_40');
+        $min = $request->has('min_sgroi') ? (int) $request->input('min_sgroi') : null;
+        AliexpressPushGuard::setStopLowSgroi($on, $min);
+
+        return response()->json([
+            'success' => true,
+            'stop_sgroi_lt_40' => $on,
+            'min_sgroi' => AliexpressPushGuard::minSgroi(),
         ]);
     }
 
@@ -1382,6 +1398,7 @@ class AliexpressController extends Controller
                     );
 
                     $localSku = $skuByKey[$row['product_id'].'|'.$norm]['sku'] ?? $skuCode;
+                    $this->persistAePushStatus($localSku, 'pushed', $price);
                     $results[] = [
                         'sku' => $localSku,
                         'success' => true,
@@ -1395,6 +1412,7 @@ class AliexpressController extends Controller
                 foreach ($priceRows as $row) {
                     $norm = $this->normalizeAeSkuExact((string) $row['sku_code']);
                     $localSku = $skuByKey[$row['product_id'].'|'.$norm]['sku'] ?? $row['sku_code'];
+                    $this->persistAePushStatus($localSku, 'error', (float) $row['price']);
                     $results[] = [
                         'sku' => $localSku,
                         'success' => false,
@@ -1698,12 +1716,24 @@ class AliexpressController extends Controller
                     }
                 }
                 $lmpPrices = array_values(array_filter(array_map(static function ($e) {
+                    if (! empty($e['ignored'])) {
+                        return null;
+                    }
                     $p = $e['price'] ?? null;
 
                     return $p !== null && $p !== '' ? (float) $p : null;
                 }, $lmpEntries)));
-                $lmp = count($lmpPrices) > 0 ? min($lmpPrices) : ($aeLmpRow ? $aeLmpRow->lmp : null);
-                $lmpLink = $lmpEntries[0]['link'] ?? ($aeLmpRow ? $aeLmpRow->lmp_link : null);
+                $lmp = count($lmpPrices) > 0 ? min($lmpPrices) : null;
+                $lmpLink = null;
+                foreach ($lmpEntries as $e) {
+                    if (empty($e['ignored']) && ! empty($e['link'])) {
+                        $lmpLink = $e['link'];
+                        break;
+                    }
+                }
+                if ($lmpLink === null) {
+                    $lmpLink = $aeLmpRow ? $aeLmpRow->lmp_link : null;
+                }
 
                 // Buyer / Seller links
                 $linkRecord = $linksBySku->get($normalizedSku);
@@ -1755,6 +1785,9 @@ class AliexpressController extends Controller
                     'sprice'      => round($sprice, 2),
                     'sgpft'       => $sgpft,
                     'sroi'        => $sroi,
+                    'SPRICE_STATUS' => $meta['SPRICE_STATUS'] ?? null,
+                    'SPRICE_PUSHED_VALUE' => isset($meta['SPRICE_PUSHED_VALUE']) ? (float) $meta['SPRICE_PUSHED_VALUE'] : null,
+                    'SPRICE_STATUS_UPDATED_AT' => $meta['SPRICE_STATUS_UPDATED_AT'] ?? null,
                     '_margin'     => round($margin, 4),
                     'inv'         => $inv,
                     'ov_l30'      => $ovL30,
@@ -1903,6 +1936,7 @@ class AliexpressController extends Controller
                 if (!$sku || $sprice === null) continue;
 
                 $sprice = (float) $sprice;
+                if ($sprice <= 0) continue;
 
                 // Get LP / Ship from ProductMaster
                 $productMaster = ProductMaster::where('sku', $sku)->first();
@@ -1925,9 +1959,14 @@ class AliexpressController extends Controller
                 $stored = is_array($view->value) ? $view->value
                         : (json_decode($view->value, true) ?: []);
 
+                $prev = isset($stored['SPRICE']) ? (float) $stored['SPRICE'] : 0;
                 $stored['SPRICE'] = $sprice;
                 $stored['SGPFT']  = $sgpft;
                 $stored['SROI']   = $sroi;
+                if (abs($prev - $sprice) >= 0.005) {
+                    $stored['SPRICE_STATUS'] = null;
+                    $stored['SPRICE_PUSHED_VALUE'] = null;
+                }
 
                 $view->value = $stored;
                 $view->save();
@@ -1946,6 +1985,24 @@ class AliexpressController extends Controller
             Log::error('AliExpress SPRICE save failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
+    }
+
+    private function persistAePushStatus(string $sku, string $status, ?float $price = null): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        $view = AliexpressDataView::firstOrNew(['sku' => $sku]);
+        $stored = is_array($view->value) ? $view->value
+            : (json_decode((string) $view->value, true) ?: []);
+        $stored['SPRICE_STATUS'] = $status;
+        $stored['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        if ($price !== null) {
+            $stored['SPRICE_PUSHED_VALUE'] = round($price, 2);
+        }
+        $view->value = $stored;
+        $view->save();
     }
 
     /**

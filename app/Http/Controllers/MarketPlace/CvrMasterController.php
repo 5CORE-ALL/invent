@@ -126,6 +126,7 @@ use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\PurchasingPowerApiService;
 use App\Support\ProductMasterTemuShip;
+use App\Support\ProductMasterShipBb;
 use App\Support\TemuGoodsIdHelper;
 use App\Jobs\RunPricingErrorsFixPushJob;
 use App\Models\BadgeData;
@@ -1831,6 +1832,7 @@ class CvrMasterController extends Controller
                         if (strtolower($k) === "wt_act") $actWt = floatval($v);
                     }
                 }
+                $shipBb = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $productMaster);
 
                 // Get Walmart views and CVR data from walmart_listing_views_data
                 $walmartViews = 0;
@@ -1974,7 +1976,7 @@ class CvrMasterController extends Controller
 
                 // GPFT% = ((price × percentage − ship − lp) / price) × 100
                 $bbGPFT = $bbPrice > 0
-                    ? round((($bbPrice * $bestbuyPercentage - $lp - $ship) / $bbPrice) * 100, 2)
+                    ? round((($bbPrice * $bestbuyPercentage - $lp - $shipBb) / $bbPrice) * 100, 2)
                     : 0;
 
                 // BestBuy PFT% = GPFT% (no ads)
@@ -2833,6 +2835,9 @@ class CvrMasterController extends Controller
                     "temu_goods_id" => $goodsId,
                     "temu_sku_id" => $temuSkuId,
                     "temu_ship" => $temuShip > 0 ? round($temuShip, 2) : 0,
+                    "ship_bb" => $shipBb > 0 ? round($shipBb, 2) : 0,
+                    "handling_charge" => $values['handling_charge'] ?? null,
+                    "o_size_charge" => $values['o_size_charge'] ?? null,
                     "temu_margin" => $temuPercentage,
                     "temu_push_status" => null,
                     "avg_cvr" => $avgCVR,
@@ -3672,6 +3677,7 @@ class CvrMasterController extends Controller
             $lp = 0;
             $ship = 0; // normal ship — TikTok uses same as Amazon
             $temuShip = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $productMaster);
+            $shipBb = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $productMaster);
             $actWt = 0;
             
             if ($values) {
@@ -4873,7 +4879,7 @@ class CvrMasterController extends Controller
                 : ($bestbuyProduct ? floatval($bestbuyProduct->price ?? 0) : 0);
             $bestbuyL30 = $bestbuyProduct ? intval($bestbuyProduct->m_l30 ?? 0) : 0;
             $bestbuyGPFT = $bestbuyPrice > 0
-                ? round((($bestbuyPrice * $bestbuyMargin - $lp - $ship) / $bestbuyPrice) * 100, 2)
+                ? round((($bestbuyPrice * $bestbuyMargin - $lp - $shipBb) / $bestbuyPrice) * 100, 2)
                 : 0;
             $bestbuyNPFT = $bestbuyGPFT;
 
@@ -6205,6 +6211,7 @@ class CvrMasterController extends Controller
         $lp = 0.0;
         $ship = 0.0;
         $temuShip = 0.0;
+        $shipBb = 0.0;
         $product = ProductMaster::query()
             ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
             ->first();
@@ -6220,6 +6227,7 @@ class CvrMasterController extends Controller
                 }
             }
             $temuShip = ProductMasterTemuShip::forPricing($values, $product);
+            $shipBb = ProductMasterShipBb::forPricing($values, $product);
         }
 
         $margin = 0.80;
@@ -6242,6 +6250,13 @@ class CvrMasterController extends Controller
                 case 'ebay2':
                     $margin = MarketplacePercentage::takeHomeDecimal('EbayTwo');
                     $ads = (float) $cmc->getEbaytwoMasterAdsPercent();
+                    break;
+                case 'bestbuy':
+                case 'bestbuyusa':
+                    $mp = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
+                    $margin = $mp ? ((float) $mp->percentage / 100) : 0.80;
+                    $useShip = $shipBb;
+                    $ads = $this->resolveChannelAdsPercentForChart('bestbuy');
                     break;
                 case 'temu':
                 case 'temu2':

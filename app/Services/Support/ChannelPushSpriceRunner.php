@@ -6,8 +6,10 @@ use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
+use App\Http\Controllers\MarketPlace\NeweggPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
+use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use Illuminate\Http\Request;
@@ -331,6 +333,15 @@ class ChannelPushSpriceRunner
     private function pushPrice(string $sku, float $price)
     {
         $pushPrice = $price;
+        if ($this->channel === 'newegg') {
+            $neweggReq = Request::create('/newegg-pricing-push', 'POST', [
+                'sku' => $sku,
+                'price' => $pushPrice,
+            ]);
+
+            return app(NeweggPricingController::class)->pushPriceToNewegg($neweggReq, app(NeweggApiService::class));
+        }
+
         if (in_array($this->channel, ['temu', 'temu2'], true)) {
             $base = \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
             if ($base !== null && $base > 0) {

@@ -1140,6 +1140,7 @@ class SheinController extends Controller
                 $sprice = $update['sprice'] ?? null;
                 if (!$sku || $sprice === null) continue;
                 $sprice = (float) $sprice;
+                if ($sprice <= 0) continue;
 
                 $n = $this->normalizeSheinSkuExact((string) $sku);
                 $pm = null;
