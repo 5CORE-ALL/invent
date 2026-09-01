@@ -701,7 +701,7 @@
         function aeShouldCapSpriceToLmp() {
             return true;
         }
-        /** Visible S PRC: 0-sold Target GROI% / 0.80, then LMP-capped (Amazon S PRC column). */
+        /** Visible S PRC: 0-sold Target GROI% / marketplace_percentages, then LMP-capped. */
         function aeVisibleSprice(data) {
             const raw = aeRuleSpriceRaw(data);
             if (!(raw > 0)) return 0;
@@ -2044,7 +2044,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "Rule price (0-sold = Target GROI% / 0.80, else Std − PRMT − cvr%), then LMP-capped like Amazon sold S PRC. Always shows the $ even when it matches live Price. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
+                        headerTooltip: "Rule price (0-sold = Target GROI% / marketplace_percentages, else Std − PRMT − cvr%), then LMP-capped. Always shows the $ even when it matches live Price. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';

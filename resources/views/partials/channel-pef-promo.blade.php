@@ -3640,7 +3640,7 @@
         function chPromoIsEbayChannel() {
             return String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0;
         }
-        /** AliExpress / Shein analytics: 0-sold Target GROI% / 0.80, then always LMP-cap. */
+        /** AliExpress / Shein analytics: 0-sold Target GROI% / marketplace_percentages, then always LMP-cap. */
         function chPromoIsAeStyleSpriceChannel() {
             return CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein';
         }
@@ -4596,9 +4596,8 @@
             }
             return 1;
         }
-        /** Amazon-tabulator 0 Sold cap: S PRC = (LP × (1 + GROI%/100) + Ship) / 0.80. AE / Shein use the same. */
+        /** 0 Sold S PRC / SGPFT / SGROI take-home from marketplace_percentages (row._margin). */
         function chPromoZeroSoldTakehomeMargin(d) {
-            if (typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel()) return 0.80;
             return chPromoTakehomeMargin(d);
         }
         function chPromoAdsFrac() {
@@ -5921,11 +5920,11 @@
             if (!$formula.length) return;
             if (chPromoIsTemuPromoChannel()) {
                 $formula.text('SGROI = (S R Price × 0.95 − Temu Ship − LP) / LP; Apply back-solves S PRC so SGROI = Target');
-            } else if (CHANNEL_PROMO_CHANNEL === 'aliexpress') {
-                $formula.text('S PRC = (LP × (1 + GROI%/100) + Ship) / 0.80 — same 0 Sold cap as /amazon-tabulator-view. Not LMP-capped.');
-            } else if (chPromoIsEbayChannel()) {
+            } else if (CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein'
+                || chPromoIsEbayChannel()) {
                 const m = chPromoTakehomeMargin({});
-                $formula.text('S PRC = (LP × (1 + GROI%/100) + Ship) / ' + (m > 0 ? m.toFixed(2) : 'margin'));
+                $formula.text('S PRC = (LP × (1 + GROI%/100) + Ship) / ' + (m > 0 ? m.toFixed(2) : 'margin')
+                    + ' (marketplace_percentages)');
             }
         }
         const CH_ZS_BANDS = [
