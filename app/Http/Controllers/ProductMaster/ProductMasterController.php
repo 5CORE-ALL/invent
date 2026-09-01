@@ -33,6 +33,7 @@ use App\Services\Support\MarketplaceCharacterLimits;
 use Illuminate\Validation\Rule;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\TemuApiService;
+use App\Services\TikTokShopService;
 use App\Services\TitleMasterDataService;
 use App\Services\WalmartService;
 use App\Services\WayfairApiService;
@@ -5987,135 +5988,27 @@ GRAPHQL;
     private function updateTiktokTitle($sku, $newTitle)
     {
         try {
-            Log::info("Starting TikTok title update for SKU: {$sku}, Title: {$newTitle}");
+            $service = app(TikTokShopService::class);
+            if (! $service->isAuthenticated()) {
+                $accessToken = (string) config('services.tiktok.access_token');
+                if ($accessToken === '') {
+                    Log::warning('TikTok credentials missing in .env');
 
-            // Get TikTok Shop API credentials from .env - try multiple variable name formats
-            $appKey = config('services.tiktok.app_key');
-            $appSecret = config('services.tiktok.app_secret');
-            $accessToken = config('services.tiktok.access_token');
-
-            if (! $appKey || ! $appSecret || ! $accessToken) {
-                Log::warning('TikTok credentials missing in .env');
-                Log::warning('Required: TIKTOK_APP_KEY (or TIKTOK_CLIENT_KEY/TIKTOK_APP_ID), TIKTOK_APP_SECRET (or TIKTOK_CLIENT_SECRET), and TIKTOK_ACCESS_TOKEN (or TIKTOK_TOKEN)');
-                Log::warning('Please check your .env file and ensure TikTok credentials are configured');
-
-                return false;
-            }
-
-            Log::info('✓ TikTok credentials found (access token length: '.strlen($accessToken).' characters)');
-
-            // Step 1: Try to get product_id from database first (faster)
-            $productId = null;
-
-            $tiktokDataView = \App\Models\TiktokShopDataView::where('sku', $sku)
-                ->orWhere('sku', strtoupper($sku))
-                ->orWhere('sku', strtolower($sku))
-                ->first();
-
-            if ($tiktokDataView && $tiktokDataView->value) {
-                $value = is_array($tiktokDataView->value) ? $tiktokDataView->value : json_decode($tiktokDataView->value, true);
-                if (is_array($value)) {
-                    $productId = $value['product_id'] ?? $value['productId'] ?? $value['id'] ?? null;
-                    if ($productId) {
-                        Log::info("Found TikTok product ID from TiktokShopDataView: {$productId} for SKU: {$sku}");
-                    }
+                    return false;
                 }
+                $service->setTokens($accessToken, config('services.tiktok.refresh_token'));
             }
 
-            // Step 2: If no product ID from database, we need it to update
-            if (! $productId) {
-                Log::error("Product ID not found for SKU: {$sku} in TiktokShopDataView");
-                Log::error('TikTok API requires product_id to update title. Please ensure product is synced to TiktokShopDataView.');
-
-                return false;
+            $result = $service->updateTitle((string) $sku, (string) $newTitle);
+            if (! empty($result['success'])) {
+                return true;
             }
 
-            Log::info("Found TikTok product_id: {$productId}");
+            Log::error('TikTok title update failed for SKU '.$sku.': '.($result['message'] ?? 'unknown'));
 
-            // Step 3: Update product title using TikTok Shop API
-            // TikTok Shop API endpoint for updating product
-            $baseUrl = 'https://open-api.tiktokglobalshop.com';
-            $shopId = config('services.tiktok.shop_id'); // Optional, may be required for some endpoints
-
-            // TikTok Shop API uses Bearer token authentication
-            $headers = [
-                'Authorization' => 'Bearer '.$accessToken,
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ];
-
-            // TikTok Shop API endpoint for updating product title
-            // Using /product/202309/products/{product_id} endpoint
-            $updatePayload = [
-                'title' => $newTitle,
-            ];
-
-            // Rate limiting delay
-            sleep(1);
-
-            Log::info("Updating TikTok product ID: {$productId} with title: {$newTitle}");
-
-            // Try different TikTok API endpoints
-            $endpoints = [
-                "/product/202309/products/{$productId}",
-                "/api/products/{$productId}",
-                '/open_api/v1/product/update',
-            ];
-
-            $success = false;
-            foreach ($endpoints as $endpoint) {
-                $url = $baseUrl.$endpoint;
-
-                Log::info("Trying TikTok endpoint: {$url}");
-
-                $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
-                    ->withHeaders($headers)
-                    ->timeout(30)
-                    ->patch($url, $updatePayload);
-
-                $status = $updateResponse->status();
-                $body = $updateResponse->body();
-
-                Log::info("TikTok update status: {$status}");
-                Log::info("TikTok update body: {$body}");
-
-                if ($updateResponse->successful()) {
-                    $responseData = $updateResponse->json();
-
-                    // Check for success indicators
-                    if (isset($responseData['data']) || isset($responseData['success']) || isset($responseData['message'])) {
-                        Log::info("✓ Successfully updated TikTok title for SKU: {$sku}, Product ID: {$productId}");
-                        $success = true;
-                        break;
-                    }
-                } elseif ($status == 404) {
-                    // Endpoint not found, try next one
-                    continue;
-                } else {
-                    // Log error but continue to next endpoint
-                    Log::warning("TikTok endpoint {$endpoint} failed. Status: {$status}");
-                }
-            }
-
-            if (! $success) {
-                Log::error("✗ TikTok update failed for all endpoints. Last status: {$status}, Body: {$body}");
-
-                if ($status == 401) {
-                    Log::error('Authentication failed (401). Check TIKTOK_ACCESS_TOKEN - may be invalid or expired');
-                } elseif ($status == 403) {
-                    Log::error('Permission denied (403). Check API permissions in TikTok Shop Developer Portal');
-                } elseif ($status == 400) {
-                    Log::error('Bad request (400). Check request parameters and payload format');
-                }
-
-                return false;
-            }
-
-            return true;
-
+            return false;
         } catch (\Exception $e) {
             Log::error("✗ Exception updating TikTok title for SKU {$sku}: ".$e->getMessage());
-            Log::error('Stack trace: '.$e->getTraceAsString());
 
             return false;
         }
