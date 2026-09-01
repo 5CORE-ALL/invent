@@ -184,6 +184,24 @@ class AmazonOrderSyncService
                     continue;
                 }
                 $seen[$amazonId] = true;
+                $alreadyImported = AmazonOrder::query()
+                    ->where('amazon_order_id', $amazonId)
+                    ->whereNotNull('shopify_order_id')
+                    ->where('shopify_order_id', '!=', '')
+                    ->value('shopify_order_id');
+                if ($alreadyImported) {
+                    AmazonOrder::query()
+                        ->where('amazon_order_id', $amazonId)
+                        ->where(function ($q) {
+                            $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+                        })
+                        ->update([
+                            'shopify_order_id' => (string) $alreadyImported,
+                            'import_status' => 'imported',
+                        ]);
+
+                    continue;
+                }
             }
             if ($order->isFba()) {
                 $order->update(['import_status' => 'skipped_fba', 'fulfillment_channel' => 'AFN']);

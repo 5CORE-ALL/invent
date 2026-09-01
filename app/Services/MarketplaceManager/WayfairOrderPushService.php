@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 class WayfairOrderPushService
 {
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
     use SyncsShopifyOrderAddress;
 
     public ?string $lastFailureReason = null;
@@ -96,6 +97,8 @@ class WayfairOrderPushService
     {
         $order->refresh();
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedMarketplaceOrder('wayfair', (int) $order->id, ['po_number' => $orderId]);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -107,6 +110,7 @@ class WayfairOrderPushService
         if ($localLinked) {
             $this->linkWayfairOrderToShopify($orderId, (string) $localLinked);
             $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+            $this->fulfillShopifyForImportedMarketplaceOrder('wayfair', (int) $order->id, ['po_number' => $orderId]);
 
             return (string) $localLinked;
         }
@@ -133,6 +137,7 @@ class WayfairOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('wayfair', (int) $order->id, ['po_number' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -158,6 +163,7 @@ class WayfairOrderPushService
         }
 
         $this->linkWayfairOrderToShopify($orderId, $shopifyOrderId);
+        $this->fulfillShopifyForImportedMarketplaceOrder('wayfair', (int) ($order->fresh()?->id ?? $order->id), ['po_number' => $orderId]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

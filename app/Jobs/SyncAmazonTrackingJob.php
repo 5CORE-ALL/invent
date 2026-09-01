@@ -18,9 +18,9 @@ class SyncAmazonTrackingJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
 
-    public int $timeout = 850;
+    public int $timeout = 1200;
 
-    public int $uniqueFor = 900;
+    public int $uniqueFor = 1500;
 
     public array $backoff = [20, 60, 120];
 
@@ -28,7 +28,7 @@ class SyncAmazonTrackingJob implements ShouldQueue, ShouldBeUnique
         public bool $respectSettings = true,
         public int $limit = 40,
     ) {
-        $this->onQueue(MarketplaceManagerRegistry::queueFor('amazon'));
+        $this->onQueue(MarketplaceManagerRegistry::QUEUE_TRACKING);
     }
 
     public function uniqueId(): string

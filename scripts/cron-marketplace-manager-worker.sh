@@ -16,7 +16,7 @@ require "vendor/autoload.php";
 $app = require "bootstrap/app.php";
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 $names = array_merge(
-    ["marketplace-manager"],
+    ["marketplace-manager", App\Services\MarketplaceManager\MarketplaceManagerRegistry::QUEUE_TRACKING],
     App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueNames()
 );
 echo implode("\n", array_values(array_unique($names)));

@@ -247,6 +247,8 @@ class SheinOrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedMarketplaceOrder('shein', (int) $order->id, ['order_id' => (string) $order->order_id]);
+
             return (string) $order->shopify_order_id;
         }
 

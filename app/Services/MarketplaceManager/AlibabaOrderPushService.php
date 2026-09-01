@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 class AlibabaOrderPushService
 {
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
 
     public ?string $lastFailureReason = null;
 
@@ -44,6 +45,8 @@ class AlibabaOrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedMarketplaceOrder('alibaba', (int) $order->id, ['order_id' => (string) $order->order_id]);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -59,6 +62,7 @@ class AlibabaOrderPushService
             if ($localLinked) {
                 $this->linkAlibabaOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedMarketplaceOrder('alibaba', (int) $order->id, ['order_id' => $orderId]);
 
                 return (string) $localLinked;
             }
@@ -95,6 +99,7 @@ class AlibabaOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('alibaba', (int) $order->id, ['order_id' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -129,6 +134,7 @@ class AlibabaOrderPushService
         }
 
         $this->linkAlibabaOrderToShopify($orderId !== '' ? $orderId : (string) $order->order_id, $shopifyOrderId);
+        $this->fulfillShopifyForImportedMarketplaceOrder('alibaba', (int) ($order->fresh()?->id ?? $order->id), ['order_id' => $orderId]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

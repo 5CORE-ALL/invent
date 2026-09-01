@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 class FaireOrderPushService
 {
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
     use SyncsShopifyOrderAddress;
 
     public ?string $lastFailureReason = null;
@@ -226,6 +227,8 @@ class FaireOrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedMarketplaceOrder('faire', (int) $order->id, ['order_id' => (string) $order->order_id]);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -242,6 +245,7 @@ class FaireOrderPushService
             if ($localLinked) {
                 $this->linkFaireOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedMarketplaceOrder('faire', (int) $order->id, ['order_id' => $orderId]);
 
                 return (string) $localLinked;
             }
@@ -279,6 +283,7 @@ class FaireOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('faire', (int) $order->id, ['order_id' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -319,6 +324,8 @@ class FaireOrderPushService
                 'pushed_to_shopify_at' => now(),
                 'import_status' => 'imported',
             ]);
+
+        $this->fulfillShopifyForImportedMarketplaceOrder('faire', (int) ($order->fresh()?->id ?? $order->id), ['order_id' => $orderId]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

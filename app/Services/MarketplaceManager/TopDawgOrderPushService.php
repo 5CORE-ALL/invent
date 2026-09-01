@@ -14,6 +14,7 @@ class TopDawgOrderPushService
 {
     use SyncsShopifyOrderAddress;
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
 
     public ?string $lastFailureReason = null;
 
@@ -225,6 +226,8 @@ class TopDawgOrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedMarketplaceOrder('topdawg', (int) $order->id, ['order_id' => (string) $order->order_id]);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -240,6 +243,7 @@ class TopDawgOrderPushService
             if ($localLinked) {
                 $this->linkTopDawgOrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedMarketplaceOrder('topdawg', (int) $order->id, ['order_id' => $orderId]);
 
                 return (string) $localLinked;
             }
@@ -276,6 +280,7 @@ class TopDawgOrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedMarketplaceOrder('topdawg', (int) $order->id, ['order_id' => $orderId]);
 
             return (string) $existing['id'];
         }
@@ -310,6 +315,7 @@ class TopDawgOrderPushService
         }
 
         $this->linkTopDawgOrderToShopify($orderId !== '' ? $orderId : (string) $order->order_id, $shopifyOrderId);
+        $this->fulfillShopifyForImportedMarketplaceOrder('topdawg', (int) ($order->fresh()?->id ?? $order->id), ['order_id' => $orderId]);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);

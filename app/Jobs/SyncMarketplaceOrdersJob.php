@@ -26,9 +26,9 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
 
-    public int $timeout = 1100;
+    public int $timeout = 1700;
 
-    public int $uniqueFor = 1200;
+    public int $uniqueFor = 1800;
 
     public array $backoff = [30, 120, 300];
 
