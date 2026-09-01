@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'tiktok2', 'heading' => 'TikTok 2 Listings'])
         <p class="text-muted mb-3">
             Seller Center <strong>Active</strong> counts <strong>products</strong> (a combined listing is 1). This page counts <strong>Shopify SKUs</strong>.
-            Linked here ≈ Inv SKU Match + Linked mismatch SKU + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
-            <strong>Inv SKU Match / Linked mismatch SKU</strong> = Shopify vs TikTok 2 quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify).
+            Linked here ≈ Inv SKU Match + Inv SKU Mismatch + Zero on Shopify (sold-out SKUs are still Active in Seller Center).
+            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs TikTok 2 quantity. Shopify qty must not be less than marketplace qty. Match allows marketplace to be short by at most max(3 units, 3% of Shopify). <strong>Linked mismatch SKU</strong> is only the SKUs where marketplace qty is higher than Shopify.
             <strong>Active SKU / Inactive SKU</strong> = actual TikTok 2 seller portal status (not inventory match).
             App has {{ $counts['tiktok_products'] ?? 0 }} TikTok products / {{ $counts['tiktok_skus'] ?? 0 }} linked SKUs.
             <em>Refresh live</em> warms the listings cache. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
@@ -36,6 +36,8 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
+                        {{ $products->total() }} Inv SKU Mismatch
+                    @elseif(($linkTab ?? '') === 'linked_mismatch')
                         {{ $products->total() }} Linked mismatch SKU
                     @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
@@ -48,7 +50,7 @@
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(in_array(($linkTab ?? ''), ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true))
+                    @if(in_array(($linkTab ?? ''), ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true))
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1, 'clear_cache' => null]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
@@ -56,8 +58,8 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(($linkTab ?? '') === 'mismatch')
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
+                    @if(($linkTab ?? '') === 'linked_mismatch')
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="linked_mismatch">
                             <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
                         </button>
                     @endif
@@ -109,7 +111,10 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=linked_mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked_mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['linked_mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>

@@ -122,7 +122,7 @@ class SheinSyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $stateTab = $this->parseAeStateTab($request);
@@ -132,8 +132,8 @@ class SheinSyncController extends Controller
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveLinkTabs = ['matched', 'mismatch', 'linked_mismatch', 'zero'];
         $liveService = app(SheinLiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -182,6 +182,7 @@ class SheinSyncController extends Controller
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
@@ -229,6 +230,7 @@ class SheinSyncController extends Controller
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
+            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
             $zeroQty = $reconciled['zero'];
             $counts['matched'] = count($matchedQty);
             $counts['mismatch'] = count($mismatchQty);
@@ -250,6 +252,7 @@ class SheinSyncController extends Controller
             $liveRows
         );
         $counts = $overlay['counts'];
+        $counts['linked_mismatch'] = count($linkedMismatchQty);
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
@@ -297,6 +300,7 @@ class SheinSyncController extends Controller
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
+            'linked_mismatch' => $linkedMismatchQty,
             'zero' => $zeroQty,
             'matched' => $matchedActive,
             default => [],
@@ -1459,7 +1463,7 @@ class SheinSyncController extends Controller
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'shein');
 
-        return array_values($classified['mismatch'] ?? []);
+        return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
     }
 
     /**

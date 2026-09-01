@@ -28,7 +28,7 @@ class PlsListingsPageBuilder
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
 
@@ -42,9 +42,9 @@ class PlsListingsPageBuilder
         $apiError = null;
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
         $emptyStateCounts = ['all' => 0, 'active' => 0, 'inactive' => 0, 'other' => 0];
-        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $liveLinkTabs = ['matched', 'mismatch', 'linked_mismatch', 'zero'];
         $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         $liveService = $this->liveService();
 
@@ -91,6 +91,7 @@ class PlsListingsPageBuilder
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
@@ -109,6 +110,7 @@ class PlsListingsPageBuilder
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
+            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
             $zeroQty = $reconciled['zero'];
         }
 
@@ -129,6 +131,7 @@ class PlsListingsPageBuilder
             $liveRows
         );
         $counts = $overlay['counts'];
+        $counts['linked_mismatch'] = count($linkedMismatchQty);
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
@@ -170,6 +173,7 @@ class PlsListingsPageBuilder
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
+            'linked_mismatch' => $linkedMismatchQty,
             'zero' => $zeroQty,
             'matched' => $matchedActive,
             default => [],
@@ -736,8 +740,10 @@ class PlsListingsPageBuilder
             $this->stockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'pls') ?? [];
-        $mismatch = array_values($classified['mismatch'] ?? []);
-        $this->rememberMismatchSkus($mismatch);
+        $mismatch = MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
+        if ($scope !== 'linked_mismatch') {
+            $this->rememberMismatchSkus($mismatch);
+        }
 
         return $mismatch;
     }

@@ -123,7 +123,7 @@ class Ebay1SyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $stateTab = $this->parseAeStateTab($request);
@@ -133,8 +133,8 @@ class Ebay1SyncController extends Controller
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveLinkTabs = ['matched', 'mismatch', 'linked_mismatch', 'zero'];
         $liveService = app(Ebay1LiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -191,6 +191,7 @@ class Ebay1SyncController extends Controller
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
@@ -238,6 +239,7 @@ class Ebay1SyncController extends Controller
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
+            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
             $zeroQty = $reconciled['zero'];
             $counts['matched'] = count($matchedQty);
             $counts['mismatch'] = count($mismatchQty);
@@ -259,6 +261,7 @@ class Ebay1SyncController extends Controller
             $liveRows
         );
         $counts = $overlay['counts'];
+        $counts['linked_mismatch'] = count($linkedMismatchQty);
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
@@ -299,6 +302,7 @@ class Ebay1SyncController extends Controller
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
+            'linked_mismatch' => $linkedMismatchQty,
             'zero' => $zeroQty,
             'matched' => $matchedActive,
             default => [],
@@ -952,11 +956,8 @@ class Ebay1SyncController extends Controller
             $this->ebay1StockMapForSkus($verified)
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'ebay1');
-        $mismatchQty = $classified['mismatch'] ?? [];
 
-        return in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
-            ? []
-            : array_values($mismatchQty);
+        return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse

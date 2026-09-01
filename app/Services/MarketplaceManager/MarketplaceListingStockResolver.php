@@ -691,6 +691,7 @@ final class MarketplaceListingStockResolver
             return [
                 'matched' => array_values($matched),
                 'mismatch' => array_values($mismatch),
+                'linked_mismatch' => self::overstockSkusFromMaps($mismatch, $liveShopifyByUpper, $liveMpByUpper, $marketplace),
                 'zero' => array_values($zero),
             ];
         }
@@ -750,11 +751,68 @@ final class MarketplaceListingStockResolver
             return $out;
         };
 
+        $stillMismatch = $dedupe($stillMismatch);
+
         return [
             'matched' => $dedupe(array_merge($matched, $addMatched)),
-            'mismatch' => $dedupe($stillMismatch),
+            'mismatch' => $stillMismatch,
+            'linked_mismatch' => self::overstockSkusFromMaps($stillMismatch, $liveShopifyByUpper, $liveMpByUpper, $marketplace),
             'zero' => $dedupe(array_merge($zero, $addZero)),
         ];
+    }
+
+    /**
+     * SKUs to push from a listings sync button.
+     *
+     * @param  array{mismatch?: list<string>, linked_mismatch?: list<string>}  $classified
+     * @return list<string>
+     */
+    public static function qtyListForSyncScope(array $classified, string $scope): array
+    {
+        $scope = strtolower(trim($scope));
+        if (in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)) {
+            return [];
+        }
+        if ($scope === 'linked_mismatch') {
+            return array_values($classified['linked_mismatch'] ?? []);
+        }
+
+        return array_values($classified['mismatch'] ?? []);
+    }
+
+    /**
+     * Linked mismatch SKU tab: marketplace qty is higher than Shopify / target.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, int>  $shopifyByUpper
+     * @param  array<string, int>  $mpByUpper
+     * @return list<string>
+     */
+    public static function overstockSkusFromMaps(
+        array $skus,
+        array $shopifyByUpper,
+        array $mpByUpper,
+        ?string $marketplace = null
+    ): array {
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $sku = (string) $sku;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $key = $norm !== '' ? $norm : strtoupper(trim($sku));
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $shopifyQty = self::qtyFromMap($shopifyByUpper, $sku);
+            $mpQty = self::qtyFromMap($mpByUpper, $sku);
+            if (! MarketplaceLiveInventoryRules::marketplaceQtyExceedsShopify($shopifyQty, $mpQty, $marketplace)) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
     }
 
     /**

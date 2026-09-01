@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 final class MarketplaceListingQtyMatchService
 {
-    public const CACHE_PREFIX = 'mm_listing_mismatch_v4:';
+    public const CACHE_PREFIX = 'mm_listing_mismatch_v5:';
 
     /**
      * /map-issues slug → Marketplace Manager channel.
@@ -40,6 +40,11 @@ final class MarketplaceListingQtyMatchService
     public function mismatchCount(string $mmChannel): int
     {
         return count($this->mismatchSkus($mmChannel));
+    }
+
+    public function linkedMismatchCount(string $mmChannel): int
+    {
+        return count($this->linkedMismatchSkus($mmChannel));
     }
 
     /**
@@ -286,6 +291,16 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
+     * @return list<string>
+     */
+    public function linkedMismatchSkus(string $mmChannel): array
+    {
+        $classified = $this->classify($mmChannel);
+
+        return $classified['linked_mismatch'] ?? [];
+    }
+
+    /**
      * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
      */
     public function mismatchRows(string $mmChannel): array
@@ -315,12 +330,41 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
-     * @return array{matched: list<string>, mismatch: list<string>, zero: list<string>}
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     */
+    public function linkedMismatchRows(string $mmChannel): array
+    {
+        $skus = $this->linkedMismatchSkus($mmChannel);
+        if ($skus === []) {
+            return [];
+        }
+
+        $shopify = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        $mp = $this->localStockMap($mmChannel, $skus);
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = (string) $sku;
+            $inv = (int) (MarketplaceListingStockResolver::qtyFromMap($shopify, $sku) ?? 0);
+            $channelInv = (int) (MarketplaceListingStockResolver::qtyFromMap($mp, $sku) ?? 0);
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $channelInv,
+                'diff' => abs($inv - $channelInv),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{matched: list<string>, mismatch: list<string>, linked_mismatch: list<string>, zero: list<string>}
      */
     public function classify(string $mmChannel): array
     {
         $mmChannel = strtolower(trim($mmChannel));
-        $empty = ['matched' => [], 'mismatch' => [], 'zero' => []];
+        $empty = ['matched' => [], 'mismatch' => [], 'linked_mismatch' => [], 'zero' => []];
         $cacheKey = self::CACHE_PREFIX.$mmChannel;
         try {
             $cached = Cache::get($cacheKey);
@@ -352,11 +396,11 @@ final class MarketplaceListingQtyMatchService
     }
 
     /**
-     * @return array{matched: list<string>, mismatch: list<string>, zero: list<string>}
+     * @return array{matched: list<string>, mismatch: list<string>, linked_mismatch: list<string>, zero: list<string>}
      */
     protected function classifyFresh(string $mmChannel): array
     {
-        $empty = ['matched' => [], 'mismatch' => [], 'zero' => []];
+        $empty = ['matched' => [], 'mismatch' => [], 'linked_mismatch' => [], 'zero' => []];
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         if (! $catalog->tablesReady() || ! $catalog->hasAnyActive()) {
             return $empty;
@@ -376,6 +420,7 @@ final class MarketplaceListingQtyMatchService
             return [
                 'matched' => array_values($matched),
                 'mismatch' => [],
+                'linked_mismatch' => [],
                 'zero' => array_values($zero),
             ];
         }
@@ -397,6 +442,7 @@ final class MarketplaceListingQtyMatchService
         return [
             'matched' => $reconciled['matched'],
             'mismatch' => $reconciled['mismatch'],
+            'linked_mismatch' => $reconciled['linked_mismatch'] ?? [],
             'zero' => $reconciled['zero'],
         ];
     }
