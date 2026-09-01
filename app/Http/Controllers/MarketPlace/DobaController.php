@@ -806,25 +806,6 @@ class DobaController extends Controller
             ], 400);
         }
 
-        if ($isPickupOnly) {
-            // Accept either self_pick_price or price as the Pick Up amount.
-            if ($selfPickPrice === null || $selfPickPrice === '' || floatval($selfPickPrice) <= 0) {
-                $selfPickPrice = $price;
-            }
-            if ($selfPickPrice === null || $selfPickPrice === '' || floatval($selfPickPrice) <= 0) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => [['message' => 'Pickup price (self_pick_price) is required.']]
-                ], 400);
-            }
-            $price = null; // do not change listing anticipatedIncome (Delivery)
-        } elseif (!$price) {
-            return response()->json([
-                'success' => false,
-                'errors' => [['message' => 'SKU and price are required.']]
-            ], 400);
-        }
-
         // Get the item_id from DobaMetric table (case-insensitive; DB may store "CAPO BLUE 1Pc")
         $dobaMetric = DobaMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])->first()
             ?: DobaMetric::where('sku', $sku)->first();
@@ -837,6 +818,39 @@ class DobaController extends Controller
         }
 
         $itemId = $dobaMetric->item_id;
+
+        if ($isPickupOnly) {
+            // Accept either self_pick_price or price as the Pick Up amount.
+            if ($selfPickPrice === null || $selfPickPrice === '' || floatval($selfPickPrice) <= 0) {
+                $selfPickPrice = $price;
+            }
+            $selfPickPrice = round(floatval($selfPickPrice), 2);
+            if ($selfPickPrice < 0.01) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => [['message' => 'Pickup price (self_pick_price) is required.']]
+                ], 400);
+            }
+            // Doba rejects a missing/null anticipatedIncome (610011). Re-send the
+            // current Delivery so only Pick Up (selfPickAnticipatedIncome) changes.
+            $price = round(floatval($dobaMetric->anticipated_income ?? 0), 2);
+            if ($price < 0.01) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => [['message' => 'Current Delivery price is missing. Run Doba metrics fetch first, then retry the pickup push.']]
+                ], 400);
+            }
+        } elseif (!$price) {
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'SKU and price are required.']]
+            ], 400);
+        } else {
+            $price = round(floatval($price), 2);
+            if ($selfPickPrice !== null && $selfPickPrice !== '') {
+                $selfPickPrice = round(floatval($selfPickPrice), 2);
+            }
+        }
 
         try {
             $dobaApiService = new DobaApiService();

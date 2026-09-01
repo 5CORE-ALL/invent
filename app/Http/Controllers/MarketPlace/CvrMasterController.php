@@ -8010,7 +8010,7 @@ class CvrMasterController extends Controller
                     $selfPickPrice = $price;
                 }
                 $selfPickPrice = round(floatval($selfPickPrice), 2);
-                if ($selfPickPrice <= 0) {
+                if ($selfPickPrice < 0.01) {
                     $this->savePricePushStatus($metricSku, $statusChannel, 'error', $price);
                     return response()->json([
                         'success' => false,
@@ -8018,7 +8018,17 @@ class CvrMasterController extends Controller
                         'errors' => [['message' => 'Pickup price (self_pick_price) is required.']]
                     ], 400);
                 }
-                $listingPrice = null;
+                // Doba requires anticipatedIncome (Delivery). Re-send the current
+                // listing price so only Pick Up changes.
+                $listingPrice = round(floatval($dobaMetric->anticipated_income ?? 0), 2);
+                if ($listingPrice < 0.01) {
+                    $this->savePricePushStatus($metricSku, $statusChannel, 'error', $selfPickPrice);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Current Delivery price is missing. Run Doba metrics fetch first, then retry the pickup push.',
+                        'errors' => [['message' => 'Current Delivery price is missing for this SKU.']]
+                    ], 400);
+                }
             } else {
                 // Same as /doba-tabulator: Self Pick = SPRICE − Ship (ProductMaster ship)
                 if ($selfPickPrice === null || !is_numeric($selfPickPrice) || floatval($selfPickPrice) < 0) {

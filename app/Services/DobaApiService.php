@@ -280,11 +280,11 @@ class DobaApiService
             ];
 
             if ($price !== null && $price !== '') {
-                $payload['anticipatedIncome'] = (float)$price;
+                $payload['anticipatedIncome'] = round((float) $price, 2);
             }
 
             if ($selfPickPrice !== null && $selfPickPrice !== '') {
-                $payload['selfPickAnticipatedIncome'] = (float)$selfPickPrice;
+                $payload['selfPickAnticipatedIncome'] = round((float) $selfPickPrice, 2);
             }
 
             if (!isset($payload['anticipatedIncome']) && !isset($payload['selfPickAnticipatedIncome'])) {
