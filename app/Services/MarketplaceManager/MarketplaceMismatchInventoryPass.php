@@ -59,7 +59,10 @@ final class MarketplaceMismatchInventoryPass
 
         $mpStock = $this->stockMap($channel, $catalog->filterLinkedToVerified($linked));
         $classified = $catalog->classifyLinkedInventoryMatch($linked, $mpStock, marketplace: $channel);
-        $mismatch = $classified['mismatch'] ?? [];
+        $mismatch = array_values(array_unique(array_merge(
+            $classified['mismatch'] ?? [],
+            $classified['linked_mismatch'] ?? []
+        )));
 
         if ($mismatch === []) {
             return array_merge($empty, ['message' => 'Mismatch pass: no qty-mismatch SKUs remaining.']);
