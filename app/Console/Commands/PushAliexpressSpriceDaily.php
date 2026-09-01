@@ -18,9 +18,9 @@ class PushAliexpressSpriceDaily extends Command
 {
     protected $signature = 'aliexpress:push-sprice-daily
                             {--dry-run : List SKUs that would be pushed, do not call AliExpress}
-                            {--force : Push SGROI < 40% even if the stop button is ON}';
+                            {--force : Push SKUs even when SGROI is below the Stop cutoff}';
 
-    protected $description = 'Daily cron: push AliExpress Sprice to live listings (skips SGROI < 40% when that button is ON)';
+    protected $description = 'Daily cron: push AliExpress Sprice to live listings (skips SGROI below the Stop cutoff, default 30%)';
 
     public function handle(AliExpressApiService $api, AliexpressController $controller): int
     {
@@ -35,8 +35,8 @@ class PushAliexpressSpriceDaily extends Command
             return self::FAILURE;
         }
 
-        $guardOn = AliexpressPushGuard::stopLowSgroiEnabled() && ! $this->option('force');
-        $this->info('Stop cron push SGROI < '.AliexpressPushGuard::minSgroi().'%: '.($guardOn ? 'ON' : 'OFF'));
+        $guardOn = ! $this->option('force');
+        $this->info('Stop push SGROI < '.AliexpressPushGuard::minSgroi().'%: '.($guardOn ? 'ON' : 'OFF (--force)'));
 
         $collected = $this->collect($guardOn);
         $updates = $collected['updates'];
@@ -164,8 +164,8 @@ class PushAliexpressSpriceDaily extends Command
                     }
 
                     $pm = $pmByNorm[$norm] ?? ['lp' => 0.0, 'ship' => 0.0];
-                    $sgroi = $this->sgroi($sprice, $margin, (float) $pm['lp'], (float) $pm['ship']);
-                    if ($guardOn && $sgroi < AliexpressPushGuard::minSgroi()) {
+                    $sgroi = AliexpressPushGuard::sgroi($sprice, $margin, (float) $pm['lp'], (float) $pm['ship']);
+                    if ($guardOn && AliexpressPushGuard::shouldSkipSgroi($sgroi)) {
                         $skippedLow++;
                         continue;
                     }
@@ -215,15 +215,6 @@ class PushAliexpressSpriceDaily extends Command
             });
 
         return $map;
-    }
-
-    private function sgroi(float $sprice, float $margin, float $lp, float $ship): int
-    {
-        if (! ($lp > 0) || ! ($sprice > 0)) {
-            return 0;
-        }
-
-        return (int) round((($sprice * $margin - $lp - $ship) / $lp) * 100);
     }
 
     private function marginRate(): float

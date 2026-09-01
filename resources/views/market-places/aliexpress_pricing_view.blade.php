@@ -241,7 +241,7 @@
                                 <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge fs-6 p-2" id="aliexpress-push-cross-badge"
                                 style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                                title="Cross rows: Sprice is not pushed (live Price ≠ Sprice). Click to show only those rows. Click again to clear.">
+                                title="Cross rows: Sprice is not live and SGROI is at or above Stop %. INV 0 and SGROI below Stop are excluded. Click to filter.">
                                 <i class="fa-solid fa-xmark"></i> 0</span>
                         </div>
                     </div>
@@ -339,22 +339,14 @@
                         <button type="button" id="ae-stop-low-sgroi-btn"
                             class="btn btn-sm btn-outline-danger {{ !empty($aeStopLowSgroi) ? 'is-on' : '' }}"
                             data-on="{{ !empty($aeStopLowSgroi) ? '1' : '0' }}"
-                            title="Change the % to set the cutoff. Count matches current filters with SGROI below that %. When ON, the daily cron (17:15 IST) skips those SKUs. Manual Push still works.">
+                            title="Change the %. Count = current filters with SGROI below that. Ali button, row push, and the 17:15 IST cron all skip those SKUs.">
                             <i class="fas fa-ban"></i> Stop &lt;
                             <input type="number" id="ae-min-sgroi-input" min="1" max="300" step="1"
-                                value="{{ (int) ($aeMinSgroi ?? 40) }}"
-                                title="SGROI% cutoff — edits the badge, count, filter, and cron">
+                                value="{{ (int) ($aeMinSgroi ?? 30) }}"
+                                title="SGROI% cutoff — do not push price when SGROI is below this %">
                             %
                             <span class="badge rounded-pill ae-low-sgroi-count" id="ae-low-sgroi-count">0</span>
                         </button>
-                        <select id="ae-sgroi-filter" class="form-select form-select-sm" style="width:140px;"
-                            title="Filter by SGROI% (same $ as the Sprice column). Matches the Stop badge cutoff.">
-                            <option value="all">All SGROI</option>
-                            <option value="lt40" id="ae-sgroi-filter-lt">SGROI &lt; {{ (int) ($aeMinSgroi ?? 40) }}%</option>
-                            <option value="40-75">SGROI 40–75%</option>
-                            <option value="75-125">SGROI 75–125%</option>
-                            <option value="gt125">SGROI 125%+</option>
-                        </select>
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success" title="Export CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
@@ -613,24 +605,27 @@
         let blueTriangleFilterActive = false;
         let aePushCrossFilterActive = false;
         let aeStopLowSgroi = {{ !empty($aeStopLowSgroi) ? 'true' : 'false' }};
-        let AE_MIN_SGROI = {{ (int) ($aeMinSgroi ?? 40) }};
+        let AE_MIN_SGROI = {{ (int) ($aeMinSgroi ?? 30) }};
         let aeBadgeHoverTimer = null;
 
         function aeReadMinSgroi() {
             const n = parseInt($('#ae-min-sgroi-input').val(), 10);
-            if (!isFinite(n) || n < 1) return 40;
+            if (!isFinite(n) || n < 1) return 30;
             return Math.min(300, n);
+        }
+        function aePushSgroiForPrice(data, price) {
+            return aeSpriceMetrics(data, price).sroi;
+        }
+        function aePushBlockedBySgroi(data, price) {
+            return aePushSgroiForPrice(data, price) < AE_MIN_SGROI;
         }
         function aeSyncStopSgroiUi() {
             const n = AE_MIN_SGROI;
             const $input = $('#ae-min-sgroi-input');
             if ($input.length && String($input.val()) !== String(n)) $input.val(n);
-            $('#ae-sgroi-filter-lt').text('SGROI < ' + n + '%');
             $('#ae-stop-low-sgroi-btn').attr('title',
-                'Change the % to set the cutoff. Count = current filters with SGROI < ' + n
-                + '%. When ON, the daily cron (17:15 IST) skips those SKUs. Manual Push still works.');
-            $('#ae-sgroi-filter').attr('title',
-                'Filter by SGROI% (same $ as the Sprice column). Stop cutoff is ' + n + '%.');
+                'Do not push price when SGROI < ' + n
+                + '%. Count = current filters below that. Applies to Ali button, row X, and 17:15 IST cron.');
         }
         function aeSaveStopSgroiGuard(opts) {
             opts = opts || {};
@@ -648,10 +643,7 @@
                 if (typeof applyFilters === 'function') applyFilters();
                 if (typeof updateSummary === 'function') updateSummary();
                 if (opts.notify) {
-                    aeNotify(aeStopLowSgroi
-                        ? ('Cron will skip SGROI < ' + AE_MIN_SGROI + '%')
-                        : ('Cutoff saved: SGROI < ' + AE_MIN_SGROI + '%'),
-                        'success');
+                    aeNotify('Push blocked when SGROI < ' + AE_MIN_SGROI + '%', 'success');
                 }
             });
         }
@@ -783,6 +775,8 @@
             const stored = aeStoredSprice(data);
             const live = parseFloat(data.price) || 0;
             if (stored > 0 && live > 0 && Math.round(stored * 100) === Math.round(live * 100)) return true;
+            const visible = aeVisibleSprice(data);
+            if (visible > 0 && live > 0 && Math.round(visible * 100) === Math.round(live * 100)) return true;
             const st = String(data.SPRICE_STATUS || '').toLowerCase();
             const pv = parseFloat(data.SPRICE_PUSHED_VALUE);
             if ((st === 'pushed' || st === 'applied') && pv > 0 && stored > 0
@@ -791,9 +785,16 @@
             }
             return false;
         }
+        function aePushablePrice(data) {
+            return aeStoredSprice(data) || aeVisibleSprice(data) || 0;
+        }
         function aeHasPushCross(data) {
             if (!data || data.is_parent) return false;
-            return !aeSpricePushed(data);
+            if (aeSpricePushed(data)) return false;
+            const price = aePushablePrice(data);
+            if (!(price > 0)) return false;
+            if (aePushBlockedBySgroi(data, price)) return false;
+            return true;
         }
         function aeRowSgroi(data) {
             return aeSpriceMetrics(data).sroi;
@@ -1174,9 +1175,7 @@
             const gpftFilter = $('#ae-gpft-filter').val() || 'all';
             const cvrFilter = $('#ae-cvr-filter').val() || 'all';
             const roiFilter  = $('#ae-roi-filter').val() || 'all';
-            const sgroiFilter = opts.sgroiOverride != null
-                ? opts.sgroiOverride
-                : ($('#ae-sgroi-filter').val() || 'all');
+            const sgroiFilter = opts.sgroiOverride != null ? opts.sgroiOverride : 'all';
             const al30Filter = $('#ae-al30-filter').val() || 'all';
             const soldFilter = $('#ae-sold-filter').val() || 'all';
             const dilColor   = $('.ae-dil-item.active').data('color') || 'all';
@@ -1498,9 +1497,13 @@
             if (typeof syncAeTriangleBadgeState === 'function') syncAeTriangleBadgeState();
             let pushCrossCount = 0;
             let lowSgroiCount = 0;
-            (table ? table.getData() : rows).forEach(function(row) {
+            const countSrc = (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
+                ? aeFullTableData
+                : (table ? table.getData() : rows);
+            countSrc.forEach(function(row) {
+                if (!aeRowMatchesFilters(row, { skipBadges: true })) return;
                 if (aeHasPushCross(row)) pushCrossCount++;
-                if (aeRowMatchesFilters(row, { sgroiOverride: 'lt40' })) lowSgroiCount++;
+                if (aeRowMatchesFilters(row, { sgroiOverride: 'lt40', skipBadges: true })) lowSgroiCount++;
             });
             $('#aliexpress-push-cross-badge').html(
                 '<i class="fa-solid fa-xmark"></i> ' + pushCrossCount.toLocaleString()
@@ -1611,7 +1614,7 @@
                 height: "calc(100vh - 260px)",
                 pagination: true,
                 paginationSize: 100,
-                paginationSizeSelector: [10, 25, 50, 100, 200],
+                paginationSizeSelector: [10, 25, 50, 100, 200, true],
                 langs: {
                     "default": {
                         "pagination": {
@@ -2097,10 +2100,15 @@
                             if (aeSpricePushed(d)) {
                                 return '<i class="fa-solid fa-check-double" style="color:#28a745;font-size:16px;" title="Price pushed — live Price matches Sprice"></i>';
                             }
-                            const shown = aeVisibleSprice(d) || aeStoredSprice(d);
-                            const title = shown > 0
-                                ? ('Not pushed — click to push $' + shown.toFixed(2))
-                                : 'Not pushed — set Sprice first';
+                            const shown = aePushablePrice(d);
+                            if (shown > 0 && aePushBlockedBySgroi(d, shown)) {
+                                return '<i class="fas fa-ban" style="color:#adb5bd;font-size:14px;" title="Not pushed — SGROI '
+                                    + aePushSgroiForPrice(d, shown) + '% is below Stop < ' + AE_MIN_SGROI + '%"></i>';
+                            }
+                            if (!(shown > 0)) {
+                                return '<span style="color:#adb5bd;" title="Not pushed — set Sprice first">-</span>';
+                            }
+                            const title = 'Not pushed — click to push $' + shown.toFixed(2);
                             return '<button type="button" class="btn btn-sm ae-push-row-btn" data-sku="' + sku
                                 + '" title="' + title.replace(/"/g, '&quot;')
                                 + '" style="border:none;background:none;color:#dc3545;padding:0;cursor:pointer;font-size:16px;">'
@@ -2116,6 +2124,11 @@
                             const price = aeStoredSprice(d) || aeVisibleSprice(d);
                             if (!sku || !(price > 0)) {
                                 aeNotify('Set Sprice first', 'warning');
+                                return;
+                            }
+                            if (aePushBlockedBySgroi(d, price)) {
+                                aeNotify('Not pushed — SGROI ' + aePushSgroiForPrice(d, price)
+                                    + '% is below Stop < ' + AE_MIN_SGROI + '%', 'warning');
                                 return;
                             }
                             cell.getRow().update({ SPRICE_STATUS: 'processing' });
@@ -2243,7 +2256,6 @@
             $('#ae-inv-filter').on('change',    function() { applyFilters(); });
             $('#ae-gpft-filter, #ae-cvr-filter').on('change',   function() { applyFilters(); });
             $('#ae-roi-filter').on('change',    function() { applyFilters(); });
-            $('#ae-sgroi-filter').on('change',  function() { applyFilters(); });
             $('#ae-al30-filter').on('change',   function() { applyFilters(); });
             $('#ae-sold-filter').on('change', function() {
                 const v = $(this).val() || 'all';
@@ -2696,6 +2708,7 @@
 
                 const updates = [];
                 const skipped = [];
+                const skippedLow = [];
                 selectedSkus.forEach(sku => {
                     const rows = table.searchRows('sku', '=', sku);
                     if (!rows.length) return;
@@ -2707,16 +2720,27 @@
                         skipped.push(sku);
                         return;
                     }
+                    if (aePushBlockedBySgroi(d, price)) {
+                        skippedLow.push(sku);
+                        return;
+                    }
                     updates.push({ sku: sku, price: +price.toFixed(2) });
                 });
 
                 if (updates.length === 0) {
+                    if (skippedLow.length) {
+                        aeNotify('Not pushed — ' + skippedLow.length + ' SKU(s) have SGROI < ' + AE_MIN_SGROI + '%', 'warning');
+                        return;
+                    }
                     aeNotify('No selected SKU has a positive SPRICE or Price to push', 'error');
                     return;
                 }
 
+                const extra = [];
+                if (skipped.length) extra.push(skipped.length + ' skipped — no SPRICE/Price');
+                if (skippedLow.length) extra.push(skippedLow.length + ' skipped — SGROI < ' + AE_MIN_SGROI + '%');
                 const summary = 'Push ' + updates.length + ' price' + (updates.length !== 1 ? 's' : '') + ' live to AliExpress?'
-                    + (skipped.length ? '\n(' + skipped.length + ' skipped — no SPRICE/Price)' : '');
+                    + (extra.length ? '\n(' + extra.join('; ') + ')' : '');
                 if (!confirm(summary)) return;
                 aePushUpdatesInChunks(updates, $('#ae-push-price-btn'));
             }

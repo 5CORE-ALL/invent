@@ -5,11 +5,11 @@ namespace App\Support;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * AliExpress pricing: when ON, the daily cron does not push SKUs whose SGROI is under the saved cutoff.
+ * AliExpress pricing: do not push SKUs whose SGROI is under the saved cutoff (default 30%).
  */
 class AliexpressPushGuard
 {
-    public const MIN_SGROI = 40;
+    public const MIN_SGROI = 30;
 
     public const CACHE_KEY = 'aliexpress_stop_push_sgroi_lt_40';
 
@@ -68,11 +68,16 @@ class AliexpressPushGuard
 
     public static function shouldSkipSgroi(?float $sgroi): bool
     {
-        if (! self::stopLowSgroiEnabled()) {
-            return false;
+        return $sgroi !== null && $sgroi < self::minSgroi();
+    }
+
+    public static function sgroi(float $sprice, float $margin, float $lp, float $ship): int
+    {
+        if (! ($lp > 0) || ! ($sprice > 0)) {
+            return 0;
         }
 
-        return $sgroi !== null && $sgroi < self::minSgroi();
+        return (int) round((($sprice * $margin - $lp - $ship) / $lp) * 100);
     }
 
     /**

@@ -1323,6 +1323,17 @@ class AliexpressController extends Controller
             $priceRows = [];
             $results = [];
             $skuByKey = [];
+            $skippedLow = 0;
+            $minSgroi = AliexpressPushGuard::minSgroi();
+            $margin = $this->resolveAliexpressMarginPercent() / 100;
+            $forceLowSgroi = $request->boolean('force');
+            $candidateSkus = [];
+            foreach ($updates as $u) {
+                if (is_array($u)) {
+                    $candidateSkus[] = trim((string) ($u['sku'] ?? ''));
+                }
+            }
+            $lpShipByNorm = $this->aeLpShipByNormalizedSku($candidateSkus);
 
             foreach ($updates as $u) {
                 if (! is_array($u)) {
@@ -1351,6 +1362,21 @@ class AliexpressController extends Controller
                 }
 
                 $rounded = round($price, 2);
+                $pm = $lpShipByNorm[$norm] ?? ['lp' => 0.0, 'ship' => 0.0];
+                $sgroi = AliexpressPushGuard::sgroi($rounded, $margin, (float) $pm['lp'], (float) $pm['ship']);
+                if (! $forceLowSgroi && AliexpressPushGuard::shouldSkipSgroi($sgroi)) {
+                    $skippedLow++;
+                    $results[] = [
+                        'sku' => $sku,
+                        'success' => false,
+                        'skipped' => true,
+                        'error' => 'SGROI '.$sgroi.'% is below Stop < '.$minSgroi.'% — not pushed',
+                        'price' => $rounded,
+                        'sgroi' => $sgroi,
+                    ];
+                    continue;
+                }
+
                 $priceRows[] = [
                     'product_id' => $metric['product_id'],
                     'sku_code' => $metric['sku'],
@@ -1364,11 +1390,16 @@ class AliexpressController extends Controller
             }
 
             if ($priceRows === []) {
+                $message = $skippedLow > 0
+                    ? "Skipped {$skippedLow} SKU(s) — SGROI < {$minSgroi}%. No prices pushed."
+                    : 'No valid SKU/price pairs to push.';
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'No valid SKU/price pairs to push.',
+                    'message' => $message,
                     'pushed' => 0,
                     'failed' => count($results),
+                    'skipped' => $skippedLow,
                     'results' => $results,
                 ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
             }
@@ -1423,14 +1454,19 @@ class AliexpressController extends Controller
             }
 
             $failed = count(array_filter($results, static fn ($r) => empty($r['success'])));
+            $message = $apiOk
+                ? "Pushed {$pushed} price(s) to AliExpress."
+                : ($apiResult['message'] ?? 'AliExpress price push failed.');
+            if ($skippedLow > 0) {
+                $message .= " Skipped {$skippedLow} with SGROI < {$minSgroi}%.";
+            }
 
             return response()->json([
                 'success' => $pushed > 0,
-                'message' => $apiOk
-                    ? "Pushed {$pushed} price(s) to AliExpress."
-                    : ($apiResult['message'] ?? 'AliExpress price push failed.'),
+                'message' => $message,
                 'pushed' => $pushed,
                 'failed' => $failed,
+                'skipped' => $skippedLow,
                 'results' => array_values($results),
             ], $pushed > 0 ? 200 : 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Throwable $e) {
@@ -2689,6 +2725,45 @@ class AliexpressController extends Controller
         }
 
         return $legacy;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, array{lp: float, ship: float}>
+     */
+    private function aeLpShipByNormalizedSku(array $skus): array
+    {
+        $norms = [];
+        foreach ($skus as $sku) {
+            $norm = $this->normalizeAeSkuExact((string) $sku);
+            if ($norm !== '') {
+                $norms[$norm] = true;
+            }
+        }
+        $norms = array_keys($norms);
+        if ($norms === []) {
+            return [];
+        }
+
+        $map = [];
+        ProductMaster::query()
+            ->whereIn(DB::raw('UPPER(TRIM(sku))'), $norms)
+            ->get(['sku', 'Values'])
+            ->each(function (ProductMaster $pm) use (&$map) {
+                $norm = $this->normalizeAeSkuExact((string) $pm->sku);
+                if ($norm === '') {
+                    return;
+                }
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $lp = isset($values['lp']) ? (float) $values['lp'] : 0;
+                $ship = isset($values['ae_ship']) ? (float) $values['ae_ship']
+                    : (isset($values['ship']) ? (float) $values['ship'] : 0);
+                $map[$norm] = ['lp' => $lp, 'ship' => $ship];
+            });
+
+        return $map;
     }
 
     /**

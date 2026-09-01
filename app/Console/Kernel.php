@@ -1067,7 +1067,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // AliExpress Sprice → live listing. Skips SGROI < 40% when that page button is ON.
+        // AliExpress Sprice → live listing. Skips SGROI below the pricing-page Stop cutoff (default 30%).
         $schedule->command('aliexpress:push-sprice-daily')
             ->dailyAt('17:15')
             ->timezone('Asia/Kolkata')
