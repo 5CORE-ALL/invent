@@ -2044,7 +2044,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "Rule price (0-sold = Target GROI% / 0.80, else Std − PRMT − cvr%), then LMP-capped like Amazon sold S PRC. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
+                        headerTooltip: "Rule price (0-sold = Target GROI% / 0.80, else Std − PRMT − cvr%), then LMP-capped like Amazon sold S PRC. Always shows the $ even when it matches live Price. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2071,9 +2071,6 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            if (!atOrAboveLmp && live > 0 && Math.round(live * 100) === Math.round(sprice * 100)) {
-                                return '<span style="color:#adb5bd;" title="Same as AliExpress Price">-</span>';
-                            }
                             const formatted = '$' + sprice.toFixed(2);
                             const priceHtml = atOrAboveLmp
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
