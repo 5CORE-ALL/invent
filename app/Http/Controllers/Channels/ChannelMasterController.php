@@ -873,8 +873,7 @@ class ChannelMasterController extends Controller
     {
         if (! $isTemu2) {
             try {
-                $start = Carbon::now()->subDays(30)->startOfDay();
-                $end = Carbon::now()->endOfDay();
+                [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
                 $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
                 return [
@@ -10614,9 +10613,9 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 / L60 from the temu_orders table (Temu API order-wise data).
-        $l30Start = Carbon::now()->subDays(30)->startOfDay();
-        $l30End = Carbon::now()->endOfDay();
+        // L30 / L60 from temu_orders (Temu API). Same Pacific 30-day window as
+        // /temu-tabulator — not Carbon::now()->subDays(30), which is 31 days.
+        [$l30Start, $l30End] = TemuShopifySalesService::channelMasterL30Window();
         [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
         $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
         $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);

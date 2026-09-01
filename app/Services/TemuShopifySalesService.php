@@ -407,6 +407,10 @@ class TemuShopifySalesService
 
         $orderModel = $isTemu2 ? Temu2Order::class : TemuOrder::class;
         $orders = $orderModel::whereBetween('parent_order_time', [$start, $end])
+            ->where(function ($q) {
+                $q->whereNull('order_status_text')
+                    ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+            })
             ->orderBy('parent_order_time', 'desc')
             ->orderBy('id', 'desc')
             ->get();
