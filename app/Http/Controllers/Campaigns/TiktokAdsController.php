@@ -362,16 +362,9 @@ class TiktokAdsController extends Controller
                 ], 422);
             }
 
-            [$headers, $filteredRows] = TikTokAdsExportParser::parse($file->getPathName());
+            [$headers, $filteredRows] = TikTokAdsExportParser::parse($file->getPathName(), $ext);
             $headers = array_map(static fn ($h) => trim((string) $h), $headers);
-            $hasCampaignId = false;
-            foreach ($headers as $header) {
-                if (strcasecmp($header, 'Campaign ID') === 0) {
-                    $hasCampaignId = true;
-                    break;
-                }
-            }
-            if ($headers === [] || ! $hasCampaignId) {
+            if ($headers === [] || ! TikTokAdsExportParser::hasCampaignId($headers)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'File must contain a "Campaign ID" column (TikTok ads export).',
@@ -413,7 +406,7 @@ class TiktokAdsController extends Controller
 
             $headerLookup = [];
             foreach ($headers as $header) {
-                $headerLookup[strtolower($header)] = $header;
+                $headerLookup[TikTokAdsExportParser::normalizeHeader($header)] = $header;
             }
 
             $parseCurrency = function ($value) {
@@ -444,7 +437,7 @@ class TiktokAdsController extends Controller
             };
 
             $cell = function (array $rowData, string $headerName) use ($headerLookup) {
-                $key = $headerLookup[strtolower($headerName)] ?? $headerName;
+                $key = $headerLookup[TikTokAdsExportParser::normalizeHeader($headerName)] ?? $headerName;
 
                 return $rowData[$key] ?? null;
             };

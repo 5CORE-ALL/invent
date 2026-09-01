@@ -5,16 +5,17 @@ namespace App\Support;
 /**
  * Parse TikTok Ads Manager campaign exports (xlsx / csv / tab-separated txt).
  * Video titles often contain raw newlines, so TSV rows are rebuilt by column count.
+ * Uploaded temp files usually have no extension — detect format from bytes + original name.
  */
 class TikTokAdsExportParser
 {
     /**
      * @return array{0: list<string>, 1: list<list<mixed>>}
      */
-    public static function parse(string $path): array
+    public static function parse(string $path, ?string $originalExtension = null): array
     {
-        $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
-        if (in_array($ext, ['xlsx', 'xls'], true)) {
+        $ext = strtolower((string) ($originalExtension ?: pathinfo($path, PATHINFO_EXTENSION)));
+        if (in_array($ext, ['xlsx', 'xls'], true) || self::looksLikeSpreadsheet($path)) {
             return self::parseSpreadsheet($path);
         }
 
@@ -31,6 +32,37 @@ class TikTokAdsExportParser
     }
 
     /**
+     * @param  list<string>  $headers
+     */
+    public static function hasCampaignId(array $headers): bool
+    {
+        foreach ($headers as $header) {
+            if (self::isCampaignIdHeader($header)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function isCampaignIdHeader(mixed $header): bool
+    {
+        $key = self::normalizeHeader($header);
+
+        return $key === 'campaignid';
+    }
+
+    public static function normalizeHeader(mixed $header): string
+    {
+        $value = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header) ?? (string) $header;
+        $value = str_replace(["\u{00A0}", "\xC2\xA0"], ' ', $value);
+        $value = strtolower(trim($value));
+        $value = preg_replace('/[^a-z0-9]+/', '', $value) ?? $value;
+
+        return $value;
+    }
+
+    /**
      * @return array{0: list<string>, 1: list<list<mixed>>}
      */
     private static function parseSpreadsheet(string $path): array
@@ -42,9 +74,9 @@ class TikTokAdsExportParser
             return [[], []];
         }
 
-        $headers = array_map(static fn ($h) => trim((string) $h), array_shift($rows) ?? []);
+        [$headers, $dataRows] = self::splitHeaderAndRows($rows);
         $data = [];
-        foreach ($rows as $row) {
+        foreach ($dataRows as $row) {
             if (! is_array($row) || self::isEmptyRow($row) || self::isTotalRow($row)) {
                 continue;
             }
@@ -64,21 +96,20 @@ class TikTokAdsExportParser
             return [[], []];
         }
 
-        $headers = [];
-        $data = [];
-        $first = true;
+        $all = [];
         while (($row = fgetcsv($handle)) !== false) {
-            if ($first) {
-                $headers = array_map(static fn ($h) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $h)), $row);
-                $first = false;
-                continue;
-            }
+            $all[] = $row;
+        }
+        fclose($handle);
+
+        [$headers, $dataRows] = self::splitHeaderAndRows($all);
+        $data = [];
+        foreach ($dataRows as $row) {
             if (self::isEmptyRow($row) || self::isTotalRow($row)) {
                 continue;
             }
             $data[] = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
         }
-        fclose($handle);
 
         return [$headers, $data];
     }
@@ -92,8 +123,23 @@ class TikTokAdsExportParser
         $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw) ?? $raw;
         $raw = str_replace(["\r\n", "\r"], "\n", $raw);
         $lines = explode("\n", $raw);
-        $headerLine = array_shift($lines) ?? '';
-        $headers = array_map('trim', explode($delimiter, $headerLine));
+
+        $headerLine = '';
+        $headerOffset = 0;
+        foreach ($lines as $i => $line) {
+            $candidate = array_map('trim', explode($delimiter, $line));
+            if (self::hasCampaignId($candidate)) {
+                $headerLine = $line;
+                $headerOffset = $i + 1;
+                break;
+            }
+        }
+        if ($headerLine === '') {
+            $headerLine = $lines[0] ?? '';
+            $headerOffset = 1;
+        }
+
+        $headers = array_map(static fn ($h) => trim((string) $h), explode($delimiter, $headerLine));
         $expected = count($headers);
         if ($expected < 2) {
             return [[], []];
@@ -102,7 +148,8 @@ class TikTokAdsExportParser
         $titleIdx = self::titleColumnIndex($headers);
         $data = [];
         $buffer = '';
-        foreach ($lines as $line) {
+        $rest = array_slice($lines, $headerOffset);
+        foreach ($rest as $line) {
             $buffer = $buffer === '' ? $line : $buffer."\n".$line;
             $fields = explode($delimiter, $buffer);
             if (count($fields) < $expected) {
@@ -129,12 +176,33 @@ class TikTokAdsExportParser
     }
 
     /**
+     * @param  list<list<mixed>>  $rows
+     * @return array{0: list<string>, 1: list<list<mixed>>}
+     */
+    private static function splitHeaderAndRows(array $rows): array
+    {
+        foreach ($rows as $i => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $headers = array_map(static fn ($h) => trim((string) $h), $row);
+            if (self::hasCampaignId($headers)) {
+                return [$headers, array_slice($rows, $i + 1)];
+            }
+        }
+
+        $first = array_map(static fn ($h) => trim((string) $h), $rows[0] ?? []);
+
+        return [$first, array_slice($rows, 1)];
+    }
+
+    /**
      * @param  list<string>  $headers
      */
     private static function titleColumnIndex(array $headers): ?int
     {
         foreach ($headers as $i => $header) {
-            if (strcasecmp(trim((string) $header), 'Video title') === 0) {
+            if (self::normalizeHeader($header) === 'videotitle') {
                 return $i;
             }
         }
@@ -164,6 +232,18 @@ class TikTokAdsExportParser
         $first = trim((string) ($row[0] ?? ''));
 
         return $first !== '' && stripos($first, 'Total') !== false;
+    }
+
+    private static function looksLikeSpreadsheet(string $path): bool
+    {
+        $fh = fopen($path, 'rb');
+        if ($fh === false) {
+            return false;
+        }
+        $magic = (string) fread($fh, 8);
+        fclose($fh);
+
+        return str_starts_with($magic, 'PK') || str_starts_with($magic, "\xD0\xCF\x11\xE0");
     }
 
     private static function firstLine(string $path): string

@@ -2125,23 +2125,19 @@
                     </ul>
                 </div>
             </li>
-            <!-- Tiktok Shop -->
+            <!-- TikTok 1 -->
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarTiktokShop" aria-expanded="false"
                     aria-controls="sidebarTiktokShop">
-                    <span>Tiktok Shop</span>
+                    <span>TikTok 1</span>
                     <span class="menu-arrow"></span>
                 </a>
                 <div class="collapse" id="sidebarTiktokShop">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
                         </li>
-                        <li><a href="{{ route('listing.tiktokshop2') }}">Listing TikTok 2</a>
-                        </li>
                         <li><a href="{{ route('tiktok.listing.variation.verify') }}">TikTok 1 Listing Variation Verify</a>
                         </li>
-                        {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
-                                    </li> --}}
                         <li><a href="{{ route('tiktok.pricing') }}">TikTok 1 Shop - Analytics</a>
                         </li>
                         <li><a href="{{ route('tiktok1.ads.raw') }}">Tiktok 1 Sheet Ads</a>
@@ -2149,6 +2145,20 @@
                         <li><a href="{{ route('tiktok.gmv.ads.raw') }}">GMV Tiktok Ads Raw Data</a>
                         </li>
                         <li><a href="{{ route('tiktok.video.quality') }}">TikTok Video Quality</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+            <!-- TikTok 2 -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarTiktokShop2" aria-expanded="false"
+                    aria-controls="sidebarTiktokShop2">
+                    <span>TikTok 2</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarTiktokShop2">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('listing.tiktokshop2') }}">Listing TikTok 2</a>
                         </li>
                         <li><a href="{{ route('tiktok2.listing.variation.verify') }}">TikTok 2 Listing Variation Verify</a>
                         </li>

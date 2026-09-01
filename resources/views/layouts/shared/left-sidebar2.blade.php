@@ -1700,17 +1700,29 @@
                                     </ul>
                                 </div>
                             </li>
-                            <!-- Tiktok Shop -->
+                            <!-- TikTok 1 -->
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarTiktokShop" aria-expanded="false"
                                     aria-controls="sidebarTiktokShop">
-                                    <span>Tiktok Shop</span>
+                                    <span>TikTok 1</span>
                                     <span class="menu-arrow"></span>
                                 </a>
                                 <div class="collapse" id="sidebarTiktokShop">
                                     <ul class="side-nav-third-level">
                                             <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
                                             </li>
+                                    </ul>
+                                </div>
+                            </li>
+                            <!-- TikTok 2 -->
+                            <li class="side-nav-item">
+                                <a data-bs-toggle="collapse" href="#sidebarTiktokShop2" aria-expanded="false"
+                                    aria-controls="sidebarTiktokShop2">
+                                    <span>TikTok 2</span>
+                                    <span class="menu-arrow"></span>
+                                </a>
+                                <div class="collapse" id="sidebarTiktokShop2">
+                                    <ul class="side-nav-third-level">
                                             <li><a href="{{ route('listing.tiktokshop2') }}">Listing TikTok 2</a>
                                             </li>
                                     </ul>
