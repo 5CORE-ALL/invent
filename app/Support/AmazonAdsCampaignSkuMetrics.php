@@ -45,6 +45,65 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * Seller SKUs advertised (or implied) by a campaign name.
+     * PARENT … → product_master children; otherwise the stripped SKU key itself.
+     *
+     * @return list<string>
+     */
+    public static function advertisedSkusFromCampaignName(?string $campaignName): array
+    {
+        $key = self::skuKeyFromCampaignName($campaignName);
+        if ($key === '') {
+            return [];
+        }
+        if (str_starts_with($key, 'PARENT ')) {
+            $fam = trim(substr($key, 7));
+
+            return $fam !== '' ? self::childSkusForParentFamily($fam) : [];
+        }
+
+        return [$key];
+    }
+
+    /**
+     * Child seller SKUs whose product_master.parent matches the family name.
+     *
+     * @return list<string>
+     */
+    public static function childSkusForParentFamily(string $family): array
+    {
+        $fam = strtoupper(trim(str_replace("\xC2\xA0", ' ', $family)));
+        if ($fam === '' || ! Schema::hasTable('product_master')) {
+            return [];
+        }
+
+        $candidates = [$fam];
+        if (! str_starts_with($fam, 'PARENT ')) {
+            $candidates[] = 'PARENT '.$fam;
+        }
+        $pmRows = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) use ($candidates) {
+                foreach ($candidates as $c) {
+                    $q->orWhereRaw('UPPER(TRIM(parent)) = ?', [$c]);
+                }
+            })
+            ->get(['sku']);
+
+        $out = [];
+        foreach ($pmRows as $pm) {
+            $sku = trim((string) ($pm->sku ?? ''));
+            if ($sku === '' || str_starts_with(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+            $out[$sku] = true;
+        }
+
+        return array_keys($out);
+    }
+
+    /**
      * Tabulator Dil: OV L30 ÷ INV × 100. INV = 0 → 0 (gray 0% on the grid).
      */
     public static function tabulatorDil(?float $inv, ?float $ovl30): ?float
@@ -182,9 +241,10 @@ final class AmazonAdsCampaignSkuMetrics
             ->whereIn('campaign_id', array_keys($cids))
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->get(['campaign_id', 'sku']);
+            ->get(['campaign_id', 'sku', 'ad_id']);
 
-        $byCid = [];
+        $realByCid = [];
+        $nameByCid = [];
         $skus = [];
         foreach ($rows as $row) {
             $sku = trim((string) ($row->sku ?? ''));
@@ -192,8 +252,20 @@ final class AmazonAdsCampaignSkuMetrics
             if ($sku === '' || $cid === '') {
                 continue;
             }
-            $byCid[$cid][] = $sku;
+            $adId = (string) ($row->ad_id ?? '');
+            if (str_starts_with($adId, 'name:')) {
+                $nameByCid[$cid][] = $sku;
+            } else {
+                $realByCid[$cid][] = $sku;
+            }
             $skus[] = $sku;
+        }
+        $byCid = [];
+        foreach (array_keys($cids) as $cid) {
+            $list = $realByCid[$cid] ?? $nameByCid[$cid] ?? [];
+            if ($list !== []) {
+                $byCid[$cid] = $list;
+            }
         }
         $reviews = self::reviewsBySkus($skus);
         $out = [];

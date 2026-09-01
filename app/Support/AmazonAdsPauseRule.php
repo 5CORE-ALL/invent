@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsPauseRule
 {
-    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v5';
+    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v7';
 
     public const ACTION_PAUSED = 'PAUSED';
 
@@ -43,7 +43,7 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * Pause when advertised-SKU Amazon rating is below this star value (1–5).
+     * Pause product ads (not the campaign) when that ad's SKU rating is below this star value.
      *
      * @return array{enabled: bool, below: float}
      */
@@ -76,14 +76,61 @@ final class AmazonAdsPauseRule
     {
         $r = $rule ?? [];
 
+        return self::hasCampaignBands($r) || self::reviewsEnabled($r);
+    }
+
+    /**
+     * Pricing / Dil% / ACOS% / PR — these pause the whole campaign.
+     *
+     * @param  array<string, mixed>|null  $rule
+     */
+    public static function hasCampaignBands(?array $rule): bool
+    {
+        $r = $rule ?? [];
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : [];
-        $reviews = is_array($r['reviews'] ?? null) ? $r['reviews'] : [];
 
         return ($r['pricing'] ?? []) !== []
             || ($r['dil'] ?? []) !== []
             || ($r['acos'] ?? []) !== []
-            || ! empty($pr['enabled'])
-            || ! empty($reviews['enabled']);
+            || ! empty($pr['enabled']);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $rule
+     */
+    public static function reviewsEnabled(?array $rule): bool
+    {
+        $reviews = is_array($rule['reviews'] ?? null) ? $rule['reviews'] : [];
+
+        return ! empty($reviews['enabled']);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $rule
+     */
+    public static function reviewsBelow(?array $rule): float
+    {
+        $reviews = is_array($rule['reviews'] ?? null) ? $rule['reviews'] : [];
+        $below = (float) ($reviews['below'] ?? 3);
+
+        return is_finite($below) ? $below : 3.0;
+    }
+
+    /**
+     * True when this SKU's rating should pause its product ad (campaign stays running).
+     *
+     * @param  array<string, mixed>|null  $rule
+     */
+    public static function ratingBelowReviewsThreshold(?array $rule, mixed $rating): bool
+    {
+        if (! self::reviewsEnabled($rule)) {
+            return false;
+        }
+        if ($rating === null || $rating === '' || ! is_numeric($rating) || ! is_finite((float) $rating)) {
+            return false;
+        }
+
+        return (float) $rating < self::reviewsBelow($rule);
     }
 
     /**
@@ -200,6 +247,16 @@ final class AmazonAdsPauseRule
     }
 
     /**
+     * @param  array{enabled?: mixed, below?: mixed}  $reviews
+     */
+    public static function persistReviews(array $reviews): void
+    {
+        $current = self::loadResolvedRule();
+        $current['reviews'] = self::normalizeReviews($reviews);
+        self::persistRule($current);
+    }
+
+    /**
      * @param  array{
      *     pricing?: list<array{from?: float, to?: float, action?: string, label?: string}>,
      *     dil?: list<array{from?: float, to?: float, action?: string, label?: string}>,
@@ -261,21 +318,6 @@ final class AmazonAdsPauseRule
                         'reason' => 'PR Price $'.$shown.' < $'.$th,
                     ];
                 }
-            }
-        }
-
-        $reviews = is_array($r['reviews'] ?? null) ? $r['reviews'] : self::defaultReviews();
-        if (! empty($reviews['enabled'])) {
-            $ratingVal = $metrics['rating'] ?? null;
-            $below = (float) ($reviews['below'] ?? 3);
-            if ($ratingVal !== null && $ratingVal !== '' && is_finite((float) $ratingVal) && is_finite($below)
-                && (float) $ratingVal < $below) {
-                $shown = rtrim(rtrim(number_format((float) $ratingVal, 2, '.', ''), '0'), '.');
-                $th = rtrim(rtrim(number_format($below, 2, '.', ''), '0'), '.');
-                $hits[] = [
-                    'action' => self::ACTION_PAUSED,
-                    'reason' => 'Reviews ★'.$shown.' < '.$th,
-                ];
             }
         }
 
@@ -420,6 +462,8 @@ final class AmazonAdsPauseRule
     }
 
     /**
+     * Single "below ★" threshold. Also migrates leftover From/To bands (first Pause band's To).
+     *
      * @param  mixed  $reviews
      * @return array{enabled: bool, below: float}
      */
@@ -429,10 +473,34 @@ final class AmazonAdsPauseRule
         if (! is_array($reviews)) {
             return $base;
         }
+        if (array_key_exists('enabled', $reviews) || array_key_exists('below', $reviews)) {
+            return [
+                'enabled' => self::normalizePrBool($reviews['enabled'] ?? false),
+                'below' => self::normalizePrNumber($reviews['below'] ?? $base['below'], 'Reviews below', 1, 5),
+            ];
+        }
+        if ($reviews === [] || ! array_is_list($reviews)) {
+            return $base;
+        }
+        $below = $base['below'];
+        foreach ($reviews as $band) {
+            if (! is_array($band)) {
+                continue;
+            }
+            $action = strtoupper((string) ($band['action'] ?? self::ACTION_PAUSED));
+            if ($action !== self::ACTION_PAUSED) {
+                continue;
+            }
+            $to = (float) ($band['to'] ?? $below);
+            if (is_finite($to) && $to >= 1 && $to <= 5) {
+                $below = $to;
+            }
+            break;
+        }
 
         return [
-            'enabled' => self::normalizePrBool($reviews['enabled'] ?? false),
-            'below' => self::normalizePrNumber($reviews['below'] ?? $base['below'], 'Reviews below', 1, 5),
+            'enabled' => true,
+            'below' => $below,
         ];
     }
 }

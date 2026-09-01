@@ -728,9 +728,8 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTemuMetrics($date)
     {
-        // Source: temu_orders table (Temu API order-wise data), last 30 days.
-        $start = Carbon::now()->subDays(30)->startOfDay();
-        $end = Carbon::now()->endOfDay();
+        // Source: temu_orders — same Pacific 30-day window as /temu-tabulator + master.
+        [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
         $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
 
         if ($m['sales'] <= 0 && $m['qty'] <= 0) {

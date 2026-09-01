@@ -965,6 +965,45 @@ class TikTokShopService
         }
     }
 
+    /**
+     * SKU performance list (may include extra money fields the product list omits).
+     */
+    public function getSkuAnalytics(?string $startDate = null, ?string $endDate = null, string $pageToken = ''): ?array
+    {
+        try {
+            if (! $this->accessToken) {
+                return null;
+            }
+
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $tz = 'America/Los_Angeles';
+            $startDate = $startDate ?: Carbon::now($tz)->subDays(30)->format('Y-m-d');
+            $endDate = $endDate ?: Carbon::now($tz)->format('Y-m-d');
+
+            $params = [
+                'start_date_ge' => $startDate,
+                'end_date_lt' => $endDate,
+                'page_size' => 50,
+            ];
+            if ($pageToken !== '') {
+                $params['page_token'] = $pageToken;
+            }
+
+            $response = $this->withAnalyticsApi(
+                fn () => $this->client->Analytics->getShopSkuPerformanceList($params)
+            );
+            $this->lastResponse = $response;
+
+            return is_array($response) ? $response : null;
+        } catch (\Throwable $e) {
+            Log::warning('TikTok getSkuAnalytics failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
     protected function ensureShopCipher(bool $allowLiveLookup = true): void
     {
         if (is_string($this->shopCipher) && $this->shopCipher !== '') {

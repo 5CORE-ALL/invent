@@ -22,25 +22,25 @@ class TemuShopifySalesService
 {
     public const PST = 'America/Los_Angeles';
 
-    /** L30 window aligned with Faire / Purchasing Power on all-marketplace-master (30 inclusive days). */
+    /** L30: 30 complete Pacific days ending yesterday (no partial today). */
     public static function channelMasterL30Window(): array
     {
-        $today = Carbon::now(self::PST);
+        $end = Carbon::yesterday(self::PST);
 
         return [
-            $today->copy()->subDays(29)->startOfDay(),
-            $today->copy()->endOfDay(),
+            $end->copy()->subDays(29)->startOfDay(),
+            $end->copy()->endOfDay(),
         ];
     }
 
-    /** Prior 30-day window (days 31–60) for L60 on all-marketplace-master. */
+    /** Prior 30 complete Pacific days (days 31–60 before tomorrow). */
     public static function channelMasterL60Window(): array
     {
-        $today = Carbon::now(self::PST);
+        $end = Carbon::yesterday(self::PST);
 
         return [
-            $today->copy()->subDays(59)->startOfDay(),
-            $today->copy()->subDays(30)->endOfDay(),
+            $end->copy()->subDays(59)->startOfDay(),
+            $end->copy()->subDays(30)->endOfDay(),
         ];
     }
 
@@ -407,6 +407,10 @@ class TemuShopifySalesService
 
         $orderModel = $isTemu2 ? Temu2Order::class : TemuOrder::class;
         $orders = $orderModel::whereBetween('parent_order_time', [$start, $end])
+            ->where(function ($q) {
+                $q->whereNull('order_status_text')
+                    ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+            })
             ->orderBy('parent_order_time', 'desc')
             ->orderBy('id', 'desc')
             ->get();

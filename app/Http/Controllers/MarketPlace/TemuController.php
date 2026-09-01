@@ -1763,8 +1763,10 @@ class TemuController extends Controller
      * Upload Temu 2 listing/pricing sheet (Seller export).
      * Format columns: Category, Category id, Product name, Contribution Goods, SKU,
      * Goods ID, SKU ID, Variation, Quantity, Base price, …
+     * Always truncates temu2_pricing first so leftover prices cannot remain.
+     * Price / Base price is optional — a sheet with no Price clears analytics Price.
      * Matches by Goods ID (+ SKU ID / SKU) and updates Base price on temu2_pricing
-     * and temu2_metrics so /temu2-decrease Price column reflects the upload.
+     * and temu2_metrics so /temu2-decrease Price comes only from this upload.
      *
      * Fast path: bulk insert + in-memory metric match (no per-row ORM queries).
      */
@@ -1831,8 +1833,8 @@ class TemuController extends Controller
             $extIdCol = $col(['External product ID', 'External Product ID']);
             $incompleteCol = $col(['Incomplete product information']);
 
-            if ($goodsIdCol === null || $basePriceCol === null) {
-                throw new \RuntimeException('Missing required columns: Goods ID and Base price.');
+            if ($goodsIdCol === null) {
+                throw new \RuntimeException('Missing required column: Goods ID.');
             }
 
             $val = static function (array $row, $idx) {
@@ -1911,15 +1913,21 @@ class TemuController extends Controller
                 }
 
                 $goodsId = $normId($val($row, $goodsIdCol));
-                $baseRaw = $val($row, $basePriceCol);
-                $basePrice = is_numeric($baseRaw)
-                    ? (float) $baseRaw
-                    : (float) preg_replace('/[^0-9.\-]/', '', (string) $baseRaw);
+                $baseRaw = $basePriceCol !== null ? $val($row, $basePriceCol) : null;
+                $basePrice = 0.0;
+                if ($baseRaw !== null && $baseRaw !== '') {
+                    $basePrice = is_numeric($baseRaw)
+                        ? (float) $baseRaw
+                        : (float) preg_replace('/[^0-9.\-]/', '', (string) $baseRaw);
+                }
+                if (! is_finite($basePrice) || $basePrice < 0) {
+                    $basePrice = 0.0;
+                }
                 $sku = trim((string) ($val($row, $skuCol) ?? ''));
                 $skuId = $normId($val($row, $skuIdCol));
                 $qty = (int) ($val($row, $qtyCol) ?? 0);
 
-                if ($goodsId === '' || $basePrice <= 0 || ($sku === '' && $skuId === '')) {
+                if ($goodsId === '' || ($sku === '' && $skuId === '')) {
                     $skipped++;
                     continue;
                 }
@@ -2030,9 +2038,10 @@ class TemuController extends Controller
                 throw $e;
             }
 
-            $message = "Imported {$imported} pricing row(s). Updated {$metricsUpdated} metric price(s)"
+            $message = "Imported {$imported} pricing row(s) (old temu2_pricing truncated). Updated {$metricsUpdated} metric price(s)"
                 .($metricsCreated > 0 ? ", created {$metricsCreated} metric(s)" : '')
                 .($skipped > 0 ? ", skipped {$skipped}" : '')
+                .($basePriceCol === null ? ' No Price / Base price column — analytics Price cleared.' : '')
                 .'.';
 
             if ($request->expectsJson() || $request->ajax()) {
@@ -2924,8 +2933,8 @@ class TemuController extends Controller
 
             // 3. Listing / price / stock source:
             //    Temu 1 → temu_metrics (API)
-            //    Temu 2 → temu2_metrics (API), then overlay Base price from temu2_pricing
-            //             matched by SKU to CP Master (product_master).
+            //    Temu 2 → temu2_metrics (API) for listing/stock/goods_id;
+            //             Price comes only from uploaded temu2_pricing (never API / recommended).
             $mapMetricToPricingRow = static function ($m) {
                 return (object) [
                     'sku' => $m->sku,
@@ -2973,9 +2982,15 @@ class TemuController extends Controller
                 }
             }
 
-            // Temu 2: Base Price + Goods ID from temu2_pricing matched by SKU → CP Master.
+            // Temu 2: Price + Goods ID from temu2_pricing matched by SKU → CP Master.
             // Goods ID from this sheet is the join key for temu2_view_data Views (product_clicks).
+            // Drop API / leftover metric prices so a sheet with no Price shows $0.
             $temu2PricingGoodsIdBySku = []; // original CP Master sku => normalized goods_id
+            if ($isTemu2Pricing) {
+                foreach ($pricingData as $existing) {
+                    $existing->base_price = 0;
+                }
+            }
             if ($isTemu2Pricing && Schema::hasTable('temu2_pricing')) {
                 $sheetRows = Temu2Pricing::query()
                     ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'product_name', 'category', 'variation', 'status', 'detail_status'])
@@ -2987,15 +3002,19 @@ class TemuController extends Controller
                     }
                     $originalSku = $normalizedSkuMap[$normalizedSheetSku];
                     $sheetGoodsId = TemuGoodsIdHelper::normalizeKey($sheet->goods_id);
+                    $sheetBasePrice = ($sheet->base_price !== null && $sheet->base_price !== '')
+                        ? (float) $sheet->base_price
+                        : 0.0;
+                    if ($sheetBasePrice < 0) {
+                        $sheetBasePrice = 0.0;
+                    }
                     $temuPricingSkusNormalized->push($normalizedSheetSku);
                     if ($sheetGoodsId) {
                         $temu2PricingGoodsIdBySku[$originalSku] = $sheetGoodsId;
                     }
                     $existing = $pricingData->get($originalSku);
                     if ($existing) {
-                        if ($sheet->base_price !== null && (float) $sheet->base_price > 0) {
-                            $existing->base_price = $sheet->base_price;
-                        }
+                        $existing->base_price = $sheetBasePrice;
                         if ($sheetGoodsId) {
                             $existing->goods_id = $sheetGoodsId;
                         }
@@ -3013,7 +3032,7 @@ class TemuController extends Controller
                             'category' => (string) ($sheet->category ?? ''),
                             'variation' => (string) ($sheet->variation ?? ''),
                             'quantity' => (int) ($sheet->quantity ?? 0),
-                            'base_price' => $sheet->base_price,
+                            'base_price' => $sheetBasePrice,
                             'status' => (string) ($sheet->status ?? ''),
                             'detail_status' => (string) ($sheet->detail_status ?? ''),
                             'goods_id' => $sheetGoodsId,
@@ -3598,7 +3617,8 @@ class TemuController extends Controller
                 $dilPercent = ($l30 && $inventory > 0) ? round(($l30 / $inventory) * 100, 2) : 0;
                 
                 // Calculate profit - only if item exists in Temu
-                // Empty catalog base_price → recommended_base_price (e.g. CS 04 2W)
+                // Temu 1: empty catalog base_price → recommended_base_price (e.g. CS 04 2W)
+                // Temu 2: uploaded temu2_pricing only — never API / recommended fallback
                 $catalogBase = $item ? (float) ($item->base_price ?? 0) : 0;
                 $pricingSkuIdEarly = $item && $item->sku_id !== null && $item->sku_id !== ''
                     ? (string) $item->sku_id
@@ -3607,7 +3627,9 @@ class TemuController extends Controller
                     ?? ($pricingSkuIdEarly !== null && isset($recommendedBySkuId[$pricingSkuIdEarly])
                         ? $recommendedBySkuId[$pricingSkuIdEarly]
                         : ($recommendedBySku[$normalizeSku($sku)] ?? null));
-                $basePrice = TemuShopifySalesService::resolveListingBasePrice($catalogBase, $recommendedForBase);
+                $basePrice = $isTemu2Pricing
+                    ? max(0, $catalogBase)
+                    : TemuShopifySalesService::resolveListingBasePrice($catalogBase, $recommendedForBase);
                 
                 // Calculate Temu Price (Base Price + 2.99 if <= 26.99) - only if item exists in Temu
                 if ($item && $basePrice > 0) {

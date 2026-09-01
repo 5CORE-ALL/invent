@@ -42,6 +42,7 @@ class TikTokGmvAdsSyncService
     public function sync(): array
     {
         $this->ensureGmvColumns();
+        $this->truncateExistingRows();
 
         if (! $this->shop->isAuthenticated()) {
             $this->shop->refreshAccessToken();
@@ -75,8 +76,17 @@ class TikTokGmvAdsSyncService
         }
 
         $l30Rows = $this->persistRange('L30', $l30Products, $productMap);
+        $this->applySkuSpend('L30', $this->fetchAllSkuPerformance($l30Start, $l30End), $productMap);
         $l1Products = $this->fetchAllProductPerformance($l1Start, $l1End);
         $l1Rows = $this->persistRange('L1', $l1Products, $productMap);
+        $this->applySkuSpend('L1', $this->fetchAllSkuPerformance($l1Start, $l1End), $productMap);
+
+        $adsEnd = $today->copy()->subDay()->toDateString();
+        $adsL30 = $this->applyGmvMaxSpend('L30', $l30Start, $adsEnd, $productMap);
+        $adsL1 = $this->applyGmvMaxSpend('L1', $l1Start, $adsEnd, $productMap);
+
+        $this->overlaySpendFromCampaignReports('L30');
+        $this->overlaySpendFromCampaignReports('L1');
 
         $this->overlayCampaignReportMetrics($l30Rows, 'L30');
         $this->overlayCampaignReportMetrics($l1Rows, 'L1');
@@ -100,6 +110,18 @@ class TikTokGmvAdsSyncService
             }
         }
 
+        $spendL30 = 0.0;
+        $spendL1 = 0.0;
+        if (Schema::hasTable('tiktok_gmv_ads')) {
+            $spendQ = TiktokGmvAd::query();
+            if (Schema::hasColumn('tiktok_gmv_ads', 'report_range')) {
+                $spendL30 = (float) (clone $spendQ)->where('report_range', 'L30')->sum('spend');
+                $spendL1 = (float) (clone $spendQ)->where('report_range', 'L1')->sum('spend');
+            } else {
+                $spendL30 = (float) $spendQ->sum('spend');
+            }
+        }
+
         $result = [
             'synced' => true,
             'skipped' => false,
@@ -108,6 +130,10 @@ class TikTokGmvAdsSyncService
             'unmapped' => $unmapped,
             'shop_gmv_l30' => round($shopGmv, 2),
             'shop_orders_l30' => $shopOrders,
+            'spend_l30' => round($spendL30, 2),
+            'spend_l1' => round($spendL1, 2),
+            'gmv_max_l30' => $adsL30,
+            'gmv_max_l1' => $adsL1,
             'synced_at' => now()->toDateTimeString(),
         ];
         Cache::put(self::CACHE_KEY, $result, now()->addHours(2));
@@ -179,6 +205,32 @@ class TikTokGmvAdsSyncService
                 $all[] = $p;
             }
             $pageToken = (string) ($next['next_page_token'] ?? '');
+            if ($pageToken === '') {
+                break;
+            }
+        }
+
+        return $all;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchAllSkuPerformance(string $start, string $end): array
+    {
+        $all = [];
+        $pageToken = '';
+        for ($i = 0; $i < 40; $i++) {
+            $resp = $this->shop->getSkuAnalytics($start, $end, $pageToken);
+            if (! is_array($resp)) {
+                break;
+            }
+            foreach ($resp['skus'] ?? $resp['products'] ?? [] as $row) {
+                if (is_array($row)) {
+                    $all[] = $row;
+                }
+            }
+            $pageToken = (string) ($resp['next_page_token'] ?? '');
             if ($pageToken === '') {
                 break;
             }
@@ -264,6 +316,10 @@ class TikTokGmvAdsSyncService
             $bySku[$key]['ad_sold'] += (int) ($row['units_sold'] ?? $row['orders'] ?? 0);
             $gmv = $row['gmv']['amount'] ?? $row['gmv'] ?? 0;
             $bySku[$key]['ad_sales'] += (float) $gmv;
+            $bySku[$key]['spend'] += $this->extractMoney($row, [
+                'spend', 'cost', 'ads_spend', 'ad_spend', 'billed_cost',
+                'gmv_max_cost', 'net_cost',
+            ]);
         }
 
         foreach ($bySku as $row) {
@@ -287,6 +343,135 @@ class TikTokGmvAdsSyncService
         }
 
         return $bySku;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $skus
+     * @param  array<string, string>  $productMap
+     */
+    private function applySkuSpend(string $range, array $skus, array $productMap): void
+    {
+        foreach ($skus as $row) {
+            $id = (string) ($row['id'] ?? $row['sku_id'] ?? '');
+            $sku = $productMap[$id] ?? '';
+            if ($sku === '') {
+                continue;
+            }
+            $spend = $this->extractMoney($row, [
+                'spend', 'cost', 'ads_spend', 'ad_spend', 'billed_cost',
+                'gmv_max_cost', 'net_cost',
+            ]);
+            if ($spend <= 0) {
+                continue;
+            }
+            $query = ['sku' => $sku];
+            if (Schema::hasColumn('tiktok_gmv_ads', 'report_range')) {
+                $query['report_range'] = $range;
+            }
+            TiktokGmvAd::query()->where($query)->update(['spend' => round($spend, 2)]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<string>  $keys
+     */
+    private function extractMoney(array $row, array $keys): float
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $row)) {
+                continue;
+            }
+            $v = $row[$key];
+            if (is_array($v)) {
+                $v = $v['amount'] ?? $v['value'] ?? 0;
+            }
+            $n = (float) $v;
+            if ($n > 0) {
+                return $n;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param  array<string, string>  $productMap
+     * @return array{applied: int, skipped: bool, reason?: string}
+     */
+    private function applyGmvMaxSpend(string $range, string $start, string $end, array $productMap): array
+    {
+        $report = app(TikTokGmvMaxReportService::class)->fetchItemSpend($start, $end);
+        if (! empty($report['skipped']) || ($report['rows'] ?? []) === []) {
+            return [
+                'applied' => 0,
+                'skipped' => true,
+                'reason' => (string) ($report['reason'] ?? 'no GMV Max spend rows'),
+            ];
+        }
+
+        $applied = 0;
+        foreach ($report['rows'] as $itemId => $spend) {
+            $sku = $productMap[(string) $itemId] ?? '';
+            if ($sku === '' || $spend <= 0) {
+                continue;
+            }
+            $query = ['sku' => $sku];
+            if (Schema::hasColumn('tiktok_gmv_ads', 'report_range')) {
+                $query['report_range'] = $range;
+            }
+            $row = TiktokGmvAd::query()->where($query)->first();
+            if (! $row) {
+                continue;
+            }
+            $row->spend = round((float) $spend, 2);
+            $row->save();
+            $applied++;
+        }
+
+        return ['applied' => $applied, 'skipped' => false];
+    }
+
+    private function overlaySpendFromCampaignReports(string $range): void
+    {
+        if (! Schema::hasTable('tiktok_campaign_reports') || ! Schema::hasTable('tiktok_gmv_ads')) {
+            return;
+        }
+
+        $grouped = TiktokCampaignReport::query()
+            ->where('report_range', $range)
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->get(['campaign_name', 'cost', 'budget'])
+            ->groupBy(fn ($r) => strtoupper(trim((string) $r->campaign_name)));
+
+        foreach ($grouped as $skuKey => $list) {
+            $cost = (float) $list->sum('cost');
+            $budget = null;
+            foreach ($list as $r) {
+                if ($r->budget !== null && $r->budget !== '') {
+                    $budget = (float) $r->budget;
+                    break;
+                }
+            }
+            if ($cost <= 0 && $budget === null) {
+                continue;
+            }
+            $q = TiktokGmvAd::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey]);
+            if (Schema::hasColumn('tiktok_gmv_ads', 'report_range')) {
+                $q->where('report_range', $range);
+            }
+            $update = [];
+            if ($cost > 0) {
+                $update['spend'] = round($cost, 2);
+            }
+            if ($budget !== null && Schema::hasColumn('tiktok_gmv_ads', 'budget')) {
+                $update['budget'] = round($budget, 2);
+            }
+            if ($update !== []) {
+                $q->update($update);
+            }
+        }
     }
 
     /**
@@ -345,6 +530,22 @@ class TikTokGmvAdsSyncService
             } catch (\Throwable $e) {
                 Log::warning('TikTok GMV missing product fetch failed: '.$e->getMessage(), ['product_id' => $productId]);
             }
+        }
+    }
+
+    private function truncateExistingRows(): void
+    {
+        if (! Schema::hasTable('tiktok_gmv_ads')) {
+            return;
+        }
+
+        try {
+            Cache::forget(self::CACHE_KEY);
+            TiktokGmvAd::query()->truncate();
+            Log::info('TikTok GMV ads truncated before pull');
+        } catch (\Throwable $e) {
+            Log::warning('TikTok GMV ads truncate failed, falling back to delete: '.$e->getMessage());
+            TiktokGmvAd::query()->delete();
         }
     }
 

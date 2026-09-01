@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AmazonAdsCampaignSku;
 use App\Services\AmazonAdsService;
+use App\Support\AmazonAdsCampaignSkuSync;
 use Illuminate\Console\Command;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +14,7 @@ class PullAmazonSpProductAdsCommand extends Command
 {
     protected $signature = 'amazon:ads-pull-product-ads';
 
-    protected $description = 'Pull all SP product ads from Amazon into amazon_ads_campaign_skus (SKU per campaign)';
+    protected $description = 'Pull SP product ads + SB ads into amazon_ads_campaign_skus; fill remaining campaigns from campaign names';
 
     public function handle(AmazonAdsService $ads): int
     {
@@ -25,71 +25,51 @@ class PullAmazonSpProductAdsCommand extends Command
             return 1;
         }
 
+        $profileId = trim((string) $ads->resolvedProfileId()) ?: 'default';
+        $spUpserted = 0;
+        $sbUpserted = 0;
+        $spFailed = false;
+
         $this->info('Pulling SP product ads from Amazon into amazon_ads_campaign_skus…');
-        $result = $ads->fetchAllProductAds(['ENABLED', 'PAUSED']);
-        if (empty($result['success'])) {
-            $this->error($result['message'] ?? 'Amazon product-ads pull failed.');
-
-            return 1;
+        $sp = $ads->fetchAllProductAds(['ENABLED', 'PAUSED']);
+        if (empty($sp['success'])) {
+            $this->warn($sp['message'] ?? 'Amazon SP product-ads pull failed.');
+            $spFailed = true;
+            Log::warning('amazon:ads-pull-product-ads SP failed', ['message' => $sp['message'] ?? '']);
+        } else {
+            $rows = $sp['ads'] ?? [];
+            $profileId = trim((string) ($sp['profile_id'] ?? $profileId)) ?: $profileId;
+            $this->info('Fetched '.count($rows).' SP ads (profile '.$profileId.'). Saving…');
+            $spUpserted = AmazonAdsCampaignSkuSync::persistSpAds($profileId, $rows);
         }
 
-        $rows = $result['ads'] ?? [];
-        $profileId = trim((string) ($result['profile_id'] ?? '')) ?: 'default';
-        $this->info('Fetched '.count($rows).' ads (profile '.$profileId.'). Saving…');
-
-        $now = now();
-        $payload = [];
-        $skipped = 0;
-
-        foreach ($rows as $ad) {
-            if (! is_array($ad)) {
-                $skipped++;
-                continue;
-            }
-            $adId = preg_replace('/\D+/', '', trim((string) ($ad['adId'] ?? $ad['ad_id'] ?? ''))) ?: '';
-            $campaignId = preg_replace('/\D+/', '', trim((string) ($ad['campaignId'] ?? $ad['campaign_id'] ?? ''))) ?: '';
-            $sku = trim((string) ($ad['sku'] ?? ''));
-            if ($adId === '' || $sku === '') {
-                $skipped++;
-                continue;
-            }
-
-            $payload[] = [
-                'profile_id' => $profileId,
-                'ad_id' => $adId,
-                'campaign_id' => $campaignId !== '' ? $campaignId : null,
-                'campaign_name' => null,
-                'ad_group_id' => trim((string) ($ad['adGroupId'] ?? $ad['ad_group_id'] ?? '')) ?: null,
-                'sku' => $sku,
-                'asin' => strtoupper(trim((string) ($ad['asin'] ?? ''))) ?: null,
-                'state' => strtoupper(trim((string) ($ad['state'] ?? ''))) ?: null,
-                'pulled_at' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
+        $this->info('Pulling SB ads from Amazon…');
+        $sb = $ads->fetchAllSbAds(['ENABLED', 'PAUSED']);
+        if (empty($sb['success'])) {
+            $this->warn($sb['message'] ?? 'Amazon SB ads pull failed (SB campaigns will use campaign-name SKUs).');
+            Log::warning('amazon:ads-pull-product-ads SB failed', ['message' => $sb['message'] ?? '']);
+        } else {
+            $sbRows = $sb['ads'] ?? [];
+            $this->info('Fetched '.count($sbRows).' SB ads. Saving mapped SKUs…');
+            $sbUpserted = AmazonAdsCampaignSkuSync::persistSbAds($profileId, $sbRows);
         }
 
-        $upserted = 0;
-        foreach (array_chunk($payload, 200) as $chunk) {
-            AmazonAdsCampaignSku::upsert(
-                $chunk,
-                ['profile_id', 'ad_id'],
-                ['campaign_id', 'ad_group_id', 'sku', 'asin', 'state', 'pulled_at', 'updated_at']
-            );
-            $upserted += count($chunk);
-        }
-
-        $named = $this->backfillCampaignNames();
+        $dropped = AmazonAdsCampaignSkuSync::dropNameDerivedWhereRealAdsExist();
+        $named = AmazonAdsCampaignSkuSync::backfillCampaignNames();
+        $this->info('Filling campaigns with no product-ad SKUs from campaign names…');
+        $nameFilled = AmazonAdsCampaignSkuSync::backfillMissingFromCampaignNames($profileId);
 
         Log::info('amazon:ads-pull-product-ads finished', [
             'table' => 'amazon_ads_campaign_skus',
-            'fetched' => count($rows),
-            'upserted' => $upserted,
-            'skipped' => $skipped,
+            'sp_upserted' => $spUpserted,
+            'sb_upserted' => $sbUpserted,
+            'name_filled' => $nameFilled,
             'names_filled' => $named,
+            'name_rows_dropped' => $dropped,
+            'sp_failed' => $spFailed,
         ]);
 
-        $this->info("Saved {$upserted} into amazon_ads_campaign_skus. Skipped {$skipped}. Campaign names filled: {$named}.");
+        $this->info("SP {$spUpserted}. SB {$sbUpserted}. Name-derived {$nameFilled}. Campaign names filled: {$named}.");
 
         $multi = (int) DB::table('amazon_ads_campaign_skus')
             ->whereNotNull('sku')
@@ -104,53 +84,13 @@ class PullAmazonSpProductAdsCommand extends Command
             ->count();
         $this->info("Campaigns with more than one SKU: {$multi}.");
 
+        if ($spFailed && $spUpserted === 0 && $sbUpserted === 0 && $nameFilled === 0) {
+            $this->error('No SKUs were saved.');
+
+            return 1;
+        }
+
         return 0;
-    }
-
-    private function backfillCampaignNames(): int
-    {
-        if (! Schema::hasTable('amazon_sp_campaign_reports')) {
-            return 0;
-        }
-
-        $cids = AmazonAdsCampaignSku::query()
-            ->whereNotNull('campaign_id')
-            ->where('campaign_id', '!=', '')
-            ->distinct()
-            ->pluck('campaign_id')
-            ->all();
-        if ($cids === []) {
-            return 0;
-        }
-
-        $updated = 0;
-        foreach (array_chunk($cids, 300) as $chunk) {
-            $names = DB::table('amazon_sp_campaign_reports')
-                ->whereIn('campaign_id', $chunk)
-                ->orderByDesc('id')
-                ->get(['campaign_id', 'campaignName']);
-            $byCid = [];
-            foreach ($names as $row) {
-                $cid = (string) ($row->campaign_id ?? '');
-                if ($cid === '' || isset($byCid[$cid])) {
-                    continue;
-                }
-                $byCid[$cid] = trim((string) ($row->campaignName ?? ''));
-            }
-            foreach ($byCid as $cid => $name) {
-                if ($name === '') {
-                    continue;
-                }
-                $updated += AmazonAdsCampaignSku::query()
-                    ->where('campaign_id', $cid)
-                    ->where(function ($q) use ($name) {
-                        $q->whereNull('campaign_name')->orWhere('campaign_name', '!=', $name);
-                    })
-                    ->update(['campaign_name' => $name]);
-            }
-        }
-
-        return $updated;
     }
 
     private function ensureTable(): void

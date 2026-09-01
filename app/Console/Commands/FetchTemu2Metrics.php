@@ -381,7 +381,6 @@ class FetchTemu2Metrics extends Command
                             ]);
                             if ($n) {
                                 $updatedCount += $n;
-                                Temu2Pricing::where('sku_id', (string) $skuId)->update(['base_price' => (float) $amount]);
                             }
                         }
                         continue;
@@ -773,7 +772,8 @@ class FetchTemu2Metrics extends Command
     }
 
     /**
-     * Keep temu2_pricing in sync as a read-cache for legacy screens (no sheet wipe).
+     * Keep temu2_pricing listing keys in sync (no price write).
+     * temu2_pricing.base_price is the uploaded sheet only — cron must not refill it.
      */
     private function mirrorPricingCache(string $sku, array $payload): void
     {
@@ -782,7 +782,7 @@ class FetchTemu2Metrics extends Command
             return;
         }
 
-        $data = array_intersect_key($payload, array_flip(['sku_id', 'goods_id', 'base_price', 'quantity']));
+        $data = array_intersect_key($payload, array_flip(['sku_id', 'goods_id', 'quantity']));
         if ($data === []) {
             return;
         }

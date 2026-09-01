@@ -11,7 +11,7 @@ class ApplyAmazonAdsPauseRule extends Command
     protected $signature = 'amazon:ads-pause-rule
                             {--dry-run : Evaluate pause/enable without calling Amazon}';
 
-    protected $description = 'Pause or enable Amazon SP/SB campaigns from /amazon-ads/all Pause Rule, PR Dil%, and Reviews threshold';
+    protected $description = 'Pause or enable Amazon SP/SB campaigns from Pause Rule / PR; pause low-review product ads from Reviews Rule';
 
     public function handle(AmazonAdsPauseRuleApplicator $applicator): int
     {

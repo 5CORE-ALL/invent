@@ -162,6 +162,7 @@ class ChannelMasterCalculatedData extends Model
                 \Cache::put(self::FAST_PAYLOAD_CACHE_VERSION_KEY, 2, now()->addDay());
             }
             foreach ([7, 30, 31, 32, 35, 60, 90] as $days) {
+                \Cache::forget('amm_all_y_sales_chart_v2_d'.$days);
                 \Cache::forget('amm_all_y_sales_chart_d'.$days);
             }
         } catch (\Throwable $e) {

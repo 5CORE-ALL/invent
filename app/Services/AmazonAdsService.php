@@ -400,9 +400,10 @@ class AmazonAdsService
     /**
      * Pull all SP product ads (ENABLED + PAUSED) across pages.
      *
+     * @param  array<int, string>|null  $campaignIds
      * @return array{success: bool, message?: string, count?: int, ads?: array<int, array>}
      */
-    public function fetchAllProductAds(array $states = ['ENABLED', 'PAUSED']): array
+    public function fetchAllProductAds(array $states = ['ENABLED', 'PAUSED'], ?array $campaignIds = null): array
     {
         try {
             $this->assertOAuthConfig();
@@ -415,7 +416,7 @@ class AmazonAdsService
 
             do {
                 $pages++;
-                $response = $this->listProductAdsPage(null, $states, $nextToken);
+                $response = $this->listProductAdsPage($campaignIds, $states, $nextToken);
                 $batch = $response['productAds'] ?? $response['productAdList'] ?? [];
                 if (! is_array($batch)) {
                     $batch = [];
@@ -427,6 +428,89 @@ class AmazonAdsService
                     }
                 }
 
+                $nextToken = $response['nextToken'] ?? null;
+                if ($pages >= $maxPages) {
+                    break;
+                }
+            } while (is_string($nextToken) && $nextToken !== '');
+
+            return [
+                'success' => true,
+                'count' => count($all),
+                'ads' => $all,
+                'profile_id' => $this->resolvedProfileId(),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * List Sponsored Brands ads (paginated).
+     * POST /sb/v4/ads/list
+     *
+     * @param  array<int, string>|null  $campaignIds
+     * @param  array<int, string>  $states
+     * @return array{ads: array<int, array>, nextToken: ?string}
+     */
+    public function listSbAdsPage(?array $campaignIds = null, array $states = ['ENABLED', 'PAUSED'], ?string $nextToken = null): array
+    {
+        $body = [
+            'maxResults' => 100,
+        ];
+        if ($states !== []) {
+            $body['stateFilter'] = [
+                'include' => array_values($states),
+            ];
+        }
+        if ($campaignIds !== null && $campaignIds !== []) {
+            $body['campaignIdFilter'] = [
+                'include' => array_values(array_map('strval', $campaignIds)),
+            ];
+        }
+        if ($nextToken !== null && $nextToken !== '') {
+            $body['nextToken'] = $nextToken;
+        }
+
+        return $this->post('/sb/v4/ads/list', $body, [
+            'Content-Type' => 'application/vnd.sbadresource.v4+json',
+            'Accept' => 'application/vnd.sbadresource.v4+json',
+        ]);
+    }
+
+    /**
+     * Pull all SB ads (ENABLED + PAUSED) across pages.
+     *
+     * @param  array<int, string>  $states
+     * @param  array<int, string>|null  $campaignIds
+     * @return array{success: bool, message?: string, count?: int, ads?: array<int, array>}
+     */
+    public function fetchAllSbAds(array $states = ['ENABLED', 'PAUSED'], ?array $campaignIds = null): array
+    {
+        try {
+            $this->assertOAuthConfig();
+            $this->assertProfileScope();
+
+            $all = [];
+            $nextToken = null;
+            $pages = 0;
+            $maxPages = 500;
+
+            do {
+                $pages++;
+                $response = $this->listSbAdsPage($campaignIds, $states, $nextToken);
+                $batch = $response['ads'] ?? $response['adList'] ?? [];
+                if (! is_array($batch)) {
+                    $batch = [];
+                }
+                foreach ($batch as $ad) {
+                    if (is_array($ad)) {
+                        $all[] = $ad;
+                    }
+                }
                 $nextToken = $response['nextToken'] ?? null;
                 if ($pages >= $maxPages) {
                     break;
@@ -565,6 +649,38 @@ class AmazonAdsService
         ], [
             'Content-Type' => 'application/vnd.spProductAd.v3+json',
             'Accept' => 'application/vnd.spProductAd.v3+json',
+        ]);
+    }
+
+    /**
+     * Update Sponsored Products product ads (v3) — state ENABLED / PAUSED.
+     *
+     * @param  list<array<string, mixed>>  $productAds
+     * @return array<string, mixed>
+     */
+    public function updateProductAds(array $productAds): array
+    {
+        return $this->put('/sp/productAds', [
+            'productAds' => array_values($productAds),
+        ], [
+            'Content-Type' => 'application/vnd.spProductAd.v3+json',
+            'Accept' => 'application/vnd.spProductAd.v3+json',
+        ]);
+    }
+
+    /**
+     * Update Sponsored Brands ads (v4) — state ENABLED / PAUSED.
+     *
+     * @param  list<array<string, mixed>>  $ads
+     * @return array<string, mixed>
+     */
+    public function updateSbAds(array $ads): array
+    {
+        return $this->put('/sb/v4/ads', [
+            'ads' => array_values($ads),
+        ], [
+            'Content-Type' => 'application/vnd.sbadresource.v4+json',
+            'Accept' => 'application/vnd.sbadresource.v4+json',
         ]);
     }
 

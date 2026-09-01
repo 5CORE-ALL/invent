@@ -989,6 +989,15 @@ return [
     ],
 
     /*
+    | GMV Max spend (TikTok Marketing API). Shop analytics does not return ads cost.
+    */
+    'tiktok_ads' => [
+        'access_token' => env('TIKTOK_ADS_ACCESS_TOKEN'),
+        'advertiser_id' => env('TIKTOK_ADS_ADVERTISER_ID', env('TIKTOK_ADVERTISER_ID')),
+        'store_id' => env('TIKTOK_ADS_STORE_ID', env('TIKTOK_SHOP_ID')),
+    ],
+
+    /*
     |--------------------------------------------------------------------------
     | TikTok Shop 2 (second Partner Center app / shop)
     |--------------------------------------------------------------------------
