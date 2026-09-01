@@ -2267,6 +2267,27 @@
                         }
                     },
                     {
+                        title: "S Pick Price",
+                        field: "s_self_pick",
+                        width: 90,
+                        sorter: "number",
+                        visible: true,
+                        headerTooltip: "Pickup / prepaid SPRICE pushed to Doba Pick Up (selfPickAnticipatedIncome). On this page ship is 0, so S Pick = SPRICE.",
+                        formatter: function(cell, formatterParams) {
+                            const rd = cell.getRow().getData();
+                            if (isDobaWithoutshipParentRow(rd)) return '';
+                            let sprice = parseFloat(rd.sprice) || 0;
+                            if (typeof chPromoLiveSprice === 'function') {
+                                const calc = chPromoLiveSprice(rd);
+                                if (calc > 0) sprice = calc;
+                            }
+                            const ship = FORMULA_SHIP;
+                            const stored = parseFloat(rd.s_self_pick) || 0;
+                            const value = sprice > 0 ? Math.max(0, sprice - ship) : stored;
+                            return value > 0 ? `$${value.toFixed(2)}` : '';
+                        }
+                    },
+                    {
                         title: "SGROI %",
                         field: "sroi",
                         width: 70,
