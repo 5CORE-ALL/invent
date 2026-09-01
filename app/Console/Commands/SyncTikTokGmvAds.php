@@ -9,7 +9,7 @@ class SyncTikTokGmvAds extends Command
 {
     protected $signature = 'tiktok:sync-gmv-ads {--force : Ignore the 2-hour cache and fetch again}';
 
-    protected $description = 'Fetch TikTok Shop L30/L1 product performance into tiktok_gmv_ads (SKU-matched)';
+    protected $description = 'Truncate tiktok_gmv_ads, then fetch TikTok Shop L30/L1 product performance (SKU-matched)';
 
     public function handle(TikTokGmvAdsSyncService $sync): int
     {

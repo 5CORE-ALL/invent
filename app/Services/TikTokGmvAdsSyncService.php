@@ -42,6 +42,7 @@ class TikTokGmvAdsSyncService
     public function sync(): array
     {
         $this->ensureGmvColumns();
+        $this->truncateExistingRows();
 
         if (! $this->shop->isAuthenticated()) {
             $this->shop->refreshAccessToken();
@@ -345,6 +346,22 @@ class TikTokGmvAdsSyncService
             } catch (\Throwable $e) {
                 Log::warning('TikTok GMV missing product fetch failed: '.$e->getMessage(), ['product_id' => $productId]);
             }
+        }
+    }
+
+    private function truncateExistingRows(): void
+    {
+        if (! Schema::hasTable('tiktok_gmv_ads')) {
+            return;
+        }
+
+        try {
+            Cache::forget(self::CACHE_KEY);
+            TiktokGmvAd::query()->truncate();
+            Log::info('TikTok GMV ads truncated before pull');
+        } catch (\Throwable $e) {
+            Log::warning('TikTok GMV ads truncate failed, falling back to delete: '.$e->getMessage());
+            TiktokGmvAd::query()->delete();
         }
     }
 
