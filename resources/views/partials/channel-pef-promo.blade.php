@@ -7885,11 +7885,19 @@
                     responseJSON: { success: false, message: 'Push not configured' },
                 }).promise();
             }
+            const data = { sku: sku, _token: chPromoCsrf() };
+            // /doba_withoutship → Doba Pick Up only (selfPickAnticipatedIncome), never Delivery.
+            if (CHANNEL_PROMO_CHANNEL === 'doba_withoutship') {
+                data.mode = 'pickup';
+                data.self_pick_price = price;
+            } else {
+                data.price = price;
+            }
             return $.ajax({
                 url: chPromoCfg.pushPriceUrl,
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
-                data: { sku: sku, price: price, _token: chPromoCsrf() },
+                data: data,
             }).then(function(res) {
                 if (!res || res.success === false || res.skipped) {
                     return $.Deferred().reject({
@@ -9272,7 +9280,9 @@
                         url: chPromoCfg.pushPriceUrl || '/push-ebay-price-tabulator',
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': chPromoCsrf() },
-                        data: { sku: sku, price: std, _token: chPromoCsrf() }
+                        data: CHANNEL_PROMO_CHANNEL === 'doba_withoutship'
+                            ? { sku: sku, mode: 'pickup', self_pick_price: std, _token: chPromoCsrf() }
+                            : { sku: sku, price: std, _token: chPromoCsrf() }
                     });
                 const response = await Promise.resolve(ajax);
                 if (response && response.errors && response.errors.length) {

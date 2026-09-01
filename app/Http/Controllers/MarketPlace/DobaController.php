@@ -807,13 +807,17 @@ class DobaController extends Controller
         }
 
         if ($isPickupOnly) {
+            // Accept either self_pick_price or price as the Pick Up amount.
+            if ($selfPickPrice === null || $selfPickPrice === '' || floatval($selfPickPrice) <= 0) {
+                $selfPickPrice = $price;
+            }
             if ($selfPickPrice === null || $selfPickPrice === '' || floatval($selfPickPrice) <= 0) {
                 return response()->json([
                     'success' => false,
                     'errors' => [['message' => 'Pickup price (self_pick_price) is required.']]
                 ], 400);
             }
-            $price = null; // do not change listing anticipatedIncome
+            $price = null; // do not change listing anticipatedIncome (Delivery)
         } elseif (!$price) {
             return response()->json([
                 'success' => false,
@@ -821,8 +825,9 @@ class DobaController extends Controller
             ], 400);
         }
 
-        // Get the item_id from DobaMetric table
-        $dobaMetric = DobaMetric::where('sku', $sku)->first();
+        // Get the item_id from DobaMetric table (case-insensitive; DB may store "CAPO BLUE 1Pc")
+        $dobaMetric = DobaMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])->first()
+            ?: DobaMetric::where('sku', $sku)->first();
 
         if (!$dobaMetric || !$dobaMetric->item_id) {
             return response()->json([
@@ -874,6 +879,10 @@ class DobaController extends Controller
             }
             $dobaMetric->save();
 
+            if ($isPickupOnly) {
+                $this->persistWithoutShipPushStatus($sku, 'pushed', $selfPickPrice);
+            }
+
             Log::info('Doba price push successful', [
                 'sku' => $sku,
                 'item_id' => $itemId,
@@ -887,6 +896,7 @@ class DobaController extends Controller
                 'message' => $isPickupOnly
                     ? 'Pickup price pushed to Doba successfully'
                     : 'Price pushed to Doba successfully',
+                'price' => $isPickupOnly ? $selfPickPrice : $price,
                 'data' => [
                     'mode' => $mode,
                     'request_payload' => [
@@ -912,6 +922,33 @@ class DobaController extends Controller
                 'success' => false,
                 'errors' => [['message' => 'API Exception: ' . $e->getMessage()]]
             ], 500);
+        }
+    }
+
+    /**
+     * Record pickup push status on doba_withoutship_data_view without overwriting SPRICE.
+     */
+    private function persistWithoutShipPushStatus(string $sku, string $status, $selfPickPrice = null): void
+    {
+        try {
+            $dataView = DobaWithoutShipDataView::firstOrNew(['sku' => $sku]);
+            $existing = is_array($dataView->value)
+                ? $dataView->value
+                : (json_decode($dataView->value, true) ?: []);
+            $existing['PUSH_STATUS'] = $status;
+            $existing['SPRICE_STATUS'] = $status;
+            $existing['PUSH_STATUS_UPDATED_AT'] = now()->format('Y-m-d H:i:s');
+            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            if ($selfPickPrice !== null && $selfPickPrice !== '') {
+                $existing['S_SELF_PICK'] = $selfPickPrice;
+            }
+            $dataView->value = $existing;
+            $dataView->save();
+        } catch (\Throwable $e) {
+            Log::warning('Doba without-ship push status save failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

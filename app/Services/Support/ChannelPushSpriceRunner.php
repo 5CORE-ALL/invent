@@ -3,6 +3,7 @@
 namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\CvrMasterController;
+use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
@@ -358,6 +359,18 @@ class ChannelPushSpriceRunner
                 : app(TemuController::class)->pushTemuPrice($temuReq, app(TemuApiService::class));
         }
 
+        // Prepaid / pickup page: update Doba Pick Up only (selfPickAnticipatedIncome).
+        // Must not send anticipatedIncome — that is the Delivery field on seller.doba.com.
+        if ($this->channel === 'doba_withoutship') {
+            $pickupReq = Request::create('/doba/push-price', 'POST', [
+                'sku' => $sku,
+                'mode' => 'pickup',
+                'self_pick_price' => $pushPrice,
+            ]);
+
+            return app(DobaController::class)->pushPriceToDoba($pickupReq);
+        }
+
         $req = Request::create('/channel-push-sprice-push', 'POST', [
             'sku' => $sku,
             'price' => $pushPrice,
@@ -371,7 +384,6 @@ class ChannelPushSpriceRunner
             'macy' => 'macys',
             'bestbuy' => 'bestbuy',
             'doba' => 'doba',
-            'doba_withoutship' => 'doba',
             'tiktok' => 'tiktok',
             'tiktok2' => 'tiktok2',
             'topdawg' => 'topdawg',
