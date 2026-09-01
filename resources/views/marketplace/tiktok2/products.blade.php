@@ -58,11 +58,7 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(($linkTab ?? '') === 'linked_mismatch')
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="linked_mismatch">
-                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
-                        </button>
-                    @endif
+                    @include('marketplace._push-shopify-inv-btn')
                     @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api" title="Auto: quick (changed) most times; full catalog when empty or older than 7 days. Also runs hourly.">
                         <i class="ri-refresh-line"></i> Sync TikTok 2 link map

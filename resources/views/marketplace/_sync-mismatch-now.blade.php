@@ -10,7 +10,9 @@
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm(@json($confirm))) {
+    var tabLabel = scope === 'linked_mismatch' ? 'Linked mismatch SKU' : 'Inv SKU Mismatch';
+    var confirmMsg = String(@json($confirm)).replace(/Linked mismatch SKU/g, tabLabel);
+    if (!confirm(confirmMsg)) {
         return;
     }
     btn.disabled = true;

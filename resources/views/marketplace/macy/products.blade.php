@@ -56,11 +56,7 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(($linkTab ?? '') === 'linked_mismatch')
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="linked_mismatch">
-                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
-                        </button>
-                    @endif
+                    @include('marketplace._push-shopify-inv-btn')
                     @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Macy's link map
@@ -321,7 +317,8 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Push the actual live Shopify quantity to every Linked mismatch SKU on Macy\'s right now (no queue)? This runs in batches and may take a few minutes.')) {
+    var tabLabel = scope === 'linked_mismatch' ? 'Linked mismatch SKU' : 'Inv SKU Mismatch';
+    if (!confirm('Push the actual live Shopify quantity to every ' + tabLabel + ' on Macy\'s right now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;

@@ -10,7 +10,7 @@
             <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs eBay 3 quantity. Match allows eBay 3 to be short by at most max(3 units, 3% of Shopify).
             <strong>Linked mismatch SKU</strong> is only the SKUs where eBay 3 qty is higher than Shopify.
             <strong>Active SKU / Inactive SKU</strong> = actual eBay 3 seller portal status (not inventory match).
-            Use <em>Sync actual Shopify quantity</em> on Linked mismatch SKU to push live Shopify stock to eBay 3.
+            Use <em>Push Shopify inventory</em> on Inv SKU Mismatch or Linked mismatch SKU to push live Shopify stock to eBay 3.
             <em>Refresh live</em> warms eBay 3 status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
         </p>
 
@@ -58,11 +58,7 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(($linkTab ?? '') === 'linked_mismatch')
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="linked_mismatch">
-                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
-                        </button>
-                    @endif
+                    @include('marketplace._push-shopify-inv-btn')
                     @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync eBay 3 link map
@@ -323,7 +319,8 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {
     var btn = this;
     var scope = btn.getAttribute('data-scope') || 'mismatch';
-    if (!confirm('Push the actual live Shopify quantity to every Linked mismatch SKU on eBay 3 now (no queue)? This runs in batches and may take a few minutes.')) {
+    var tabLabel = scope === 'linked_mismatch' ? 'Linked mismatch SKU' : 'Inv SKU Mismatch';
+    if (!confirm('Push the actual live Shopify quantity to every ' + tabLabel + ' on eBay 3 now (no queue)? This runs in batches and may take a few minutes.')) {
         return;
     }
     btn.disabled = true;

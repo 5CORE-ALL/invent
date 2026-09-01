@@ -48,11 +48,7 @@
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(($linkTab ?? '') === 'linked_mismatch')
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="linked_mismatch">
-                            <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
-                        </button>
-                    @endif
+                    @include('marketplace._push-shopify-inv-btn')
                     @include('marketplace._listings-fetch-new')
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
                         <i class="ri-refresh-line"></i> Sync Alibaba link map
