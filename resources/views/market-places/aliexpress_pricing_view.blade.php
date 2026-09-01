@@ -698,13 +698,17 @@
             if (!(sprice > 0)) sprice = parseFloat(data.price) || 0;
             return sprice > 0 ? Math.round(sprice * 100) / 100 : 0;
         }
-        function aeShouldCapSpriceToLmp() {
-            return true;
+        function aeShouldCapSpriceToLmp(data) {
+            if (typeof chPromoShouldCapSpriceToLmp === 'function') {
+                return chPromoShouldCapSpriceToLmp(data);
+            }
+            return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(data));
         }
-        /** Visible S PRC: 0-sold Target GROI% / marketplace_percentages, then LMP-capped. */
+        /** Visible S PRC: 0-sold Target GROI% (no LMP cap), else LMP-capped. */
         function aeVisibleSprice(data) {
             const raw = aeRuleSpriceRaw(data);
             if (!(raw > 0)) return 0;
+            if (!aeShouldCapSpriceToLmp(data)) return raw;
             if (window.SpriceLmpCap) {
                 const cap = SpriceLmpCap.apply(data, raw, aeEffectiveLmp);
                 if (cap && cap.shown > 0) return Math.round(cap.shown * 100) / 100;
@@ -805,7 +809,7 @@
             const price = parseFloat(data.price) || 0;
             if (!(sprice > 0) || !(price > 0) || Math.round(sprice * 100) === Math.round(price * 100)) return false;
             const lmp = aeEffectiveLmp(data);
-            if (lmp > 0 && sprice + 0.0001 >= lmp) return false;
+            if (aeShouldCapSpriceToLmp(data) && lmp > 0 && sprice + 0.0001 >= lmp) return false;
             return true;
         }
         function syncAeTriangleBadgeState() {
@@ -2044,22 +2048,23 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "Rule price (0-sold = Target GROI% / marketplace_percentages, else Std − PRMT − cvr%), then LMP-capped. Always shows the $ even when it matches live Price. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
+                        headerTooltip: "Rule price (0-sold = Target GROI% / marketplace_percentages, no LMP cap). Sold rows: Std − PRMT − cvr%, then LMP-capped. Always shows the $. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const raw = aeRuleSpriceRaw(d);
                             if (!(raw > 0)) return '';
                             const lmpNow = aeEffectiveLmp(d);
-                            const cap = window.SpriceLmpCap
+                            const allowLmpCap = aeShouldCapSpriceToLmp(d);
+                            const cap = (allowLmpCap && window.SpriceLmpCap)
                                 ? SpriceLmpCap.apply(d, raw, aeEffectiveLmp)
                                 : null;
                             let sprice = raw;
-                            const atOrAboveLmp = cap
+                            const atOrAboveLmp = allowLmpCap && (cap
                                 ? cap.alert
-                                : (lmpNow > 0 && sprice + 0.0001 >= lmpNow);
-                            if (cap && cap.shown > 0) sprice = cap.shown;
-                            else if (atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
+                                : (lmpNow > 0 && sprice + 0.0001 >= lmpNow));
+                            if (allowLmpCap && cap && cap.shown > 0) sprice = cap.shown;
+                            else if (allowLmpCap && atOrAboveLmp && lmpNow > 0) sprice = Math.round(lmpNow * 100) / 100;
                             if (!(sprice > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const redTri = atOrAboveLmp

@@ -3182,8 +3182,7 @@
         }
         function chPromoShouldCapSpriceToLmp(d) {
             if (!d) return true;
-            // AliExpress / Shein: always LMP-cap, including 0-sold (Amazon sold S PRC column).
-            if (typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel()) return true;
+            // 0 Sold (AL30 = 0): keep Target GROI% S PRC — do not cap at LMP.
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d));
         }
         function chPromoCapSpriceToLmp(d, sprice, extra) {
@@ -3640,7 +3639,7 @@
         function chPromoIsEbayChannel() {
             return String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0;
         }
-        /** AliExpress / Shein analytics: 0-sold Target GROI% / marketplace_percentages, then always LMP-cap. */
+        /** AliExpress / Shein analytics: 0-sold Target GROI% / marketplace_percentages (no LMP cap). */
         function chPromoIsAeStyleSpriceChannel() {
             return CHANNEL_PROMO_CHANNEL === 'aliexpress' || CHANNEL_PROMO_CHANNEL === 'shein';
         }
