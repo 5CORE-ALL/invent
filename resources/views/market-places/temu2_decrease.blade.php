@@ -941,9 +941,12 @@
                         </div>
                         <div class="alert alert-info mb-2">
                             <strong>Format:</strong> Category, Category id, Product name, Contribution Goods,
-                            SKU, <strong>Goods ID</strong>, SKU ID, Variation, Quantity, <strong>Base price</strong>, …
+                            SKU, <strong>Goods ID</strong>, SKU ID, Variation, Quantity, Base price, …
                             <br>
-                            Prices are matched by <strong>SKU</strong> to CP Master (<code>product_master</code>) and shown in the Base Price column.
+                            Each upload <strong>replaces</strong> all previous Temu 2 price-sheet rows (old prices are truncated).
+                            Price / Base price is optional — without it, analytics Price is cleared.
+                            <br>
+                            Prices are matched by <strong>SKU</strong> to CP Master (<code>product_master</code>) and shown in the Base Price / Temu Price columns.
                             <br>
                             <a href="{{ route('temu2.pricing.sample') }}" class="alert-link">
                                 <i class="fa fa-download"></i> Download Sample File
@@ -4263,7 +4266,7 @@
                             ? temu2FullPriceFromBase(base)
                             : 0;
                     }),
-                    headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
+                    headerTooltip: "From uploaded Temu 2 price sheet only (not API). Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const basePrice = parseFloat(rowData['base_price']) || 0;
@@ -4284,7 +4287,7 @@
                         if (!(base > 0)) return 0;
                         return base <= 26.99 ? base + 2.99 : base;
                     }),
-                    headerTooltip: "Normal Temu price (base + $2.99 when base ≤ $26.99)",
+                    headerTooltip: "From uploaded Temu 2 price sheet only (not API). Normal Temu price (base + $2.99 when base ≤ $26.99)",
                     formatter: function(cell) {
                         const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
                         if (basePrice === 0) {
@@ -4319,6 +4322,7 @@
                     hozAlign: "center",
                     minWidth: 92,
                     sorter: "number",
+                    headerTooltip: "Uploaded Temu 2 price sheet only (temu2_pricing). API / recommended prices are not used.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const sku = row.sku || '';
