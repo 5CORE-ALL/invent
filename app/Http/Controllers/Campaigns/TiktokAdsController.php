@@ -15,6 +15,7 @@ use App\Models\TikTokProduct;
 use App\Models\TiktokOrder;
 use App\Services\TikTokGmvAdsSyncService;
 use App\Support\TikTokAdsExportParser;
+use App\Support\TikTokAdsSkuResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -117,7 +118,7 @@ class TiktokAdsController extends Controller
                 ->where('product_id', '!=', '')
                 ->get()
                 ->groupBy(function($item) {
-                    return strtoupper(trim($item->campaign_name));
+                    return TikTokAdsSkuResolver::skuFor($item->product_id, $item->campaign_name);
                 })
                 ->map(function($group) {
                     // For ROI, take the first non-null value (don't average - use actual value from database)
@@ -152,7 +153,7 @@ class TiktokAdsController extends Controller
                 ->where('product_id', '!=', '')
                 ->get()
                 ->groupBy(function($item) {
-                    return strtoupper(trim($item->campaign_name));
+                    return TikTokAdsSkuResolver::skuFor($item->product_id, $item->campaign_name);
                 })
                 ->map(function($group) {
                     // For ROI, take the first non-null value (don't average - use actual value from database)
@@ -493,6 +494,11 @@ class TiktokAdsController extends Controller
 
                     $dbData['campaign_id'] = $campaignId;
                     $dbData['report_range'] = $reportRange;
+                    $cost = (float) ($dbData['cost'] ?? 0);
+                    $revenue = (float) ($dbData['gross_revenue'] ?? 0);
+                    if (! isset($dbData['roi']) && $cost > 0) {
+                        $dbData['roi'] = round($revenue / $cost, 2);
+                    }
                     TiktokCampaignReport::create($dbData);
                     $imported++;
                 }

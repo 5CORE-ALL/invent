@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\TiktokCampaignReport;
+use App\Support\TikTokAdsSkuResolver;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -70,6 +71,10 @@ class Tiktok1AdsRawDataController extends Controller
 
             $data = $rows->map(function (TiktokCampaignReport $row) {
                 $arr = $row->toArray();
+                $arr['sku'] = TikTokAdsSkuResolver::skuFor($row->product_id, $row->campaign_name);
+                if (($arr['roi'] === null || $arr['roi'] === '') && (float) ($row->cost ?? 0) > 0) {
+                    $arr['roi'] = round((float) ($row->gross_revenue ?? 0) / (float) $row->cost, 2);
+                }
                 $arr['time_posted'] = optional($row->time_posted)->format('Y-m-d H:i:s');
                 $arr['created_at'] = optional($row->created_at)->format('Y-m-d H:i:s');
                 $arr['updated_at'] = optional($row->updated_at)->format('Y-m-d H:i:s');

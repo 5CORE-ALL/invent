@@ -124,6 +124,7 @@
             placeholder: 'No rows in tiktok_campaign_reports. Upload an L1 / L7 / L30 export.',
             columns: [
                 { title: 'ID', field: 'id', width: 80, hozAlign: 'right', sorter: 'number' },
+                { title: 'SKU', field: 'sku', minWidth: 160 },
                 { title: 'Campaign name', field: 'campaign_name', minWidth: 180 },
                 { title: 'Campaign ID', field: 'campaign_id', minWidth: 140 },
                 { title: 'Product ID', field: 'product_id', minWidth: 140 },

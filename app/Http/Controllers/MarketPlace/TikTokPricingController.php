@@ -18,6 +18,7 @@ use App\Models\TiktokShopListingStatus;
 use App\Models\TiktokSkuCompetitor;
 use App\Models\TiktokSkuDailyData;
 use App\Services\ChannelPromoPricingService;
+use App\Support\TikTokAdsSkuResolver;
 use App\Services\LmpSkuGroupService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -489,10 +490,10 @@ class TikTokPricingController extends Controller
                 ];
             };
             $campaignMetricsL30 = $campaignBase->where('report_range', 'L30')
-                ->groupBy(fn ($item) => strtoupper(trim((string) $item->campaign_name)))
+                ->groupBy(fn ($item) => TikTokAdsSkuResolver::skuFor($item->product_id, $item->campaign_name))
                 ->map($summarizeCampaigns);
             $campaignMetricsL7 = $campaignBase->where('report_range', 'L7')
-                ->groupBy(fn ($item) => strtoupper(trim((string) $item->campaign_name)))
+                ->groupBy(fn ($item) => TikTokAdsSkuResolver::skuFor($item->product_id, $item->campaign_name))
                 ->map($summarizeCampaigns);
 
             foreach ($campaignMetricsL30 as $skuUpper => $metrics) {
@@ -536,11 +537,13 @@ class TikTokPricingController extends Controller
                 }
             }
             foreach ($allCampaigns as $campaign) {
-                if (!empty($campaign->campaign_name)) {
-                    $cn = strtoupper(trim($campaign->campaign_name));
-                    if (!isset($campaignMapBySku[$cn])) $campaignMapBySku[$cn] = [];
-                    if (!in_array($campaign->campaign_name, $campaignMapBySku[$cn])) $campaignMapBySku[$cn][] = $campaign->campaign_name;
+                $cn = TikTokAdsSkuResolver::skuFor($campaign->product_id, $campaign->campaign_name);
+                if ($cn === '') {
+                    continue;
                 }
+                if (!isset($campaignMapBySku[$cn])) $campaignMapBySku[$cn] = [];
+                $label = trim((string) ($campaign->campaign_name ?? '')) ?: $cn;
+                if (!in_array($label, $campaignMapBySku[$cn])) $campaignMapBySku[$cn][] = $label;
             }
         } catch (\Throwable $e) {
             Log::warning('TikTok pricing: campaign/ads data fetch failed: ' . $e->getMessage());
@@ -1670,6 +1673,7 @@ class TikTokPricingController extends Controller
                 ->where('campaign_name', '!=', '')
                 ->get([
                     'campaign_name',
+                    'product_id',
                     'report_range',
                     'cost',
                     'product_ad_impressions',
@@ -1686,7 +1690,7 @@ class TikTokPricingController extends Controller
         }
 
         foreach ($rows as $row) {
-            $sku = strtoupper(trim((string) $row->campaign_name));
+            $sku = TikTokAdsSkuResolver::skuFor($row->product_id, $row->campaign_name);
             if ($sku === '') {
                 continue;
             }
