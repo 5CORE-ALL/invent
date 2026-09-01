@@ -273,7 +273,8 @@ class VeeqoShopifyFulfillmentService
         }
 
         if ($this->gofo->isConfigured()) {
-            $gofo = $this->gofo->findShipment($marketRefs !== [] ? $marketRefs : $clean);
+            $gofoRefs = $this->strongMarketplaceRefs($marketRefs !== [] ? $marketRefs : $clean);
+            $gofo = $gofoRefs === [] ? null : $this->gofo->findShipment($gofoRefs);
             if ($gofo !== null && trim((string) ($gofo['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $gofo['tracking'],
@@ -284,7 +285,7 @@ class VeeqoShopifyFulfillmentService
         }
 
         if ($this->fourSeller->isConfigured()) {
-            $fs = $this->fourSeller->findShipment($clean);
+            $fs = $this->fourSeller->findShipment($this->strongMarketplaceRefs($clean));
             if ($fs !== null && trim((string) ($fs['tracking'] ?? '')) !== '') {
                 return [
                     'tracking' => (string) $fs['tracking'],
@@ -312,6 +313,9 @@ class VeeqoShopifyFulfillmentService
             if ($ref === '' || strlen($ref) < 6) {
                 continue;
             }
+            if ($this->isCollisionProneOrderRef($ref) || $this->isShopifyInternalIdRef($ref)) {
+                continue;
+            }
             if (str_starts_with($ref, 'gid://') || str_starts_with($ref, 'https://')) {
                 continue;
             }
@@ -323,7 +327,12 @@ class VeeqoShopifyFulfillmentService
             }
             if (preg_match('/^PO-(.+)$/i', $ref, $m)) {
                 $tail = trim((string) ($m[1] ?? ''));
-                if ($tail !== '' && ! in_array($tail, $out, true)) {
+                if (
+                    $tail !== ''
+                    && ! $this->isCollisionProneOrderRef($tail)
+                    && ! $this->isShopifyInternalIdRef($tail)
+                    && ! in_array($tail, $out, true)
+                ) {
                     $out[] = $tail;
                 }
             }
@@ -991,7 +1000,7 @@ class VeeqoShopifyFulfillmentService
             }
             foreach ($variants as $candidate) {
                 $candidate = trim($candidate);
-                if (strlen($candidate) < 6) {
+                if (strlen($candidate) < 6 || $this->isShopifyInternalIdRef($candidate)) {
                     continue;
                 }
                 if (! in_array($candidate, $clean, true)) {
@@ -1114,21 +1123,156 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
+     * Accept a Veeqo/GOFO row only when an order-number field equals a ref.
+     * Never substring-match the whole payload (Shopify #334262 can appear inside
+     * phones, zips, or older order ids and attach the wrong label).
+     *
      * @param  list<string>  $normalizedRefs
      */
     protected function orderLooksLikeRef(array $order, array $normalizedRefs): bool
     {
-        $hay = strtolower(preg_replace('/\s+/', '', $this->flattenScalarStrings($order)) ?? '');
-        if ($hay === '') {
-            return false;
-        }
-        foreach ($normalizedRefs as $ref) {
-            if ($ref !== '' && str_contains($hay, $ref)) {
-                return true;
+        foreach ($this->orderIdentityValues($order) as $value) {
+            foreach ($normalizedRefs as $ref) {
+                if ($this->orderRefsMatch($value, (string) $ref)) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Order-id fields only — not tracking numbers, phones, addresses, or SKUs.
+     *
+     * @return list<string>
+     */
+    protected function orderIdentityValues(array $order): array
+    {
+        $keys = [
+            'number',
+            'order_number',
+            'order_no',
+            'order_id',
+            'orderid',
+            'channel_order_number',
+            'channel_order_id',
+            'channel_order_no',
+            'customer_reference_number',
+            'customer_reference',
+            'reference_number',
+            'reference',
+            'remote_id',
+            'remote_order_id',
+            'remote_order_number',
+            'shopify_id',
+            'shopify_order_id',
+            'shopify_order_number',
+            'shopify_name',
+            'marketplace_order_id',
+            'marketplace_order_number',
+            'platform_order_no',
+            'platform_order_id',
+            'platform_order_number',
+            'ebay_order_id',
+            'seller_order_id',
+            'seller_order_number',
+            'po_number',
+            'purchase_order_number',
+            'allocated_order_number',
+        ];
+        $out = [];
+        $walk = static function ($node) use (&$walk, &$out, $keys): void {
+            if (! is_array($node)) {
+                return;
+            }
+            foreach ($node as $k => $v) {
+                if (is_array($v)) {
+                    $walk($v);
+                    continue;
+                }
+                $key = strtolower((string) $k);
+                $s = trim((string) $v);
+                if ($s === '') {
+                    continue;
+                }
+                if (
+                    in_array($key, $keys, true)
+                    || str_ends_with($key, '_order_id')
+                    || str_ends_with($key, '_order_number')
+                    || str_ends_with($key, '_order_no')
+                ) {
+                    $out[] = $s;
+                }
+            }
+        };
+        $walk($order);
+
+        return $out;
+    }
+
+    protected function orderRefsMatch(string $left, string $right): bool
+    {
+        $a = $this->normalizeOrderRef($left);
+        $b = $this->normalizeOrderRef($right);
+        if ($a === '' || $b === '' || strlen($a) < 6 || strlen($b) < 6) {
+            return false;
+        }
+        if ($a === $b) {
+            return true;
+        }
+        $aDash = str_replace('-', '', $a);
+        $bDash = str_replace('-', '', $b);
+
+        return $aDash === $bDash && (str_contains($a, '-') || str_contains($b, '-'));
+    }
+
+    protected function normalizeOrderRef(string $ref): string
+    {
+        return strtolower(preg_replace('/\s+/', '', ltrim(trim($ref), '#')) ?? '');
+    }
+
+    /**
+     * Short all-digit Shopify names (#334262) collide inside Veeqo/GOFO search.
+     */
+    protected function isCollisionProneOrderRef(string $ref): bool
+    {
+        $n = $this->normalizeOrderRef($ref);
+
+        return $n !== '' && (bool) preg_match('/^\d{5,10}$/', $n);
+    }
+
+    /**
+     * Shopify Admin REST ids (typically 12–14 digits), not marketplace order numbers.
+     */
+    protected function isShopifyInternalIdRef(string $ref): bool
+    {
+        $n = $this->normalizeOrderRef($ref);
+
+        return $n !== '' && (bool) preg_match('/^\d{12,14}$/', $n);
+    }
+
+    /**
+     * @param  list<string>  $refs
+     * @return list<string>
+     */
+    protected function strongMarketplaceRefs(array $refs): array
+    {
+        $out = [];
+        foreach ($refs as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref === '' || $this->isCollisionProneOrderRef($ref) || $this->isShopifyInternalIdRef($ref)) {
+                continue;
+            }
+            if (str_starts_with($ref, 'gid://') || str_starts_with($ref, 'https://')) {
+                continue;
+            }
+            if (! in_array($ref, $out, true)) {
+                $out[] = $ref;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -2046,26 +2190,6 @@ class VeeqoShopifyFulfillmentService
     protected function autoFetchCacheKey(string $marketplace, int $orderId, string $kind): string
     {
         return 'mm_fetch_tracking_'.$kind.':'.$marketplace.':'.$orderId;
-    }
-
-    protected function flattenScalarStrings(array $data): string
-    {
-        $out = [];
-        $walk = static function ($value) use (&$walk, &$out): void {
-            if (is_array($value)) {
-                foreach ($value as $v) {
-                    $walk($v);
-                }
-
-                return;
-            }
-            if (is_scalar($value) && (string) $value !== '') {
-                $out[] = (string) $value;
-            }
-        };
-        $walk($data);
-
-        return implode(' ', $out);
     }
 
     /**

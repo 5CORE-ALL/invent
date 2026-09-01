@@ -67,7 +67,11 @@ class FourSellerApiService
         $out = [];
         foreach ($refs as $ref) {
             $ref = trim((string) $ref);
+            $plain = strtolower(ltrim($ref, '#'));
             if (strlen($ref) < 6) {
+                continue;
+            }
+            if (preg_match('/^\d{5,10}$/', $plain) || preg_match('/^\d{12,14}$/', $plain)) {
                 continue;
             }
             if (! in_array($ref, $out, true)) {

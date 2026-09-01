@@ -235,7 +235,12 @@ class GofoExpressService
             }
             foreach ($variants as $candidate) {
                 $candidate = trim($candidate);
+                $plain = strtolower(ltrim($candidate, '#'));
                 if (strlen($candidate) < 6) {
+                    continue;
+                }
+                // Shopify #334262 (5–10 digits) is not a GOFO orderNo we should guess.
+                if (preg_match('/^\d{5,10}$/', $plain)) {
                     continue;
                 }
                 if (! in_array($candidate, $out, true)) {
