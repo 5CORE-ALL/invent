@@ -432,6 +432,13 @@ class TikTokGmvAdsSyncService
         return ['applied' => $applied, 'skipped' => false];
     }
 
+    public function applyUploadedCampaignSpend(string $range): int
+    {
+        $this->overlaySpendFromCampaignReports($range);
+
+        return $this->overlaySpendFromCampaignReportsByProductId($range);
+    }
+
     private function overlaySpendFromCampaignReports(string $range): void
     {
         if (! Schema::hasTable('tiktok_campaign_reports') || ! Schema::hasTable('tiktok_gmv_ads')) {
@@ -472,6 +479,62 @@ class TikTokGmvAdsSyncService
                 $q->update($update);
             }
         }
+    }
+
+    private function overlaySpendFromCampaignReportsByProductId(string $range): int
+    {
+        if (! Schema::hasTable('tiktok_campaign_reports') || ! Schema::hasTable('tiktok_gmv_ads')) {
+            return 0;
+        }
+
+        $map = $this->productIdToSkuMap();
+        if ($map === []) {
+            return 0;
+        }
+
+        $bySku = [];
+        $reports = TiktokCampaignReport::query()
+            ->where('report_range', $range)
+            ->whereNotNull('product_id')
+            ->where('product_id', '!=', '')
+            ->get(['product_id', 'cost', 'budget']);
+
+        foreach ($reports as $report) {
+            $sku = $map[trim((string) $report->product_id)] ?? '';
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper(trim($sku));
+            $bySku[$key]['cost'] = ($bySku[$key]['cost'] ?? 0) + (float) $report->cost;
+            if ($report->budget !== null && $report->budget !== '' && ! isset($bySku[$key]['budget'])) {
+                $bySku[$key]['budget'] = (float) $report->budget;
+            }
+        }
+
+        $applied = 0;
+        foreach ($bySku as $skuKey => $metrics) {
+            $cost = (float) ($metrics['cost'] ?? 0);
+            $budget = $metrics['budget'] ?? null;
+            if ($cost <= 0 && $budget === null) {
+                continue;
+            }
+            $q = TiktokGmvAd::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey]);
+            if (Schema::hasColumn('tiktok_gmv_ads', 'report_range')) {
+                $q->where('report_range', $range);
+            }
+            $update = [];
+            if ($cost > 0) {
+                $update['spend'] = round($cost, 2);
+            }
+            if ($budget !== null && Schema::hasColumn('tiktok_gmv_ads', 'budget')) {
+                $update['budget'] = round($budget, 2);
+            }
+            if ($update !== [] && $q->update($update) > 0) {
+                $applied++;
+            }
+        }
+
+        return $applied;
     }
 
     /**

@@ -26,26 +26,62 @@ class Tiktok1AdsRawDataController extends Controller
                     'success' => true,
                     'data' => [],
                     'count' => 0,
+                    'sums' => [
+                        'count' => 0,
+                        'cost_l30' => 0,
+                        'cost_l1' => 0,
+                        'orders_l30' => 0,
+                        'orders_l1' => 0,
+                        'revenue_l30' => 0,
+                        'revenue_l1' => 0,
+                    ],
                 ]);
             }
 
-            $data = TiktokCampaignReport::query()
-                ->orderByDesc('id')
-                ->get()
-                ->map(function (TiktokCampaignReport $row) {
-                    $arr = $row->toArray();
-                    $arr['time_posted'] = optional($row->time_posted)->format('Y-m-d H:i:s');
-                    $arr['created_at'] = optional($row->created_at)->format('Y-m-d H:i:s');
-                    $arr['updated_at'] = optional($row->updated_at)->format('Y-m-d H:i:s');
+            $rows = TiktokCampaignReport::query()->orderByDesc('id')->get();
+            $sums = [
+                'count' => $rows->count(),
+                'cost_l30' => 0.0,
+                'cost_l1' => 0.0,
+                'orders_l30' => 0,
+                'orders_l1' => 0,
+                'revenue_l30' => 0.0,
+                'revenue_l1' => 0.0,
+            ];
+            foreach ($rows as $row) {
+                $range = strtoupper(trim((string) ($row->report_range ?? '')));
+                $cost = (float) ($row->cost ?? 0);
+                $orders = (int) ($row->sku_orders ?? 0);
+                $revenue = (float) ($row->gross_revenue ?? 0);
+                if ($range === 'L1') {
+                    $sums['cost_l1'] += $cost;
+                    $sums['orders_l1'] += $orders;
+                    $sums['revenue_l1'] += $revenue;
+                } else {
+                    $sums['cost_l30'] += $cost;
+                    $sums['orders_l30'] += $orders;
+                    $sums['revenue_l30'] += $revenue;
+                }
+            }
+            $sums['cost_l30'] = round($sums['cost_l30'], 2);
+            $sums['cost_l1'] = round($sums['cost_l1'], 2);
+            $sums['revenue_l30'] = round($sums['revenue_l30'], 2);
+            $sums['revenue_l1'] = round($sums['revenue_l1'], 2);
 
-                    return $arr;
-                })
-                ->values();
+            $data = $rows->map(function (TiktokCampaignReport $row) {
+                $arr = $row->toArray();
+                $arr['time_posted'] = optional($row->time_posted)->format('Y-m-d H:i:s');
+                $arr['created_at'] = optional($row->created_at)->format('Y-m-d H:i:s');
+                $arr['updated_at'] = optional($row->updated_at)->format('Y-m-d H:i:s');
+
+                return $arr;
+            })->values();
 
             return response()->json([
                 'success' => true,
                 'data' => $data,
                 'count' => $data->count(),
+                'sums' => $sums,
             ]);
         } catch (\Throwable $e) {
             Log::error('TikTok 1 Ads Raw Data failed: '.$e->getMessage());

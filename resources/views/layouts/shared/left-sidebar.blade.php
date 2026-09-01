@@ -2068,7 +2068,7 @@
                             <a href="{{ route('tiktok.ads.missing') }}">TikTok Missing Ads</a>
                         </li>
                         <li>
-                            <a href="{{ route('tiktok1.ads.raw') }}">Tiktok 1 Ads Raw Data</a>
+                            <a href="{{ route('tiktok1.ads.raw') }}">TT1 Ads</a>
                         </li>
                         <li>
                             <a href="{{ route('tiktok.gmv.ads.raw') }}">GMV Tiktok Ads Raw Data</a>
@@ -2153,7 +2153,7 @@
                                     </li> --}}
                         <li><a href="{{ route('tiktok.pricing') }}">TikTok 1 Shop - Analytics</a>
                         </li>
-                        <li><a href="{{ route('tiktok1.ads.raw') }}">Tiktok 1 Ads Raw Data</a>
+                        <li><a href="{{ route('tiktok1.ads.raw') }}">TT1 Ads</a>
                         </li>
                         <li><a href="{{ route('tiktok.gmv.ads.raw') }}">GMV Tiktok Ads Raw Data</a>
                         </li>

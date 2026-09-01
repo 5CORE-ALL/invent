@@ -600,19 +600,19 @@
                     <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
                         <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i
                                 class="fa-solid fa-upload me-1"></i>Campaign:</label>
-                        <input type="file" id="l7-upload-file" accept=".xlsx,.xls,.csv"
+                        <input type="file" id="l7-upload-file" accept=".xlsx,.xls,.csv,.tsv,.txt"
                             class="form-control form-control-sm d-none" style="width: 0;">
                         <button type="button" id="l7-upload-btn" class="btn btn-sm btn-primary"
                             title="Upload L7 Report" style="font-size: 0.75rem;">
                             <i class="fa-solid fa-upload me-1"></i>L7
                         </button>
-                        <input type="file" id="l30-upload-file" accept=".xlsx,.xls,.csv"
+                        <input type="file" id="l30-upload-file" accept=".xlsx,.xls,.csv,.tsv,.txt"
                             class="form-control form-control-sm d-none" style="width: 0;">
                         <button type="button" id="l30-upload-btn" class="btn btn-sm btn-primary"
                             title="Upload L30 Report" style="font-size: 0.75rem;">
                             <i class="fa-solid fa-upload me-1"></i>L30
                         </button>
-                        <input type="file" id="l1-upload-file" accept=".xlsx,.xls,.csv"
+                        <input type="file" id="l1-upload-file" accept=".xlsx,.xls,.csv,.tsv,.txt"
                             class="form-control form-control-sm d-none" style="width: 0;">
                         <button type="button" id="l1-upload-btn" class="btn btn-sm btn-primary"
                             title="Upload L1 Report" style="font-size: 0.75rem;">

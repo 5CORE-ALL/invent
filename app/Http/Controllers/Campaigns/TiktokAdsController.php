@@ -13,9 +13,11 @@ use App\Models\TiktokTwoShopDataView;
 use App\Models\TikTokDailyData;
 use App\Models\TikTokProduct;
 use App\Models\TiktokOrder;
+use App\Services\TikTokGmvAdsSyncService;
+use App\Support\TikTokAdsExportParser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use Illuminate\Support\Facades\Log;
 
 class TiktokAdsController extends Controller
 {
@@ -346,39 +348,36 @@ class TiktokAdsController extends Controller
     {
         try {
             $request->validate([
-                'file' => 'required|file|mimes:xlsx,xls,csv',
-                'report_range' => 'required|in:L1,L7,L30'
+                'file' => 'required|file',
+                'report_range' => 'required|in:L1,L7,L30',
             ]);
 
             $file = $request->file('file');
-            $reportRange = $request->input('report_range');
-            
-            $spreadsheet = IOFactory::load($file->getPathName());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            // Get headers from first row
-            $headers = array_map('trim', $rows[0]);
-            unset($rows[0]); // Remove header row
-            
-            // Filter out empty rows and summary rows
-            $filteredRows = [];
-            foreach ($rows as $row) {
-                // Skip empty rows
-                if (empty(array_filter($row))) {
-                    continue;
-                }
-                
-                // Skip rows that contain "Total" in first column (summary rows)
-                $firstCell = trim($row[0] ?? '');
-                if (!empty($firstCell) && stripos($firstCell, 'Total') !== false) {
-                    continue;
-                }
-                
-                $filteredRows[] = $row;
+            $reportRange = (string) $request->input('report_range');
+            $ext = strtolower((string) $file->getClientOriginalExtension());
+            if (! in_array($ext, ['xlsx', 'xls', 'csv', 'tsv', 'txt'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Upload an xlsx, xls, csv, tsv, or txt TikTok ads export.',
+                ], 422);
             }
-            
-            // Map header names to database field names
+
+            [$headers, $filteredRows] = TikTokAdsExportParser::parse($file->getPathName());
+            $headers = array_map(static fn ($h) => trim((string) $h), $headers);
+            $hasCampaignId = false;
+            foreach ($headers as $header) {
+                if (strcasecmp($header, 'Campaign ID') === 0) {
+                    $hasCampaignId = true;
+                    break;
+                }
+            }
+            if ($headers === [] || ! $hasCampaignId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'File must contain a "Campaign ID" column (TikTok ads export).',
+                ], 422);
+            }
+
             $fieldMapping = [
                 'Campaign name' => 'campaign_name',
                 'Campaign ID' => 'campaign_id',
@@ -390,8 +389,11 @@ class TiktokAdsController extends Controller
                 'TikTok account' => 'tiktok_account',
                 'Time posted' => 'time_posted',
                 'Status' => 'status',
+                'Exploration secondary status' => 'custom_status',
+                'Custom status' => 'custom_status',
                 'Authorization type' => 'authorization_type',
                 'Cost' => 'cost',
+                'Budget' => 'budget',
                 'SKU orders' => 'sku_orders',
                 'Cost per order' => 'cost_per_order',
                 'Gross revenue' => 'gross_revenue',
@@ -409,21 +411,31 @@ class TiktokAdsController extends Controller
                 'Currency' => 'currency',
             ];
 
-            // Helper function to parse currency values
-            $parseCurrency = function($value) {
-                if (empty($value) || $value === '∞') return null;
-                return floatval(str_replace(['$', ',', ' '], '', $value));
-            };
-            
-            // Helper function to parse percentage values
-            $parsePercent = function($value) {
-                if (empty($value) || $value === '∞') return null;
-                return floatval(str_replace(['%', ' ', ','], '', $value));
+            $headerLookup = [];
+            foreach ($headers as $header) {
+                $headerLookup[strtolower($header)] = $header;
+            }
+
+            $parseCurrency = function ($value) {
+                if ($value === null || $value === '' || $value === '∞' || $value === '-') {
+                    return null;
+                }
+
+                return floatval(str_replace(['$', ',', ' '], '', (string) $value));
             };
 
-            // Helper function to parse date
-            $parseDate = function($value) {
-                if (empty($value)) return null;
+            $parsePercent = function ($value) {
+                if ($value === null || $value === '' || $value === '∞' || $value === '-') {
+                    return null;
+                }
+
+                return floatval(str_replace(['%', ' ', ','], '', (string) $value));
+            };
+
+            $parseDate = function ($value) {
+                if ($value === null || $value === '' || $value === '-') {
+                    return null;
+                }
                 try {
                     return \Carbon\Carbon::parse($value);
                 } catch (\Exception $e) {
@@ -431,95 +443,99 @@ class TiktokAdsController extends Controller
                 }
             };
 
+            $cell = function (array $rowData, string $headerName) use ($headerLookup) {
+                $key = $headerLookup[strtolower($headerName)] ?? $headerName;
+
+                return $rowData[$key] ?? null;
+            };
+
             DB::beginTransaction();
             try {
-                // If report_range is provided, delete existing data for that range (like Temu)
-                if ($reportRange) {
-                    TiktokCampaignReport::where('report_range', $reportRange)->delete();
-                }
-                
+                TiktokCampaignReport::where('report_range', $reportRange)->delete();
+
                 $imported = 0;
                 $skipped = 0;
-                $data = [];
 
-                // Process data rows
                 foreach ($filteredRows as $row) {
-                    // Ensure row has same number of elements as headers
                     if (count($row) !== count($headers)) {
                         $row = array_slice(array_pad($row, count($headers), null), 0, count($headers));
                     }
-                    
-                    // Create associative array from headers and row
+
                     $rowData = array_combine($headers, $row);
-                    
-                    // Skip if campaign_id is empty (required field)
-                    $campaignId = $rowData['Campaign ID'] ?? $rowData['Campaign ID'] ?? null;
-                    if (empty($campaignId)) {
+                    if (! is_array($rowData)) {
                         $skipped++;
                         continue;
                     }
-                    
-                    // Map data to database fields
+
+                    $campaignId = trim((string) ($cell($rowData, 'Campaign ID') ?? ''));
+                    if ($campaignId === '' || $campaignId === '-') {
+                        $skipped++;
+                        continue;
+                    }
+
                     $dbData = [];
                     foreach ($fieldMapping as $headerName => $dbField) {
-                        $value = $rowData[$headerName] ?? null;
-                        
-                        if ($value !== null && $value !== '') {
-                            // Parse based on field type
-                            if (in_array($dbField, ['cost', 'cost_per_order', 'gross_revenue'])) {
-                                $dbData[$dbField] = $parseCurrency($value);
-                            } elseif (in_array($dbField, ['roi', 'product_ad_click_rate', 'ad_conversion_rate', 
-                                'video_view_rate_2_second', 'video_view_rate_6_second', 
-                                'video_view_rate_25_percent', 'video_view_rate_50_percent', 
-                                'video_view_rate_75_percent', 'video_view_rate_100_percent'])) {
-                                $dbData[$dbField] = $parsePercent($value);
-                            } elseif ($dbField === 'time_posted') {
-                                $dbData[$dbField] = $parseDate($value);
-                            } elseif (in_array($dbField, ['product_ad_impressions', 'product_ad_clicks', 'sku_orders'])) {
-                                $dbData[$dbField] = !empty($value) ? (int)str_replace(',', '', $value) : 0;
-                            } else {
-                                $dbData[$dbField] = trim($value);
-                            }
+                        $value = $cell($rowData, $headerName);
+                        if ($value === null || $value === '' || $value === '-') {
+                            continue;
+                        }
+
+                        if (in_array($dbField, ['cost', 'cost_per_order', 'gross_revenue', 'budget'], true)) {
+                            $dbData[$dbField] = $parseCurrency($value);
+                        } elseif (in_array($dbField, [
+                            'roi', 'in_roas', 'product_ad_click_rate', 'ad_conversion_rate',
+                            'video_view_rate_2_second', 'video_view_rate_6_second',
+                            'video_view_rate_25_percent', 'video_view_rate_50_percent',
+                            'video_view_rate_75_percent', 'video_view_rate_100_percent',
+                        ], true)) {
+                            $dbData[$dbField] = $parsePercent($value);
+                        } elseif ($dbField === 'time_posted') {
+                            $dbData[$dbField] = $parseDate($value);
+                        } elseif (in_array($dbField, ['product_ad_impressions', 'product_ad_clicks', 'sku_orders'], true)) {
+                            $dbData[$dbField] = (int) str_replace(',', '', (string) $value);
+                        } else {
+                            $dbData[$dbField] = trim((string) $value);
                         }
                     }
-                    
-                    // Always set report_range from request parameter (required)
+
+                    $dbData['campaign_id'] = $campaignId;
                     $dbData['report_range'] = $reportRange;
-                    
-                    // Create record (allow duplicates - upload all data)
                     TiktokCampaignReport::create($dbData);
-                    
                     $imported++;
-                    
-                    // Also add to data array for frontend display
-                    $rowDataForFrontend = [];
-                    foreach ($headers as $index => $header) {
-                        $field = strtolower(preg_replace('/[^a-z0-9]/', '_', $header));
-                        $value = $row[$index] ?? null;
-                        $rowDataForFrontend[$field] = $value;
-                    }
-                    $data[] = $rowDataForFrontend;
                 }
 
                 DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'File uploaded successfully. ' . $imported . ' rows imported, ' . $skipped . ' rows skipped.',
-                    'columns' => $headers,
-                    'data' => $data
-                ]);
             } catch (\Exception $e) {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Error processing file: ' . $e->getMessage()
+                    'message' => 'Error processing file: '.$e->getMessage(),
                 ], 400);
             }
+
+            $gmvApplied = 0;
+            if (in_array($reportRange, ['L1', 'L30'], true)) {
+                try {
+                    $gmvApplied = app(TikTokGmvAdsSyncService::class)->applyUploadedCampaignSpend($reportRange);
+                } catch (\Throwable $e) {
+                    Log::warning('TT1 ads GMV spend overlay failed: '.$e->getMessage());
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Old '.$reportRange.' rows truncated. '.$imported.' imported, '.$skipped.' skipped.'
+                    .($gmvApplied > 0 ? ' GMV spend updated on '.$gmvApplied.' SKUs.' : ''),
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'truncated_range' => $reportRange,
+                'gmv_spend_skus' => $gmvApplied,
+            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error processing file: ' . $e->getMessage()
+                'message' => 'Error processing file: '.$e->getMessage(),
             ], 400);
         }
     }

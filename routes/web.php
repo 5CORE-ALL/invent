@@ -6678,6 +6678,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(Tiktok1AdsRawDataController::class)->group(function () {
         Route::get('/tiktok-1-ads-raw-data', 'index')->name('tiktok1.ads.raw');
+        Route::get('/tt1-ads', 'index')->name('tt1.ads');
         Route::get('/tiktok-1-ads-raw-data/data', 'getData')->name('tiktok1.ads.raw.data');
     });
 
