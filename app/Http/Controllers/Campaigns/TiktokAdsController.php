@@ -522,14 +522,26 @@ class TiktokAdsController extends Controller
                 }
             }
 
+            $masterSpend = null;
+            if ($reportRange === 'L30') {
+                try {
+                    $masterSpend = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                        ->persistTiktokShopSheetSpend();
+                } catch (\Throwable $e) {
+                    Log::warning('TT1 ads persist all-marketplace spend failed: '.$e->getMessage());
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Old '.$reportRange.' rows truncated. '.$imported.' imported, '.$skipped.' skipped.'
-                    .($gmvApplied > 0 ? ' GMV spend updated on '.$gmvApplied.' SKUs.' : ''),
+                    .($gmvApplied > 0 ? ' GMV spend updated on '.$gmvApplied.' SKUs.' : '')
+                    .($masterSpend !== null ? ' All-marketplace Spend saved: $'.number_format($masterSpend, 2).'.' : ''),
                 'imported' => $imported,
                 'skipped' => $skipped,
                 'truncated_range' => $reportRange,
                 'gmv_spend_skus' => $gmvApplied,
+                'all_marketplace_spend' => $masterSpend,
             ]);
         } catch (\Exception $e) {
             return response()->json([

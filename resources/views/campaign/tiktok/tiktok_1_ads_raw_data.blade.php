@@ -6,16 +6,20 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator-paginator label { margin-right: 5px; }
+        .tt1-badge-row {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+        }
         #stat-tt1-ads-raw.badge,
         .badge-tt1-ads-raw {
-            font-size: 1.35rem !important;
-            line-height: 1.35;
-            padding: 0.75rem 1.25rem !important;
+            font-size: 0.95rem !important;
+            line-height: 1.2;
+            padding: 0.45rem 0.7rem !important;
             border-radius: 0.35rem !important;
             font-weight: 700;
-        }
-        .badge-tt1-ads-raw:not(.bg-primary) {
-            color: #000 !important;
+            white-space: nowrap;
+            flex: 0 0 auto;
+            color: #111 !important;
         }
         .tt1-video-title-btn {
             color: #0d6efd;
@@ -41,22 +45,21 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge badge-tt1-ads-raw bg-primary" id="stat-tt1-ads-raw">
-                        Rows <span id="total-tt1-ads-raw">0</span>
-                    </span>
+                <div class="d-flex align-items-center gap-2 tt1-badge-row">
+                    <span class="badge badge-tt1-ads-raw" id="stat-tt1-ads-raw"
+                          style="background-color: #7dd3fc;">Rows <span id="total-tt1-ads-raw">0</span></span>
                     <span class="badge badge-tt1-ads-raw" id="tt1-cost-l30-badge"
-                          style="background-color: #a5d6e8;">Cost L30: $0.00</span>
+                          style="background-color: #fb923c;">Cost L30: $0.00</span>
                     <span class="badge badge-tt1-ads-raw" id="tt1-cost-l1-badge"
-                          style="background-color: #c5e4f3;">Cost L1: $0.00</span>
+                          style="background-color: #fdba74;">Cost L1: $0.00</span>
                     <span class="badge badge-tt1-ads-raw" id="tt1-orders-l30-badge"
-                          style="background-color: #cfe2ff;">SKU orders L30: 0</span>
+                          style="background-color: #c4b5fd;">SKU orders L30: 0</span>
                     <span class="badge badge-tt1-ads-raw" id="tt1-orders-l1-badge"
-                          style="background-color: #d7e3fc;">SKU orders L1: 0</span>
+                          style="background-color: #ddd6fe;">SKU orders L1: 0</span>
                     <span class="badge badge-tt1-ads-raw" id="tt1-revenue-l30-badge"
-                          style="background-color: #9ec5fe;">Revenue L30: $0.00</span>
+                          style="background-color: #86efac;">Revenue L30: $0.00</span>
                     <span class="badge badge-tt1-ads-raw" id="tt1-revenue-l1-badge"
-                          style="background-color: #b8cfe5;">Revenue L1: $0.00</span>
+                          style="background-color: #bbf7d0;">Revenue L1: $0.00</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="tt1-ads-raw-csv">
                         <i class="fas fa-download me-1"></i>CSV
                     </button>

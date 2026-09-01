@@ -1972,6 +1972,12 @@ class ChannelMasterController extends Controller
             if ($calc->ads_percentage !== null) {
                 $row['Ads%'] = round((float) $calc->ads_percentage, 2).'%';
             }
+            if ($calc->n_pft !== null) {
+                $row['N PFT'] = round((float) $calc->n_pft, 2).'%';
+            }
+            if ($calc->n_roi !== null) {
+                $row['N ROI'] = round((float) $calc->n_roi, 2);
+            }
             if ($calc->listing_cvr !== null && $calc->listing_cvr !== '') {
                 $row['CVR'] = (float) $calc->listing_cvr;
             }
@@ -5605,27 +5611,7 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'tiktokshop': {
-                    // Compute totals from tiktok/utilized endpoint (matches tiktok-pricing & tiktok/utilized pages)
-                    $ttCtrl = app(\App\Http\Controllers\Campaigns\TiktokAdsController::class);
-                    $ttReq = \Illuminate\Http\Request::create('/tiktok/utilized/data', 'GET');
-                    $ttResp = $ttCtrl->getUtilizedData($ttReq);
-                    $ttRows = json_decode($ttResp->getContent(), true)['data'] ?? [];
-                    $sp = 0; $c = 0; $s = 0; $u = 0;
-                    foreach ($ttRows as $tr) {
-                        $spend = (float) ($tr['spend'] ?? 0);
-                        $outRoas = (float) ($tr['out_roas'] ?? 0);
-                        $sp += $spend;
-                        $c += (int) ($tr['ad_clicks'] ?? 0);
-                        $u += (int) ($tr['ad_sold'] ?? 0);
-                        if ($outRoas > 0 && $spend > 0) $s += $spend * $outRoas;
-                    }
-                    return array_merge($defaults, [
-                        'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
-                        'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
-                        'KW Spent' => round($sp, 2), 'Total Ad Spend' => round($sp, 2),
-                        'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
-                        'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
-                    ]);
+                    return array_merge($defaults, $this->tiktokShopSheetL30AdMetrics());
                 }
 
                 case 'tiktokshop2':
@@ -5707,9 +5693,8 @@ class ChannelMasterController extends Controller
                 );
 
             case 'tiktokshop':
-                // Use same logic as fetchAdMetricsFromTables for consistency
-                $metrics = $this->fetchAdMetricsFromTables('tiktokshop');
-                return $metrics['Total Ad Spend'] ?? 0.0;
+                // Same number as Tiktok 1 Sheet Ads Cost L30 badge (tiktok_campaign_reports).
+                return $this->tiktokShopSheetL30Spend();
 
             case 'tiktokshop2':
                 return 0.0;
@@ -5720,6 +5705,109 @@ class ChannelMasterController extends Controller
             default:
                 return 0.0;
         }
+    }
+
+    /**
+     * Tiktok 1 Sheet Ads Cost L30 — SUM(cost) on tiktok_campaign_reports L30.
+     */
+    private function tiktokShopSheetL30Spend(): float
+    {
+        if (! Schema::hasTable('tiktok_campaign_reports')) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('tiktok_campaign_reports')->where('report_range', 'L30')->sum('cost'), 2);
+    }
+
+    /**
+     * @return array<string, float|int>
+     */
+    private function tiktokShopSheetL30AdMetrics(): array
+    {
+        $empty = [
+            'clicks' => 0,
+            'ad_sales' => 0.0,
+            'ad_sold' => 0,
+            'KW Clicks' => 0,
+            'KW Sales' => 0.0,
+            'KW Sold' => 0,
+            'KW Spent' => 0.0,
+            'Total Ad Spend' => 0.0,
+            'KW ACOS' => 0,
+            'KW CVR' => 0,
+        ];
+        if (! Schema::hasTable('tiktok_campaign_reports')) {
+            return $empty;
+        }
+
+        $agg = DB::table('tiktok_campaign_reports')
+            ->where('report_range', 'L30')
+            ->selectRaw('COALESCE(SUM(cost),0) as sp, COALESCE(SUM(product_ad_clicks),0) as c, COALESCE(SUM(gross_revenue),0) as s, COALESCE(SUM(sku_orders),0) as u')
+            ->first();
+        $sp = round((float) ($agg->sp ?? 0), 2);
+        $c = (int) ($agg->c ?? 0);
+        $s = round((float) ($agg->s ?? 0), 2);
+        $u = (int) ($agg->u ?? 0);
+
+        return [
+            'clicks' => $c,
+            'ad_sales' => $s,
+            'ad_sold' => $u,
+            'KW Clicks' => $c,
+            'KW Sales' => $s,
+            'KW Sold' => $u,
+            'KW Spent' => $sp,
+            'Total Ad Spend' => $sp,
+            'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
+            'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
+        ];
+    }
+
+    /**
+     * Write Tiktok 1 Sheet Ads L30 cost onto channel_master_calculated_data
+     * so /all-marketplace-master Spend is table-backed (not live page pull).
+     */
+    public function persistTiktokShopSheetSpend(): float
+    {
+        $spend = $this->tiktokShopSheetL30Spend();
+        $metrics = $this->tiktokShopSheetL30AdMetrics();
+        if (! Schema::hasTable('channel_master_calculated_data')) {
+            return $spend;
+        }
+
+        try {
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $row) {
+                if ($this->allMarketplaceSnapshotKey((string) $row->channel) !== 'tiktokshop') {
+                    continue;
+                }
+                $l30 = (float) ($row->l30_sales ?? 0);
+                $cogs = (float) ($row->cogs ?? 0);
+                $pft = (float) ($row->total_profit ?? 0);
+                $gPct = (float) ($row->gprofit_pct ?? 0);
+                $adsPct = $l30 > 0 ? ($spend / $l30) * 100 : 0.0;
+                $row->total_ad_spend = $spend;
+                $row->ads_percentage = round($adsPct, 2);
+                $row->tacos_percentage = round($adsPct, 2);
+                $row->n_pft = round($gPct - $adsPct, 2);
+                $row->n_roi = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 2) : 0;
+                $row->clicks = (int) ($metrics['clicks'] ?? 0);
+                $row->ad_sales = (float) ($metrics['ad_sales'] ?? 0);
+                $row->ad_sold = (int) ($metrics['ad_sold'] ?? 0);
+                $row->acos = (float) ($metrics['KW ACOS'] ?? 0);
+                $row->cvr = (float) ($metrics['KW CVR'] ?? 0);
+                $row->kw_clicks = (int) ($metrics['KW Clicks'] ?? 0);
+                $row->kw_sales = (float) ($metrics['KW Sales'] ?? 0);
+                $row->kw_sold = (int) ($metrics['KW Sold'] ?? 0);
+                $row->kw_acos = (float) ($metrics['KW ACOS'] ?? 0);
+                $row->kw_cvr = (float) ($metrics['KW CVR'] ?? 0);
+                $row->save();
+            }
+            \App\Models\ChannelMasterCalculatedData::bumpFastPayloadCache();
+        } catch (\Throwable $e) {
+            Log::warning('Persist TikTok Shop sheet spend failed: '.$e->getMessage());
+        }
+
+        return $spend;
     }
 
     /**
