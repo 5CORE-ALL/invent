@@ -54,6 +54,8 @@ class ImportTemu2OrderToShopify implements ShouldQueue
         }
 
         if ($order->shopify_order_id) {
+            $pushService->importToShopify($order);
+
             return;
         }
 
@@ -96,6 +98,7 @@ class ImportTemu2OrderToShopify implements ShouldQueue
                     'pushed_to_shopify_at' => $sibling->pushed_to_shopify_at ?? now(),
                     'import_status' => 'imported',
                 ]);
+            $pushService->importToShopify($order->fresh() ?? $order);
 
             return;
         }

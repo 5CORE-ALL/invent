@@ -4,8 +4,10 @@ namespace App\Services;
 
 use EcomPHP\TiktokShop\Client;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
 use App\Services\Support\MarketplaceCharacterLimits;
@@ -2316,8 +2318,8 @@ class TikTokShopService
                 return ['success' => false, 'message' => 'Access denied. Your IP address is not in the IP allow list configured for this app.'];
             }
 
-            // Partial Edit first (LIVE rejects Update Inventory with 12052901).
-            // Default warehouse first so we do not burn the request on inventorySearch.
+            // Qty-only Update Inventory first (does not touch seller_sku). LIVE may
+            // reject it with 12052901; then Partial Edit with a full SKU node.
             $warehouseId = $this->resolveDefaultWarehouseId();
             $result = $this->sendProductInventoryUpdate($productId, $skuId, $quantity, $warehouseId);
             if (! empty($result['success'])) {
@@ -2407,6 +2409,19 @@ class TikTokShopService
             || (str_contains($message, 'seller_deactivated') && str_contains($message, 'activate'));
     }
 
+    protected function isEnforcementBlockedError(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, 'enforcement')
+            || str_contains($message, 'restricted product')
+            || str_contains($message, 'product is restricted')
+            || str_contains($message, 'product restricted')
+            || str_contains($message, 'policy violation')
+            || str_contains($message, 'under review')
+            || str_contains($message, 'not allowed to edit');
+    }
+
     protected function rememberSkipInventoryUpdateApi(): void
     {
         $this->skipInventoryUpdateApi = true;
@@ -2467,7 +2482,8 @@ class TikTokShopService
     }
 
     /**
-     * LIVE Partial Edit requires each sales attribute to have `id` (built-in) or `name` (custom).
+     * LIVE Partial Edit rewrites the SKU node. Omitting seller_sku (or sending "")
+     * can wipe Seller Center SKU. Always include a non-empty seller_sku.
      *
      * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
      * @return array{skus: list<array<string, mixed>>}
@@ -2479,7 +2495,7 @@ class TikTokShopService
             'id' => $skuId,
             'inventory' => $rows,
         ];
-        $sellerSku = trim((string) ($node['seller_sku'] ?? $node['sku'] ?? ''));
+        $sellerSku = $this->sellerSkuForPartialEdit($productId, $skuId, $node);
         if ($sellerSku !== '') {
             $sku['seller_sku'] = $sellerSku;
         }
@@ -2489,6 +2505,85 @@ class TikTokShopService
         }
 
         return ['skus' => [$sku]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    protected function sellerSkuForPartialEdit(string $productId, string $skuId, array $node): string
+    {
+        $live = trim((string) ($node['seller_sku'] ?? $node['sku'] ?? ''));
+        if ($this->localSellerSkuLooksValid($live)) {
+            return $live;
+        }
+
+        return $this->localSellerSku($productId, $skuId);
+    }
+
+    /**
+     * @param  array{skus?: list<array<string, mixed>>}  $params
+     */
+    protected function partialEditSkuHasSellerSku(array $params): bool
+    {
+        $sku = is_array($params['skus'][0] ?? null) ? $params['skus'][0] : [];
+
+        return $this->localSellerSkuLooksValid(trim((string) ($sku['seller_sku'] ?? '')));
+    }
+
+    protected function localProductsTable(): string
+    {
+        return $this->configKey === 'tiktok2' ? 'tiktok_products_two' : 'tiktok_products';
+    }
+
+    protected function localSellerSkuLooksValid(string $sku): bool
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return false;
+        }
+        if (preg_match('#^https?://#i', $sku)) {
+            return false;
+        }
+        if (preg_match('/^\$?\d+(\.\d+)?$/', $sku)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function localSellerSku(string $productId, string $skuId): string
+    {
+        $table = $this->localProductsTable();
+        $productId = trim($productId);
+        $skuId = trim($skuId);
+        if ($productId === '' || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+            return '';
+        }
+
+        try {
+            $query = DB::table($table)->where('product_id', $productId);
+            if ($skuId !== '' && Schema::hasColumn($table, 'sku_id')) {
+                $match = (clone $query)->where('sku_id', $skuId)->value('sku');
+                $sku = trim((string) $match);
+                if ($this->localSellerSkuLooksValid($sku)) {
+                    return $sku;
+                }
+            }
+
+            $fallback = $query->whereNotNull('sku')->where('sku', '!=', '')->value('sku');
+            $sku = trim((string) $fallback);
+
+            return $this->localSellerSkuLooksValid($sku) ? $sku : '';
+        } catch (\Throwable $e) {
+            Log::info('TikTok local seller_sku lookup failed', [
+                'table' => $table,
+                'product_id' => $productId,
+                'sku_id' => $skuId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return '';
+        }
     }
 
     /**
@@ -2701,11 +2796,11 @@ class TikTokShopService
 
         $lastMessage = 'TikTok inventory update failed.';
 
-        // LIVE listings reject 202309 Update Inventory (12052901). Partial Edit
-        // 202509 is the same Open API path Title Master uses for titles.
+        // Qty-only inventory/update first (does not wipe seller_sku). LIVE often
+        // rejects it with 12052901; Partial Edit is then used with a full SKU node.
         $openApi = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
         if (! empty($openApi['success'])) {
-            return $openApi;
+            return $this->finishInventoryUpdateSuccess($productId, $skuId, $openApi);
         }
         $lastMessage = (string) ($openApi['message'] ?? $lastMessage);
         $this->rememberIpAllowList($lastMessage);
@@ -2717,36 +2812,40 @@ class TikTokShopService
         }
 
         $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows);
-        $result = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
-        if (! empty($result['success'])) {
-            $this->workingInventoryPath = '202309|partial';
-
-            return $result;
-        }
-        $lastMessage = (string) ($result['message'] ?? $lastMessage);
-        $this->rememberIpAllowList($lastMessage);
-        Log::info('TikTok inventory update attempt failed', [
-            'product_id' => $productId,
-            'sku_id' => $skuId,
-            'version' => '202309',
-            'method' => 'partial',
-            'error' => $lastMessage,
-        ]);
-
-        if ($this->isSalesAttributesError($lastMessage)) {
-            $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
-            $retry = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
-            if (! empty($retry['success'])) {
+        if ($this->partialEditSkuHasSellerSku($partialParams)) {
+            $result = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
+            if (! empty($result['success'])) {
                 $this->workingInventoryPath = '202309|partial';
 
-                return $retry;
+                return $this->finishInventoryUpdateSuccess($productId, $skuId, $result);
             }
-            $lastMessage = (string) ($retry['message'] ?? $lastMessage);
-            $openRetry = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
-            if (! empty($openRetry['success'])) {
-                return $openRetry;
+            $lastMessage = (string) ($result['message'] ?? $lastMessage);
+            $this->rememberIpAllowList($lastMessage);
+            Log::info('TikTok inventory update attempt failed', [
+                'product_id' => $productId,
+                'sku_id' => $skuId,
+                'version' => '202309',
+                'method' => 'partial',
+                'error' => $lastMessage,
+            ]);
+
+            if ($this->isSalesAttributesError($lastMessage)) {
+                $partialParams = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
+                if ($this->partialEditSkuHasSellerSku($partialParams)) {
+                    $retry = $this->invokeSdkInventory($productId, $partialParams, '202309', 'partial');
+                    if (! empty($retry['success'])) {
+                        $this->workingInventoryPath = '202309|partial';
+
+                        return $this->finishInventoryUpdateSuccess($productId, $skuId, $retry);
+                    }
+                    $lastMessage = (string) ($retry['message'] ?? $lastMessage);
+                }
+                $openRetry = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
+                if (! empty($openRetry['success'])) {
+                    return $this->finishInventoryUpdateSuccess($productId, $skuId, $openRetry);
+                }
+                $lastMessage = (string) ($openRetry['message'] ?? $lastMessage);
             }
-            $lastMessage = (string) ($openRetry['message'] ?? $lastMessage);
         }
 
         if (! $this->skipInventoryUpdateApi && ! $this->isProductStatusRestrictionError($lastMessage)) {
@@ -2755,7 +2854,7 @@ class TikTokShopService
             if (! empty($inv['success'])) {
                 $this->workingInventoryPath = '202309|inventory';
 
-                return $inv;
+                return $this->finishInventoryUpdateSuccess($productId, $skuId, $inv);
             }
             $invMsg = (string) ($inv['message'] ?? '');
             $this->rememberIpAllowList($invMsg);
@@ -2770,7 +2869,7 @@ class TikTokShopService
             && $this->activateProductForInventory($productId)) {
             $afterActivate = $this->postInventoryUpdateViaOpenApi($productId, $skuId, $rows);
             if (! empty($afterActivate['success'])) {
-                return $afterActivate;
+                return $this->finishInventoryUpdateSuccess($productId, $skuId, $afterActivate);
             }
             $lastMessage = (string) ($afterActivate['message'] ?? $lastMessage);
         }
@@ -2779,8 +2878,8 @@ class TikTokShopService
     }
 
     /**
-     * Signed Open API inventory/partial_edit — same path Title Master uses for TikTok 2.
-     * SDK 202309 Update Inventory rejects LIVE listings with "valid product status".
+     * Qty-only inventory/update first. Partial Edit only with a full SKU node
+     * (seller_sku required) — never POST id+qty alone to Partial Edit.
      *
      * @param  list<array{warehouse_id?: string, quantity: int}>  $rows
      * @return array{success: bool, message: string}
@@ -2788,21 +2887,19 @@ class TikTokShopService
     protected function postInventoryUpdateViaOpenApi(string $productId, string $skuId, array $rows): array
     {
         $rows = $this->ensureWarehouseOnInventoryRows($rows);
-        $minimal = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
+        $qtyOnly = ['skus' => [['id' => $skuId, 'inventory' => $rows]]];
         $host = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
-        $paths = [
-            "/product/202509/products/{$productId}/partial_edit",
-            "/product/202309/products/{$productId}/partial_edit",
-        ];
-
         $lastError = 'TikTok inventory update failed.';
-        $triedEnriched = false;
-        foreach ($paths as $path) {
-            $bodies = [$minimal];
-            foreach ($bodies as $body) {
+
+        if (! $this->skipInventoryUpdateApi) {
+            $invPaths = [
+                "/product/202309/products/{$productId}/inventory/update",
+                "/product/202509/products/{$productId}/inventory/update",
+            ];
+            foreach ($invPaths as $path) {
                 try {
-                    $this->tiktokOpenApi('POST', $path, [], $body, 20, false, $host);
-                    $this->workingInventoryPath = str_contains($path, '202509') ? '202509|partial' : '202309|partial';
+                    $this->tiktokOpenApi('POST', $path, [], $qtyOnly, 12, false, $host);
+                    $this->workingInventoryPath = str_contains($path, '202509') ? '202509|inventory' : '202309|inventory';
                     Log::info('TikTok inventory updated via Open API', [
                         'product_id' => $productId,
                         'sku_id' => $skuId,
@@ -2826,41 +2923,283 @@ class TikTokShopService
                     ]);
                     if ($this->isProductStatusRestrictionError($lastError)) {
                         $this->rememberSkipInventoryUpdateApi();
-                    }
-                    if (! $triedEnriched && $this->isSalesAttributesError($lastError)) {
-                        $triedEnriched = true;
-                        $bodies[] = $this->partialEditInventoryParams($productId, $skuId, $rows);
+                        break;
                     }
                 }
             }
         }
 
-        if (! $this->skipInventoryUpdateApi && ! $this->isProductStatusRestrictionError($lastError)) {
+        $full = $this->partialEditInventoryParams($productId, $skuId, $rows);
+        if (! $this->partialEditSkuHasSellerSku($full)) {
+            $full = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
+        }
+        if (! $this->partialEditSkuHasSellerSku($full)) {
+            return [
+                'success' => false,
+                'message' => $lastError !== 'TikTok inventory update failed.'
+                    ? $lastError
+                    : 'Partial Edit blocked: seller_sku missing for '.$skuId,
+            ];
+        }
+
+        $paths = [
+            "/product/202509/products/{$productId}/partial_edit",
+            "/product/202309/products/{$productId}/partial_edit",
+        ];
+        $triedForceSearch = false;
+        foreach ($paths as $path) {
             try {
-                $this->tiktokOpenApi(
-                    'POST',
-                    "/product/202309/products/{$productId}/inventory/update",
-                    [],
-                    $minimal,
-                    12,
-                    false,
-                    $host
-                );
-                $this->workingInventoryPath = '202309|inventory';
+                $this->tiktokOpenApi('POST', $path, [], $full, 20, false, $host);
+                $this->workingInventoryPath = str_contains($path, '202509') ? '202509|partial' : '202309|partial';
+                Log::info('TikTok inventory updated via Open API', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $path,
+                    'base' => $host,
+                ]);
 
                 return ['success' => true, 'message' => 'Inventory updated.'];
             } catch (\Throwable $e) {
-                $invError = $e->getMessage();
-                $this->rememberIpAllowList($invError);
-                if ($this->isProductStatusRestrictionError($invError)) {
-                    $this->rememberSkipInventoryUpdateApi();
-                } elseif ($invError !== '') {
-                    $lastError = $invError;
+                $lastError = $e->getMessage();
+                $this->rememberIpAllowList($lastError);
+                if ($this->ipAllowListBlocked) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+                Log::info('TikTok Open API inventory attempt failed', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $path,
+                    'base' => $host,
+                    'error' => $lastError,
+                ]);
+                if ($this->isEnforcementBlockedError($lastError)) {
+                    return ['success' => false, 'message' => $lastError];
+                }
+                if (! $triedForceSearch && $this->isSalesAttributesError($lastError)) {
+                    $triedForceSearch = true;
+                    $retryBody = $this->partialEditInventoryParams($productId, $skuId, $rows, true);
+                    if ($this->partialEditSkuHasSellerSku($retryBody)) {
+                        $full = $retryBody;
+                        try {
+                            $this->tiktokOpenApi('POST', $path, [], $full, 20, false, $host);
+                            $this->workingInventoryPath = str_contains($path, '202509') ? '202509|partial' : '202309|partial';
+                            Log::info('TikTok inventory updated via Open API', [
+                                'product_id' => $productId,
+                                'sku_id' => $skuId,
+                                'path' => $path,
+                                'base' => $host,
+                                'retry' => 'sales_attributes',
+                            ]);
+
+                            return ['success' => true, 'message' => 'Inventory updated.'];
+                        } catch (\Throwable $retryEx) {
+                            $lastError = $retryEx->getMessage();
+                            $this->rememberIpAllowList($lastError);
+                            if ($this->ipAllowListBlocked || $this->isEnforcementBlockedError($lastError)) {
+                                return ['success' => false, 'message' => $lastError];
+                            }
+                        }
+                    }
                 }
             }
         }
 
         return ['success' => false, 'message' => $lastError];
+    }
+
+    /**
+     * @param  array{success: bool, message: string}  $result
+     * @return array{success: bool, message: string}
+     */
+    protected function finishInventoryUpdateSuccess(string $productId, string $skuId, array $result): array
+    {
+        // Partial Edit already sent seller_sku. Qty-only inventory/update does not —
+        // restore if Seller Center is still blank.
+        if (! str_contains((string) ($this->workingInventoryPath ?? ''), 'partial')) {
+            $this->restoreSellerSkuIfBlank($productId, $skuId);
+        }
+
+        return $result;
+    }
+
+    /**
+     * After a qty push, write seller_sku back if Seller Center is blank.
+     *
+     * @return array{success: bool, restored: bool, message: string}
+     */
+    public function restoreSellerSkuIfBlank(string $productId, string $skuId): array
+    {
+        $productId = trim($productId);
+        $skuId = trim($skuId);
+        if ($productId === '' || $skuId === '') {
+            return ['success' => false, 'restored' => false, 'message' => 'Missing product_id or sku_id.'];
+        }
+
+        $node = $this->skuNodeForPartialEdit($productId, $skuId, false);
+        $live = trim((string) ($node['seller_sku'] ?? $node['sku'] ?? ''));
+        if ($this->localSellerSkuLooksValid($live)) {
+            return ['success' => true, 'restored' => false, 'message' => 'Seller SKU already present.'];
+        }
+
+        $local = $this->localSellerSku($productId, $skuId);
+        if ($local === '') {
+            return ['success' => false, 'restored' => false, 'message' => 'No local seller SKU to restore.'];
+        }
+
+        return $this->postSellerSkuRestore($productId, $skuId, $local, $node);
+    }
+
+    /**
+     * One-time repair: restore blank live seller_sku from local product tables.
+     * Does not create listings or change inventory.
+     *
+     * @return array{scanned: int, blank: int, restored: int, skipped: int, failed: int, message: string}
+     */
+    public function restoreBlankSellerSkus(bool $dryRun = false): array
+    {
+        $scanned = 0;
+        $blank = 0;
+        $restored = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        if (! $this->accessToken) {
+            return [
+                'scanned' => 0,
+                'blank' => 0,
+                'restored' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'message' => 'TikTok access token not available.',
+            ];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+
+        $products = $this->getAllProducts();
+        foreach ($products as $product) {
+            if (! is_array($product)) {
+                continue;
+            }
+            $productId = trim((string) ($product['id'] ?? $product['product_id'] ?? ''));
+            if ($productId === '') {
+                continue;
+            }
+            $skus = $product['skus'] ?? $product['sku_list'] ?? [];
+            if (! is_array($skus) || $skus === []) {
+                continue;
+            }
+            foreach ($skus as $skuRow) {
+                if (! is_array($skuRow)) {
+                    continue;
+                }
+                $scanned++;
+                $skuId = trim((string) ($skuRow['id'] ?? $skuRow['sku_id'] ?? ''));
+                $live = trim((string) ($skuRow['seller_sku'] ?? $skuRow['sku'] ?? ''));
+                if ($this->localSellerSkuLooksValid($live)) {
+                    continue;
+                }
+                $blank++;
+                if ($skuId === '') {
+                    $skipped++;
+                    continue;
+                }
+                $local = $this->localSellerSku($productId, $skuId);
+                if ($local === '') {
+                    $skipped++;
+                    Log::info('TikTok seller_sku restore skipped (no local SKU)', [
+                        'product_id' => $productId,
+                        'sku_id' => $skuId,
+                    ]);
+                    continue;
+                }
+                if ($dryRun) {
+                    $this->output('info', "Would restore {$productId}/{$skuId} → {$local}");
+                    $restored++;
+                    continue;
+                }
+                $result = $this->postSellerSkuRestore($productId, $skuId, $local, $skuRow);
+                if (! empty($result['restored'])) {
+                    $restored++;
+                    $this->output('info', "Restored seller_sku {$local} on {$productId}/{$skuId}");
+                } elseif ($this->isEnforcementBlockedError((string) ($result['message'] ?? ''))) {
+                    $skipped++;
+                    $this->output('warn', "Skipped enforcement-blocked {$productId}: ".($result['message'] ?? ''));
+                } else {
+                    $failed++;
+                    $this->output('error', "Failed restore {$productId}/{$skuId}: ".($result['message'] ?? ''));
+                }
+                usleep(150000);
+            }
+        }
+
+        $label = $dryRun ? 'Would restore' : 'Restored';
+        $message = "Scanned {$scanned} SKUs, {$blank} blank. {$label} {$restored}, skipped {$skipped}, failed {$failed}.";
+
+        return [
+            'scanned' => $scanned,
+            'blank' => $blank,
+            'restored' => $restored,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array{success: bool, restored: bool, message: string}
+     */
+    protected function postSellerSkuRestore(string $productId, string $skuId, string $sellerSku, array $node): array
+    {
+        $sku = [
+            'id' => $skuId,
+            'seller_sku' => $sellerSku,
+        ];
+        $attrs = $this->sanitizeSalesAttributes(is_array($node['sales_attributes'] ?? null) ? $node['sales_attributes'] : []);
+        if ($attrs === []) {
+            $fresh = $this->skuNodeForPartialEdit($productId, $skuId, true);
+            $attrs = $this->sanitizeSalesAttributes(is_array($fresh['sales_attributes'] ?? null) ? $fresh['sales_attributes'] : []);
+        }
+        if ($attrs !== []) {
+            $sku['sales_attributes'] = $attrs;
+        }
+        $body = ['skus' => [$sku]];
+        $host = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $paths = [
+            "/product/202509/products/{$productId}/partial_edit",
+            "/product/202309/products/{$productId}/partial_edit",
+        ];
+        $lastError = 'TikTok seller_sku restore failed.';
+        foreach ($paths as $path) {
+            try {
+                $this->tiktokOpenApi('POST', $path, [], $body, 20, false, $host);
+                unset($this->productSearchCache[$productId], $this->productDetailCache[$productId]);
+                Log::info('TikTok seller_sku restored via Partial Edit', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'seller_sku' => $sellerSku,
+                    'path' => $path,
+                ]);
+
+                return ['success' => true, 'restored' => true, 'message' => 'Seller SKU restored.'];
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                $this->rememberIpAllowList($lastError);
+                if ($this->ipAllowListBlocked || $this->isEnforcementBlockedError($lastError)) {
+                    return ['success' => false, 'restored' => false, 'message' => $lastError];
+                }
+                Log::info('TikTok seller_sku restore attempt failed', [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'path' => $path,
+                    'error' => $lastError,
+                ]);
+            }
+        }
+
+        return ['success' => false, 'restored' => false, 'message' => $lastError];
     }
 
     /**

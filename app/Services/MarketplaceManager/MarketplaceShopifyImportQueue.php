@@ -19,12 +19,12 @@ class MarketplaceShopifyImportQueue
     public const DEFAULT_IMPORT_CUTOFF_DATE = '2026-07-07';
 
     /**
-     * Rows the dispatcher may queue. skipped_closed is included so widening
-     * eligibility (e.g. SHIPPED) can pick up rows skipped under the old rules.
+     * Rows the dispatcher may queue. skipped_closed / skipped_unpaid are included
+     * so widening eligibility can pick up rows skipped under the old rules.
      *
      * @var list<string>
      */
-    public const DISPATCHABLE_IMPORT_STATUSES = ['ready', 'import_failed', 'failed', 'skipped_closed'];
+    public const DISPATCHABLE_IMPORT_STATUSES = ['ready', 'import_failed', 'failed', 'skipped_closed', 'skipped_unpaid'];
 
     public static function defaultImportCutoff(): \Carbon\Carbon
     {

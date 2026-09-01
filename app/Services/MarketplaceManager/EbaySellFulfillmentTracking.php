@@ -245,8 +245,8 @@ class EbaySellFulfillmentTracking
     }
 
     /**
-     * Scan linked Shopify copies from the last 90 days. Newest unfulfilled eBay
-     * orders first so older labeled orders are not starved by a short ID window.
+     * Scan linked Shopify copies from the last 90 days. Newest unpushed eBay
+     * orders first so older unlabeled rows do not starve tracking updates.
      *
      * @param  class-string  $modelClass
      * @return array{success: bool, processed: int, pushed: int, skipped: int, failed: int, message: string}
@@ -278,8 +278,8 @@ class EbaySellFulfillmentTracking
         }
 
         $rows = $query
-            ->orderBy('order_date')
-            ->orderBy('id')
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
             ->limit($limit * 16)
             ->get();
 

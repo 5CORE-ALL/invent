@@ -7,8 +7,10 @@ use App\Models\NeweggOrderMetric;
 use App\Models\ShopifySku;
 use App\Services\ShopifyStoreSelector;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class NeweggOrderPushService
 {
@@ -249,11 +251,20 @@ class NeweggOrderPushService
             }
         }
 
+        $localShopify = $this->findLocalShopifyNeweggCopy($orderId, $orderNumber);
+        if ($localShopify !== null) {
+            $this->linkNeweggOrderToShopify($orderId !== '' ? $orderId : $orderNumber, $localShopify);
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localShopify.' (local Newegg catalog).';
+            $this->fulfillShopifyForImportedMarketplaceOrder('newegg', (int) $order->id, ['order_id' => $orderId]);
+
+            return $localShopify;
+        }
+
         $config = $this->shopifyConfig();
         $existing = $this->findExistingShopifyOrderByRefs(
             $config,
             array_values(array_filter([$orderId, $orderNumber])),
-            ['newegg-'],
+            ['newegg-', 'Newegg-'],
             ['newegg_order_id'],
             'NeweggOrderPushService'
         );
@@ -296,7 +307,7 @@ class NeweggOrderPushService
             $config,
             ['order' => $plan['payload']],
             array_values(array_filter([$orderId, $orderNumber])),
-            ['newegg-'],
+            ['newegg-', 'Newegg-'],
             ['newegg_order_id'],
             'NeweggOrderPushService',
             $order->fresh()?->shopify_order_id
@@ -322,6 +333,59 @@ class NeweggOrderPushService
         }
 
         return $shopifyOrderId;
+    }
+
+    /**
+     * Newegg orders already in shopify_raw_orders must be linked, never POSTed again.
+     */
+    protected function findLocalShopifyNeweggCopy(string $orderId, string $orderNumber): ?string
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return null;
+        }
+
+        $needles = [];
+        foreach ([$orderId, $orderNumber] as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref !== '') {
+                $needles[$ref] = true;
+            }
+        }
+        $needles = array_keys($needles);
+        if ($needles === []) {
+            return null;
+        }
+
+        try {
+            $id = DB::table('shopify_raw_orders')
+                ->where(function ($q) {
+                    $q->where('source_name', 'newegg')
+                        ->orWhere('source_name', 'like', '%newegg%')
+                        ->orWhere('tags', 'like', '%Newegg%')
+                        ->orWhere('tags', 'like', '%newegg%');
+                })
+                ->where(function ($q) use ($needles) {
+                    foreach ($needles as $needle) {
+                        $q->orWhere('tags', 'like', '%newegg-'.$needle.'%')
+                            ->orWhere('tags', 'like', '%Newegg-'.$needle.'%');
+                        if (strlen($needle) >= 6) {
+                            $q->orWhere('tags', 'like', '%'.$needle.'%')
+                                ->orWhere('order_number', $needle)
+                                ->orWhere('order_number', '#'.$needle);
+                        }
+                    }
+                })
+                ->orderByDesc('order_id')
+                ->value('order_id');
+
+            return $id ? (string) $id : null;
+        } catch (\Throwable $e) {
+            Log::warning('NeweggOrderPushService: local Shopify Newegg catalog lookup failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     protected function linkNeweggOrderToShopify(string $orderId, string $shopifyOrderId): void
@@ -400,15 +464,19 @@ class NeweggOrderPushService
         $cachedRoot = $this->orderDetailService->resolveOrderRoot($order);
 
         $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
-        if (empty($detailResult['success'])) {
+        $order->refresh();
+
+        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
+        if (empty($detailResult['success']) && $orderRoot === []) {
+            $orderRoot = $cachedRoot;
+        }
+        if ($orderRoot === [] && $cachedRoot === []) {
             return [
                 'success' => false,
                 'message' => $detailResult['message'] ?? 'Could not load Newegg order details before Shopify push.',
             ];
         }
 
-        $order->refresh();
-        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
         $orderRoot = $this->restoreShippingFromCache($orderRoot, $cachedRoot);
 
         $lines = NeweggOrderMetric::query()
@@ -432,6 +500,9 @@ class NeweggOrderPushService
         $carrier = (string) (($detail['shipment']['service'] ?? '') ?: 'Newegg');
 
         $warnings = $this->buildImportWarnings($detail, $lineResolution, $orderPayload);
+        if (empty($detailResult['success'])) {
+            $warnings[] = 'Could not refresh live Newegg details ('.($detailResult['message'] ?? 'unknown').') — using cached order payload.';
+        }
 
         return [
             'success' => true,

@@ -324,8 +324,8 @@ class TemuOrderPushService
                 'import_status' => 'imported',
             ]);
 
+        $this->fulfillShopifyForImportedOrder($order->fresh() ?? $order);
         if ($this->lastDuplicateLinkMessage === null) {
-            $this->fulfillShopifyForImportedOrder($order->fresh() ?? $order);
             $this->syncInventoryAfterPush($order);
         }
 

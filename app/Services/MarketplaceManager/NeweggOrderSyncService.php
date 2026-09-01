@@ -7,7 +7,6 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggOrderMetric;
 use App\Services\NeweggApiService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -123,84 +122,11 @@ class NeweggOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('newegg')) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('newegg');
-        $queue = MarketplaceManagerRegistry::queueFor('newegg');
-        MarketplaceShopifyImportQueue::prepareForDispatch(NeweggOrderMetric::class, $queue);
-
-        $orders = NeweggOrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->orderByDesc('order_date')
-            ->orderBy('id')
-            ->limit(400)
-            ->get();
-
-        $seen = [];
-        $dispatched = 0;
-        foreach ($orders as $order) {
-            $orderId = trim((string) $order->order_id);
-            if ($orderId === '' || isset($seen[$orderId])) {
-                continue;
-            }
-            $seen[$orderId] = true;
-
-            $alreadyImported = NeweggOrderMetric::query()
-                ->where('order_id', $orderId)
-                ->whereNotNull('shopify_order_id')
-                ->where('shopify_order_id', '!=', '')
-                ->value('shopify_order_id');
-            if ($alreadyImported) {
-                NeweggOrderMetric::query()
-                    ->where('order_id', $orderId)
-                    ->whereNull('shopify_order_id')
-                    ->update([
-                        'shopify_order_id' => (string) $alreadyImported,
-                        'import_status' => 'imported',
-                    ]);
-                continue;
-            }
-
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('newegg', $order)) {
-                NeweggOrderMetric::query()
-                    ->where('order_id', $orderId)
-                    ->whereNull('shopify_order_id')
-                    ->update(['import_status' => 'skipped_unpaid']);
-                continue;
-            }
-
-            try {
-                MarketplaceShopifyImportQueue::push(
-                    new ImportNeweggOrderToShopify((int) $order->id),
-                    $queue
-                );
-                NeweggOrderMetric::query()
-                    ->where('order_id', $orderId)
-                    ->where(function ($q) {
-                        $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-                    })
-                    ->update(['import_status' => 'queued']);
-                $dispatched++;
-            } catch (\Throwable $e) {
-                Log::warning('NeweggOrderSyncService: failed to queue import', [
-                    'id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-            if ($dispatched >= 200) {
-                break;
-            }
-        }
-
-        return $dispatched;
+        return MarketplaceShopifyImportQueue::dispatchLatestUnpushed(
+            'newegg',
+            NeweggOrderMetric::class,
+            static fn (int $id) => new ImportNeweggOrderToShopify($id)
+        );
     }
 
     /**
