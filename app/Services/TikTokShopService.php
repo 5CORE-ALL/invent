@@ -1548,11 +1548,11 @@ class TikTokShopService
             return ['success' => false, 'message' => 'TikTok Shop product not found for SKU / id.'];
         }
 
-        $body = [
+        $body = $this->withPreservedSellerSkus($productId, [
             'product_id' => $productId,
             'video' => ['url' => $videos[0]],
             'videos' => array_map(fn ($url) => ['url' => $url], $videos),
-        ];
+        ]);
 
         try {
             if (! method_exists($this->client->Product, 'editProduct')) {
@@ -1564,7 +1564,11 @@ class TikTokShopService
             if (isset($response['code']) && (int) $response['code'] === 0) {
                 $this->saveVideoUrlsToMetricsRow('tiktok_metrics', trim($identifier), $videos);
 
-                return ['success' => true, 'message' => 'TikTok Shop product video updated.', 'normalized_urls' => $videos];
+                return $this->finishNonInventoryPartialEditSuccess($productId, [
+                    'success' => true,
+                    'message' => 'TikTok Shop product video updated.',
+                    'normalized_urls' => $videos,
+                ]);
             }
 
             return [
@@ -1662,7 +1666,11 @@ class TikTokShopService
             ['path' => "/product/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
         ];
 
-        $bodies = [['title' => $title]];
+        $titleBody = ['title' => $title];
+        $bodies = [$this->withPreservedSellerSkus($productId, $titleBody)];
+        if (($bodies[0]['skus'] ?? []) !== []) {
+            $bodies[] = $titleBody;
+        }
         $lastError = '';
         foreach ($hosts as $base) {
             foreach ($tries as $try) {
@@ -1670,7 +1678,10 @@ class TikTokShopService
                     try {
                         $this->tiktokOpenApi('POST', $try['path'], $try['query'], $body, 45, false, $base);
 
-                        return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                        return $this->finishNonInventoryPartialEditSuccess(
+                            $productId,
+                            $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId)
+                        );
                     } catch (\Throwable $e) {
                         $lastError = $e->getMessage();
                         Log::warning('TikTok title signed call failed', [
@@ -1680,13 +1691,17 @@ class TikTokShopService
                             'query' => $try['query'],
                             'error' => $lastError,
                         ]);
-                        if ($this->isMissingRequiredAttributeError($lastError) && count($bodies) === 1) {
+                        if ($this->isMissingRequiredAttributeError($lastError) && count($bodies) <= 2) {
                             $attrs = $this->productAttributesForTitleUpdate($productId, $lastError);
                             if ($attrs !== []) {
-                                $bodies[] = [
+                                $attrBody = [
                                     'title' => $title,
                                     'product_attributes' => $attrs,
                                 ];
+                                $bodies[] = $this->withPreservedSellerSkus($productId, $attrBody);
+                                if (($bodies[array_key_last($bodies)]['skus'] ?? []) !== []) {
+                                    $bodies[] = $attrBody;
+                                }
                             }
                         }
                     }
@@ -1695,19 +1710,28 @@ class TikTokShopService
         }
 
         try {
-            $sdkBody = ['title' => $title];
+            $sdkBody = $this->withPreservedSellerSkus($productId, ['title' => $title]);
             if ($this->isMissingRequiredAttributeError($lastError)) {
                 $attrs = $this->productAttributesForTitleUpdate($productId, $lastError);
                 if ($attrs !== []) {
-                    $sdkBody['product_attributes'] = $attrs;
+                    $sdkBody = $this->withPreservedSellerSkus($productId, [
+                        'title' => $title,
+                        'product_attributes' => $attrs,
+                    ]);
                 }
             }
             $response = $this->client->Product->useVersion('202309')->partialEditProduct($productId, $sdkBody);
             if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
-                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                return $this->finishNonInventoryPartialEditSuccess(
+                    $productId,
+                    $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId)
+                );
             }
             if ($response === [] || $response === null) {
-                return $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId);
+                return $this->finishNonInventoryPartialEditSuccess(
+                    $productId,
+                    $this->marketplaceApiSuccess('TikTok updateProductTitle', $productId)
+                );
             }
             $lastError = (string) ($response['message'] ?? $lastError);
         } catch (\Throwable $e) {
@@ -1975,7 +1999,7 @@ class TikTokShopService
             $this->client->setShopCipher($this->shopCipher);
         }
 
-        $body = array_merge(['product_id' => $productId], $fields);
+        $body = $this->withPreservedSellerSkus($productId, array_merge(['product_id' => $productId], $fields));
 
         try {
             if (! method_exists($this->client->Product, 'editProduct')) {
@@ -1984,7 +2008,10 @@ class TikTokShopService
 
             $response = $this->client->Product->editProduct($body);
             if (is_array($response) && (int) ($response['code'] ?? -1) === 0) {
-                return ['success' => true, 'message' => 'TikTok Shop product updated.'];
+                return $this->finishNonInventoryPartialEditSuccess($productId, [
+                    'success' => true,
+                    'message' => 'TikTok Shop product updated.',
+                ]);
             }
 
             return [
@@ -2073,10 +2100,18 @@ class TikTokShopService
             ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => ['version' => '202309']],
             ['path' => "/product/202309/products/{$productId}/partial_edit", 'query' => []],
         ];
-        $bodies = [
+        $imageBodies = [
             ['main_images' => $uris],
             ['main_images' => $uris, 'images' => $uris],
         ];
+        $bodies = [];
+        foreach ($imageBodies as $imageBody) {
+            $safe = $this->withPreservedSellerSkus($productId, $imageBody);
+            $bodies[] = $safe;
+            if (($safe['skus'] ?? []) !== []) {
+                $bodies[] = $imageBody;
+            }
+        }
 
         $lastError = '';
         foreach ($hosts as $base) {
@@ -2085,11 +2120,11 @@ class TikTokShopService
                     try {
                         $this->tiktokOpenApi('POST', $try['path'], $try['query'], $body, 60, false, $base);
 
-                        return [
+                        return $this->finishNonInventoryPartialEditSuccess($productId, [
                             'success' => true,
                             'message' => 'TikTok Shop product images updated.',
                             'normalized_urls' => $images,
-                        ];
+                        ]);
                     } catch (\Throwable $e) {
                         $lastError = $e->getMessage();
                     }
@@ -3059,6 +3094,203 @@ class TikTokShopService
         }
 
         return $result;
+    }
+
+    /**
+     * Title / image / description Partial Edit must never send a SKU node
+     * without seller_sku. Attach current SKUs when we have them.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    protected function withPreservedSellerSkus(string $productId, array $body): array
+    {
+        $nodes = $this->skuNodesPreservingSellerSku($productId);
+        if ($nodes !== []) {
+            $body['skus'] = $nodes;
+        }
+
+        return $this->sanitizePartialEditBody($productId, $body);
+    }
+
+    /**
+     * Drop any SKU node missing a valid seller_sku. Never send seller_sku: "".
+     * An empty skus array is removed so TikTok does not wipe every variant.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    protected function sanitizePartialEditBody(string $productId, array $body): array
+    {
+        if (! isset($body['skus']) || ! is_array($body['skus'])) {
+            return $body;
+        }
+
+        $kept = [];
+        foreach ($body['skus'] as $sku) {
+            if (! is_array($sku)) {
+                continue;
+            }
+            $skuId = trim((string) ($sku['id'] ?? $sku['sku_id'] ?? ''));
+            $seller = trim((string) ($sku['seller_sku'] ?? ''));
+            if ($seller === '' && $skuId !== '') {
+                $seller = $this->localSellerSku($productId, $skuId);
+            }
+            if ($skuId === '' || ! $this->localSellerSkuLooksValid($seller)) {
+                continue;
+            }
+            $sku['id'] = $skuId;
+            $sku['seller_sku'] = $seller;
+            $kept[] = $sku;
+        }
+
+        if ($kept === []) {
+            unset($body['skus']);
+        } else {
+            $body['skus'] = $kept;
+        }
+
+        return $body;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function skuNodesPreservingSellerSku(string $productId): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return [];
+        }
+
+        $data = $this->searchProductDataById($productId);
+        if ($data === []) {
+            try {
+                $data = $this->fetchProductData($productId);
+            } catch (\Throwable $e) {
+                $data = [];
+            }
+        }
+
+        $skus = $data['skus'] ?? $data['sku_list'] ?? [];
+        if (! is_array($skus) || $skus === []) {
+            return $this->localSkuNodesPreservingSellerSku($productId);
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            $skuId = trim((string) ($node['id'] ?? $node['sku_id'] ?? ''));
+            if ($skuId === '' || isset($seen[$skuId])) {
+                continue;
+            }
+            $seller = $this->sellerSkuForPartialEdit($productId, $skuId, $node);
+            if ($seller === '') {
+                continue;
+            }
+            $seen[$skuId] = true;
+            $row = [
+                'id' => $skuId,
+                'seller_sku' => $seller,
+            ];
+            $attrs = $this->sanitizeSalesAttributes(is_array($node['sales_attributes'] ?? null) ? $node['sales_attributes'] : []);
+            if ($attrs !== []) {
+                $row['sales_attributes'] = $attrs;
+            }
+            $out[] = $row;
+        }
+
+        return $out !== [] ? $out : $this->localSkuNodesPreservingSellerSku($productId);
+    }
+
+    /**
+     * @return list<array{id: string, seller_sku: string}>
+     */
+    protected function localSkuNodesPreservingSellerSku(string $productId): array
+    {
+        $table = $this->localProductsTable();
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, 'sku_id')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::table($table)
+                ->where('product_id', $productId)
+                ->whereNotNull('sku_id')
+                ->where('sku_id', '!=', '')
+                ->get(['sku_id', 'sku']);
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $skuId = trim((string) ($row->sku_id ?? ''));
+            $seller = trim((string) ($row->sku ?? ''));
+            if ($skuId === '' || isset($seen[$skuId]) || ! $this->localSellerSkuLooksValid($seller)) {
+                continue;
+            }
+            $seen[$skuId] = true;
+            $out[] = [
+                'id' => $skuId,
+                'seller_sku' => $seller,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{success: bool, message: string}  $result
+     * @return array{success: bool, message: string}
+     */
+    protected function finishNonInventoryPartialEditSuccess(string $productId, array $result): array
+    {
+        $this->restoreSellerSkusOnProduct($productId);
+
+        return $result;
+    }
+
+    protected function restoreSellerSkusOnProduct(string $productId): void
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return;
+        }
+
+        $skuIds = [];
+        $data = $this->searchProductDataById($productId);
+        foreach (($data['skus'] ?? $data['sku_list'] ?? []) as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            $skuId = trim((string) ($node['id'] ?? $node['sku_id'] ?? ''));
+            if ($skuId !== '') {
+                $skuIds[$skuId] = true;
+            }
+        }
+
+        $table = $this->localProductsTable();
+        if (Schema::hasTable($table) && Schema::hasColumn($table, 'sku_id')) {
+            try {
+                foreach (DB::table($table)->where('product_id', $productId)->pluck('sku_id') as $skuId) {
+                    $skuId = trim((string) $skuId);
+                    if ($skuId !== '') {
+                        $skuIds[$skuId] = true;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        foreach (array_keys($skuIds) as $skuId) {
+            $this->restoreSellerSkuIfBlank($productId, $skuId);
+        }
     }
 
     /**
@@ -4344,6 +4576,10 @@ class TikTokShopService
      */
     protected function tiktokOpenApi(string $method, string $path, array $query = [], ?array $jsonBody = null, int $timeout = 45, bool $retried = false, ?string $apiBase = null): array
     {
+        if ($jsonBody !== null && preg_match('#/products/([^/]+)/partial_edit#', $path, $m)) {
+            $jsonBody = $this->sanitizePartialEditBody((string) $m[1], $jsonBody);
+        }
+
         $originalQuery = $query;
         $query['app_key'] = (string) $this->clientKey;
         $query['timestamp'] = (string) time();
