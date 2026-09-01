@@ -31,7 +31,11 @@ class SyncBestBuyManagerOrders extends Command
         }
 
         $result = $sync->sync($from, (bool) $this->option('import'));
-        $this->info($result['message'] ?? 'Done.');
+        $message = (string) ($result['message'] ?? 'Done.');
+        if (strlen($message) > 400) {
+            $message = substr($message, 0, 400).'…';
+        }
+        $this->info($message);
 
         return ! empty($result['success']) ? self::SUCCESS : self::FAILURE;
     }

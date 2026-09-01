@@ -104,41 +104,8 @@ class PurchasingPowerOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('purchasingpower')) {
-            return 0;
-        }
+        Log::info('PurchasingPowerOrderSyncService: Shopify import dispatcher skipped until PurchasingPowerOrderPushService is implemented.');
 
-        if (! Schema::hasColumn('purchasing_power_sales', 'shopify_order_id')) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('purchasingpower');
-        $queue = MarketplaceManagerRegistry::queueFor('purchasingpower');
-        MarketplaceShopifyImportQueue::prepareForDispatch(PurchasingPowerSale::class, $queue);
-        $query = PurchasingPowerSale::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->when(Schema::hasColumn('purchasing_power_sales', 'date_created'), function ($q) {
-                $q->where('date_created', '>=', MarketplaceShopifyImportQueue::defaultImportCutoff());
-            })
-            ->orderByDesc('id')
-            ->limit(200);
-
-        $dispatched = 0;
-        foreach ($query->get() as $row) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('purchasingpower', $row)) {
-                continue;
-            }
-            $row->update(['import_status' => 'queued']);
-            MarketplaceShopifyImportQueue::push(new ImportPurchasingPowerOrderToShopify((int) $row->id), $queue);
-            $dispatched++;
-        }
-
-        return $dispatched;
+        return 0;
     }
 }

@@ -7,8 +7,8 @@
         @include('marketplace._page-heading', ['slug' => 'ebay3', 'heading' => 'eBay 3 Listings'])
         <p class="text-muted mb-3">
             Linked tabs: <strong>All</strong> = every Shopify live SKU.
-            <strong>Inv SKU Match</strong> = eBay 3 qty is at or below Shopify (same qty, or eBay 3 is short by at most max(3 units, 3% of Shopify)).
-            <strong>Linked mismatch SKU</strong> = every linked listing where qty does not match, including any SKU where Shopify is less than eBay 3.
+            <strong>Inv SKU Match / Inv SKU Mismatch</strong> = Shopify vs eBay 3 quantity. Match allows eBay 3 to be short by at most max(3 units, 3% of Shopify).
+            <strong>Linked mismatch SKU</strong> is only the SKUs where eBay 3 qty is higher than Shopify.
             <strong>Active SKU / Inactive SKU</strong> = actual eBay 3 seller portal status (not inventory match).
             Use <em>Sync actual Shopify quantity</em> on Linked mismatch SKU to push live Shopify stock to eBay 3.
             <em>Refresh live</em> warms eBay 3 status. Refresh Shopify from <a href="{{ route('marketplace.manager.index') }}">Marketplace Manager</a>.
@@ -36,6 +36,8 @@
                     @elseif(($linkTab ?? '') === 'matched')
                         {{ $products->total() }} Inv SKU Match
                     @elseif(($linkTab ?? '') === 'mismatch')
+                        {{ $products->total() }} Inv SKU Mismatch
+                    @elseif(($linkTab ?? '') === 'linked_mismatch')
                         {{ $products->total() }} Linked mismatch SKU
                     @elseif(($linkTab ?? '') === 'mismatch_inactive')
                         {{ $products->total() }} Active SKU
@@ -48,7 +50,7 @@
                     @endif
                 </span>
                 <div class="d-flex gap-2 flex-wrap">
-                    @if(in_array(($linkTab ?? ''), ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'], true))
+                    @if(in_array(($linkTab ?? ''), ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero'], true))
                         <a href="{{ request()->fullUrlWithQuery(['refresh_live' => 1, 'clear_cache' => null]) }}" class="btn btn-sm btn-outline-success">
                             <i class="ri-flashlight-line"></i> Refresh live
                         </a>
@@ -56,8 +58,8 @@
                             <i class="ri-delete-bin-line"></i> Clear cache
                         </a>
                     @endif
-                    @if(($linkTab ?? '') === 'mismatch')
-                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="mismatch">
+                    @if(($linkTab ?? '') === 'linked_mismatch')
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-sync-mismatch-now" data-scope="linked_mismatch">
                             <i class="ri-upload-2-line"></i> Sync actual Shopify quantity
                         </button>
                     @endif
@@ -79,12 +81,12 @@
             </div>
             <div class="card-body">
                 @php
-                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+                    $counts = $counts ?? ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
                     $stateCounts = $stateCounts ?? ['all' => 0, 'active' => 0, 'inactive' => 0, 'other' => 0];
                     $stateTab = $stateTab ?? 'all';
                     $qName = urlencode($searchName ?? '');
                     $qSku = urlencode($searchSku ?? '');
-                    $isLinkedTab = in_array(($linkTab ?? ''), ['matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero'], true);
+                    $isLinkedTab = in_array(($linkTab ?? ''), ['matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero'], true);
                 @endphp
                 <form method="get" class="mb-3">
                     <div class="row g-2 align-items-end flex-wrap">
@@ -115,7 +117,10 @@
                         <a href="{{ request()->url() }}?link=matched&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'matched' ? 'active' : '' }}">Inv SKU Match {{ $counts['matched'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
-                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['mismatch'] ?? 0 }}</a>
+                        <a href="{{ request()->url() }}?link=mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch' ? 'active' : '' }}">Inv SKU Mismatch {{ $counts['mismatch'] ?? 0 }}</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ request()->url() }}?link=linked_mismatch&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'linked_mismatch' ? 'active' : '' }}">Linked mismatch SKU {{ $counts['linked_mismatch'] ?? 0 }}</a>
                     </li>
                     <li class="nav-item">
                         <a href="{{ request()->url() }}?link=mismatch_inactive&search_name={{ $qName }}&search_sku={{ $qSku }}" class="nav-link {{ ($linkTab ?? '') === 'mismatch_inactive' ? 'active' : '' }}">Active SKU {{ $counts['mismatch_inactive'] ?? 0 }}</a>

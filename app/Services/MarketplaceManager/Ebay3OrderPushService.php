@@ -226,6 +226,8 @@ class Ebay3OrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedOrder($order);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -242,6 +244,7 @@ class Ebay3OrderPushService
             if ($localLinked) {
                 $this->linkEbay3OrderToShopify($orderId, (string) $localLinked);
                 $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+                $this->fulfillShopifyForImportedOrder($order);
 
                 return (string) $localLinked;
             }
@@ -279,6 +282,7 @@ class Ebay3OrderPushService
                 'shopify_order_id' => $existing['id'],
                 'matched_by' => $existing['matched_by'],
             ]);
+            $this->fulfillShopifyForImportedOrder($order);
 
             return (string) $existing['id'];
         }
@@ -303,15 +307,6 @@ class Ebay3OrderPushService
             return null;
         }
 
-        if ($this->lastDuplicateLinkMessage === null) {
-            $fulfillment = is_array($plan['fulfillment'] ?? null) ? $plan['fulfillment'] : [];
-            $tracking = (string) ($fulfillment['tracking'] ?? '');
-            $carrier = (string) ($fulfillment['carrier'] ?? 'eBay 3');
-            if ($tracking !== '') {
-                $this->addFulfillmentTracking($shopifyOrderId, $tracking, $carrier);
-            }
-        }
-
         Ebay3OrderMetric::query()
             ->where('order_id', (string) $order->order_id)
             ->update([
@@ -319,6 +314,8 @@ class Ebay3OrderPushService
                 'pushed_to_shopify_at' => now(),
                 'import_status' => 'imported',
             ]);
+
+        $this->fulfillShopifyForImportedOrder($order->fresh() ?? $order);
 
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);
@@ -728,6 +725,29 @@ class Ebay3OrderPushService
             Log::error('Ebay3OrderPushService: exception', ['error' => $e->getMessage()]);
 
             return null;
+        }
+    }
+
+    protected function fulfillShopifyForImportedOrder(Ebay3OrderMetric $order): void
+    {
+        $id = (int) $order->id;
+        if ($id < 1) {
+            return;
+        }
+
+        try {
+            $result = app(VeeqoShopifyFulfillmentService::class)->fulfillMarketplaceOrder('ebay3', $id);
+            if (empty($result['success']) && empty($result['skipped'])) {
+                Log::warning('Ebay3OrderPushService: Shopify fulfillment after import failed', [
+                    'order_id' => $order->order_id,
+                    'result' => $result,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Ebay3OrderPushService: Shopify fulfillment after import exception', [
+                'order_id' => $order->order_id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

@@ -1875,7 +1875,8 @@ class VeeqoShopifyFulfillmentService
                 ->where(function ($q) use ($since) {
                     $q->where('order_date', '>=', $since)->orWhere('created_at', '>=', $since);
                 })
-                ->orderBy('id')
+                ->orderByDesc('order_date')
+                ->orderByDesc('id')
                 ->limit(max(80, $limit * 40))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
@@ -1959,7 +1960,11 @@ class VeeqoShopifyFulfillmentService
             if ($uniqueCol && Schema::hasColumn($table, $uniqueCol)) {
                 $ids = [];
                 $seen = [];
-                foreach ($query->orderBy('id')->limit($limit * 40)->get(['id', $uniqueCol]) as $row) {
+                if (Schema::hasColumn($table, $dateCol)) {
+                    $query->orderByDesc($dateCol);
+                }
+                $query->orderByDesc('id')->limit($limit * 40);
+                foreach ($query->get(['id', $uniqueCol]) as $row) {
                     $key = trim((string) ($row->{$uniqueCol} ?? ''));
                     if ($key === '' || isset($seen[$key])) {
                         continue;
@@ -1971,7 +1976,10 @@ class VeeqoShopifyFulfillmentService
                 return $this->filterAutoFetchCandidates($marketplace, $ids, $limit);
             }
 
-            $ids = $query->orderBy('id')
+            if (Schema::hasColumn($table, $dateCol)) {
+                $query->orderByDesc($dateCol);
+            }
+            $ids = $query->orderByDesc('id')
                 ->limit(max(80, $limit * 40))
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)

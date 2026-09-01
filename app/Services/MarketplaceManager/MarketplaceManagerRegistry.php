@@ -15,6 +15,9 @@ class MarketplaceManagerRegistry
      */
     public const QUEUE = 'marketplace-manager';
 
+    /** Dedicated worker so label → Shopify fulfill is never stuck behind order/inventory sync. */
+    public const QUEUE_TRACKING = 'mm-tracking';
+
     public const QUEUE_PREFIX = 'mm-';
 
     /**
@@ -38,7 +41,7 @@ class MarketplaceManagerRegistry
      */
     public static function queueNames(): array
     {
-        $names = [];
+        $names = [self::QUEUE_TRACKING];
         foreach (self::slugs() as $slug) {
             $names[] = self::queueFor($slug);
             // High-priority listing syncs (TikTok etc.) — avoid waiting behind order/inventory backlog.

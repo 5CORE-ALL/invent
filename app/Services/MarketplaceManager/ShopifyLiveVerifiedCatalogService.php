@@ -276,6 +276,7 @@ final class ShopifyLiveVerifiedCatalogService
 
         $matched = [];
         $mismatch = [];
+        $linkedMismatch = [];
         $zero = [];
         $seen = [];
 
@@ -294,6 +295,7 @@ final class ShopifyLiveVerifiedCatalogService
 
             if (MarketplaceLiveInventoryRules::marketplaceQtyExceedsShopify($shopifyQty, $mpQty, $marketplace)) {
                 $mismatch[] = $canonical;
+                $linkedMismatch[] = $canonical;
             } elseif ($shopifyQty <= 0) {
                 $zero[] = $canonical;
             } elseif ($mpQty !== null && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance($shopifyQty, $mpQty, $marketplace)) {
@@ -313,11 +315,13 @@ final class ShopifyLiveVerifiedCatalogService
         return [
             'matched' => $matched,
             'mismatch' => $mismatch,
+            'linked_mismatch' => $linkedMismatch,
             'zero' => $zero,
             'counts' => [
                 'all' => $this->countDistinctAllSkus($store),
                 'matched' => count($matched),
                 'mismatch' => count($mismatch),
+                'linked_mismatch' => count($linkedMismatch),
                 'zero' => count($zero),
                 'unlinked' => $unlinked,
                 'linked' => count($matched) + count($mismatch) + count($zero),

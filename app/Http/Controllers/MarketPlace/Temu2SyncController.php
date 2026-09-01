@@ -243,7 +243,7 @@ class Temu2SyncController extends Controller
         Temu2LiveListingsService $liveService,
         ShopifyLiveVerifiedCatalogService $catalog
     ): array {
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
         $linkedSkus = $this->linkedTemuSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
         $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
@@ -261,6 +261,7 @@ class Temu2SyncController extends Controller
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
@@ -311,6 +312,7 @@ class Temu2SyncController extends Controller
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
+            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
             $zeroQty = $reconciled['zero'];
             $counts['matched'] = count($matchedQty);
             $counts['mismatch'] = count($mismatchQty);
@@ -572,7 +574,7 @@ class Temu2SyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $stateTab = $this->parseAeStateTab($request);
@@ -582,8 +584,8 @@ class Temu2SyncController extends Controller
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveLinkTabs = ['matched', 'mismatch', 'linked_mismatch', 'zero'];
         $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         $liveService = app(Temu2LiveListingsService::class);
         if ($clearCache) {
@@ -676,6 +678,7 @@ class Temu2SyncController extends Controller
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
+            'linked_mismatch' => $linkedMismatchQty,
             'mismatch_inactive' => $mismatchInactive,
             'zero' => $zeroQty,
             'matched_inactive' => $matchedInactive,
@@ -1170,11 +1173,10 @@ class Temu2SyncController extends Controller
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'temu2');
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
         // Inv SKU Mismatch only — Active SKU / Inactive SKU tabs are Temu Seller Center status, not qty buckets.
-        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
-            ? []
-            : $mismatchQty;
+        $mismatch = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));

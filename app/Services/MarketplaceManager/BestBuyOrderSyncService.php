@@ -103,41 +103,9 @@ class BestBuyOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('bestbuy')) {
-            return 0;
-        }
+        // BestBuyOrderPushService::importToShopify is a stub — queuing jobs only marks rows failed.
+        Log::info('BestBuyOrderSyncService: Shopify import dispatcher skipped until BestBuyOrderPushService is implemented.');
 
-        if (! Schema::hasColumn('mirakl_daily_data', 'shopify_order_id')) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('bestbuy');
-        $queue = MarketplaceManagerRegistry::queueFor('bestbuy');
-        MarketplaceShopifyImportQueue::prepareForDispatch(BestBuyOrderMetric::class, $queue);
-        $query = BestBuyOrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->when(Schema::hasColumn('mirakl_daily_data', 'order_created_at'), function ($q) {
-                $q->where('order_created_at', '>=', MarketplaceShopifyImportQueue::defaultImportCutoff());
-            })
-            ->orderByDesc('id')
-            ->limit(200);
-
-        $dispatched = 0;
-        foreach ($query->get() as $row) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('bestbuy', $row)) {
-                continue;
-            }
-            $row->update(['import_status' => 'queued']);
-            MarketplaceShopifyImportQueue::push(new ImportBestBuyOrderToShopify((int) $row->id), $queue);
-            $dispatched++;
-        }
-
-        return $dispatched;
+        return 0;
     }
 }

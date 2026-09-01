@@ -111,7 +111,7 @@ class MacySyncController extends Controller
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
         $stateTab = $this->parseAeStateTab($request);
@@ -121,8 +121,8 @@ class MacySyncController extends Controller
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyStateCounts = $this->emptyAeStateCounts();
-        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
-        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'linked_mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
+        $liveLinkTabs = ['matched', 'mismatch', 'linked_mismatch', 'zero'];
         $liveService = app(MacyLiveListingsService::class);
         if ($clearCache) {
             $liveService->clearCache();
@@ -172,6 +172,7 @@ class MacySyncController extends Controller
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
 
         if ($mismatchQty !== []) {
@@ -219,6 +220,7 @@ class MacySyncController extends Controller
             );
             $matchedQty = $reconciled['matched'];
             $mismatchQty = $reconciled['mismatch'];
+            $linkedMismatchQty = $reconciled['linked_mismatch'] ?? $linkedMismatchQty;
             $zeroQty = $reconciled['zero'];
             $counts['matched'] = count($matchedQty);
             $counts['mismatch'] = count($mismatchQty);
@@ -240,6 +242,7 @@ class MacySyncController extends Controller
             $liveRows
         );
         $counts = $overlay['counts'];
+        $counts['linked_mismatch'] = count($linkedMismatchQty);
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
@@ -280,6 +283,7 @@ class MacySyncController extends Controller
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
+            'linked_mismatch' => $linkedMismatchQty,
             'zero' => $zeroQty,
             'matched' => $matchedActive,
             default => [],
@@ -763,10 +767,9 @@ class MacySyncController extends Controller
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: 'macy');
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
-        $mismatch = in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)
-            ? []
-            : $mismatchQty;
+        $mismatch = \App\Services\MarketplaceManager\MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
 
         $offset = max(0, (int) $request->input('offset', 0));
         $limit = max(1, min(40, (int) $request->input('limit', 25)));

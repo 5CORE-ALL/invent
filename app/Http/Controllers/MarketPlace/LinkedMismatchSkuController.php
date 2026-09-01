@@ -83,7 +83,7 @@ class LinkedMismatchSkuController extends Controller
             'channelName' => $resolved['name'],
             'hasSkuDetail' => $hasSkuDetail,
             'channelInvLabel' => $channelInvLabel,
-            'listingsUrl' => MappingChannelCounts::listingsUrlForSlug($slug),
+            'listingsUrl' => MappingChannelCounts::listingsLinkedMismatchUrlForSlug($slug),
             'plsApi' => $plsApi,
         ]);
     }
@@ -108,7 +108,7 @@ class LinkedMismatchSkuController extends Controller
                 ]);
             }
 
-            $data = collect(app(MarketplaceListingQtyMatchService::class)->mismatchRows($mmChannel))
+            $data = collect(app(MarketplaceListingQtyMatchService::class)->linkedMismatchRows($mmChannel))
                 ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
                 ->values();
 

@@ -22,17 +22,16 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
 
     public int $tries = 3;
 
-    public int $timeout = 1100;
+    public int $timeout = 1500;
 
-    public int $uniqueFor = 1200;
+    public int $uniqueFor = 1800;
 
     public array $backoff = [20, 60, 120];
 
     public function __construct(
         public int $limit = 250,
     ) {
-        // Shared across all MM channels — do not sit behind Amazon order sync (1700s).
-        $this->onQueue(MarketplaceManagerRegistry::QUEUE);
+        $this->onQueue(MarketplaceManagerRegistry::QUEUE_TRACKING);
     }
 
     public function uniqueId(): string

@@ -46,7 +46,7 @@ class TikTokListingsPageBuilder
         if ($linkTab === 'linked_zero') {
             $linkTab = 'zero';
         }
-        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
+        if (! in_array($linkTab, ['all', 'matched', 'matched_inactive', 'mismatch', 'linked_mismatch', 'mismatch_inactive', 'zero', 'unlinked'], true)) {
             $linkTab = 'all';
         }
 
@@ -56,7 +56,7 @@ class TikTokListingsPageBuilder
         $forceLive = $request->boolean('refresh_live');
         $clearCache = $request->boolean('clear_cache');
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0, 'tiktok_products' => 0, 'tiktok_skus' => 0];
-        $liveLinkTabs = ['matched', 'mismatch', 'zero'];
+        $liveLinkTabs = ['matched', 'mismatch', 'linked_mismatch', 'zero'];
         $portalTabs = ['matched_inactive', 'mismatch_inactive'];
         $liveService = $this->liveService();
         $label = $this->label();
@@ -117,6 +117,7 @@ class TikTokListingsPageBuilder
 
         $matchedQty = $classified['matched'] ?? [];
         $mismatchQty = $classified['mismatch'] ?? [];
+        $linkedMismatchQty = $classified['linked_mismatch'] ?? [];
         $zeroQty = $classified['zero'] ?? [];
         $counts['matched'] = count($matchedQty);
         $counts['mismatch'] = count($mismatchQty);
@@ -137,6 +138,7 @@ class TikTokListingsPageBuilder
             $liveRows
         );
         $counts = $overlay['counts'];
+        $counts['linked_mismatch'] = count($linkedMismatchQty);
         $matchedActive = $overlay['matchedActive'];
         $matchedInactive = $overlay['matchedInactive'];
         $mismatchActive = $overlay['mismatchActive'];
@@ -179,6 +181,7 @@ class TikTokListingsPageBuilder
 
         $linkedVerified = match ($linkTab) {
             'mismatch' => $mismatchActive,
+            'linked_mismatch' => $linkedMismatchQty,
             'zero' => $zeroQty,
             'matched' => $matchedActive,
             default => [],
@@ -684,6 +687,18 @@ class TikTokListingsPageBuilder
     {
         if (in_array($scope, ['mismatch_inactive', 'inactive', 'matched_inactive'], true)) {
             return [];
+        }
+        if ($scope === 'linked_mismatch') {
+            $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+            $linkedSkus = $this->linkedSkus();
+            $verified = $catalog->filterLinkedToVerified($linkedSkus);
+            $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+                $this->liveService()->peekCached(),
+                $this->stockMapForSkus($verified)
+            );
+            $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock, marketplace: $this->channel) ?? [];
+
+            return MarketplaceListingStockResolver::qtyListForSyncScope($classified, $scope);
         }
 
         try {

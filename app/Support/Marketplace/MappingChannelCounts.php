@@ -31,9 +31,9 @@ class MappingChannelCounts
 
     public const INACTIVE_MASTER_ROWS_CACHE_KEY = 'inactive_listings_master_rows_v7';
 
-    public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v1';
+    public const LINKED_MISMATCH_TOTAL_CACHE_KEY = 'linked_mismatch_sku_total_v2';
 
-    public const LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY = 'linked_mismatch_sku_master_rows_v1';
+    public const LINKED_MISMATCH_MASTER_ROWS_CACHE_KEY = 'linked_mismatch_sku_master_rows_v2';
 
     /**
      * Channels shown on /map-issues.
@@ -423,7 +423,7 @@ class MappingChannelCounts
                 'image' => $logos[$slug] ?? null,
                 'linked_mismatch_sku' => (int) ($mismatchCounts[$slug] ?? 0),
                 'detail_url' => url('/linked-mismatch-sku/channel/'.$slug),
-                'listings_url' => self::listingsUrlForSlug($slug),
+                'listings_url' => self::listingsLinkedMismatchUrlForSlug($slug),
                 'has_sku_detail' => MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug) !== null,
                 'api_status' => $api['api_status'],
                 'api_connected' => $api['api_connected'],
@@ -676,6 +676,23 @@ class MappingChannelCounts
         }
     }
 
+    /**
+     * Marketplace Manager listings (Linked mismatch SKU) for a /linked-mismatch-sku slug.
+     */
+    public static function listingsLinkedMismatchUrlForSlug(string $slug): ?string
+    {
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
+        if ($mm === null) {
+            return null;
+        }
+
+        try {
+            return url('/marketplace/'.$mm.'/products?link=linked_mismatch');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     public static function listingsInactiveUrlForSlug(string $slug): ?string
     {
         $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug($slug);
@@ -781,7 +798,7 @@ class MappingChannelCounts
             }
             try {
                 if (! array_key_exists($mm, $seenMm)) {
-                    $seenMm[$mm] = $match->mismatchCount($mm);
+                    $seenMm[$mm] = $match->linkedMismatchCount($mm);
                 }
                 $counts[$slug] = (int) $seenMm[$mm];
             } catch (\Throwable $e) {

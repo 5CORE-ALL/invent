@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 class AmazonOrderPushService
 {
     use FindsExistingShopifyOrderByChannelRef;
+    use FulfillsShopifyAfterImport;
     use SyncsShopifyOrderAddress;
 
     public ?string $lastFailureReason = null;
@@ -222,6 +223,10 @@ class AmazonOrderPushService
         $this->lastFailureReason = null;
 
         if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
+            $this->fulfillShopifyForImportedMarketplaceOrder('amazon', (int) $order->id, [
+                'amazon_order_id' => (string) $order->amazon_order_id,
+            ]);
+
             return (string) $order->shopify_order_id;
         }
 
@@ -244,6 +249,21 @@ class AmazonOrderPushService
             $this->lastFailureReason = 'Cancelled Amazon orders are not created on Shopify.';
 
             return null;
+        }
+
+        $localLinked = AmazonOrder::query()
+            ->where('amazon_order_id', $amazonOrderId)
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->value('shopify_order_id');
+        if ($localLinked) {
+            $this->linkAmazonOrderToShopify($order, (string) $localLinked);
+            $this->lastDuplicateLinkMessage = 'Linked to existing Shopify order '.$localLinked.' (local sibling).';
+            $this->fulfillShopifyForImportedMarketplaceOrder('amazon', (int) $order->id, [
+                'amazon_order_id' => $amazonOrderId,
+            ]);
+
+            return (string) $localLinked;
         }
 
         $config = $this->shopifyConfig();
@@ -276,6 +296,9 @@ class AmazonOrderPushService
                     'error' => $e->getMessage(),
                 ]);
             }
+            $this->fulfillShopifyForImportedMarketplaceOrder('amazon', (int) $order->id, [
+                'amazon_order_id' => $amazonOrderId,
+            ]);
 
             return (string) $existing['id'];
         }
@@ -310,6 +333,9 @@ class AmazonOrderPushService
         }
 
         $this->linkAmazonOrderToShopify($order, $shopifyOrderId);
+        $this->fulfillShopifyForImportedMarketplaceOrder('amazon', (int) ($order->fresh()?->id ?? $order->id), [
+            'amazon_order_id' => $amazonOrderId,
+        ]);
         if ($this->lastDuplicateLinkMessage === null) {
             $this->syncInventoryAfterPush($order);
         }
@@ -357,12 +383,22 @@ class AmazonOrderPushService
             return;
         }
 
-        $order->update([
+        $payload = [
             'shopify_order_id' => $shopifyOrderId,
             'pushed_to_shopify_at' => now(),
             'import_status' => 'imported',
             'fulfillment_channel' => $order->fulfillmentChannel() ?: $order->fulfillment_channel,
-        ]);
+        ];
+        $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
+        if ($amazonOrderId !== '') {
+            AmazonOrder::query()
+                ->where('amazon_order_id', $amazonOrderId)
+                ->update($payload);
+
+            return;
+        }
+
+        $order->update($payload);
     }
 
     protected function markSkip(AmazonOrder $order, string $status): void

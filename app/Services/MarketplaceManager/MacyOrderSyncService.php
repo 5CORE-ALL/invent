@@ -103,41 +103,8 @@ class MacyOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('macy')) {
-            return 0;
-        }
+        Log::info('MacyOrderSyncService: Shopify import dispatcher skipped until MacyOrderPushService is implemented.');
 
-        if (! Schema::hasColumn('mirakl_daily_data', 'shopify_order_id')) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('macy');
-        $queue = MarketplaceManagerRegistry::queueFor('macy');
-        MarketplaceShopifyImportQueue::prepareForDispatch(MacyOrderMetric::class, $queue);
-        $query = MacyOrderMetric::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->when(Schema::hasColumn('mirakl_daily_data', 'order_created_at'), function ($q) {
-                $q->where('order_created_at', '>=', MarketplaceShopifyImportQueue::defaultImportCutoff());
-            })
-            ->orderByDesc('id')
-            ->limit(200);
-
-        $dispatched = 0;
-        foreach ($query->get() as $row) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('macy', $row)) {
-                continue;
-            }
-            $row->update(['import_status' => 'queued']);
-            MarketplaceShopifyImportQueue::push(new ImportMacyOrderToShopify((int) $row->id), $queue);
-            $dispatched++;
-        }
-
-        return $dispatched;
+        return 0;
     }
 }

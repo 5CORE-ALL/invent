@@ -34,13 +34,20 @@ class ImportAmazonOrderToShopify implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'amazon-import-'.$this->amazonOrderId;
+        $amazonOrderId = trim((string) (AmazonOrder::query()->where('id', $this->amazonOrderId)->value('amazon_order_id') ?? ''));
+
+        return $amazonOrderId !== ''
+            ? 'amazon-import-'.$amazonOrderId
+            : 'amazon-import-'.$this->amazonOrderId;
     }
 
     public function middleware(): array
     {
+        $amazonOrderId = trim((string) (AmazonOrder::query()->where('id', $this->amazonOrderId)->value('amazon_order_id') ?? ''));
+        $key = $amazonOrderId !== '' ? $amazonOrderId : (string) $this->amazonOrderId;
+
         return [
-            (new WithoutOverlapping("amazon_import:{$this->amazonOrderId}"))
+            (new WithoutOverlapping('amazon_import:'.$key))
                 ->releaseAfter(120)
                 ->expireAfter(600),
         ];

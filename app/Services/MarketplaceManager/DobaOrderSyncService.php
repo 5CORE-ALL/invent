@@ -102,41 +102,8 @@ class DobaOrderSyncService
 
     public function dispatchImportsForNewOrders(): int
     {
-        if (! MarketplaceSyncSettings::canAutoImportToShopify('doba')) {
-            return 0;
-        }
+        Log::info('DobaOrderSyncService: Shopify import dispatcher skipped until DobaOrderPushService is implemented.');
 
-        if (! Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
-            return 0;
-        }
-
-        $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('doba');
-        $queue = MarketplaceManagerRegistry::queueFor('doba');
-        MarketplaceShopifyImportQueue::prepareForDispatch(DobaDailyData::class, $queue);
-        $query = DobaDailyData::query()
-            ->where(function ($q) {
-                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
-            })
-            ->where(function ($q) {
-                $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
-            })
-            ->when(Schema::hasColumn('doba_daily_data', 'order_time'), function ($q) {
-                $q->where('order_time', '>=', MarketplaceShopifyImportQueue::defaultImportCutoff());
-            })
-            ->orderByDesc('id')
-            ->limit(200);
-
-        $dispatched = 0;
-        foreach ($query->get() as $row) {
-            if ($paidOnly && ! MarketplaceOrderPaidFilter::isPaid('doba', $row)) {
-                continue;
-            }
-            $row->update(['import_status' => 'queued']);
-            MarketplaceShopifyImportQueue::push(new ImportDobaOrderToShopify((int) $row->id), $queue);
-            $dispatched++;
-        }
-
-        return $dispatched;
+        return 0;
     }
 }

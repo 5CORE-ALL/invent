@@ -226,6 +226,8 @@ class Ebay2OrderPushService
         $this->lastDuplicateLinkMessage = null;
 
         if ($order->shopify_order_id) {
+            $this->fulfillShopifyForImportedOrder($order);
+
             return (string) $order->shopify_order_id;
         }
 

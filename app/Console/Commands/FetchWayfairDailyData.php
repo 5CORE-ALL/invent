@@ -296,6 +296,13 @@ class FetchWayfairDailyData extends Command
         try {
             DB::transaction(function () use ($orders) {
                 foreach ($orders as $order) {
+                    $exists = DB::table('wayfair_daily_data')
+                        ->where('po_number', $order['po_number'])
+                        ->where('sku', $order['sku'])
+                        ->exists();
+                    if (! $exists && empty($order['id'])) {
+                        $order['id'] = ((int) DB::table('wayfair_daily_data')->max('id')) + 1;
+                    }
                     DB::table('wayfair_daily_data')
                         ->updateOrInsert(
                             [
