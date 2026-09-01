@@ -105,50 +105,62 @@
         return '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    function updateGmvSumBadges(rows) {
+    function applyGmvSums(s) {
+        const sums = s || {};
+        $('#total-tt-gmv-ads-raw').text(Number(sums.count || 0).toLocaleString('en-US'));
+        $('#tt-gmv-ad-sold-l30-badge').text('Ad sold L30: ' + Number(sums.sold_l30 || 0).toLocaleString('en-US'));
+        $('#tt-gmv-ad-sold-l1-badge').text('Ad sold L1: ' + Number(sums.sold_l1 || 0).toLocaleString('en-US'));
+        $('#tt-gmv-ad-sales-l30-badge').text('Ad sales L30: ' + money(sums.sales_l30));
+        $('#tt-gmv-ad-sales-l1-badge').text('Ad sales L1: ' + money(sums.sales_l1));
+        $('#tt-gmv-spend-l30-badge').text('Spend L30: ' + money(sums.spend_l30));
+        $('#tt-gmv-spend-l1-badge').text('Spend L1: ' + money(sums.spend_l1));
+        $('#tt-gmv-budget-badge').text('Budget: ' + money(sums.budget));
+    }
+
+    function sumsFromRows(rows) {
         const list = Array.isArray(rows) ? rows : [];
-        let soldL30 = 0, soldL1 = 0, salesL30 = 0, salesL1 = 0;
-        let spendL30 = 0, spendL1 = 0, budgetL30 = 0, budgetAll = 0;
-        let hasL30 = false;
+        const sums = {
+            count: 0, sold_l30: 0, sold_l1: 0,
+            sales_l30: 0, sales_l1: 0, spend_l30: 0, spend_l1: 0, budget: 0,
+        };
+        let budgetL30 = 0, budgetAll = 0, hasL30 = false;
         list.forEach(function(row) {
-            const range = String(row.report_range == null ? '' : row.report_range).toUpperCase().trim();
-            const sold = Number(row.ad_sold) || 0;
-            const sales = Number(row.ad_sales) || 0;
-            const spend = Number(row.spend) || 0;
-            const budget = Number(row.budget) || 0;
+            const data = row && typeof row.getData === 'function' ? row.getData() : (row || {});
+            const range = String(data.report_range == null ? '' : data.report_range).toUpperCase().trim();
+            const sold = Number(data.ad_sold) || 0;
+            const sales = Number(data.ad_sales) || 0;
+            const spend = Number(data.spend) || 0;
+            const budget = Number(data.budget) || 0;
             budgetAll += budget;
+            sums.count += 1;
             if (range === 'L30') {
                 hasL30 = true;
-                soldL30 += sold;
-                salesL30 += sales;
-                spendL30 += spend;
+                sums.sold_l30 += sold;
+                sums.sales_l30 += sales;
+                sums.spend_l30 += spend;
                 budgetL30 += budget;
             } else if (range === 'L1') {
-                soldL1 += sold;
-                salesL1 += sales;
-                spendL1 += spend;
+                sums.sold_l1 += sold;
+                sums.sales_l1 += sales;
+                sums.spend_l1 += spend;
             } else {
-                soldL30 += sold;
-                salesL30 += sales;
-                spendL30 += spend;
+                sums.sold_l30 += sold;
+                sums.sales_l30 += sales;
+                sums.spend_l30 += spend;
             }
         });
-        $('#total-tt-gmv-ads-raw').text(list.length.toLocaleString('en-US'));
-        $('#tt-gmv-ad-sold-l30-badge').text('Ad sold L30: ' + soldL30.toLocaleString('en-US'));
-        $('#tt-gmv-ad-sold-l1-badge').text('Ad sold L1: ' + soldL1.toLocaleString('en-US'));
-        $('#tt-gmv-ad-sales-l30-badge').text('Ad sales L30: ' + money(salesL30));
-        $('#tt-gmv-ad-sales-l1-badge').text('Ad sales L1: ' + money(salesL1));
-        $('#tt-gmv-spend-l30-badge').text('Spend L30: ' + money(spendL30));
-        $('#tt-gmv-spend-l1-badge').text('Spend L1: ' + money(spendL1));
-        $('#tt-gmv-budget-badge').text('Budget: ' + money(hasL30 ? budgetL30 : budgetAll));
+        sums.budget = hasL30 ? budgetL30 : budgetAll;
+        return sums;
     }
 
     $(document).ready(function() {
+        let serverSums = null;
         const table = new Tabulator('#tt-gmv-ads-raw-table', {
             ajaxURL: "{{ route('tiktok.gmv.ads.raw.data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
-                updateGmvSumBadges(data);
+                serverSums = response && response.sums ? response.sums : sumsFromRows(data);
+                applyGmvSums(serverSums);
                 return data;
             },
             layout: 'fitDataStretch',
@@ -156,7 +168,7 @@
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, 200, 500],
             columnDefaults: { headerSort: true },
-            initialSort: [{ column: 'id', dir: 'desc' }],
+            initialSort: [{ column: 'ad_sold', dir: 'desc' }, { column: 'ad_sales', dir: 'desc' }],
             placeholder: 'No rows in tiktok_gmv_ads.',
             columns: [
                 numCol('ID', 'id', 80),
@@ -173,15 +185,21 @@
             ],
         });
 
-        function refreshBadgesFromTable() {
-            const rows = table.getData('active').map(function(row) {
-                return row;
-            });
-            updateGmvSumBadges(rows);
-        }
+        table.on('dataLoaded', function(data) {
+            if (serverSums) {
+                applyGmvSums(serverSums);
+                return;
+            }
+            applyGmvSums(sumsFromRows(data));
+        });
 
-        table.on('dataFiltered', function() {
-            refreshBadgesFromTable();
+        table.on('dataFiltered', function(filters, rows) {
+            const hasFilter = Array.isArray(filters) && filters.length > 0;
+            if (!hasFilter) {
+                applyGmvSums(serverSums || sumsFromRows(rows));
+                return;
+            }
+            applyGmvSums(sumsFromRows(rows));
         });
 
         $('#tt-gmv-ads-raw-search').on('input', function() {
