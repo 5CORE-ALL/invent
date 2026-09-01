@@ -35,6 +35,7 @@ use App\Models\Temu2Metric;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DataView;
 use App\Models\DobaDataView;
+use App\Models\DobaWithoutShipDataView;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokCampaignReport;
 use App\Models\TiktokSkuCompetitor;
@@ -7732,6 +7733,8 @@ class CvrMasterController extends Controller
             // Handle different marketplaces (API push where available)
             if ($marketplace === 'amazon') {
                 $response = $this->pushToAmazon($sku, $price);
+            } elseif (in_array($marketplace, ['doba_withoutship', 'dobawithoutship'], true)) {
+                $response = $this->pushToDoba($sku, $price, $selfPickPrice ?? $price, true);
             } elseif ($marketplace === 'doba') {
                 $response = $this->pushToDoba($sku, $price, $selfPickPrice);
             } elseif ($marketplace === 'walmart') {
@@ -7971,9 +7974,11 @@ class CvrMasterController extends Controller
     /**
      * Push price to Doba
      * Matches DobaController::pushPriceToDoba + /doba-tabulator (self pick = SPRICE − Ship)
+     * $pickupOnly: /doba_withoutship — update Pick Up only (selfPickAnticipatedIncome), leave Delivery unchanged.
      */
-    private function pushToDoba($sku, $price, $selfPickPrice = null)
+    private function pushToDoba($sku, $price, $selfPickPrice = null, $pickupOnly = false)
     {
+        $statusChannel = $pickupOnly ? 'doba_withoutship' : 'doba';
         try {
             // Case-insensitive SKU lookup (DB may store "CAPO BLUE 1Pc")
             $dobaMetric = DobaMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])->first();
@@ -7982,11 +7987,12 @@ class CvrMasterController extends Controller
             }
             
             if (!$dobaMetric || !$dobaMetric->item_id) {
-                $this->savePricePushStatus($sku, 'doba', 'error', $price);
+                $this->savePricePushStatus($sku, $statusChannel, 'error', $price);
                 
                 Log::warning('CVR Master - Doba SKU not found', [
                     'sku' => $sku,
-                    'price' => $price
+                    'price' => $price,
+                    'pickup_only' => $pickupOnly,
                 ]);
                 
                 return response()->json([
@@ -7999,30 +8005,47 @@ class CvrMasterController extends Controller
             $itemId = $dobaMetric->item_id;
             $metricSku = trim((string) $dobaMetric->sku);
 
-            // Same as /doba-tabulator: Self Pick = SPRICE − Ship (ProductMaster ship)
-            if ($selfPickPrice === null || !is_numeric($selfPickPrice) || floatval($selfPickPrice) < 0) {
-                $ship = 0.0;
-                $pm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($metricSku)])->first();
-                if ($pm) {
-                    // ProductMaster stores ship inside Values JSON
-                    $vals = is_array($pm->Values) ? $pm->Values
-                        : (json_decode($pm->Values ?? '{}', true) ?: []);
-                    $ship = floatval($vals['ship'] ?? 0);
+            if ($pickupOnly) {
+                if ($selfPickPrice === null || !is_numeric($selfPickPrice) || floatval($selfPickPrice) <= 0) {
+                    $selfPickPrice = $price;
                 }
-                if ($ship <= 0 && is_numeric($dobaMetric->self_pick_price ?? null)
-                    && is_numeric($dobaMetric->anticipated_income ?? null)
-                    && floatval($dobaMetric->anticipated_income) > 0) {
-                    // Infer ship from last known anticipated − self_pick
-                    $ship = max(0, floatval($dobaMetric->anticipated_income) - floatval($dobaMetric->self_pick_price));
-                }
-                $selfPickPrice = round(max(0, floatval($price) - $ship), 2);
-            } else {
                 $selfPickPrice = round(floatval($selfPickPrice), 2);
+                if ($selfPickPrice <= 0) {
+                    $this->savePricePushStatus($metricSku, $statusChannel, 'error', $price);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Pickup price is required.',
+                        'errors' => [['message' => 'Pickup price (self_pick_price) is required.']]
+                    ], 400);
+                }
+                $listingPrice = null;
+            } else {
+                // Same as /doba-tabulator: Self Pick = SPRICE − Ship (ProductMaster ship)
+                if ($selfPickPrice === null || !is_numeric($selfPickPrice) || floatval($selfPickPrice) < 0) {
+                    $ship = 0.0;
+                    $pm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($metricSku)])->first();
+                    if ($pm) {
+                        // ProductMaster stores ship inside Values JSON
+                        $vals = is_array($pm->Values) ? $pm->Values
+                            : (json_decode($pm->Values ?? '{}', true) ?: []);
+                        $ship = floatval($vals['ship'] ?? 0);
+                    }
+                    if ($ship <= 0 && is_numeric($dobaMetric->self_pick_price ?? null)
+                        && is_numeric($dobaMetric->anticipated_income ?? null)
+                        && floatval($dobaMetric->anticipated_income) > 0) {
+                        // Infer ship from last known anticipated − self_pick
+                        $ship = max(0, floatval($dobaMetric->anticipated_income) - floatval($dobaMetric->self_pick_price));
+                    }
+                    $selfPickPrice = round(max(0, floatval($price) - $ship), 2);
+                } else {
+                    $selfPickPrice = round(floatval($selfPickPrice), 2);
+                }
+                $listingPrice = $price;
             }
             
             // Push to Doba using API (matching DobaController implementation)
             $dobaApiService = new DobaApiService();
-            $priceResult = $dobaApiService->updateItemPrice($itemId, $price, $selfPickPrice);
+            $priceResult = $dobaApiService->updateItemPrice($itemId, $listingPrice, $selfPickPrice);
 
             // Check if the response indicates real errors
             // Some API responses include an "errors" key even when empty.
@@ -8031,14 +8054,14 @@ class CvrMasterController extends Controller
                     ? json_encode($priceResult['errors'])
                     : (string) $priceResult['errors'];
 
-                // Save error status to doba_data_view
-                $this->savePricePushStatus($metricSku, 'doba', 'error', $price);
+                $this->savePricePushStatus($metricSku, $statusChannel, 'error', $pickupOnly ? $selfPickPrice : $price);
                 
                 Log::warning('CVR Master - Doba price push failed', [
                     'sku' => $metricSku,
                     'item_id' => $itemId,
-                    'price' => $price,
+                    'price' => $listingPrice,
                     'self_pick_price' => $selfPickPrice,
+                    'pickup_only' => $pickupOnly,
                     'error' => $errorMessage,
                     'debug' => $priceResult['debug'] ?? null,
                 ]);
@@ -8051,29 +8074,35 @@ class CvrMasterController extends Controller
             }
 
             // Keep local metrics in sync (same as DobaController::pushPriceToDoba)
-            $dobaMetric->anticipated_income = $price;
+            if (!$pickupOnly) {
+                $dobaMetric->anticipated_income = $price;
+            }
             $dobaMetric->self_pick_price = $selfPickPrice;
             $dobaMetric->save();
 
-            $this->savePricePushStatus($metricSku, 'doba', 'pushed', $price);
+            $this->savePricePushStatus($metricSku, $statusChannel, 'pushed', $pickupOnly ? $selfPickPrice : $price);
             
             Log::info('CVR Master - Doba price push successful', [
                 'sku' => $metricSku,
                 'item_id' => $itemId,
-                'price' => $price,
-                'self_pick_price' => $selfPickPrice
+                'price' => $listingPrice,
+                'self_pick_price' => $selfPickPrice,
+                'pickup_only' => $pickupOnly,
             ]);
             
             return response()->json([
                 'success' => true,
-                'message' => "Price $" . number_format($price, 2) . " pushed to Doba successfully for SKU: $metricSku",
+                'message' => $pickupOnly
+                    ? "Pickup price $" . number_format($selfPickPrice, 2) . " pushed to Doba for SKU: $metricSku"
+                    : "Price $" . number_format($price, 2) . " pushed to Doba successfully for SKU: $metricSku",
+                'price' => $pickupOnly ? $selfPickPrice : $price,
                 'data' => [
                     'price_update' => $priceResult
                 ]
             ]);
 
         } catch (\Exception $e) {
-            $this->savePricePushStatus($sku, 'doba', 'error', $price);
+            $this->savePricePushStatus($sku, $statusChannel, 'error', $price);
             
             Log::error('CVR Master - Doba push exception', [
                 'sku' => $sku,
@@ -9474,6 +9503,8 @@ class CvrMasterController extends Controller
                 $dataView = AmazonDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'doba') {
                 $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+            } elseif (in_array($marketplace, ['doba_withoutship', 'dobawithoutship'], true)) {
+                $dataView = DobaWithoutShipDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'walmart') {
                 $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
