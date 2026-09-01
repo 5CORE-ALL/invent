@@ -244,10 +244,20 @@ class Kernel extends ConsoleKernel
     {
 
         $ist($schedule->command('app:fetch-amazon-orders --auto-sync --with-items')
-            ->cron('0 9,13,18 * * *')
+            ->cron('0 9,18 * * *')
             ->timezone('Asia/Kolkata')
             ->name('amazon-fetch-orders')
             ->withoutOverlapping(240)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // 13:10 IST = 00:40 PDT — Pacific yesterday has closed. Own mutex so the
+        // 35-day auto-sync cannot skip the full-day CreatedBefore=23:59 pull.
+        $ist($schedule->command('app:fetch-amazon-orders --close-yesterday --with-items')
+            ->dailyAt('13:10')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-close-yesterday')
+            ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log));
 

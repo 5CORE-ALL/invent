@@ -243,8 +243,8 @@ class CalculateChannelMasterData extends Command
             // Prefer Total Ad Spend; fall back to KW Spent (Temu / Temu 2 ads upload)
             'total_ad_spend' => $parseNumber($data['Total Ad Spend'] ?? $data['KW Spent'] ?? 0),
             'ads_percentage' => $parseNumber($data['Ads%'] ?? $data['TACOS %'] ?? $data['TACOS'] ?? 0),
-            'clicks' => (int) ($data['Clicks'] ?? 0),
-            'ad_sold' => (int) ($data['Ad Sold'] ?? 0),
+            'clicks' => (int) ($data['Clicks'] ?? $data['clicks'] ?? 0),
+            'ad_sold' => (int) ($data['Ad Sold'] ?? $data['ad_sold'] ?? 0),
             'ad_sales' => $parseNumber($data['Ad Sales'] ?? 0),
             'cvr' => $parseNumber($data['Ads CVR'] ?? 0),
             'acos' => $parseNumber($data['ACOS'] ?? 0),

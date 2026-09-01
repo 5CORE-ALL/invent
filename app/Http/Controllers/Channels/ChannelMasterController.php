@@ -7074,7 +7074,9 @@ class ChannelMasterController extends Controller
             }
 
             $row['clicks'] = $clicks;
+            $row['Clicks'] = $clicks;
             $row['ad_sold'] = $adSold;
+            $row['Ad Sold'] = $adSold;
             $row['Ad Sales'] = $adSales;
             $row['Ads CVR'] = $cvr;
             $row['ACOS'] = $acos;
@@ -7520,7 +7522,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Depop: depop_sales_data — item_price × quantity (quantity defaults to 1) on calendar day before latest sale_date.
+     * Depop Y = Pacific yesterday on depop_sales_data (same rows as /depop/sheet).
+     * No sales that day → 0. Do not use latest-sale minus 1 day (that skipped Aug 31).
      */
     private function computeDepopYSalesLikeAmazon(): ?float
     {
@@ -7528,12 +7531,7 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('depop_sales_data')->whereNotNull('sale_date')->max('sale_date');
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $yDate = Carbon::parse($latestRaw)->subDay()->toDateString();
+        $yDate = Carbon::yesterday('America/Los_Angeles')->toDateString();
 
         $sum = (float) DB::table('depop_sales_data')
             ->whereDate('sale_date', $yDate)
@@ -8250,18 +8248,13 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('depop_sales_data')->whereNotNull('sale_date')->max('sale_date');
-        if (! $latestRaw) {
-            return null;
-        }
-
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $l7StartDate = $latestPacific->copy()->subDay()->subDays(6)->toDateString();
-        $l7EndDate = $latestPacific->copy()->subDay()->toDateString();
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $l7StartDate = $yesterday->copy()->subDays(6)->toDateString();
+        $l7EndDate = $yesterday->toDateString();
 
         $sum = (float) DB::table('depop_sales_data')
-            ->where('sale_date', '>=', $l7StartDate)
-            ->where('sale_date', '<=', $l7EndDate)
+            ->whereDate('sale_date', '>=', $l7StartDate)
+            ->whereDate('sale_date', '<=', $l7EndDate)
             ->selectRaw('COALESCE(SUM(item_price * GREATEST(COALESCE(NULLIF(quantity, 0), 1), 1)), 0) as revenue')
             ->value('revenue');
 
@@ -8481,6 +8474,108 @@ class ChannelMasterController extends Controller
 
 
 
+    /**
+     * Amazon GPFT / COGS / ROI from amazon_orders for the Pacific daily-sales window.
+     * Same line math as UpdateMarketplaceDailyMetrics::calculateAmazonMetrics() so
+     * /all-marketplace-master no longer freezes on a stale marketplace_daily_metrics row.
+     *
+     * @return array{total_pft: float, total_cogs: float, pft_percentage: float, roi_percentage: float}
+     */
+    private function computeAmazonLiveProfitForPacificWindow(Carbon $start, Carbon $end): array
+    {
+        $empty = [
+            'total_pft' => 0.0,
+            'total_cogs' => 0.0,
+            'pft_percentage' => 0.0,
+            'roi_percentage' => 0.0,
+        ];
+
+        try {
+            $orderRows = AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')
+                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+                    ->where(function ($q) {
+                        $q->whereNull('o.status')
+                            ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                    }),
+                $start,
+                $end
+            )->select(['i.sku', 'i.quantity', 'i.price as line_price'])->get();
+
+            if ($orderRows->isEmpty()) {
+                return $empty;
+            }
+
+            $skus = $orderRows->pluck('sku')->filter(fn ($sku) => $sku !== null && $sku !== '')->unique()->values();
+            $productMasters = collect();
+            foreach ($skus->chunk(500) as $chunk) {
+                $productMasters = $productMasters->merge(
+                    ProductMaster::query()->whereIn('sku', $chunk->all())->get(['sku', 'Values'])
+                );
+            }
+            $productMasters = $productMasters->keyBy('sku');
+
+            $totalCogs = 0.0;
+            $totalPft = 0.0;
+            $totalSkuLineSales = 0.0;
+            $qtyTimesPrice = AmazonOrder::salesTotalMode() === AmazonOrder::SALES_TOTAL_MODE_QTY_TIMES_PRICE;
+
+            foreach ($orderRows as $row) {
+                $quantity = (int) $row->quantity;
+                $linePrice = (float) $row->line_price;
+                $lineRevenue = $qtyTimesPrice ? $quantity * $linePrice : $linePrice;
+                $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0;
+                $sku = $row->sku ?? '';
+
+                if ($sku !== '' && $quantity > 0) {
+                    $totalSkuLineSales += round($lineRevenue, 2);
+                }
+
+                $lp = 0.0;
+                $ship = 0.0;
+                $weightAct = 0.0;
+                if ($sku !== '' && isset($productMasters[$sku])) {
+                    $pm = $productMasters[$sku];
+                    $values = is_array($pm->Values) ? $pm->Values
+                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    if (isset($values['lp'])) {
+                        $lp = (float) $values['lp'];
+                    }
+                    if (isset($values['ship'])) {
+                        $ship = (float) $values['ship'];
+                    }
+                    if (isset($values['wt_act'])) {
+                        $weightAct = (float) $values['wt_act'];
+                    }
+                }
+
+                $tWeight = $weightAct * $quantity;
+                if ($quantity == 1) {
+                    $shipCost = $ship;
+                } elseif ($quantity > 1 && $tWeight < 20) {
+                    $shipCost = $ship / $quantity;
+                } else {
+                    $shipCost = $ship;
+                }
+
+                $totalCogs += round($lp * $quantity, 2);
+                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
+                $totalPft += round($pftEach * $quantity, 2);
+            }
+
+            return [
+                'total_pft' => $totalPft,
+                'total_cogs' => $totalCogs,
+                'pft_percentage' => $totalSkuLineSales > 0 ? ($totalPft / $totalSkuLineSales) * 100 : 0.0,
+                'roi_percentage' => $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon live profit window failed: '.$e->getMessage());
+
+            return $empty;
+        }
+    }
+
     public function getAmazonChannelData(Request $request)
     {
         $result = [];
@@ -8518,8 +8613,10 @@ class ChannelMasterController extends Controller
 
         $totalQuantityFromOrders = (int) ($qtyAgg->total_qty ?? 0);
 
-        // Get other metrics from marketplace_daily_metrics (PFT%, ROI, TACOS, ad spend, etc.)
+        // MDM is a fallback only. Amazon profit was freezing on the latest
+        // marketplace_daily_metrics row (often days behind amazon_orders).
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
+        $liveProfit = $this->computeAmazonLiveProfitForPacificWindow($startAmazonWindow, $endToday);
         
         // Calculate L60 data (days 31-60) using date-based filtering
         // L60 period: from 60 days ago to 30 days ago (previous 30-day period)
@@ -8585,13 +8682,11 @@ class ChannelMasterController extends Controller
         $l30Sales = $l30OrdersFromOrders > 0 ? $l30SalesFromOrders : ($metrics?->total_sales ?? 0);
         $l30Orders = $l30OrdersFromOrders > 0 ? $l30OrdersFromOrders : ($metrics?->total_orders ?? 0);
         $totalQuantity = $totalQuantityFromOrders > 0 ? $totalQuantityFromOrders : ($metrics?->total_quantity ?? 0);
-        $totalProfit = $metrics?->total_pft ?? 0;
-        $totalCogs = $metrics?->total_cogs ?? 0;
-        $gProfitPct = $metrics?->pft_percentage ?? 0;
-        $gRoi = $metrics?->roi_percentage ?? 0;
-        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
-        $nPft = $metrics?->n_pft ?? 0;
-        $nRoi = $metrics?->n_roi ?? 0;
+        $hasLiveProfit = (($liveProfit['total_pft'] ?? 0) != 0.0) || (($liveProfit['total_cogs'] ?? 0) != 0.0);
+        $totalProfit = $hasLiveProfit ? (float) $liveProfit['total_pft'] : (float) ($metrics?->total_pft ?? 0);
+        $totalCogs = $hasLiveProfit ? (float) $liveProfit['total_cogs'] : (float) ($metrics?->total_cogs ?? 0);
+        $gProfitPct = $hasLiveProfit ? (float) $liveProfit['pft_percentage'] : (float) ($metrics?->pft_percentage ?? 0);
+        $gRoi = $hasLiveProfit ? (float) $liveProfit['roi_percentage'] : (float) ($metrics?->roi_percentage ?? 0);
         
         // Ad spend is sourced live from the /amazon-ads/all campaign aggregation
         // (SP reports for KW/PT, SB reports for HL) — the only page that holds the
@@ -8621,8 +8716,10 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // Calculate Ads %
+        // Ads% / NPFT / NROI from live spend + live (or MDM-fallback) profit — not the stale MDM n_pft row
         $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+        $nPft = $gProfitPct - $adsPercentage;
+        $nRoi = $totalCogs > 0 ? (($totalProfit - $totalAdSpend) / $totalCogs) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();

@@ -56,6 +56,8 @@ class FetchAmazonOrders extends Command
         {--with-items : Also fetch order items (line items) for each order}
         {--auto-sync : Sync pending/failed days in the recent window + LastUpdated refresh}
         {--auto-sync-within-days=35 : With --auto-sync, only sync_date >= today minus N (Pacific); 0 = full backlog}
+        {--close-yesterday : Full Pacific-yesterday pull (start→end of day). Ignores mid-day NextToken / completed flags.}
+        {--older-backlog-limit=3 : With --auto-sync, max older pending days after yesterday+today (0 = no cap)}
         {--retry-failed : Retry all failed days automatically with backoff between attempts}
         {--retry-wait=60 : Seconds to wait between retries when quota exceeded (default: 60)}
         {--retry-attempts=5 : Max retry rounds for failed days (default: 5)}
@@ -123,6 +125,14 @@ class FetchAmazonOrders extends Command
         if ($this->option('initialize-days')) {
             $days = (int) $this->option('initialize-days');
             $this->initializeDailyTracking($days);
+            return;
+        }
+
+        if ($this->option('close-yesterday')) {
+            $this->input->setOption('with-items', true);
+            $this->input->setOption('no-incremental-refresh', true);
+            $this->closePacificYesterday();
+            $this->queueShopifyImportsIfEnabled();
             return;
         }
 
@@ -302,6 +312,66 @@ class FetchAmazonOrders extends Command
 
         if ($reopened > 0) {
             $this->info("↻ Re-opened {$reopened} day(s) that were marked complete before the Pacific day closed.");
+        }
+    }
+
+    /**
+     * Pull Pacific yesterday from CreatedAfter=00:00 through CreatedBefore=23:59
+     * (Amazon 2-minute rule). Always resets NextToken so a mid-day pass cannot
+     * leave Y Sales at a morning snapshot.
+     */
+    private function closePacificYesterday(): void
+    {
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $this->info('↻ Full-day Amazon pull for Pacific yesterday '.$yesterday->toDateString());
+        if (! $this->pacificDayHasClosed($yesterday)) {
+            $this->warn('Pacific yesterday has not fully closed yet; CreatedBefore will be now − 2 minutes.');
+        }
+        $this->resyncSpecificDate($yesterday);
+    }
+
+    /**
+     * Clear resume state so the next API call uses the full CreatedAfter/CreatedBefore window.
+     */
+    private function resetSyncForFullDayPull(string $dateString): void
+    {
+        $sync = AmazonDailySync::where('sync_date', $dateString)->first();
+        if (! $sync) {
+            return;
+        }
+
+        $sync->update([
+            'status' => AmazonDailySync::STATUS_PENDING,
+            'next_token' => null,
+            'orders_fetched' => 0,
+            'pages_fetched' => 0,
+            'items_fetched' => 0,
+            'error_message' => null,
+            'completed_at' => null,
+            'last_page_at' => null,
+        ]);
+    }
+
+    /**
+     * in_progress rows left behind by a killed cron never appear in needsSync()
+     * and block nothing — but a stale lock from months ago is noise. Reset those
+     * older than 3 hours so a later pass can retry.
+     */
+    private function releaseStaleInProgressLocks(): void
+    {
+        $cutoff = now()->subHours(3);
+        $n = AmazonDailySync::where('status', AmazonDailySync::STATUS_IN_PROGRESS)
+            ->where(function ($q) use ($cutoff) {
+                $q->whereNull('started_at')->orWhere('started_at', '<', $cutoff);
+            })
+            ->update([
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'next_token' => null,
+                'error_message' => 'Reset: stale in_progress lock',
+            ]);
+
+        if ($n > 0) {
+            $this->info("↻ Released {$n} stale in_progress Amazon sync day(s).");
         }
     }
 
@@ -651,6 +721,17 @@ class FetchAmazonOrders extends Command
         $totalOrdersFetched = $sync->orders_fetched;
         $totalPagesFetched = $sync->pages_fetched;
         $totalItemsFetched = $sync->items_fetched ?? 0;
+
+        // A NextToken is bound to the original CreatedBefore. A mid-day pass
+        // (CreatedBefore = now − 2 min) that later resumes still misses evening
+        // orders. Once the Pacific day has closed, always restart the full window.
+        if ($this->pacificDayHasClosed($date) && $nextToken) {
+            $this->warn("   ↻ Discarding stale NextToken for {$sync->sync_date} — full-day CreatedBefore {$createdBefore}");
+            $nextToken = null;
+            $totalOrdersFetched = 0;
+            $totalPagesFetched = 0;
+            $totalItemsFetched = 0;
+        }
         
         do {
             // Build API request params
@@ -758,7 +839,7 @@ class FetchAmazonOrders extends Command
             $updatedCount = $counts['updated'];
             $totalItemsFetchedThisPage = $counts['items'];
 
-            $totalOrdersFetched += $insertedCount;
+            $totalOrdersFetched += $insertedCount + $updatedCount;
             $totalItemsFetched += $totalItemsFetchedThisPage;
             
             if ($this->option('with-items')) {
@@ -978,6 +1059,7 @@ class FetchAmazonOrders extends Command
     private function autoSyncPendingDays($accessToken)
     {
         $this->ensureDailySyncRecord(Carbon::today('America/Los_Angeles'));
+        $this->releaseStaleInProgressLocks();
 
         // Force the trailing Pacific days (today + RESYNC_TRAILING_DAYS prior) back to
         // pending so they are fully re-fetched. Without this, a day marked "completed"
@@ -987,6 +1069,7 @@ class FetchAmazonOrders extends Command
         $this->reopenDaysFrozenBeforeClose((int) ($this->option('auto-sync-within-days') ?: self::DEFAULT_RECENT_DAYS));
 
         $today = Carbon::today('America/Los_Angeles');
+        $yesterday = $today->copy()->subDay();
         for ($i = 0; $i <= self::RESYNC_TRAILING_DAYS; $i++) {
             $dateString = $today->copy()->subDays($i)->toDateString();
             $this->ensureDailySyncRecord($today->copy()->subDays($i));
@@ -999,7 +1082,17 @@ class FetchAmazonOrders extends Command
         }
         $this->info('↻ Trailing re-sync window: last ' . (self::RESYNC_TRAILING_DAYS + 1) . ' Pacific day(s) reset to pending for a full refresh.');
 
-        $query = AmazonDailySync::needsSync()->orderBy('sync_date', 'asc');
+        // Yesterday first — never let Nov-2025 backlog / a failed old day skip the
+        // full-day CreatedBefore=23:59 pull. That is why Aug 31 froze at 1:25 PM PT.
+        if ($this->pacificDayHasClosed($yesterday)) {
+            $this->info('↻ Closing Pacific yesterday with a full-day API window...');
+            $this->resetSyncForFullDayPull($yesterday->toDateString());
+            $this->syncSingleDay($accessToken, $yesterday);
+        }
+
+        $this->syncSingleDay($accessToken, $today);
+
+        $query = AmazonDailySync::needsSync()->orderBy('sync_date', 'desc');
 
         $withinDays = (int) $this->option('auto-sync-within-days');
         if ($withinDays > 0) {
@@ -1009,25 +1102,32 @@ class FetchAmazonOrders extends Command
         }
 
         $pendingSyncs = $query->get();
+        $skip = [
+            $today->toDateString() => true,
+            $yesterday->toDateString() => true,
+        ];
+        $olderCap = max(0, (int) $this->option('older-backlog-limit'));
+        $olderDone = 0;
 
-        if ($pendingSyncs->isEmpty()) {
-            $this->info('✅ No pending/failed days in this window.');
-        } else {
-            $this->info('Found ' . $pendingSyncs->count() . " day(s) needing sync.\n");
+        foreach ($pendingSyncs as $sync) {
+            $dateString = Carbon::parse($sync->sync_date, 'America/Los_Angeles')->toDateString();
+            if (isset($skip[$dateString])) {
+                continue;
+            }
 
-            foreach ($pendingSyncs as $sync) {
-                $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
-                $this->syncSingleDay($accessToken, $date);
+            $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
+            $this->syncSingleDay($accessToken, $date);
+            sleep(2);
+            $sync->refresh();
 
-                sleep(2);
+            if ($sync->status === AmazonDailySync::STATUS_FAILED) {
+                $this->warn("⚠️ {$sync->sync_date} failed — continuing (yesterday already closed).");
+            }
 
-                $sync->refresh();
-
-                if ($sync->status === AmazonDailySync::STATUS_FAILED) {
-                    $this->warn("\n⚠️ Day {$sync->sync_date} failed. Stopping day sync.");
-                    $this->info('Fix the issue and run again to continue.');
-                    break;
-                }
+            $olderDone++;
+            if ($olderCap > 0 && $olderDone >= $olderCap) {
+                $this->info("Older backlog capped at {$olderCap} day(s) this run so the next slot can fire.");
+                break;
             }
         }
 
