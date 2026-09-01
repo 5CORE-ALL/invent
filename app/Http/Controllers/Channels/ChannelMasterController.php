@@ -9035,6 +9035,10 @@ class ChannelMasterController extends Controller
         $totalCogsL60 = $l60['total_cogs'];
 
         $l30Sales = $metrics?->total_sales ?? 0;
+        $liveL30Sales = EbayChannelMetricsService::liveL30Sales(1);
+        if ($liveL30Sales !== null) {
+            $l30Sales = $liveL30Sales;
+        }
         $l30Orders = $metrics?->total_orders ?? 0;
         $totalQuantity = $metrics?->total_quantity ?? 0;
         $totalProfit = $metrics?->total_pft ?? 0;
@@ -9135,6 +9139,10 @@ class ChannelMasterController extends Controller
         $totalCogsL60 = $l60['total_cogs'];
 
         $l30Sales = $metrics?->total_sales ?? 0;
+        $liveL30Sales = EbayChannelMetricsService::liveL30Sales(2);
+        if ($liveL30Sales !== null) {
+            $l30Sales = $liveL30Sales;
+        }
         $l30Orders = $metrics?->total_orders ?? 0;
         $totalQuantity = $metrics?->total_quantity ?? 0;
         $totalProfit = $metrics?->total_pft ?? 0;
@@ -9255,6 +9263,10 @@ class ChannelMasterController extends Controller
         $totalCogsL60 = $l60['total_cogs'];
 
         $l30Sales = $metrics?->total_sales ?? 0;
+        $liveL30Sales = EbayChannelMetricsService::liveL30Sales(3);
+        if ($liveL30Sales !== null) {
+            $l30Sales = $liveL30Sales;
+        }
         $l30Orders = $metrics?->total_orders ?? 0;
         $totalQuantity = $metrics?->total_quantity ?? 0;
         $totalProfit = $metrics?->total_pft ?? 0;

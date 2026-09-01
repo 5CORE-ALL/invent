@@ -72,6 +72,18 @@ class EbayChannelMetricsService
     }
 
     /**
+     * Rolling L30 sales through Pacific yesterday (same clock as Y / L7).
+     * marketplace_daily_metrics can freeze when the daily-metrics job stalls.
+     */
+    public static function liveL30Sales(int $which): ?float
+    {
+        $end = Carbon::yesterday(self::TZ)->toDateString();
+        $start = Carbon::yesterday(self::TZ)->subDays(29)->toDateString();
+
+        return self::sumSalesForPacificDates($which, $start, $end);
+    }
+
+    /**
      * eBay 2 OPEN BOX / USED → base SKU for ProductMaster (matches UpdateMarketplaceDailyMetrics).
      */
     public static function normalizeEbay2LookupSku(string $sku): string
@@ -403,9 +415,10 @@ class EbayChannelMetricsService
         }
 
         $l60 = $which === 3 ? self::summarizeEbay3L60() : self::summarizeL60Orders($which);
+        $liveL30 = self::liveL30Sales($which);
 
         return [
-            'l30_sales' => (float) ($metrics->total_sales ?? 0),
+            'l30_sales' => $liveL30 !== null ? $liveL30 : (float) ($metrics->total_sales ?? 0),
             'l30_orders' => (int) ($metrics->total_orders ?? 0),
             'qty' => (int) ($metrics->total_quantity ?? 0),
             'l60_sales' => (float) $l60['sales'],
