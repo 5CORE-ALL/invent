@@ -46,6 +46,7 @@ class TikTok2InventorySyncService
             $shopifyQty = MarketplaceLiveInventoryRules::overlayListingsShopifyQty($shopifyQty, $skus);
         }
         $metrics = $this->metricsForSkus($skus);
+        $liveMpQty = $this->liveMarketplaceQtyMap($metrics->pluck('sku')->all());
 
         $updated = 0;
         $failed = 0;
@@ -57,7 +58,7 @@ class TikTok2InventorySyncService
                 $skipped++;
                 continue;
             }
-            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, false, $exactShopifyQty);
+            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, false, $exactShopifyQty, $liveMpQty);
             $updated += $outcome['updated'];
             $failed += $outcome['failed'];
             $skipped += $outcome['skipped'];
@@ -176,6 +177,7 @@ class TikTok2InventorySyncService
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));
         $maxQty = $settings['inventory']['max_quantity'] ?? null;
+        $liveMpQty = $this->liveMarketplaceQtyMap($metrics->pluck('sku')->all());
         $updated = 0;
         $failed = 0;
         $skipped = 0;
@@ -186,7 +188,7 @@ class TikTok2InventorySyncService
                 $skipped++;
                 continue;
             }
-            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, $dryRun);
+            $outcome = $this->pushMetric($metric, $shopifyQty, $qtyPercent, $maxQty, $dryRun, false, $liveMpQty);
             $updated += $outcome['updated'];
             $failed += $outcome['failed'];
             $skipped += $outcome['skipped'];
@@ -232,6 +234,7 @@ class TikTok2InventorySyncService
 
     /**
      * @param  array<string, int>  $shopifyQty
+     * @param  array<string, int>  $liveMpQty
      * @return array{updated: int, failed: int, skipped: int, error: ?string}
      */
     protected function pushMetric(
@@ -240,7 +243,8 @@ class TikTok2InventorySyncService
         int $qtyPercent,
         mixed $maxQty,
         bool $dryRun,
-        bool $exactShopifyQty = false
+        bool $exactShopifyQty = false,
+        array $liveMpQty = []
     ): array {
         $empty = ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'error' => null];
         $sku = trim((string) $metric->sku);
@@ -262,13 +266,11 @@ class TikTok2InventorySyncService
         );
         $pushQty = MarketplaceLiveInventoryRules::clampPushQty($pushQty, $shopifyStock ?? 0);
 
-        if ($metric->stock !== null && (int) $metric->stock === $pushQty) {
-            $empty['skipped'] = 1;
-
-            return $empty;
-        }
-        if ($shopifyStock !== null && $shopifyStock > 0
-            && MarketplaceLiveInventoryRules::qtyWithinMismatchTolerance((int) $shopifyStock, $metric->stock !== null ? (int) $metric->stock : null, 'tiktok2')) {
+        // Mismatch button/pass already classified live TikTok vs Shopify — always push.
+        // Full sync: skip only when live listing qty already equals the exact target.
+        // Never treat stale tiktok_products_two.stock or the 3-unit bar as "already pushed".
+        if (! $exactShopifyQty
+            && $this->marketplaceQtyAlreadyAtTarget($liveMpQty, $sku, $pushQty)) {
             $empty['skipped'] = 1;
 
             return $empty;
@@ -453,6 +455,32 @@ class TikTok2InventorySyncService
         }
 
         return null;
+    }
+
+    /**
+     * Same listings qty the mismatch pass / Linked mismatch tab uses.
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int>
+     */
+    protected function liveMarketplaceQtyMap(array $skus): array
+    {
+        return MarketplaceListingStockResolver::stockMapFromLiveListingRows(
+            app(TikTok2LiveListingsService::class)->peekCached()
+        );
+    }
+
+    /**
+     * Skip only when live listings already show the exact target. Never treat
+     * stale tiktok_products_two.stock or the 3-unit match bar as "already pushed".
+     *
+     * @param  array<string, int>  $liveMpQty
+     */
+    protected function marketplaceQtyAlreadyAtTarget(array $liveMpQty, string $sku, int $pushQty): bool
+    {
+        $current = MarketplaceListingStockResolver::qtyFromMap($liveMpQty, $sku);
+
+        return $current !== null && (int) $current === $pushQty;
     }
 
     protected function updateLocalStock(string $sku, int $pushQty, int $shopifyQty): void

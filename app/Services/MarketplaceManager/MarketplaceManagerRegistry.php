@@ -35,6 +35,15 @@ class MarketplaceManagerRegistry
     }
 
     /**
+     * High-priority listings / qty-push queue so inventory writes are not
+     * stuck behind order import on mm-{slug}.
+     */
+    public static function listingsQueueFor(string $slug): string
+    {
+        return self::queueFor($slug).'-listings';
+    }
+
+    /**
      * All dedicated marketplace queue names (for workers / status).
      *
      * @return list<string>

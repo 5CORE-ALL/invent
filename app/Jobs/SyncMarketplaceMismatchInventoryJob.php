@@ -32,13 +32,16 @@ class SyncMarketplaceMismatchInventoryJob implements ShouldQueue, ShouldBeUnique
     public function __construct(public string $marketplace)
     {
         $this->marketplace = strtolower(trim($this->marketplace));
-        $this->onQueue(MarketplaceManagerRegistry::queueFor($this->marketplace));
         if (in_array($this->marketplace, ['tiktok', 'tiktok2'], true)) {
+            $this->onQueue(MarketplaceManagerRegistry::listingsQueueFor($this->marketplace));
             $this->timeout = 1800;
             $this->uniqueFor = 1800;
-        } elseif ($this->marketplace === 'wayfair') {
-            $this->timeout = 1200;
-            $this->uniqueFor = 1500;
+        } else {
+            $this->onQueue(MarketplaceManagerRegistry::queueFor($this->marketplace));
+            if ($this->marketplace === 'wayfair') {
+                $this->timeout = 1200;
+                $this->uniqueFor = 1500;
+            }
         }
     }
 
