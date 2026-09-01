@@ -14,7 +14,9 @@ class TiktokGmvAdsRawDataController extends Controller
 {
     public function index()
     {
-        return view('campaign.tiktok.tiktok_gmv_ads_raw_data');
+        return view('campaign.tiktok.tiktok_gmv_ads_raw_data', [
+            'sums' => $this->currentGmvSums(),
+        ]);
     }
 
     public function getData()
@@ -59,6 +61,29 @@ class TiktokGmvAdsRawDataController extends Controller
                 'count' => 0,
                 'sums' => $this->emptyGmvSums(),
             ], 500);
+        }
+    }
+
+    /**
+     * @return array{count: int, sold_l30: int, sold_l1: int, sales_l30: float, sales_l1: float, spend_l30: float, spend_l1: float, budget: float}
+     */
+    private function currentGmvSums(): array
+    {
+        if (! Schema::hasTable('tiktok_gmv_ads')) {
+            return $this->emptyGmvSums();
+        }
+
+        try {
+            $rows = TiktokGmvAd::query()
+                ->get(['report_range', 'ad_sold', 'ad_sales', 'spend', 'budget'])
+                ->map(fn (TiktokGmvAd $row) => $row->toArray())
+                ->values();
+
+            return $this->sumGmvRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('GMV TikTok Ads badge sums failed: '.$e->getMessage());
+
+            return $this->emptyGmvSums();
         }
     }
 
