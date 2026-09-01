@@ -878,6 +878,7 @@ class DobaController extends Controller
                             'itemNo' => $itemId,
                             'anticipatedIncome' => $price,
                             'selfPickAnticipatedIncome' => $selfPickPrice,
+                            'supportSelfPick' => $selfPickPrice !== null && $selfPickPrice !== '',
                         ],
                         'price_update' => $priceResult['debug'] ?? $priceResult,
                     ]
@@ -917,6 +918,7 @@ class DobaController extends Controller
                         'itemNo' => $itemId,
                         'anticipatedIncome' => $price,
                         'selfPickAnticipatedIncome' => $selfPickPrice,
+                        'supportSelfPick' => $selfPickPrice !== null && $selfPickPrice !== '',
                     ],
                     'price_update' => $priceResult
                 ]
