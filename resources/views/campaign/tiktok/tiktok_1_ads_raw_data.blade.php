@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'TT1 Ads', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Tiktok 1 Sheet Ads', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -22,7 +22,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'TT1 Ads',
+        'page_title' => 'Tiktok 1 Sheet Ads',
         'sub_title'  => 'Upload TikTok ads export into tiktok_campaign_reports. Old rows for the chosen range are truncated first.',
     ])
 
