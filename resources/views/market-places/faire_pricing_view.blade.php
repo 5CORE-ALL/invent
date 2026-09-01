@@ -2042,6 +2042,7 @@
                 height: 'calc(100vh - 260px)',
                 pagination: true,
                 paginationSize: 100,
+                headerSort: true,
                 initialSort: [],
                 rowFormatter: function(row) {
                     if (frIsParentRow(row.getData())) {
@@ -2050,7 +2051,10 @@
                 },
                 columns: [
                     {
-                        title: 'Image', field: 'image', width: 60, headerSort: false, frozen: true,
+                        title: 'Image', field: 'image', width: 60, headerSort: true, frozen: true,
+                        sorter: function(a, b) {
+                            return (a ? 1 : 0) - (b ? 1 : 0);
+                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const src = cell.getValue();
@@ -2106,7 +2110,7 @@
                         }
                     },
                     {
-                        title: 'Parent', field: 'parent', width: 120, frozen: true,
+                        title: 'Parent', field: 'parent', width: 120, frozen: true, headerSort: true, sorter: 'string',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -2115,9 +2119,20 @@
                             return '<span style="color:#0d6efd;font-size:11px;font-weight:600;">' + v + '</span>';
                         }
                     },
-                    ParentExpand.columnDef(),
+                    (function() {
+                        const pe = ParentExpand.columnDef();
+                        if (pe) {
+                            pe.headerSort = true;
+                            pe.sorter = function(a, b, aRow, bRow) {
+                                const ap = aRow.getData() && aRow.getData().is_parent ? 1 : 0;
+                                const bp = bRow.getData() && bRow.getData().is_parent ? 1 : 0;
+                                return ap - bp;
+                            };
+                        }
+                        return pe;
+                    })(),
                     {
-                        title: 'SKU', field: 'sku', minWidth: 200, frozen: true,
+                        title: 'SKU', field: 'sku', minWidth: 200, frozen: true, headerSort: true, sorter: 'string',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const val = cell.getValue() || '';
@@ -2136,7 +2151,13 @@
                     {
                         title: 'Links',
                         field: 'buyer_link',
-                        headerSort: false,
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const score = function(d) {
+                                return (d && d.seller_link ? 2 : 0) + (d && d.buyer_link ? 1 : 0);
+                            };
+                            return score(aRow.getData()) - score(bRow.getData());
+                        },
                         hozAlign: 'center',
                         width: 55,
                         download: false,
@@ -2166,7 +2187,7 @@
                         }
                     },
                     {
-                        title: 'INV', field: 'inv', sorter: 'number', hozAlign: 'center', width: 55,
+                        title: 'INV', field: 'inv', sorter: 'number', headerSort: true, hozAlign: 'center', width: 55,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="font-weight:700;">' + cell.getValue() + '</span>';
@@ -2176,7 +2197,7 @@
                         }
                     },
                     {
-                        title: 'Faire stock', field: 'ae_stock', sorter: 'number', hozAlign: 'center', width: 82,
+                        title: 'Faire stock', field: 'ae_stock', sorter: 'number', headerSort: true, hozAlign: 'center', width: 82,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="font-weight:700;">' + cell.getValue() + '</span>';
@@ -2186,13 +2207,13 @@
                         }
                     },
                     {
-                        title: 'OV L30', field: 'ov_l30', sorter: 'number', hozAlign: 'center', width: 60,
+                        title: 'OV L30', field: 'ov_l30', sorter: 'number', headerSort: true, hozAlign: 'center', width: 60,
                         formatter: function(cell) {
                             return '<span style="font-weight:700;">' + (parseInt(cell.getValue(), 10) || 0) + '</span>';
                         }
                     },
                     {
-                        title: 'Dil', field: 'dil_percent', sorter: 'number', hozAlign: 'center', width: 55,
+                        title: 'Dil', field: 'dil_percent', sorter: 'number', headerSort: true, hozAlign: 'center', width: 55,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const inv = parseFloat(row.inv) || 0;
@@ -2204,14 +2225,14 @@
                         }
                     },
                     {
-                        title: 'Sold', field: 'al30', sorter: 'number', hozAlign: 'center', width: 55,
+                        title: 'Sold', field: 'al30', sorter: 'number', headerSort: true, hozAlign: 'center', width: 55,
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue(), 10) || 0;
                             return '<span style="font-weight:700;">' + v + '</span>';
                         }
                     },
                     {
-                        title: 'Views', field: 'views', sorter: 'number', hozAlign: 'center', width: 62,
+                        title: 'Views', field: 'views', sorter: 'number', headerSort: true, hozAlign: 'center', width: 62,
                         headerTooltip: 'Page views from Faire Products → Performance export. Replaced on each Views sheet upload.',
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue(), 10) || 0;
@@ -2221,7 +2242,7 @@
                         }
                     },
                     {
-                        title: 'CVR', field: 'cvr', sorter: 'number', hozAlign: 'center', width: 58,
+                        title: 'CVR', field: 'cvr', sorter: 'number', headerSort: true, hozAlign: 'center', width: 58,
                         headerTooltip: 'CVR = Units sold ÷ Page views × 100 (Faire Performance sheet)',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -2242,6 +2263,7 @@
                         title: 'STD prc',
                         field: 'standard_price',
                         sorter: 'number',
+                        headerSort: true,
                         hozAlign: 'right',
                         width: 78,
                         headerTooltip: 'Standard Price (STD PRC) — same as /pricing-errors-form (amazon_data_view.STANDARD_PRICE)',
@@ -2254,7 +2276,7 @@
                         }
                     },
                     {
-                        title: 'Pricing', field: 'price', sorter: 'number', hozAlign: 'right',
+                        title: 'Pricing', field: 'price', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2262,7 +2284,7 @@
                         }
                     },
                     {
-                        title: 'GROI', field: 'groi', sorter: 'number', hozAlign: 'right',
+                        title: 'GROI', field: 'groi', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2276,7 +2298,7 @@
                         }
                     },
                     {
-                        title: 'GPFT', field: 'gpft', sorter: 'number', hozAlign: 'right',
+                        title: 'GPFT', field: 'gpft', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue());
@@ -2288,7 +2310,7 @@
                         }
                     },
                     {
-                        title: 'Profit', field: 'profit', sorter: 'number', hozAlign: 'right', visible: false,
+                        title: 'Profit', field: 'profit', sorter: 'number', headerSort: true, hozAlign: 'right', visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue()) || 0;
@@ -2301,7 +2323,7 @@
                         }
                     },
                     {
-                        title: 'Sales', field: 'sales', sorter: 'number', hozAlign: 'right', visible: false,
+                        title: 'Sales', field: 'sales', sorter: 'number', headerSort: true, hozAlign: 'right', visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const v = parseFloat(cell.getValue()) || 0;
@@ -2313,7 +2335,7 @@
                         }
                     },
                     {
-                        title: 'LP', field: 'lp', sorter: 'number', hozAlign: 'right', visible: false,
+                        title: 'LP', field: 'lp', sorter: 'number', headerSort: true, hozAlign: 'right', visible: false,
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2322,7 +2344,7 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
-                        title: 'Sprice', field: 'sprice', sorter: 'number', hozAlign: 'right',
+                        title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },
                         headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {
@@ -2352,7 +2374,7 @@
                         }
                     },
                     {
-                        title: 'SGROI', field: 'sroi', sorter: 'number', hozAlign: 'right',
+                        title: 'SGROI', field: 'sroi', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2367,7 +2389,7 @@
                         }
                     },
                     {
-                        title: 'SGPFT', field: 'sgpft', sorter: 'number', hozAlign: 'right',
+                        title: 'SGPFT', field: 'sgpft', sorter: 'number', headerSort: true, hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2382,7 +2404,17 @@
                         field: '_push',
                         width: 52,
                         hozAlign: 'center',
-                        headerSort: false,
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const rank = function(d) {
+                                const status = String((d && d.push_status) || '');
+                                if (status === 'pushed') return 4;
+                                if (status === 'pushing') return 3;
+                                if (status === 'error') return 2;
+                                return (parseFloat(d && d.sprice) || 0) > 0 ? 1 : 0;
+                            };
+                            return rank(aRow.getData()) - rank(bRow.getData());
+                        },
                         headerTooltip: 'Push SPRICE to Faire wholesale price API (same status UX as /doba-tabulator)',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
