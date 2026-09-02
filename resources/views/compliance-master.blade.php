@@ -912,6 +912,23 @@
             color: #0f766e;
         }
 
+        #cm-file-action-menu button.cm-file-action-delete {
+            color: #b91c1c;
+        }
+
+        #cm-file-action-menu button.cm-file-action-delete i {
+            color: #dc2626;
+        }
+
+        #cm-file-action-menu button.cm-file-action-delete:hover {
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        #cm-file-action-menu button.cm-file-action-delete:hover i {
+            color: #991b1b;
+        }
+
         #compliance-tabulator .tabulator-cell.cm-compliance-field-col {
             overflow: visible;
         }
@@ -1227,20 +1244,25 @@
             }
 
             /** REQ column filter: only rows where that field is REQ (excludes N/A, empty, and other values). */
-            function isReqFilterMatchForItem(item, key) {
+            function isFieldMarkedReq(item, key) {
                 return complianceFieldStoredValue(item, key).toUpperCase() === 'REQ';
             }
 
+            function complianceFieldHasFile(item, key) {
+                return complianceFieldImagePath(item, key) !== '' || complianceFieldPdfPath(item, key) !== '';
+            }
+
+            /** Missing REQ: still marked REQ and no image/PDF yet. */
+            function isReqFilterMatchForItem(item, key) {
+                return isFieldMarkedReq(item, key) && !complianceFieldHasFile(item, key);
+            }
+
             function isReqOkFilterMatchForItem(item, key) {
-                if (!isReqFilterMatchForItem(item, key)) return false;
-                const img = complianceFieldImagePath(item, key);
-                const pdf = complianceFieldPdfPath(item, key);
-                return img !== '' && pdf !== '';
+                return isFieldMarkedReq(item, key) && complianceFieldHasFile(item, key);
             }
 
             function isReqMissingFilterMatchForItem(item, key) {
-                if (!isReqFilterMatchForItem(item, key)) return false;
-                return !isReqOkFilterMatchForItem(item, key);
+                return isReqFilterMatchForItem(item, key);
             }
 
             function isNaFilterMatchForItem(item, key) {
@@ -1284,23 +1306,25 @@
                 let thumb = '';
                 if (img) {
                     const u = complianceImagePublicUrl(img);
-                    thumb = ' ' + complianceFileChipHtml(u, 'image');
+                    thumb = ' ' + complianceFileChipHtml(u, 'image', item, key);
                 }
                 let pdfLink = '';
                 if (pdf) {
                     const pu = complianceImagePublicUrl(pdf);
-                    pdfLink = ' ' + complianceFileChipHtml(pu, 'pdf');
+                    pdfLink = ' ' + complianceFileChipHtml(pu, 'pdf', item, key);
                 }
                 return `<span class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-center">${badge}${thumb}${pdfLink}</span>`;
             }
 
-            function complianceFileChipHtml(url, kind) {
+            function complianceFileChipHtml(url, kind, item, key) {
                 const safeUrl = escapeHtml(String(url || ''));
                 const kindSafe = kind === 'pdf' ? 'pdf' : 'image';
+                const skuSafe = escapeHtml(String(item && item.SKU != null ? item.SKU : ''));
+                const fieldSafe = escapeHtml(String(key || ''));
                 const icon = kindSafe === 'pdf'
                     ? '<span class="compliance-pdf-icon-bg" aria-hidden="true"><i class="bi bi-file-earmark-pdf"></i></span>'
                     : `<img class="compliance-field-thumb" src="${safeUrl}" alt="">`;
-                return `<span class="cm-file-chip" data-file-url="${safeUrl}" data-file-kind="${kindSafe}" tabindex="0" title="Hover for file actions">${icon}</span>`;
+                return `<span class="cm-file-chip" data-file-url="${safeUrl}" data-file-kind="${kindSafe}" data-sku="${skuSafe}" data-field="${fieldSafe}" tabindex="0" title="Hover for file actions">${icon}</span>`;
             }
 
             async function uploadComplianceFieldImageToServer(field, file) {
@@ -1559,7 +1583,9 @@
                 };
                 applyTo(tableData);
                 applyTo(filteredData);
-                if (complianceTable) {
+                if (typeof applyFilters === 'function') {
+                    applyFilters();
+                } else if (complianceTable) {
                     renderTable(filteredData);
                     updateCounts();
                 }
@@ -1834,6 +1860,7 @@
                         <button type="button" data-cm-file-action="copy"><i class="bi bi-copy"></i> Copy</button>
                         <button type="button" data-cm-file-action="download"><i class="bi bi-download"></i> Download</button>
                         <button type="button" data-cm-file-action="view"><i class="bi bi-eye"></i> View</button>
+                        <button type="button" data-cm-file-action="delete" class="cm-file-action-delete"><i class="bi bi-trash"></i> Delete</button>
                     `;
                     document.body.appendChild(menuEl);
 
@@ -1851,6 +1878,15 @@
                         e.stopPropagation();
                         const action = btn.getAttribute('data-cm-file-action');
                         const url = menuEl.dataset.fileUrl || '';
+                        if (action === 'delete') {
+                            await deleteComplianceFieldFile(
+                                menuEl.dataset.sku || '',
+                                menuEl.dataset.field || '',
+                                menuEl.dataset.fileKind || 'image'
+                            );
+                            hideMenu();
+                            return;
+                        }
                         if (!url) return;
                         await runComplianceFileAction(action, url, menuEl.dataset.fileKind || 'file');
                         hideMenu();
@@ -1873,6 +1909,47 @@
                         if (base) return decodeURIComponent(base);
                     } catch (err) {}
                     return kind === 'pdf' ? 'compliance.pdf' : 'compliance-file';
+                }
+
+                async function deleteComplianceFieldFile(sku, field, kind) {
+                    sku = String(sku || '').trim();
+                    field = String(field || '').trim();
+                    kind = kind === 'pdf' ? 'pdf' : 'image';
+                    if (!sku || !field) {
+                        showToast('danger', 'Cannot delete: SKU or field is missing.');
+                        return;
+                    }
+                    if (!window.confirm('Delete this ' + (kind === 'pdf' ? 'PDF' : 'image') + ' from ' + sku + '?')) {
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/compliance-master/field-file/delete', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku, field, kind })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.success === false) {
+                            throw new Error(data.message || 'Delete failed');
+                        }
+                        const pathKey = kind === 'pdf' ? field + '_pdf' : field + '_img';
+                        const patch = { sku };
+                        patch[pathKey] = '';
+                        patchLocalComplianceRowsFromPayload(patch, []);
+                        const openSku = String(complianceEditSku || document.getElementById('addComplianceSku')?.value || '').trim();
+                        if (openSku && openSku.toUpperCase() === sku.toUpperCase()) {
+                            const pathEl = document.getElementById(kind === 'pdf' ? `add_${field}_pdf_path` : `add_${field}_img_path`);
+                            if (pathEl) pathEl.value = '';
+                            refreshComplianceFieldFileUi(field);
+                        }
+                        showToast('success', data.message || 'File removed.');
+                    } catch (err) {
+                        showToast('danger', err.message || 'Delete failed');
+                    }
                 }
 
                 async function runComplianceFileAction(action, url, kind) {
@@ -1946,6 +2023,8 @@
                     const menu = getMenu();
                     menu.dataset.fileUrl = chip.getAttribute('data-file-url') || '';
                     menu.dataset.fileKind = chip.getAttribute('data-file-kind') || 'file';
+                    menu.dataset.sku = chip.getAttribute('data-sku') || '';
+                    menu.dataset.field = chip.getAttribute('data-field') || '';
                     positionMenu(chip);
                 }
 

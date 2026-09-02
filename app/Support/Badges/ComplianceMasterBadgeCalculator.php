@@ -126,12 +126,20 @@ class ComplianceMasterBadgeCalculator implements PageBadgeCalculator
     }
 
     /**
-     * Same rules as isReqFilterMatchForItem() on compliance-master.
+     * Same rules as isReqFilterMatchForItem() on compliance-master:
+     * REQ with no image and no PDF still counts as missing.
      *
      * @param  array<string, mixed>  $values
      */
     public static function isFieldReq(array $values, string $key): bool
     {
-        return strtoupper(trim((string) ($values[$key] ?? ''))) === 'REQ';
+        if (strtoupper(trim((string) ($values[$key] ?? ''))) !== 'REQ') {
+            return false;
+        }
+
+        $img = trim((string) ($values[$key.'_img'] ?? ''));
+        $pdf = trim((string) ($values[$key.'_pdf'] ?? ''));
+
+        return $img === '' && $pdf === '';
     }
 }
