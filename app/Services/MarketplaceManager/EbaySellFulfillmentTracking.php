@@ -62,6 +62,15 @@ class EbaySellFulfillmentTracking
         }
 
         $shopify = $this->fetchShopifyTracking($channel, $shopifyOrderId, $line);
+        if (! empty($shopify['error']) && empty($shopify['tracking'])) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => (string) $shopify['error'],
+                'shopify_tracking' => null,
+                'shopify_carrier' => $shopify['carrier'] ?? null,
+            ];
+        }
         $tracking = trim((string) ($shopify['tracking'] ?? ''));
         $carrier = trim((string) ($shopify['carrier'] ?? ''));
         if ($tracking === '') {
@@ -191,14 +200,15 @@ class EbaySellFulfillmentTracking
 
             $body = (string) $response->body();
             $lastError = $body !== '' ? $body : 'HTTP '.$response->status();
-            if ($this->looksAlreadyShipped($body, $fulfillmentStatus)) {
+            if ($this->looksAlreadyShipped($body, $fulfillmentStatus)
+                && $this->alreadyHasTracking($token, $postId, $order, $tracking)) {
                 $this->rememberPushedTracking($line, $tracking, $carrierCode);
 
                 return [
                     'success' => true,
                     'skipped' => true,
                     'action' => 'already_shipped',
-                    'message' => 'eBay already has a shipment for this order.',
+                    'message' => 'eBay already has this Shopify tracking number.',
                     'shopify_tracking' => $tracking,
                     'shopify_carrier' => $carrier !== '' ? $carrier : null,
                 ];
@@ -304,14 +314,20 @@ class EbaySellFulfillmentTracking
         $unique = [];
         foreach ($ranked as $row) {
             $orderId = trim((string) ($row->order_id ?? ''));
-            if ($orderId === '' || isset($unique[$orderId])) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($orderId === '' || $sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+                continue;
+            }
+            $key = $orderId.'|'.$sku;
+            if (isset($unique[$key])) {
                 continue;
             }
             $raw = is_array($row->raw_payload ?? null) ? $row->raw_payload : [];
-            if (trim((string) ($raw['shopify_tracking_pushed'] ?? '')) !== '') {
+            $pushed = trim((string) ($raw['shopify_tracking_pushed'] ?? ''));
+            if ($pushed !== '' && $this->trackingNumbersEqual($pushed, (string) ($raw['tracking_number'] ?? $pushed))) {
                 continue;
             }
-            $unique[$orderId] = $row;
+            $unique[$key] = $row;
             if (count($unique) >= $limit) {
                 break;
             }
@@ -353,74 +369,39 @@ class EbaySellFulfillmentTracking
     }
 
     /**
-     * @return array{tracking: ?string, carrier: ?string}
+     * @return array{tracking: ?string, carrier: ?string, error?: ?string}
      */
     protected function fetchShopifyTracking(string $channel, string $shopifyOrderId, ?object $line = null): array
     {
         $settings = MarketplaceSyncSettings::getFor($channel);
         $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
         $config = $this->stores->getConfigForStore($storeKey);
-        $storeUrl = (string) ($config['store_url'] ?? '');
-        $token = (string) ($config['token'] ?? '');
-        if ($storeUrl === '' || $token === '') {
-            return ['tracking' => null, 'carrier' => null];
-        }
-
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2025-01/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,name,fulfillments,fulfillment_status',
-            ]);
-            if (! $response->successful()) {
-                return ['tracking' => null, 'carrier' => null];
-            }
-            $fulfillments = $response->json('order.fulfillments') ?? [];
-            if (! is_array($fulfillments)) {
-                $fulfillments = [];
-            }
-            foreach ($fulfillments as $fulfillment) {
-                if (! is_array($fulfillment)) {
-                    continue;
-                }
-                $status = strtolower((string) ($fulfillment['status'] ?? ''));
-                if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
-                    continue;
-                }
-                $number = '';
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                    $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
-                }
-                if ($number === '' && ! empty($fulfillment['tracking_number'])) {
-                    $number = trim((string) $fulfillment['tracking_number']);
-                }
-                if ($number === '') {
-                    continue;
-                }
-
-                return [
-                    'tracking' => $number,
-                    'carrier' => trim((string) ($fulfillment['tracking_company'] ?? '')) ?: null,
-                ];
-            }
-        } catch (\Throwable $e) {
-            Log::warning('EbaySellFulfillmentTracking: Shopify tracking fetch failed', [
-                'channel' => $channel,
-                'shopify_order_id' => $shopifyOrderId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
         $raw = is_array($line?->raw_payload ?? null) ? $line->raw_payload : [];
-        $local = trim((string) ($raw['tracking_number'] ?? ''));
-        if ($local !== '') {
-            return [
-                'tracking' => $local,
-                'carrier' => trim((string) ($raw['carrier'] ?? $raw['carrier_name'] ?? '')) ?: null,
-            ];
+        $orderIds = $this->uniqueEbayIds([
+            $line->order_id ?? '',
+            $line->order_number ?? '',
+            $raw['orderId'] ?? '',
+            $raw['legacyOrderId'] ?? '',
+        ]);
+        $sku = trim((string) ($line->sku ?? ''));
+
+        $matched = app(ShopifyFulfillmentTrackingMatcher::class)->match(
+            $config,
+            $shopifyOrderId,
+            (string) ($orderIds[0] ?? ''),
+            $sku,
+            array_slice($orderIds, 1),
+            'EbaySellFulfillmentTracking'
+        );
+        if (! empty($matched['tracking'])) {
+            return $matched;
         }
 
-        return ['tracking' => null, 'carrier' => null];
+        return [
+            'tracking' => null,
+            'carrier' => $matched['carrier'] ?? null,
+            'error' => $matched['error'] ?? null,
+        ];
     }
 
     protected function rememberPushedTracking(object $line, string $tracking, string $carrier): void
@@ -587,13 +568,19 @@ class EbaySellFulfillmentTracking
     protected function lineItemsForFulfillment(array $order, object $line): array
     {
         $out = [];
+        $wantedSku = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku((string) ($line->sku ?? ''));
         $items = is_array($order['lineItems'] ?? null) ? $order['lineItems'] : [];
         foreach ($items as $item) {
             if (! is_array($item)) {
                 continue;
             }
+            $itemSku = trim((string) ($item['sku'] ?? ''));
+            if ($wantedSku !== '' && ! in_array($wantedSku, ['__order__', '__unknown__'], true)
+                && $itemSku !== '' && ! app(ShopifyFulfillmentTrackingMatcher::class)->skusEqual($itemSku, $wantedSku)) {
+                continue;
+            }
             $id = trim((string) ($item['lineItemId'] ?? ''));
-            if ($id === '' || ! preg_match('/^\d{5,}$/', $id)) {
+            if ($id === '' || (! preg_match('/^\d{5,}$/', $id) && ! preg_match('/^[A-Za-z0-9\-]{8,}$/', $id))) {
                 continue;
             }
             $qty = max(1, (int) ($item['quantity'] ?? $item['quantityPurchased'] ?? $line->quantity ?? 1));
@@ -622,6 +609,20 @@ class EbaySellFulfillmentTracking
             return 'OnTrac';
         }
         return 'Other';
+    }
+
+    protected function trackingNumbersEqual(string $a, string $b): bool
+    {
+        $normalize = static function (string $value): string {
+            $value = strtoupper(trim($value));
+            if (str_contains($value, ',')) {
+                $value = trim(explode(',', $value, 2)[0]);
+            }
+
+            return preg_replace('/[\s\-]/', '', $value) ?? $value;
+        };
+
+        return $a !== '' && $b !== '' && $normalize($a) === $normalize($b);
     }
 
     protected function looksAlreadyShipped(string $body, string $fulfillmentStatus): bool
@@ -720,7 +721,8 @@ class EbaySellFulfillmentTracking
                 return ['success' => true];
             }
             $low = strtolower($body);
-            if (str_contains($low, 'already been fulfilled') || str_contains($low, 'already shipped')) {
+            if ((str_contains($low, 'already been fulfilled') || str_contains($low, 'already shipped'))
+                && str_contains($low, strtolower(preg_replace('/[\s\-]/', '', $tracking) ?? $tracking))) {
                 return ['success' => true];
             }
             Log::info('EbaySellFulfillmentTracking: CompleteSale rejected', [

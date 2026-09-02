@@ -511,7 +511,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('newegg', '', true, 14))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-orders')
@@ -604,7 +604,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '', true, 14))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('ebay3-sync-orders')

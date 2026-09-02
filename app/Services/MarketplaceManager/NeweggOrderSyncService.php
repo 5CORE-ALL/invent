@@ -37,13 +37,27 @@ class NeweggOrderSyncService
             return ['success' => true, 'message' => 'Order fetch disabled in settings.', 'upserted' => 0, 'pages' => 0];
         }
 
-        $from = Carbon::parse($fromDate)->startOfDay();
-        $to = Carbon::now();
+        $tz = 'America/Los_Angeles';
+        $from = Carbon::parse($fromDate, $tz)->startOfDay();
+        $to = Carbon::now($tz);
+        $latestStored = NeweggOrderMetric::query()->max('order_date');
+        if ($latestStored) {
+            $gapFrom = Carbon::parse($latestStored, $tz)->subDay()->startOfDay();
+            if ($gapFrom->lt($from)) {
+                $from = $gapFrom;
+            }
+        }
+        $earliest = Carbon::now($tz)->subDays(30)->startOfDay();
+        if ($from->lt($earliest)) {
+            $from = $earliest;
+        }
+
         $upserted = 0;
         $pages = 0;
 
         for ($page = 1; $page <= 50; $page++) {
             $res = $this->neweggApi->getOrders([
+                'Type' => 0,
                 'OrderDateFrom' => $from->format('Y-m-d H:i:s'),
                 'OrderDateTo' => $to->format('Y-m-d H:i:s'),
             ], $page, 100);
@@ -60,9 +74,48 @@ class NeweggOrderSyncService
             }
 
             if (empty($res['ok']) && empty($res['json'])) {
+                $httpStatus = (int) ($res['status'] ?? 0);
+                $message = $res['error'] ?? ('Order fetch failed HTTP '.$httpStatus);
+                if ($httpStatus === 504) {
+                    $message = 'Newegg order API timed out (HTTP 504). Retry from a Newegg-whitelisted server.';
+                }
+
                 return [
                     'success' => $upserted > 0,
-                    'message' => $res['error'] ?? ('Order fetch failed HTTP '.$res['status']),
+                    'message' => $message,
+                    'upserted' => $upserted,
+                    'pages' => $pages,
+                    'fetched' => $upserted,
+                    'stored' => $upserted,
+                ];
+            }
+
+            $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+            if (isset($json['NeweggAPIResponse']) && is_array($json['NeweggAPIResponse'])) {
+                $json = $json['NeweggAPIResponse'];
+            }
+            if ($json !== [] && array_is_list($json)) {
+                $code = (string) (data_get($json, '0.Code') ?? '');
+                $msg = (string) (data_get($json, '0.Message') ?? 'Newegg order API error');
+
+                return [
+                    'success' => $upserted > 0,
+                    'message' => trim($code.($msg !== '' ? ': '.$msg : '')),
+                    'upserted' => $upserted,
+                    'pages' => $pages,
+                    'fetched' => $upserted,
+                    'stored' => $upserted,
+                ];
+            }
+            $flag = $json['IsSuccess'] ?? null;
+            if ($flag === false || $flag === 'false' || $flag === 0 || $flag === '0') {
+                $msg = (string) (data_get($json, 'ResponseBody.ResponseList.Response.Message')
+                    ?? data_get($json, 'Memo')
+                    ?? 'Newegg IsSuccess=false');
+
+                return [
+                    'success' => $upserted > 0,
+                    'message' => $msg,
                     'upserted' => $upserted,
                     'pages' => $pages,
                     'fetched' => $upserted,
@@ -71,7 +124,7 @@ class NeweggOrderSyncService
             }
 
             $pages++;
-            $orders = app(NeweggOrderDetailService::class)->extractOrders($res['json'] ?? []);
+            $orders = app(NeweggOrderDetailService::class)->extractOrders($json);
             if ($orders === []) {
                 break;
             }

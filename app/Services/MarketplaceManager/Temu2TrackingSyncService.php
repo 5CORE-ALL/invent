@@ -58,12 +58,18 @@ class Temu2TrackingSyncService
             ];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+        $shopifyFulfillment = $this->fetchShopifyTracking(
+            $shopifyOrderId,
+            $parentOrderSn,
+            (string) ($line->display_sku ?? $line->sku_id ?? ''),
+            [trim((string) ($line->order_sn ?? ''))]
+        );
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
                 'skipped' => true,
-                'message' => 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
+                'message' => $shopifyFulfillment['error']
+                    ?: 'No tracking number on Shopify yet. Buy/download a shipping label in Shopify first.',
                 'shopify_tracking' => null,
                 'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];
@@ -327,65 +333,18 @@ class Temu2TrackingSyncService
     }
 
     /**
-     * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string}
+     * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    protected function fetchShopifyTracking(string $shopifyOrderId): array
+    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = '', array $extraOrderIds = []): array
     {
-        $settings = MarketplaceSyncSettings::getFor('temu2');
-        $storeKey = (string) ($settings['order']['shopify_store'] ?? 'main');
-        $config = app(ShopifyStoreSelector::class)->getConfigForStore($storeKey);
-        $storeUrl = (string) ($config['store_url'] ?? '');
-        $token = (string) ($config['token'] ?? '');
-
-        if ($storeUrl === '' || $token === '') {
-            return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
-        }
-
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,fulfillments,fulfillment_status',
-            ]);
-
-            if (! $response->successful()) {
-                return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
-            }
-
-            $fulfillments = $response->json('order.fulfillments') ?? [];
-            foreach (is_array($fulfillments) ? $fulfillments : [] as $fulfillment) {
-                if (! is_array($fulfillment)) {
-                    continue;
-                }
-                $status = strtolower((string) ($fulfillment['status'] ?? ''));
-                if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
-                    continue;
-                }
-                $number = null;
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                    $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
-                }
-                if (($number === null || $number === '') && ! empty($fulfillment['tracking_number'])) {
-                    $number = trim((string) $fulfillment['tracking_number']);
-                }
-                if ($number === null || $number === '') {
-                    continue;
-                }
-
-                return [
-                    'tracking' => $number,
-                    'carrier' => trim((string) ($fulfillment['tracking_company'] ?? '')) ?: null,
-                    'tracking_url' => null,
-                ];
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Temu2TrackingSyncService: Shopify tracking exception', [
-                'shopify_order_id' => $shopifyOrderId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
+        return app(ShopifyFulfillmentTrackingMatcher::class)->match(
+            $this->shopifyConfig(),
+            $shopifyOrderId,
+            $marketplaceOrderId,
+            $sku,
+            $extraOrderIds,
+            'Temu2TrackingSyncService'
+        );
     }
 
     protected function looksLikeAlreadyShipped(string $message): bool

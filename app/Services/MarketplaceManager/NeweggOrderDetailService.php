@@ -186,6 +186,10 @@ class NeweggOrderDetailService
             return [];
         }
 
+        if (isset($json['NeweggAPIResponse']) && is_array($json['NeweggAPIResponse'])) {
+            $json = $json['NeweggAPIResponse'];
+        }
+
         $list = data_get($json, 'ResponseBody.OrderInfoList')
             ?? data_get($json, 'OrderInfoList')
             ?? data_get($json, 'ResponseBody.OrderInfo')

@@ -37,6 +37,17 @@ class Ebay3OrderSyncService
         }
 
         $from = Carbon::parse($fromDate)->startOfDay()->setTimezone('UTC');
+        $latestStored = Ebay3OrderMetric::query()->max('order_date');
+        if ($latestStored) {
+            $gapFrom = Carbon::parse($latestStored)->subDay()->startOfDay()->setTimezone('UTC');
+            if ($gapFrom->lt($from)) {
+                $from = $gapFrom;
+            }
+        }
+        $earliest = Carbon::now('UTC')->subDays(90)->startOfDay();
+        if ($from->lt($earliest)) {
+            $from = $earliest;
+        }
         $startDate = $from->format('Y-m-d\TH:i:s.000\Z');
 
         $upserted = 0;
