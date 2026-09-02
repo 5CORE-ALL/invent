@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Models\Temu3DataView;
 use App\Models\Temu3Pricing;
 use App\Services\TemuShopifySalesService;
+use App\Support\Marketplace\Temu3OrderSheet;
 use App\Support\TemuGoodsIdHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -17,7 +18,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Temu 3 Analytics — same UI/features as Temu / Temu 2, sheet-only (no Open API).
- * Price sheet upload truncates temu3_pricing on every upload.
+ * Price sheet upload truncates temu3_pricing. Order export upload truncates temu3_orders.
  */
 class Temu3Controller extends TemuController
 {
@@ -285,6 +286,182 @@ class Temu3Controller extends TemuController
         }
 
         $fileName = 'Temu3_Pricing_Sample_'.date('Y-m-d').'.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="'.$fileName.'"');
+        header('Cache-Control: max-age=0');
+
+        (new Xlsx($spreadsheet))->save('php://output');
+        exit;
+    }
+
+    /**
+     * Upload Temu Seller Center order export. Every upload TRUNCATES temu3_orders first.
+     * Format: Order ID, order status, contribution sku, SKU ID, quantity purchased,
+     * purchase date, goods base price, …
+     */
+    public function uploadTemu3Orders(Request $request)
+    {
+        @set_time_limit(180);
+        $request->validate([
+            'orders_file' => 'required|file|max:40960',
+        ]);
+
+        $file = $request->file('orders_file');
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
+        if (! in_array($ext, $allowed, true)) {
+            $msg = 'Invalid file type. Upload the Temu Seller Center order export (.xlsx, .xls, .csv, .tsv, or .txt).';
+
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => $msg], 422)
+                : back()->with('error', $msg);
+        }
+
+        try {
+            $rows = $this->readTemu2PricingUploadRows($file->getRealPath(), $ext);
+            if (count($rows) < 2) {
+                throw new \RuntimeException('File has no data rows.');
+            }
+
+            $rawHeaders = array_shift($rows);
+            $headers = [];
+            foreach ($rawHeaders as $header) {
+                if ($header instanceof RichText) {
+                    $header = $header->getPlainText();
+                }
+                $headers[] = Temu3OrderSheet::normalizeHeader($header);
+            }
+
+            if (! in_array('order_id', $headers, true)) {
+                throw new \RuntimeException('Missing required column: Order ID. This upload expects the Temu Seller Center order export.');
+            }
+
+            $now = now()->format('Y-m-d H:i:s');
+            $insertRows = [];
+            $skipped = 0;
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    $skipped++;
+                    continue;
+                }
+                $rowData = array_pad(array_slice($row, 0, count($headers)), count($headers), null);
+                $data = @array_combine($headers, $rowData);
+                if (! is_array($data)) {
+                    $skipped++;
+                    continue;
+                }
+
+                $mapped = Temu3OrderSheet::mapInsertRow($data);
+                if ($mapped === null) {
+                    $skipped++;
+                    continue;
+                }
+                $mapped['created_at'] = $now;
+                $mapped['updated_at'] = $now;
+                $insertRows[] = $mapped;
+            }
+
+            $imported = count($insertRows);
+
+            if (Schema::hasTable('temu3_orders')) {
+                DB::table('temu3_orders')->truncate();
+            }
+
+            DB::beginTransaction();
+            try {
+                if (Schema::hasTable('temu3_orders')) {
+                    foreach (array_chunk($insertRows, 500) as $chunk) {
+                        DB::table('temu3_orders')->insert($chunk);
+                    }
+                }
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            $message = "Imported {$imported} order row(s) (old temu3_orders truncated)"
+                .($skipped > 0 ? ", skipped {$skipped}" : '')
+                .'.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'imported' => $imported,
+                    'skipped' => $skipped,
+                ]);
+            }
+
+            return back()->with('success', $message);
+        } catch (\Throwable $e) {
+            Log::error('Temu 3 orders upload failed: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $msg = 'Error uploading Temu 3 orders: '.$e->getMessage();
+
+            return $request->expectsJson() || $request->ajax()
+                ? response()->json(['success' => false, 'message' => $msg], 500)
+                : back()->with('error', $msg);
+        }
+    }
+
+    public function downloadTemu3OrdersSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Order ID',
+            'order status',
+            'Fulfillment mode',
+            'Order item ID',
+            'order item status',
+            'product name by customer order',
+            'product name',
+            'variation',
+            'contribution sku',
+            'SKU ID',
+            'quantity purchased',
+            'quantity to ship',
+            'quantity shipped',
+            'quantity canceled',
+            'purchase date',
+            'goods base price',
+            'tracking number',
+            'carrier',
+        ];
+
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray([
+            [
+                'PO-211-10467286595191067',
+                'Unshipped',
+                'Seller fulfillment',
+                '211-10467265623671067',
+                'Unshipped',
+                '5 Core 4 Inch Subwoofer Pair',
+                '5 Core 4 Inch Subwoofer Pair',
+                '4 Inch',
+                'WF 4INCH',
+                '170467251982528',
+                '1',
+                '1',
+                '0',
+                '0',
+                'Sep 2, 2026, 2:04 am IST(UTC+5)',
+                '$9.64',
+                '',
+                '',
+            ],
+        ], null, 'A2');
+
+        foreach (range('A', 'R') as $col) {
+            $sheet->getColumnDimension($col)->setWidth(22);
+        }
+
+        $fileName = 'Temu3_Orders_Sample_'.date('Y-m-d').'.xlsx';
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment;filename="'.$fileName.'"');
         header('Cache-Control: max-age=0');

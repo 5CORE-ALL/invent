@@ -385,8 +385,8 @@
                         style="width: auto; display: inline-block;"
                         title="Filter by row type: All Rows, Parents only, or SKUs only">
                         <option value="all">All Rows</option>
-                        <option value="parents" selected>Parents</option>
-                        <option value="skus">SKUs</option>
+                        <option value="parents">Parents</option>
+                        <option value="skus" selected>SKUs</option>
                     </select>
 
                     <select id="inventory-filter" class="form-select form-select-sm pricing-filter-item"
@@ -557,6 +557,11 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="upload-actions-btn">
                             <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadOrdersModal">
+                                    <i class="fa fa-shopping-cart me-1 text-primary"></i> Up Orders
+                                </a>
+                            </li>
+                            <li>
                                 <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
                                     <i class="fa fa-dollar-sign me-1 text-info"></i> Up Pricing (Goods ID)
                                 </a>
@@ -590,7 +595,7 @@
                         <span class="badge bg-primary fs-6 p-2 temu-badge-history" id="total-sales-amt-badge"
                             data-badge-metric="total_sales" data-badge-label="Sales"
                             style="color: black; font-weight: bold; cursor: pointer;"
-                            title="L30 sales from Temu 3 (no orders API) (temu3 (sheet only — no orders API)), Full Temu Price: (Base × 1.1364) + $2.99 if ≤ $26.99">Sales: $0</span>
+                            title="L30 sales from uploaded Temu 3 Seller Center orders (temu3_orders). Full Temu Price: (Base × 1.1364) + $2.99 if ≤ $26.99">Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-recovery-badge"
                             style="color: white; font-weight: bold;"
                             title="Recovery Price = Sales × 0.88 (Full Temu Price × 0.88 × Qty)">Recovery: $0</span>
@@ -875,6 +880,53 @@
 
 
     <!-- Upload Pricing Modal -->
+    <div class="modal fade" id="uploadOrdersModal" tabindex="-1" aria-labelledby="uploadOrdersModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="uploadOrdersModalLabel">
+                        <i class="fa fa-shopping-cart me-2"></i>Upload Temu 3 Orders
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadOrdersForm" method="POST" action="{{ route('temu3.orders.upload') }}" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="ordersFile" class="form-label fw-bold">
+                                <i class="fa fa-file-excel text-success me-1"></i>Temu Seller Center order export
+                            </label>
+                            <input type="file" class="form-control" name="orders_file" id="ordersFile"
+                                   accept=".xlsx,.xls,.csv,.tsv,.txt" required>
+                            <div class="form-text">
+                                Accepts .xlsx, .xls, .csv, .tsv, or .txt (Max: 40MB)
+                            </div>
+                        </div>
+                        <div class="alert alert-info mb-2">
+                            <strong>Format:</strong> Order ID, order status, contribution sku, SKU ID,
+                            quantity purchased, purchase date, <strong>goods base price</strong>, tracking number, …
+                            <br>
+                            Each upload <strong>replaces</strong> all previous Temu 3 order rows (old orders are truncated).
+                            L30 / L60 / L7 sales use <strong>contribution sku</strong> and <strong>purchase date</strong>.
+                            Canceled rows are stored but excluded from sales.
+                            <br>
+                            <a href="{{ route('temu3.orders.sample') }}" class="alert-link">
+                                <i class="fa fa-download"></i> Download Sample File
+                            </a>
+                        </div>
+                        <div id="ordersUploadResult" class="alert" style="display:none;"></div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="startOrdersUploadBtn">
+                        <i class="fa fa-upload me-1"></i>Up Orders
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -3634,6 +3686,10 @@
 
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu3-decrease-data",
+            ajaxConfig: {
+                method: "GET",
+                timeout: 180000,
+            },
             ajaxSorting: false,
             layout: "fitData",
             layoutColumnsOnNewData: true,
@@ -4966,7 +5022,7 @@
                 return;
             }
 
-            let parentFilter = $('#parent-filter').val() || 'parents';
+            let parentFilter = $('#parent-filter').val() || 'skus';
             if (priceGtLmpFilterActive && parentFilter === 'parents') {
                 parentFilter = 'skus';
             }
@@ -4992,7 +5048,7 @@
 
             table.clearFilter(true);
 
-            // Row type: All Rows / Parents / SKUs (default Parents)
+            // Row type: All Rows / Parents / SKUs (default SKUs)
             if (parentFilter === 'parents') {
                 table.addFilter(function(data) {
                     return isTemu3ParentRow(data);
@@ -6839,6 +6895,51 @@
             }
         } catch (e) {}
         @endif
+
+        $('#startOrdersUploadBtn').on('click', function() {
+            const fileInput = document.getElementById('ordersFile');
+            const file = fileInput && fileInput.files && fileInput.files[0];
+            if (!file) {
+                showToast('Choose a Temu 3 order export first', 'error');
+                return;
+            }
+            const $btn = $(this);
+            const $result = $('#ordersUploadResult');
+            $result.hide().removeClass('alert-success alert-danger');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading…');
+
+            const fd = new FormData();
+            fd.append('orders_file', file);
+            fd.append('_token', '{{ csrf_token() }}');
+
+            $.ajax({
+                url: '{{ route("temu3.orders.upload") }}',
+                method: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                timeout: 180000,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                success: function(res) {
+                    const msg = (res && res.message) || 'Orders uploaded';
+                    $result.addClass(res && res.success === false ? 'alert-danger' : 'alert-success')
+                        .text(msg).show();
+                    showToast(msg, res && res.success === false ? 'error' : 'success');
+                    if (res && res.success !== false) {
+                        setTimeout(function() { location.reload(); }, 900);
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                        || 'Temu 3 orders upload failed';
+                    $result.addClass('alert-danger').text(msg).show();
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html('<i class="fa fa-upload me-1"></i>Up Orders');
+                }
+            });
+        });
 
         $('#startPricingUploadBtn').on('click', function() {
             const fileInput = document.getElementById('pricingFile');

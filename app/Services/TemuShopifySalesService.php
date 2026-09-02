@@ -7,8 +7,11 @@ use App\Models\ProductMaster;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
 use App\Models\Temu2Pricing;
+use App\Models\Temu3Order;
+use App\Models\Temu3Pricing;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
+use App\Support\Marketplace\Temu3OrderSheet;
 use App\Support\ProductMasterTemuShip;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -17,7 +20,8 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Temu L30/L60/L7/Y sales from `temu_orders` (app:fetch-temu-orders).
  * Temu 2 L30/L60/L7/Y sales from `temu2_orders` (app:fetch-temu2-orders) — not sheet uploads, not Shopify.
- * Line price from temu_metrics / temu2_metrics / temu2_pricing (or order_base_amount); LP / ship from product_master.
+ * Temu 3 L30/L60/L7 sales from uploaded Seller Center export (`temu3_orders.purchase_date`).
+ * Line price from temu_metrics / temu2_metrics / temu2_pricing / goods base price; LP / ship from product_master.
  */
 class TemuShopifySalesService
 {
@@ -421,6 +425,102 @@ class TemuShopifySalesService
     public static function getTemu2OrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
         return self::getChannelOrdersTableRows($startDate, $endDate, true);
+    }
+
+    /**
+     * Same shape as getOrdersTableRows, from the Temu 3 Seller Center order sheet
+     * (`temu3_orders`). SKU = contribution sku, unit price = goods base price.
+     */
+    public static function getTemu3OrdersTableRows(Carbon $startDate, Carbon $endDate): array
+    {
+        if (! Schema::hasTable('temu3_orders')) {
+            return [];
+        }
+
+        $appTz = config('app.timezone');
+        $start = $startDate->copy()->setTimezone($appTz);
+        $end = $endDate->copy()->setTimezone($appTz);
+
+        $orders = Temu3Order::whereBetween('purchase_date', [$start, $end])
+            ->where(function ($q) {
+                $q->whereNull('order_status')
+                    ->orWhereRaw('UPPER(order_status) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+            })
+            ->where(function ($q) {
+                $q->whereNull('order_item_status')
+                    ->orWhereRaw('UPPER(order_item_status) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+            })
+            ->orderBy('purchase_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return [];
+        }
+
+        $margin = self::temuMarginDecimal();
+        $skus = $orders->map(fn ($o) => trim((string) ($o->contribution_sku ?? '')));
+        $productMasters = self::productMastersForSkus($skus);
+
+        $skuList = $skus->filter()->unique()->values()->toArray();
+        $priceBySku = collect();
+        if (! empty($skuList) && Schema::hasTable('temu3_pricing')) {
+            $pricingBySku = Temu3Pricing::whereIn('sku', $skuList)->pluck('base_price', 'sku');
+            foreach ($pricingBySku as $skuKey => $unit) {
+                if ((float) $unit > 0) {
+                    $priceBySku[$skuKey] = $unit;
+                }
+            }
+        }
+
+        $result = [];
+
+        foreach ($orders as $o) {
+            $row = $o->toArray();
+            if (Temu3OrderSheet::shouldExcludeFromSales($row)) {
+                continue;
+            }
+
+            $sku = trim((string) ($o->contribution_sku ?? ''));
+            $pm = ($sku !== '' && isset($productMasters[$sku])) ? $productMasters[$sku] : null;
+            [$lp, $temuShip] = self::lpAndTemuShip($productMasters, $sku);
+            $parent = $pm ? ($pm->parent ?? '') : '';
+
+            $quantity = (int) ($o->quantity_purchased ?? 0);
+            $price = (float) ($o->base_price_total ?? 0);
+            if ($price <= 0) {
+                $price = (float) ($priceBySku[$sku] ?? 0);
+            }
+
+            $fbPrice = self::computeFbPrice($price, $quantity);
+            $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
+            $pft = $pftDecimal * $fbPrice * $quantity;
+
+            $result[] = [
+                'Parent' => $parent,
+                'contribution_sku' => $sku,
+                'order_id' => $o->order_id ?? '',
+                'product_name_by_customer_order' => $o->product_name_by_customer_order ?? ($o->product_name ?? ''),
+                'variation' => $o->variation ?? '',
+                'quantity_purchased' => $quantity,
+                'quantity_shipped' => (int) ($o->quantity_shipped ?? 0),
+                'quantity_to_ship' => (int) ($o->quantity_to_ship ?? 0),
+                'base_price_total' => round($price, 2),
+                'fb_price' => round($fbPrice, 2),
+                'lp' => $lp,
+                'temu_ship' => $temuShip,
+                'pft' => round($pft, 2),
+                'order_status' => $o->order_status ?? '',
+                'fulfillment_mode' => $o->fulfillment_mode ?? '',
+                'tracking_number' => $o->tracking_number ?? '',
+                'carrier' => $o->carrier ?? '',
+                'created_at' => $o->purchase_date
+                    ? $o->purchase_date->format('Y-m-d H:i:s')
+                    : null,
+            ];
+        }
+
+        return $result;
     }
 
     private static function getChannelOrdersTableRows(Carbon $startDate, Carbon $endDate, bool $isTemu2): array

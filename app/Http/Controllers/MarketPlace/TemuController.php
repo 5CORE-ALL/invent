@@ -1074,7 +1074,7 @@ class TemuController extends Controller
         }
     }
 
-    private function normalizeHeader($header)
+    protected function normalizeHeader($header)
     {
         // Store original for logging
         $original = $header;
@@ -1112,6 +1112,8 @@ class TemuController extends Controller
             'quantity_purchased' => 'quantity_purchased',
             'quantity_shipped' => 'quantity_shipped',
             'quantity_to_ship' => 'quantity_to_ship',
+            'quantity_canceled' => 'quantity_canceled',
+            'quantity_cancelled' => 'quantity_canceled',
             
             // Recipient fields
             'recipient_name' => 'recipient_name',
@@ -1166,7 +1168,7 @@ class TemuController extends Controller
     /**
      * Sanitize price values by removing currency symbols and converting to decimal
      */
-    private function sanitizePrice($value)
+    protected function sanitizePrice($value)
     {
         if ($value === null || $value === '' || $value === '?') {
             return null;
@@ -1179,7 +1181,7 @@ class TemuController extends Controller
         return is_numeric($cleaned) ? (float) $cleaned : null;
     }
 
-    private function parseDate($dateString)
+    protected function parseDate($dateString)
     {
         if (empty($dateString) || $dateString === null || $dateString === '') {
             return null;
@@ -3103,7 +3105,7 @@ class TemuController extends Controller
             }
             $orderRows = collect(
                 $isTemu3
-                    ? []
+                    ? TemuShopifySalesService::getTemu3OrdersTableRows($apiStart, $apiEnd)
                     : ($isTemu2Pricing
                         ? TemuShopifySalesService::getTemu2OrdersTableRows($apiStart, $apiEnd)
                         : TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd))
@@ -3134,7 +3136,7 @@ class TemuController extends Controller
             [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
             $orderRowsL60 = collect(
                 $isTemu3
-                    ? []
+                    ? TemuShopifySalesService::getTemu3OrdersTableRows($l60Start, $l60End)
                     : ($isTemu2Pricing
                         ? TemuShopifySalesService::getTemu2OrdersTableRows($l60Start, $l60End)
                         : TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End))
@@ -3201,7 +3203,7 @@ class TemuController extends Controller
                 $fullPrice = TemuShopifySalesService::computeFullTemuPrice($base);
                 $salesTotalRevenue += $fullPrice * $qty;
 
-                if ($isTemu2Pricing && $qty > 0 && $base > 0) {
+                if (($isTemu2Pricing || $isTemu3) && $qty > 0 && $base > 0) {
                     $pm = $pmBySku[$rawSku]
                         ?? $pmByNormalized[$normalizedRowSku]
                         ?? $pmByNoSpace[$normalizedRowSkuNoSpace]
@@ -3401,7 +3403,12 @@ class TemuController extends Controller
                 }
             }
 
-            $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+            $amazonData = collect();
+            foreach (array_chunk($skus, 500) as $skuChunk) {
+                foreach (AmazonDatasheet::whereIn('sku', $skuChunk)->get() as $row) {
+                    $amazonData[$row->sku] = $row;
+                }
+            }
 
             // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view).
             // Include Sku Link LMP siblings so a Temu SKU inherits the Amazon SP when the
@@ -3435,15 +3442,18 @@ class TemuController extends Controller
                 }
             };
 
-            foreach (AmazonDataView::whereIn('sku', $stdLookupSkus)->get(['sku', 'value']) as $adv) {
-                $val = is_array($adv->value)
-                    ? $adv->value
-                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-                $indexAmazonStdPrc($adv->sku, $val['STANDARD_PRICE'] ?? null);
+            foreach (array_chunk($stdLookupSkus, 500) as $chunk) {
+                foreach (AmazonDataView::whereIn('sku', $chunk)->get(['sku', 'value']) as $adv) {
+                    $val = is_array($adv->value)
+                        ? $adv->value
+                        : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                    $indexAmazonStdPrc($adv->sku, $val['STANDARD_PRICE'] ?? null);
+                }
             }
 
             // Same as /amazon-tabulator-view: also match rows whose SKU only differs by
             // spacing / PCS suffix so Temu shows the same Std Prc Amazon does.
+            // Do NOT load every amazon_data_view JSON blob — that can take minutes.
             $normalizedStdSet = [];
             foreach ($stdLookupSkus as $s) {
                 $n = $normalizeSku($s);
@@ -3452,16 +3462,22 @@ class TemuController extends Controller
                 }
             }
             if ($normalizedStdSet !== []) {
-                foreach (AmazonDataView::query()->select(['sku', 'value'])->get() as $adv) {
-                    $n = $normalizeSku($adv->sku);
-                    if ($n === '' || ! isset($normalizedStdSet[$n])) {
-                        continue;
+                $matchedAmazonSkus = [];
+                foreach (AmazonDataView::query()->pluck('sku') as $asku) {
+                    $n = $normalizeSku($asku);
+                    if ($n !== '' && isset($normalizedStdSet[$n])) {
+                        $matchedAmazonSkus[] = $asku;
                     }
-                    $val = is_array($adv->value)
-                        ? $adv->value
-                        : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-                    $indexAmazonStdPrc($adv->sku, $val['STANDARD_PRICE'] ?? null);
-                    $indexAmazonStdPrc($n, $val['STANDARD_PRICE'] ?? null);
+                }
+                foreach (array_chunk(array_values(array_unique($matchedAmazonSkus)), 500) as $chunk) {
+                    foreach (AmazonDataView::whereIn('sku', $chunk)->get(['sku', 'value']) as $adv) {
+                        $n = $normalizeSku($adv->sku);
+                        $val = is_array($adv->value)
+                            ? $adv->value
+                            : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                        $indexAmazonStdPrc($adv->sku, $val['STANDARD_PRICE'] ?? null);
+                        $indexAmazonStdPrc($n, $val['STANDARD_PRICE'] ?? null);
+                    }
                 }
             }
 
@@ -3481,12 +3497,16 @@ class TemuController extends Controller
             $promoChannel = $isTemu3 ? 'temu3' : ($isTemu2Pricing ? 'temu2' : 'temu');
             $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
 
-            $ebayData = EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
-
-            // eBay 2 listing price (from ebay_2_metrics.ebay_price). Same shape as $ebayData so
-            // the per-row lookup mirrors the eBay 1 path. Used by Amz/EB S PRC cap badges
-            // on /temu1-data and /temu2-decrease.
-            $ebay2Data = Ebay2Metric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
+            $ebayData = collect();
+            $ebay2Data = collect();
+            foreach (array_chunk($skus, 500) as $skuChunk) {
+                foreach (EbayMetric::whereIn('sku', $skuChunk)->select('sku', 'ebay_price')->get() as $row) {
+                    $ebayData[$row->sku] = $row;
+                }
+                foreach (Ebay2Metric::whereIn('sku', $skuChunk)->select('sku', 'ebay_price')->get() as $row) {
+                    $ebay2Data[$row->sku] = $row;
+                }
+            }
 
             // Temu 1: temu_listing_statuses. Temu 2: same keys live in temu2_data_view JSON (value).
             $statusData = ($isTemu2Pricing || $isTemu3)
@@ -4337,12 +4357,13 @@ class TemuController extends Controller
             }
 
             // Get exact total_sales from marketplace_daily_metrics (same as all-marketplace-master uses)
-            $metrics = MarketplaceDailyMetric::where('channel', $isTemu2Pricing ? 'Temu 2' : 'Temu')->latest('date')->first();
+            $metricsChannel = $isTemu3 ? 'Temu 3' : ($isTemu2Pricing ? 'Temu 2' : 'Temu');
+            $metrics = MarketplaceDailyMetric::where('channel', $metricsChannel)->latest('date')->first();
             $totalSalesFromMetrics = $metrics ? ($metrics->total_sales ?? 0) : 0;
 
-            // Ads% = Spend / Sales. Temu 2 prefers order Full-Price sales_summary revenue
+            // Ads% = Spend / Sales. Temu 2 / Temu 3 prefer order Full-Price sales_summary revenue
             // (same basis as GPFT/Sales badge); else marketplace_daily_metrics.
-            $salesForAds = $isTemu2Pricing
+            $salesForAds = ($isTemu2Pricing || $isTemu3)
                 ? ((float) ($salesSummary['total_revenue'] ?? 0) > 0
                     ? (float) $salesSummary['total_revenue']
                     : (float) $totalSalesFromMetrics)
