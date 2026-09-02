@@ -6614,6 +6614,31 @@
             return currentCampaignPeriod === 'L7' ? '/temu3-decrease-data-l7' : '/temu3-decrease-data';
         }
 
+        function closeTemu3UploadModal(modalId) {
+            if (!modalId) return;
+            try {
+                var modalEl = document.getElementById(modalId);
+                if (modalEl && window.bootstrap) {
+                    var inst = bootstrap.Modal.getInstance(modalEl);
+                    if (inst) inst.hide();
+                }
+            } catch (e) {}
+        }
+
+        function refreshTemu3LiveData(modalId) {
+            closeTemu3UploadModal(modalId);
+            if (!table) return;
+            var url = currentPeriodEndpoint() + '?_=' + Date.now();
+            table.setData(url).then(function() {
+                if (typeof applyFilters === 'function') applyFilters();
+                if (typeof updateSummary === 'function') updateSummary();
+            }).catch(function() {
+                if (typeof showToast === 'function') {
+                    showToast('Upload saved, but the table did not refresh. Use the period toggle to reload.', 'error');
+                }
+            });
+        }
+
         // Export L30 / L7 from icon dropdown — loads period data if needed, then restores current view
         function exportPeriodCsv(period) {
             const isL7 = period === 'L7';
@@ -6883,7 +6908,7 @@
                 listId: 'viewDataFileList',
                 statusId: 'viewDataUploadStatus',
                 onSuccess: function() {
-                    if (table) table.setData('/temu3-decrease-data');
+                    refreshTemu3LiveData('uploadViewDataModal');
                 }
             });
         }
@@ -6926,7 +6951,7 @@
                         .text(msg).show();
                     showToast(msg, res && res.success === false ? 'error' : 'success');
                     if (res && res.success !== false) {
-                        setTimeout(function() { location.reload(); }, 900);
+                        refreshTemu3LiveData('uploadOrdersModal');
                     }
                 },
                 error: function(xhr) {
@@ -6971,7 +6996,7 @@
                         .text(msg).show();
                     showToast(msg, res && res.success === false ? 'error' : 'success');
                     if (res && res.success !== false) {
-                        setTimeout(function() { location.reload(); }, 900);
+                        refreshTemu3LiveData('uploadPricingModal');
                     }
                 },
                 error: function(xhr) {
