@@ -49,6 +49,15 @@ class Temu3OrderSheetTest extends TestCase
         ]));
     }
 
+    public function test_sheet_l30_window_includes_today_pacific(): void
+    {
+        $now = Carbon::now('America/Los_Angeles');
+        [$start, $end] = \App\Services\TemuShopifySalesService::temu3SheetL30Window();
+
+        $this->assertTrue($now->betweenIncluded($start, $end));
+        $this->assertSame($now->toDateString(), $end->toDateString());
+    }
+
     public function test_parses_sample_seller_center_export(): void
     {
         $path = dirname(__DIR__, 2).'/temu3price.txt';

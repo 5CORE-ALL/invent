@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * Grid SBGT on /amazon-ads/all: Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews.
+ * Grid SBGT on /amazon-ads/all: Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil.
  * Amazon daily budget cannot be $0, so an explicit 0 (BGT ACOS band or a 0 sum) is not
  * pushable — callers pause the campaign instead.
  */
@@ -13,7 +13,7 @@ final class AmazonAdsSbgt
      * Grid SBGT. Null parts count as 0 in the sum. All-missing → null.
      * Explicit BGT ACOS of 0 zeros the total (pause — $0 will not push).
      */
-    public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null): ?int
+    public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null): ?int
     {
         if (self::isExplicitZero($bgtAcos)) {
             return 0;
@@ -21,7 +21,7 @@ final class AmazonAdsSbgt
 
         $has = false;
         $sum = 0;
-        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews] as $part) {
+        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil] as $part) {
             if ($part === null || $part === '') {
                 continue;
             }

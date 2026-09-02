@@ -18,6 +18,7 @@ class AmazonAdsSbgtTest extends TestCase
     {
         $this->assertSame(10, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0));
         $this->assertSame(8, AmazonAdsSbgt::sumFromParts(2, 3, 3, null, null));
+        $this->assertSame(13, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0, 3));
     }
 
     public function test_explicit_bgt_acos_zero_zeros_the_total(): void

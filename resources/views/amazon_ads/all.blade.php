@@ -262,6 +262,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtCvrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtPrcRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtDilRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtDilRuleModal" title="Edit Dil% bands and Bgt Dil values">BGT Vs Dil</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause when Dil% is high, price is below your threshold, or reviews are below your star rating">Pause Rule</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
@@ -682,6 +683,49 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsBgtDilRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtDilRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtDilRuleModalLabel">BGT Vs Dil — Dil% → Bgt Dil</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Dil%</strong> range (same Dil as this table: ovl30 ÷ Inv × 100).
+                        Rows are checked <strong>top to bottom</strong>; the first range that contains Dil% gets its
+                        <strong>Bgt Dil</strong>. Defaults are 3 slabs: <strong>Pink 50%+</strong>, <strong>Green 25–50</strong>, <strong>Red &lt;25</strong>.
+                        Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Dil.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtDilRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose Dil% falls in this slab">Count</th>
+                                <th style="width:120px;">Bgt Dil</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtDilRuleBandsBody"></tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtDilRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtDilRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtDilRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="amazonAdsSbidRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbidRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
@@ -815,6 +859,8 @@
             var bgtPrcRuleSaveUrl = @json(route('amazon.ads.bgt-prc-rule.save'));
             var bgtReviewsRuleGetUrl = @json(route('amazon.ads.bgt-reviews-rule'));
             var bgtReviewsRuleSaveUrl = @json(route('amazon.ads.bgt-reviews-rule.save'));
+            var bgtDilRuleGetUrl = @json(route('amazon.ads.bgt-dil-rule'));
+            var bgtDilRuleSaveUrl = @json(route('amazon.ads.bgt-dil-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
@@ -827,6 +873,7 @@
             window.amazonAdsBgtCvrRule = @json($amazonAdsBgtCvrRule ?? null);
             window.amazonAdsBgtPrcRule = @json($amazonAdsBgtPrcRule ?? null);
             window.amazonAdsBgtReviewsRule = @json($amazonAdsBgtReviewsRule ?? null);
+            window.amazonAdsBgtDilRule = @json($amazonAdsBgtDilRule ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
 
@@ -837,9 +884,9 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
             var NON_ORDERABLE_COLUMNS = [];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -889,7 +936,7 @@
             function amzSumSbgtFromRow(row) {
                 var acos = parseInt(row && row.bgtAcos, 10);
                 if (acos === 0) return 0;
-                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews];
+                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil];
                 var sum = 0, has = false;
                 for (var i = 0; i < parts.length; i++) {
                     if (parts[i] === null || parts[i] === undefined || parts[i] === '') continue;
@@ -1167,11 +1214,12 @@
                 var acos = parseInt(row && row.bgtAcos, 10);
                 var prc = parseInt(row && row.bgtPrc, 10);
                 var rev = parseInt(row && row.bgtReviews, 10);
+                var dilBgt = parseInt(row && row.bgtDil, 10);
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === t;
                 var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil';
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0);
                 if (t === 0) {
                     tip += ' · BGT ACOS 0 zeros SBGT — cannot push $0, campaign will be paused';
                 } else if (isFinite(bgt)) {
@@ -1236,6 +1284,25 @@
                 var label = String((row && row.bgt_reviews_label) || '').trim();
                 var tip = 'Bgt Reviews from campaign star rating';
                 if (isFinite(rating)) tip += ' · ' + rating + '★';
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtDil(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_dil_color) ? String(row.bgt_dil_color) : '#6c757d';
+                var dil = parseFloat(row && (row.bgt_dil_value != null ? row.bgt_dil_value : row.dil));
+                if (!isFinite(dil) && row) {
+                    var inv = parseFloat(row.Inv);
+                    var ovl30 = parseFloat(row.ovl30) || 0;
+                    if (isFinite(inv) && inv > 0) dil = (ovl30 / inv) * 100;
+                }
+                var label = String((row && row.bgt_dil_label) || '').trim();
+                var tip = 'Bgt Dil from campaign Dil%';
+                if (isFinite(dil)) tip += ' · Dil ' + Math.round(dil) + '%';
                 if (label) tip += ' · ' + label;
                 return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
             }
@@ -1438,7 +1505,7 @@
                 }
                 if (c === 'sbgt') {
                     col.title = 'SBGT';
-                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
+                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
                     col.formatter = fmtSbgtSum;
                     col.width = 56;
                     col.minWidth = 50;
@@ -1475,6 +1542,14 @@
                     col.formatter = fmtBgtReviews;
                     col.width = 68;
                     col.minWidth = 60;
+                    return;
+                }
+                if (c === 'bgtDil') {
+                    col.title = 'Bgt Dil';
+                    col.headerTooltip = 'Suggested budget from BGT Vs Dil — same Dil% as the dil column (ovl30 ÷ Inv × 100)';
+                    col.formatter = fmtBgtDil;
+                    col.width = 64;
+                    col.minWidth = 56;
                     return;
                 }
                 if (c === 'Prchase') { col.title = 'Ads Sold'; col.formatter = fmtDashInt; return; }
@@ -3233,6 +3308,173 @@
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
                         .finally(function () { bgtReviewsSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- BGT Vs Dil (Dil% → Bgt Dil); 3 default slabs, Pink → Green → Red ----
+            var AMZ_BGT_DIL_DEFAULTS = [
+                { dil_from: 50, dil_to: 9999, bgt: 3, label: 'Pink', color: '#e83e8c' },
+                { dil_from: 25, dil_to: 50, bgt: 2, label: 'Green', color: '#28a745' },
+                { dil_from: 0, dil_to: 25, bgt: 1, label: 'Red', color: '#a00211' }
+            ];
+            var AMZ_BGT_DIL_LABELS = ['Pink', 'Green', 'Red', 'Blue', 'Yellow', 'Purple'];
+            var AMZ_BGT_DIL_COLORS = ['#e83e8c', '#28a745', '#a00211', '#2563eb', '#ffc107', '#7c3aed'];
+            var amzBgtDilBands = [];
+            function amzBgtDilNormalizeBands(existing) {
+                var prev = Array.isArray(existing) ? existing : [];
+                var out = [];
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.dil_from);
+                    var to = parseFloat(keep.dil_to);
+                    var bgt = parseInt(keep.bgt, 10);
+                    out.push({
+                        dil_from: isFinite(from) ? from : '',
+                        dil_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
+                    });
+                });
+                return out.length ? out : AMZ_BGT_DIL_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtDilNewBand() {
+                var last = amzBgtDilBands.length ? amzBgtDilBands[amzBgtDilBands.length - 1] : null;
+                var lastTo = last ? parseFloat(last.dil_to) : NaN;
+                var from = isFinite(lastTo) ? lastTo : 0;
+                var i = amzBgtDilBands.length;
+                return {
+                    dil_from: from,
+                    dil_to: 9999,
+                    bgt: 0,
+                    label: AMZ_BGT_DIL_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_DIL_COLORS[i] || '#6c757d'
+                };
+            }
+            function amzBgtDilValueOfRow(row) {
+                var n = parseFloat(row && (row.bgt_dil_value != null ? row.bgt_dil_value : row.dil));
+                if (isFinite(n)) return n;
+                var inv = parseFloat(row && row.Inv);
+                var ovl30 = parseFloat(row && row.ovl30) || 0;
+                if (isFinite(inv) && inv > 0) return (ovl30 / inv) * 100;
+                if (isFinite(inv) && inv === 0) return 0;
+                return null;
+            }
+            function amzBgtDilCounts(bands) {
+                return amzBgtCountByBands(bands, 'dil_from', 'dil_to', amzBgtDilValueOfRow);
+            }
+            function amzBgtDilRefreshCounts() {
+                amzBgtRefreshCountCells('amazonAdsBgtDilRuleBandsBody', amzBgtDilCounts(amzBgtDilBands));
+            }
+            function amzRenderBgtDilBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtDilRuleBandsBody');
+                if (!tbody) return;
+                var canDelete = bands.length > 1;
+                var counts = amzBgtDilCounts(bands);
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
+                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose Dil% falls in this slab')
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtDilBands[idx]) return;
+                        if (fld === 'bgt') {
+                            amzBgtDilBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        } else if (fld === 'dil_from' || fld === 'dil_to') {
+                            amzBgtDilBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
+                        } else {
+                            amzBgtDilBands[idx][fld] = el.value;
+                        }
+                    };
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to') amzBgtDilRefreshCounts();
+                    });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to') amzBgtDilRefreshCounts(); });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtDilBands.length <= 1) return;
+                        amzBgtDilBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtDilBands(amzBgtDilBands);
+                    });
+                });
+            }
+            function amzLoadBgtDilBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                amzBgtDilBands = amzBgtDilNormalizeBands(bands);
+                amzRenderBgtDilBands(amzBgtDilBands);
+            }
+            function amzRefreshBgtDilRuleFromServer(cb) {
+                fetch(bgtDilRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtDilRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var bgtDilModalEl = document.getElementById('amazonAdsBgtDilRuleModal');
+            if (bgtDilModalEl) {
+                bgtDilModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtDilRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshBgtDilRuleFromServer(function () { amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {}); });
+                });
+            }
+            var bgtDilAddBtn = document.getElementById('amazonAdsBgtDilRuleAddBandBtn');
+            if (bgtDilAddBtn) {
+                bgtDilAddBtn.addEventListener('click', function () {
+                    amzBgtDilBands.push(amzBgtDilNewBand());
+                    amzRenderBgtDilBands(amzBgtDilBands);
+                });
+            }
+            var bgtDilSaveBtn = document.getElementById('amazonAdsBgtDilRuleSaveBtn');
+            if (bgtDilSaveBtn) {
+                bgtDilSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsBgtDilRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var cleaned = (amzBgtDilBands || []).map(function (b) {
+                        return {
+                            dil_from: (b.dil_from === '' || b.dil_from == null) ? NaN : parseFloat(b.dil_from),
+                            dil_to: (b.dil_to === '' || b.dil_to == null) ? NaN : parseFloat(b.dil_to),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
+                        };
+                    });
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
+                    for (var i = 0; i < cleaned.length; i++) {
+                        var vb = cleaned[i];
+                        if (!isFinite(vb.dil_from) || !isFinite(vb.dil_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Dil values.'; err.classList.remove('d-none'); } return; }
+                        if (vb.dil_from > vb.dil_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (vb.dil_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
+                        if (vb.bgt < 0) { if (err) { err.textContent = 'Bgt Dil must be 0 or more.'; err.classList.remove('d-none'); } return; }
+                    }
+                    bgtDilSaveBtn.disabled = true;
+                    fetch(bgtDilRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ bands: cleaned })
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsBgtDilRule = b.rule || window.amazonAdsBgtDilRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtDilModalEl); if (inst) inst.hide(); }
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { bgtDilSaveBtn.disabled = false; });
                 });
             }
 

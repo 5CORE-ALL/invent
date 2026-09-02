@@ -3100,6 +3100,8 @@ class TemuController extends Controller
                 $todayPst = Carbon::now(TemuShopifySalesService::PST);
                 $apiStart = $todayPst->copy()->subDays(6)->startOfDay();
                 $apiEnd = $todayPst->copy()->endOfDay();
+            } elseif ($isTemu3) {
+                [$apiStart, $apiEnd] = TemuShopifySalesService::temu3SheetL30Window();
             } else {
                 [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
             }
@@ -3132,8 +3134,11 @@ class TemuController extends Controller
             });
 
             // L60 = prior 30-day window from temu_orders / temu2_orders (days 31–60).
+            // Temu 3 sheet L60 sits immediately before the include-today L30 window.
             $l60ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
-            [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+            [$l60Start, $l60End] = $isTemu3
+                ? TemuShopifySalesService::temu3SheetL60Window()
+                : TemuShopifySalesService::channelMasterL60Window();
             $orderRowsL60 = collect(
                 $isTemu3
                     ? TemuShopifySalesService::getTemu3OrdersTableRows($l60Start, $l60End)

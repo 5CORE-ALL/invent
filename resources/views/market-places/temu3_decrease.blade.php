@@ -3556,8 +3556,8 @@
 
             const avgPrice = totalQty > 0 ? totalPriceWeighted / totalQty : 0;
             // Client-computed like /temu-decrease (do not override GPFT/GROI from sales_summary)
-            const avgGprft = totalRevenueFull > 0 ? (totalProfitFull / totalRevenueFull) * 100 : 0;
-            const avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : 0;
+            let avgGprft = totalRevenueFull > 0 ? (totalProfitFull / totalRevenueFull) * 100 : 0;
+            let avgGroi = totalLp > 0 ? (totalProfit / totalLp) * 100 : 0;
             let salesAmt = totalRevenueFull > 0 ? totalRevenueFull : totalRevenue;
             let qtyAmt = totalQuantity;
             let profitAmt = totalProfit;
@@ -3569,6 +3569,13 @@
                 if (backendOrders > 0 || backendQuantity > 0 || backendRevenue > 0) {
                     salesAmt = backendRevenue;
                     qtyAmt = backendQuantity;
+                    // Order-sheet GPFT/GROI (goods base price) — do not require a price-sheet Price column
+                    if (salesSummaryFromBackend.gpft_percent != null && salesSummaryFromBackend.gpft_percent !== undefined) {
+                        avgGprft = Number(salesSummaryFromBackend.gpft_percent) || 0;
+                    }
+                    if (salesSummaryFromBackend.groi_percent != null && salesSummaryFromBackend.groi_percent !== undefined) {
+                        avgGroi = Number(salesSummaryFromBackend.groi_percent) || 0;
+                    }
                 }
                 if (salesSummaryFromBackend.total_pft != null && salesSummaryFromBackend.total_pft !== undefined) {
                     profitAmt = Number(salesSummaryFromBackend.total_pft) || 0;

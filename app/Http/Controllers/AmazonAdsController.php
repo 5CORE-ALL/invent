@@ -8,6 +8,7 @@ use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCvrRule;
+use App\Support\AmazonAdsBgtDilRule;
 use App\Support\AmazonAdsBgtPrcRule;
 use App\Support\AmazonAdsBgtReviewsRule;
 use App\Support\AmazonAdsBgtViewsRule;
@@ -75,7 +76,7 @@ class AmazonAdsController extends Controller
      * @var list<string>
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
-        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'sbgt',
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPC2',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'pageCvr', 'viewsL30', 'viewsL7',
@@ -175,7 +176,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `sbgt` follow `bgt` when the table has campaign budget.
+     * `campaignStatus` (Stat) sits immediately before `bgt`; `ruleStatus` follows Stat; `bgtAcos` then `bgtViews` then `bgtCvr` then `bgtPrc` then `bgtReviews` then `bgtDil` then `sbgt` follow `bgt` when the table has campaign budget.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -268,12 +269,12 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // BGT ACOS, Bgt Views, Bgt Cvr, BGT PRC, Bgt Reviews, then SBGT immediately after BGT.
+        // BGT ACOS, Bgt Views, Bgt Cvr, BGT PRC, Bgt Reviews, Bgt Dil, then SBGT immediately after BGT.
         if (in_array('campaignBudgetAmount', self::orderedColumnsForTable($table), true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil'));
             $idxBgtForSbgt = array_search('bgt', $ordered, true);
             if ($idxBgtForSbgt !== false) {
-                array_splice($ordered, $idxBgtForSbgt + 1, 0, ['bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'sbgt']);
+                array_splice($ordered, $idxBgtForSbgt + 1, 0, ['bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt']);
             }
         }
 
@@ -503,12 +504,12 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews.
+     * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil.
      * Explicit BGT ACOS of 0 zeros the total (pause — $0 will not push).
      */
-    private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null): ?int
+    private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null): ?int
     {
-        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews);
+        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil);
     }
 
     /**
@@ -2895,6 +2896,7 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtCvrRule' => AmazonAdsBgtCvrRule::resolvedRule(),
             'amazonAdsBgtPrcRule' => AmazonAdsBgtPrcRule::resolvedRule(),
             'amazonAdsBgtReviewsRule' => AmazonAdsBgtReviewsRule::resolvedRule(),
+            'amazonAdsBgtDilRule' => AmazonAdsBgtDilRule::resolvedRule(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
         ]);
@@ -3133,6 +3135,53 @@ class AmazonAdsController extends Controller
         return response()->json([
             'message' => 'BGT Vs REVIEWS saved. Bgt Reviews on the grid will use the new Reviews bands after reload.',
             'rule' => AmazonAdsBgtReviewsRule::resolvedRule(),
+            'status' => 200,
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Current Dil% → Bgt Dil rule (BGT Vs Dil modal).
+     */
+    public function getBgtDilRule(): JsonResponse
+    {
+        AmazonAdsBgtDilRule::forgetResolvedCache();
+
+        return response()->json([
+            'rule' => AmazonAdsBgtDilRule::resolvedRule(),
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Persist Dil% bands → Bgt Dil; grid uses the new mapping after reload.
+     */
+    public function saveBgtDilRule(Request $request): JsonResponse
+    {
+        try {
+            $normalized = AmazonAdsBgtDilRule::normalizeRule($request->all());
+            AmazonAdsBgtDilRule::persistRule($normalized);
+            AmazonAdsBgtDilRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save BGT Vs Dil rule.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'BGT Vs Dil saved. Bgt Dil on the grid will use the new Dil% bands after reload.',
+            'rule' => AmazonAdsBgtDilRule::resolvedRule(),
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -3727,7 +3776,7 @@ class AmazonAdsController extends Controller
         $needSkuMetrics = $needRuleStatus || in_array('sbgt', $columns, true)
             || in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
             || in_array('bgtCvr', $columns, true) || in_array('bgtPrc', $columns, true)
-            || in_array('bgtReviews', $columns, true)
+            || in_array('bgtReviews', $columns, true) || in_array('bgtDil', $columns, true)
             || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true);
         foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
             if (in_array($skuCol, $columns, true)) {
@@ -3874,10 +3923,20 @@ class AmazonAdsController extends Controller
                 if (in_array('ovl30', $columns, true)) {
                     $arr['ovl30'] = $mSku['ovl30'];
                 }
-                if (in_array('dil', $columns, true)) {
+                if (in_array('dil', $columns, true) || in_array('bgtDil', $columns, true) || in_array('sbgt', $columns, true)) {
                     $invForDil = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
                     $ovlForDil = isset($mSku['ovl30']) && is_numeric($mSku['ovl30']) ? (float) $mSku['ovl30'] : null;
-                    $arr['dil'] = AmazonAdsCampaignSkuMetrics::tabulatorDil($invForDil, $ovlForDil);
+                    $dilVal = AmazonAdsCampaignSkuMetrics::tabulatorDil($invForDil, $ovlForDil);
+                    if (in_array('dil', $columns, true)) {
+                        $arr['dil'] = $dilVal;
+                    }
+                    if (in_array('bgtDil', $columns, true) || in_array('sbgt', $columns, true)) {
+                        $hitDil = AmazonAdsBgtDilRule::apply($dilVal);
+                        $arr['bgtDil'] = $hitDil['bgt'];
+                        $arr['bgt_dil_color'] = $hitDil['color'];
+                        $arr['bgt_dil_label'] = $hitDil['label'];
+                        $arr['bgt_dil_value'] = $dilVal;
+                    }
                 }
                 if (in_array('price', $columns, true) || in_array('bgtPrc', $columns, true) || in_array('sbgt', $columns, true)) {
                     $arr['price'] = $mSku['price'];
@@ -4024,7 +4083,8 @@ class AmazonAdsController extends Controller
                     $arr['bgtCvr'] ?? null,
                     $arr['bgtAcos'] ?? null,
                     $arr['bgtPrc'] ?? null,
-                    $arr['bgtReviews'] ?? null
+                    $arr['bgtReviews'] ?? null,
+                    $arr['bgtDil'] ?? null
                 );
             }
             if (in_array('Cvr', $columns, true)) {

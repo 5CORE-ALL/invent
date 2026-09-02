@@ -16,6 +16,7 @@ use App\Services\TopDawgApiService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -41,6 +42,11 @@ class TopDawgPricingController extends Controller
 
     public function dataJson(Request $request): JsonResponse
     {
+        // PHP-FPM default is 128M; ProductMaster::all() + amazon_data_view blobs
+        // peak ~156MB and fatal before the catch — Tabulator stays empty.
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(120);
+
         try {
             $response = $this->getViewTopDawgTabularData($request);
             $payload = json_decode($response->getContent(), true);
@@ -95,26 +101,23 @@ class TopDawgPricingController extends Controller
 
     public function getViewTopDawgTabularData(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(120);
+
         $percentageValue = $this->marketplacePercentage() / 100;
 
-        $productMasterRows = ProductMaster::all()
-            ->filter(fn ($item) => stripos($item->sku, 'PARENT') === false)
+        // Only the columns this page uses — product_master rows include huge
+        // description/image blobs, and ProductMaster::all() OOMs PHP-FPM (128M).
+        $productMasterRows = ProductMaster::query()
+            ->select(['sku', 'parent', 'Values'])
+            ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+            ->get()
             ->keyBy('sku');
 
         $skus = $productMasterRows->pluck('sku')->toArray();
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
-        $amazonStandardPrices = [];
-        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
-            $val = is_array($adv->value)
-                ? $adv->value
-                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
-            $std = $val['STANDARD_PRICE'] ?? null;
-            if (is_numeric($std) && (float) $std > 0) {
-                $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
-            }
-        }
+        $amazonStandardPrices = $this->amazonStandardPricesBySku($skus);
 
         $topdawgData = Schema::hasTable('topdawg_products')
             ? TopDawgProduct::buildLookupByNormalizedSku($skus)
@@ -125,10 +128,11 @@ class TopDawgPricingController extends Controller
         $orderL30BySku = $hasOrderMetrics ? $this->fetchL30OrderAggregatesBySku() : [];
 
         $dataViews = Schema::hasTable('topdawg_data_views')
-            ? TopDawgDataView::whereIn('sku', $skus)->get()->keyBy('sku')
+            ? TopDawgDataView::whereIn('sku', $skus)->get(['sku', 'value'])->keyBy('sku')
             : collect();
 
-        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('topdawg', $skus);
+        $promoService = app(ChannelPromoPricingService::class);
+        $promoMap = $promoService->mapForSkus('topdawg', $skus);
 
         $processedData = [];
 
@@ -236,7 +240,7 @@ class TopDawgPricingController extends Controller
             }
 
             $row['STANDARD_PRICE'] = $amazonStandardPrices[strtoupper(trim((string) $sku))] ?? null;
-            $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
+            $row = $promoService->applyToRow($row, $promoMap, (string) $sku);
 
             $processedData[] = $row;
         }
@@ -377,6 +381,49 @@ class TopDawgPricingController extends Controller
         } catch (\Throwable $e) {
             Log::warning('TopDawg saveDailySummaryIfNeeded: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Std Prc from amazon_data_view.STANDARD_PRICE without loading the full value JSON.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    private function amazonStandardPricesBySku(array $skus): array
+    {
+        $out = [];
+        if ($skus === [] || ! Schema::hasTable('amazon_data_view')) {
+            return $out;
+        }
+
+        try {
+            $rows = DB::table('amazon_data_view')
+                ->whereIn('sku', $skus)
+                ->selectRaw("sku, JSON_UNQUOTE(JSON_EXTRACT(value, '$.STANDARD_PRICE')) as std")
+                ->get();
+            foreach ($rows as $row) {
+                $std = $row->std ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    $out[strtoupper(trim((string) $row->sku))] = round((float) $std, 2);
+                }
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg amazonStandardPricesBySku JSON extract failed: '.$e->getMessage());
+        }
+
+        foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $out[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+
+        return $out;
     }
 
     /**

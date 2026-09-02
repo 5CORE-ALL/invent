@@ -50,6 +50,31 @@ class TemuShopifySalesService
     }
 
     /**
+     * Temu 3 sheet L30 includes today. Seller Center exports already contain
+     * today's orders; excluding yesterday-only (Temu 1/2 API) hides every just-uploaded row.
+     */
+    public static function temu3SheetL30Window(): array
+    {
+        $end = Carbon::now(self::PST)->endOfDay();
+
+        return [
+            $end->copy()->subDays(29)->startOfDay(),
+            $end,
+        ];
+    }
+
+    /** 30 Pacific days immediately before the Temu 3 sheet L30 window. */
+    public static function temu3SheetL60Window(): array
+    {
+        $end = Carbon::now(self::PST);
+
+        return [
+            $end->copy()->subDays(59)->startOfDay(),
+            $end->copy()->subDays(30)->endOfDay(),
+        ];
+    }
+
+    /**
      * Take-home decimal from marketplace_percentages (percentage ÷ 100).
      * Tries marketplace name aliases in order. No hardcoded Temu/Temu2 defaults.
      */
@@ -440,8 +465,11 @@ class TemuShopifySalesService
         $appTz = config('app.timezone');
         $start = $startDate->copy()->setTimezone($appTz);
         $end = $endDate->copy()->setTimezone($appTz);
+        // Compare as wall-clock strings so timestamp TZ conversion cannot drop today's sheet rows.
+        $startStr = $start->format('Y-m-d H:i:s');
+        $endStr = $end->format('Y-m-d H:i:s');
 
-        $orders = Temu3Order::whereBetween('purchase_date', [$start, $end])
+        $orders = Temu3Order::whereBetween('purchase_date', [$startStr, $endStr])
             ->where(function ($q) {
                 $q->whereNull('order_status')
                     ->orWhereRaw('UPPER(order_status) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
