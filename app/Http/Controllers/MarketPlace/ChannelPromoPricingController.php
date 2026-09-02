@@ -1393,6 +1393,9 @@ class ChannelPromoPricingController extends Controller
             ->where('channel_name', $channel.'_dil_vs_groi')
             ->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
+            $saved = $saved['rules'];
+        }
         if (! is_array($saved) || $saved === []) {
             return response()->json([
                 'success' => true,
@@ -1425,6 +1428,10 @@ class ChannelPromoPricingController extends Controller
         }
 
         $incoming = $request->input('rules');
+        if (! is_array($incoming) && is_string($request->input('rules'))) {
+            $decoded = json_decode((string) $request->input('rules'), true);
+            $incoming = is_array($decoded) ? $decoded : null;
+        }
         if (! is_array($incoming)) {
             return response()->json(['success' => false, 'message' => 'rules array required'], 422);
         }

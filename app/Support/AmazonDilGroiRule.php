@@ -16,11 +16,11 @@ class AmazonDilGroiRule
     public static function defaults(): array
     {
         return [
-            self::make(0.1, 5.0, 70),
-            self::make(5.0, 10.0, 65),
+            self::make(0.1, 5.0, 50),
+            self::make(5.0, 10.0, 55),
             self::make(10.0, 15.0, 60),
-            self::make(15.0, 20.0, 55),
-            self::make(20.0, 25.0, 50),
+            self::make(15.0, 20.0, 65),
+            self::make(20.0, 25.0, 70),
         ];
     }
 

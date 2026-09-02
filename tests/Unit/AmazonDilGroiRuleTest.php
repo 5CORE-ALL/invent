@@ -15,10 +15,10 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame('0.1–5%', $rules[0]['label']);
         $this->assertSame(0.1, $rules[0]['min']);
         $this->assertSame(5.0, $rules[0]['max']);
-        $this->assertSame(70.0, $rules[0]['groi']);
+        $this->assertSame(50.0, $rules[0]['groi']);
         $this->assertSame('20-25', $rules[4]['key']);
         $this->assertSame('20–25%', $rules[4]['label']);
-        $this->assertSame(50.0, $rules[4]['groi']);
+        $this->assertSame(70.0, $rules[4]['groi']);
     }
 
     public function test_slab_key_boundaries(): void
@@ -39,8 +39,8 @@ class AmazonDilGroiRuleTest extends TestCase
     public function test_groi_for_dil_uses_matching_slab(): void
     {
         $rules = AmazonDilGroiRule::defaults();
-        $this->assertSame(70.0, AmazonDilGroiRule::groiForDil(2.5, $rules));
-        $this->assertSame(65.0, AmazonDilGroiRule::groiForDil(7, $rules));
+        $this->assertSame(50.0, AmazonDilGroiRule::groiForDil(2.5, $rules));
+        $this->assertSame(55.0, AmazonDilGroiRule::groiForDil(7, $rules));
         $this->assertNull(AmazonDilGroiRule::groiForDil(0, $rules));
         $this->assertNull(AmazonDilGroiRule::groiForDil(30, $rules));
     }

@@ -666,7 +666,7 @@
                         <code>(LP × (1 + GROI%/100) + Ship) / 0.80</code>
                         from the first slab that contains the SKU Dil.
                         INV = 0, missing LP, or Dil outside every slab → blank.
-                        Changing the first Target GROI% fills the rest (−5 each).
+                        Changing the first Target GROI% fills the rest (+5 each, increasing down the table).
                         Add or delete slabs as needed (at least one).
                         If <strong>A L30 = 0</strong> (0 Sold on Amazon), Target GROI is the
                         <strong>minimum</strong> value in this table (not the Dil slab).
@@ -749,12 +749,13 @@
         let amzCdHistChart = null;
         let amzCdLiveCounts = {};
         const AMZ_DIL_GROI_DEFAULTS = [
-            { key: '0.1-5', label: '0.1–5%', min: 0.1, max: 5, groi: 70 },
-            { key: '5-10', label: '5–10%', min: 5, max: 10, groi: 65 },
+            { key: '0.1-5', label: '0.1–5%', min: 0.1, max: 5, groi: 50 },
+            { key: '5-10', label: '5–10%', min: 5, max: 10, groi: 55 },
             { key: '10-15', label: '10–15%', min: 10, max: 15, groi: 60 },
-            { key: '15-20', label: '15–20%', min: 15, max: 20, groi: 55 },
-            { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 50 },
+            { key: '15-20', label: '15–20%', min: 15, max: 20, groi: 65 },
+            { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 70 },
         ];
+        const AMZ_DIL_GROI_LS_KEY = 'amz_dil_vs_groi_rules';
         let amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzDgDilPieChart = null;
         let amzDgCvrPieChart = null;
@@ -1512,13 +1513,24 @@
                 amzScheduleRuleSpriceSync({ force: true, delay: 250 });
             }
         }
+        function amzDilGroiWriteLocal(rules) {
+            try { localStorage.setItem(AMZ_DIL_GROI_LS_KEY, JSON.stringify(rules || [])); } catch (e) { /* ignore */ }
+        }
+        function amzDilGroiReadLocal() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(AMZ_DIL_GROI_LS_KEY) || 'null');
+                return amzNormalizeDilGroiList(Array.isArray(raw) ? raw : (raw && raw.rules));
+            } catch (e) {
+                return [];
+            }
+        }
         function cascadeAmzDilGroiFromFirst() {
             const $rows = $('#amz-dil-groi-tbody tr');
             if (!$rows.length) return;
             const firstVal = parseFloat($rows.eq(0).find('.amz-dg-groi').val());
             if (!isFinite(firstVal)) return;
             $rows.each(function(i) {
-                const groi = firstVal - (i * 5);
+                const groi = firstVal + (i * 5);
                 const $inp = $(this).find('.amz-dg-groi');
                 if (i > 0) $inp.val(groi);
             });
@@ -1553,7 +1565,7 @@
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm amz-dil-groi-input amz-dg-groi" '
                     + 'step="0.1" value="' + r.groi + '"'
-                    + (first ? ' title="Changing this sets following slabs to −5 each"' : '')
+                    + (first ? ' title="Changing this sets following slabs to +5 each"' : '')
                     + '>'
                     + '</td>'
                     + '<td class="text-center">'
@@ -1596,14 +1608,14 @@
         function amzDilGroiAddSlab() {
             readAmzDilGroiRulesFromModal();
             let nextMin = 0.1;
-            let lastGroi = 70;
+            let lastGroi = 50;
             amzDilGroiRules.forEach(function(r) {
                 const hi = Number(r.max);
                 if (isFinite(hi) && hi > nextMin) nextMin = hi;
                 if (isFinite(Number(r.groi))) lastGroi = Number(r.groi);
             });
             const nextMax = amzPefRound2(nextMin + 5);
-            const nextGroi = Math.max(0, amzPefRound2(lastGroi - 5));
+            const nextGroi = Math.max(0, amzPefRound2(lastGroi + 5));
             const added = amzNormalizeDilGroiRule({ min: nextMin, max: nextMax, groi: nextGroi });
             if (!added) {
                 amzPefToast('error', 'Could not add slab');
@@ -1644,32 +1656,62 @@
                     url: '/channel-promo-pricing/amazon/dil-groi',
                     method: 'GET',
                     dataType: 'json',
+                    headers: { 'Accept': 'application/json' },
                 });
-                if (res && Array.isArray(res.rules) && res.rules.length) {
-                    const loaded = amzNormalizeDilGroiList(res.rules);
-                    if (loaded.length) amzDilGroiRules = loaded;
+                const fromServer = amzNormalizeDilGroiList(
+                    (res && Array.isArray(res.rules)) ? res.rules
+                        : (res && res.rules && Array.isArray(res.rules.rules) ? res.rules.rules : [])
+                );
+                const fromLocal = amzDilGroiReadLocal();
+                if (fromServer.length && !(res && res.is_default)) {
+                    amzDilGroiRules = fromServer;
+                    amzDilGroiWriteLocal(fromServer);
+                } else if (fromLocal.length) {
+                    amzDilGroiRules = fromLocal;
+                } else if (fromServer.length) {
+                    amzDilGroiRules = fromServer;
                 }
                 renderAmzDilGroiModalTable();
                 redrawAmzSprcDilColumn();
-                $('#amz-dil-groi-status').text(res && res.is_default
-                    ? 'Using first-time defaults (0.1–5 → 70 … 20–25 → 50). Add or delete slabs, then Save Rule.'
-                    : 'Loaded saved Dil → GROI slabs for Amazon.');
+                if (fromServer.length && !(res && res.is_default)) {
+                    $('#amz-dil-groi-status').text('Loaded saved Dil → GROI slabs for Amazon.');
+                } else if (fromLocal.length) {
+                    $('#amz-dil-groi-status').text('Loaded last saved Dil → GROI slabs. Click Save Rule to store on the server.');
+                } else {
+                    $('#amz-dil-groi-status').text('Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Add or delete slabs, then Save Rule.');
+                }
             } catch (e) {
+                const local = amzDilGroiReadLocal();
+                if (local.length) amzDilGroiRules = local;
                 renderAmzDilGroiModalTable();
-                $('#amz-dil-groi-status').text('Could not load saved rules — using defaults.');
+                const reason = (e && e.responseJSON && e.responseJSON.message)
+                    || (e && e.status ? ('HTTP ' + e.status) : 'network error');
+                $('#amz-dil-groi-status').text(
+                    local.length
+                        ? ('Server load failed (' + reason + ') — showing last saved slabs. Click Save Rule.')
+                        : ('Could not load saved rules (' + reason + ') — using defaults.')
+                );
             }
         }
         function saveAmzDilGroiRules() {
             const rules = readAmzDilGroiRulesFromModal();
+            amzDilGroiWriteLocal(rules);
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi',
                 method: 'POST',
-                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: { rules: rules, _token: amzPefCsrf() },
+                headers: {
+                    'X-CSRF-TOKEN': amzPefCsrf(),
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                data: JSON.stringify({ rules: rules, _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && Array.isArray(res.rules)) {
                     const saved = amzNormalizeDilGroiList(res.rules);
-                    if (saved.length) amzDilGroiRules = saved;
+                    if (saved.length) {
+                        amzDilGroiRules = saved;
+                        amzDilGroiWriteLocal(saved);
+                    }
                     renderAmzDilGroiModalTable();
                 }
                 amzAfterDilGroiRulesChanged();
