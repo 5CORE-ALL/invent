@@ -5163,6 +5163,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/compliance-master/update', [CategoryController::class, 'updateComplianceMaster'])->name('compliance.master.update');
     Route::post('/compliance-master/field-image', [CategoryController::class, 'uploadComplianceFieldImage'])->name('compliance.master.field.image');
     Route::post('/compliance-master/field-pdf', [CategoryController::class, 'uploadComplianceFieldPdf'])->name('compliance.master.field.pdf');
+    Route::post('/compliance-master/field-file/delete', [CategoryController::class, 'deleteComplianceFieldFile'])->name('compliance.master.field.file.delete');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
     Route::post('/compliance-master/badge-snapshot', [CategoryController::class, 'snapshotComplianceMasterBadges'])->name('compliance.master.badge.snapshot');
     Route::get('/packing-instructions-master', [CategoryController::class, 'packingInstructionsMaster'])->name('packing.instructions.master');

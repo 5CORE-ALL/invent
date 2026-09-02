@@ -3995,6 +3995,91 @@ PROMPT;
     }
 
     /**
+     * Remove an uploaded compliance image or PDF from Values and public storage.
+     */
+    public function deleteComplianceFieldFile(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph',
+                'kind' => 'required|string|in:image,pdf',
+            ]);
+
+            $product = $this->findProductMasterBySkuForCompliance($validated['sku']);
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found for this SKU.',
+                ], 404);
+            }
+
+            $values = is_array($product->Values) ? $product->Values
+                : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            if (! is_array($values)) {
+                $values = [];
+            }
+
+            $field = $validated['field'];
+            $pathKey = $validated['kind'] === 'pdf' ? $field.'_pdf' : $field.'_img';
+            $storedPath = trim((string) ($values[$pathKey] ?? ''));
+            $values[$pathKey] = '';
+            $product->Values = $values;
+            $product->save();
+
+            $this->deleteComplianceStoredPublicFile($storedPath);
+
+            self::forgetMissingComplianceSidebarCountCache();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'File removed.',
+                'sku' => $validated['sku'],
+                'field' => $field,
+                'kind' => $validated['kind'],
+                $pathKey => '',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: '.$e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Compliance field file delete: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Delete failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function deleteComplianceStoredPublicFile(string $storedPath): void
+    {
+        $path = trim(str_replace('\\', '/', $storedPath));
+        if ($path === '') {
+            return;
+        }
+        $path = preg_replace('#^/+#', '', $path) ?? $path;
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+        if (! str_starts_with($path, 'compliance_field_images/')
+            && ! str_starts_with($path, 'compliance_field_pdfs/')) {
+            return;
+        }
+
+        try {
+            if (Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+            }
+        } catch (\Throwable $e) {
+            Log::info('Compliance field file delete skipped: '.$e->getMessage());
+        }
+    }
+
+    /**
      * True when any compliance field key is already stored (including N/A), so Add should use Edit instead.
      */
     private function complianceMasterRowHasFieldKeys(array $values): bool
