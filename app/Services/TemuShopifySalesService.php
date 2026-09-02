@@ -6,6 +6,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
+use App\Models\Temu2Pricing;
 use App\Models\TemuMetric;
 use App\Models\TemuOrder;
 use App\Support\ProductMasterTemuShip;
@@ -15,8 +16,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Temu L30/L60/L7/Y sales from `temu_orders` (app:fetch-temu-orders).
- * Temu 2 L30/L60/L7 sales from `temu2_orders` (app:fetch-temu2-orders) — not sheet uploads.
- * Line price from temu_metrics / temu2_metrics (or order_base_amount); LP / ship from product_master.
+ * Temu 2 L30/L60/L7/Y sales from `temu2_orders` (app:fetch-temu2-orders) — not sheet uploads, not Shopify.
+ * Line price from temu_metrics / temu2_metrics / temu2_pricing (or order_base_amount); LP / ship from product_master.
  */
 class TemuShopifySalesService
 {
@@ -291,9 +292,11 @@ class TemuShopifySalesService
      *
      * @return array{sales: float, orders: int, qty: int, pft: float, cogs: float}
      */
-    public static function computeMetricsFromOrders(Carbon $startDate, Carbon $endDate): array
+    public static function computeMetricsFromOrders(Carbon $startDate, Carbon $endDate, bool $isTemu2 = false): array
     {
-        $rows = self::getOrdersTableRows($startDate, $endDate);
+        $rows = $isTemu2
+            ? self::getTemu2OrdersTableRows($startDate, $endDate)
+            : self::getOrdersTableRows($startDate, $endDate);
 
         if (empty($rows)) {
             return ['sales' => 0.0, 'base_sales' => 0.0, 'orders' => 0, 'qty' => 0, 'pft' => 0.0, 'cogs' => 0.0];
@@ -360,6 +363,36 @@ class TemuShopifySalesService
         // with L7/L30/L60 + the tabulator, which all use base_sales. Using the FB-adjusted
         // figure (base + $2.99/unit freight) here inflated Y Sales above what Temu reports.
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
+    }
+
+    /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
+    public static function computeYSalesFromTemu2Orders(): ?float
+    {
+        if (! Schema::hasTable('temu2_orders') || ! Temu2Order::whereNotNull('parent_order_time')->exists()) {
+            return null;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+
+        return (float) self::computeMetricsFromOrders(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay(),
+            true
+        )['base_sales'];
+    }
+
+    /** L7 Sales from temu2_orders: seven wall-clock Pacific days ending yesterday. */
+    public static function computeL7SalesFromTemu2Orders(): ?float
+    {
+        if (! Schema::hasTable('temu2_orders') || ! Temu2Order::whereNotNull('parent_order_time')->exists()) {
+            return null;
+        }
+
+        $latestPacific = Carbon::now(self::PST);
+        $end = $latestPacific->copy()->subDay()->endOfDay();
+        $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
+
+        return (float) self::computeMetricsFromOrders($start, $end, true)['base_sales'];
     }
 
     /** L7 Sales from temu_orders: seven wall-clock Pacific days ending yesterday. */
@@ -434,9 +467,24 @@ class TemuShopifySalesService
         $skuList = $skus->filter()->unique()->values()->toArray();
         $metricsTable = $isTemu2 ? 'temu2_metrics' : 'temu_metrics';
         $metricsModel = $isTemu2 ? Temu2Metric::class : TemuMetric::class;
-        $priceBySku = ! empty($skuList) && Schema::hasTable($metricsTable)
-            ? $metricsModel::whereIn('sku', $skuList)->pluck('base_price', 'sku')
-            : collect();
+        $priceBySku = collect();
+        if (! empty($skuList) && Schema::hasTable($metricsTable)) {
+            $metricRows = $metricsModel::whereIn('sku', $skuList)->get();
+            foreach ($metricRows as $metricRow) {
+                $priceBySku[$metricRow->sku] = self::resolveListingBasePrice(
+                    $metricRow->base_price ?? null,
+                    $metricRow->recommended_base_price ?? null
+                );
+            }
+        }
+        if ($isTemu2 && ! empty($skuList) && Schema::hasTable('temu2_pricing')) {
+            $pricingBySku = Temu2Pricing::whereIn('sku', $skuList)->pluck('base_price', 'sku');
+            foreach ($pricingBySku as $skuKey => $unit) {
+                if ((float) ($priceBySku[$skuKey] ?? 0) <= 0 && (float) $unit > 0) {
+                    $priceBySku[$skuKey] = $unit;
+                }
+            }
+        }
 
         $result = [];
 
@@ -457,8 +505,9 @@ class TemuShopifySalesService
             // is the line total for this sub-order, so per-unit = amount / qty. Fall back
             // to metrics catalog price when the amount hasn't been fetched yet.
             $price = (float) ($priceBySku[$sku] ?? 0);
-            if ($o->order_base_amount !== null && $quantity > 0) {
-                $price = ((float) $o->order_base_amount) / $quantity;
+            $orderAmount = $o->order_base_amount !== null ? (float) $o->order_base_amount : 0.0;
+            if ($orderAmount > 0 && $quantity > 0) {
+                $price = $orderAmount / $quantity;
             }
 
             $fbPrice = self::computeFbPrice($price, $quantity);

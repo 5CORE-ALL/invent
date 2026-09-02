@@ -14,7 +14,7 @@ use App\Models\EbayOrder;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
-use App\Models\Temu2DailyData;
+use App\Models\Temu2Order;
 use App\Models\TemuOrder;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
@@ -472,91 +472,26 @@ class YesterdayMarketplaceMetricsService
      */
     private function temu2(Carbon $start, Carbon $end, string $date): array
     {
-        $normalizeSku = static function ($sku) {
-            $sku = strtoupper(trim((string) $sku));
-            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-            $sku = preg_replace('/\s+/', ' ', $sku);
-
-            return $sku;
-        };
-
-        $pmSkus = ProductMaster::query()
-            ->pluck('sku')
-            ->filter(fn ($sku) => stripos((string) $sku, 'PARENT') === false)
-            ->unique()
-            ->values();
-        $normalizedPmSet = [];
-        $noSpaceToNormalized = [];
-        foreach ($pmSkus as $s) {
-            $nk = $normalizeSku($s);
-            $normalizedPmSet[$nk] = true;
-            $noSpace = str_replace(' ', '', $nk);
-            if ($noSpace !== '') {
-                $noSpaceToNormalized[$noSpace] = $nk;
-            }
-        }
-
-        $latest = Temu2DailyData::whereNotNull('purchase_date')->max('purchase_date');
-        $window = $this->latestCompleteDay($latest, 'naive');
+        $latest = Temu2Order::query()->whereNotNull('parent_order_time')->max('parent_order_time');
+        $window = $this->latestCompleteDay($latest, 'to_pacific');
         if ($window !== null) {
             [$start, $end, $date] = $window;
         }
 
-        $margin = TemuShopifySalesService::temu2MarginDecimal();
-        $parentsBySku = ProductMaster::query()->pluck('parent', 'sku');
-        $rows = Temu2DailyData::where('purchase_date', '>=', $start)
-            ->where('purchase_date', '<=', $end)
-            ->get();
-
-        $baseSales = 0.0;
-        $fbSales = 0.0;
-        $pft = 0.0;
-        $cogs = 0.0;
-        $qty = 0;
-        $orders = [];
-
-        foreach ($rows as $row) {
-            $rawSku = trim((string) ($row->contribution_sku ?? ''));
-            if ($rawSku === '') {
-                continue;
-            }
-
-            $quantity = (int) ($row->quantity_purchased ?? 0);
-            $basePrice = (float) ($row->base_price_total ?? 0);
-            if ($quantity <= 0 || $basePrice <= 0) {
-                continue;
-            }
-
-            $pm = $this->pm($rawSku);
-            $parent = (string) ($parentsBySku[$rawSku] ?? '');
-            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
-                continue;
-            }
-
-            // Y Sales matches All Marketplace: base price × qty, no Product Master / order_id filter.
-            $baseSales += $basePrice * $quantity;
-
-            $orderId = trim((string) ($row->order_id ?? ''));
-            $normalizedRowSku = $normalizeSku($rawSku);
-            $normalizedRowSkuNoSpace = str_replace(' ', '', $normalizedRowSku);
-            $inPm = isset($normalizedPmSet[$normalizedRowSku]) || isset($noSpaceToNormalized[$normalizedRowSkuNoSpace]);
-            if (! $inPm) {
-                continue;
-            }
-
-            $fbPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
-            $fbSales += $fbPrice * $quantity;
-            $qty += $quantity;
-            if ($orderId !== '') {
-                $orders[$orderId] = true;
-            }
-            $cogs += $pm['lp'] * $quantity;
-            $pft += ($fbPrice * $margin - $pm['lp'] - $pm['temu_ship']) * $quantity;
-        }
-
+        $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
         $ads = $this->temuAdMetrics('temu2_campaign_reports', $date);
 
-        return $this->pack($baseSales, $fbSales, $pft, $cogs, $ads['spend'], count($orders), $qty, $fbSales, $ads['sales']);
+        return $this->pack(
+            (float) $m['base_sales'],
+            (float) $m['sales'],
+            (float) $m['pft'],
+            (float) $m['cogs'],
+            $ads['spend'],
+            (int) $m['orders'],
+            (int) $m['qty'],
+            (float) $m['sales'],
+            $ads['sales']
+        );
     }
 
     /**

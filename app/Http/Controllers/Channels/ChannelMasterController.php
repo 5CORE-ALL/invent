@@ -7271,10 +7271,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu / Temu 2 Y Sales: same clock as Amazon — revenue for the calendar day before the latest
-     * purchase_date in Pacific. FB price × qty matches marketplace_daily_metrics L30 rules:
-     * Temu = ProductMaster-filtered rows (same as calculateTemuMetrics); Temu 2 = all temu2_daily_data rows
-     * except PARENT-child SKUs (same as calculateTemu2Metrics).
+     * Temu / Temu 2 Y Sales: wall-clock Pacific yesterday from temu_orders / temu2_orders
+     * (same clock as Amazon). Not sheet uploads and not Shopify.
      */
     private function computeTemuYSalesLikeAmazon(bool $isTemu2): ?float
     {
@@ -7282,94 +7280,7 @@ class ChannelMasterController extends Controller
             return TemuShopifySalesService::computeYSalesFromOrders();
         }
 
-        $modelClass = Temu2DailyData::class;
-
-        try {
-            $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
-            if (!$latest) {
-                return null;
-            }
-
-            // purchase_date is the Temu export's own (Pacific) date — use as-is, no tz shift
-            // (converting it moved the day back incorrectly). max − 1 day = last complete day.
-            $yesterdayAnchor = Carbon::parse($latest)->subDay();
-            $yStartPacific = $yesterdayAnchor->copy()->startOfDay();
-            $yEndPacific = $yesterdayAnchor->copy()->endOfDay();
-
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-
-                return $sku;
-            };
-
-            $normalizedPmSet = [];
-            if (!$isTemu2) {
-                $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-                    ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                    ->orderBy('sku', 'asc')
-                    ->pluck('sku')
-                    ->filter(function ($sku) {
-                        return stripos($sku, 'PARENT') === false;
-                    })
-                    ->unique()
-                    ->values()
-                    ->all();
-
-                $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-                    return [$normalizeSku($s) => true];
-                })->all();
-            }
-
-            $productMastersBySku = ProductMaster::all()->keyBy('sku');
-            $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
-                return $normalizeSku($pm->sku ?? '');
-            });
-
-            $rows = $modelClass::where('purchase_date', '>=', $yStartPacific)
-                ->where('purchase_date', '<=', $yEndPacific)
-                ->get();
-
-            $totalYSales = 0.0;
-
-            foreach ($rows as $row) {
-                if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
-                    continue;
-                }
-                if (!$isTemu2) {
-                    if (!$row->order_id || trim((string) $row->order_id) === '') {
-                        continue;
-                    }
-                    if (!isset($normalizedPmSet[$normalizeSku($row->contribution_sku ?? '')])) {
-                        continue;
-                    }
-                }
-
-                $pm = $productMastersBySku[$row->contribution_sku]
-                    ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
-                    ?? null;
-                $parent = $pm ? $pm->parent : '';
-                if ($parent && str_starts_with((string) $parent, 'PARENT')) {
-                    continue;
-                }
-
-                $quantity = (int) ($row->quantity_purchased ?? 0);
-                $basePrice = (float) ($row->base_price_total ?? 0);
-
-                if ($quantity > 0 && $basePrice > 0) {
-                    // Base price × qty to mirror Temu's "Base price sales" daily chart
-                    // (matches /temu-tabulator + /temu2-tabulator Y Sales).
-                    $totalYSales += $basePrice * $quantity;
-                }
-            }
-
-            return round($totalYSales, 2);
-        } catch (\Throwable $e) {
-            Log::warning('computeTemuYSalesLikeAmazon failed: ' . $e->getMessage());
-
-            return null;
-        }
+        return TemuShopifySalesService::computeYSalesFromTemu2Orders();
     }
 
     /**
@@ -7997,91 +7908,7 @@ class ChannelMasterController extends Controller
             return TemuShopifySalesService::computeL7SalesFromOrders();
         }
 
-        $modelClass = Temu2DailyData::class;
-
-        try {
-            $latest = $modelClass::whereNotNull('purchase_date')->max('purchase_date');
-            if (!$latest) {
-                return null;
-            }
-
-            $latestPacific = Carbon::parse($latest)->timezone('America/Los_Angeles');
-            [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
-
-            $normalizeSku = function ($sku) {
-                $sku = strtoupper(trim((string) $sku));
-                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-                $sku = preg_replace('/\s+/', ' ', $sku);
-
-                return $sku;
-            };
-
-            $normalizedPmSet = [];
-            if (!$isTemu2) {
-                $productMasterSkus = ProductMaster::orderBy('parent', 'asc')
-                    ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                    ->orderBy('sku', 'asc')
-                    ->pluck('sku')
-                    ->filter(function ($sku) {
-                        return stripos($sku, 'PARENT') === false;
-                    })
-                    ->unique()
-                    ->values()
-                    ->all();
-
-                $normalizedPmSet = collect($productMasterSkus)->mapWithKeys(function ($s) use ($normalizeSku) {
-                    return [$normalizeSku($s) => true];
-                })->all();
-            }
-
-            $productMastersBySku = ProductMaster::all()->keyBy('sku');
-            $productMastersByNormalized = ProductMaster::all()->keyBy(function ($pm) use ($normalizeSku) {
-                return $normalizeSku($pm->sku ?? '');
-            });
-
-            $rows = $modelClass::where('purchase_date', '>=', $l7StartPacific)
-                ->where('purchase_date', '<=', $l7EndPacific)
-                ->get();
-
-            $total = 0.0;
-
-            foreach ($rows as $row) {
-                if (!$row->contribution_sku || trim((string) $row->contribution_sku) === '') {
-                    continue;
-                }
-                if (!$isTemu2) {
-                    if (!$row->order_id || trim((string) $row->order_id) === '') {
-                        continue;
-                    }
-                    if (!isset($normalizedPmSet[$normalizeSku($row->contribution_sku ?? '')])) {
-                        continue;
-                    }
-                }
-
-                $pm = $productMastersBySku[$row->contribution_sku]
-                    ?? $productMastersByNormalized[$normalizeSku($row->contribution_sku)]
-                    ?? null;
-                $parent = $pm ? $pm->parent : '';
-                if ($parent && str_starts_with((string) $parent, 'PARENT')) {
-                    continue;
-                }
-
-                $quantity = (int) ($row->quantity_purchased ?? 0);
-                $basePrice = (float) ($row->base_price_total ?? 0);
-                $sub = $basePrice * $quantity;
-                $fbPrice = $sub < 27 ? $basePrice + 2.99 : $basePrice;
-
-                if ($quantity > 0 && $basePrice > 0) {
-                    $total += $fbPrice * $quantity;
-                }
-            }
-
-            return round($total, 2);
-        } catch (\Throwable $e) {
-            Log::warning('computeTemuL7SalesLikeAmazon failed: ' . $e->getMessage());
-
-            return null;
-        }
+        return TemuShopifySalesService::computeL7SalesFromTemu2Orders();
     }
 
     /**
@@ -16166,6 +15993,9 @@ class ChannelMasterController extends Controller
                 $chartData = $metric === 'y_sales'
                     ? $this->buildDailyYSalesChart($channel, $days, $isAll)
                     : $this->buildDailyWindowChart($channel, $metric, $days, $isAll);
+                if ($metric === 'y_sales' && ! $isAll) {
+                    $chartData = $this->overlayLiveYSalesOnChart($channel, $chartData);
+                }
                 $chartData = $this->pinChartSeriesLastToTable(
                     $chartData,
                     $channel,
@@ -16521,6 +16351,9 @@ class ChannelMasterController extends Controller
 
             if ($metric === 'y_sales' && ! $useL7Window) {
                 $chartData = $this->extendYSalesChartThroughYesterday($channel, $chartData, $isAll);
+                if (! $isAll) {
+                    $chartData = $this->overlayLiveYSalesOnChart($channel, $chartData);
+                }
             }
 
             $chartData = $this->collapseTrailingEqualChartPoints(
@@ -16626,6 +16459,12 @@ class ChannelMasterController extends Controller
         }
 
         ksort($byDateChannel);
+        foreach ($byDateChannel as $asOf => $channels) {
+            $liveAmazon = $this->realPacificDayYSales('amazon', $asOf);
+            if ($liveAmazon !== null) {
+                $byDateChannel[$asOf]['amazon'] = $liveAmazon;
+            }
+        }
         $out = [];
         foreach ($byDateChannel as $asOf => $channels) {
             $out[] = [
@@ -17622,11 +17461,12 @@ class ChannelMasterController extends Controller
                 return self::$pacificDayYSalesCache[$key];
             }
 
-            if ($channel === 'temu') {
+            if ($channel === 'temu' || $channel === 'temu2') {
                 $day = Carbon::parse($ymd, TemuShopifySalesService::PST);
                 self::$pacificDayYSalesCache[$key] = (float) TemuShopifySalesService::computeMetricsFromOrders(
                     $day->copy()->startOfDay(),
-                    $day->copy()->endOfDay()
+                    $day->copy()->endOfDay(),
+                    $channel === 'temu2'
                 )['base_sales'];
 
                 return self::$pacificDayYSalesCache[$key];
@@ -17640,6 +17480,100 @@ class ChannelMasterController extends Controller
         }
 
         return self::$pacificDayYSalesCache[$key];
+    }
+
+    /**
+     * Replace Y Sales chart points with live Pacific-day order totals.
+     * Snapshots saved mid-day freeze a partial pull; the last point is pinned
+     * to the table, so the previous day looks collapsed after the calendar rolls.
+     *
+     * @param  list<array{date: string, value: float}>  $chartData
+     * @return list<array{date: string, value: float}>
+     */
+    private function overlayLiveYSalesOnChart(string $channel, array $chartData): array
+    {
+        $channel = $this->allMarketplaceSnapshotKey($channel);
+        if (! in_array($channel, ['amazon', 'temu2'], true) || $chartData === []) {
+            return $chartData;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $now = now($tz);
+        foreach ($chartData as &$pt) {
+            $label = trim((string) ($pt['date'] ?? ''));
+            if ($label === '') {
+                continue;
+            }
+            try {
+                $parsed = Carbon::parse($label, $tz);
+                if ($parsed->gt($now)) {
+                    $parsed->subYear();
+                }
+                $live = $this->realPacificDayYSales($channel, $parsed->toDateString());
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($live !== null) {
+                $pt['value'] = round((float) $live, 2);
+            }
+        }
+        unset($pt);
+
+        return $chartData;
+    }
+
+    /**
+     * Snapshot D stores y_sales for D−1. After D−1 closes, rewrite yesterday's
+     * snapshot from live orders so the chart does not keep a mid-day freeze.
+     */
+    private function healClosedAmazonYSalesSnapshot(): void
+    {
+        $this->healClosedChannelYSalesSnapshot('amazon');
+    }
+
+    private function healClosedChannelYSalesSnapshot(string $channel): void
+    {
+        $channel = $this->allMarketplaceSnapshotKey($channel);
+        $tz = 'America/Los_Angeles';
+        $lookback = $channel === 'temu2' ? 14 : 1;
+        $lookupKeys = $this->allMarketplaceSnapshotLookupKeys($channel);
+
+        for ($offset = 0; $offset <= $lookback; $offset++) {
+            $priorSnapshot = now($tz)->subDays($offset)->toDateString();
+            $closedDay = now($tz)->subDays($offset + 1)->toDateString();
+            $live = $this->realPacificDayYSales($channel, $closedDay);
+            if ($live === null) {
+                continue;
+            }
+
+            if ($offset === 0) {
+                foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $calc) {
+                    if ($this->allMarketplaceSnapshotKey((string) $calc->channel) !== $channel) {
+                        continue;
+                    }
+                    if ($calc->yesterday_sales !== null && abs((float) $calc->yesterday_sales - $live) < 0.01) {
+                        continue;
+                    }
+                    $calc->yesterday_sales = $live;
+                    $calc->save();
+                }
+            }
+
+            $rows = \App\Models\ChannelMasterSummary::query()
+                ->whereIn('channel', $lookupKeys)
+                ->whereDate('snapshot_date', $priorSnapshot)
+                ->get();
+            foreach ($rows as $row) {
+                $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data);
+                if (array_key_exists('y_sales', $sd) && abs((float) $sd['y_sales'] - $live) < 0.01) {
+                    continue;
+                }
+                $sd['y_sales'] = $live;
+                $row->summary_data = $sd;
+                $row->notes = 'Y Sales healed from closed Pacific day '.$closedDay;
+                $row->save();
+            }
+        }
     }
 
     /**
@@ -18248,6 +18182,10 @@ class ChannelMasterController extends Controller
             ];
         }
 
+        if (! $isAll) {
+            $out = $this->overlayLiveYSalesOnChart($channel, $out);
+        }
+
         return $out;
     }
 
@@ -18463,6 +18401,20 @@ class ChannelMasterController extends Controller
         if ($lastIdx === null) {
             return $chartData;
         }
+
+        // Stale calculated_data.yesterday_sales (copied sheet days) must not
+        // overwrite the live Pacific-yesterday overlay for Amazon / Temu 2.
+        $channelKey = $this->allMarketplaceSnapshotKey($channel);
+        if ($metric === 'y_sales' && in_array($channelKey, ['amazon', 'temu2'], true)) {
+            $closed = now('America/Los_Angeles')->subDay()->toDateString();
+            $live = $this->realPacificDayYSales($channelKey, $closed);
+            if ($live !== null) {
+                $chartData[$lastIdx]['value'] = round((float) $live, 2);
+
+                return $chartData;
+            }
+        }
+
         $chartData[$lastIdx]['value'] = round((float) $tableRef, 2);
 
         return $chartData;
@@ -18922,6 +18874,9 @@ class ChannelMasterController extends Controller
             foreach (['ebay', 'ebaytwo', 'ebaythree'] as $repairChannel) {
                 ChannelMasterViewsGuard::repairChannel($repairChannel);
             }
+
+            $this->healClosedAmazonYSalesSnapshot();
+            $this->healClosedChannelYSalesSnapshot('temu2');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
