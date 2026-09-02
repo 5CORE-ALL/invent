@@ -68,11 +68,16 @@
                         @endif
                     </div>
                     <div class="card-body">
+                        <div class="alert alert-info small mb-3">
+                            Set <strong>Callback URL</strong> in
+                            <a href="https://openapi.alibaba.com" target="_blank" rel="noopener">openapi.alibaba.com</a>
+                            → App Overview to exactly:
+                            <br>
+                            <code class="user-select-all">{{ $redirectUri }}</code>
+                        </div>
                         <p class="text-muted small mb-3">
-                            Optional OAuth uses <code>auth.alibaba.com</code> with <code>site=alibaba</code>.
-                            Do not use <code>auth.1688.com</code> for Alibaba.com — that host returns “不支持的站点”.
-                            Callback in the app console must stay
-                            <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com/index' }}</code>.
+                            Then click <strong>Connect with Alibaba</strong>. After you authorize, Alibaba sends a <code>code</code> here and we exchange it for <code>ALIBABA_ACCESS_TOKEN</code>.
+                            Use <code>auth.alibaba.com</code> (Alibaba.com), not <code>auth.1688.com</code>.
                         </p>
 
                         <table class="table table-sm table-bordered mb-3">

@@ -84,8 +84,8 @@ class AlibabaAuthService
     public function redirectUri(): string
     {
         $redirect = trim((string) (config('services.alibaba.redirect_uri') ?: env('ALIBABA_REDIRECT_URI', '')));
-        if ($redirect === '' || str_ends_with(rtrim($redirect, '/'), '/alibaba/callback')) {
-            $redirect = rtrim((string) config('app.url'), '/').'/index';
+        if ($redirect === '' || str_ends_with(rtrim($redirect, '/'), '/index')) {
+            $redirect = 'https://inventory.5coremanagement.com/alibaba/callback';
         }
 
         return $redirect;

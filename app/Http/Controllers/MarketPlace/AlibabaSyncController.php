@@ -133,6 +133,7 @@ class AlibabaSyncController extends Controller
         }
         $request->session()->put($claimKey, true);
         $request->session()->forget('alibaba_oauth_state');
+        \Illuminate\Support\Facades\Cache::forget('alibaba_oauth_state');
 
         $result = $this->persistOAuthTokensFromCode($code);
         if (! empty($result['success'])) {

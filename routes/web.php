@@ -451,6 +451,9 @@ Route::match(['get', 'post'], '/tiktok/exchange', [\App\Http\Controllers\MarketP
 
 // TikTok Shop 2 OAuth — /index must match TIKTOK2_REDIRECT_URI (public; TikTok redirects here)
 Route::get('/index', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'callback'])->name('tiktok2.oauth.callback');
+
+// Alibaba.com Open Platform OAuth — public so the seller redirect is not lost on login
+Route::get('/alibaba/callback', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'oauthCallback'])->name('alibaba.oauth.callback');
 Route::get('/tiktok2/connect', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'connect'])->name('tiktok2.oauth.connect');
 Route::get('/tiktok2/test-connection', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'testConnection'])->name('tiktok2.oauth.test');
 Route::match(['get', 'post'], '/tiktok2/exchange', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'exchangeForm'])->name('tiktok2.oauth.exchange');
@@ -811,7 +814,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
-    Route::get('/alibaba/callback', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'oauthCallback'])->name('alibaba.oauth.callback');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls'])->group(function () {
