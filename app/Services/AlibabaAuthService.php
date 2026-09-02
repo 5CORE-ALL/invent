@@ -20,16 +20,26 @@ class AlibabaAuthService
         $appKey = (string) config('services.alibaba.app_key');
         $redirect = $this->redirectUri();
         $state = $state ?: bin2hex(random_bytes(8));
-        $site = (string) (config('services.alibaba.oauth_site') ?: 'alibaba');
-        $authUrl = (string) (config('services.alibaba.auth_base') ?: 'https://auth.1688.com/oauth/authorize');
+        $site = strtolower((string) (config('services.alibaba.oauth_site') ?: 'alibaba'));
+        if (! in_array($site, ['alibaba', '1688'], true)) {
+            $site = 'alibaba';
+        }
+
+        // auth.1688.com only accepts site=1688 ("不支持的站点" for site=alibaba).
+        $defaultHost = $site === '1688'
+            ? 'https://auth.1688.com/oauth/authorize'
+            : 'https://auth.alibaba.com/oauth/authorize';
+        $authUrl = (string) (config('services.alibaba.auth_base') ?: $defaultHost);
 
         if (
             str_contains($authUrl, 'authorize.htm')
             || str_contains($authUrl, 'oauth.alibaba.com')
             || str_contains($authUrl, 'aliexpress.com')
             || str_contains($authUrl, 'gw.api.alibaba.com')
+            || ($site === 'alibaba' && str_contains($authUrl, 'auth.1688.com'))
+            || ($site === '1688' && str_contains($authUrl, 'auth.alibaba.com'))
         ) {
-            $authUrl = 'https://auth.1688.com/oauth/authorize';
+            $authUrl = $defaultHost;
         }
 
         $params = [
