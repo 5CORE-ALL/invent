@@ -712,6 +712,54 @@
             color: #842029;
             border: 1px solid #f5c2c7;
         }
+        #sof-doba-orders-badge {
+            background: #e0f2fe;
+            color: #075985;
+            border: 1px solid #7dd3fc;
+        }
+        #sof-doba-orders-badge .sof-doba-pending-alert,
+        #sof-doba-orders-tab-count .sof-doba-pending-alert {
+            color: #dc3545;
+            margin-left: 4px;
+            font-size: 0.75rem;
+        }
+        #sof-doba-orders-badge.has-pending {
+            background: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+        }
+        #sof-doba-nonprepaid-table .tabulator-row.sof-doba-shipped-row .tabulator-cell,
+        #sof-doba-prepaid-table .tabulator-row.sof-doba-shipped-row .tabulator-cell {
+            background: #e8f5e9;
+        }
+        .sof-doba-section-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 0 6px;
+        }
+        .sof-doba-ld-select {
+            appearance: auto;
+            border: 0;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            padding: 3px 4px;
+            color: #fff;
+            cursor: pointer;
+            min-width: 92px;
+        }
+        .sof-doba-ld-select.is-send {
+            background: #dc3545;
+        }
+        .sof-doba-ld-select.is-done {
+            background: #198754;
+        }
+        .sof-doba-ld-select option {
+            color: #111;
+            background: #fff;
+        }
         #sof-all-order-table .tabulator-row:has(.sof-text-dot-wrap:hover) {
             z-index: 5;
             position: relative;
@@ -1091,6 +1139,9 @@
                             <span class="badge sof-summary-badge" id="sof-loss-making-badge" title="Loss-making orders in the last 7 days — click to open the tab">
                                 Loss Making: <span id="sof-loss-making-total">0</span>
                             </span>
+                            <span class="badge sof-summary-badge" id="sof-doba-orders-badge" title="Pending Doba labels still on Send label — click to open the tab">
+                                Doba Orders: <span id="sof-doba-orders-total">0</span><span class="sof-doba-pending-alert" id="sof-doba-orders-pending-alert" hidden title="Pending labels"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i></span>
+                            </span>
                             <button type="button"
                                     id="sof-pull-tracking-btn"
                                     class="btn btn-sm btn-outline-secondary ms-1"
@@ -1237,6 +1288,13 @@
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-doba-orders-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-doba-orders-pane" type="button" role="tab"
+                                    aria-controls="sof-doba-orders-pane" aria-selected="false">
+                                Doba Orders <span class="badge ms-1" id="sof-doba-orders-tab-count" style="background:#f8d7da;color:#842029;border:1px solid #f5c2c7;">0 <i class="fas fa-exclamation-triangle sof-doba-pending-alert" aria-hidden="true"></i></span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
                             <button class="nav-link" id="sof-fulfilled-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-fulfilled-pane" type="button" role="tab"
                                     aria-controls="sof-fulfilled-pane" aria-selected="false">
@@ -1301,6 +1359,21 @@
                         <div class="tab-pane fade" id="sof-pending-pane" role="tabpanel" aria-labelledby="sof-pending-tab">
                             <p class="small text-muted mb-2 sof-date-scope-hint">Orders still waiting for a shipping label (no tracking number yet) in the selected date range. Red triangle = not shipped for more than 25 hours.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
+                            <p class="small text-muted mb-2">
+                                Doba warehouse queue. Use <strong>ld</strong> — hover for “label sent to dispatch”.
+                                Default is <strong>send label</strong>. Change to <strong>done</strong> after the label is sent; that row hides.
+                                <label class="ms-2 mb-0" style="font-weight:500;color:#334155;">
+                                    <input type="checkbox" id="sof-doba-include-shipped" class="form-check-input me-1">
+                                    Show done
+                                </label>
+                            </p>
+                            <div class="sof-doba-section-title">Non-prepaid <span class="badge" id="sof-doba-nonprepaid-count" style="background:#fff3cd;color:#856404;border:1px solid #ffe69c;">0</span></div>
+                            <div id="sof-doba-nonprepaid-table" style="height: calc((100vh - 480px) / 2); min-height: 220px;"></div>
+                            <div class="sof-doba-section-title mt-3">Prepaid <span class="badge" id="sof-doba-prepaid-count" style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;">0</span></div>
+                            <div id="sof-doba-prepaid-table" style="height: calc((100vh - 480px) / 2); min-height: 220px;"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
@@ -1675,6 +1748,12 @@
     let lossMakingRows = [];
     let lossMakingTableLoaded = false;
     let lossMakingTableLoading = false;
+    let dobaNonprepaidTable = null;
+    let dobaPrepaidTable = null;
+    let dobaNonprepaidRows = [];
+    let dobaPrepaidRows = [];
+    let dobaOrdersTableLoading = false;
+    let dobaOrdersOpenCount = 0;
 
     function escapeHtml(str) {
         return String(str ?? '')
@@ -1974,6 +2053,7 @@
         applyInvoicedFilters();
         applyDeliveredFilters();
         applyAllOrderFilters();
+        applyDobaOrdersFilters();
         applyFilters();
         sofUpdateTrackingFilterCounts();
     }
@@ -2005,6 +2085,7 @@
             ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
             ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', function () { return lossMakingRows; }],
+            ['#sof-doba-orders-tab', '#sof-doba-orders-pane', function () { return dobaNonprepaidRows.concat(dobaPrepaidRows); }],
         ];
         for (let i = 0; i < pairs.length; i++) {
             if (sofOrderTabIsActive(pairs[i][0], pairs[i][1])) {
@@ -2026,6 +2107,8 @@
         if (tbl === deliveredTable) return deliveredRows;
         if (tbl === allOrderTable) return allOrderRows;
         if (tbl === lossMakingTable) return lossMakingRows;
+        if (tbl === dobaNonprepaidTable) return dobaNonprepaidRows;
+        if (tbl === dobaPrepaidTable) return dobaPrepaidRows;
         return null;
     }
 
@@ -2033,6 +2116,7 @@
         const caches = [
             pendingRows, fulfilledRows, scanDoneRows, inTransitRows,
             inReceivedRows, invoicedRows, deliveredRows, allOrderRows, lossMakingRows,
+            dobaNonprepaidRows, dobaPrepaidRows,
         ];
         let best = [];
         for (let i = 0; i < caches.length; i++) {
@@ -2106,6 +2190,7 @@
         sofUpdateDateFilterHint();
         [table, pendingTable, fulfilledTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, allOrderTable]
             .forEach(sofReloadAjaxTable);
+        loadDobaOrdersData();
         // Carrier is client-side; re-apply after reload starts completing via dataLoaded.
         sofApplyAllCarrierFilters();
     }
@@ -2163,6 +2248,7 @@
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', lossMakingTable],
+            ['#sof-doba-orders-tab', '#sof-doba-orders-pane', dobaNonprepaidTable || dobaPrepaidTable],
         ];
     }
 
@@ -2805,6 +2891,7 @@
         [
             fulfilledTable, inTransitTable, deliveredTable, scanDoneTable,
             pendingTable, inReceivedTable, invoicedTable, allOrderTable, table,
+            dobaNonprepaidTable, dobaPrepaidTable,
         ].forEach(function (t) {
             if (!t) return;
             try {
@@ -4844,11 +4931,350 @@
         sofWireOrderTable(lossMakingTable);
     }
 
+    function sofDobaIncludeShipped() {
+        const el = document.getElementById('sof-doba-include-shipped');
+        return !!(el && el.checked);
+    }
+
+    function updateDobaOrdersCounts(openCount, nonPrepaidCount, prepaidCount) {
+        const open = Number(openCount || 0);
+        const np = Number(nonPrepaidCount || 0);
+        const pp = Number(prepaidCount || 0);
+        dobaOrdersOpenCount = open;
+        const tabCount = document.getElementById('sof-doba-orders-tab-count');
+        const badgeEl = document.getElementById('sof-doba-orders-total');
+        const badgeWrap = document.getElementById('sof-doba-orders-badge');
+        const alertEl = document.getElementById('sof-doba-orders-pending-alert');
+        const npEl = document.getElementById('sof-doba-nonprepaid-count');
+        const ppEl = document.getElementById('sof-doba-prepaid-count');
+        const triangle = ' <i class="fas fa-exclamation-triangle sof-doba-pending-alert" title="Pending labels" aria-hidden="true"></i>';
+        if (tabCount) {
+            tabCount.innerHTML = open.toLocaleString() + (open > 0 ? triangle : '');
+            tabCount.style.background = open > 0 ? '#f8d7da' : '#e0f2fe';
+            tabCount.style.color = open > 0 ? '#842029' : '#075985';
+            tabCount.style.borderColor = open > 0 ? '#f5c2c7' : '#7dd3fc';
+        }
+        if (badgeEl) badgeEl.textContent = open.toLocaleString();
+        if (badgeWrap) badgeWrap.classList.toggle('has-pending', open > 0);
+        if (alertEl) alertEl.hidden = open <= 0;
+        if (npEl) npEl.textContent = np.toLocaleString();
+        if (ppEl) ppEl.textContent = pp.toLocaleString();
+    }
+
+    function applyDobaOrdersFilters() {
+        sofApplyOrderTableFilter(dobaNonprepaidTable, '#sof-order-search');
+        sofApplyOrderTableFilter(dobaPrepaidTable, '#sof-order-search');
+    }
+
+    function sofDobaOrderIdFormatter(cell) {
+        const row = cell.getRow().getData() || {};
+        const orderId = (cell.getValue() || row.order_id || '').toString().trim();
+        if (!orderId) return '<span class="sof-oc-missing">—</span>';
+        const url = (row.order_url || '').trim();
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-order-id-wrap';
+        if (url) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = orderId;
+            a.addEventListener('click', function (ev) { ev.stopPropagation(); });
+            wrap.appendChild(a);
+        } else {
+            wrap.appendChild(document.createTextNode(orderId));
+        }
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'sof-order-id-copy';
+        copyBtn.title = 'Copy Order ID';
+        copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+        copyBtn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            copyTextToClipboard(orderId, copyBtn);
+        });
+        wrap.appendChild(copyBtn);
+        return wrap;
+    }
+
+    function sofDobaLdTone(select, isDone) {
+        select.classList.toggle('is-done', !!isDone);
+        select.classList.toggle('is-send', !isDone);
+    }
+
+    function sofDobaLdFormatter(cell) {
+        const row = cell.getRow().getData() || {};
+        const isDone = !!row.warehouse_shipped;
+        const select = document.createElement('select');
+        select.className = 'sof-doba-ld-select ' + (isDone ? 'is-done' : 'is-send');
+        select.title = 'label sent to dispatch';
+        select.setAttribute('aria-label', 'label sent to dispatch');
+        const optSend = document.createElement('option');
+        optSend.value = 'send';
+        optSend.textContent = 'send label';
+        const optDone = document.createElement('option');
+        optDone.value = 'done';
+        optDone.textContent = 'done';
+        select.appendChild(optSend);
+        select.appendChild(optDone);
+        select.value = isDone ? 'done' : 'send';
+        select.addEventListener('click', function (ev) { ev.stopPropagation(); });
+        select.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
+        select.addEventListener('change', function () {
+            const done = select.value === 'done';
+            sofDobaLdTone(select, done);
+            markDobaOrderShipped(row, done, select, cell.getRow());
+        });
+        return select;
+    }
+
+    function markDobaOrderShipped(row, shipped, control, tabRow) {
+        const orderNo = String((row && row.order_id) || '').trim();
+        if (!orderNo) {
+            if (control) control.value = shipped ? 'send' : 'done';
+            return;
+        }
+        control.disabled = true;
+        $.ajax({
+            url: '{{ route("sales.order.fulfillment.doba.orders.mark.shipped") }}',
+            type: 'POST',
+            data: { order_no: orderNo, shipped: shipped ? 1 : 0 },
+            headers: { 'X-CSRF-TOKEN': sofCsrf() },
+            success: function (res) {
+                control.disabled = false;
+                if (!res || !res.success) {
+                    control.value = shipped ? 'send' : 'done';
+                    sofDobaLdTone(control, !shipped);
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Could not save', text: (res && res.message) || 'Failed to update ld status.' });
+                    }
+                    return;
+                }
+                row.warehouse_shipped = !!shipped;
+                row.warehouse_shipped_at = shipped ? (row.warehouse_shipped_at || '') : null;
+                sofDobaLdTone(control, shipped);
+                if (tabRow) {
+                    try { tabRow.update(row); } catch (e) {}
+                    if (shipped) {
+                        tabRow.getElement().classList.add('sof-doba-shipped-row');
+                    } else {
+                        tabRow.getElement().classList.remove('sof-doba-shipped-row');
+                    }
+                }
+                if (shipped && !sofDobaIncludeShipped()) {
+                    try { tabRow.delete(); } catch (e2) {}
+                    dobaNonprepaidRows = dobaNonprepaidRows.filter(function (r) { return r.order_id !== orderNo; });
+                    dobaPrepaidRows = dobaPrepaidRows.filter(function (r) { return r.order_id !== orderNo; });
+                    dobaOrdersOpenCount = Math.max(0, dobaOrdersOpenCount - 1);
+                    updateDobaOrdersCounts(dobaOrdersOpenCount, dobaNonprepaidRows.length, dobaPrepaidRows.length);
+                } else if (!shipped) {
+                    dobaOrdersOpenCount += 1;
+                    updateDobaOrdersCounts(dobaOrdersOpenCount, dobaNonprepaidRows.length, dobaPrepaidRows.length);
+                }
+            },
+            error: function (xhr) {
+                control.disabled = false;
+                control.value = shipped ? 'send' : 'done';
+                sofDobaLdTone(control, !shipped);
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to update ld status.';
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Could not save', text: msg });
+                }
+            },
+        });
+    }
+
+    function dobaOrderColumns() {
+        return [
+            {
+                title: 'ld',
+                field: 'warehouse_shipped',
+                width: 110,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: true,
+                headerTooltip: 'label sent to dispatch',
+                formatter: sofDobaLdFormatter,
+            },
+            {
+                title: 'Order ID',
+                field: 'order_id',
+                minWidth: 120,
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: sofDobaOrderIdFormatter,
+            },
+            {
+                title: 'Date',
+                field: 'order_date',
+                minWidth: 148,
+                headerHozAlign: 'center',
+                sorter: sofDateSorter,
+                formatter: sofFormatOrderDateCell,
+            },
+            {
+                title: 'Status',
+                field: 'status_label',
+                minWidth: 110,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: function (cell) {
+                    const label = escapeHtml(cell.getValue() || '—');
+                    return '<span class="sof-pending-badge">' + label + '</span>';
+                },
+            },
+            {
+                title: 'SKU',
+                field: 'sku',
+                minWidth: 200,
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: function (cell) {
+                    const sku = (cell.getValue() || '').toString().trim();
+                    return sku ? '<code>' + escapeHtml(sku) + '</code>' : '—';
+                },
+            },
+            {
+                title: 'Product',
+                field: 'display_title',
+                minWidth: 160,
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: function (cell) {
+                    const t = (cell.getValue() || '').toString().trim();
+                    return t ? escapeHtml(t) : '—';
+                },
+            },
+            {
+                title: 'Qty',
+                field: 'quantity',
+                minWidth: 60,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+            },
+            {
+                title: 'Amount',
+                field: 'amount',
+                minWidth: 80,
+                hozAlign: 'right',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                formatter: function (cell) {
+                    const v = cell.getValue();
+                    if (v === null || v === undefined || v === '') return '—';
+                    return Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                },
+            },
+            {
+                title: 'Tracking',
+                field: 'tracking_number',
+                minWidth: 168,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: formatTrackingCell,
+            },
+            {
+                title: 'Carrier',
+                field: 'tracking_company',
+                minWidth: 110,
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: formatCarrierCell,
+            },
+        ];
+    }
+
+    function applyDobaRowsToTables() {
+        if (dobaNonprepaidTable) {
+            try { dobaNonprepaidTable.setData(dobaNonprepaidRows); } catch (e) {}
+        }
+        if (dobaPrepaidTable) {
+            try { dobaPrepaidTable.setData(dobaPrepaidRows); } catch (e2) {}
+        }
+        applyDobaOrdersFilters();
+        sofUpdateTrackingFilterCounts(dobaNonprepaidRows.concat(dobaPrepaidRows));
+    }
+
+    function makeDobaOrdersTable(selector, placeholder) {
+        return new Tabulator(selector, Object.assign({}, sofLocalTableOpts, {
+            layout: 'fitColumns',
+            placeholder: placeholder,
+            initialSort: [{ column: 'order_date', dir: 'desc' }],
+            rowFormatter: function (row) {
+                if ((row.getData() || {}).warehouse_shipped) {
+                    row.getElement().classList.add('sof-doba-shipped-row');
+                }
+            },
+            columns: dobaOrderColumns(),
+        }));
+    }
+
+    function loadDobaOrdersData() {
+        if (dobaOrdersTableLoading) return;
+        dobaOrdersTableLoading = true;
+        $.ajax({
+            url: '{{ route("sales.order.fulfillment.doba.orders.data") }}',
+            type: 'GET',
+            data: Object.assign({}, sofDateParams(), { include_shipped: sofDobaIncludeShipped() ? 1 : 0 }),
+            timeout: 0,
+            success: function (response) {
+                dobaOrdersTableLoading = false;
+                const ok = response && response.success;
+                dobaNonprepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.non_prepaid) ? response.non_prepaid : []);
+                dobaPrepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.prepaid) ? response.prepaid : []);
+                updateDobaOrdersCounts(
+                    ok && response.open_count != null ? response.open_count : (dobaNonprepaidRows.length + dobaPrepaidRows.length),
+                    dobaNonprepaidRows.length,
+                    dobaPrepaidRows.length
+                );
+                applyDobaRowsToTables();
+            },
+            error: function () {
+                dobaOrdersTableLoading = false;
+                dobaNonprepaidRows = [];
+                dobaPrepaidRows = [];
+                updateDobaOrdersCounts(0, 0, 0);
+                applyDobaRowsToTables();
+            },
+        });
+    }
+
+    function ensureDobaOrdersTables() {
+        if (!dobaNonprepaidTable) {
+            dobaNonprepaidTable = makeDobaOrdersTable('#sof-doba-nonprepaid-table', 'No non-prepaid Doba orders in this date range.');
+        }
+        if (!dobaPrepaidTable) {
+            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No prepaid Doba orders in this date range.');
+        }
+        setTimeout(function () {
+            try { dobaNonprepaidTable.redraw(true); } catch (e) {}
+            try { dobaPrepaidTable.redraw(true); } catch (e2) {}
+        }, 50);
+        loadDobaOrdersData();
+    }
+
+    function switchToDobaOrdersTab() {
+        const tabBtn = document.getElementById('sof-doba-orders-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        ensureDobaOrdersTables();
+    }
+
     document.getElementById('sof-all-order-tab')?.addEventListener('shown.bs.tab', function () {
         ensureAllOrderTable();
     });
     document.getElementById('sof-loss-making-tab')?.addEventListener('shown.bs.tab', function () {
         ensureLossMakingTable();
+    });
+    document.getElementById('sof-doba-orders-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureDobaOrdersTables();
     });
     document.getElementById('sof-pending-tab')?.addEventListener('shown.bs.tab', function () {
         ensurePendingTable();
@@ -4893,6 +5319,13 @@
     document.getElementById('sof-loss-making-badge')?.addEventListener('click', function () {
         switchToLossMakingTab();
     });
+    document.getElementById('sof-doba-orders-badge')?.addEventListener('click', function () {
+        switchToDobaOrdersTab();
+    });
+    document.getElementById('sof-doba-include-shipped')?.addEventListener('change', function () {
+        loadDobaOrdersData();
+    });
+    loadDobaOrdersData();
     $('#sof-search').on('keyup', function (e) {
         if (e.key === 'Enter') {
             applyFilters();
