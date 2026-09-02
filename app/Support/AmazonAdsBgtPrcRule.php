@@ -10,13 +10,11 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Campaign Price (Amz list / LMP) → suggested daily budget (BGT PRC).
- * Five fixed slabs: 20–40, 41–60, 61–100, 101–150, >150. Price below 20 has no Bgt.
+ * Dynamic slabs evaluated top to bottom. Defaults are Pink (high price) → Red (low price).
  */
 final class AmazonAdsBgtPrcRule
 {
-    public const CACHE_KEY = 'amazon_ads_bgt_prc_rule_resolved_v1';
-
-    public const SLAB_COUNT = 5;
+    public const CACHE_KEY = 'amazon_ads_bgt_prc_rule_resolved_v2';
 
     /**
      * @return array<int, array{prc_from: float, prc_to: float, bgt: int, label: string, color: string}>
@@ -24,11 +22,11 @@ final class AmazonAdsBgtPrcRule
     public static function defaultBands(): array
     {
         return [
-            ['prc_from' => 20, 'prc_to' => 40, 'bgt' => 1, 'label' => 'Red', 'color' => '#a00211'],
-            ['prc_from' => 41, 'prc_to' => 60, 'bgt' => 2, 'label' => 'Yellow', 'color' => '#ffc107'],
-            ['prc_from' => 61, 'prc_to' => 100, 'bgt' => 3, 'label' => 'Blue', 'color' => '#2563eb'],
-            ['prc_from' => 101, 'prc_to' => 150, 'bgt' => 4, 'label' => 'Green', 'color' => '#28a745'],
             ['prc_from' => 151, 'prc_to' => 9999, 'bgt' => 5, 'label' => 'Pink', 'color' => '#e83e8c'],
+            ['prc_from' => 101, 'prc_to' => 150, 'bgt' => 4, 'label' => 'Green', 'color' => '#28a745'],
+            ['prc_from' => 61, 'prc_to' => 100, 'bgt' => 3, 'label' => 'Blue', 'color' => '#2563eb'],
+            ['prc_from' => 41, 'prc_to' => 60, 'bgt' => 2, 'label' => 'Yellow', 'color' => '#ffc107'],
+            ['prc_from' => 0, 'prc_to' => 40, 'bgt' => 1, 'label' => 'Red', 'color' => '#a00211'],
         ];
     }
 
@@ -38,34 +36,6 @@ final class AmazonAdsBgtPrcRule
     public static function defaults(): array
     {
         return ['bands' => self::defaultBands()];
-    }
-
-    /**
-     * Keep the five price ranges; overlay saved Bgt / label / color.
-     *
-     * @param  array<int, array<string, mixed>>|null  $existing
-     * @return array<int, array{prc_from: float, prc_to: float, bgt: int, label: string, color: string}>
-     */
-    public static function lockedSlabs(?array $existing = null): array
-    {
-        $defaults = self::defaultBands();
-        $out = [];
-        foreach ($defaults as $i => $def) {
-            $prev = is_array($existing[$i] ?? null) ? $existing[$i] : [];
-            $bgt = is_numeric($prev['bgt'] ?? null) ? (int) $prev['bgt'] : (int) $def['bgt'];
-            if ($bgt < 1) {
-                $bgt = (int) $def['bgt'];
-            }
-            $out[] = [
-                'prc_from' => (float) $def['prc_from'],
-                'prc_to' => (float) $def['prc_to'],
-                'bgt' => $bgt,
-                'label' => (string) ($prev['label'] ?? $def['label']),
-                'color' => (string) ($prev['color'] ?? $def['color']),
-            ];
-        }
-
-        return $out;
     }
 
     /**
@@ -99,6 +69,7 @@ final class AmazonAdsBgtPrcRule
     public static function forgetResolvedCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget('amazon_ads_bgt_prc_rule_resolved_v1');
     }
 
     /**
@@ -112,7 +83,76 @@ final class AmazonAdsBgtPrcRule
             $bandsIn = array_values($input['bands']);
         }
 
-        return ['bands' => self::lockedSlabs($bandsIn)];
+        $bands = [];
+        foreach ($bandsIn as $band) {
+            if (! is_array($band)) {
+                continue;
+            }
+            $bands[] = [
+                'prc_from' => (float) ($band['prc_from'] ?? 0),
+                'prc_to' => (float) ($band['prc_to'] ?? 9999),
+                'bgt' => (int) round((float) ($band['bgt'] ?? 0)),
+                'label' => (string) ($band['label'] ?? ''),
+                'color' => (string) ($band['color'] ?? '#6c757d'),
+            ];
+        }
+        if ($bands === []) {
+            $bands = self::defaultBands();
+        } else {
+            $bands = self::maybeFlipLegacyRedFirst($bands);
+            self::validateBands($bands);
+        }
+
+        return ['bands' => $bands];
+    }
+
+    /**
+     * Old locked slabs listed Red (low price) at the top. Flip that 5-slab set so Pink is first.
+     *
+     * @param  array<int, array{prc_from: float, prc_to: float, bgt: int, label: string, color: string}>  $bands
+     * @return array<int, array{prc_from: float, prc_to: float, bgt: int, label: string, color: string}>
+     */
+    public static function maybeFlipLegacyRedFirst(array $bands): array
+    {
+        if (count($bands) !== 5) {
+            return $bands;
+        }
+        $labels = array_map(
+            static fn (array $b): string => strtolower(trim((string) ($b['label'] ?? ''))),
+            $bands
+        );
+        if ($labels !== ['red', 'yellow', 'blue', 'green', 'pink']) {
+            return $bands;
+        }
+
+        return array_values(array_reverse($bands));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    public static function validateBands(array $bands): void
+    {
+        if ($bands === []) {
+            throw new \InvalidArgumentException('Add at least one Price slab.');
+        }
+        foreach ($bands as $i => $band) {
+            $from = (float) ($band['prc_from'] ?? NAN);
+            $to = (float) ($band['prc_to'] ?? NAN);
+            $bgt = (int) ($band['bgt'] ?? 0);
+            if (! is_finite($from) || ! is_finite($to)) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
+            }
+            if ($from > $to) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
+            }
+            if ($from < 0) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be 0 or more.');
+            }
+            if ($bgt < 0 || $bgt > 100_000) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Prc must be between 0 and 100000.');
+            }
+        }
     }
 
     /**
@@ -137,43 +177,28 @@ final class AmazonAdsBgtPrcRule
     public static function apply(?float $price, ?array $rule = null): array
     {
         $empty = ['bgt' => null, 'color' => '#6c757d', 'label' => ''];
-        if ($price === null || ! is_finite($price) || $price < 20) {
+        if ($price === null || ! is_finite($price)) {
             return $empty;
         }
         $r = $rule ?? self::resolvedRule();
-        $bands = array_values(array_filter($r['bands'] ?? [], 'is_array'));
-        if ($bands === []) {
-            return $empty;
-        }
-        $last = $bands[count($bands) - 1];
-        if ($price > 150) {
-            $bgt = (int) ($last['bgt'] ?? 0);
-
-            return [
-                'bgt' => $bgt > 0 ? $bgt : null,
-                'color' => (string) ($last['color'] ?? '#6c757d'),
-                'label' => (string) ($last['label'] ?? ''),
-            ];
-        }
-        foreach ($bands as $i => $band) {
-            if ($i === count($bands) - 1) {
+        foreach ($r['bands'] ?? [] as $band) {
+            if (! is_array($band)) {
                 continue;
             }
             $from = (float) ($band['prc_from'] ?? 0);
             $to = (float) ($band['prc_to'] ?? 9999);
-            $nextFrom = (float) ($bands[$i + 1]['prc_from'] ?? ($to + 1));
-            $hit = ($price >= $from && $price <= $to)
-                || ($price > $to && $price < $nextFrom);
-            if (! $hit) {
-                continue;
-            }
-            $bgt = (int) ($band['bgt'] ?? 0);
+            if ($price >= $from && $price <= $to) {
+                $bgt = (int) ($band['bgt'] ?? 0);
+                if ($bgt < 0) {
+                    return $empty;
+                }
 
-            return [
-                'bgt' => $bgt > 0 ? $bgt : null,
-                'color' => (string) ($band['color'] ?? '#6c757d'),
-                'label' => (string) ($band['label'] ?? ''),
-            ];
+                return [
+                    'bgt' => $bgt,
+                    'color' => (string) ($band['color'] ?? '#6c757d'),
+                    'label' => (string) ($band['label'] ?? ''),
+                ];
+            }
         }
 
         return $empty;

@@ -10,84 +10,25 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Amz page CVR L30 (parent A L30 ÷ Sess30 × 100) → suggested daily budget (Bgt Cvr).
- * Six default slabs: 0–4 plus five subsequent bands; first-row From/To/Bgt autofills the rest.
+ * Dynamic slabs evaluated top to bottom. Defaults are Purple (high CVR) → Red (low CVR).
  */
 final class AmazonAdsBgtCvrRule
 {
-    public const CACHE_KEY = 'amazon_ads_bgt_cvr_rule_resolved_v1';
-
-    public const SLAB_COUNT = 6;
+    public const CACHE_KEY = 'amazon_ads_bgt_cvr_rule_resolved_v2';
 
     /**
      * @return array<int, array{cvr_from: float, cvr_to: float, bgt: int, label: string, color: string}>
      */
     public static function defaultBands(): array
     {
-        return self::autofillFromFirst([
-            'cvr_from' => 0,
-            'cvr_to' => 4,
-            'bgt' => 1,
-            'label' => 'Red',
-            'color' => '#a00211',
-        ]);
-    }
-
-    /**
-     * Build 6 slabs from the first 0–4-style band. Subsequent From/To step by the first width;
-     * last To is 9999. Bgt Cvr increments by 1 from the first value.
-     *
-     * @param  array<string, mixed>  $first
-     * @return array<int, array{cvr_from: float, cvr_to: float, bgt: int, label: string, color: string}>
-     */
-    public static function autofillFromFirst(array $first, ?array $existing = null): array
-    {
-        $from = is_numeric($first['cvr_from'] ?? null) ? (float) $first['cvr_from'] : 0.0;
-        $to = is_numeric($first['cvr_to'] ?? null) ? (float) $first['cvr_to'] : 4.0;
-        if ($to < $from) {
-            $to = $from;
-        }
-        $width = $to - $from;
-        if ($width <= 0) {
-            $width = 4.0;
-            $to = $from + $width;
-        }
-        $bgt0 = is_numeric($first['bgt'] ?? null) ? (int) $first['bgt'] : 1;
-        if ($bgt0 < 1) {
-            $bgt0 = 1;
-        }
-        $labels = ['Red', 'Yellow', 'Blue', 'Green', 'Pink', 'Purple'];
-        $colors = ['#a00211', '#ffc107', '#2563eb', '#28a745', '#e83e8c', '#7c3aed'];
-
-        $out = [];
-        $cursorTo = $to;
-        for ($i = 0; $i < self::SLAB_COUNT; $i++) {
-            $prev = is_array($existing[$i] ?? null) ? $existing[$i] : [];
-            if ($i === 0) {
-                $bandFrom = $from;
-                $bandTo = $to;
-            } else {
-                // Contiguous with the previous To so decimal CVR (e.g. 4.2) is not dropped in a gap.
-                $bandFrom = $cursorTo;
-                $bandTo = ($i === self::SLAB_COUNT - 1) ? 9999.0 : ($cursorTo + $width);
-            }
-            $out[] = [
-                'cvr_from' => $bandFrom,
-                'cvr_to' => $bandTo,
-                'bgt' => $bgt0 + $i,
-                'label' => (string) ($prev['label'] ?? $labels[$i] ?? ('Band '.($i + 1))),
-                'color' => (string) ($prev['color'] ?? $colors[$i] ?? '#6c757d'),
-            ];
-            $cursorTo = $bandTo;
-        }
-        if ($existing !== null && isset($existing[0]) && is_array($existing[0])) {
-            $out[0]['label'] = (string) ($first['label'] ?? $existing[0]['label'] ?? $out[0]['label']);
-            $out[0]['color'] = (string) ($first['color'] ?? $existing[0]['color'] ?? $out[0]['color']);
-        } else {
-            $out[0]['label'] = (string) ($first['label'] ?? $out[0]['label']);
-            $out[0]['color'] = (string) ($first['color'] ?? $out[0]['color']);
-        }
-
-        return $out;
+        return [
+            ['cvr_from' => 20, 'cvr_to' => 9999, 'bgt' => 6, 'label' => 'Purple', 'color' => '#7c3aed'],
+            ['cvr_from' => 16, 'cvr_to' => 20, 'bgt' => 5, 'label' => 'Pink', 'color' => '#e83e8c'],
+            ['cvr_from' => 12, 'cvr_to' => 16, 'bgt' => 4, 'label' => 'Green', 'color' => '#28a745'],
+            ['cvr_from' => 8, 'cvr_to' => 12, 'bgt' => 3, 'label' => 'Blue', 'color' => '#2563eb'],
+            ['cvr_from' => 4, 'cvr_to' => 8, 'bgt' => 2, 'label' => 'Yellow', 'color' => '#ffc107'],
+            ['cvr_from' => 0, 'cvr_to' => 4, 'bgt' => 1, 'label' => 'Red', 'color' => '#a00211'],
+        ];
     }
 
     /**
@@ -129,6 +70,7 @@ final class AmazonAdsBgtCvrRule
     public static function forgetResolvedCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget('amazon_ads_bgt_cvr_rule_resolved_v1');
     }
 
     /**
@@ -139,8 +81,9 @@ final class AmazonAdsBgtCvrRule
     {
         $bandsIn = [];
         if (isset($input['bands']) && is_array($input['bands'])) {
-            $bandsIn = $input['bands'];
+            $bandsIn = array_values($input['bands']);
         }
+
         $bands = [];
         foreach ($bandsIn as $band) {
             if (! is_array($band)) {
@@ -149,16 +92,68 @@ final class AmazonAdsBgtCvrRule
             $bands[] = [
                 'cvr_from' => (float) ($band['cvr_from'] ?? 0),
                 'cvr_to' => (float) ($band['cvr_to'] ?? 9999),
-                'bgt' => (int) max(1, round((float) ($band['bgt'] ?? 1))),
+                'bgt' => (int) round((float) ($band['bgt'] ?? 0)),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
             ];
         }
         if ($bands === []) {
             $bands = self::defaultBands();
+        } else {
+            $bands = self::maybeFlipLegacyRedFirst($bands);
+            self::validateBands($bands);
         }
 
         return ['bands' => $bands];
+    }
+
+    /**
+     * Old autofill listed Red (low CVR) at the top. Flip that 6-slab set so Purple is first.
+     *
+     * @param  array<int, array{cvr_from: float, cvr_to: float, bgt: int, label: string, color: string}>  $bands
+     * @return array<int, array{cvr_from: float, cvr_to: float, bgt: int, label: string, color: string}>
+     */
+    public static function maybeFlipLegacyRedFirst(array $bands): array
+    {
+        if (count($bands) !== 6) {
+            return $bands;
+        }
+        $labels = array_map(
+            static fn (array $b): string => strtolower(trim((string) ($b['label'] ?? ''))),
+            $bands
+        );
+        if ($labels !== ['red', 'yellow', 'blue', 'green', 'pink', 'purple']) {
+            return $bands;
+        }
+
+        return array_values(array_reverse($bands));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    public static function validateBands(array $bands): void
+    {
+        if ($bands === []) {
+            throw new \InvalidArgumentException('Add at least one CVR slab.');
+        }
+        foreach ($bands as $i => $band) {
+            $from = (float) ($band['cvr_from'] ?? NAN);
+            $to = (float) ($band['cvr_to'] ?? NAN);
+            $bgt = (int) ($band['bgt'] ?? 0);
+            if (! is_finite($from) || ! is_finite($to)) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
+            }
+            if ($from > $to) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
+            }
+            if ($from < 0) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be 0 or more.');
+            }
+            if ($bgt < 0 || $bgt > 100_000) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Cvr must be between 0 and 100000.');
+            }
+        }
     }
 
     /**
@@ -193,9 +188,12 @@ final class AmazonAdsBgtCvrRule
             $to = (float) ($band['cvr_to'] ?? 9999);
             if ($v >= $from && $v <= $to) {
                 $bgt = (int) ($band['bgt'] ?? 0);
+                if ($bgt < 0) {
+                    return $empty;
+                }
 
                 return [
-                    'bgt' => $bgt > 0 ? $bgt : null,
+                    'bgt' => $bgt,
                     'color' => (string) ($band['color'] ?? '#6c757d'),
                     'label' => (string) ($band['label'] ?? ''),
                 ];

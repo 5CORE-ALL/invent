@@ -486,7 +486,6 @@
                             <tr>
                                 <th style="width:40px;">#</th>
                                 <th>ACOS%</th>
-                                <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From (%)</th>
                                 <th style="width:110px;">To (%)</th>
                                 <th style="width:120px;">SBGT</th>
@@ -519,9 +518,8 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
                         Each row is an inclusive <strong>Amz page View L30</strong> range (parent Sess30) for the campaign.
-                        Rows are checked <strong>top to bottom</strong>; the first range that contains the views gets its
-                        <strong>Bgt Views</strong>. Fill the <strong>first</strong> slab (default <code>0–70</code>) and the
-                        next five slabs autofill. Last <em>To</em> is <code>9999</code>.
+                        Rows are checked <strong>top to bottom</strong> (Purple → Red); the first range that contains the views gets its
+                        <strong>Bgt Views</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Views.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtViewsRuleTable">
@@ -529,15 +527,18 @@
                             <tr>
                                 <th style="width:40px;">#</th>
                                 <th>Label</th>
-                                <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
                                 <th style="width:120px;">Bgt Views</th>
+                                <th style="width:50px;"></th>
                             </tr>
                         </thead>
                         <tbody id="amazonAdsBgtViewsRuleBandsBody"></tbody>
                     </table>
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtViewsRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtViewsRuleModalError" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
@@ -558,9 +559,8 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
                         Each row is an inclusive <strong>Amz page CVR L30</strong> range (parent A L30 ÷ Sess30 × 100) for the campaign.
-                        Rows are checked <strong>top to bottom</strong>; the first range that contains the CVR gets its
-                        <strong>Bgt Cvr</strong>. Fill the <strong>first</strong> slab (default <code>0–4</code>) and the
-                        next five slabs autofill. Last <em>To</em> is <code>9999</code>.
+                        Rows are checked <strong>top to bottom</strong> (Purple → Red); the first range that contains the CVR gets its
+                        <strong>Bgt Cvr</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Cvr.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtCvrRuleTable">
@@ -568,15 +568,18 @@
                             <tr>
                                 <th style="width:40px;">#</th>
                                 <th>Label</th>
-                                <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
                                 <th style="width:120px;">Bgt Cvr</th>
+                                <th style="width:50px;"></th>
                             </tr>
                         </thead>
                         <tbody id="amazonAdsBgtCvrRuleBandsBody"></tbody>
                     </table>
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtCvrRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCvrRuleModalError" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
@@ -597,8 +600,8 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
                         Each row is an inclusive <strong>Price</strong> range (same Price column: Amz list, else LMP).
-                        Five fixed slabs: <code>20–40</code>, <code>41–60</code>, <code>61–100</code>, <code>101–150</code>, <code>&gt;150</code>.
-                        Price below <code>20</code> has no BGT PRC. Edit label, color, and Bgt; ranges stay locked.
+                        Rows are checked <strong>top to bottom</strong>; the first range that contains the price gets its
+                        <strong>Bgt Prc</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Prc.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtPrcRuleTable">
@@ -606,15 +609,18 @@
                             <tr>
                                 <th style="width:40px;">#</th>
                                 <th>Label</th>
-                                <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
                                 <th style="width:120px;">Bgt Prc</th>
+                                <th style="width:50px;"></th>
                             </tr>
                         </thead>
                         <tbody id="amazonAdsBgtPrcRuleBandsBody"></tbody>
                     </table>
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtPrcRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtPrcRuleModalError" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
@@ -645,7 +651,6 @@
                             <tr>
                                 <th style="width:40px;">#</th>
                                 <th>Label</th>
-                                <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
                                 <th style="width:80px;" title="Campaigns on this grid page whose Reviews rating falls in this slab">Count</th>
@@ -2347,9 +2352,6 @@
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
-                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
-                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign"></td>'
@@ -2363,11 +2365,6 @@
                         amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseInt(this.value, 10))
                             : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
-                        if (fld === 'label' || fld === 'color') {
-                            var chip = this.closest('tr').querySelector('.badge');
-                            var band = amzCurrentBands[idx];
-                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
-                        }
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
@@ -2446,59 +2443,69 @@
                 });
             }
 
-            // ---- BGT Vs VIEWS (View L30 → Bgt Views); first slab autofills the next 5 ----
-            var AMZ_BGT_VIEWS_SLAB_COUNT = 6;
-            var AMZ_BGT_VIEWS_LABELS = ['Red', 'Yellow', 'Blue', 'Green', 'Pink', 'Purple'];
-            var AMZ_BGT_VIEWS_COLORS = ['#a00211', '#ffc107', '#2563eb', '#28a745', '#e83e8c', '#7c3aed'];
+            // ---- BGT Vs VIEWS (View L30 → Bgt Views); dynamic slabs, Purple → Red, no autofill ----
+            var AMZ_BGT_VIEWS_DEFAULTS = [
+                { views_from: 351, views_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
+                { views_from: 281, views_to: 350, bgt: 5, label: 'Pink', color: '#e83e8c' },
+                { views_from: 211, views_to: 280, bgt: 4, label: 'Green', color: '#28a745' },
+                { views_from: 141, views_to: 210, bgt: 3, label: 'Blue', color: '#2563eb' },
+                { views_from: 71, views_to: 140, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                { views_from: 0, views_to: 70, bgt: 1, label: 'Red', color: '#a00211' }
+            ];
+            var AMZ_BGT_VIEWS_LABELS = ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'];
+            var AMZ_BGT_VIEWS_COLORS = ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'];
             var amzBgtViewsBands = [];
-            function amzBgtViewsDefaultBands() {
-                return amzBgtViewsAutofillFromFirst({ views_from: 0, views_to: 70, bgt: 1, label: 'Red', color: '#a00211' }, []);
+            function amzBgtViewsFlipLegacyRedFirst(bands) {
+                if (!Array.isArray(bands) || bands.length !== 6) return bands;
+                var labels = bands.map(function (b) { return String((b && b.label) || '').trim().toLowerCase(); });
+                if (labels.join(',') !== 'red,yellow,blue,green,pink,purple') return bands;
+                return bands.slice().reverse();
             }
-            function amzBgtViewsAutofillFromFirst(first, existing) {
-                var from = parseFloat(first && first.views_from);
-                var to = parseFloat(first && first.views_to);
-                if (!isFinite(from)) from = 0;
-                if (!isFinite(to) || to < from) to = from + 70;
-                var width = to - from;
-                if (!(width > 0)) { width = 70; to = from + width; }
-                var bgt0 = parseInt(first && first.bgt, 10);
-                if (!isFinite(bgt0) || bgt0 < 1) bgt0 = 1;
-                var prev = Array.isArray(existing) ? existing : [];
+            function amzBgtViewsNormalizeBands(existing) {
+                var prev = amzBgtViewsFlipLegacyRedFirst(Array.isArray(existing) ? existing : []);
                 var out = [];
-                var cursorTo = to;
-                for (var i = 0; i < AMZ_BGT_VIEWS_SLAB_COUNT; i++) {
-                    var bandFrom = (i === 0) ? from : (cursorTo + 1);
-                    var bandTo = (i === 0) ? to : (i === AMZ_BGT_VIEWS_SLAB_COUNT - 1 ? 9999 : (cursorTo + width));
-                    var keep = prev[i] || {};
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.views_from);
+                    var to = parseFloat(keep.views_to);
+                    var bgt = parseInt(keep.bgt, 10);
                     out.push({
-                        views_from: bandFrom,
-                        views_to: bandTo,
-                        bgt: bgt0 + i,
-                        label: (i === 0 && first && first.label) ? String(first.label) : (keep.label || AMZ_BGT_VIEWS_LABELS[i] || ('Band ' + (i + 1))),
-                        color: (i === 0 && first && first.color) ? String(first.color) : (keep.color || AMZ_BGT_VIEWS_COLORS[i] || '#6c757d')
+                        views_from: isFinite(from) ? from : '',
+                        views_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
                     });
-                    cursorTo = bandTo;
-                }
-                return out;
+                });
+                return out.length ? out : AMZ_BGT_VIEWS_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtViewsNewBand() {
+                var last = amzBgtViewsBands.length ? amzBgtViewsBands[amzBgtViewsBands.length - 1] : null;
+                var lastTo = last ? parseFloat(last.views_to) : NaN;
+                var from = isFinite(lastTo) ? lastTo : 0;
+                var i = amzBgtViewsBands.length;
+                return {
+                    views_from: from,
+                    views_to: 9999,
+                    bgt: 0,
+                    label: AMZ_BGT_VIEWS_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_VIEWS_COLORS[i] || '#6c757d'
+                };
             }
             function amzRenderBgtViewsBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtViewsRuleBandsBody');
                 if (!tbody) return;
+                var canDelete = bands.length > 1;
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
-                    var locked = i > 0
-                        ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
-                        : '';
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
-                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
-                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"' + locked + '></td>'
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="70"' + locked + '></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
                 tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
@@ -2515,28 +2522,20 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        var idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (fld === 'label' || fld === 'color') {
-                            var chip = this.closest('tr').querySelector('.badge');
-                            var band = amzBgtViewsBands[idx];
-                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
-                        }
                     });
-                    inp.addEventListener('change', function () {
-                        writeBand(this);
-                        var idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (idx === 0 && (fld === 'views_from' || fld === 'views_to' || fld === 'bgt')) {
-                            amzBgtViewsBands = amzBgtViewsAutofillFromFirst(amzBgtViewsBands[0], amzBgtViewsBands);
-                            amzRenderBgtViewsBands(amzBgtViewsBands);
-                        }
+                    inp.addEventListener('change', function () { writeBand(this); });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtViewsBands.length <= 1) return;
+                        amzBgtViewsBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtViewsBands(amzBgtViewsBands);
                     });
                 });
             }
             function amzLoadBgtViewsBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
-                if (!bands.length) bands = amzBgtViewsDefaultBands();
-                var first = bands[0] || { views_from: 0, views_to: 70, bgt: 1, label: 'Red', color: '#a00211' };
-                amzBgtViewsBands = amzBgtViewsAutofillFromFirst(first, bands);
+                amzBgtViewsBands = amzBgtViewsNormalizeBands(bands);
                 amzRenderBgtViewsBands(amzBgtViewsBands);
             }
             function amzRefreshBgtViewsRuleFromServer(cb) {
@@ -2553,12 +2552,18 @@
                     amzRefreshBgtViewsRuleFromServer(function () { amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {}); });
                 });
             }
+            var bgtViewsAddBtn = document.getElementById('amazonAdsBgtViewsRuleAddBandBtn');
+            if (bgtViewsAddBtn) {
+                bgtViewsAddBtn.addEventListener('click', function () {
+                    amzBgtViewsBands.push(amzBgtViewsNewBand());
+                    amzRenderBgtViewsBands(amzBgtViewsBands);
+                });
+            }
             var bgtViewsSaveBtn = document.getElementById('amazonAdsBgtViewsRuleSaveBtn');
             if (bgtViewsSaveBtn) {
                 bgtViewsSaveBtn.addEventListener('click', function () {
                     var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzBgtViewsBands = amzBgtViewsAutofillFromFirst(amzBgtViewsBands[0] || { views_from: 0, views_to: 70, bgt: 1 }, amzBgtViewsBands);
                     var cleaned = (amzBgtViewsBands || []).map(function (b) {
                         return {
                             views_from: (b.views_from === '' || b.views_from == null) ? NaN : parseFloat(b.views_from),
@@ -2567,11 +2572,13 @@
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
-                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one band before saving.'; err.classList.remove('d-none'); } return; }
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
                     for (var i = 0; i < cleaned.length; i++) {
                         var vb = cleaned[i];
-                        if (!isFinite(vb.views_from) || !isFinite(vb.views_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and Bgt Views values.'; err.classList.remove('d-none'); } return; }
-                        if (vb.views_from > vb.views_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (!isFinite(vb.views_from) || !isFinite(vb.views_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Views values.'; err.classList.remove('d-none'); } return; }
+                        if (vb.views_from > vb.views_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (vb.views_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
+                        if (vb.bgt < 0) { if (err) { err.textContent = 'Bgt Views must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtViewsSaveBtn.disabled = true;
                     fetch(bgtViewsRuleSaveUrl, {
@@ -2594,59 +2601,69 @@
                 });
             }
 
-            // ---- BGT Vs CVR (CVR L30 → Bgt Cvr); first slab autofills the next 5 ----
-            var AMZ_BGT_CVR_SLAB_COUNT = 6;
-            var AMZ_BGT_CVR_LABELS = ['Red', 'Yellow', 'Blue', 'Green', 'Pink', 'Purple'];
-            var AMZ_BGT_CVR_COLORS = ['#a00211', '#ffc107', '#2563eb', '#28a745', '#e83e8c', '#7c3aed'];
+            // ---- BGT Vs CVR (CVR L30 → Bgt Cvr); dynamic slabs, Purple → Red, no autofill ----
+            var AMZ_BGT_CVR_DEFAULTS = [
+                { cvr_from: 20, cvr_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
+                { cvr_from: 16, cvr_to: 20, bgt: 5, label: 'Pink', color: '#e83e8c' },
+                { cvr_from: 12, cvr_to: 16, bgt: 4, label: 'Green', color: '#28a745' },
+                { cvr_from: 8, cvr_to: 12, bgt: 3, label: 'Blue', color: '#2563eb' },
+                { cvr_from: 4, cvr_to: 8, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                { cvr_from: 0, cvr_to: 4, bgt: 1, label: 'Red', color: '#a00211' }
+            ];
+            var AMZ_BGT_CVR_LABELS = ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'];
+            var AMZ_BGT_CVR_COLORS = ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'];
             var amzBgtCvrBands = [];
-            function amzBgtCvrDefaultBands() {
-                return amzBgtCvrAutofillFromFirst({ cvr_from: 0, cvr_to: 4, bgt: 1, label: 'Red', color: '#a00211' }, []);
+            function amzBgtCvrFlipLegacyRedFirst(bands) {
+                if (!Array.isArray(bands) || bands.length !== 6) return bands;
+                var labels = bands.map(function (b) { return String((b && b.label) || '').trim().toLowerCase(); });
+                if (labels.join(',') !== 'red,yellow,blue,green,pink,purple') return bands;
+                return bands.slice().reverse();
             }
-            function amzBgtCvrAutofillFromFirst(first, existing) {
-                var from = parseFloat(first && first.cvr_from);
-                var to = parseFloat(first && first.cvr_to);
-                if (!isFinite(from)) from = 0;
-                if (!isFinite(to) || to < from) to = from + 4;
-                var width = to - from;
-                if (!(width > 0)) { width = 4; to = from + width; }
-                var bgt0 = parseInt(first && first.bgt, 10);
-                if (!isFinite(bgt0) || bgt0 < 1) bgt0 = 1;
-                var prev = Array.isArray(existing) ? existing : [];
+            function amzBgtCvrNormalizeBands(existing) {
+                var prev = amzBgtCvrFlipLegacyRedFirst(Array.isArray(existing) ? existing : []);
                 var out = [];
-                var cursorTo = to;
-                for (var i = 0; i < AMZ_BGT_CVR_SLAB_COUNT; i++) {
-                    var bandFrom = (i === 0) ? from : cursorTo;
-                    var bandTo = (i === 0) ? to : (i === AMZ_BGT_CVR_SLAB_COUNT - 1 ? 9999 : (cursorTo + width));
-                    var keep = prev[i] || {};
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.cvr_from);
+                    var to = parseFloat(keep.cvr_to);
+                    var bgt = parseInt(keep.bgt, 10);
                     out.push({
-                        cvr_from: bandFrom,
-                        cvr_to: bandTo,
-                        bgt: bgt0 + i,
-                        label: (i === 0 && first && first.label) ? String(first.label) : (keep.label || AMZ_BGT_CVR_LABELS[i] || ('Band ' + (i + 1))),
-                        color: (i === 0 && first && first.color) ? String(first.color) : (keep.color || AMZ_BGT_CVR_COLORS[i] || '#6c757d')
+                        cvr_from: isFinite(from) ? from : '',
+                        cvr_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
                     });
-                    cursorTo = bandTo;
-                }
-                return out;
+                });
+                return out.length ? out : AMZ_BGT_CVR_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtCvrNewBand() {
+                var last = amzBgtCvrBands.length ? amzBgtCvrBands[amzBgtCvrBands.length - 1] : null;
+                var lastTo = last ? parseFloat(last.cvr_to) : NaN;
+                var from = isFinite(lastTo) ? lastTo : 0;
+                var i = amzBgtCvrBands.length;
+                return {
+                    cvr_from: from,
+                    cvr_to: 9999,
+                    bgt: 0,
+                    label: AMZ_BGT_CVR_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_CVR_COLORS[i] || '#6c757d'
+                };
             }
             function amzRenderBgtCvrBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtCvrRuleBandsBody');
                 if (!tbody) return;
+                var canDelete = bands.length > 1;
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
-                    var locked = i > 0
-                        ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
-                        : '';
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
-                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
-                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"' + locked + '></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="4"' + locked + '></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
                 tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
@@ -2663,28 +2680,20 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        var idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (fld === 'label' || fld === 'color') {
-                            var chip = this.closest('tr').querySelector('.badge');
-                            var band = amzBgtCvrBands[idx];
-                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
-                        }
                     });
-                    inp.addEventListener('change', function () {
-                        writeBand(this);
-                        var idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (idx === 0 && (fld === 'cvr_from' || fld === 'cvr_to' || fld === 'bgt')) {
-                            amzBgtCvrBands = amzBgtCvrAutofillFromFirst(amzBgtCvrBands[0], amzBgtCvrBands);
-                            amzRenderBgtCvrBands(amzBgtCvrBands);
-                        }
+                    inp.addEventListener('change', function () { writeBand(this); });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtCvrBands.length <= 1) return;
+                        amzBgtCvrBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtCvrBands(amzBgtCvrBands);
                     });
                 });
             }
             function amzLoadBgtCvrBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
-                if (!bands.length) bands = amzBgtCvrDefaultBands();
-                var first = bands[0] || { cvr_from: 0, cvr_to: 4, bgt: 1, label: 'Red', color: '#a00211' };
-                amzBgtCvrBands = amzBgtCvrAutofillFromFirst(first, bands);
+                amzBgtCvrBands = amzBgtCvrNormalizeBands(bands);
                 amzRenderBgtCvrBands(amzBgtCvrBands);
             }
             function amzRefreshBgtCvrRuleFromServer(cb) {
@@ -2701,12 +2710,18 @@
                     amzRefreshBgtCvrRuleFromServer(function () { amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {}); });
                 });
             }
+            var bgtCvrAddBtn = document.getElementById('amazonAdsBgtCvrRuleAddBandBtn');
+            if (bgtCvrAddBtn) {
+                bgtCvrAddBtn.addEventListener('click', function () {
+                    amzBgtCvrBands.push(amzBgtCvrNewBand());
+                    amzRenderBgtCvrBands(amzBgtCvrBands);
+                });
+            }
             var bgtCvrSaveBtn = document.getElementById('amazonAdsBgtCvrRuleSaveBtn');
             if (bgtCvrSaveBtn) {
                 bgtCvrSaveBtn.addEventListener('click', function () {
                     var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzBgtCvrBands = amzBgtCvrAutofillFromFirst(amzBgtCvrBands[0] || { cvr_from: 0, cvr_to: 4, bgt: 1 }, amzBgtCvrBands);
                     var cleaned = (amzBgtCvrBands || []).map(function (b) {
                         return {
                             cvr_from: (b.cvr_from === '' || b.cvr_from == null) ? NaN : parseFloat(b.cvr_from),
@@ -2715,11 +2730,13 @@
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
-                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one band before saving.'; err.classList.remove('d-none'); } return; }
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
                     for (var i = 0; i < cleaned.length; i++) {
                         var vb = cleaned[i];
-                        if (!isFinite(vb.cvr_from) || !isFinite(vb.cvr_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and Bgt Cvr values.'; err.classList.remove('d-none'); } return; }
-                        if (vb.cvr_from > vb.cvr_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (!isFinite(vb.cvr_from) || !isFinite(vb.cvr_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Cvr values.'; err.classList.remove('d-none'); } return; }
+                        if (vb.cvr_from > vb.cvr_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (vb.cvr_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
+                        if (vb.bgt < 0) { if (err) { err.textContent = 'Bgt Cvr must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtCvrSaveBtn.disabled = true;
                     fetch(bgtCvrRuleSaveUrl, {
@@ -2742,46 +2759,68 @@
                 });
             }
 
-            // ---- BGT PRC (Price → Bgt Prc); five locked slabs ----
+            // ---- BGT PRC (Price → Bgt Prc); dynamic slabs, no locked ranges ----
             var AMZ_BGT_PRC_DEFAULTS = [
-                { prc_from: 20, prc_to: 40, bgt: 1, label: 'Red', color: '#a00211' },
-                { prc_from: 41, prc_to: 60, bgt: 2, label: 'Yellow', color: '#ffc107' },
-                { prc_from: 61, prc_to: 100, bgt: 3, label: 'Blue', color: '#2563eb' },
+                { prc_from: 151, prc_to: 9999, bgt: 5, label: 'Pink', color: '#e83e8c' },
                 { prc_from: 101, prc_to: 150, bgt: 4, label: 'Green', color: '#28a745' },
-                { prc_from: 151, prc_to: 9999, bgt: 5, label: 'Pink', color: '#e83e8c' }
+                { prc_from: 61, prc_to: 100, bgt: 3, label: 'Blue', color: '#2563eb' },
+                { prc_from: 41, prc_to: 60, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                { prc_from: 0, prc_to: 40, bgt: 1, label: 'Red', color: '#a00211' }
             ];
+            var AMZ_BGT_PRC_LABELS = ['Pink', 'Green', 'Blue', 'Yellow', 'Red', 'Purple'];
+            var AMZ_BGT_PRC_COLORS = ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211', '#7c3aed'];
             var amzBgtPrcBands = [];
-            function amzBgtPrcLockedBands(existing) {
-                var prev = Array.isArray(existing) ? existing : [];
-                return AMZ_BGT_PRC_DEFAULTS.map(function (def, i) {
-                    var keep = prev[i] || {};
+            function amzBgtPrcFlipLegacyRedFirst(bands) {
+                if (!Array.isArray(bands) || bands.length !== 5) return bands;
+                var labels = bands.map(function (b) { return String((b && b.label) || '').trim().toLowerCase(); });
+                if (labels.join(',') !== 'red,yellow,blue,green,pink') return bands;
+                return bands.slice().reverse();
+            }
+            function amzBgtPrcNormalizeBands(existing) {
+                var prev = amzBgtPrcFlipLegacyRedFirst(Array.isArray(existing) ? existing : []);
+                var out = [];
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.prc_from);
+                    var to = parseFloat(keep.prc_to);
                     var bgt = parseInt(keep.bgt, 10);
-                    if (!isFinite(bgt) || bgt < 1) bgt = def.bgt;
-                    return {
-                        prc_from: def.prc_from,
-                        prc_to: def.prc_to,
-                        bgt: bgt,
-                        label: keep.label != null && String(keep.label) !== '' ? String(keep.label) : def.label,
-                        color: keep.color || def.color
-                    };
+                    out.push({
+                        prc_from: isFinite(from) ? from : '',
+                        prc_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
+                    });
                 });
+                return out.length ? out : AMZ_BGT_PRC_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtPrcNewBand() {
+                var last = amzBgtPrcBands.length ? amzBgtPrcBands[amzBgtPrcBands.length - 1] : null;
+                var lastTo = last ? parseFloat(last.prc_to) : NaN;
+                var from = isFinite(lastTo) ? lastTo : 0;
+                var i = amzBgtPrcBands.length;
+                return {
+                    prc_from: from,
+                    prc_to: 9999,
+                    bgt: 0,
+                    label: AMZ_BGT_PRC_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_PRC_COLORS[i] || '#6c757d'
+                };
             }
             function amzRenderBgtPrcBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtPrcRuleBandsBody');
                 if (!tbody) return;
+                var canDelete = bands.length > 1;
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
-                    var toLabel = (i === bands.length - 1) ? '>150' : String(band.prc_to);
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
-                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
-                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + band.prc_from + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + toLabel + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
                 tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
@@ -2789,23 +2828,23 @@
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtPrcBands[idx]) return;
                         if (fld === 'bgt') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        else if (fld === 'prc_from' || fld === 'prc_to') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else amzBgtPrcBands[idx][fld] = el.value;
                     };
-                    inp.addEventListener('input', function () {
-                        writeBand(this);
-                        var idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (fld === 'label' || fld === 'color') {
-                            var chip = this.closest('tr').querySelector('.badge');
-                            var band = amzBgtPrcBands[idx];
-                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
-                        }
-                    });
+                    inp.addEventListener('input', function () { writeBand(this); });
                     inp.addEventListener('change', function () { writeBand(this); });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtPrcBands.length <= 1) return;
+                        amzBgtPrcBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtPrcBands(amzBgtPrcBands);
+                    });
                 });
             }
             function amzLoadBgtPrcBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
-                amzBgtPrcBands = amzBgtPrcLockedBands(bands);
+                amzBgtPrcBands = amzBgtPrcNormalizeBands(bands);
                 amzRenderBgtPrcBands(amzBgtPrcBands);
             }
             function amzRefreshBgtPrcRuleFromServer(cb) {
@@ -2822,23 +2861,33 @@
                     amzRefreshBgtPrcRuleFromServer(function () { amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {}); });
                 });
             }
+            var bgtPrcAddBtn = document.getElementById('amazonAdsBgtPrcRuleAddBandBtn');
+            if (bgtPrcAddBtn) {
+                bgtPrcAddBtn.addEventListener('click', function () {
+                    amzBgtPrcBands.push(amzBgtPrcNewBand());
+                    amzRenderBgtPrcBands(amzBgtPrcBands);
+                });
+            }
             var bgtPrcSaveBtn = document.getElementById('amazonAdsBgtPrcRuleSaveBtn');
             if (bgtPrcSaveBtn) {
                 bgtPrcSaveBtn.addEventListener('click', function () {
                     var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzBgtPrcBands = amzBgtPrcLockedBands(amzBgtPrcBands);
                     var cleaned = (amzBgtPrcBands || []).map(function (b) {
                         return {
-                            prc_from: b.prc_from,
-                            prc_to: b.prc_to,
+                            prc_from: (b.prc_from === '' || b.prc_from == null) ? NaN : parseFloat(b.prc_from),
+                            prc_to: (b.prc_to === '' || b.prc_to == null) ? NaN : parseFloat(b.prc_to),
                             bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
-                    if (cleaned.length !== 5) { if (err) { err.textContent = 'BGT PRC needs exactly five slabs.'; err.classList.remove('d-none'); } return; }
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
                     for (var i = 0; i < cleaned.length; i++) {
-                        if (!isFinite(cleaned[i].bgt) || cleaned[i].bgt < 1) { if (err) { err.textContent = 'Every slab needs a Bgt Prc of 1 or more.'; err.classList.remove('d-none'); } return; }
+                        var pb = cleaned[i];
+                        if (!isFinite(pb.prc_from) || !isFinite(pb.prc_to) || !isFinite(pb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Prc values.'; err.classList.remove('d-none'); } return; }
+                        if (pb.prc_from > pb.prc_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (pb.prc_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
+                        if (pb.bgt < 0) { if (err) { err.textContent = 'Bgt Prc must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtPrcSaveBtn.disabled = true;
                     fetch(bgtPrcRuleSaveUrl, {
@@ -2951,9 +3000,6 @@
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><div class="d-flex align-items-center gap-2">'
-                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
-                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
                         + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="Campaigns on this grid page in this Reviews range">' + (counts[i] != null ? counts[i] : 0) + '</span></td>'
@@ -2971,12 +3017,7 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        var idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (fld === 'label' || fld === 'color') {
-                            var chip = this.closest('tr').querySelector('.badge');
-                            var band = amzBgtReviewsBands[idx];
-                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
-                        }
+                        var fld = this.dataset.field;
                         if (fld === 'rev_from' || fld === 'rev_to') amzBgtReviewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to') amzBgtReviewsRefreshCounts(); });
