@@ -607,9 +607,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all" selected>INV</option>
+                        <option value="all">INV</option>
                         <option value="zero">Zero </option>
-                        <option value="more">More</option>
+                        <option value="more" selected>More</option>
                     </select>
 
                     <select id="sold-filter" class="form-select form-select-sm"
@@ -4081,7 +4081,7 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         headerSort: true,
-                        headerTooltip: "OV L30 ÷ INV. Color matches the Sprc Dil Dil% slab.",
+                        headerTooltip: "OV L30 ÷ INV. Red <25% · Green 25–50% · Pink 50%+.",
                         sorter: function(a, b, aRow, bRow) {
                             const dilOf = function(row) {
                                 const inv = parseFloat(row.INV) || 0;
@@ -4098,15 +4098,12 @@
                             if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
 
                             const dil = (OVL30 / INV) * 100;
-                            let color = '#cbd5e1';
-                            let tip = 'Outside Dil slabs';
-                            if (typeof amzDilSlabColorInfo === 'function') {
-                                const info = amzDilSlabColorInfo(dil);
-                                color = info.color || color;
-                                tip = info.label || tip;
-                            }
+                            let color = '#a00211';
+                            if (dil < 25) color = '#a00211';
+                            else if (dil < 50) color = '#28a745';
+                            else color = '#e83e8c';
 
-                            return `<span title="${String(tip).replace(/"/g, '&quot;')}" style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },
@@ -4137,11 +4134,9 @@
                             const inv = parseFloat(data.INV);
                             if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
                                 const dilPercent = (al30 / inv) * 100;
-                                let color = '';
-                                // Color logic from DIL column
-                                if (dilPercent < 16.66) color = '#a00211';
-                                else if (dilPercent >= 16.66 && dilPercent < 25) color = '#ffc107';
-                                else if (dilPercent >= 25 && dilPercent < 50) color = '#28a745';
+                                let color = '#a00211';
+                                if (dilPercent < 25) color = '#a00211';
+                                else if (dilPercent < 50) color = '#28a745';
                                 else color = '#e83e8c';
                                 return `<span style="color: ${color}; font-weight: 600;">${Math.round(dilPercent)}%</span>`;
                             }

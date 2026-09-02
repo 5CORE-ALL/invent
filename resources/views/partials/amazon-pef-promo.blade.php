@@ -689,7 +689,7 @@
                             later rows fill as first +5, +10, … (increasing down the table).
                         </li>
                         <li>
-                            <strong>When</strong> you click <strong>Save Rule</strong>:
+                            <strong>When</strong> you click <strong>Save and Apply</strong>:
                             Amazon’s table is stored via <strong>API only</strong>, then <strong>S PRC</strong> is written.
                         </li>
                         <li>
@@ -717,8 +717,8 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-primary" id="amz-dil-groi-save-btn"
-                        title="Save Dil → Target GROI% slabs and auto-apply S PRC on matching SKUs.">
-                        <i class="fas fa-save me-1"></i> Save Rule
+                        title="Save Dil → Target GROI% slabs via API and apply S PRC on matching SKUs.">
+                        <i class="fas fa-save me-1"></i> Save and Apply
                     </button>
                 </div>
             </div>
@@ -1732,7 +1732,7 @@
                 if (fromServer.length && !(res && res.is_default)) {
                     $('#amz-dil-groi-status').text('Loaded saved Dil → GROI slabs from API.');
                 } else {
-                    $('#amz-dil-groi-status').text('Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Add or delete slabs, then Save Rule.');
+                    $('#amz-dil-groi-status').text('Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Add or delete slabs, then Save and Apply.');
                 }
             } catch (e) {
                 renderAmzDilGroiModalTable();
@@ -1761,7 +1761,7 @@
                     renderAmzDilGroiModalTable();
                 }
                 amzAfterDilGroiRulesChanged();
-                $('#amz-dil-groi-status').text('Saved via API. S PRC written from Sprc Dil.');
+                $('#amz-dil-groi-status').text('Saved via API and applied. S PRC written from Sprc Dil.');
                 return res;
             });
         }
@@ -3725,7 +3725,7 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
                 try {
                     await saveAmzDilGroiRules();
-                    amzPefToast('success', 'Sprc Dil rule saved');
+                    amzPefToast('success', 'Sprc Dil saved and applied');
                 } catch (xhr) {
                     amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
                 } finally {
