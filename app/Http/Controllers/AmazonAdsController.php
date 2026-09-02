@@ -15,6 +15,7 @@ use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbidRule;
+use App\Support\AmazonAdsSbgt;
 use App\Support\AmazonAcosSbgtRule;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -502,43 +503,20 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews. Null parts count as 0; all-missing → null.
+     * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews.
+     * Explicit BGT ACOS of 0 zeros the total (pause — $0 will not push).
      */
     private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null): ?int
     {
-        $has = false;
-        $sum = 0;
-        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews] as $part) {
-            if ($part === null || $part === '') {
-                continue;
-            }
-            if (! is_numeric($part)) {
-                continue;
-            }
-            $has = true;
-            $sum += (int) $part;
-        }
-        if (! $has || $sum < 1) {
-            return null;
-        }
-
-        return $sum;
+        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews);
     }
 
     /**
-     * Daily budget dollars accepted for SBGT push (sum of the three rule columns).
+     * Daily budget dollars accepted for SBGT push (sum of the rule columns). 0 is not pushable.
      */
     private static function parsePushableSbgtBudget(mixed $raw): ?int
     {
-        if ($raw === null || $raw === '') {
-            return null;
-        }
-        if (! is_numeric($raw)) {
-            return null;
-        }
-        $n = (int) $raw;
-
-        return ($n >= 1 && $n <= 9999) ? $n : null;
+        return AmazonAdsSbgt::parsePushableBudget($raw);
     }
 
     /**
@@ -4703,7 +4681,138 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Split SBGT push rows: $0 pauses (Amazon will not take a $0 daily budget); 1–9999 updates budget.
+     *
+     * @param  list<mixed>  $rows
+     * @return array{budgets: array<string, float>, pause_ids: list<string>, skipped: list<array<string, mixed>>}
+     */
+    private static function partitionSbgtPushRows(array $rows): array
+    {
+        /** @var array<string, float> $budgets */
+        $budgets = [];
+        /** @var array<string, true> $pause */
+        $pause = [];
+        $skipped = [];
+
+        foreach ($rows as $index => $row) {
+            if (! is_array($row)) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => null,
+                    'campaign_name' => null,
+                    'sbgt' => null,
+                    'reason' => 'Row is not an array',
+                ];
+                continue;
+            }
+            $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
+            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
+            $raw = $row['sbgt'] ?? null;
+
+            if ($cid === '') {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => 'Missing or empty campaign_id',
+                ];
+                continue;
+            }
+            if (AmazonAdsSbgt::isExplicitZero($raw)) {
+                unset($budgets[$cid]);
+                $pause[$cid] = true;
+                continue;
+            }
+            $tier = self::parsePushableSbgtBudget($raw);
+            if ($tier === null) {
+                $skipped[] = [
+                    'index' => $index,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'sbgt' => $raw,
+                    'reason' => ($raw === null || $raw === '')
+                        ? 'Missing or empty SBGT value'
+                        : 'Invalid SBGT (must be a whole dollar amount 1–9999, or 0 to pause)',
+                ];
+                continue;
+            }
+            unset($pause[$cid]);
+            $budgets[$cid] = (float) $tier;
+        }
+
+        return [
+            'budgets' => $budgets,
+            'pause_ids' => array_keys($pause),
+            'skipped' => $skipped,
+        ];
+    }
+
+    /**
+     * @param  'sp'|'sb'  $channel
+     * @param  list<string>  $campaignIds
+     * @return array{paused: int, failed: int, errors: list<string>}
+     */
+    private function pauseCampaignsForZeroSbgt(string $channel, array $campaignIds): array
+    {
+        if ($campaignIds === []) {
+            return ['paused' => 0, 'failed' => 0, 'errors' => []];
+        }
+        $stats = app(AmazonAdsPauseRuleApplicator::class)->pauseCampaigns($channel, $campaignIds);
+        Log::info('amazon-ads: paused campaigns with SBGT 0', [
+            'channel' => $channel,
+            'requested' => count($campaignIds),
+            'paused' => $stats['paused'] ?? 0,
+            'failed' => $stats['failed'] ?? 0,
+        ]);
+
+        return [
+            'paused' => (int) ($stats['paused'] ?? 0),
+            'failed' => (int) ($stats['failed'] ?? 0),
+            'errors' => is_array($stats['errors'] ?? null) ? $stats['errors'] : [],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array{paused: int, failed: int, errors: list<string>}  $pauseStats
+     * @param  list<string>  $pauseIds
+     * @param  list<array<string, mixed>>  $skipped
+     * @return array<string, mixed>
+     */
+    private static function mergeZeroSbgtPauseIntoPushPayload(
+        array $payload,
+        array $pauseStats,
+        array $pauseIds,
+        array $skipped,
+        int $budgetCount,
+        int $submittedCount
+    ): array {
+        $paused = (int) ($pauseStats['paused'] ?? 0);
+        $pauseFailed = (int) ($pauseStats['failed'] ?? 0);
+        $payload['skipped_rows'] = $skipped;
+        $payload['total_skipped'] = count($skipped);
+        $payload['total_processed'] = $budgetCount;
+        $payload['total_submitted'] = $submittedCount;
+        $payload['l30_rescued_count'] = 0;
+        $payload['paused_zero_sbgt'] = $paused;
+        $payload['paused_zero_sbgt_ids'] = $pauseIds;
+        $payload['pause_zero_sbgt_failed'] = $pauseFailed;
+        $payload['pause_zero_sbgt_errors'] = $pauseStats['errors'] ?? [];
+        if ($paused > 0 || $pauseIds !== []) {
+            $pauseNote = $paused > 0
+                ? 'Paused '.$paused.' campaign(s) with SBGT 0 (cannot push $0 budget).'
+                : 'SBGT 0 pause requested for '.count($pauseIds).' campaign(s).';
+            $existing = isset($payload['message']) && is_string($payload['message']) ? $payload['message'] : '';
+            $payload['message'] = trim($pauseNote.($existing !== '' ? ' '.$existing : ''));
+        }
+
+        return $payload;
+    }
+
+    /**
      * Push SBGT (Bgt Views + Bgt Cvr + BGT ACOS) as SP daily budget ($) to Amazon.
+     * SBGT 0 pauses the campaign instead of pushing budget.
      *
      * Expects JSON: { "rows": [ { "campaign_id", "sbgt" }, ... ] } (max 100 unique campaigns; last row wins per campaign_id).
      */
@@ -4721,67 +4830,41 @@ class AmazonAdsController extends Controller
             ], 400);
         }
 
-        /** @var array<string, float> $tierByCampaignId last row on page wins */
-        $tierByCampaignId = [];
-        $skipped = [];
-        $l30RescuedCount = 0;
+        $split = self::partitionSbgtPushRows($rows);
+        $tierByCampaignId = $split['budgets'];
+        $pauseIds = $split['pause_ids'];
+        $skipped = $split['skipped'];
+        $pauseStats = $this->pauseCampaignsForZeroSbgt('sp', $pauseIds);
 
-        foreach ($rows as $index => $row) {
-            if (! is_array($row)) {
-                $skipped[] = [
-                    'index' => $index,
-                    'campaign_id' => null,
-                    'campaign_name' => null,
-                    'sbgt' => null,
-                    'reason' => 'Row is not an array',
-                ];
-                continue;
-            }
-            $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
-            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
-            $raw = $row['sbgt'] ?? null;
-            
-            if ($cid === '') {
-                $skipped[] = [
-                    'index' => $index,
-                    'campaign_id' => $cid,
-                    'campaign_name' => $name,
-                    'sbgt' => $raw,
-                    'reason' => 'Missing or empty campaign_id',
-                ];
-                continue;
-            }
-            $tier = self::parsePushableSbgtBudget($raw);
-            if ($tier === null) {
-                $skipped[] = [
-                    'index' => $index,
-                    'campaign_id' => $cid,
-                    'campaign_name' => $name,
-                    'sbgt' => $raw,
-                    'reason' => ($raw === null || $raw === '')
-                        ? 'Missing or empty SBGT value'
-                        : 'Invalid SBGT (must be a whole dollar amount 1–9999)',
-                ];
-                continue;
-            }
-            $tierByCampaignId[$cid] = (float) $tier;
-        }
-
-        if ($tierByCampaignId === []) {
+        if ($tierByCampaignId === [] && $pauseIds === []) {
             return response()->json([
-                'message' => 'No valid campaign_id / SBGT pairs (SBGT must be a whole dollar amount 1–9999).',
+                'message' => 'No valid campaign_id / SBGT pairs (SBGT must be a whole dollar amount 1–9999, or 0 to pause).',
                 'status' => 422,
                 'skipped_rows' => $skipped,
                 'total_skipped' => count($skipped),
             ], 422);
         }
-        if (count($tierByCampaignId) > 100) {
+        if (count($tierByCampaignId) + count($pauseIds) > 100) {
             return response()->json([
                 'message' => 'At most 100 distinct campaigns per request.',
                 'status' => 422,
                 'skipped_rows' => $skipped,
                 'total_skipped' => count($skipped),
             ], 422);
+        }
+
+        if ($tierByCampaignId === []) {
+            $ok = $pauseStats['failed'] === 0;
+            $payload = self::mergeZeroSbgtPauseIntoPushPayload(
+                ['ok' => $ok, 'message' => ''],
+                $pauseStats,
+                $pauseIds,
+                $skipped,
+                0,
+                count($rows)
+            );
+
+            return response()->json($payload, $ok ? 200 : 422);
         }
 
         $campaignIds = array_keys($tierByCampaignId);
@@ -4797,21 +4880,26 @@ class AmazonAdsController extends Controller
 
         $response = $acos->updateAmazonCampaignBgt($sub);
         $responseData = json_decode($response->getContent(), true);
-        
+
         if (is_array($responseData)) {
-            $responseData['skipped_rows'] = $skipped;
-            $responseData['total_skipped'] = count($skipped);
-            $responseData['total_processed'] = count($tierByCampaignId);
-            $responseData['total_submitted'] = count($rows);
-            $responseData['l30_rescued_count'] = $l30RescuedCount;
-            return response()->json($responseData, $response->getStatusCode());
+            $merged = self::mergeZeroSbgtPauseIntoPushPayload(
+                $responseData,
+                $pauseStats,
+                $pauseIds,
+                $skipped,
+                count($tierByCampaignId),
+                count($rows)
+            );
+
+            return response()->json($merged, $response->getStatusCode());
         }
-        
+
         return $response;
     }
 
     /**
      * Push SBGT (Bgt Views + Bgt Cvr + BGT ACOS) as SB daily budget ($) to Amazon.
+     * SBGT 0 pauses the campaign instead of pushing budget.
      *
      * Expects JSON: { "rows": [ { "campaign_id", "sbgt" }, ... ] } (max 100 unique campaigns; last row wins per campaign_id).
      */
@@ -4829,67 +4917,41 @@ class AmazonAdsController extends Controller
             ], 400);
         }
 
-        /** @var array<string, float> $tierByCampaignId */
-        $tierByCampaignId = [];
-        $skipped = [];
-        $l30RescuedCount = 0;
+        $split = self::partitionSbgtPushRows($rows);
+        $tierByCampaignId = $split['budgets'];
+        $pauseIds = $split['pause_ids'];
+        $skipped = $split['skipped'];
+        $pauseStats = $this->pauseCampaignsForZeroSbgt('sb', $pauseIds);
 
-        foreach ($rows as $index => $row) {
-            if (! is_array($row)) {
-                $skipped[] = [
-                    'index' => $index,
-                    'campaign_id' => null,
-                    'campaign_name' => null,
-                    'sbgt' => null,
-                    'reason' => 'Row is not an array',
-                ];
-                continue;
-            }
-            $cid = isset($row['campaign_id']) ? trim((string) $row['campaign_id']) : '';
-            $name = $row['campaignName'] ?? $row['campaign_name'] ?? null;
-            $raw = $row['sbgt'] ?? null;
-            
-            if ($cid === '') {
-                $skipped[] = [
-                    'index' => $index,
-                    'campaign_id' => $cid,
-                    'campaign_name' => $name,
-                    'sbgt' => $raw,
-                    'reason' => 'Missing or empty campaign_id',
-                ];
-                continue;
-            }
-            $tier = self::parsePushableSbgtBudget($raw);
-            if ($tier === null) {
-                $skipped[] = [
-                    'index' => $index,
-                    'campaign_id' => $cid,
-                    'campaign_name' => $name,
-                    'sbgt' => $raw,
-                    'reason' => ($raw === null || $raw === '')
-                        ? 'Missing or empty SBGT value'
-                        : 'Invalid SBGT (must be a whole dollar amount 1–9999)',
-                ];
-                continue;
-            }
-            $tierByCampaignId[$cid] = (float) $tier;
-        }
-
-        if ($tierByCampaignId === []) {
+        if ($tierByCampaignId === [] && $pauseIds === []) {
             return response()->json([
-                'message' => 'No valid campaign_id / SBGT pairs (SBGT must be a whole dollar amount 1–9999).',
+                'message' => 'No valid campaign_id / SBGT pairs (SBGT must be a whole dollar amount 1–9999, or 0 to pause).',
                 'status' => 422,
                 'skipped_rows' => $skipped,
                 'total_skipped' => count($skipped),
             ], 422);
         }
-        if (count($tierByCampaignId) > 100) {
+        if (count($tierByCampaignId) + count($pauseIds) > 100) {
             return response()->json([
                 'message' => 'At most 100 distinct campaigns per request.',
                 'status' => 422,
                 'skipped_rows' => $skipped,
                 'total_skipped' => count($skipped),
             ], 422);
+        }
+
+        if ($tierByCampaignId === []) {
+            $ok = $pauseStats['failed'] === 0;
+            $payload = self::mergeZeroSbgtPauseIntoPushPayload(
+                ['ok' => $ok, 'message' => ''],
+                $pauseStats,
+                $pauseIds,
+                $skipped,
+                0,
+                count($rows)
+            );
+
+            return response()->json($payload, $ok ? 200 : 422);
         }
 
         $campaignIds = array_keys($tierByCampaignId);
@@ -4905,16 +4967,20 @@ class AmazonAdsController extends Controller
 
         $response = $acos->updateAmazonSbCampaignBgt($sub);
         $responseData = json_decode($response->getContent(), true);
-        
+
         if (is_array($responseData)) {
-            $responseData['skipped_rows'] = $skipped;
-            $responseData['total_skipped'] = count($skipped);
-            $responseData['total_processed'] = count($tierByCampaignId);
-            $responseData['total_submitted'] = count($rows);
-            $responseData['l30_rescued_count'] = $l30RescuedCount;
-            return response()->json($responseData, $response->getStatusCode());
+            $merged = self::mergeZeroSbgtPauseIntoPushPayload(
+                $responseData,
+                $pauseStats,
+                $pauseIds,
+                $skipped,
+                count($tierByCampaignId),
+                count($rows)
+            );
+
+            return response()->json($merged, $response->getStatusCode());
         }
-        
+
         return $response;
     }
 

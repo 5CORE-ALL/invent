@@ -10,13 +10,11 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Campaign Reviews (star rating) → suggested daily budget (Bgt Reviews).
- * Four fixed slabs: 2.99–3.5, 3.51–4, 4.01–4.5, >4.5. Rating below 2.99 has no Bgt.
+ * Bands are a dynamic list of inclusive star ranges, evaluated top to bottom.
  */
 final class AmazonAdsBgtReviewsRule
 {
-    public const CACHE_KEY = 'amazon_ads_bgt_reviews_rule_resolved_v1';
-
-    public const SLAB_COUNT = 4;
+    public const CACHE_KEY = 'amazon_ads_bgt_reviews_rule_resolved_v2';
 
     /**
      * @return array<int, array{rev_from: float, rev_to: float, bgt: int, label: string, color: string}>
@@ -37,34 +35,6 @@ final class AmazonAdsBgtReviewsRule
     public static function defaults(): array
     {
         return ['bands' => self::defaultBands()];
-    }
-
-    /**
-     * Keep the four review ranges; overlay saved Bgt / label / color.
-     *
-     * @param  array<int, array<string, mixed>>|null  $existing
-     * @return array<int, array{rev_from: float, rev_to: float, bgt: int, label: string, color: string}>
-     */
-    public static function lockedSlabs(?array $existing = null): array
-    {
-        $defaults = self::defaultBands();
-        $out = [];
-        foreach ($defaults as $i => $def) {
-            $prev = is_array($existing[$i] ?? null) ? $existing[$i] : [];
-            $bgt = is_numeric($prev['bgt'] ?? null) ? (int) $prev['bgt'] : (int) $def['bgt'];
-            if ($bgt < 1) {
-                $bgt = (int) $def['bgt'];
-            }
-            $out[] = [
-                'rev_from' => (float) $def['rev_from'],
-                'rev_to' => (float) $def['rev_to'],
-                'bgt' => $bgt,
-                'label' => (string) ($prev['label'] ?? $def['label']),
-                'color' => (string) ($prev['color'] ?? $def['color']),
-            ];
-        }
-
-        return $out;
     }
 
     /**
@@ -98,6 +68,7 @@ final class AmazonAdsBgtReviewsRule
     public static function forgetResolvedCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget('amazon_ads_bgt_reviews_rule_resolved_v1');
     }
 
     /**
@@ -111,7 +82,50 @@ final class AmazonAdsBgtReviewsRule
             $bandsIn = array_values($input['bands']);
         }
 
-        return ['bands' => self::lockedSlabs($bandsIn)];
+        $bands = [];
+        foreach ($bandsIn as $band) {
+            if (! is_array($band)) {
+                continue;
+            }
+            $bands[] = [
+                'rev_from' => (float) ($band['rev_from'] ?? 0),
+                'rev_to' => (float) ($band['rev_to'] ?? 5),
+                'bgt' => (int) max(1, round((float) ($band['bgt'] ?? 1))),
+                'label' => (string) ($band['label'] ?? ''),
+                'color' => (string) ($band['color'] ?? '#6c757d'),
+            ];
+        }
+        if ($bands === []) {
+            $bands = self::defaultBands();
+        } else {
+            self::validateBands($bands);
+        }
+
+        return ['bands' => $bands];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    public static function validateBands(array $bands): void
+    {
+        if ($bands === []) {
+            throw new \InvalidArgumentException('Add at least one Reviews slab.');
+        }
+        foreach ($bands as $i => $band) {
+            $from = (float) ($band['rev_from'] ?? NAN);
+            $to = (float) ($band['rev_to'] ?? NAN);
+            $bgt = (int) ($band['bgt'] ?? 0);
+            if (! is_finite($from) || ! is_finite($to)) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
+            }
+            if ($from > $to) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
+            }
+            if ($bgt < 1 || $bgt > 100_000) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Reviews must be between 1 and 100000.');
+            }
+        }
     }
 
     /**
@@ -136,33 +150,20 @@ final class AmazonAdsBgtReviewsRule
     public static function apply(?float $rating, ?array $rule = null): array
     {
         $empty = ['bgt' => null, 'color' => '#6c757d', 'label' => ''];
-        if ($rating === null || ! is_finite($rating) || $rating < 2.99) {
+        if ($rating === null || ! is_finite($rating)) {
             return $empty;
         }
         $r = $rule ?? self::resolvedRule();
         $bands = array_values(array_filter($r['bands'] ?? [], 'is_array'));
-        if ($bands === []) {
-            return $empty;
-        }
-        $last = $bands[count($bands) - 1];
-        if ($rating > 4.5) {
-            $bgt = (int) ($last['bgt'] ?? 0);
-
-            return [
-                'bgt' => $bgt > 0 ? $bgt : null,
-                'color' => (string) ($last['color'] ?? '#6c757d'),
-                'label' => (string) ($last['label'] ?? ''),
-            ];
-        }
+        $n = count($bands);
         foreach ($bands as $i => $band) {
-            if ($i === count($bands) - 1) {
-                continue;
-            }
             $from = (float) ($band['rev_from'] ?? 0);
             $to = (float) ($band['rev_to'] ?? 5);
-            $nextFrom = (float) ($bands[$i + 1]['rev_from'] ?? ($to + 0.01));
+            $nextFrom = ($i < $n - 1)
+                ? (float) ($bands[$i + 1]['rev_from'] ?? ($to + 0.01))
+                : null;
             $hit = ($rating >= $from && $rating <= $to)
-                || ($rating > $to && $rating < $nextFrom);
+                || ($nextFrom !== null && $rating > $to && $rating < $nextFrom);
             if (! $hit) {
                 continue;
             }

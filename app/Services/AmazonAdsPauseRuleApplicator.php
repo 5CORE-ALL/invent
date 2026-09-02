@@ -89,6 +89,35 @@ class AmazonAdsPauseRuleApplicator
     }
 
     /**
+     * Pause SP or SB campaigns (e.g. grid SBGT is 0 and cannot be pushed as daily budget).
+     *
+     * @param  'sp'|'sb'  $channel
+     * @param  list<string>  $campaignIds
+     * @return array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>}
+     */
+    public function pauseCampaigns(string $channel, array $campaignIds): array
+    {
+        $stats = [
+            'paused' => 0,
+            'enabled' => 0,
+            'unchanged' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'errors' => [],
+        ];
+        $ids = array_values(array_unique(array_filter(
+            array_map(static fn ($id) => trim((string) $id), $campaignIds),
+            static fn (string $id): bool => $id !== ''
+        )));
+        if ($ids === [] || ! in_array($channel, ['sp', 'sb'], true)) {
+            return $stats;
+        }
+        $this->pushState($channel, $ids, AmazonAdsPauseRule::ACTION_PAUSED, $stats);
+
+        return $stats;
+    }
+
+    /**
      * Pause product ads (SP) / SB ads whose SKU rating is below the Reviews threshold.
      * Campaigns stay ENABLED.
      *

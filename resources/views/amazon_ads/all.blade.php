@@ -478,6 +478,7 @@
                         Each row is an inclusive <strong>ACOS % range</strong> (From → To). Rows are checked
                         <strong>top to bottom</strong>; the first range that contains the campaign's ACOS gets its SBGT.
                         Use <code>9999</code> on <em>To</em> for the catch-all highest band.
+                        <strong>SBGT 0</strong> cannot be pushed as daily budget — those campaigns are paused instead.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
@@ -625,7 +626,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsBgtReviewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtReviewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsBgtReviewsRuleModalLabel">BGT Vs REVIEWS — Reviews → Bgt Reviews</h5>
@@ -634,8 +635,9 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
                         Each row is an inclusive <strong>Reviews</strong> range (same star rating as the Reviews column).
-                        Four fixed slabs: <code>2.99–3.5</code>, <code>3.51–4</code>, <code>4.01–4.5</code>, <code>&gt;4.5</code>.
-                        Rating below <code>2.99</code> has no Bgt Reviews. Edit label, color, and Bgt; ranges stay locked.
+                        Rows are checked <strong>top to bottom</strong>; the first range that contains the rating gets its
+                        <strong>Bgt Reviews</strong>. Add or delete slabs as needed.
+                        <strong>Count</strong> is campaigns on this grid page in that range.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtReviewsRuleTable">
@@ -646,12 +648,17 @@
                                 <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose Reviews rating falls in this slab">Count</th>
                                 <th style="width:120px;">Bgt Reviews</th>
+                                <th style="width:50px;"></th>
                             </tr>
                         </thead>
                         <tbody id="amazonAdsBgtReviewsRuleBandsBody"></tbody>
                     </table>
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtReviewsRuleAddBandBtn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtReviewsRuleModalError" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
@@ -1088,6 +1095,9 @@
                 if (v === null || v === undefined || v === '') return amzDash();
                 var t = parseInt(v, 10);
                 if (isNaN(t)) return amzDash();
+                if (t === 0) {
+                    return '<span class="fw-semibold" style="color:#dc2626;" title="BGT ACOS 0 — cannot push $0; campaign will be paused">0</span>';
+                }
                 return '<span class="fw-semibold" style="color:' + amzSbgtTierColor(t) + ';">' + t + '</span>';
             }
             function fmtSbgtSum(cell) {
@@ -1103,10 +1113,14 @@
                 var rev = parseInt(row && row.bgtReviews, 10);
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === t;
-                var color = inSync ? '#64748b' : '#0f766e';
+                var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
                 var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
                 tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0);
-                if (isFinite(bgt)) tip += inSync ? ' · matches BGT' : (' · BGT ' + Math.round(bgt) + ' → auto-push');
+                if (t === 0) {
+                    tip += ' · BGT ACOS 0 zeros SBGT — cannot push $0, campaign will be paused';
+                } else if (isFinite(bgt)) {
+                    tip += inSync ? ' · matches BGT' : (' · BGT ' + Math.round(bgt) + ' → auto-push');
+                }
                 return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
             }
             function fmtBgtViews(cell) {
@@ -1368,7 +1382,7 @@
                 }
                 if (c === 'sbgt') {
                     col.title = 'SBGT';
-                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews. Auto-pushes daily budget when this sum differs from BGT.';
+                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
                     col.formatter = fmtSbgtSum;
                     col.width = 56;
                     col.minWidth = 50;
@@ -1401,7 +1415,7 @@
                 if (c === 'bgtReviews') {
                     col.title = 'Bgt Reviews';
                     col.titleFormatter = function () { return 'Bgt<br>Reviews'; };
-                    col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating (2.99–3.5, 3.51–4, 4.01–4.5, >4.5)';
+                    col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating slabs';
                     col.formatter = fmtBgtReviews;
                     col.width = 68;
                     col.minWidth = 60;
@@ -1654,7 +1668,7 @@
                 }
                 if (sbgtBtn) {
                     sbgtBtn.disabled = !ok;
-                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amz to each row SBGT (Views + CVR + ACOS + PRC). Changed SBGT auto-pushes.') : 'Switch to SP or SB reports to push SBGT';
+                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amz to each row SBGT (Views + CVR + ACOS + PRC). Changed SBGT auto-pushes. SBGT 0 pauses the campaign.') : 'Switch to SP or SB reports to push SBGT';
                 }
             }
             function amzUpdatePieButton() {
@@ -1886,8 +1900,9 @@
                 return null;
             }
             function amzPickSbgtTierFromRow(row) {
+                if (row.sbgt === null || row.sbgt === undefined || row.sbgt === '') return null;
                 var t = parseInt(row.sbgt, 10);
-                if (isNaN(t) || t < 1 || t > 9999) return null;
+                if (isNaN(t) || t < 0 || t > 9999) return null;
                 return t;
             }
             function amzCurrentPushRows() {
@@ -1930,6 +1945,14 @@
                     var cid = row.campaign_id == null ? '' : String(row.campaign_id).trim();
                     var sbgt = amzPickSbgtTierFromRow(row);
                     if (!cid || sbgt === null) return;
+                    var status = String(row.campaignStatus || '').toUpperCase();
+                    if (sbgt === 0) {
+                        if (status === 'PAUSED' || status === 'ARCHIVED') return;
+                        var zeroKey = cid + ':0';
+                        if (amzSbgtAutoPushedKey[zeroKey]) return;
+                        out.push({ campaign_id: cid, sbgt: 0 });
+                        return;
+                    }
                     var bgt = parseFloat(row.bgt);
                     if (isFinite(bgt) && Math.round(bgt) === sbgt) return;
                     var key = cid + ':' + sbgt;
@@ -1937,6 +1960,16 @@
                     out.push({ campaign_id: cid, sbgt: sbgt });
                 });
                 return out;
+            }
+            function amzMarkPausedZeroSbgtRows(ids) {
+                if (!table || !ids || !ids.length) return;
+                var want = {};
+                ids.forEach(function (id) { want[String(id)] = true; });
+                (table.getRows() || []).forEach(function (r) {
+                    var d = r.getData ? r.getData() : null;
+                    if (!d || !want[String(d.campaign_id)]) return;
+                    r.update({ campaignStatus: 'PAUSED' });
+                });
             }
             function amzAutoPushChangedSbgt() {
                 if (amzSbgtAutoPushBusy) return;
@@ -1971,9 +2004,16 @@
                     if (index >= chunks.length) {
                         amzSbgtAutoPushBusy = false;
                         var n = rows.length;
+                        var pauseN = 0;
+                        rows.forEach(function (r) { if (r && r.sbgt === 0) pauseN++; });
+                        var title = pauseN === n
+                            ? ('SBGT 0 pause — ' + pauseN + ' campaign(s)')
+                            : (pauseN > 0
+                                ? ('SBGT auto-push — ' + n + ' campaign(s), paused ' + pauseN)
+                                : ('SBGT auto-push — ' + n + ' campaign(s)'));
                         amzShowPushResult(
-                            'SBGT auto-push — ' + n + ' campaign(s)',
-                            'Pushed new SBGT only (Views + CVR + ACOS + PRC) where it differed from BGT.\n' + messages.join('\n'),
+                            title,
+                            'Pushed new SBGT only (Views + CVR + ACOS + PRC) where it differed from BGT. SBGT 0 pauses (cannot push $0).\n' + messages.join('\n'),
                             'success'
                         );
                         return;
@@ -1982,6 +2022,7 @@
                         .then(function (out) {
                             var b = (out && out.body) || {};
                             messages.push('[chunk ' + (index + 1) + '/' + chunks.length + '] ' + (b.message || 'finished'));
+                            if (b.paused_zero_sbgt_ids) amzMarkPausedZeroSbgtRows(b.paused_zero_sbgt_ids);
                             runNext(index + 1);
                         })
                         .catch(function (err) {
@@ -2097,6 +2138,7 @@
                                 messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] finished');
                             }
                             bodies.push(b);
+                            if (b.paused_zero_sbgt_ids) amzMarkPausedZeroSbgtRows(b.paused_zero_sbgt_ids);
                             runNext(index + 1);
                         })
                         .catch(function (err) {
@@ -2146,7 +2188,7 @@
                         rows: rows,
                         chunkSize: AMZ_PUSH_CHUNK_SIZE,
                         label: 'SBGT push',
-                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row sets the daily budget to SBGT (Views + CVR + ACOS + PRC).',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row sets the daily budget to SBGT (Views + CVR + ACOS + PRC). Rows with SBGT 0 are paused instead ($0 cannot be pushed).',
                         loadingTitle: 'Pushing SBGT…',
                         loadingDetail: 'Updating budgets for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
@@ -2310,7 +2352,7 @@
                         + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt"></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign"></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -2379,6 +2421,7 @@
                         var b = cleaned[i];
                         if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and SBGT values.'; err.classList.remove('d-none'); } return; }
                         if (b.acos_from > b.acos_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (b.sbgt < 0) { if (err) { err.textContent = 'SBGT must be 0 or more (0 pauses the campaign).'; err.classList.remove('d-none'); } return; }
                     }
                     bgtSaveBtn.disabled = true;
                     fetch(bgtRuleSaveUrl, {
@@ -2818,35 +2861,92 @@
                 });
             }
 
-            // ---- BGT Vs REVIEWS (star rating → Bgt Reviews); four locked slabs ----
+            // ---- BGT Vs REVIEWS (star rating → Bgt Reviews); dynamic slabs ----
             var AMZ_BGT_REVIEWS_DEFAULTS = [
                 { rev_from: 2.99, rev_to: 3.5, bgt: 1, label: 'Red', color: '#a00211' },
                 { rev_from: 3.51, rev_to: 4, bgt: 2, label: 'Yellow', color: '#ffc107' },
                 { rev_from: 4.01, rev_to: 4.5, bgt: 3, label: 'Blue', color: '#2563eb' },
                 { rev_from: 4.51, rev_to: 5, bgt: 4, label: 'Green', color: '#28a745' }
             ];
+            var AMZ_BGT_REVIEWS_LABELS = ['Red', 'Yellow', 'Blue', 'Green', 'Pink', 'Purple'];
+            var AMZ_BGT_REVIEWS_COLORS = ['#a00211', '#ffc107', '#2563eb', '#28a745', '#e83e8c', '#7c3aed'];
             var amzBgtReviewsBands = [];
-            function amzBgtReviewsLockedBands(existing) {
+            function amzBgtReviewsNormalizeBands(existing) {
                 var prev = Array.isArray(existing) ? existing : [];
-                return AMZ_BGT_REVIEWS_DEFAULTS.map(function (def, i) {
-                    var keep = prev[i] || {};
+                var out = [];
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.rev_from);
+                    var to = parseFloat(keep.rev_to);
                     var bgt = parseInt(keep.bgt, 10);
-                    if (!isFinite(bgt) || bgt < 1) bgt = def.bgt;
-                    return {
-                        rev_from: def.rev_from,
-                        rev_to: def.rev_to,
-                        bgt: bgt,
-                        label: keep.label != null && String(keep.label) !== '' ? String(keep.label) : def.label,
-                        color: keep.color || def.color
-                    };
+                    out.push({
+                        rev_from: isFinite(from) ? from : '',
+                        rev_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) && bgt >= 1 ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
+                    });
                 });
+                return out.length ? out : AMZ_BGT_REVIEWS_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtReviewsRatingOfRow(row) {
+                var r = parseFloat(row && (row.bgt_reviews_rating != null ? row.bgt_reviews_rating : row.reviews));
+                return isFinite(r) ? r : null;
+            }
+            function amzBgtReviewsBandIndexForRating(rating, bands) {
+                if (rating == null || !isFinite(rating) || !Array.isArray(bands)) return -1;
+                for (var i = 0; i < bands.length; i++) {
+                    var from = parseFloat(bands[i].rev_from);
+                    var to = parseFloat(bands[i].rev_to);
+                    if (!isFinite(from) || !isFinite(to)) continue;
+                    var nextFrom = (i < bands.length - 1) ? parseFloat(bands[i + 1].rev_from) : NaN;
+                    var hit = (rating >= from && rating <= to)
+                        || (isFinite(nextFrom) && rating > to && rating < nextFrom);
+                    if (hit) return i;
+                }
+                return -1;
+            }
+            function amzBgtReviewsCounts(bands) {
+                var counts = (bands || []).map(function () { return 0; });
+                if (!table || typeof table.getData !== 'function') return counts;
+                var rows = [];
+                try { rows = table.getData() || []; } catch (e) { return counts; }
+                rows.forEach(function (row) {
+                    var idx = amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), bands);
+                    if (idx >= 0) counts[idx]++;
+                });
+                return counts;
+            }
+            function amzBgtReviewsRefreshCounts() {
+                var counts = amzBgtReviewsCounts(amzBgtReviewsBands);
+                document.querySelectorAll('#amazonAdsBgtReviewsRuleBandsBody [data-count-idx]').forEach(function (el) {
+                    var i = +el.dataset.countIdx;
+                    el.textContent = String(counts[i] != null ? counts[i] : 0);
+                });
+            }
+            function amzBgtReviewsNewBand() {
+                var last = amzBgtReviewsBands.length ? amzBgtReviewsBands[amzBgtReviewsBands.length - 1] : null;
+                var lastTo = last ? parseFloat(last.rev_to) : NaN;
+                var from = isFinite(lastTo) ? +(lastTo + 0.01).toFixed(2) : 2.99;
+                var to = +(from + 0.49).toFixed(2);
+                var bgt = last ? (parseInt(last.bgt, 10) || 0) + 1 : 1;
+                if (!isFinite(bgt) || bgt < 1) bgt = 1;
+                var i = amzBgtReviewsBands.length;
+                return {
+                    rev_from: from,
+                    rev_to: to,
+                    bgt: bgt,
+                    label: AMZ_BGT_REVIEWS_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_REVIEWS_COLORS[i] || '#6c757d'
+                };
             }
             function amzRenderBgtReviewsBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtReviewsRuleBandsBody');
                 if (!tbody) return;
+                var counts = amzBgtReviewsCounts(bands);
+                var canDelete = bands.length > 1;
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
-                    var toLabel = (i === bands.length - 1) ? '>4.5' : String(band.rev_to);
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
@@ -2854,9 +2954,11 @@
                         + '<td><div class="d-flex align-items-center gap-2">'
                         + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
                         + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + band.rev_from + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + toLabel + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
+                        + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="Campaigns on this grid page in this Reviews range">' + (counts[i] != null ? counts[i] : 0) + '</span></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
                 tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
@@ -2864,6 +2966,7 @@
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtReviewsBands[idx]) return;
                         if (fld === 'bgt') amzBgtReviewsBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        else if (fld === 'rev_from' || fld === 'rev_to') amzBgtReviewsBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else amzBgtReviewsBands[idx][fld] = el.value;
                     };
                     inp.addEventListener('input', function () {
@@ -2874,13 +2977,21 @@
                             var band = amzBgtReviewsBands[idx];
                             if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
                         }
+                        if (fld === 'rev_from' || fld === 'rev_to') amzBgtReviewsRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to') amzBgtReviewsRefreshCounts(); });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtReviewsBands.length <= 1) return;
+                        amzBgtReviewsBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtReviewsBands(amzBgtReviewsBands);
+                    });
                 });
             }
             function amzLoadBgtReviewsBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
-                amzBgtReviewsBands = amzBgtReviewsLockedBands(bands);
+                amzBgtReviewsBands = amzBgtReviewsNormalizeBands(bands);
                 amzRenderBgtReviewsBands(amzBgtReviewsBands);
             }
             function amzRefreshBgtReviewsRuleFromServer(cb) {
@@ -2897,23 +3008,32 @@
                     amzRefreshBgtReviewsRuleFromServer(function () { amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {}); });
                 });
             }
+            var bgtReviewsAddBtn = document.getElementById('amazonAdsBgtReviewsRuleAddBandBtn');
+            if (bgtReviewsAddBtn) {
+                bgtReviewsAddBtn.addEventListener('click', function () {
+                    amzBgtReviewsBands.push(amzBgtReviewsNewBand());
+                    amzRenderBgtReviewsBands(amzBgtReviewsBands);
+                });
+            }
             var bgtReviewsSaveBtn = document.getElementById('amazonAdsBgtReviewsRuleSaveBtn');
             if (bgtReviewsSaveBtn) {
                 bgtReviewsSaveBtn.addEventListener('click', function () {
                     var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzBgtReviewsBands = amzBgtReviewsLockedBands(amzBgtReviewsBands);
                     var cleaned = (amzBgtReviewsBands || []).map(function (b) {
                         return {
-                            rev_from: b.rev_from,
-                            rev_to: b.rev_to,
+                            rev_from: (b.rev_from === '' || b.rev_from == null) ? NaN : parseFloat(b.rev_from),
+                            rev_to: (b.rev_to === '' || b.rev_to == null) ? NaN : parseFloat(b.rev_to),
                             bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
-                    if (cleaned.length !== 4) { if (err) { err.textContent = 'BGT Vs REVIEWS needs exactly four slabs.'; err.classList.remove('d-none'); } return; }
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
                     for (var ri = 0; ri < cleaned.length; ri++) {
-                        if (!isFinite(cleaned[ri].bgt) || cleaned[ri].bgt < 1) { if (err) { err.textContent = 'Every slab needs a Bgt Reviews of 1 or more.'; err.classList.remove('d-none'); } return; }
+                        var rb = cleaned[ri];
+                        if (!isFinite(rb.rev_from) || !isFinite(rb.rev_to) || !isFinite(rb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Reviews values.'; err.classList.remove('d-none'); } return; }
+                        if (rb.rev_from > rb.rev_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                        if (rb.bgt < 1) { if (err) { err.textContent = 'Every slab needs a Bgt Reviews of 1 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtReviewsSaveBtn.disabled = true;
                     fetch(bgtReviewsRuleSaveUrl, {
