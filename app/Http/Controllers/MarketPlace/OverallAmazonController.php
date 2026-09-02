@@ -34,7 +34,9 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonFbmManual;
 use App\Models\AmazonListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonDailyBadgeStat;
 use App\Models\AmazonSeoAuditHistory;
+use Illuminate\Support\Facades\Schema;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonCompetitorAsin;
 use App\Services\AmazonCvrCpnAutoPushService;
@@ -3389,8 +3391,10 @@ class OverallAmazonController extends Controller
     }
 
     /**
-     * Daily 0 Sold (A L30 = 0) vs Sold (A L30 > 0) counts for the 0 Sold pie history dots.
-     * INV ≤ 0 skipped when inv is stored.
+     * Daily 0 Sold vs Sold counts for the 0 Sold pie history graph.
+     * Same definition as the amazon-tabulator pie / badge: child SKU, INV > 0,
+     * then A L30 = 0 (0 Sold) vs A L30 > 0 (Sold). Missing days carry forward
+     * instead of plotting 0.
      */
     public function getZeroSoldHistory(Request $request)
     {
@@ -3404,46 +3408,64 @@ class OverallAmazonController extends Controller
 
         $end = Carbon::now('America/Los_Angeles')->startOfDay();
         $start = $end->copy()->subDays($days - 1);
+        $lookback = $start->copy()->subDays(7);
+
+        $reconstructed = $this->amazonReconstructZeroSoldByDate($lookback, $end);
+        $badgeByDate = $this->amazonBadgeZeroSoldByDate($lookback, $end);
+        $summaryByDate = $this->amazonSummaryZeroSoldByDate($lookback, $end);
+
+        $maxMetrics = 0;
+        foreach ($reconstructed as $row) {
+            $maxMetrics = max($maxMetrics, (int) ($row['metrics_skus'] ?? 0));
+        }
+        $minFullDay = $maxMetrics > 0 ? max(50, (int) floor($maxMetrics * 0.4)) : 100;
+
+        $carry = null;
+        for ($d = $lookback->copy(); $d->lt($start); $d->addDay()) {
+            $picked = $this->amazonPickZeroSoldDay(
+                $d->toDateString(),
+                $reconstructed,
+                $badgeByDate,
+                $summaryByDate,
+                $minFullDay
+            );
+            if ($picked) {
+                $carry = $picked;
+            }
+        }
+
         $out = [];
         for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
             $key = $d->toDateString();
-            $out[$key] = [
+            $picked = $this->amazonPickZeroSoldDay(
+                $key,
+                $reconstructed,
+                $badgeByDate,
+                $summaryByDate,
+                $minFullDay
+            );
+            if ($picked) {
+                $carry = $picked;
+                $row = $picked;
+            } elseif ($carry) {
+                $row = $carry;
+                $row['source'] = 'carried';
+            } else {
+                continue;
+            }
+            $out[] = [
                 'date' => $key,
                 'label' => $d->format('M d'),
-                'zero' => 0,
-                'sold' => 0,
+                'zero' => (int) $row['zero'],
+                'sold' => (int) $row['sold'],
+                'source' => $row['source'] ?? 'snapshot',
             ];
         }
-
-        AmazonSkuDailyData::query()
-            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
-            ->select(['id', 'record_date', 'daily_data'])
-            ->orderBy('id')
-            ->chunkById(2000, function ($chunk) use (&$out) {
-                foreach ($chunk as $record) {
-                    $dateKey = Carbon::parse($record->record_date)->toDateString();
-                    if (! isset($out[$dateKey])) {
-                        continue;
-                    }
-                    $data = is_array($record->daily_data)
-                        ? $record->daily_data
-                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
-                    if (isset($data['inv']) && (int) $data['inv'] <= 0) {
-                        continue;
-                    }
-                    $aL30 = (int) ($data['a_l30'] ?? $data['units_ordered_l30'] ?? 0);
-                    if ($aL30 > 0) {
-                        $out[$dateKey]['sold']++;
-                    } else {
-                        $out[$dateKey]['zero']++;
-                    }
-                }
-            });
 
         return response()->json([
             'success' => true,
             'days' => $days,
-            'data' => array_values($out),
+            'data' => $out,
         ]);
     }
 
@@ -3541,6 +3563,256 @@ class OverallAmazonController extends Controller
         }
 
         return '0.01-1';
+    }
+
+    /**
+     * @param  array<string, array<string, int>>  $reconstructed
+     * @param  array<string, array<string, int>>  $badge
+     * @param  array<string, array<string, int>>  $summary
+     * @return array{zero:int,sold:int,source:string}|null
+     */
+    private function amazonPickZeroSoldDay(
+        string $date,
+        array $reconstructed,
+        array $badge,
+        array $summary,
+        int $minFullDay
+    ): ?array {
+        $r = $reconstructed[$date] ?? null;
+        $b = $badge[$date] ?? null;
+        $s = $summary[$date] ?? null;
+        $rTotal = $this->amazonZeroSoldRowTotal($r);
+        $bTotal = $this->amazonZeroSoldRowTotal($b);
+        $sTotal = $this->amazonZeroSoldRowTotal($s);
+        $metrics = (int) ($r['metrics_skus'] ?? 0);
+
+        if ($r && $rTotal > 0 && $metrics >= $minFullDay) {
+            return ['zero' => (int) $r['zero'], 'sold' => (int) $r['sold'], 'source' => 'snapshot'];
+        }
+        if ($bTotal > 0) {
+            return ['zero' => (int) $b['zero'], 'sold' => (int) $b['sold'], 'source' => 'badge'];
+        }
+        if ($sTotal > 0) {
+            return ['zero' => (int) $s['zero'], 'sold' => (int) $s['sold'], 'source' => 'summary'];
+        }
+        if ($r && $rTotal > 0) {
+            return ['zero' => (int) $r['zero'], 'sold' => (int) $r['sold'], 'source' => 'snapshot'];
+        }
+
+        return null;
+    }
+
+    private function amazonZeroSoldRowTotal(?array $row): int
+    {
+        if (! $row) {
+            return 0;
+        }
+
+        return (int) ($row['zero'] ?? 0) + (int) ($row['sold'] ?? 0);
+    }
+
+    /**
+     * Count INV > 0 child SKUs per day from amazon_sku_daily_data.
+     * Price-only stub rows (no A L30 / views) are ignored.
+     *
+     * @return array<string, array{zero:int,sold:int,metrics_skus:int}>
+     */
+    private function amazonReconstructZeroSoldByDate(Carbon $start, Carbon $end): array
+    {
+        $invHist = $this->amazonInvHistoryBySkuDate($start, $end);
+        $currentInv = $this->amazonCurrentShopifyInvBySku();
+        $byDateSku = [];
+
+        AmazonSkuDailyData::query()
+            ->whereBetween('record_date', [$start->toDateString(), $end->toDateString()])
+            ->select(['id', 'sku', 'record_date', 'daily_data'])
+            ->orderBy('id')
+            ->chunkById(2000, function ($chunk) use (&$byDateSku) {
+                foreach ($chunk as $record) {
+                    $skuRaw = strtoupper(trim((string) ($record->sku ?? '')));
+                    if ($skuRaw === '' || str_contains($skuRaw, 'PARENT')) {
+                        continue;
+                    }
+                    $dateKey = Carbon::parse($record->record_date)->toDateString();
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    if (! $this->amazonDailyRowHasSalesMetrics($data)) {
+                        continue;
+                    }
+                    $skuKey = ShopifySku::normalizeSkuForShopifyLookup($skuRaw) ?: $skuRaw;
+                    $byDateSku[$dateKey][$skuKey] = [
+                        'a_l30' => (int) ($data['a_l30'] ?? $data['units_ordered_l30'] ?? 0),
+                        'inv' => array_key_exists('inv', $data) && $data['inv'] !== null && $data['inv'] !== ''
+                            ? (int) $data['inv']
+                            : null,
+                    ];
+                }
+            });
+
+        $out = [];
+        foreach ($byDateSku as $dateKey => $skus) {
+            $zero = 0;
+            $sold = 0;
+            foreach ($skus as $skuKey => $row) {
+                $inv = $row['inv'];
+                if ($inv === null) {
+                    $inv = $this->amazonLookupInvOnDate($skuKey, $dateKey, $invHist, $currentInv);
+                }
+                if ($inv === null || $inv <= 0) {
+                    continue;
+                }
+                if ((int) $row['a_l30'] > 0) {
+                    $sold++;
+                } else {
+                    $zero++;
+                }
+            }
+            $out[$dateKey] = [
+                'zero' => $zero,
+                'sold' => $sold,
+                'metrics_skus' => count($skus),
+            ];
+        }
+
+        return $out;
+    }
+
+    private function amazonDailyRowHasSalesMetrics(array $data): bool
+    {
+        return array_key_exists('a_l30', $data)
+            || array_key_exists('units_ordered_l30', $data)
+            || array_key_exists('views', $data)
+            || array_key_exists('sessions_l30', $data);
+    }
+
+    /**
+     * @return array<string, array<string, int>> sku-norm => date => closing inv
+     */
+    private function amazonInvHistoryBySkuDate(Carbon $start, Carbon $end): array
+    {
+        if (! Schema::hasTable('shopifysku_inventory_history')) {
+            return [];
+        }
+
+        $bySku = [];
+        $lookback = $start->copy()->subDays(30)->toDateString();
+        DB::table('shopifysku_inventory_history')
+            ->whereBetween('snapshot_date', [$lookback, $end->toDateString()])
+            ->select(['id', 'sku', 'snapshot_date', 'closing_inventory'])
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$bySku) {
+                foreach ($rows as $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+                    if ($norm === '') {
+                        continue;
+                    }
+                    $d = Carbon::parse($row->snapshot_date)->toDateString();
+                    $bySku[$norm][$d] = (int) ($row->closing_inventory ?? 0);
+                }
+            });
+
+        return $bySku;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function amazonCurrentShopifyInvBySku(): array
+    {
+        $current = [];
+        ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select(['id', 'sku', 'inv'])
+            ->orderBy('id')
+            ->chunkById(3000, function ($rows) use (&$current) {
+                foreach ($rows as $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+                    if ($norm === '' || isset($current[$norm])) {
+                        continue;
+                    }
+                    $current[$norm] = (int) ($row->inv ?? 0);
+                }
+            });
+
+        return $current;
+    }
+
+    /**
+     * @param  array<string, array<string, int>>  $invHist
+     * @param  array<string, int>  $currentInv
+     */
+    private function amazonLookupInvOnDate(string $skuNorm, string $date, array $invHist, array $currentInv): ?int
+    {
+        if ($skuNorm === '') {
+            return $currentInv[$skuNorm] ?? null;
+        }
+        $hist = $invHist[$skuNorm] ?? null;
+        if (is_array($hist) && $hist !== []) {
+            if (isset($hist[$date])) {
+                return (int) $hist[$date];
+            }
+            $best = null;
+            foreach ($hist as $d => $qty) {
+                if ($d <= $date && ($best === null || $d > $best)) {
+                    $best = $d;
+                }
+            }
+            if ($best !== null) {
+                return (int) $hist[$best];
+            }
+        }
+
+        return $currentInv[$skuNorm] ?? null;
+    }
+
+    /**
+     * @return array<string, array{zero:int,sold:int}>
+     */
+    private function amazonBadgeZeroSoldByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        AmazonDailyBadgeStat::query()
+            ->whereBetween('snapshot_date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('snapshot_date')
+            ->get(['snapshot_date', 'zero_sold_count', 'sold_count'])
+            ->each(function ($row) use (&$out) {
+                $d = Carbon::parse($row->snapshot_date)->toDateString();
+                $zero = (int) $row->zero_sold_count;
+                $sold = (int) $row->sold_count;
+                if ($zero + $sold <= 0) {
+                    return;
+                }
+                $out[$d] = ['zero' => $zero, 'sold' => $sold];
+            });
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, array{zero:int,sold:int}>
+     */
+    private function amazonSummaryZeroSoldByDate(Carbon $start, Carbon $end): array
+    {
+        $out = [];
+        AmazonChannelSummary::query()
+            ->where('channel', 'amazon')
+            ->whereBetween('snapshot_date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('snapshot_date')
+            ->get(['snapshot_date', 'summary_data'])
+            ->each(function ($row) use (&$out) {
+                $data = is_array($row->summary_data) ? $row->summary_data : [];
+                $d = Carbon::parse($row->snapshot_date)->toDateString();
+                $zero = (int) ($data['zero_sold_count'] ?? 0);
+                $sold = (int) ($data['sold_count'] ?? 0);
+                if ($zero + $sold <= 0) {
+                    return;
+                }
+                $out[$d] = ['zero' => $zero, 'sold' => $sold];
+            });
+
+        return $out;
     }
 
     public function getMetricsHistory(Request $request)

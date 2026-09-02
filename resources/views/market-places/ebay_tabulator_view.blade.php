@@ -864,6 +864,11 @@
                             title="Build rules on For L7 Views that set the S Bid column">
                         <i class="fas fa-sliders-h me-1"></i>View VS SBID
                     </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
+                            data-bs-toggle="modal" data-bs-target="#soldSbidRuleModal"
+                            title="Build rules on Dil set + Sold in eBay L30 that set the Sold vs SBID column">
+                        <i class="fas fa-sliders-h me-1"></i>Sold vs SBID
+                    </button>
 
                 </div>
 
@@ -1329,6 +1334,80 @@
                             <i class="fas fa-bolt me-1"></i>Autopush
                         </button>
                         <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
+                            <i class="fas fa-save me-1"></i>Save Rule
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ═══════════════════════════════════════════════════════════════════════
+         Sold vs SBID Modal — Dil color set + Sold in eBay L30 slabs.
+         Each rule is a Dil set (Red <25 / Green 25–50 / Pink 50+) plus a
+         min/max range on eBay L30 sold, and the S Bid to show in the
+         Sold vs SBID column. First matching rule wins.
+         Storage: ebay_sbid_rules.key = 'ebay1_sold_sbid_slabs'.
+    ══════════════════════════════════════════════════════════════════════════ --}}
+    <div class="modal fade" id="soldSbidRuleModal" tabindex="-1" aria-labelledby="soldSbidRuleModalLabel" aria-hidden="true">
+        <style>
+            #soldSbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
+            #sold-sbid-slab-rule-table thead th { background-color: #fffef2 !important; color: #000 !important; }
+            #soldSbidRuleModal input[type=number]::-webkit-inner-spin-button,
+            #soldSbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+            #soldSbidRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+            #soldSbidRuleModal .form-control, #soldSbidRuleModal .form-select { border-radius: 0.6rem; }
+            #soldSbidRuleModal .sold-sbid-dil-red { color: #a00211; font-weight: 600; }
+            #soldSbidRuleModal .sold-sbid-dil-green { color: #28a745; font-weight: 600; }
+            #soldSbidRuleModal .sold-sbid-dil-pink { color: #e83e8c; font-weight: 600; }
+        </style>
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="soldSbidRuleModalLabel">
+                        <i class="fas fa-sliders-h me-2 text-primary"></i>Sold vs SBID
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Slabs are a <strong>Dil set</strong> (same Red / Green / Pink bands as the Dil filter)
+                        plus <strong>Sold in eBay L30</strong>.
+                        <strong>Count</strong> is SKU rows in that slab. First matching row wins.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle" id="sold-sbid-slab-rule-table" style="min-width: 640px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
+                                    <th rowspan="2" style="width:150px;" class="align-middle text-center">Dil</th>
+                                    <th colspan="2" class="text-center">Sold in Ebay L30</th>
+                                    <th rowspan="2" style="width:72px;" class="align-middle text-center"
+                                        title="SKU rows whose Dil set and eBay L30 sold fall in this slab (first match wins)">Count</th>
+                                    <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
+                                    <th rowspan="2" style="width:44px;" class="align-middle"></th>
+                                </tr>
+                                <tr>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sold-sbid-slab-rules-body">
+                                {{-- filled by JS --}}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-primary mb-2" id="sold-sbid-slab-add-rule-btn">
+                        <i class="fas fa-plus me-1"></i>Add rule / slab
+                    </button>
+
+                    <p class="small text-danger mb-0 mt-2 d-none" id="sold-sbid-slab-rule-err"></p>
+                </div>
+                <div class="modal-footer py-2 d-flex justify-content-between">
+                    <span class="small text-muted" id="sold-sbid-slab-rule-status"></span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="sold-sbid-slab-rule-save-btn">
                             <i class="fas fa-save me-1"></i>Save Rule
                         </button>
                     </div>
@@ -2388,6 +2467,47 @@
                     }
                     return { bid: 0, color: '#6c757d', skip: true };
                 }
+            }
+            return { bid: 0, color: '#6c757d', skip: true };
+        }
+
+        // Sold vs SBID — Dil set + Sold in eBay L30 slabs.
+        // Populated from /ebay-one/sold-sbid-slab-rule; see the Sold vs SBID modal.
+        let currentSoldSbidSlabRules = [];
+
+        function ebayListingDilForSoldSbid(rowData) {
+            if (typeof chPromoListingDil === 'function') {
+                const d = chPromoListingDil(rowData);
+                return isFinite(d) ? d : 0;
+            }
+            const inv = parseFloat(rowData && rowData.INV) || 0;
+            const ov = parseFloat(rowData && rowData['L30']) || 0;
+            return inv === 0 ? 0 : (ov / inv) * 100;
+        }
+
+        function soldSbidDilSetMatches(dil, set) {
+            const key = String(set || 'red').toLowerCase();
+            if (key === 'green') return dil >= 25 && dil < 50;
+            if (key === 'pink') return dil >= 50;
+            return dil < 25;
+        }
+
+        function getSoldVsSbid(rowData) {
+            if (!rowData || (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(rowData))) {
+                return { bid: 0, color: '#6c757d', skip: true };
+            }
+            const dil = ebayListingDilForSoldSbid(rowData);
+            const sold = parseFloat(rowData['eBay L30']) || 0;
+            const rules = currentSoldSbidSlabRules || [];
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (!soldSbidDilSetMatches(dil, r.dil_set)) continue;
+                if (!sbidSlabInRange(sold, r.sold_l30_min, r.sold_l30_max)) continue;
+                const bid = parseFloat(r.sbid);
+                if (isFinite(bid) && bid > 0) {
+                    return { bid: bid, color: '#0d6efd', skip: false };
+                }
+                return { bid: 0, color: '#6c757d', skip: true };
             }
             return { bid: 0, color: '#6c757d', skip: true };
         }
@@ -5197,6 +5317,28 @@
                         }
                     },
                     {
+                        title: "Sold vs SBID",
+                        field: "sold_vs_sbid",
+                        hozAlign: "center",
+                        width: 110,
+                        headerTooltip: "Dil set (Red <25 / Green 25–50 / Pink 50+) + Sold in eBay L30 slabs from the Sold vs SBID rule. Red if bid > Ads% badge, otherwise green.",
+                        sorter: function(a, b, aRow, bRow) {
+                            return getSoldVsSbid(aRow.getData()).bid - getSoldVsSbid(bRow.getData()).bid;
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(rowData)) {
+                                return '';
+                            }
+                            const res = getSoldVsSbid(rowData);
+                            if (res.skip) {
+                                return `<span class="text-muted" title="No matching Sold vs SBID slab" style="font-size:11px;">—</span>`;
+                            }
+                            const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
+                            return `<span title="Sold vs SBID slab" style="color:${color}; font-weight:700;">${Math.round(res.bid)}%</span>`;
+                        }
+                    },
+                    {
                         title: "PROMOTE",
                         field: "ca_promote_with_ad",
                         hozAlign: "center",
@@ -6127,8 +6269,8 @@
 
                 // Advertisement first (views / bids / ads / promote)
                 if (
-                    /^(views|l7_views|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad)$/i.test(f) ||
-                    /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
+                    /^(views|l7_views|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|sold_vs_sbid)$/i.test(f) ||
+                    /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|sold\s*vs\s*sbid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
                     return 'advertisement';
@@ -6661,6 +6803,7 @@
                 'LP_productmaster': 'LP',
                 'ca_suggested_bid': 'ES BID',
                 'ca_bid_percentage': 'C BID',
+                'sold_vs_sbid': 'Sold vs SBID',
                 'ca_promote_with_ad': 'PROMOTE'
             };
 
@@ -8004,6 +8147,342 @@
                 loadSbidSlabRules();
             } else {
                 document.addEventListener('DOMContentLoaded', loadSbidSlabRules);
+            }
+        })();
+
+        // ════════════════════════════════════════════════════════════════════
+        // Sold vs SBID modal — Dil set + Sold in eBay L30 slabs
+        // that decide the Sold vs SBID column.
+        // Storage: ebay_sbid_rules.key = 'ebay1_sold_sbid_slabs'.
+        // ════════════════════════════════════════════════════════════════════
+        (function() {
+            const getUrl  = @json(url('/ebay-one/sold-sbid-slab-rule'));
+            const saveUrl = @json(url('/ebay-one/sold-sbid-slab-rule'));
+            const DIL_SETS = {
+                red: { label: 'Red <25%', cls: 'sold-sbid-dil-red' },
+                green: { label: 'Green 25–50%', cls: 'sold-sbid-dil-green' },
+                pink: { label: 'Pink 50%+', cls: 'sold-sbid-dil-pink' }
+            };
+
+            function numAttr(v) {
+                return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
+            }
+
+            function normalizeDilSet(v) {
+                const s = String(v || '').toLowerCase();
+                return DIL_SETS[s] ? s : 'red';
+            }
+
+            function soldSbidDilSetLabel(set) {
+                return (DIL_SETS[normalizeDilSet(set)] || DIL_SETS.red).label;
+            }
+
+            function isFirstOfDilSet(rules, idx) {
+                const set = normalizeDilSet(rules[idx] && rules[idx].dil_set);
+                for (let i = 0; i < idx; i++) {
+                    if (normalizeDilSet(rules[i].dil_set) === set) return false;
+                }
+                return true;
+            }
+
+            function autofillSoldSbidMins(rules) {
+                if (!rules || !rules.length) return;
+                const bySet = {};
+                rules.forEach(function(r) {
+                    const key = normalizeDilSet(r.dil_set);
+                    if (!bySet[key]) bySet[key] = [];
+                    bySet[key].push(r);
+                });
+                Object.keys(bySet).forEach(function(key) {
+                    const rows = bySet[key];
+                    const firstMin = parseFloat(rows[0].sold_l30_min);
+                    const firstMax = parseFloat(rows[0].sold_l30_max);
+                    const diff = (isFinite(firstMin) && isFinite(firstMax)) ? (firstMax - firstMin) : null;
+                    for (let i = 1; i < rows.length; i++) {
+                        const prevMax = rows[i - 1].sold_l30_max;
+                        if (prevMax === null || prevMax === undefined || prevMax === '' || isNaN(prevMax)) break;
+                        const prev = parseFloat(prevMax);
+                        rows[i].sold_l30_min = prev + 1;
+                        const maxEmpty = rows[i].sold_l30_max === null || rows[i].sold_l30_max === undefined || rows[i].sold_l30_max === '';
+                        if (i === rows.length - 1 && maxEmpty) continue;
+                        if (diff !== null && diff > 0) {
+                            rows[i].sold_l30_max = prev + diff;
+                        }
+                    }
+                });
+            }
+
+            function getSoldSbidSkuRows() {
+                if (typeof table === 'undefined' || !table) return [];
+                try {
+                    const rows = table.getData('active') || table.getData() || [];
+                    return rows.filter(function(d) {
+                        return typeof ebayIsParentRowData === 'function' ? !ebayIsParentRowData(d) : true;
+                    });
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function countRowsBySoldSbidSlab(rules) {
+                const counts = rules.map(function() { return 0; });
+                getSoldSbidSkuRows().forEach(function(d) {
+                    const dil = ebayListingDilForSoldSbid(d);
+                    const sold = parseFloat(d['eBay L30']) || 0;
+                    for (let i = 0; i < rules.length; i++) {
+                        const r = rules[i];
+                        if (!soldSbidDilSetMatches(dil, r.dil_set)) continue;
+                        if (!sbidSlabInRange(sold, r.sold_l30_min, r.sold_l30_max)) continue;
+                        counts[i]++;
+                        break;
+                    }
+                });
+                return counts;
+            }
+
+            function dilSetSelectHtml(rule) {
+                const cur = normalizeDilSet(rule.dil_set);
+                const cls = (DIL_SETS[cur] || DIL_SETS.red).cls;
+                let opts = '';
+                Object.keys(DIL_SETS).forEach(function(key) {
+                    const sel = key === cur ? ' selected' : '';
+                    opts += `<option value="${key}" class="${DIL_SETS[key].cls}">${DIL_SETS[key].label}</option>`;
+                });
+                return `<select class="form-select form-select-sm ${cls}" data-field="dil_set"
+                                onchange="window.soldSbidSlabUpdate(this)">${opts}</select>`;
+            }
+
+            function renderSoldSbidSlabRules(rules) {
+                const tbody = document.getElementById('sold-sbid-slab-rules-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                if (!rules.length) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted small py-3">
+                        No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
+                    return;
+                }
+                autofillSoldSbidMins(rules);
+                const slabCounts = countRowsBySoldSbidSlab(rules);
+                rules.forEach(function(rule, i) {
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-idx', i);
+                    const count = slabCounts[i] || 0;
+                    const firstOfSet = isFirstOfDilSet(rules, i);
+                    const locked = firstOfSet ? '' : ' readonly tabindex="-1" style="background:#f8f9fa;"';
+                    const minTitle = firstOfSet ? '' : ' title="Auto: previous Max + 1 for this Dil set"';
+                    const maxTitle = firstOfSet
+                        ? ' title="Sets the difference for following slabs in this Dil set"'
+                        : ' title="Auto: same difference as the first slab in this Dil set"';
+                    tr.innerHTML = `
+                        <td class="text-center text-muted small">${i + 1}</td>
+                        <td>${dilSetSelectHtml(rule)}</td>
+                        <td><input type="number" step="1" class="form-control form-control-sm text-end"
+                                   value="${numAttr(rule.sold_l30_min)}" data-field="sold_l30_min"
+                                   onchange="window.soldSbidSlabUpdate(this)" placeholder="—"${locked}${minTitle}></td>
+                        <td><input type="number" step="1" class="form-control form-control-sm text-end"
+                                   value="${numAttr(rule.sold_l30_max)}" data-field="sold_l30_max"
+                                   onchange="window.soldSbidSlabUpdate(this)" placeholder="—"${maxTitle}></td>
+                        <td class="text-center fw-semibold" title="SKU rows in this slab">${count}</td>
+                        <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
+                                   value="${numAttr(rule.sbid)}" data-field="sbid"
+                                   ${firstOfSet ? 'title="Changing this sets following rows in this Dil set to −1 each, minimum 2%"' : ''}
+                                   onchange="window.soldSbidSlabUpdate(this)"></td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    onclick="window.soldSbidSlabRemove(${i})" title="Remove rule">&times;</button>
+                        </td>`;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            function cascadeSoldSbidFromFirstOfSet(rules, set) {
+                const key = normalizeDilSet(set);
+                let first = null;
+                let seen = 0;
+                rules.forEach(function(r) {
+                    if (normalizeDilSet(r.dil_set) !== key) return;
+                    if (first === null) {
+                        first = parseFloat(r.sbid);
+                        seen = 1;
+                        return;
+                    }
+                    if (!isFinite(first)) return;
+                    r.sbid = Math.max(2, first - seen);
+                    seen++;
+                });
+            }
+
+            window.soldSbidSlabUpdate = function(el) {
+                const tr = el.closest('tr');
+                const idx = parseInt(tr.getAttribute('data-idx'), 10);
+                const field = el.dataset.field;
+                if (!currentSoldSbidSlabRules[idx]) return;
+                if (field === 'dil_set') {
+                    currentSoldSbidSlabRules[idx].dil_set = normalizeDilSet(el.value);
+                    currentSoldSbidSlabRules[idx].label = soldSbidDilSetLabel(el.value);
+                    renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                    if (table) table.redraw(true);
+                    scheduleSoldSbidSave();
+                    return;
+                }
+                currentSoldSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                if (field === 'sbid' && isFirstOfDilSet(currentSoldSbidSlabRules, idx)) {
+                    cascadeSoldSbidFromFirstOfSet(currentSoldSbidSlabRules, currentSoldSbidSlabRules[idx].dil_set);
+                    renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                    if (table) table.redraw(true);
+                    scheduleSoldSbidSave();
+                    return;
+                }
+                if (field === 'sold_l30_min' || field === 'sold_l30_max') {
+                    renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                }
+                if (table) table.redraw(true);
+                scheduleSoldSbidSave();
+            };
+
+            window.soldSbidSlabRemove = function(idx) {
+                currentSoldSbidSlabRules.splice(idx, 1);
+                renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                if (table) table.redraw(true);
+                scheduleSoldSbidSave();
+            };
+
+            $(document).on('click', '#sold-sbid-slab-add-rule-btn', function() {
+                const last = currentSoldSbidSlabRules[currentSoldSbidSlabRules.length - 1] || {};
+                const dilSet = normalizeDilSet(last.dil_set || 'red');
+                currentSoldSbidSlabRules.push({
+                    dil_set: dilSet,
+                    label: soldSbidDilSetLabel(dilSet),
+                    sold_l30_min: null,
+                    sold_l30_max: null,
+                    sbid: 2
+                });
+                cascadeSoldSbidFromFirstOfSet(currentSoldSbidSlabRules, dilSet);
+                renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                if (table) table.redraw(true);
+                scheduleSoldSbidSave();
+            });
+
+            function loadSoldSbidSlabRules() {
+                $.ajax({
+                    url: getUrl,
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        currentSoldSbidSlabRules = (data && Array.isArray(data.rules)) ? data.rules : [];
+                        renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                        if (table) table.redraw(true);
+                    },
+                    error: function(xhr) {
+                        console.error('[Sold vs SBID] load failed', xhr.status, xhr.responseText);
+                    }
+                });
+            }
+
+            let soldSbidSaveTimer = null;
+
+            function syncSoldSbidRulesFromDom() {
+                const tbody = document.getElementById('sold-sbid-slab-rules-body');
+                if (!tbody) return;
+                tbody.querySelectorAll('tr[data-idx]').forEach(function(tr) {
+                    const idx = parseInt(tr.getAttribute('data-idx'), 10);
+                    if (!currentSoldSbidSlabRules[idx]) return;
+                    tr.querySelectorAll('input[data-field], select[data-field]').forEach(function(el) {
+                        if (el.dataset.field === 'dil_set') {
+                            currentSoldSbidSlabRules[idx].dil_set = normalizeDilSet(el.value);
+                            currentSoldSbidSlabRules[idx].label = soldSbidDilSetLabel(el.value);
+                            return;
+                        }
+                        currentSoldSbidSlabRules[idx][el.dataset.field] = (el.value === '' ? null : parseFloat(el.value));
+                    });
+                });
+            }
+
+            function saveSoldSbidRules() {
+                syncSoldSbidRulesFromDom();
+                const errEl = document.getElementById('sold-sbid-slab-rule-err');
+                const statusEl = document.getElementById('sold-sbid-slab-rule-status');
+                if (errEl) errEl.classList.add('d-none');
+                const btn = document.getElementById('sold-sbid-slab-rule-save-btn');
+                const csrf = $('meta[name="csrf-token"]').attr('content') || '';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+                }
+                $.ajax({
+                    url: saveUrl,
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrf,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        rules: (currentSoldSbidSlabRules || []).map(function(r) {
+                            return {
+                                label: r.label || soldSbidDilSetLabel(r.dil_set),
+                                dil_set: normalizeDilSet(r.dil_set),
+                                sold_l30_min: r.sold_l30_min,
+                                sold_l30_max: r.sold_l30_max,
+                                sbid: r.sbid
+                            };
+                        }),
+                        _token: csrf
+                    }),
+                    success: function(resp) {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                            setTimeout(function() { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+                        }
+                        if (resp && resp.rule && Array.isArray(resp.rule.rules)) {
+                            currentSoldSbidSlabRules = resp.rule.rules;
+                        }
+                        renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                        if (table) table.redraw(true);
+                        if (statusEl) statusEl.textContent = 'Saved Sold vs SBID rule.';
+                        if (typeof showToast === 'function') showToast('success', 'Sold vs SBID rule saved');
+                    },
+                    error: function(xhr) {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                        }
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                            || xhr.responseText
+                            || ('HTTP ' + xhr.status);
+                        if (errEl) {
+                            errEl.textContent = 'Error: ' + msg;
+                            errEl.classList.remove('d-none');
+                        }
+                    }
+                });
+            }
+
+            function scheduleSoldSbidSave() {
+                clearTimeout(soldSbidSaveTimer);
+                soldSbidSaveTimer = setTimeout(function() {
+                    saveSoldSbidRules();
+                }, 800);
+            }
+
+            const soldSbidModalEl = document.getElementById('soldSbidRuleModal');
+            if (soldSbidModalEl) {
+                soldSbidModalEl.addEventListener('show.bs.modal', function() {
+                    renderSoldSbidSlabRules(currentSoldSbidSlabRules);
+                });
+            }
+
+            $('#sold-sbid-slab-rule-save-btn').on('click', function() {
+                clearTimeout(soldSbidSaveTimer);
+                saveSoldSbidRules();
+            });
+
+            if (document.readyState !== 'loading') {
+                loadSoldSbidSlabRules();
+            } else {
+                document.addEventListener('DOMContentLoaded', loadSoldSbidSlabRules);
             }
         })();
 

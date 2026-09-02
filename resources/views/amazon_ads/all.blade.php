@@ -174,7 +174,11 @@
             font-size: 0.8125rem; padding: 0.35rem 0.4rem;
         }
         #amz-raw-filter-bar .amz-raw-filter-select { color: #64748b; }
+        #amz-raw-filter-bar .amz-raw-filter-select.is-acos-color,
+        #amz-raw-filter-bar .amz-raw-filter-select.is-ads-cvr-color { font-weight: 700; }
         #amz-raw-filter-bar .amz-raw-date-input { color: #334155; }
+        #amazonAdsFilterAcos option,
+        #amazonAdsFilterAdsCvr option { font-weight: 600; }
         .amz-ads-search-bar { min-width: 0; }
         .amz-ads-search-bar #amz-filter-search { min-width: 0; flex: 1 1 auto; }
         /* Stat badges */
@@ -238,7 +242,7 @@
                             <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Spend (L30) total">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
                             <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) total">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
                             <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) total">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
-                            <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="CVR = Sold / Clicks">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
+                            <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
                             <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
                             <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) total">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
                         </div>
@@ -253,12 +257,13 @@
                                 <i class="fas fa-file-csv"></i>
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbgtDoubleRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbgtDoubleRuleModal" title="SBGT Double: Dil column colors × multiplier (runs with the BGT rule)">SBGT DOUBLE</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT Vs ACOS Rule</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtViewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtViewsRuleModal" title="Edit View L30 bands and Bgt Views values">BGT Vs VIEWS</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtCvrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtPrcRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPauseRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPauseRuleModal" title="Pause or activate campaigns from Pricing, Dil%, and ACOS%">PAUSE RULE</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is high or price is below your threshold">PR</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsReviewsRuleModal" title="Auto-pause product ads when that SKU's rating is below your number (campaign stays on)">REVIEWS RULE</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause when Dil% is high, price is below your threshold, or reviews are below your star rating">Pause Rule</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -338,6 +343,18 @@
                                     <option value="ENABLED">Enabled</option>
                                     <option value="PAUSED">Paused</option>
                                     <option value="ARCHIVED">Archived</option>
+                                </select>
+                            </div>
+                            <div class="amz-raw-filter-field" style="min-width:140px;">
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterAcos">Acos</label>
+                                <select id="amazonAdsFilterAcos" class="form-select form-select-sm amz-raw-filter-select" title="Filter by ACOS color band (same BGT color rules as the ACOS% column)">
+                                    <option value="" selected>All</option>
+                                </select>
+                            </div>
+                            <div class="amz-raw-filter-field" style="min-width:150px;">
+                                <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterAdsCvr">Ads CVR</label>
+                                <select id="amazonAdsFilterAdsCvr" class="form-select form-select-sm amz-raw-filter-select" title="Filter by Ads CVR color band (same Amz page CVR L30 colors as the Ads CVR column)">
+                                    <option value="" selected>All</option>
                                 </select>
                             </div>
                             <div class="amz-raw-filter-actions d-flex align-items-end flex-wrap gap-2">
@@ -467,7 +484,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th style="width:40px;">#</th>
-                                <th>Label</th>
+                                <th>ACOS%</th>
                                 <th style="width:140px;">Color</th>
                                 <th style="width:110px;">From (%)</th>
                                 <th style="width:110px;">To (%)</th>
@@ -491,48 +508,155 @@
         </div>
     </div>
 
-    <div class="modal fade" id="amazonAdsSbgtDoubleRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbgtDoubleRuleModalLabel" aria-hidden="true">
+    <div class="modal fade" id="amazonAdsBgtViewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtViewsRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsSbgtDoubleRuleModalLabel">SBGT Double — Dil color + Amazon L30</h5>
+                    <h5 class="modal-title" id="amazonAdsBgtViewsRuleModalLabel">BGT Vs VIEWS — View L30 → Bgt Views</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Runs <strong>at the same time</strong> as BGT / SBID / Pause / PR. Bands are the same
-                        <strong>Dil column colors</strong> as this table (red / yellow / green / pink / gray).
-                        Turn a color on and set its multiplier. Also requires Amazon L30 ≤ the threshold.
+                        Each row is an inclusive <strong>Amz page View L30</strong> range (parent Sess30) for the campaign.
+                        Rows are checked <strong>top to bottom</strong>; the first range that contains the views gets its
+                        <strong>Bgt Views</strong>. Fill the <strong>first</strong> slab (default <code>0–70</code>) and the
+                        next five slabs autofill. Last <em>To</em> is <code>9999</code>.
                     </p>
-                    <div class="row g-2 mb-3 align-items-end">
-                        <div class="col-auto">
-                            <div class="form-check mb-0">
-                                <input class="form-check-input" type="checkbox" id="amazonAdsSbgtDoubleEnabled" checked>
-                                <label class="form-check-label small" for="amazonAdsSbgtDoubleEnabled">Enable overlay</label>
-                            </div>
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <label class="form-label small mb-0" for="amazonAdsSbgtDoubleAmzL30">Amazon L30 ≤</label>
-                            <input type="number" step="1" min="0" class="form-control form-control-sm" id="amazonAdsSbgtDoubleAmzL30" value="0">
-                        </div>
-                    </div>
                     <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsSbgtDoubleRuleTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:50px;">On</th>
-                                    <th>Band</th>
-                                    <th style="width:150px;">SBGT multiplier</th>
-                                </tr>
-                            </thead>
-                            <tbody id="amazonAdsSbgtDoubleBandsBody"></tbody>
-                        </table>
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtViewsRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:120px;">Bgt Views</th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtViewsRuleBandsBody"></tbody>
+                    </table>
                     </div>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsSbgtDoubleRuleModalError" role="alert"></p>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtViewsRuleModalError" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbgtDoubleRuleSaveBtn">Save &amp; refresh grid</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtViewsRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsBgtCvrRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtCvrRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtCvrRuleModalLabel">BGT Vs CVR — CVR L30 → Bgt Cvr</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Amz page CVR L30</strong> range (parent A L30 ÷ Sess30 × 100) for the campaign.
+                        Rows are checked <strong>top to bottom</strong>; the first range that contains the CVR gets its
+                        <strong>Bgt Cvr</strong>. Fill the <strong>first</strong> slab (default <code>0–4</code>) and the
+                        next five slabs autofill. Last <em>To</em> is <code>9999</code>.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtCvrRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:120px;">Bgt Cvr</th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtCvrRuleBandsBody"></tbody>
+                    </table>
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCvrRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtCvrRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsBgtPrcRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtPrcRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtPrcRuleModalLabel">BGT PRC — Price → Bgt Prc</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Price</strong> range (same Price column: Amz list, else LMP).
+                        Five fixed slabs: <code>20–40</code>, <code>41–60</code>, <code>61–100</code>, <code>101–150</code>, <code>&gt;150</code>.
+                        Price below <code>20</code> has no BGT PRC. Edit label, color, and Bgt; ranges stay locked.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtPrcRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:120px;">Bgt Prc</th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtPrcRuleBandsBody"></tbody>
+                    </table>
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtPrcRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtPrcRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsBgtReviewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtReviewsRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsBgtReviewsRuleModalLabel">BGT Vs REVIEWS — Reviews → Bgt Reviews</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Reviews</strong> range (same star rating as the Reviews column).
+                        Four fixed slabs: <code>2.99–3.5</code>, <code>3.51–4</code>, <code>4.01–4.5</code>, <code>&gt;4.5</code>.
+                        Rating below <code>2.99</code> has no Bgt Reviews. Edit label, color, and Bgt; ranges stay locked.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtReviewsRuleTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Label</th>
+                                <th style="width:140px;">Color</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:120px;">Bgt Reviews</th>
+                            </tr>
+                        </thead>
+                        <tbody id="amazonAdsBgtReviewsRuleBandsBody"></tbody>
+                    </table>
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtReviewsRuleModalError" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtReviewsRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -593,109 +717,20 @@
         </div>
     </div>
 
-    <div class="modal fade" id="amazonAdsPauseRuleModal" tabindex="-1" aria-labelledby="amazonAdsPauseRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsPauseRuleModalLabel">Pause Rule — Pricing / Dil% / ACOS%</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Campaigns stay <strong>Active</strong> unless they fall in a <strong>Pause</strong> band.
-                        Each section is checked top to bottom; the first matching range wins for that metric.
-                        Matching any Pause band pauses the campaign on Amazon. Empty sections are ignored.
-                    </p>
-                    <div class="row g-3">
-                        <div class="col-lg-4">
-                            <h6 class="fw-semibold mb-1">Pricing ($)</h6>
-                            <p class="small text-muted mb-2">Amazon list price from the datasheet for the campaign SKU.</p>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-1">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Action</th>
-                                            <th>Label</th>
-                                            <th style="width:40px;"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amazonAdsPauseRulePricingBody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="pricing">
-                                <i class="fas fa-plus me-1"></i>Add band
-                            </button>
-                        </div>
-                        <div class="col-lg-4">
-                            <h6 class="fw-semibold mb-1">Dil%</h6>
-                            <p class="small text-muted mb-2">Amazon L30 units ÷ inventory × 100 for the campaign SKU.</p>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-1">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Action</th>
-                                            <th>Label</th>
-                                            <th style="width:40px;"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amazonAdsPauseRuleDilBody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="dil">
-                                <i class="fas fa-plus me-1"></i>Add band
-                            </button>
-                        </div>
-                        <div class="col-lg-4">
-                            <h6 class="fw-semibold mb-1">ACOS%</h6>
-                            <p class="small text-muted mb-2">Same L30 ACOS as the grid ACOS column.</p>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-1">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Action</th>
-                                            <th>Label</th>
-                                            <th style="width:40px;"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amazonAdsPauseRuleAcosBody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" data-pause-section="acos">
-                                <i class="fas fa-plus me-1"></i>Add band
-                            </button>
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPauseRuleModalError" role="alert"></p>
-                    <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsPauseRuleModalOk" role="status"></p>
-                </div>
-                <div class="modal-footer py-2 d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsPauseRuleSaveBtn">Save &amp; refresh grid</button>
-                    <button type="button" class="btn btn-sm btn-danger" id="amazonAdsPauseRuleApplyBtn" title="Save bands and pause/enable matching SP + SB campaigns on Amazon">Save &amp; apply to Amazon</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="modal fade" id="amazonAdsPrRuleModal" tabindex="-1" aria-labelledby="amazonAdsPrRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsPrRuleModalLabel">PR — auto-pause</h5>
+                    <h5 class="modal-title" id="amazonAdsPrRuleModalLabel">Pause Rule — auto-pause</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Dil% and Price are <strong>separate</strong> rules. If <strong>either</strong> matches, the campaign is paused (OR).
-                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv).
-                        Price uses the amount shown in the <strong>price</strong> column, including grey LMP when Amazon price is missing.
-                        Save (with auto-pause on) pauses matching campaigns on Amazon now. The job also runs daily at 18:25 IST.
+                        Dil%, Price, and Reviews are <strong>separate</strong> rules. If <strong>any</strong> matches, ads are paused (OR).
+                        Dil% uses the same <strong>dil</strong> column as this table (ovl30 ÷ Inv) and pauses the <strong>campaign</strong>.
+                        Price uses the <strong>price</strong> column (including grey LMP) and pauses the <strong>campaign</strong>.
+                        Reviews uses each advertised SKU’s star rating and pauses only that <strong>product ad</strong> (campaign stays on).
+                        Save (with auto-pause on) applies matching pauses on Amazon now. The job also runs daily at 18:25 IST.
                     </p>
                     <div class="form-check mb-1">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrDilEnabled" checked>
@@ -713,6 +748,14 @@
                         <span class="input-group-text">$</span>
                         <input type="number" min="0" max="1000000" step="0.01" class="form-control" id="amazonAdsPrPriceBelow" value="20">
                     </div>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="amazonAdsPrReviewsEnabled" checked>
+                        <label class="form-check-label small" for="amazonAdsPrReviewsEnabled">Pause when Reviews &lt;</label>
+                    </div>
+                    <div class="input-group input-group-sm mb-3" style="max-width: 220px;">
+                        <input type="number" min="1" max="5" step="0.01" class="form-control" id="amazonAdsPrReviewsBelow" value="2.99">
+                        <span class="input-group-text">★</span>
+                    </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="amazonAdsPrEnabled" checked>
                         <label class="form-check-label small" for="amazonAdsPrEnabled">Enable auto-pause</label>
@@ -724,41 +767,6 @@
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsPrRuleSaveBtn">Save</button>
                     <button type="button" class="btn btn-sm btn-danger" id="amazonAdsPrRuleApplyBtn">Save &amp; apply to Amazon</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="amazonAdsReviewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsReviewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsReviewsRuleModalLabel">Reviews Rule — pause product ads</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Does <strong>not</strong> pause the campaign.
-                        Each advertised SKU (Campaign SKUs <strong>+</strong> modal) is checked on its own.
-                        If that SKU’s rating is <strong>below</strong> this number, only that product ad is paused.
-                        Other SKUs on the same campaign stay on. The job also runs daily at 18:25 IST.
-                    </p>
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" id="amazonAdsReviewsEnabled" checked>
-                        <label class="form-check-label small" for="amazonAdsReviewsEnabled">Enable auto-pause of product ads</label>
-                    </div>
-                    <div class="input-group input-group-sm mb-2" style="max-width: 220px;">
-                        <span class="input-group-text">Below</span>
-                        <input type="number" min="1" max="5" step="0.1" class="form-control" id="amazonAdsReviewsBelow" value="3">
-                        <span class="input-group-text">★</span>
-                    </div>
-                    <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsReviewsRuleModalError" role="alert"></p>
-                    <p class="small text-success mb-0 mt-2 d-none" id="amazonAdsReviewsRuleModalOk" role="status"></p>
-                </div>
-                <div class="modal-footer py-2 d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsReviewsRuleSaveBtn">Save</button>
-                    <button type="button" class="btn btn-sm btn-danger" id="amazonAdsReviewsRuleApplyBtn">Save &amp; apply to Amazon</button>
                 </div>
             </div>
         </div>
@@ -779,21 +787,28 @@
             var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
-            var sbgtDoubleRuleGetUrl = @json(route('amazon.ads.sbgt-double-rule'));
-            var sbgtDoubleRuleSaveUrl = @json(route('amazon.ads.sbgt-double-rule.save'));
+            var bgtViewsRuleGetUrl = @json(route('amazon.ads.bgt-views-rule'));
+            var bgtViewsRuleSaveUrl = @json(route('amazon.ads.bgt-views-rule.save'));
+            var bgtCvrRuleGetUrl = @json(route('amazon.ads.bgt-cvr-rule'));
+            var bgtCvrRuleSaveUrl = @json(route('amazon.ads.bgt-cvr-rule.save'));
+            var bgtPrcRuleGetUrl = @json(route('amazon.ads.bgt-prc-rule'));
+            var bgtPrcRuleSaveUrl = @json(route('amazon.ads.bgt-prc-rule.save'));
+            var bgtReviewsRuleGetUrl = @json(route('amazon.ads.bgt-reviews-rule'));
+            var bgtReviewsRuleSaveUrl = @json(route('amazon.ads.bgt-reviews-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
             var sbidRuleSaveUrl = @json(route('amazon.ads.sbid-rule.save'));
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
-            var pauseRuleSaveUrl = @json(route('amazon.ads.pause-rule.save'));
             var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
-            var reviewsRuleSaveUrl = @json(route('amazon.ads.reviews-rule.save'));
             var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
+            window.amazonAdsBgtViewsRule = @json($amazonAdsBgtViewsRule ?? null);
+            window.amazonAdsBgtCvrRule = @json($amazonAdsBgtCvrRule ?? null);
+            window.amazonAdsBgtPrcRule = @json($amazonAdsBgtPrcRule ?? null);
+            window.amazonAdsBgtReviewsRule = @json($amazonAdsBgtReviewsRule ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
-            window.amazonAdsSbgtDoubleRule = @json($amazonAdsSbgtDoubleRule ?? null);
 
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var table = null;
@@ -802,9 +817,9 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'amz_l30', 'sbgt_doubled', 'sbgt_double_reason', 'sbgt_double_mult'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price'];
             var NON_ORDERABLE_COLUMNS = [];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'sbgt', 'dsbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -844,6 +859,100 @@
                 var band = amzBandForAcos(acos);
                 return (band && band.color) ? band.color : '#6b7280';
             }
+            function amzAcosBandRangeLabel(band) {
+                var from = parseFloat(band && band.acos_from);
+                var to = parseFloat(band && band.acos_to);
+                if (!isFinite(from)) from = 0;
+                if (!isFinite(to)) to = 9999;
+                if (to >= 9999) return Math.round(from) + '%+';
+                return Math.round(from) + '–' + Math.round(to) + '%';
+            }
+            function amzFillAcosFilterOptions() {
+                var sel = document.getElementById('amazonAdsFilterAcos');
+                if (!sel) return;
+                var prev = sel.value || '';
+                var bands = amzBgtRuleBands();
+                sel.innerHTML = '';
+                var all = document.createElement('option');
+                all.value = '';
+                all.textContent = 'All';
+                sel.appendChild(all);
+                bands.forEach(function (band, i) {
+                    var opt = document.createElement('option');
+                    opt.value = 'band:' + i;
+                    var name = String(band.label || ('Band ' + (i + 1))).trim() || ('Band ' + (i + 1));
+                    opt.textContent = '● ' + name + '  ' + amzAcosBandRangeLabel(band);
+                    opt.style.color = band.color || '#334155';
+                    opt.setAttribute('data-color', band.color || '');
+                    sel.appendChild(opt);
+                });
+                var keep = false;
+                for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value === prev) { keep = true; break; }
+                }
+                sel.value = keep ? prev : '';
+                amzTintAcosFilterSelect();
+            }
+            function amzTintAcosFilterSelect() {
+                var sel = document.getElementById('amazonAdsFilterAcos');
+                if (!sel) return;
+                var opt = sel.options[sel.selectedIndex];
+                var color = opt && opt.getAttribute('data-color');
+                if (color) {
+                    sel.classList.add('is-acos-color');
+                    sel.style.color = color;
+                    sel.style.borderColor = color;
+                } else {
+                    sel.classList.remove('is-acos-color');
+                    sel.style.color = '';
+                    sel.style.borderColor = '';
+                }
+            }
+            var AMZ_ADS_CVR_BANDS = [
+                { label: 'Red', color: '#a00211', range: '≤ 4%' },
+                { label: 'Yellow', color: '#ffc107', range: '4–7%' },
+                { label: 'Green', color: '#28a745', range: '7–13%' },
+                { label: 'Pink', color: '#e83e8c', range: '13%+' }
+            ];
+            function amzFillAdsCvrFilterOptions() {
+                var sel = document.getElementById('amazonAdsFilterAdsCvr');
+                if (!sel) return;
+                var prev = sel.value || '';
+                sel.innerHTML = '';
+                var all = document.createElement('option');
+                all.value = '';
+                all.textContent = 'All';
+                sel.appendChild(all);
+                AMZ_ADS_CVR_BANDS.forEach(function (band, i) {
+                    var opt = document.createElement('option');
+                    opt.value = 'band:' + i;
+                    opt.textContent = '● ' + band.label + '  ' + band.range;
+                    opt.style.color = band.color;
+                    opt.setAttribute('data-color', band.color);
+                    sel.appendChild(opt);
+                });
+                var keep = false;
+                for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value === prev) { keep = true; break; }
+                }
+                sel.value = keep ? prev : '';
+                amzTintAdsCvrFilterSelect();
+            }
+            function amzTintAdsCvrFilterSelect() {
+                var sel = document.getElementById('amazonAdsFilterAdsCvr');
+                if (!sel) return;
+                var opt = sel.options[sel.selectedIndex];
+                var color = opt && opt.getAttribute('data-color');
+                if (color) {
+                    sel.classList.add('is-ads-cvr-color');
+                    sel.style.color = color;
+                    sel.style.borderColor = color;
+                } else {
+                    sel.classList.remove('is-ads-cvr-color');
+                    sel.style.color = '';
+                    sel.style.borderColor = '';
+                }
+            }
             function amzSbgtTierColor(sbgt) {
                 var s = parseInt(sbgt, 10);
                 if (isNaN(s)) return '#6b7280';
@@ -853,18 +962,6 @@
                 }
                 return '#6b7280';
             }
-            function amzSbgtDoubleMults() {
-                var dbl = window.amazonAdsSbgtDoubleRule || {};
-                if (dbl.enabled === false) return [];
-                var bands = Array.isArray(dbl.bands) ? dbl.bands : [];
-                var out = [];
-                for (var i = 0; i < bands.length; i++) {
-                    if (bands[i] && bands[i].enabled === false) continue;
-                    var m = parseFloat(bands[i] && bands[i].multiplier);
-                    if (isFinite(m) && m > 0 && out.indexOf(m) === -1) out.push(m);
-                }
-                return out;
-            }
             function amzAllowedSbgtTiers() {
                 var bands = amzBgtRuleBands();
                 var out = [];
@@ -872,15 +969,6 @@
                     var t = parseInt(bands[i].sbgt, 10);
                     if (!isNaN(t) && t > 0 && out.indexOf(t) === -1) out.push(t);
                 }
-                var extra = [];
-                var mults = amzSbgtDoubleMults();
-                for (var m = 0; m < mults.length; m++) {
-                    for (var i = 0; i < out.length; i++) {
-                        var d = Math.round(out[i] * mults[m]);
-                        if (d > 0 && out.indexOf(d) === -1 && extra.indexOf(d) === -1) extra.push(d);
-                    }
-                }
-                out = out.concat(extra);
                 out.sort(function (x, y) { return x - y; });
                 return out;
             }
@@ -921,7 +1009,61 @@
             function fmtCvr(cell) {
                 var n = amzFiniteNumber(cell.getValue());
                 if (isNaN(n)) return amzDash();
-                return '<span class="fw-semibold">' + Math.round(n) + '%</span>';
+                return '<span class="fw-semibold" style="color:' + amzPageCvrColor(n) + ';">' + Math.round(n) + '%</span>';
+            }
+            function amzPageCvrColor(cvr) {
+                if (cvr <= 4) return '#a00211';
+                if (cvr > 4 && cvr <= 7) return '#ffc107';
+                if (cvr > 7 && cvr <= 13) return '#28a745';
+                return '#e83e8c';
+            }
+            function fmtAmzParentViews(cell, redBelow) {
+                var n = amzFiniteNumber(cell.getValue());
+                if (isNaN(n)) return amzDash();
+                var num = Math.round(n);
+                var formatted = num.toLocaleString('en-US');
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var parent = String((row && row.page_parent) || '').trim();
+                var tip = parent ? ('Amz page parent · ' + parent) : 'Amz page parent views';
+                if (redBelow != null && num < redBelow) {
+                    return '<span class="fw-semibold" style="color:#a00211;" title="' + String(tip).replace(/"/g, '&quot;') + '">' + formatted + '</span>';
+                }
+                return '<span title="' + String(tip).replace(/"/g, '&quot;') + '">' + formatted + '</span>';
+            }
+            function fmtPageCvr(cell) {
+                var row = cell.getRow().getData();
+                var n = amzFiniteNumber(cell.getValue());
+                if (isNaN(n)) return amzDash();
+                var sess30 = parseFloat(row.page_cvr_sess30) || 0;
+                var aL30 = parseFloat(row.page_cvr_a_l30) || 0;
+                var sess60 = parseFloat(row.page_cvr_sess60) || 0;
+                var aL60 = parseFloat(row.page_cvr_a_l60) || 0;
+                var cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                if (!isFinite(cvr)) cvr = n;
+                var sess45 = (sess30 + sess60) / 2;
+                var cvr45 = sess45 === 0 ? 0 : (((aL30 + aL60) / 2) / sess45) * 100;
+                var color = amzPageCvrColor(cvr);
+                var pctLabel = sess30 === 0 ? '0.0%' : (Math.round(cvr) + '%');
+                var parent = String(row.page_parent || '').trim();
+                var tip = 'Amz page parent CVR L30 = A L30 ÷ Sess30';
+                if (parent) tip += ' · ' + parent;
+                var tol = 0.1;
+                var arrowColor = '#ffc107';
+                var arrowIcon = 'fa-minus';
+                var arrowTip = 'Same as CVR L45 ' + cvr45.toFixed(1) + '%';
+                if (cvr === 0 || cvr < cvr45 - tol) {
+                    arrowColor = '#a00211';
+                    arrowIcon = 'fa-arrow-down';
+                    arrowTip = (cvr === 0 ? 'CVR L30 is 0 → Down' : 'Down vs CVR L45 ' + cvr45.toFixed(1) + '%');
+                } else if (cvr > cvr45 + tol) {
+                    arrowColor = '#28a745';
+                    arrowIcon = 'fa-arrow-up';
+                    arrowTip = 'Up vs CVR L45 ' + cvr45.toFixed(1) + '%';
+                }
+                return '<span title="' + String(tip + ' · ' + arrowTip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                    + '<span style="color:' + color + ';font-weight:600;">' + pctLabel + '</span>'
+                    + ' <span style="vertical-align:middle;"><i class="fas ' + arrowIcon + '" style="color:' + arrowColor + ';font-size:12px;"></i></span>'
+                    + '</span>';
             }
             function fmtAcos(cell) {
                 var v = cell.getValue();
@@ -948,14 +1090,84 @@
                 if (isNaN(t)) return amzDash();
                 return '<span class="fw-semibold" style="color:' + amzSbgtTierColor(t) + ';">' + t + '</span>';
             }
-            function fmtDsbgt(cell) {
+            function fmtSbgtSum(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
                 var t = parseInt(v, 10);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
-                var tip = (row && row.sbgt_double_reason) ? String(row.sbgt_double_reason) : 'SBGT Double';
-                return '<span class="fw-semibold" style="color:' + amzDilTextColor(row) + ';" title="' + amzEsc(tip) + '">' + t + '</span>';
+                var views = parseInt(row && row.bgtViews, 10);
+                var cvr = parseInt(row && row.bgtCvr, 10);
+                var acos = parseInt(row && row.bgtAcos, 10);
+                var prc = parseInt(row && row.bgtPrc, 10);
+                var rev = parseInt(row && row.bgtReviews, 10);
+                var bgt = parseFloat(row && row.bgt);
+                var inSync = isFinite(bgt) && Math.round(bgt) === t;
+                var color = inSync ? '#64748b' : '#0f766e';
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0);
+                if (isFinite(bgt)) tip += inSync ? ' · matches BGT' : (' · BGT ' + Math.round(bgt) + ' → auto-push');
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtViews(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_views_color) ? String(row.bgt_views_color) : '#6c757d';
+                var views = parseFloat(row && row.page_cvr_sess30);
+                var parent = String((row && row.page_parent) || '').trim();
+                var label = String((row && row.bgt_views_label) || '').trim();
+                var tip = 'Bgt Views from Amz page View L30';
+                if (isFinite(views)) tip += ' · Views ' + Math.round(views);
+                if (parent) tip += ' · ' + parent;
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtCvr(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_cvr_color) ? String(row.bgt_cvr_color) : '#6c757d';
+                var cvr = parseFloat(row && (row.bgt_cvr_page_cvr != null ? row.bgt_cvr_page_cvr : row.pageCvr));
+                var parent = String((row && row.page_parent) || '').trim();
+                var label = String((row && row.bgt_cvr_label) || '').trim();
+                var tip = 'Bgt Cvr from Amz page CVR L30';
+                if (isFinite(cvr)) tip += ' · CVR ' + cvr + '%';
+                if (parent) tip += ' · ' + parent;
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtPrc(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_prc_color) ? String(row.bgt_prc_color) : '#6c757d';
+                var price = parseFloat(row && (row.bgt_prc_price != null ? row.bgt_prc_price : row.price));
+                var label = String((row && row.bgt_prc_label) || '').trim();
+                var tip = 'BGT PRC from campaign Price';
+                if (isFinite(price)) tip += ' · $' + price;
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtReviews(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_reviews_color) ? String(row.bgt_reviews_color) : '#6c757d';
+                var rating = parseFloat(row && (row.bgt_reviews_rating != null ? row.bgt_reviews_rating : row.reviews));
+                var label = String((row && row.bgt_reviews_label) || '').trim();
+                var tip = 'Bgt Reviews from campaign star rating';
+                if (isFinite(rating)) tip += ' · ' + rating + '★';
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
             }
             function fmtUtilPercent(cell) {
                 var td = cell.getElement();
@@ -1129,7 +1341,7 @@
                     return;
                 }
                 if (c === 'campaignStatus') { col.title = 'Stat'; col.formatter = fmtCampaignStatus; col.width = 48; col.minWidth = 44; return; }
-                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause (matched a Pause band)'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
+                if (c === 'ruleStatus') { col.title = 'Rule'; col.headerTooltip = 'Rule Status — green = stay active, red = pause (PR Dil% / Price)'; col.formatter = fmtRuleStatus; col.width = 52; col.minWidth = 48; return; }
                 if (c === 'ad_type') { col.formatter = fmtAdType; return; }
                 if (c === 'adGroupName') { col.title = 'Ad Group'; col.hozAlign = 'left'; col.minWidth = 150; col.widthGrow = 2; return; }
                 if (c === 'keyword') { col.title = 'Keyword'; col.hozAlign = 'left'; col.minWidth = 180; col.widthGrow = 3; return; }
@@ -1141,23 +1353,88 @@
                 if (c === 'ad_group_id') { col.title = 'AdGrp ID'; col.minWidth = 100; return; }
                 if (c === 'report_date_range') { col.title = 'Range'; col.minWidth = 80; return; }
                 if (c === 'acosClicks14d') { col.title = 'ACOS14'; col.formatter = fmtAcos; return; }
-                if (c === 'purchases30d') { col.title = 'Sold'; col.formatter = fmtDashInt; return; }
+                if (c === 'purchases30d') { col.title = 'Ads Sold'; col.formatter = fmtDashInt; return; }
                 if (c === 'impressions') { col.title = 'Impr'; col.formatter = fmtDashInt; return; }
                 if (c === 'last_sbid') { col.title = 'Lbid'; col.formatter = fmtSbid; return; }
                 if (c === 'sbid') { col.title = 'SBID'; col.formatter = fmtSbid; return; }
                 if (c === 'bgt') { col.title = 'BGT'; col.formatter = fmtDashNumberRaw; return; }
-                if (c === 'sbgt') { col.title = 'SBGT'; col.formatter = fmtSbgt; col.width = 56; col.minWidth = 50; return; }
-                if (c === 'dsbgt') {
-                    col.title = 'D SBGT';
-                    col.headerTooltip = 'SBGT Double — normal SBGT × Dil-color multiplier when the overlay matches';
-                    col.formatter = fmtDsbgt;
-                    col.width = 64;
-                    col.minWidth = 56;
+                if (c === 'bgtAcos') {
+                    col.title = 'BGT ACOS';
+                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — L30 ACOS % bands';
+                    col.formatter = fmtSbgt;
+                    col.width = 72;
+                    col.minWidth = 64;
                     return;
                 }
-                if (c === 'Prchase') { col.title = 'Sold'; col.formatter = fmtDashInt; return; }
-                if (c === 'Cvr') { col.title = 'Cvr'; col.formatter = fmtCvr; return; }
-                if (c === 'ACOS') { col.title = 'ACOS'; col.formatter = fmtAcos; return; }
+                if (c === 'sbgt') {
+                    col.title = 'SBGT';
+                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews. Auto-pushes daily budget when this sum differs from BGT.';
+                    col.formatter = fmtSbgtSum;
+                    col.width = 56;
+                    col.minWidth = 50;
+                    return;
+                }
+                if (c === 'bgtViews') {
+                    col.title = 'Bgt Views';
+                    col.headerTooltip = 'Suggested budget from BGT Vs VIEWS — Amz page parent View L30 (Sess30)';
+                    col.formatter = fmtBgtViews;
+                    col.width = 72;
+                    col.minWidth = 64;
+                    return;
+                }
+                if (c === 'bgtCvr') {
+                    col.title = 'Bgt Cvr';
+                    col.headerTooltip = 'Suggested budget from BGT Vs CVR — Amz page parent CVR L30 (A L30 ÷ Sess30 × 100)';
+                    col.formatter = fmtBgtCvr;
+                    col.width = 68;
+                    col.minWidth = 60;
+                    return;
+                }
+                if (c === 'bgtPrc') {
+                    col.title = 'BGT PRC';
+                    col.headerTooltip = 'Suggested budget from BGT PRC — campaign Price (20–40, 41–60, 61–100, 101–150, >150)';
+                    col.formatter = fmtBgtPrc;
+                    col.width = 68;
+                    col.minWidth = 60;
+                    return;
+                }
+                if (c === 'bgtReviews') {
+                    col.title = 'Bgt Reviews';
+                    col.titleFormatter = function () { return 'Bgt<br>Reviews'; };
+                    col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating (2.99–3.5, 3.51–4, 4.01–4.5, >4.5)';
+                    col.formatter = fmtBgtReviews;
+                    col.width = 68;
+                    col.minWidth = 60;
+                    return;
+                }
+                if (c === 'Prchase') { col.title = 'Ads Sold'; col.formatter = fmtDashInt; return; }
+                if (c === 'Cvr') { col.title = 'Ads CVR'; col.headerTooltip = 'Ads Sold ÷ Ads Clicks × 100 (same L30 row)'; col.formatter = fmtCvr; col.minWidth = 64; return; }
+                if (c === 'pageCvr') {
+                    col.title = 'CVR';
+                    col.headerTooltip = 'Amz page parent CVR L30 — A L30 ÷ Sess30 × 100 (parent row related to this campaign)';
+                    col.formatter = fmtPageCvr;
+                    col.width = 72;
+                    col.minWidth = 64;
+                    return;
+                }
+                if (c === 'viewsL30') {
+                    col.title = 'Views L30';
+                    col.headerTooltip = 'Amz page parent View L30 (Σ Sess30) — same parent row as CVR';
+                    col.formatter = function (cell) { return fmtAmzParentViews(cell, null); };
+                    col.width = 72;
+                    col.minWidth = 64;
+                    return;
+                }
+                if (c === 'viewsL7') {
+                    col.title = 'Views L7';
+                    col.headerTooltip = 'Amz page parent View L7 (Σ Sess7) — same parent row as CVR. Red when under 70.';
+                    col.formatter = function (cell) { return fmtAmzParentViews(cell, 70); };
+                    col.width = 68;
+                    col.minWidth = 60;
+                    return;
+                }
+                if (c === 'Label' || c === 'label') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS %'; return; }
+                if (c === 'ACOS') { col.title = 'ACOS%'; col.formatter = fmtAcos; return; }
                 if (c === 'sales') { col.title = 'Sales'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'cost') { col.title = 'SPL30'; col.formatter = fmtDashRounded; return; }
                 if (c === 'L7spend') { col.title = 'L7SP'; col.formatter = fmtDashNumberRaw; return; }
@@ -1206,7 +1483,9 @@
                     filter_u7: g('amazonAdsFilterU7'),
                     filter_u2: g('amazonAdsFilterU2'),
                     filter_u1: g('amazonAdsFilterU1'),
-                    filter_campaign_status: g('amazonAdsFilterCampaignStatus')
+                    filter_campaign_status: g('amazonAdsFilterCampaignStatus'),
+                    filter_acos: g('amazonAdsFilterAcos'),
+                    filter_ads_cvr: g('amazonAdsFilterAdsCvr')
                 };
             }
 
@@ -1323,7 +1602,10 @@
             });
 
             table.on('pageLoaded', amzRefreshUiSoon);
-            table.on('dataLoaded', amzRefreshUiSoon);
+            table.on('dataLoaded', function () {
+                amzRefreshUiSoon();
+                amzAutoPushChangedSbgt();
+            });
             table.on('dataLoadError', function (error) {
                 console.error('amazon-ads raw data load error', error);
                 amzUpdateTotalBadge(NaN);
@@ -1372,7 +1654,7 @@
                 }
                 if (sbgtBtn) {
                     sbgtBtn.disabled = !ok;
-                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amz to each row SBGT tier as dollars') : 'Switch to SP or SB reports to push SBGT';
+                    sbgtBtn.title = ok ? ('Sets ' + (isSp ? 'SP' : 'SB') + ' daily budget on Amz to each row SBGT (Views + CVR + ACOS + PRC). Changed SBGT auto-pushes.') : 'Switch to SP or SB reports to push SBGT';
                 }
             }
             function amzUpdatePieButton() {
@@ -1403,9 +1685,13 @@
             }
 
             // Auto-reload filters
-            ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus'].forEach(function (id) {
+            ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
                 var el = document.getElementById(id);
-                if (el) el.addEventListener('change', amzReloadGridForFilters);
+                if (el) el.addEventListener('change', function () {
+                    if (id === 'amazonAdsFilterAcos') amzTintAcosFilterSelect();
+                    if (id === 'amazonAdsFilterAdsCvr') amzTintAdsCvrFilterSelect();
+                    amzReloadGridForFilters();
+                });
             });
             // Apply / Clear (dates need Apply)
             var applyBtn = document.getElementById('amazonAdsFilterApply');
@@ -1413,11 +1699,13 @@
             var clearBtn = document.getElementById('amazonAdsFilterClear');
             if (clearBtn) {
                 clearBtn.addEventListener('click', function () {
-                    ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus'].forEach(function (id) {
+                    ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterCampaignStatus', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
                         var el = document.getElementById(id); if (el) el.value = '';
                     });
                     amzSetDatesToLatestForSource(activeRawSourceKey);
                     var s = document.getElementById('amz-filter-search'); if (s) s.value = '';
+                    amzTintAcosFilterSelect();
+                    amzTintAdsCvrFilterSelect();
                     amzReloadGridForFilters();
                 });
             }
@@ -1598,11 +1886,9 @@
                 return null;
             }
             function amzPickSbgtTierFromRow(row) {
-                var d = parseInt(row.dsbgt, 10);
-                if (!isNaN(d) && amzAllowedSbgtTiers().indexOf(d) !== -1) return d;
                 var t = parseInt(row.sbgt, 10);
-                if (isNaN(t)) return null;
-                return amzAllowedSbgtTiers().indexOf(t) !== -1 ? t : null;
+                if (isNaN(t) || t < 1 || t > 9999) return null;
+                return t;
             }
             function amzCurrentPushRows() {
                 if (!table) return [];
@@ -1632,6 +1918,78 @@
                     out.push({ campaign_id: String(cid).trim(), sbgt: tier });
                 });
                 return out;
+            }
+            var amzSbgtAutoPushBusy = false;
+            var amzSbgtAutoPushedKey = {};
+            function amzCollectChangedSbgtRows() {
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports') return [];
+                if (!table) return [];
+                var out = [];
+                (table.getData() || []).forEach(function (row) {
+                    if (!row) return;
+                    var cid = row.campaign_id == null ? '' : String(row.campaign_id).trim();
+                    var sbgt = amzPickSbgtTierFromRow(row);
+                    if (!cid || sbgt === null) return;
+                    var bgt = parseFloat(row.bgt);
+                    if (isFinite(bgt) && Math.round(bgt) === sbgt) return;
+                    var key = cid + ':' + sbgt;
+                    if (amzSbgtAutoPushedKey[key]) return;
+                    out.push({ campaign_id: cid, sbgt: sbgt });
+                });
+                return out;
+            }
+            function amzAutoPushChangedSbgt() {
+                if (amzSbgtAutoPushBusy) return;
+                if (activeRawSourceKey !== 'sp_reports' && activeRawSourceKey !== 'sb_reports') return;
+                var rows = amzCollectChangedSbgtRows();
+                if (!rows.length) return;
+                rows.forEach(function (r) { amzSbgtAutoPushedKey[r.campaign_id + ':' + r.sbgt] = true; });
+                amzSbgtAutoPushBusy = true;
+                var url = activeRawSourceKey === 'sb_reports' ? pushSbSbgtsUrl : pushSpSbgtsUrl;
+                var chunkSize = (typeof AMZ_PUSH_CHUNK_SIZE === 'number' && AMZ_PUSH_CHUNK_SIZE > 0) ? AMZ_PUSH_CHUNK_SIZE : 5;
+                var chunks = [];
+                for (var i = 0; i < rows.length; i += chunkSize) chunks.push(rows.slice(i, i + chunkSize));
+                var messages = [];
+                function postChunk(chunkRows) {
+                    return fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ rows: chunkRows })
+                    }).then(function (res) {
+                        return res.json().then(function (body) { return { ok: res.ok, body: body }; }).catch(function () {
+                            return { ok: true, body: { message: 'Chunk accepted (non-JSON).' } };
+                        });
+                    });
+                }
+                function runNext(index) {
+                    if (index >= chunks.length) {
+                        amzSbgtAutoPushBusy = false;
+                        var n = rows.length;
+                        amzShowPushResult(
+                            'SBGT auto-push — ' + n + ' campaign(s)',
+                            'Pushed new SBGT only (Views + CVR + ACOS + PRC) where it differed from BGT.\n' + messages.join('\n'),
+                            'success'
+                        );
+                        return;
+                    }
+                    postChunk(chunks[index])
+                        .then(function (out) {
+                            var b = (out && out.body) || {};
+                            messages.push('[chunk ' + (index + 1) + '/' + chunks.length + '] ' + (b.message || 'finished'));
+                            runNext(index + 1);
+                        })
+                        .catch(function (err) {
+                            messages.push('[chunk ' + (index + 1) + '/' + chunks.length + '] ' + String(err && err.message ? err.message : err));
+                            runNext(index + 1);
+                        });
+                }
+                runNext(0);
             }
             function amzRunPush(opts) {
                 if (!opts.rows.length) {
@@ -1788,7 +2146,7 @@
                         rows: rows,
                         chunkSize: AMZ_PUSH_CHUNK_SIZE,
                         label: 'SBGT push',
-                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row sets the daily budget to its SBGT tier (in dollars).',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row sets the daily budget to SBGT (Views + CVR + ACOS + PRC).',
                         loadingTitle: 'Pushing SBGT…',
                         loadingDetail: 'Updating budgets for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
@@ -1816,7 +2174,9 @@
                     summary_report_range: f.summary_report_range,
                     filter_u2: f.filter_u2,
                     filter_u1: f.filter_u1,
-                    filter_campaign_status: f.filter_campaign_status
+                    filter_campaign_status: f.filter_campaign_status,
+                    filter_acos: f.filter_acos,
+                    filter_ads_cvr: f.filter_ads_cvr
                 };
             }
             function amzRefreshU7Pie() {
@@ -2032,6 +2392,7 @@
                             var b = out.body || {};
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtRule = b.rule || window.amazonAdsBgtRule;
+                            amzFillAcosFilterOptions();
                             if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtModalEl); if (inst) inst.hide(); }
                             amzUpdatePushButtons();
                             return Promise.resolve(table.setData());
@@ -2042,120 +2403,536 @@
                 });
             }
 
-            // ---- SBGT Double: fixed Dil column colors + per-color multiplier ----
-            var AMZ_DIL_COLOR_BANDS = [
-                { key: 'red', label: 'Dil red', color: '#a00211', enabled: true, multiplier: 2 },
-                { key: 'yellow', label: 'Dil yellow', color: '#ffc107', enabled: false, multiplier: 2 },
-                { key: 'green', label: 'Dil green', color: '#28a745', enabled: true, multiplier: 2 },
-                { key: 'pink', label: 'Dil pink', color: '#e83e8c', enabled: false, multiplier: 2 },
-                { key: 'gray', label: 'Dil gray', color: '#6c757d', enabled: false, multiplier: 2 }
-            ];
-            var amzSbgtDoubleBands = [];
-            function amzEscAttr(s) {
-                return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            // ---- BGT Vs VIEWS (View L30 → Bgt Views); first slab autofills the next 5 ----
+            var AMZ_BGT_VIEWS_SLAB_COUNT = 6;
+            var AMZ_BGT_VIEWS_LABELS = ['Red', 'Yellow', 'Blue', 'Green', 'Pink', 'Purple'];
+            var AMZ_BGT_VIEWS_COLORS = ['#a00211', '#ffc107', '#2563eb', '#28a745', '#e83e8c', '#7c3aed'];
+            var amzBgtViewsBands = [];
+            function amzBgtViewsDefaultBands() {
+                return amzBgtViewsAutofillFromFirst({ views_from: 0, views_to: 70, bgt: 1, label: 'Red', color: '#a00211' }, []);
             }
-            function amzRenderSbgtDoubleBands(bands) {
-                var tbody = document.getElementById('amazonAdsSbgtDoubleBandsBody');
+            function amzBgtViewsAutofillFromFirst(first, existing) {
+                var from = parseFloat(first && first.views_from);
+                var to = parseFloat(first && first.views_to);
+                if (!isFinite(from)) from = 0;
+                if (!isFinite(to) || to < from) to = from + 70;
+                var width = to - from;
+                if (!(width > 0)) { width = 70; to = from + width; }
+                var bgt0 = parseInt(first && first.bgt, 10);
+                if (!isFinite(bgt0) || bgt0 < 1) bgt0 = 1;
+                var prev = Array.isArray(existing) ? existing : [];
+                var out = [];
+                var cursorTo = to;
+                for (var i = 0; i < AMZ_BGT_VIEWS_SLAB_COUNT; i++) {
+                    var bandFrom = (i === 0) ? from : (cursorTo + 1);
+                    var bandTo = (i === 0) ? to : (i === AMZ_BGT_VIEWS_SLAB_COUNT - 1 ? 9999 : (cursorTo + width));
+                    var keep = prev[i] || {};
+                    out.push({
+                        views_from: bandFrom,
+                        views_to: bandTo,
+                        bgt: bgt0 + i,
+                        label: (i === 0 && first && first.label) ? String(first.label) : (keep.label || AMZ_BGT_VIEWS_LABELS[i] || ('Band ' + (i + 1))),
+                        color: (i === 0 && first && first.color) ? String(first.color) : (keep.color || AMZ_BGT_VIEWS_COLORS[i] || '#6c757d')
+                    });
+                    cursorTo = bandTo;
+                }
+                return out;
+            }
+            function amzRenderBgtViewsBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtViewsRuleBandsBody');
                 if (!tbody) return;
                 tbody.innerHTML = '';
-                (bands || []).forEach(function (band, i) {
+                bands.forEach(function (band, i) {
+                    var locked = i > 0
+                        ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
+                        : '';
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
-                        + '<td class="text-center"><input class="form-check-input" type="checkbox"' + (band.enabled === false ? '' : ' checked') + ' data-dbl-idx="' + i + '" data-dbl-field="enabled"></td>'
-                        + '<td><span class="fw-semibold" style="color:' + amzEscAttr(band.color) + ';">' + amzEsc(band.label) + '</span></td>'
-                        + '<td><input type="number" step="0.1" min="1" max="20" class="form-control form-control-sm" value="' + (band.multiplier != null ? band.multiplier : '') + '" data-dbl-idx="' + i + '" data-dbl-field="multiplier"></td>';
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"' + locked + '></td>'
+                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="70"' + locked + '></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
                     tbody.appendChild(tr);
                 });
-                tbody.querySelectorAll('[data-dbl-idx][data-dbl-field]').forEach(function (el) {
-                    var apply = function () {
-                        var idx = +this.dataset.dblIdx, fld = this.dataset.dblField;
-                        if (!amzSbgtDoubleBands[idx]) return;
-                        if (fld === 'enabled') amzSbgtDoubleBands[idx].enabled = !!this.checked;
-                        else amzSbgtDoubleBands[idx][fld] = this.value === '' ? '' : parseFloat(this.value);
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtViewsBands[idx]) return;
+                        if (fld === 'bgt') {
+                            amzBgtViewsBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        } else if (fld === 'views_from' || fld === 'views_to') {
+                            amzBgtViewsBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
+                        } else {
+                            amzBgtViewsBands[idx][fld] = el.value;
+                        }
                     };
-                    el.addEventListener('input', apply);
-                    el.addEventListener('change', apply);
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (fld === 'label' || fld === 'color') {
+                            var chip = this.closest('tr').querySelector('.badge');
+                            var band = amzBgtViewsBands[idx];
+                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
+                        }
+                    });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (idx === 0 && (fld === 'views_from' || fld === 'views_to' || fld === 'bgt')) {
+                            amzBgtViewsBands = amzBgtViewsAutofillFromFirst(amzBgtViewsBands[0], amzBgtViewsBands);
+                            amzRenderBgtViewsBands(amzBgtViewsBands);
+                        }
+                    });
                 });
             }
-            function amzFillSbgtDoubleForm(rule) {
-                var r = rule || {};
-                var en = document.getElementById('amazonAdsSbgtDoubleEnabled');
-                var l30 = document.getElementById('amazonAdsSbgtDoubleAmzL30');
-                if (en) en.checked = r.enabled !== false;
-                if (l30 && r.amz_l30_max != null) l30.value = String(r.amz_l30_max);
-                var saved = {};
-                (Array.isArray(r.bands) ? r.bands : []).forEach(function (b) {
-                    if (b && b.key) saved[String(b.key)] = b;
-                });
-                amzSbgtDoubleBands = AMZ_DIL_COLOR_BANDS.map(function (def) {
-                    var b = saved[def.key] || {};
-                    return {
-                        key: def.key,
-                        label: def.label,
-                        color: def.color,
-                        enabled: Object.prototype.hasOwnProperty.call(b, 'enabled') ? b.enabled !== false : def.enabled,
-                        multiplier: b.multiplier != null ? Number(b.multiplier) : def.multiplier
-                    };
-                });
-                amzRenderSbgtDoubleBands(amzSbgtDoubleBands);
+            function amzLoadBgtViewsBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                if (!bands.length) bands = amzBgtViewsDefaultBands();
+                var first = bands[0] || { views_from: 0, views_to: 70, bgt: 1, label: 'Red', color: '#a00211' };
+                amzBgtViewsBands = amzBgtViewsAutofillFromFirst(first, bands);
+                amzRenderBgtViewsBands(amzBgtViewsBands);
             }
-            function amzRefreshSbgtDoubleRuleFromServer(cb) {
-                fetch(sbgtDoubleRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            function amzRefreshBgtViewsRuleFromServer(cb) {
+                fetch(bgtViewsRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
                     .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsSbgtDoubleRule = body.rule; if (cb) cb(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtViewsRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var sbgtDoubleModalEl = document.getElementById('amazonAdsSbgtDoubleRuleModal');
-            if (sbgtDoubleModalEl) {
-                sbgtDoubleModalEl.addEventListener('show.bs.modal', function () {
-                    var err = document.getElementById('amazonAdsSbgtDoubleRuleModalError');
+            var bgtViewsModalEl = document.getElementById('amazonAdsBgtViewsRuleModal');
+            if (bgtViewsModalEl) {
+                bgtViewsModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshSbgtDoubleRuleFromServer(function () { amzFillSbgtDoubleForm(window.amazonAdsSbgtDoubleRule || {}); });
+                    amzRefreshBgtViewsRuleFromServer(function () { amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {}); });
                 });
             }
-            var sbgtDoubleSaveBtn = document.getElementById('amazonAdsSbgtDoubleRuleSaveBtn');
-            if (sbgtDoubleSaveBtn) {
-                sbgtDoubleSaveBtn.addEventListener('click', function () {
-                    var err = document.getElementById('amazonAdsSbgtDoubleRuleModalError');
+            var bgtViewsSaveBtn = document.getElementById('amazonAdsBgtViewsRuleSaveBtn');
+            if (bgtViewsSaveBtn) {
+                bgtViewsSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    var l30El = document.getElementById('amazonAdsSbgtDoubleAmzL30');
-                    var enEl = document.getElementById('amazonAdsSbgtDoubleEnabled');
-                    var amzL30 = l30El ? parseFloat(String(l30El.value).trim()) : NaN;
-                    if (!isFinite(amzL30)) { if (err) { err.textContent = 'Amazon L30 must be numeric.'; err.classList.remove('d-none'); } return; }
-                    var bands = (amzSbgtDoubleBands || []).map(function (b) {
+                    amzBgtViewsBands = amzBgtViewsAutofillFromFirst(amzBgtViewsBands[0] || { views_from: 0, views_to: 70, bgt: 1 }, amzBgtViewsBands);
+                    var cleaned = (amzBgtViewsBands || []).map(function (b) {
                         return {
-                            key: String(b.key || ''),
-                            enabled: b.enabled !== false,
-                            multiplier: (b.multiplier === '' || b.multiplier == null) ? NaN : parseFloat(b.multiplier)
+                            views_from: (b.views_from === '' || b.views_from == null) ? NaN : parseFloat(b.views_from),
+                            views_to: (b.views_to === '' || b.views_to == null) ? NaN : parseFloat(b.views_to),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
-                    for (var i = 0; i < bands.length; i++) {
-                        var b = bands[i];
-                        if (!b.key || !isFinite(b.multiplier)) {
-                            if (err) { err.textContent = (amzSbgtDoubleBands[i] && amzSbgtDoubleBands[i].label ? amzSbgtDoubleBands[i].label : 'A Dil color') + ' needs a numeric multiplier.'; err.classList.remove('d-none'); }
-                            return;
-                        }
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one band before saving.'; err.classList.remove('d-none'); } return; }
+                    for (var i = 0; i < cleaned.length; i++) {
+                        var vb = cleaned[i];
+                        if (!isFinite(vb.views_from) || !isFinite(vb.views_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and Bgt Views values.'; err.classList.remove('d-none'); } return; }
+                        if (vb.views_from > vb.views_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
                     }
-                    var payload = { enabled: !!(enEl && enEl.checked), amz_l30_max: amzL30, bands: bands };
-                    sbgtDoubleSaveBtn.disabled = true;
-                    fetch(sbgtDoubleRuleSaveUrl, {
+                    bgtViewsSaveBtn.disabled = true;
+                    fetch(bgtViewsRuleSaveUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                         credentials: 'same-origin',
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({ bands: cleaned })
                     })
                         .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
                         .then(function (out) {
-                            var body = out.body || {};
-                            if (!out.ok || body.status === 422 || body.status === 500) { if (err) { err.textContent = body.message || body.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
-                            window.amazonAdsSbgtDoubleRule = body.rule || window.amazonAdsSbgtDoubleRule;
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(sbgtDoubleModalEl); if (inst) inst.hide(); }
-                            amzUpdatePushButtons();
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsBgtViewsRule = b.rule || window.amazonAdsBgtViewsRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtViewsModalEl); if (inst) inst.hide(); }
                             return Promise.resolve(table.setData());
                         })
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
-                        .finally(function () { sbgtDoubleSaveBtn.disabled = false; });
+                        .finally(function () { bgtViewsSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- BGT Vs CVR (CVR L30 → Bgt Cvr); first slab autofills the next 5 ----
+            var AMZ_BGT_CVR_SLAB_COUNT = 6;
+            var AMZ_BGT_CVR_LABELS = ['Red', 'Yellow', 'Blue', 'Green', 'Pink', 'Purple'];
+            var AMZ_BGT_CVR_COLORS = ['#a00211', '#ffc107', '#2563eb', '#28a745', '#e83e8c', '#7c3aed'];
+            var amzBgtCvrBands = [];
+            function amzBgtCvrDefaultBands() {
+                return amzBgtCvrAutofillFromFirst({ cvr_from: 0, cvr_to: 4, bgt: 1, label: 'Red', color: '#a00211' }, []);
+            }
+            function amzBgtCvrAutofillFromFirst(first, existing) {
+                var from = parseFloat(first && first.cvr_from);
+                var to = parseFloat(first && first.cvr_to);
+                if (!isFinite(from)) from = 0;
+                if (!isFinite(to) || to < from) to = from + 4;
+                var width = to - from;
+                if (!(width > 0)) { width = 4; to = from + width; }
+                var bgt0 = parseInt(first && first.bgt, 10);
+                if (!isFinite(bgt0) || bgt0 < 1) bgt0 = 1;
+                var prev = Array.isArray(existing) ? existing : [];
+                var out = [];
+                var cursorTo = to;
+                for (var i = 0; i < AMZ_BGT_CVR_SLAB_COUNT; i++) {
+                    var bandFrom = (i === 0) ? from : cursorTo;
+                    var bandTo = (i === 0) ? to : (i === AMZ_BGT_CVR_SLAB_COUNT - 1 ? 9999 : (cursorTo + width));
+                    var keep = prev[i] || {};
+                    out.push({
+                        cvr_from: bandFrom,
+                        cvr_to: bandTo,
+                        bgt: bgt0 + i,
+                        label: (i === 0 && first && first.label) ? String(first.label) : (keep.label || AMZ_BGT_CVR_LABELS[i] || ('Band ' + (i + 1))),
+                        color: (i === 0 && first && first.color) ? String(first.color) : (keep.color || AMZ_BGT_CVR_COLORS[i] || '#6c757d')
+                    });
+                    cursorTo = bandTo;
+                }
+                return out;
+            }
+            function amzRenderBgtCvrBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtCvrRuleBandsBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var locked = i > 0
+                        ? ' readonly tabindex="-1" style="background:#f8f9fa;"'
+                        : '';
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"' + locked + '></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="4"' + locked + '></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtCvrBands[idx]) return;
+                        if (fld === 'bgt') {
+                            amzBgtCvrBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        } else if (fld === 'cvr_from' || fld === 'cvr_to') {
+                            amzBgtCvrBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
+                        } else {
+                            amzBgtCvrBands[idx][fld] = el.value;
+                        }
+                    };
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (fld === 'label' || fld === 'color') {
+                            var chip = this.closest('tr').querySelector('.badge');
+                            var band = amzBgtCvrBands[idx];
+                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
+                        }
+                    });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (idx === 0 && (fld === 'cvr_from' || fld === 'cvr_to' || fld === 'bgt')) {
+                            amzBgtCvrBands = amzBgtCvrAutofillFromFirst(amzBgtCvrBands[0], amzBgtCvrBands);
+                            amzRenderBgtCvrBands(amzBgtCvrBands);
+                        }
+                    });
+                });
+            }
+            function amzLoadBgtCvrBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                if (!bands.length) bands = amzBgtCvrDefaultBands();
+                var first = bands[0] || { cvr_from: 0, cvr_to: 4, bgt: 1, label: 'Red', color: '#a00211' };
+                amzBgtCvrBands = amzBgtCvrAutofillFromFirst(first, bands);
+                amzRenderBgtCvrBands(amzBgtCvrBands);
+            }
+            function amzRefreshBgtCvrRuleFromServer(cb) {
+                fetch(bgtCvrRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtCvrRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var bgtCvrModalEl = document.getElementById('amazonAdsBgtCvrRuleModal');
+            if (bgtCvrModalEl) {
+                bgtCvrModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshBgtCvrRuleFromServer(function () { amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {}); });
+                });
+            }
+            var bgtCvrSaveBtn = document.getElementById('amazonAdsBgtCvrRuleSaveBtn');
+            if (bgtCvrSaveBtn) {
+                bgtCvrSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzBgtCvrBands = amzBgtCvrAutofillFromFirst(amzBgtCvrBands[0] || { cvr_from: 0, cvr_to: 4, bgt: 1 }, amzBgtCvrBands);
+                    var cleaned = (amzBgtCvrBands || []).map(function (b) {
+                        return {
+                            cvr_from: (b.cvr_from === '' || b.cvr_from == null) ? NaN : parseFloat(b.cvr_from),
+                            cvr_to: (b.cvr_to === '' || b.cvr_to == null) ? NaN : parseFloat(b.cvr_to),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
+                        };
+                    });
+                    if (!cleaned.length) { if (err) { err.textContent = 'Add at least one band before saving.'; err.classList.remove('d-none'); } return; }
+                    for (var i = 0; i < cleaned.length; i++) {
+                        var vb = cleaned[i];
+                        if (!isFinite(vb.cvr_from) || !isFinite(vb.cvr_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and Bgt Cvr values.'; err.classList.remove('d-none'); } return; }
+                        if (vb.cvr_from > vb.cvr_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                    }
+                    bgtCvrSaveBtn.disabled = true;
+                    fetch(bgtCvrRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ bands: cleaned })
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsBgtCvrRule = b.rule || window.amazonAdsBgtCvrRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtCvrModalEl); if (inst) inst.hide(); }
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { bgtCvrSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- BGT PRC (Price → Bgt Prc); five locked slabs ----
+            var AMZ_BGT_PRC_DEFAULTS = [
+                { prc_from: 20, prc_to: 40, bgt: 1, label: 'Red', color: '#a00211' },
+                { prc_from: 41, prc_to: 60, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                { prc_from: 61, prc_to: 100, bgt: 3, label: 'Blue', color: '#2563eb' },
+                { prc_from: 101, prc_to: 150, bgt: 4, label: 'Green', color: '#28a745' },
+                { prc_from: 151, prc_to: 9999, bgt: 5, label: 'Pink', color: '#e83e8c' }
+            ];
+            var amzBgtPrcBands = [];
+            function amzBgtPrcLockedBands(existing) {
+                var prev = Array.isArray(existing) ? existing : [];
+                return AMZ_BGT_PRC_DEFAULTS.map(function (def, i) {
+                    var keep = prev[i] || {};
+                    var bgt = parseInt(keep.bgt, 10);
+                    if (!isFinite(bgt) || bgt < 1) bgt = def.bgt;
+                    return {
+                        prc_from: def.prc_from,
+                        prc_to: def.prc_to,
+                        bgt: bgt,
+                        label: keep.label != null && String(keep.label) !== '' ? String(keep.label) : def.label,
+                        color: keep.color || def.color
+                    };
+                });
+            }
+            function amzRenderBgtPrcBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtPrcRuleBandsBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var toLabel = (i === bands.length - 1) ? '>150' : String(band.prc_to);
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + band.prc_from + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + toLabel + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtPrcBands[idx]) return;
+                        if (fld === 'bgt') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        else amzBgtPrcBands[idx][fld] = el.value;
+                    };
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (fld === 'label' || fld === 'color') {
+                            var chip = this.closest('tr').querySelector('.badge');
+                            var band = amzBgtPrcBands[idx];
+                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
+                        }
+                    });
+                    inp.addEventListener('change', function () { writeBand(this); });
+                });
+            }
+            function amzLoadBgtPrcBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                amzBgtPrcBands = amzBgtPrcLockedBands(bands);
+                amzRenderBgtPrcBands(amzBgtPrcBands);
+            }
+            function amzRefreshBgtPrcRuleFromServer(cb) {
+                fetch(bgtPrcRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtPrcRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var bgtPrcModalEl = document.getElementById('amazonAdsBgtPrcRuleModal');
+            if (bgtPrcModalEl) {
+                bgtPrcModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshBgtPrcRuleFromServer(function () { amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {}); });
+                });
+            }
+            var bgtPrcSaveBtn = document.getElementById('amazonAdsBgtPrcRuleSaveBtn');
+            if (bgtPrcSaveBtn) {
+                bgtPrcSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzBgtPrcBands = amzBgtPrcLockedBands(amzBgtPrcBands);
+                    var cleaned = (amzBgtPrcBands || []).map(function (b) {
+                        return {
+                            prc_from: b.prc_from,
+                            prc_to: b.prc_to,
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
+                        };
+                    });
+                    if (cleaned.length !== 5) { if (err) { err.textContent = 'BGT PRC needs exactly five slabs.'; err.classList.remove('d-none'); } return; }
+                    for (var i = 0; i < cleaned.length; i++) {
+                        if (!isFinite(cleaned[i].bgt) || cleaned[i].bgt < 1) { if (err) { err.textContent = 'Every slab needs a Bgt Prc of 1 or more.'; err.classList.remove('d-none'); } return; }
+                    }
+                    bgtPrcSaveBtn.disabled = true;
+                    fetch(bgtPrcRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ bands: cleaned })
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsBgtPrcRule = b.rule || window.amazonAdsBgtPrcRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtPrcModalEl); if (inst) inst.hide(); }
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { bgtPrcSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- BGT Vs REVIEWS (star rating → Bgt Reviews); four locked slabs ----
+            var AMZ_BGT_REVIEWS_DEFAULTS = [
+                { rev_from: 2.99, rev_to: 3.5, bgt: 1, label: 'Red', color: '#a00211' },
+                { rev_from: 3.51, rev_to: 4, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                { rev_from: 4.01, rev_to: 4.5, bgt: 3, label: 'Blue', color: '#2563eb' },
+                { rev_from: 4.51, rev_to: 5, bgt: 4, label: 'Green', color: '#28a745' }
+            ];
+            var amzBgtReviewsBands = [];
+            function amzBgtReviewsLockedBands(existing) {
+                var prev = Array.isArray(existing) ? existing : [];
+                return AMZ_BGT_REVIEWS_DEFAULTS.map(function (def, i) {
+                    var keep = prev[i] || {};
+                    var bgt = parseInt(keep.bgt, 10);
+                    if (!isFinite(bgt) || bgt < 1) bgt = def.bgt;
+                    return {
+                        rev_from: def.rev_from,
+                        rev_to: def.rev_to,
+                        bgt: bgt,
+                        label: keep.label != null && String(keep.label) !== '' ? String(keep.label) : def.label,
+                        color: keep.color || def.color
+                    };
+                });
+            }
+            function amzRenderBgtReviewsBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtReviewsRuleBandsBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var toLabel = (i === bands.length - 1) ? '>4.5' : String(band.rev_to);
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                        + '<td><div class="d-flex align-items-center gap-2">'
+                        + '<input type="color" class="form-control form-control-color form-control-sm" value="' + (band.color || '#6c757d') + '" data-idx="' + i + '" data-field="color">'
+                        + '<span class="badge" style="background:' + (band.color || '#6c757d') + ';color:#fff;">' + (band.label || '—') + '</span></div></td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + band.rev_from + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
+                        + '<td><input type="text" class="form-control form-control-sm" value="' + toLabel + '" readonly tabindex="-1" style="background:#f8f9fa;"></td>'
+                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtReviewsBands[idx]) return;
+                        if (fld === 'bgt') amzBgtReviewsBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        else amzBgtReviewsBands[idx][fld] = el.value;
+                    };
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        var idx = +this.dataset.idx, fld = this.dataset.field;
+                        if (fld === 'label' || fld === 'color') {
+                            var chip = this.closest('tr').querySelector('.badge');
+                            var band = amzBgtReviewsBands[idx];
+                            if (chip) { chip.style.background = band.color || '#6c757d'; chip.textContent = band.label || '—'; }
+                        }
+                    });
+                    inp.addEventListener('change', function () { writeBand(this); });
+                });
+            }
+            function amzLoadBgtReviewsBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                amzBgtReviewsBands = amzBgtReviewsLockedBands(bands);
+                amzRenderBgtReviewsBands(amzBgtReviewsBands);
+            }
+            function amzRefreshBgtReviewsRuleFromServer(cb) {
+                fetch(bgtReviewsRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtReviewsRule = body.rule; if (cb) cb(); })
+                    .catch(function () { if (cb) cb(); });
+            }
+            var bgtReviewsModalEl = document.getElementById('amazonAdsBgtReviewsRuleModal');
+            if (bgtReviewsModalEl) {
+                bgtReviewsModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzRefreshBgtReviewsRuleFromServer(function () { amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {}); });
+                });
+            }
+            var bgtReviewsSaveBtn = document.getElementById('amazonAdsBgtReviewsRuleSaveBtn');
+            if (bgtReviewsSaveBtn) {
+                bgtReviewsSaveBtn.addEventListener('click', function () {
+                    var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    amzBgtReviewsBands = amzBgtReviewsLockedBands(amzBgtReviewsBands);
+                    var cleaned = (amzBgtReviewsBands || []).map(function (b) {
+                        return {
+                            rev_from: b.rev_from,
+                            rev_to: b.rev_to,
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
+                        };
+                    });
+                    if (cleaned.length !== 4) { if (err) { err.textContent = 'BGT Vs REVIEWS needs exactly four slabs.'; err.classList.remove('d-none'); } return; }
+                    for (var ri = 0; ri < cleaned.length; ri++) {
+                        if (!isFinite(cleaned[ri].bgt) || cleaned[ri].bgt < 1) { if (err) { err.textContent = 'Every slab needs a Bgt Reviews of 1 or more.'; err.classList.remove('d-none'); } return; }
+                    }
+                    bgtReviewsSaveBtn.disabled = true;
+                    fetch(bgtReviewsRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ bands: cleaned })
+                    })
+                        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+                        .then(function (out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                            window.amazonAdsBgtReviewsRule = b.rule || window.amazonAdsBgtReviewsRule;
+                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtReviewsModalEl); if (inst) inst.hide(); }
+                            return Promise.resolve(table.setData());
+                        })
+                        .then(function () { amzRefreshUiSoon(); })
+                        .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                        .finally(function () { bgtReviewsSaveBtn.disabled = false; });
                 });
             }
 
@@ -2225,231 +3002,55 @@
                 });
             }
 
-            // ---- Pause rule modal (Pricing / Dil% / ACOS%) ----
-            var amzPauseSections = { pricing: [], dil: [], acos: [] };
-            var PAUSE_SECTION_BODIES = {
-                pricing: 'amazonAdsPauseRulePricingBody',
-                dil: 'amazonAdsPauseRuleDilBody',
-                acos: 'amazonAdsPauseRuleAcosBody'
-            };
-            function amzPauseBandDefault() {
-                return { from: 0, to: 9999, action: 'PAUSED', label: '' };
-            }
-            function amzRenderPauseSection(section) {
-                var tbody = document.getElementById(PAUSE_SECTION_BODIES[section]);
-                if (!tbody) return;
-                tbody.innerHTML = '';
-                (amzPauseSections[section] || []).forEach(function (band, i) {
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = ''
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.from != null ? band.from : '') + '" data-section="' + section + '" data-idx="' + i + '" data-field="from"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.to != null ? band.to : '') + '" data-section="' + section + '" data-idx="' + i + '" data-field="to"></td>'
-                        + '<td><select class="form-select form-select-sm" data-section="' + section + '" data-idx="' + i + '" data-field="action">'
-                        + '<option value="PAUSED"' + (band.action === 'ENABLED' ? '' : ' selected') + '>Pause</option>'
-                        + '<option value="ENABLED"' + (band.action === 'ENABLED' ? ' selected' : '') + '>Activate</option>'
-                        + '</select></td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-section="' + section + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-pause-remove="' + section + '" data-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
-                    tbody.appendChild(tr);
-                });
-                tbody.querySelectorAll('[data-section][data-idx]').forEach(function (el) {
-                    el.addEventListener('input', function () {
-                        var sec = this.dataset.section, idx = +this.dataset.idx, fld = this.dataset.field;
-                        if (!amzPauseSections[sec] || !amzPauseSections[sec][idx]) return;
-                        if (fld === 'from' || fld === 'to') {
-                            amzPauseSections[sec][idx][fld] = this.value === '' ? '' : parseFloat(this.value);
-                        } else {
-                            amzPauseSections[sec][idx][fld] = this.value;
-                        }
-                    });
-                    if (el.tagName === 'SELECT') {
-                        el.addEventListener('change', function () {
-                            var sec = this.dataset.section, idx = +this.dataset.idx;
-                            if (amzPauseSections[sec] && amzPauseSections[sec][idx]) amzPauseSections[sec][idx].action = this.value;
-                        });
-                    }
-                });
-                tbody.querySelectorAll('[data-pause-remove]').forEach(function (btn) {
-                    btn.addEventListener('click', function () {
-                        var sec = this.getAttribute('data-pause-remove');
-                        amzPauseSections[sec].splice(+this.dataset.idx, 1);
-                        amzRenderPauseSection(sec);
-                    });
-                });
-            }
-            function amzLoadPauseRule(rule) {
-                var r = rule || {};
-                ['pricing', 'dil', 'acos'].forEach(function (sec) {
-                    amzPauseSections[sec] = (Array.isArray(r[sec]) ? r[sec] : []).map(function (b) {
-                        return {
-                            from: b.from != null ? Number(b.from) : 0,
-                            to: b.to != null ? Number(b.to) : 9999,
-                            action: (b.action === 'ENABLED') ? 'ENABLED' : 'PAUSED',
-                            label: b.label != null ? String(b.label) : ''
-                        };
-                    });
-                    amzRenderPauseSection(sec);
-                });
-            }
-            function amzCollectPauseRule() {
-                var out = { pricing: [], dil: [], acos: [] };
-                ['pricing', 'dil', 'acos'].forEach(function (sec) {
-                    out[sec] = (amzPauseSections[sec] || []).map(function (b) {
-                        return {
-                            from: (b.from === '' || b.from == null) ? NaN : parseFloat(b.from),
-                            to: (b.to === '' || b.to == null) ? NaN : parseFloat(b.to),
-                            action: b.action === 'ENABLED' ? 'ENABLED' : 'PAUSED',
-                            label: (b.label || '').toString()
-                        };
-                    });
-                });
-                return out;
-            }
-            function amzPauseRuleValid(payload, err) {
-                var secs = ['pricing', 'dil', 'acos'];
-                for (var s = 0; s < secs.length; s++) {
-                    var bands = payload[secs[s]] || [];
-                    for (var i = 0; i < bands.length; i++) {
-                        var b = bands[i];
-                        if (!isFinite(b.from) || !isFinite(b.to)) {
-                            if (err) { err.textContent = secs[s] + ' band ' + (i + 1) + ' needs numeric From and To.'; err.classList.remove('d-none'); }
-                            return false;
-                        }
-                        if (b.from > b.to) {
-                            if (err) { err.textContent = secs[s] + ' band ' + (i + 1) + ' needs From ≤ To.'; err.classList.remove('d-none'); }
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            }
-            function amzSavePauseRule(apply) {
-                var err = document.getElementById('amazonAdsPauseRuleModalError');
-                var ok = document.getElementById('amazonAdsPauseRuleModalOk');
-                if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
-                var payload = amzCollectPauseRule();
-                if (!amzPauseRuleValid(payload, err)) return;
-                payload.apply = !!apply;
-                var saveBtn = document.getElementById('amazonAdsPauseRuleSaveBtn');
-                var applyBtn = document.getElementById('amazonAdsPauseRuleApplyBtn');
-                if (saveBtn) saveBtn.disabled = true;
-                if (applyBtn) applyBtn.disabled = true;
-                fetch(pauseRuleSaveUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify(payload)
-                })
-                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
-                    .then(function (out) {
-                        var b = out.body || {};
-                        if (!out.ok || b.status === 422 || b.status === 500) {
-                            if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); }
-                            return;
-                        }
-                        window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
-                        amzRefreshReviewsBtn();
-                        var msg = b.message || 'Saved.';
-                        if (b.apply) {
-                            msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
-                                + ', unchanged ' + (b.apply.unchanged || 0) + ', failed ' + (b.apply.failed || 0) + '.';
-                            var pauseErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
-                            if (pauseErrs.length && err) {
-                                err.textContent = pauseErrs.slice(0, 8).join(' | ');
-                                err.classList.remove('d-none');
-                            }
-                        }
-                        if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
-                        if (!apply && typeof bootstrap !== 'undefined') {
-                            var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsPauseRuleModal'));
-                            if (inst) inst.hide();
-                        }
-                        return table ? Promise.resolve(table.setData()) : null;
-                    })
-                    .then(function () { amzRefreshUiSoon(); })
-                    .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
-                    .finally(function () {
-                        if (saveBtn) saveBtn.disabled = false;
-                        if (applyBtn) applyBtn.disabled = false;
-                    });
-            }
-            document.querySelectorAll('[data-pause-section]').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    var sec = this.getAttribute('data-pause-section');
-                    if (!amzPauseSections[sec]) amzPauseSections[sec] = [];
-                    var last = amzPauseSections[sec][amzPauseSections[sec].length - 1];
-                    var next = amzPauseBandDefault();
-                    if (last && isFinite(Number(last.to))) next.from = Number(last.to);
-                    amzPauseSections[sec].push(next);
-                    amzRenderPauseSection(sec);
-                });
-            });
-            var pauseModalEl = document.getElementById('amazonAdsPauseRuleModal');
-            if (pauseModalEl) {
-                pauseModalEl.addEventListener('show.bs.modal', function () {
-                    var err = document.getElementById('amazonAdsPauseRuleModalError');
-                    var ok = document.getElementById('amazonAdsPauseRuleModalOk');
-                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
-                    fetch(pauseRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (body) {
-                            if (body && body.rule) window.amazonAdsPauseRule = body.rule;
-                            amzLoadPauseRule(window.amazonAdsPauseRule || {});
-                        })
-                        .catch(function () { amzLoadPauseRule(window.amazonAdsPauseRule || {}); });
-                });
-            }
-            var pauseSaveBtn = document.getElementById('amazonAdsPauseRuleSaveBtn');
-            if (pauseSaveBtn) pauseSaveBtn.addEventListener('click', function () { amzSavePauseRule(false); });
-            var pauseApplyBtn = document.getElementById('amazonAdsPauseRuleApplyBtn');
-            if (pauseApplyBtn) pauseApplyBtn.addEventListener('click', function () {
-                if (!window.confirm('Save these bands and pause/enable matching SP + SB campaigns on Amazon? Campaigns stay active unless they match a Pause band.')) return;
-                amzSavePauseRule(true);
-            });
-
             function amzPrFromRule(rule) {
                 var pr = (rule && rule.pr) ? rule.pr : {};
+                var rev = (rule && rule.reviews && !Array.isArray(rule.reviews)) ? rule.reviews : {};
                 var dil = Number(pr.dil_above);
                 var price = Number(pr.price_below);
+                var reviewsBelow = Number(rev.below != null ? rev.below : pr.reviews_below);
+                var reviewsEnabled = (rev.enabled != null) ? !!rev.enabled : !!pr.reviews_enabled;
                 return {
                     enabled: !!pr.enabled,
                     dil_above: isFinite(dil) ? dil : 100,
                     dil_enabled: pr.dil_enabled !== false,
                     price_below: isFinite(price) ? price : 20,
-                    price_enabled: pr.price_enabled !== false
+                    price_enabled: pr.price_enabled !== false,
+                    reviews_enabled: reviewsEnabled,
+                    reviews_below: isFinite(reviewsBelow) ? reviewsBelow : 2.99
                 };
             }
             function amzRefreshPrBtn() {
                 var btn = document.getElementById('amazonAdsPrRuleBtn');
                 if (!btn) return;
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
-                var bits = [];
-                if (pr.enabled && pr.dil_enabled) bits.push(pr.dil_above + '%');
-                if (pr.enabled && pr.price_enabled) bits.push('$' + pr.price_below);
-                btn.textContent = bits.length ? ('PR ' + bits.join(' · ')) : 'PR';
-                btn.classList.toggle('btn-danger', pr.enabled);
-                btn.classList.toggle('text-white', pr.enabled);
-                btn.classList.toggle('btn-outline-danger', !pr.enabled);
+                btn.textContent = 'Pause Rule';
+                var on = pr.enabled || pr.reviews_enabled;
+                btn.classList.toggle('btn-danger', on);
+                btn.classList.toggle('text-white', on);
+                btn.classList.toggle('btn-outline-danger', !on);
                 var tips = [];
                 if (pr.dil_enabled) tips.push('Dil% ≥ ' + pr.dil_above + '%');
                 if (pr.price_enabled) tips.push('Price < $' + pr.price_below);
-                btn.title = pr.enabled && tips.length
+                if (pr.reviews_enabled) tips.push('Reviews < ' + pr.reviews_below + '★');
+                btn.title = (pr.enabled || pr.reviews_enabled) && tips.length
                     ? ('Auto-pause when ' + tips.join(' or '))
-                    : 'Dil% / price pause rule — click to set thresholds';
+                    : 'Dil% / price / reviews pause rule — click to set thresholds';
             }
             function amzFillPrModal() {
                 var pr = amzPrFromRule(window.amazonAdsPauseRule);
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
                 var priceInput = document.getElementById('amazonAdsPrPriceBelow');
+                var reviewsInput = document.getElementById('amazonAdsPrReviewsBelow');
                 var dilEn = document.getElementById('amazonAdsPrDilEnabled');
                 var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
+                var reviewsEn = document.getElementById('amazonAdsPrReviewsEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 if (dilInput) dilInput.value = String(pr.dil_above);
                 if (priceInput) priceInput.value = String(pr.price_below);
+                if (reviewsInput) reviewsInput.value = String(pr.reviews_below);
                 if (dilEn) dilEn.checked = pr.dil_enabled;
                 if (priceEn) priceEn.checked = pr.price_enabled;
+                if (reviewsEn) reviewsEn.checked = pr.reviews_enabled;
                 if (en) en.checked = pr.enabled;
             }
             function amzSavePrRule(apply) {
@@ -2459,17 +3060,24 @@
                 if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
                 var priceInput = document.getElementById('amazonAdsPrPriceBelow');
+                var reviewsInput = document.getElementById('amazonAdsPrReviewsBelow');
                 var dilEn = document.getElementById('amazonAdsPrDilEnabled');
                 var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
+                var reviewsEn = document.getElementById('amazonAdsPrReviewsEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 var dil = dilInput ? parseFloat(String(dilInput.value).trim()) : NaN;
                 var price = priceInput ? parseFloat(String(priceInput.value).trim()) : NaN;
+                var reviewsBelow = reviewsInput ? parseFloat(String(reviewsInput.value).trim()) : NaN;
                 if (!isFinite(dil) || dil < 0) {
                     if (err) { err.textContent = 'Enter a Dil% threshold (0 or higher).'; err.classList.remove('d-none'); }
                     return;
                 }
                 if (!isFinite(price) || price < 0) {
                     if (err) { err.textContent = 'Enter a price threshold (0 or higher).'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (!isFinite(reviewsBelow) || reviewsBelow < 1 || reviewsBelow > 5) {
+                    if (err) { err.textContent = 'Enter a Reviews threshold from 1 to 5.'; err.classList.remove('d-none'); }
                     return;
                 }
                 var saveBtn = document.getElementById('amazonAdsPrRuleSaveBtn');
@@ -2486,7 +3094,9 @@
                         dil_enabled: !!(dilEn && dilEn.checked),
                         price_below: price,
                         price_enabled: !!(priceEn && priceEn.checked),
-                        apply: !!apply || !!(en && en.checked)
+                        reviews_enabled: !!(reviewsEn && reviewsEn.checked),
+                        reviews_below: reviewsBelow,
+                        apply: !!apply || !!(en && en.checked) || !!(reviewsEn && reviewsEn.checked)
                     })
                 })
                     .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
@@ -2498,7 +3108,6 @@
                         }
                         window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
                         amzRefreshPrBtn();
-                        amzRefreshReviewsBtn();
                         var msg = b.message || 'Saved.';
                         if (b.apply) {
                             msg += ' Paused ' + (b.apply.paused || 0) + ', enabled ' + (b.apply.enabled || 0)
@@ -2546,146 +3155,30 @@
             if (prApplyBtn) prApplyBtn.addEventListener('click', function () {
                 var dilInput = document.getElementById('amazonAdsPrDilAbove');
                 var priceInput = document.getElementById('amazonAdsPrPriceBelow');
+                var reviewsInput = document.getElementById('amazonAdsPrReviewsBelow');
                 var dilEn = document.getElementById('amazonAdsPrDilEnabled');
                 var priceEn = document.getElementById('amazonAdsPrPriceEnabled');
+                var reviewsEn = document.getElementById('amazonAdsPrReviewsEnabled');
                 var en = document.getElementById('amazonAdsPrEnabled');
                 var on = !!(en && en.checked);
+                var revOn = !!(reviewsEn && reviewsEn.checked);
                 var bits = [];
                 if (dilEn && dilEn.checked) bits.push('Dil% ≥ ' + (dilInput ? dilInput.value : '100') + '%');
                 if (priceEn && priceEn.checked) bits.push('Price < $' + (priceInput ? priceInput.value : '20'));
-                var msg = on
-                    ? ('Save PR (' + (bits.join(' or ') || 'no conditions') + ') and pause matching SP + SB campaigns on Amazon now?')
-                    : 'Save PR turned off? Matching Dil% / price campaigns will not be auto-paused by this rule.';
+                var parts = [];
+                if (on) {
+                    parts.push('pause matching SP + SB campaigns when ' + (bits.join(' or ') || 'no Dil%/Price conditions'));
+                }
+                if (revOn) {
+                    parts.push('pause product ads rated below ' + (reviewsInput ? reviewsInput.value : '2.99') + '★ (campaign stays on)');
+                }
+                var msg = parts.length
+                    ? ('Save Pause Rule and ' + parts.join(', and ') + ' on Amazon now?')
+                    : 'Save Pause Rule with campaign auto-pause and Reviews off? Matching campaigns / product ads will not be auto-paused by this rule.';
                 if (!window.confirm(msg)) return;
                 amzSavePrRule(true);
             });
             amzRefreshPrBtn();
-
-            function amzReviewsFromRule(rule) {
-                var rev = (rule && rule.reviews) ? rule.reviews : {};
-                if (Array.isArray(rev)) {
-                    var first = rev.find(function (b) { return b && b.action !== 'ENABLED'; }) || rev[0] || {};
-                    var to = Number(first.to);
-                    return { enabled: rev.length > 0, below: isFinite(to) ? to : 3 };
-                }
-                var below = Number(rev.below);
-                return {
-                    enabled: !!rev.enabled,
-                    below: isFinite(below) ? below : 3
-                };
-            }
-            function amzRefreshReviewsBtn() {
-                var btn = document.getElementById('amazonAdsReviewsRuleBtn');
-                if (!btn) return;
-                var rev = amzReviewsFromRule(window.amazonAdsPauseRule);
-                btn.textContent = rev.enabled ? ('REVIEWS <' + rev.below + '★') : 'REVIEWS RULE';
-                btn.classList.toggle('btn-danger', rev.enabled);
-                btn.classList.toggle('text-white', rev.enabled);
-                btn.classList.toggle('btn-outline-danger', !rev.enabled);
-                btn.title = rev.enabled
-                    ? ('Pause product ads rated below ' + rev.below + '★ — campaign stays on')
-                    : 'Reviews rule — pause low-rated product ads under the campaign';
-            }
-            function amzFillReviewsModal() {
-                var rev = amzReviewsFromRule(window.amazonAdsPauseRule);
-                var below = document.getElementById('amazonAdsReviewsBelow');
-                var en = document.getElementById('amazonAdsReviewsEnabled');
-                if (below) below.value = String(rev.below);
-                if (en) en.checked = rev.enabled;
-            }
-            function amzSaveReviewsRule(apply) {
-                var err = document.getElementById('amazonAdsReviewsRuleModalError');
-                var ok = document.getElementById('amazonAdsReviewsRuleModalOk');
-                if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
-                var belowInput = document.getElementById('amazonAdsReviewsBelow');
-                var en = document.getElementById('amazonAdsReviewsEnabled');
-                var below = belowInput ? parseFloat(String(belowInput.value).trim()) : NaN;
-                if (!isFinite(below) || below < 1 || below > 5) {
-                    if (err) { err.textContent = 'Enter a star number from 1 to 5.'; err.classList.remove('d-none'); }
-                    return;
-                }
-                var saveBtn = document.getElementById('amazonAdsReviewsRuleSaveBtn');
-                var applyBtn = document.getElementById('amazonAdsReviewsRuleApplyBtn');
-                if (saveBtn) saveBtn.disabled = true;
-                if (applyBtn) applyBtn.disabled = true;
-                fetch(reviewsRuleSaveUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        enabled: !!(en && en.checked),
-                        below: below,
-                        apply: !!apply || !!(en && en.checked)
-                    })
-                })
-                    .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
-                    .then(function (out) {
-                        var b = out.body || {};
-                        if (!out.ok || b.status === 422 || b.status === 500) {
-                            if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); }
-                            return;
-                        }
-                        window.amazonAdsPauseRule = b.rule || window.amazonAdsPauseRule;
-                        amzRefreshReviewsBtn();
-                        if (typeof amzCampSkusCache !== 'undefined') amzCampSkusCache = {};
-                        var msg = b.message || 'Saved.';
-                        if (b.apply) {
-                            msg += ' Paused ' + (b.apply.paused || 0) + ' product ad(s)'
-                                + ', unchanged ' + (b.apply.unchanged || 0)
-                                + ', failed ' + (b.apply.failed || 0) + '. Campaigns were not paused.';
-                            var revErrs = Array.isArray(b.apply.errors) ? b.apply.errors.filter(Boolean) : [];
-                            if (revErrs.length && err) {
-                                err.textContent = revErrs.slice(0, 8).join(' | ');
-                                err.classList.remove('d-none');
-                            }
-                        }
-                        if (ok) { ok.textContent = msg; ok.classList.remove('d-none'); }
-                        if (!apply && !(en && en.checked) && typeof bootstrap !== 'undefined') {
-                            var inst = bootstrap.Modal.getInstance(document.getElementById('amazonAdsReviewsRuleModal'));
-                            if (inst) inst.hide();
-                        }
-                        return table ? Promise.resolve(table.setData()) : null;
-                    })
-                    .then(function () { amzRefreshUiSoon(); })
-                    .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
-                    .finally(function () {
-                        if (saveBtn) saveBtn.disabled = false;
-                        if (applyBtn) applyBtn.disabled = false;
-                    });
-            }
-            var reviewsModalEl = document.getElementById('amazonAdsReviewsRuleModal');
-            if (reviewsModalEl) {
-                reviewsModalEl.addEventListener('show.bs.modal', function () {
-                    var err = document.getElementById('amazonAdsReviewsRuleModalError');
-                    var ok = document.getElementById('amazonAdsReviewsRuleModalOk');
-                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
-                    fetch(pauseRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (body) {
-                            if (body && body.rule) window.amazonAdsPauseRule = body.rule;
-                            amzFillReviewsModal();
-                            amzRefreshReviewsBtn();
-                        })
-                        .catch(function () { amzFillReviewsModal(); });
-                });
-            }
-            var reviewsSaveBtn = document.getElementById('amazonAdsReviewsRuleSaveBtn');
-            if (reviewsSaveBtn) reviewsSaveBtn.addEventListener('click', function () { amzSaveReviewsRule(false); });
-            var reviewsApplyBtn = document.getElementById('amazonAdsReviewsRuleApplyBtn');
-            if (reviewsApplyBtn) reviewsApplyBtn.addEventListener('click', function () {
-                var belowInput = document.getElementById('amazonAdsReviewsBelow');
-                var en = document.getElementById('amazonAdsReviewsEnabled');
-                var on = !!(en && en.checked);
-                var th = belowInput ? belowInput.value : '3';
-                var msg = on
-                    ? ('Save Reviews Rule (below ' + th + '★) and pause matching product ads on Amazon? Campaigns stay running.')
-                    : 'Save Reviews Rule turned off? Product ads will not be auto-paused by rating.';
-                if (!window.confirm(msg)) return;
-                amzSaveReviewsRule(true);
-            });
-            amzRefreshReviewsBtn();
 
             // ---- initial state ----
             (function () {
@@ -2703,6 +3196,8 @@
                 } else {
                     amzSetDatesToLatestForSource('sp_reports');
                 }
+                amzFillAcosFilterOptions();
+                amzFillAdsCvrFilterOptions();
                 amzUpdatePushButtons();
                 amzUpdatePieButton();
                 amzUpdateSourceLabel();

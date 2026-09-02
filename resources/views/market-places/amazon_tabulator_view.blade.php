@@ -5534,13 +5534,6 @@
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalViews += parseFloat(row['Sess30'] || 0);
 
-                        const aL30 = parseFloat(row['A_L30'] || 0);
-                        if (aL30 > 0) {
-                            totalSoldCount++;
-                        } else {
-                            zeroSoldCount++;
-                        }
-
                         if (amazonPriceGtLandedLmp(row)) {
                             prcGtLmpCount++;
                         }
@@ -5578,6 +5571,11 @@
                 allData.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalViewsAll += parseFloat(row['Sess30'] || 0);
+                        const sku = String(row['(Child) sku'] || row['Parent'] || '').trim().toUpperCase();
+                        if (sku.indexOf('PARENT') !== 0) {
+                            if (parseFloat(row['A_L30'] || 0) > 0) totalSoldCount++;
+                            else zeroSoldCount++;
+                        }
                     }
                     if (amazonHasBlueTriangle(row)) blueTriangleCount++;
                 });

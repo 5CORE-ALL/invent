@@ -44,6 +44,41 @@ class AmazonAdsPauseRuleReviewsBandsTest extends TestCase
         $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 4.6));
     }
 
+    public function test_reviews_below_default_is_dynamic_2_99(): void
+    {
+        $defaults = AmazonAdsPauseRule::defaultReviews();
+        $this->assertSame(2.99, $defaults['below']);
+
+        $rule = AmazonAdsPauseRule::normalizeRule([
+            'reviews' => ['enabled' => true, 'below' => 2.99],
+        ]);
+        $this->assertTrue(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 2.98));
+        $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 2.99));
+        $this->assertFalse(AmazonAdsPauseRule::ratingBelowReviewsThreshold($rule, 3.0));
+    }
+
+    public function test_pr_normalize_keeps_reviews_threshold(): void
+    {
+        $rule = AmazonAdsPauseRule::normalizeRule([
+            'pr' => [
+                'enabled' => true,
+                'dil_enabled' => true,
+                'dil_above' => 100,
+                'price_enabled' => true,
+                'price_below' => 20,
+                'reviews_enabled' => true,
+                'reviews_below' => 2.99,
+            ],
+            'reviews' => ['enabled' => true, 'below' => 2.99],
+        ]);
+
+        $this->assertTrue($rule['pr']['reviews_enabled']);
+        $this->assertSame(2.99, $rule['pr']['reviews_below']);
+        $this->assertTrue($rule['reviews']['enabled']);
+        $this->assertSame(2.99, $rule['reviews']['below']);
+        $this->assertSame(AmazonAdsPauseRule::ACTION_ENABLED, AmazonAdsPauseRule::decide($rule, ['rating' => 1.0])['status']);
+    }
+
     public function test_amazon_ad_ref_from_stored_ids(): void
     {
         $this->assertSame(

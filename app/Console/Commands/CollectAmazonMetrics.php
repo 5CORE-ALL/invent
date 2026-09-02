@@ -9,6 +9,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\MarketplacePercentage;
+use App\Models\ShopifySku;
 use App\Services\CronMonitor\CronExecutionContext;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -38,7 +39,7 @@ class CollectAmazonMetrics extends Command
     {
         $this->info('Starting Amazon metrics collection...');
         $monitor->startFresh()->markLocalOnly();
-        $today = Carbon::today();
+        $today = Carbon::now('America/Los_Angeles')->toDateString();
         $chunkSize = $this->monitoredChunkSize();
 
         $amazonDatasheets = collect();
@@ -84,6 +85,14 @@ class CollectAmazonMetrics extends Command
         $monitor->setFetched($amazonDatasheets->count());
         $monitor->setExpected($amazonDatasheets->count());
 
+        $shopifyBySku = ShopifySku::query()
+            ->select('sku', 'inv', 'quantity')
+            ->whereNotNull('sku')
+            ->get()
+            ->keyBy(function ($row) {
+                return ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            });
+
         $collected = 0;
         $skipped = 0;
 
@@ -94,6 +103,7 @@ class CollectAmazonMetrics extends Command
                 $today,
                 $amazonSpCampaignReportsL30,
                 $amazonSpCampaignReportsPtL30,
+                $shopifyBySku,
                 &$collected,
                 &$skipped
             ) {
@@ -157,8 +167,14 @@ class CollectAmazonMetrics extends Command
                         $totalRevenue = $price * $aL30;
                         $adPercent = $totalRevenue > 0 ? ($adSpendL30 / $totalRevenue) * 100 : 0;
                         $sprice = $spriceBySku[$sku] ?? ($price > 0 ? round($price, 2) : 0);
+                        $shopify = $shopifyBySku->get(ShopifySku::normalizeSkuForShopifyLookup($sku));
 
-                        $dailyData = [
+                        $daily = AmazonSkuDailyData::firstOrNew([
+                            'sku' => $sku,
+                            'record_date' => $today,
+                        ]);
+                        $existingPayload = is_array($daily->daily_data) ? $daily->daily_data : [];
+                        $daily->daily_data = array_merge($existingPayload, [
                             'price' => round($price, 2),
                             'sprice' => $sprice,
                             'views' => $views,
@@ -167,17 +183,10 @@ class CollectAmazonMetrics extends Command
                             'a_l30' => $aL30,
                             'ad_spend_l30' => round($adSpendL30, 2),
                             'organic_views' => $organicViews,
-                        ];
-
-                        AmazonSkuDailyData::updateOrCreate(
-                            [
-                                'sku' => $sku,
-                                'record_date' => $today,
-                            ],
-                            [
-                                'daily_data' => $dailyData,
-                            ]
-                        );
+                            'inv' => (int) ($shopify?->inv ?? 0),
+                            'l30' => (int) ($shopify?->quantity ?? 0),
+                        ]);
+                        $daily->save();
 
                         $chunkCollected++;
                     } catch (\Exception $e) {
@@ -209,7 +218,7 @@ class CollectAmazonMetrics extends Command
         $this->info("Skipped: $skipped SKUs");
 
         Log::info("Amazon Metrics Collection", [
-            'date' => $today->toDateString(),
+            'date' => $today,
             'collected' => $collected,
             'skipped' => $skipped
         ]);

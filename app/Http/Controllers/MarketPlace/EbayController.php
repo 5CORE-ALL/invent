@@ -504,6 +504,115 @@ class EbayController extends Controller
         return $rules === [];
     }
 
+    /**
+     * Sold vs SBID — Dil color set + eBay L30 sold slabs that fill the
+     * Sold vs SBID column on /ebay-tabulator-view. First matching slab wins.
+     * Stored (shared across users) under key `ebay1_sold_sbid_slabs`.
+     */
+    public function getSoldSbidSlabRule()
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sold_sbid_slabs')->first();
+        $decoded = $row ? json_decode($row->rule, true) : null;
+        $rules = is_array($decoded['rules'] ?? null) ? $decoded['rules'] : [];
+
+        if ($rules === []) {
+            $rules = $this->defaultSoldSbidSlabRules();
+            DB::table('ebay_sbid_rules')->updateOrInsert(
+                ['key' => 'ebay1_sold_sbid_slabs'],
+                ['rule' => json_encode(['rules' => $rules]), 'updated_at' => now()]
+            );
+        }
+
+        return response()->json(['rules' => $rules]);
+    }
+
+    public function saveSoldSbidSlabRule(Request $request)
+    {
+        $rules = $request->input('rules', []);
+        if (!is_array($rules)) {
+            return response()->json(['error' => 'Invalid rule data'], 422);
+        }
+
+        $clean = [];
+        foreach ($rules as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $dilSet = $this->normalizeSoldSbidDilSet($r['dil_set'] ?? null);
+            $clean[] = [
+                'label' => isset($r['label']) ? (string) $r['label'] : $this->soldSbidDilSetLabel($dilSet),
+                'dil_set' => $dilSet,
+                'sold_l30_min' => $this->numOrNull($r['sold_l30_min'] ?? null),
+                'sold_l30_max' => $this->numOrNull($r['sold_l30_max'] ?? null),
+                'sbid' => $this->numOrNull($r['sbid'] ?? null) ?? 0,
+            ];
+        }
+
+        if ($clean === []) {
+            $clean = $this->defaultSoldSbidSlabRules();
+        }
+
+        $rule = ['rules' => $clean];
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => 'ebay1_sold_sbid_slabs'],
+            ['rule' => json_encode($rule), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $rule]);
+    }
+
+    /** Dil filter sets used on /ebay-tabulator-view (Red <25, Green 25–50, Pink 50+). */
+    private function normalizeSoldSbidDilSet(mixed $v): string
+    {
+        $s = strtolower(trim((string) $v));
+
+        return in_array($s, ['red', 'green', 'pink'], true) ? $s : 'red';
+    }
+
+    private function soldSbidDilSetLabel(string $set): string
+    {
+        return match ($set) {
+            'green' => 'Green 25–50%',
+            'pink' => 'Pink 50%+',
+            default => 'Red <25%',
+        };
+    }
+
+    /**
+     * Default Sold vs SBID slabs: each Dil set × Sold in eBay L30 0–5, 6–10, 11+.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function defaultSoldSbidSlabRules(): array
+    {
+        $sets = [
+            ['dil_set' => 'red', 'label' => 'Red <25%', 'sbid' => 9],
+            ['dil_set' => 'green', 'label' => 'Green 25–50%', 'sbid' => 8],
+            ['dil_set' => 'pink', 'label' => 'Pink 50%+', 'sbid' => 7],
+        ];
+        $sold = [
+            [0, 5],
+            [6, 10],
+            [11, null],
+        ];
+        $rules = [];
+        foreach ($sets as $set) {
+            $bid = $set['sbid'];
+            foreach ($sold as $range) {
+                $rules[] = [
+                    'label' => $set['label'],
+                    'dil_set' => $set['dil_set'],
+                    'sold_l30_min' => $range[0],
+                    'sold_l30_max' => $range[1],
+                    'sbid' => $bid,
+                ];
+                $bid = max(2, $bid - 1);
+            }
+        }
+
+        return $rules;
+    }
+
        public function ebayViewData(Request $request)
     {
         return view("market-places.ebay_pricing_data");

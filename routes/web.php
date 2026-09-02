@@ -3518,14 +3518,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/push-sb-sbgts', [AmazonAdsController::class, 'pushSbSbgts'])->name('amazon.ads.push-sb-sbgts');
     Route::get('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'getBgtRule'])->name('amazon.ads.bgt-rule');
     Route::post('/amazon-ads/bgt-rule', [AmazonAdsController::class, 'saveBgtRule'])->name('amazon.ads.bgt-rule.save');
-    Route::get('/amazon-ads/sbgt-double-rule', [AmazonAdsController::class, 'getSbgtDoubleRule'])->name('amazon.ads.sbgt-double-rule');
-    Route::post('/amazon-ads/sbgt-double-rule', [AmazonAdsController::class, 'saveSbgtDoubleRule'])->name('amazon.ads.sbgt-double-rule.save');
+    Route::get('/amazon-ads/bgt-views-rule', [AmazonAdsController::class, 'getBgtViewsRule'])->name('amazon.ads.bgt-views-rule');
+    Route::post('/amazon-ads/bgt-views-rule', [AmazonAdsController::class, 'saveBgtViewsRule'])->name('amazon.ads.bgt-views-rule.save');
+    Route::get('/amazon-ads/bgt-cvr-rule', [AmazonAdsController::class, 'getBgtCvrRule'])->name('amazon.ads.bgt-cvr-rule');
+    Route::post('/amazon-ads/bgt-cvr-rule', [AmazonAdsController::class, 'saveBgtCvrRule'])->name('amazon.ads.bgt-cvr-rule.save');
+    Route::get('/amazon-ads/bgt-prc-rule', [AmazonAdsController::class, 'getBgtPrcRule'])->name('amazon.ads.bgt-prc-rule');
+    Route::post('/amazon-ads/bgt-prc-rule', [AmazonAdsController::class, 'saveBgtPrcRule'])->name('amazon.ads.bgt-prc-rule.save');
+    Route::get('/amazon-ads/bgt-reviews-rule', [AmazonAdsController::class, 'getBgtReviewsRule'])->name('amazon.ads.bgt-reviews-rule');
+    Route::post('/amazon-ads/bgt-reviews-rule', [AmazonAdsController::class, 'saveBgtReviewsRule'])->name('amazon.ads.bgt-reviews-rule.save');
     Route::get('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'getSbidRule'])->name('amazon.ads.sbid-rule');
     Route::post('/amazon-ads/sbid-rule', [AmazonAdsController::class, 'saveSbidRule'])->name('amazon.ads.sbid-rule.save');
     Route::get('/amazon-ads/pause-rule', [AmazonAdsController::class, 'getPauseRule'])->name('amazon.ads.pause-rule');
-    Route::post('/amazon-ads/pause-rule', [AmazonAdsController::class, 'savePauseRule'])->name('amazon.ads.pause-rule.save');
     Route::post('/amazon-ads/pr-rule', [AmazonAdsController::class, 'savePrRule'])->name('amazon.ads.pr-rule.save');
-    Route::post('/amazon-ads/reviews-rule', [AmazonAdsController::class, 'saveReviewsRule'])->name('amazon.ads.reviews-rule.save');
 
     // Amazon SP campaign linking (like /purchase-master/sku-link-lmp) — link campaigns into groups.
     Route::controller(AmazonCampaignLinkController::class)->prefix('amazon-ads/campaign-link')->group(function () {
@@ -5564,6 +5568,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-one/save-sprice', [EbayController::class, 'saveSpriceToDatabase'])->name('ebay-one.save-sprice');
     Route::get('/ebay-one/sbid-slab-rule', [EbayController::class, 'getSbidSlabRule'])->name('ebay-one.sbid-slab-rule.get');
     Route::post('/ebay-one/sbid-slab-rule', [EbayController::class, 'saveSbidSlabRule'])->name('ebay-one.sbid-slab-rule.save');
+    Route::get('/ebay-one/sold-sbid-slab-rule', [EbayController::class, 'getSoldSbidSlabRule'])->name('ebay-one.sold-sbid-slab-rule.get');
+    Route::post('/ebay-one/sold-sbid-slab-rule', [EbayController::class, 'saveSoldSbidSlabRule'])->name('ebay-one.sold-sbid-slab-rule.save');
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 

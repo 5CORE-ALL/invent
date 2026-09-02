@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class AmazonAdsSbgtDoubleRuleSetting extends Model
+class AmazonAdsBgtCvrRuleSetting extends Model
 {
-    protected $table = 'amazon_ads_sbgt_double_rule_settings';
+    protected $table = 'amazon_ads_bgt_cvr_rule_settings';
 
     protected $fillable = [
         'rule',

@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsPauseRule
 {
-    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v7';
+    public const CACHE_KEY = 'amazon_ads_pause_rule_resolved_v9';
 
     public const ACTION_PAUSED = 'PAUSED';
 
@@ -27,7 +27,7 @@ final class AmazonAdsPauseRule
      *     pricing: list<array{from: float, to: float, action: string, label: string}>,
      *     dil: list<array{from: float, to: float, action: string, label: string}>,
      *     acos: list<array{from: float, to: float, action: string, label: string}>,
-     *     pr: array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool},
+     *     pr: array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool, reviews_enabled: bool, reviews_below: float},
      *     reviews: array{enabled: bool, below: float}
      * }
      */
@@ -51,12 +51,12 @@ final class AmazonAdsPauseRule
     {
         return [
             'enabled' => false,
-            'below' => 3.0,
+            'below' => 2.99,
         ];
     }
 
     /**
-     * @return array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool}
+     * @return array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool, reviews_enabled: bool, reviews_below: float}
      */
     public static function defaultPr(): array
     {
@@ -66,6 +66,8 @@ final class AmazonAdsPauseRule
             'dil_enabled' => true,
             'price_below' => 20.0,
             'price_enabled' => true,
+            'reviews_enabled' => false,
+            'reviews_below' => 2.99,
         ];
     }
 
@@ -89,10 +91,7 @@ final class AmazonAdsPauseRule
         $r = $rule ?? [];
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : [];
 
-        return ($r['pricing'] ?? []) !== []
-            || ($r['dil'] ?? []) !== []
-            || ($r['acos'] ?? []) !== []
-            || ! empty($pr['enabled']);
+        return ! empty($pr['enabled']);
     }
 
     /**
@@ -111,9 +110,9 @@ final class AmazonAdsPauseRule
     public static function reviewsBelow(?array $rule): float
     {
         $reviews = is_array($rule['reviews'] ?? null) ? $rule['reviews'] : [];
-        $below = (float) ($reviews['below'] ?? 3);
+        $below = (float) ($reviews['below'] ?? 2.99);
 
-        return is_finite($below) ? $below : 3.0;
+        return is_finite($below) ? $below : 2.99;
     }
 
     /**
@@ -185,9 +184,9 @@ final class AmazonAdsPauseRule
     public static function normalizeRule(array $input): array
     {
         return [
-            'pricing' => self::normalizeBands($input['pricing'] ?? []),
-            'dil' => self::normalizeBands($input['dil'] ?? []),
-            'acos' => self::normalizeBands($input['acos'] ?? []),
+            'pricing' => [],
+            'dil' => [],
+            'acos' => [],
             'pr' => self::normalizePr($input['pr'] ?? self::defaultPr()),
             'reviews' => self::normalizeReviews($input['reviews'] ?? self::defaultReviews()),
         ];
@@ -237,12 +236,19 @@ final class AmazonAdsPauseRule
     }
 
     /**
-     * @param  array{enabled?: mixed, dil_above?: mixed, dil_enabled?: mixed, price_below?: mixed, price_enabled?: mixed}  $pr
+     * @param  array{enabled?: mixed, dil_above?: mixed, dil_enabled?: mixed, price_below?: mixed, price_enabled?: mixed, reviews_enabled?: mixed, reviews_below?: mixed}  $pr
      */
     public static function persistPr(array $pr): void
     {
         $current = self::loadResolvedRule();
-        $current['pr'] = self::normalizePr($pr);
+        $normalizedPr = self::normalizePr($pr);
+        $current['pr'] = $normalizedPr;
+        if (array_key_exists('reviews_enabled', $pr) || array_key_exists('reviews_below', $pr)) {
+            $current['reviews'] = self::normalizeReviews([
+                'enabled' => ! empty($normalizedPr['reviews_enabled']),
+                'below' => $normalizedPr['reviews_below'],
+            ]);
+        }
         self::persistRule($current);
     }
 
@@ -252,7 +258,12 @@ final class AmazonAdsPauseRule
     public static function persistReviews(array $reviews): void
     {
         $current = self::loadResolvedRule();
-        $current['reviews'] = self::normalizeReviews($reviews);
+        $normalized = self::normalizeReviews($reviews);
+        $current['reviews'] = $normalized;
+        $pr = is_array($current['pr'] ?? null) ? $current['pr'] : self::defaultPr();
+        $pr['reviews_enabled'] = ! empty($normalized['enabled']);
+        $pr['reviews_below'] = $normalized['below'];
+        $current['pr'] = $pr;
         self::persistRule($current);
     }
 
@@ -276,19 +287,6 @@ final class AmazonAdsPauseRule
             ];
         }
         $hits = [];
-
-        $priceHit = self::firstMatchingBand($r['pricing'] ?? [], $metrics['price'] ?? null, 'Price', '$');
-        if ($priceHit !== null) {
-            $hits[] = $priceHit;
-        }
-        $dilHit = self::firstMatchingBand($r['dil'] ?? [], $metrics['dil'] ?? null, 'Dil%', '%');
-        if ($dilHit !== null) {
-            $hits[] = $dilHit;
-        }
-        $acosHit = self::firstMatchingBand($r['acos'] ?? [], $metrics['acos'] ?? null, 'ACOS%', '%');
-        if ($acosHit !== null) {
-            $hits[] = $acosHit;
-        }
 
         $pr = is_array($r['pr'] ?? null) ? $r['pr'] : self::defaultPr();
         if (! empty($pr['enabled'])) {
@@ -419,7 +417,7 @@ final class AmazonAdsPauseRule
 
     /**
      * @param  mixed  $pr
-     * @return array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool}
+     * @return array{enabled: bool, dil_above: float, dil_enabled: bool, price_below: float, price_enabled: bool, reviews_enabled: bool, reviews_below: float}
      */
     private static function normalizePr(mixed $pr): array
     {
@@ -429,6 +427,7 @@ final class AmazonAdsPauseRule
         }
         $dil = self::normalizePrNumber($pr['dil_above'] ?? $pr['dilAbove'] ?? $base['dil_above'], 'PR Dil%', 0, 100000);
         $price = self::normalizePrNumber($pr['price_below'] ?? $pr['priceBelow'] ?? $base['price_below'], 'PR Price', 0, 1000000);
+        $reviewsBelow = self::normalizePrNumber($pr['reviews_below'] ?? $pr['reviewsBelow'] ?? $base['reviews_below'], 'PR Reviews', 1, 5);
 
         return [
             'enabled' => self::normalizePrBool($pr['enabled'] ?? false),
@@ -436,6 +435,8 @@ final class AmazonAdsPauseRule
             'dil_enabled' => self::normalizePrBool($pr['dil_enabled'] ?? $pr['dilEnabled'] ?? true),
             'price_below' => $price,
             'price_enabled' => self::normalizePrBool($pr['price_enabled'] ?? $pr['priceEnabled'] ?? true),
+            'reviews_enabled' => self::normalizePrBool($pr['reviews_enabled'] ?? $pr['reviewsEnabled'] ?? false),
+            'reviews_below' => $reviewsBelow,
         ];
     }
 

@@ -120,6 +120,370 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * Empty parent-row listing CVR (Amz page CVR L30) for a campaign with no SKU key.
+     *
+     * @return array{page_cvr: float|null, page_parent: string, a_l30: float|null, sess30: float|null, sess7: float|null, a_l60: float|null, sess60: float|null}
+     */
+    public static function emptyParentListingCvr(): array
+    {
+        return [
+            'page_cvr' => null,
+            'page_parent' => '',
+            'a_l30' => null,
+            'sess30' => null,
+            'sess7' => null,
+            'a_l60' => null,
+            'sess60' => null,
+        ];
+    }
+
+    /**
+     * Amz tabulator parent-row CVR L30 (Σ A L30 ÷ Σ Sess30 × 100) for each campaign.
+     * Child campaigns resolve to their product_master parent and use that parent summary.
+     *
+     * @param  list<string>  $campaignNames
+     * @return array<string, array{page_cvr: float|null, page_parent: string, a_l30: float|null, sess30: float|null, sess7: float|null, a_l60: float|null, sess60: float|null}>
+     */
+    public static function parentListingCvrForCampaignNames(array $campaignNames): array
+    {
+        $keysByName = [];
+        $uniqueKeys = [];
+        foreach ($campaignNames as $name) {
+            $name = is_string($name) ? $name : '';
+            $key = self::skuKeyFromCampaignName($name);
+            $keysByName[$name] = $key;
+            if ($key !== '') {
+                $uniqueKeys[$key] = true;
+            }
+        }
+        $cvrByKey = self::parentListingCvrForSkuKeys(array_keys($uniqueKeys));
+        $empty = self::emptyParentListingCvr();
+        $out = [];
+        foreach ($keysByName as $name => $key) {
+            $out[$name] = $cvrByKey[$key] ?? $empty;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $skuKeys
+     * @return array<string, array{page_cvr: float|null, page_parent: string, a_l30: float|null, sess30: float|null, sess7: float|null, a_l60: float|null, sess60: float|null}>
+     */
+    private static function parentListingCvrForSkuKeys(array $skuKeys): array
+    {
+        $skuKeys = array_values(array_filter(array_map(
+            static fn ($k) => is_string($k) ? trim($k) : '',
+            $skuKeys
+        ), static fn (string $k): bool => $k !== ''));
+        if ($skuKeys === []) {
+            return [];
+        }
+
+        $familyByKey = self::parentFamilyBySkuKeys($skuKeys);
+        $families = [];
+        foreach ($familyByKey as $fam) {
+            if ($fam !== '') {
+                $families[$fam] = true;
+            }
+        }
+        $childSkusByFamily = self::childSkusGroupedByParentFamilies(array_keys($families));
+
+        $lookupSkus = $skuKeys;
+        foreach ($childSkusByFamily as $kids) {
+            foreach ($kids as $sku) {
+                $lookupSkus[] = $sku;
+            }
+        }
+        $sheetByCompact = self::datasheetByCompactSku(array_values(array_unique($lookupSkus)));
+
+        $aggByFamily = [];
+        foreach (array_keys($families) as $fam) {
+            $kids = $childSkusByFamily[$fam] ?? [];
+            $aggByFamily[$fam] = self::sumListingCvrFromSheets($kids, $sheetByCompact);
+        }
+
+        $out = [];
+        foreach ($skuKeys as $key) {
+            $fam = $familyByKey[$key] ?? '';
+            if ($fam !== '' && isset($aggByFamily[$fam])) {
+                $sum = $aggByFamily[$fam];
+                $parentLabel = 'PARENT '.$fam;
+            } else {
+                $sum = self::sumListingCvrFromSheets([$key], $sheetByCompact);
+                $parentLabel = $key;
+            }
+            $sess30 = $sum['sess30'];
+            $aL30 = $sum['a_l30'];
+            $cvr = ($sess30 !== null && $sess30 > 0 && $aL30 !== null)
+                ? round(($aL30 / $sess30) * 100, 2)
+                : 0.0;
+            $out[$key] = [
+                'page_cvr' => $cvr,
+                'page_parent' => $parentLabel,
+                'a_l30' => $aL30 ?? 0.0,
+                'sess30' => $sess30 ?? 0.0,
+                'sess7' => $sum['sess7'] ?? 0.0,
+                'a_l60' => $sum['a_l60'] ?? 0.0,
+                'sess60' => $sum['sess60'] ?? 0.0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * product_master parent family for each campaign SKU key (PARENT prefix or child → parent).
+     *
+     * @param  list<string>  $skuKeys
+     * @return array<string, string>
+     */
+    private static function parentFamilyBySkuKeys(array $skuKeys): array
+    {
+        $familyByKey = [];
+        $childKeys = [];
+        foreach ($skuKeys as $key) {
+            if (str_starts_with($key, 'PARENT ')) {
+                $fam = self::normalizeParentFamily(substr($key, 7));
+                $familyByKey[$key] = $fam;
+            } else {
+                $childKeys[] = $key;
+            }
+        }
+        if ($childKeys === [] || ! Schema::hasTable('product_master')) {
+            return $familyByKey;
+        }
+
+        $spaceKeys = [];
+        $compactKeys = [];
+        foreach ($childKeys as $key) {
+            $space = AmazonDatasheet::normalizeSkuSpaces($key);
+            if ($space !== '') {
+                $spaceKeys[] = $space;
+            }
+            $compact = AmazonDatasheet::normalizeSkuForLookup($key);
+            if ($compact !== '') {
+                $compactKeys[] = $compact;
+            }
+        }
+        $spaceKeys = array_values(array_unique(array_filter($spaceKeys)));
+        $compactKeys = array_values(array_unique(array_filter($compactKeys)));
+        if ($spaceKeys === [] && $compactKeys === []) {
+            return $familyByKey;
+        }
+
+        $pmRows = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) use ($spaceKeys, $compactKeys) {
+                if ($spaceKeys !== []) {
+                    $ph = implode(',', array_fill(0, count($spaceKeys), '?'));
+                    $q->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $spaceKeys);
+                }
+                if ($compactKeys !== []) {
+                    $ph = implode(',', array_fill(0, count($compactKeys), '?'));
+                    $expr = 'UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')';
+                    if ($spaceKeys !== []) {
+                        $q->orWhereRaw($expr, $compactKeys);
+                    } else {
+                        $q->whereRaw($expr, $compactKeys);
+                    }
+                }
+            })
+            ->get(['sku', 'parent']);
+
+        $parentByCompact = [];
+        $parentBySpace = [];
+        foreach ($pmRows as $pm) {
+            $sku = trim((string) ($pm->sku ?? ''));
+            if ($sku === '' || str_starts_with(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+            $fam = self::normalizeParentFamily((string) ($pm->parent ?? ''));
+            if ($fam === '') {
+                continue;
+            }
+            $parentByCompact[AmazonDatasheet::normalizeSkuForLookup($sku)] = $fam;
+            $parentBySpace[AmazonDatasheet::normalizeSkuSpaces($sku)] = $fam;
+        }
+
+        foreach ($childKeys as $key) {
+            $fam = $parentBySpace[AmazonDatasheet::normalizeSkuSpaces($key)]
+                ?? $parentByCompact[AmazonDatasheet::normalizeSkuForLookup($key)]
+                ?? '';
+            $familyByKey[$key] = $fam;
+        }
+
+        return $familyByKey;
+    }
+
+    /**
+     * @param  list<string>  $families
+     * @return array<string, list<string>>
+     */
+    private static function childSkusGroupedByParentFamilies(array $families): array
+    {
+        $families = array_values(array_filter(array_map(
+            [self::class, 'normalizeParentFamily'],
+            $families
+        ), static fn (string $f): bool => $f !== ''));
+        if ($families === [] || ! Schema::hasTable('product_master')) {
+            return [];
+        }
+
+        $want = [];
+        foreach ($families as $fam) {
+            $want[] = $fam;
+            $want[] = 'PARENT '.$fam;
+        }
+        $want = array_values(array_unique($want));
+        $ph = implode(',', array_fill(0, count($want), '?'));
+        $pmRows = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereRaw('UPPER(TRIM(parent)) IN ('.$ph.')', $want)
+            ->get(['sku', 'parent']);
+
+        $out = [];
+        foreach ($pmRows as $pm) {
+            $sku = trim((string) ($pm->sku ?? ''));
+            if ($sku === '' || str_starts_with(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+            $fam = self::normalizeParentFamily((string) ($pm->parent ?? ''));
+            if ($fam === '') {
+                continue;
+            }
+            $out[$fam][] = $sku;
+        }
+
+        return $out;
+    }
+
+    private static function normalizeParentFamily(?string $parent): string
+    {
+        $p = AmazonDatasheet::normalizeSkuSpaces($parent);
+        if (str_starts_with($p, 'PARENT ')) {
+            $p = trim(substr($p, 7));
+        }
+
+        return $p;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, AmazonDatasheet>
+     */
+    private static function datasheetByCompactSku(array $skus): array
+    {
+        $skus = array_values(array_filter(array_map(
+            static fn ($s) => is_string($s) ? trim($s) : '',
+            $skus
+        ), static fn (string $s): bool => $s !== ''));
+        if ($skus === [] || ! Schema::hasTable('amazon_datsheets')) {
+            return [];
+        }
+
+        $spaceKeys = [];
+        $compactKeys = [];
+        foreach ($skus as $sku) {
+            $space = AmazonDatasheet::normalizeSkuSpaces($sku);
+            if ($space !== '') {
+                $spaceKeys[] = $space;
+            }
+            $compact = AmazonDatasheet::normalizeSkuForLookup($sku);
+            if ($compact !== '') {
+                $compactKeys[] = $compact;
+            }
+        }
+        $spaceKeys = array_values(array_unique(array_filter($spaceKeys)));
+        $compactKeys = array_values(array_unique(array_filter($compactKeys)));
+        if ($spaceKeys === [] && $compactKeys === []) {
+            return [];
+        }
+
+        $rows = AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) use ($spaceKeys, $compactKeys) {
+                if ($spaceKeys !== []) {
+                    $ph = implode(',', array_fill(0, count($spaceKeys), '?'));
+                    $q->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $spaceKeys);
+                }
+                if ($compactKeys !== []) {
+                    $ph = implode(',', array_fill(0, count($compactKeys), '?'));
+                    $expr = 'UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')';
+                    if ($spaceKeys !== []) {
+                        $q->orWhereRaw($expr, $compactKeys);
+                    } else {
+                        $q->whereRaw($expr, $compactKeys);
+                    }
+                }
+            })
+            ->get();
+
+        $sheetByCompact = [];
+        foreach ($rows as $row) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+            if ($ck === '') {
+                continue;
+            }
+            if (! isset($sheetByCompact[$ck])) {
+                $sheetByCompact[$ck] = $row;
+            } else {
+                $picked = AmazonDatasheet::pickBestForProductSku(
+                    (string) ($row->sku ?? ''),
+                    [$sheetByCompact[$ck], $row]
+                );
+                if ($picked !== null) {
+                    $sheetByCompact[$ck] = $picked;
+                }
+            }
+        }
+
+        return $sheetByCompact;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @param  array<string, AmazonDatasheet>  $sheetByCompact
+     * @return array{a_l30: float, sess30: float, sess7: float, a_l60: float, sess60: float}
+     */
+    private static function sumListingCvrFromSheets(array $skus, array $sheetByCompact): array
+    {
+        $aL30 = 0.0;
+        $sess30 = 0.0;
+        $sess7 = 0.0;
+        $aL60 = 0.0;
+        $sess60 = 0.0;
+        $seen = [];
+        foreach ($skus as $sku) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup((string) $sku);
+            if ($ck === '' || isset($seen[$ck])) {
+                continue;
+            }
+            $seen[$ck] = true;
+            $sheet = $sheetByCompact[$ck] ?? null;
+            if ($sheet === null) {
+                continue;
+            }
+            $aL30 += (float) ($sheet->units_ordered_l30 ?? 0);
+            $sess30 += (float) ($sheet->sessions_l30 ?? 0);
+            $sess7 += (float) ($sheet->sessions_l7 ?? 0);
+            $aL60 += (float) ($sheet->units_ordered_l60 ?? 0);
+            $sess60 += (float) ($sheet->sessions_l60 ?? 0);
+        }
+
+        return [
+            'a_l30' => $aL30,
+            'sess30' => $sess30,
+            'sess7' => $sess7,
+            'a_l60' => $aL60,
+            'sess60' => $sess60,
+        ];
+    }
+
+    /**
      * Price and Dil% for pause/PR — same values as the Amazon Ads All grid.
      * Dil = ovl30 ÷ Inv. Price = Amazon list price, or the grey LMP when list price is missing.
      *

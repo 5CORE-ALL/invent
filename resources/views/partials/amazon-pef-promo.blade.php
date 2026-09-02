@@ -1243,13 +1243,21 @@
             s.onload = fn;
             document.head.appendChild(s);
         }
+        function amzZsTodayPt() {
+            if (typeof amzTodayPtDate === 'function') return amzTodayPtDate();
+            try {
+                return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+            } catch (e) {
+                return new Date().toISOString().slice(0, 10);
+            }
+        }
         function amzZsCollectCounts() {
             const counts = { zero: 0, sold: 0 };
-            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+            if (typeof table === 'undefined' || !table || typeof table.getData !== 'function') {
                 return counts;
             }
-            table.getRows('active').forEach(function(row) {
-                const d = row.getData() || {};
+            const rows = table.getData('all') || [];
+            rows.forEach(function(d) {
                 if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return;
                 if (amzIsZeroSoldRow(d)) counts.zero++;
                 else counts.sold++;
@@ -1259,7 +1267,7 @@
         function amzZsSnapLocal(counts) {
             try {
                 const key = 'amz_zero_sold_hist';
-                const today = new Date().toISOString().slice(0, 10);
+                const today = amzZsTodayPt();
                 let hist = {};
                 try { hist = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { hist = {}; }
                 hist[today] = counts;
@@ -1351,6 +1359,10 @@
             const spec = AMZ_ZS_BANDS.find(function(b) { return b.key === band; }) || AMZ_ZS_BANDS[0];
             $('#amz-zs-hist-title').text(spec.label + ' count');
             $('#amz-zs-hist-wrap').addClass('is-open');
+            const plot = (rows || []).filter(function(r) {
+                const n = Number(r[band]);
+                return isFinite(n) && ((Number(r.zero) || 0) + (Number(r.sold) || 0) > 0 || n > 0);
+            });
             amzZsWithChart(function() {
                 const canvas = document.getElementById('amz-zs-hist');
                 if (!canvas || typeof Chart === 'undefined') return;
@@ -1361,9 +1373,9 @@
                 amzZsHistChart = new Chart(canvas.getContext('2d'), {
                     type: 'line',
                     data: {
-                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        labels: plot.map(function(r) { return r.label || r.date; }),
                         datasets: [{
-                            data: rows.map(function(r) { return Number(r[band]) || 0; }),
+                            data: plot.map(function(r) { return Number(r[band]) || 0; }),
                             borderColor: spec.color,
                             backgroundColor: spec.color + '22',
                             fill: true,
@@ -1387,24 +1399,43 @@
                 });
             });
         }
+        function amzZsCarryGaps(rows) {
+            let carry = null;
+            return (rows || []).map(function(r) {
+                const total = (Number(r.zero) || 0) + (Number(r.sold) || 0);
+                if (total > 0) {
+                    carry = { zero: Number(r.zero) || 0, sold: Number(r.sold) || 0 };
+                    return r;
+                }
+                if (!carry) return r;
+                return Object.assign({}, r, { zero: carry.zero, sold: carry.sold, source: 'carried' });
+            });
+        }
         function amzZsOpenHist(band) {
             const applyToday = function(rows) {
-                const list = rows.slice();
-                const today = new Date().toISOString().slice(0, 10);
-                if (!list.some(function(r) { return r.date === today; })) {
-                    list.push({
-                        date: today,
-                        label: today.slice(5),
-                        zero: amzZsLiveCounts.zero,
-                        sold: amzZsLiveCounts.sold,
-                    });
+                const list = (rows || []).slice();
+                const today = amzZsTodayPt();
+                const todayLabel = (function() {
+                    const p = today.split('-');
+                    if (p.length !== 3) return today.slice(5);
+                    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+                    return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+                })();
+                const rec = {
+                    date: today,
+                    label: todayLabel,
+                    zero: amzZsLiveCounts.zero,
+                    sold: amzZsLiveCounts.sold,
+                    source: 'live',
+                };
+                const last = list[list.length - 1];
+                if (last && (last.date === today || last.full_date === today)) {
+                    last.zero = rec.zero;
+                    last.sold = rec.sold;
+                    last.label = rec.label;
+                    last.source = 'live';
                 } else {
-                    list.forEach(function(r) {
-                        if (r.date === today) {
-                            r.zero = amzZsLiveCounts.zero;
-                            r.sold = amzZsLiveCounts.sold;
-                        }
-                    });
+                    list.push(rec);
                 }
                 return list;
             };
@@ -1414,9 +1445,9 @@
                 data: { days: 30 },
             }).done(function(res) {
                 const rows = (res && res.success && Array.isArray(res.data)) ? res.data : amzZsLocalHistory();
-                amzZsDrawHist(band, applyToday(rows));
+                amzZsDrawHist(band, applyToday(amzZsCarryGaps(rows)));
             }).fail(function() {
-                amzZsDrawHist(band, applyToday(amzZsLocalHistory()));
+                amzZsDrawHist(band, applyToday(amzZsCarryGaps(amzZsLocalHistory())));
             });
         }
 
