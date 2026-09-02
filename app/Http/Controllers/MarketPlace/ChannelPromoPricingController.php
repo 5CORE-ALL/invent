@@ -283,9 +283,6 @@ class ChannelPromoPricingController extends Controller
     public static function isPageReloadPushEnabled(string $channel): bool
     {
         $channel = strtolower(trim($channel));
-        if ($channel === 'amazon') {
-            return false;
-        }
         try {
             $row = ChannelTabulatorColumnSetting::query()
                 ->where('channel_name', $channel.'_page_reload_push')
