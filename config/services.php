@@ -895,12 +895,13 @@ return [
             'ALIBABA_SHOPIFY_SOURCE_URL_TEMPLATE',
             'https://www.alibaba.com/trade/order_detail.htm?orderId={order_id}'
         ),
-        // Alibaba.com ICBU OAuth (NOT AliExpress api-sg.aliexpress.com).
-        // Authorize: https://oauth.alibaba.com/authorize?...&sp=ICBU
-        // Token:     https://oauth.alibaba.com/token
-        'redirect_uri' => env('ALIBABA_REDIRECT_URI', rtrim((string) env('APP_URL', ''), '/').'/alibaba/callback'),
-        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://oauth.alibaba.com'),
-        'token_url' => env('ALIBABA_TOKEN_URL', 'https://oauth.alibaba.com/token'),
+        // openapi.alibaba.com AOP OAuth (short AppKeys). Do NOT use oauth.alibaba.com —
+        // that host is AliExpress/TOP and returns param-appkey.not.exists for these apps.
+        // Callback in the app console must match this URI (currently /index, shared with TikTok 2).
+        'redirect_uri' => env('ALIBABA_REDIRECT_URI', rtrim((string) env('APP_URL', ''), '/').'/index'),
+        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://auth.alibaba.com/oauth/authorize'),
+        'token_url' => env('ALIBABA_TOKEN_URL', 'https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken'),
+        'oauth_site' => env('ALIBABA_OAUTH_SITE', 'alibaba'),
     ],
 
     'aliexpress' => [

@@ -59,18 +59,36 @@ class AmazonTrackingSyncService
         }
 
         $status = strtoupper(trim((string) ($order->status ?? '')));
+        $amazonOrderId = trim((string) ($order->amazon_order_id ?? ''));
+        $itemSkus = $order->items()
+            ->orderBy('id')
+            ->pluck('sku')
+            ->map(static fn ($sku) => trim((string) $sku))
+            ->filter(static fn ($sku) => $sku !== '' && ! in_array($sku, ['__order__', '__unknown__'], true))
+            ->unique()
+            ->values();
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+        $shopifyFulfillment = ['tracking' => null, 'carrier' => null, 'error' => null];
+        $matchedSku = '';
+        foreach ($itemSkus as $sku) {
+            $hit = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
+            if (! empty($hit['tracking'])) {
+                $shopifyFulfillment = $hit;
+                $matchedSku = $sku;
+                break;
+            }
+            $shopifyFulfillment = $hit;
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             $veeqo = $this->veeqoFulfillment->fulfillMarketplaceOrder('amazon', (int) $order->id);
-            if (! empty($veeqo['success']) && ! empty($veeqo['tracking'])) {
-                $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
-                if (empty($shopifyFulfillment['tracking'])) {
-                    $shopifyFulfillment = [
-                        'tracking' => $veeqo['tracking'],
-                        'carrier' => $veeqo['carrier'] ?? null,
-                        'tracking_url' => null,
-                    ];
+            if (! empty($veeqo['success'])) {
+                foreach ($itemSkus as $sku) {
+                    $hit = $this->fetchShopifyTracking($shopifyOrderId, $amazonOrderId, $sku);
+                    if (! empty($hit['tracking'])) {
+                        $shopifyFulfillment = $hit;
+                        $matchedSku = $sku;
+                        break;
+                    }
                 }
             }
         }
@@ -100,7 +118,8 @@ class AmazonTrackingSyncService
             return [
                 'success' => false,
                 'skipped' => true,
-                'message' => 'No tracking number on Shopify yet. Buy the label in Veeqo, 4Seller, Shopify, or ShipStation first.',
+                'message' => $shopifyFulfillment['error']
+                    ?: 'No tracking number on Shopify yet. Buy the label in Veeqo, 4Seller, Shopify, or ShipStation first.',
                 'shopify_tracking' => null,
                 'shopify_carrier' => $shopifyFulfillment['carrier'] ?? null,
             ];
@@ -110,7 +129,7 @@ class AmazonTrackingSyncService
         $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
         [$carrierCode, $carrierName] = $this->mapAmazonCarrier($shopifyCarrier);
 
-        $orderItems = $this->buildConfirmShipmentItems($order);
+        $orderItems = $this->buildConfirmShipmentItems($order, $matchedSku);
         if ($orderItems === []) {
             return [
                 'success' => false,
@@ -268,81 +287,18 @@ class AmazonTrackingSyncService
     }
 
     /**
-     * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string}
+     * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    protected function fetchShopifyTracking(string $shopifyOrderId): array
+    protected function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = ''): array
     {
-        $config = $this->shopifyConfig();
-        $storeUrl = (string) ($config['store_url'] ?? '');
-        $token = (string) ($config['token'] ?? '');
-
-        if ($storeUrl === '' || $token === '') {
-            return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
-        }
-
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,fulfillments,fulfillment_status',
-            ]);
-
-            if (! $response->successful()) {
-                Log::warning('AmazonTrackingSyncService: Shopify order fetch failed', [
-                    'shopify_order_id' => $shopifyOrderId,
-                    'status' => $response->status(),
-                ]);
-
-                return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
-            }
-
-            $fulfillments = $response->json('order.fulfillments') ?? [];
-            if (! is_array($fulfillments)) {
-                $fulfillments = [];
-            }
-
-            foreach ($fulfillments as $fulfillment) {
-                if (! is_array($fulfillment)) {
-                    continue;
-                }
-                $status = strtolower((string) ($fulfillment['status'] ?? ''));
-                if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
-                    continue;
-                }
-
-                $number = null;
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                    $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
-                }
-                if (($number === null || $number === '') && ! empty($fulfillment['tracking_number'])) {
-                    $number = trim((string) $fulfillment['tracking_number']);
-                }
-                if ($number === null || $number === '') {
-                    continue;
-                }
-
-                $url = null;
-                if (! empty($fulfillment['tracking_urls']) && is_array($fulfillment['tracking_urls'])) {
-                    $url = trim((string) ($fulfillment['tracking_urls'][0] ?? ''));
-                }
-                if (($url === null || $url === '') && ! empty($fulfillment['tracking_url'])) {
-                    $url = trim((string) $fulfillment['tracking_url']);
-                }
-
-                return [
-                    'tracking' => $number,
-                    'carrier' => trim((string) ($fulfillment['tracking_company'] ?? '')) ?: null,
-                    'tracking_url' => $url !== '' ? $url : null,
-                ];
-            }
-        } catch (\Throwable $e) {
-            Log::warning('AmazonTrackingSyncService: Shopify tracking exception', [
-                'shopify_order_id' => $shopifyOrderId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return ['tracking' => null, 'carrier' => null, 'tracking_url' => null];
+        return app(ShopifyFulfillmentTrackingMatcher::class)->match(
+            $this->shopifyConfig(),
+            $shopifyOrderId,
+            $marketplaceOrderId,
+            $sku,
+            [],
+            'AmazonTrackingSyncService'
+        );
     }
 
     /**
@@ -362,15 +318,22 @@ class AmazonTrackingSyncService
     /**
      * @return list<array{orderItemId: string, quantity: int}>
      */
-    protected function buildConfirmShipmentItems(AmazonOrder $order): array
+    protected function buildConfirmShipmentItems(AmazonOrder $order, string $onlySku = ''): array
     {
         $items = $order->relationLoaded('items')
             ? $order->items
             : $order->items()->orderBy('id')->get();
 
+        $matcher = app(ShopifyFulfillmentTrackingMatcher::class);
+        $onlySku = $matcher->normalizeSku($onlySku);
+
         $out = [];
         foreach ($items as $item) {
             /** @var AmazonOrderItem $item */
+            $itemSku = trim((string) ($item->sku ?? ''));
+            if ($onlySku !== '' && $itemSku !== '' && ! $matcher->skusEqual($itemSku, $onlySku)) {
+                continue;
+            }
             $raw = AmazonOrder::decodeRawPayload($item->raw_data ?? null);
             $orderItemId = trim((string) ($raw['OrderItemId'] ?? $raw['orderItemId'] ?? ''));
             if ($orderItemId === '') {

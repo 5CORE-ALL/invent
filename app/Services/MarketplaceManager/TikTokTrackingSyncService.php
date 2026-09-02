@@ -65,7 +65,7 @@ class TikTokTrackingSyncService
             return ['success' => false, 'skipped' => true, 'message' => 'Order not linked to Shopify yet.'];
         }
 
-        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+        $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId, $orderId, (string) ($line->seller_sku ?? ''));
         if (! empty($shopifyFulfillment['error'])) {
             return [
                 'success' => false,
@@ -204,88 +204,18 @@ class TikTokTrackingSyncService
     }
 
     /**
-     * @return array{tracking: ?string, carrier: ?string, fulfillment_status: ?string, error?: string}
+     * @return array{tracking: ?string, carrier: ?string, tracking_url: ?string, error?: ?string}
      */
-    public function fetchShopifyTracking(string $shopifyOrderId): array
+    public function fetchShopifyTracking(string $shopifyOrderId, string $marketplaceOrderId = '', string $sku = ''): array
     {
-        $config = $this->shopifyConfig();
-        $storeUrl = (string) ($config['store_url'] ?? '');
-        $token = (string) ($config['token'] ?? '');
-
-        if ($storeUrl === '' || $token === '' || trim($shopifyOrderId) === '') {
-            return [
-                'tracking' => null,
-                'carrier' => null,
-                'fulfillment_status' => null,
-                'error' => 'Shopify store/token not configured for TikTok channel.',
-            ];
-        }
-
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}.json", [
-                'fields' => 'id,fulfillments,fulfillment_status',
-            ]);
-
-            if (! $response->successful()) {
-                Log::warning('TikTokTrackingSyncService: Shopify tracking HTTP failed', [
-                    'shopify_order_id' => $shopifyOrderId,
-                    'store' => $storeUrl,
-                    'status' => $response->status(),
-                    'body' => mb_substr($response->body(), 0, 300),
-                ]);
-
-                return [
-                    'tracking' => null,
-                    'carrier' => null,
-                    'fulfillment_status' => null,
-                    'error' => 'Shopify HTTP '.$response->status(),
-                ];
-            }
-
-            $fulfillmentStatus = $response->json('order.fulfillment_status');
-            $fulfillments = $response->json('order.fulfillments') ?? [];
-            foreach ($fulfillments as $fulfillment) {
-                if (! is_array($fulfillment)) {
-                    continue;
-                }
-                $status = strtolower((string) ($fulfillment['status'] ?? ''));
-                if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
-                    continue;
-                }
-
-                $number = null;
-                if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                    $number = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
-                }
-                if (($number === null || $number === '') && ! empty($fulfillment['tracking_number'])) {
-                    $number = trim((string) $fulfillment['tracking_number']);
-                }
-                if ($number === null || $number === '') {
-                    continue;
-                }
-
-                return [
-                    'tracking' => $number,
-                    'carrier' => trim((string) ($fulfillment['tracking_company'] ?? '')) ?: null,
-                    'fulfillment_status' => is_string($fulfillmentStatus) ? $fulfillmentStatus : null,
-                ];
-            }
-
-            return [
-                'tracking' => null,
-                'carrier' => null,
-                'fulfillment_status' => is_string($fulfillmentStatus) ? $fulfillmentStatus : null,
-            ];
-        } catch (\Throwable $e) {
-            Log::warning('TikTokTrackingSyncService: Shopify tracking exception', [
-                'shopify_order_id' => $shopifyOrderId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return ['tracking' => null, 'carrier' => null, 'fulfillment_status' => null];
+        return app(ShopifyFulfillmentTrackingMatcher::class)->match(
+            $this->shopifyConfig(),
+            $shopifyOrderId,
+            $marketplaceOrderId,
+            $sku,
+            [],
+            'TikTokTrackingSyncService'
+        );
     }
 
     protected function extractDeliveryOptionId(TiktokOrder $line): string

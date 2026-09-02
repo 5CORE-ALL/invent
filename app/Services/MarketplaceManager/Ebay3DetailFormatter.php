@@ -332,6 +332,10 @@ class Ebay3DetailFormatter
             'customer' => $customerFields,
         ];
         $payload = array_merge($payload, $this->resolveShopifySourceAttribution($orderRef));
+        $settings = MarketplaceSyncSettings::getFor('ebay3');
+        if (! empty($settings['order']['keep_order_number_from_channel']) && $orderRef !== '') {
+            $payload['name'] = $orderRef;
+        }
 
         $shippingCost = (float) ($amounts['shipping_cost'] ?? $funds['shipping_cost'] ?? 0);
         if ($shippingCost > 0) {

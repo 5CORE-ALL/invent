@@ -43,8 +43,9 @@
                     <div class="card-header"><h5 class="card-title mb-0">1) Paste access token</h5></div>
                     <div class="card-body">
                         <p class="text-muted small mb-2">
-                            Alibaba.com Open Platform → your ICBU app token, or the <code>access_token</code> from an OAuth redirect.
-                            Saved as <code>ALIBABA_ACCESS_TOKEN</code>.
+                            Fastest: <a href="https://openapi.alibaba.com" target="_blank" rel="noopener">openapi.alibaba.com</a>
+                            → <strong>5Core Product Manager</strong> → <strong>Auth Management</strong> → authorize the Alibaba.com seller → copy <code>access_token</code>.
+                            Paste it here. Saved as <code>ALIBABA_ACCESS_TOKEN</code>.
                         </p>
                         <div class="input-group mb-2">
                             <input type="text" class="form-control" id="alibaba-access-token-input" placeholder="Paste Alibaba access token" autocomplete="off">
@@ -68,9 +69,10 @@
                     </div>
                     <div class="card-body">
                         <p class="text-muted small mb-3">
-                            Uses <code>oauth.alibaba.com</code> with <code>sp=ICBU</code> (not AliExpress).
-                            Callback URL in the developer portal must be exactly
-                            <code>{{ $redirectUri ?? 'http://127.0.0.1:8000/alibaba/callback' }}</code>.
+                            Optional OAuth uses <code>auth.alibaba.com</code> with <code>site=alibaba</code>.
+                            Do not use <code>auth.1688.com</code> for Alibaba.com — that host returns “不支持的站点”.
+                            Callback in the app console must stay
+                            <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com/index' }}</code>.
                         </p>
 
                         <table class="table table-sm table-bordered mb-3">
@@ -127,7 +129,7 @@
 
                         <div class="d-flex flex-wrap gap-2 mb-3">
                             @if(!empty($authorizeUrl))
-                                <a href="{{ $authorizeUrl }}" class="btn btn-outline-success" target="_blank" rel="noopener">
+                                <a href="{{ $authorizeUrl }}" class="btn btn-outline-success">
                                     Connect with Alibaba (OAuth)
                                 </a>
                             @endif

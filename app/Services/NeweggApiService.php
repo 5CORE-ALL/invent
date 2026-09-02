@@ -1330,7 +1330,8 @@ class NeweggApiService
         $url   = $this->baseUrl . '/' . ltrim($path, '/');
 
         try {
-            $http = Http::withHeaders([
+            $http = Http::withoutVerifying()
+                ->withHeaders([
                     'Authorization' => $this->apiKey,
                     'SecretKey'     => $this->secretKey,
                     'Content-Type'  => 'application/json',

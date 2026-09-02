@@ -11,6 +11,7 @@ use App\Models\BestBuyOrderMetric;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\DobaDailyData;
+use App\Models\DobaWarehouseShip;
 use App\Models\Ebay1OrderMetric;
 use App\Models\Ebay2OrderMetric;
 use App\Models\Ebay3OrderMetric;
@@ -233,6 +234,9 @@ class SalesOrderFulfillmentController extends Controller
      * All pending orders across Marketplace Manager channels (for Pending tab).
      * Last 30 days only.
      */
+    /** Doba Analytics / API value for prepaid pickup labels. */
+    protected const DOBA_PREPAID_ORDER_TYPE = 'pickup with a prepaid label';
+
     public function pendingData(): JsonResponse
     {
         try {
@@ -425,6 +429,245 @@ class SalesOrderFulfillmentController extends Controller
                 'count' => 0,
             ], 500);
         }
+    }
+
+    /**
+     * Warehouse Doba queue — prepaid vs non-prepaid, including rows that already
+     * have auto-synced tracking (those leave the global Pending tab).
+     */
+    public function dobaOrdersData(): JsonResponse
+    {
+        try {
+            @set_time_limit(90);
+            $includeShipped = $this->requestWantsShippedDobaOrders();
+            $grouped = $this->buildDobaWarehouseOrderRows($includeShipped);
+
+            return response()->json([
+                'success' => true,
+                'non_prepaid' => $grouped['non_prepaid'],
+                'prepaid' => $grouped['prepaid'],
+                'non_prepaid_count' => count($grouped['non_prepaid']),
+                'prepaid_count' => count($grouped['prepaid']),
+                'open_count' => $grouped['open_count'],
+                'count' => count($grouped['non_prepaid']) + count($grouped['prepaid']),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load Doba orders.',
+                'non_prepaid' => [],
+                'prepaid' => [],
+                'non_prepaid_count' => 0,
+                'prepaid_count' => 0,
+                'open_count' => 0,
+                'count' => 0,
+            ], 500);
+        }
+    }
+
+    /**
+     * Local warehouse "mark shipped" — not overwritten by Doba order sync.
+     */
+    public function markDobaOrderShipped(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_no' => ['required', 'string', 'max:191'],
+            'shipped' => ['required'],
+        ]);
+
+        $orderNo = trim((string) $validated['order_no']);
+        $shipped = filter_var($validated['shipped'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($orderNo === '' || $shipped === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'order_no and shipped are required.',
+            ], 422);
+        }
+
+        if (! Schema::hasTable('doba_warehouse_ships')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'doba_warehouse_ships table missing — run migrations.',
+            ], 500);
+        }
+
+        try {
+            if ($shipped) {
+                DobaWarehouseShip::query()->updateOrCreate(
+                    ['order_no' => $orderNo],
+                    [
+                        'shipped' => true,
+                        'shipped_at' => now(),
+                        'shipped_by' => $request->user()?->id,
+                    ]
+                );
+            } else {
+                DobaWarehouseShip::query()->where('order_no', $orderNo)->delete();
+            }
+
+            return response()->json([
+                'success' => true,
+                'order_no' => $orderNo,
+                'shipped' => $shipped,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update Doba shipped flag.',
+            ], 500);
+        }
+    }
+
+    protected function requestWantsShippedDobaOrders(): bool
+    {
+        $raw = request()->input('include_shipped', false);
+
+        return filter_var($raw, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * @return array{non_prepaid: list<array<string, mixed>>, prepaid: list<array<string, mixed>>, open_count: int}
+     */
+    protected function buildDobaWarehouseOrderRows(bool $includeShipped): array
+    {
+        $empty = ['non_prepaid' => [], 'prepaid' => [], 'open_count' => 0];
+        if (! Schema::hasTable('doba_daily_data')) {
+            return $empty;
+        }
+
+        $query = $this->scopedToLast30Days(DobaDailyData::query(), 'doba');
+        if ($query === null) {
+            return $empty;
+        }
+
+        $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
+
+        $lines = $query->orderByDesc('order_time')->get([
+            'id', 'order_no', 'platform_order_no', 'order_time', 'updated_at',
+            'order_status', 'order_type', 'sku', 'product_name', 'quantity',
+            'total_price', 'item_price', 'tracking_number', 'carrier_name',
+        ]);
+
+        $shippedByOrder = [];
+        if (Schema::hasTable('doba_warehouse_ships')) {
+            foreach (DobaWarehouseShip::query()->where('shipped', true)->get(['order_no', 'shipped_at']) as $ship) {
+                $key = trim((string) ($ship->order_no ?? ''));
+                if ($key !== '') {
+                    $shippedByOrder[$key] = $ship->shipped_at
+                        ? $this->formatOrderDate($ship->shipped_at)
+                        : true;
+                }
+            }
+        }
+
+        $byOrder = [];
+        foreach ($lines as $line) {
+            $orderNo = trim((string) ($line->order_no ?? ''));
+            if ($orderNo === '') {
+                continue;
+            }
+            if (! isset($byOrder[$orderNo])) {
+                $byOrder[$orderNo] = [
+                    'id' => 'doba-wh-'.$orderNo,
+                    'row_id' => (int) $line->id,
+                    'show_id' => (int) $line->id,
+                    'mm_slug' => 'doba',
+                    'channel_label' => 'Doba',
+                    'order_id' => $orderNo,
+                    'order_id_api' => $orderNo,
+                    'order_number' => trim((string) ($line->platform_order_no ?: $orderNo)),
+                    'order_date' => $this->formatOrderDate($line->order_time ?? null),
+                    'updated_at' => $this->formatOrderDate($line->updated_at ?? null),
+                    'status' => trim((string) ($line->order_status ?? '')),
+                    'status_label' => trim((string) ($line->order_status ?? '')) ?: '—',
+                    'order_type' => trim((string) ($line->order_type ?? '')),
+                    'is_prepaid' => $this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? '')),
+                    'sku' => '',
+                    'skus' => [],
+                    'display_title' => '',
+                    'titles' => [],
+                    'quantity' => 0,
+                    'amount' => null,
+                    'tracking_number' => null,
+                    'tracking_company' => null,
+                    'warehouse_shipped' => isset($shippedByOrder[$orderNo]),
+                    'warehouse_shipped_at' => is_string($shippedByOrder[$orderNo] ?? null)
+                        ? $shippedByOrder[$orderNo]
+                        : null,
+                    'order_url' => route('marketplace.orders.show', [
+                        'marketplace' => 'doba',
+                        'order' => (int) $line->id,
+                    ]),
+                    'orders_url' => route('marketplace.orders', 'doba'),
+                ];
+            }
+
+            $row = &$byOrder[$orderNo];
+            $sku = trim((string) ($line->sku ?? ''));
+            if ($sku !== '' && ! in_array($sku, $row['skus'], true)) {
+                $row['skus'][] = $sku;
+            }
+            $title = trim((string) ($line->product_name ?? ''));
+            if ($title !== '' && ! in_array($title, $row['titles'], true)) {
+                $row['titles'][] = $title;
+            }
+            $row['quantity'] += max(0, (int) ($line->quantity ?? 0));
+            $amt = $line->total_price ?? $line->item_price ?? null;
+            if (is_numeric($amt)) {
+                $row['amount'] = max((float) ($row['amount'] ?? 0), (float) $amt);
+            }
+            $tn = trim((string) ($line->tracking_number ?? ''));
+            if ($tn !== '' && trim((string) ($row['tracking_number'] ?? '')) === '') {
+                $row['tracking_number'] = $tn;
+            }
+            $carrier = trim((string) ($line->carrier_name ?? ''));
+            if ($carrier !== '' && trim((string) ($row['tracking_company'] ?? '')) === '') {
+                $row['tracking_company'] = $carrier;
+            }
+            if (! $row['is_prepaid'] && $this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? ''))) {
+                $row['is_prepaid'] = true;
+                $row['order_type'] = trim((string) ($line->order_type ?? ''));
+            }
+            unset($row);
+        }
+
+        $nonPrepaid = [];
+        $prepaid = [];
+        $openCount = 0;
+        foreach ($byOrder as $row) {
+            $row['sku'] = implode(', ', $row['skus']);
+            $row['display_title'] = implode(' · ', $row['titles']);
+            unset($row['skus'], $row['titles']);
+            if (! $row['warehouse_shipped']) {
+                $openCount++;
+            }
+            if (! $includeShipped && $row['warehouse_shipped']) {
+                continue;
+            }
+            if ($row['is_prepaid']) {
+                $prepaid[] = $row;
+            } else {
+                $nonPrepaid[] = $row;
+            }
+        }
+
+        return [
+            'non_prepaid' => $nonPrepaid,
+            'prepaid' => $prepaid,
+            'open_count' => $openCount,
+        ];
+    }
+
+    protected function dobaOrderTypeIsPrepaid(string $orderType): bool
+    {
+        return strtolower(trim($orderType)) === self::DOBA_PREPAID_ORDER_TYPE;
     }
 
     /**
