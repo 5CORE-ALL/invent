@@ -897,8 +897,8 @@ return [
         ),
         // openapi.alibaba.com AOP OAuth (short AppKeys). Do NOT use oauth.alibaba.com —
         // that host is AliExpress/TOP and returns param-appkey.not.exists for these apps.
-        // Callback in the app console must match this URI (currently /index, shared with TikTok 2).
-        'redirect_uri' => env('ALIBABA_REDIRECT_URI', rtrim((string) env('APP_URL', ''), '/').'/index'),
+        // Must match Callback URL in openapi.alibaba.com exactly (not /index — that is TikTok 2).
+        'redirect_uri' => env('ALIBABA_REDIRECT_URI', 'https://inventory.5coremanagement.com/alibaba/callback'),
         'auth_base' => env('ALIBABA_AUTH_BASE', 'https://auth.alibaba.com/oauth/authorize'),
         'token_url' => env('ALIBABA_TOKEN_URL', 'https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken'),
         'oauth_site' => env('ALIBABA_OAUTH_SITE', 'alibaba'),
