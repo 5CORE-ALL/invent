@@ -4081,6 +4081,7 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         headerSort: true,
+                        headerTooltip: "OV L30 ÷ INV. Color matches the Sprc Dil Dil% slab.",
                         sorter: function(a, b, aRow, bRow) {
                             const dilOf = function(row) {
                                 const inv = parseFloat(row.INV) || 0;
@@ -4097,15 +4098,15 @@
                             if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
 
                             const dil = (OVL30 / INV) * 100;
-                            let color = '';
+                            let color = '#cbd5e1';
+                            let tip = 'Outside Dil slabs';
+                            if (typeof amzDilSlabColorInfo === 'function') {
+                                const info = amzDilSlabColorInfo(dil);
+                                color = info.color || color;
+                                tip = info.label || tip;
+                            }
 
-                            // Color logic from inc/dec page - getDilColor
-                            if (dil < 16.66) color = '#a00211'; // red
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
-                            else if (dil >= 25 && dil < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50 and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                            return `<span title="${String(tip).replace(/"/g, '&quot;')}" style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },

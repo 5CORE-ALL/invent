@@ -263,6 +263,17 @@
         }
         #amzDilGroiModal .amz-dg-hist-wrap.is-open { display: block; }
         #amzDilGroiModal .amz-dg-hist-canvas-wrap { height: 160px; }
+        #amzDilGroiModal .amz-dg-rules {
+            margin: 0 0 10px;
+            padding-left: 1.15rem;
+        }
+        #amzDilGroiModal .amz-dg-rules li { margin-bottom: 0.28rem; }
+        #amzDilGroiModal .amz-dg-rules-title {
+            margin: 0 0 4px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #334155;
+        }
         #amz-dil-groi-btn {
             background: #6f42c1;
             border-color: #6f42c1;
@@ -510,7 +521,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                        title="Dil slabs → Target GROI%. A L30 = 0 uses the minimum Target GROI in the table.">
+                        title="Dil slabs → Target GROI%. A L30 = 0 uses the minimum Target GROI from the slabs.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -658,23 +669,33 @@
                             <canvas id="amz-dg-hist"></canvas>
                         </div>
                     </div>
-                    <p class="small text-muted mb-2">
-                        Map Dil% ranges to <strong>Target GROI%</strong>.
-                        First-time defaults: <strong>0.1–25%</strong> in 5 slabs.
-                        Dil is <strong>SKU-wise</strong> (OV L30 ÷ INV), same as the Dil column.
-                        <strong>Sprc Dil</strong> (column before S PRC) suggests
-                        <code>(LP × (1 + GROI%/100) + Ship) / 0.80</code>
-                        from the first slab that contains the SKU Dil.
-                        INV = 0, missing LP, or Dil outside every slab → blank.
-                        Changing the first Target GROI% fills the rest (+5 each, increasing down the table).
-                        Add or delete slabs as needed (at least one).
-                        If <strong>A L30 = 0</strong> (0 Sold on Amazon), Target GROI is the
-                        <strong>minimum</strong> value in this table (not the Dil slab).
-                        Auto-applies to <strong>S PRC</strong> (and Push Prc Sale) when Dil matches a slab,
-                        or when A L30 = 0 (min GROI).
-                        <strong>Save Rule</strong> stores Amazon’s table and writes S PRC.
-                        Count and pies skip INV ≤ 0.
-                    </p>
+                    <div class="amz-dg-rules-title">Rules — when each condition applies</div>
+                    <ul class="small text-muted amz-dg-rules">
+                        <li>
+                            <strong>When</strong> A L30 = 0 (0 Sold) and INV &gt; 0:
+                            take the <strong>minimum Target GROI from the slabs</strong>
+                            (lowest GROI% in this table — not the Dil-matching slab).
+                        </li>
+                        <li>
+                            <strong>When</strong> A L30 &gt; 0 and Dil sits in a From–To range:
+                            use that slab’s Target GROI (first match; last slab includes the To value).
+                        </li>
+                        <li>
+                            <strong>When</strong> a price is calculated (slab match or 0 Sold min GROI):
+                            it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
+                        </li>
+                        <li>
+                            <strong>When</strong> you change the first Target GROI%:
+                            later rows fill as first +5, +10, … (increasing down the table).
+                        </li>
+                        <li>
+                            <strong>When</strong> you click <strong>Save Rule</strong>:
+                            Amazon’s table is stored via <strong>API only</strong>, then <strong>S PRC</strong> is written.
+                        </li>
+                        <li>
+                            <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
+                        </li>
+                    </ul>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-dil-groi-table">
                             <thead class="table-light">
@@ -755,7 +776,6 @@
             { key: '15-20', label: '15–20%', min: 15, max: 20, groi: 65 },
             { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 70 },
         ];
-        const AMZ_DIL_GROI_LS_KEY = 'amz_dil_vs_groi_rules';
         let amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzDgDilPieChart = null;
         let amzDgCvrPieChart = null;
@@ -1098,21 +1118,52 @@
             return '<span class="amz-cvr-discount-badge" title="CVR Disc rule → ' + n + '%">'
                 + n + '</span>';
         }
+        function amzPefAL30(d) {
+            if (!d) return 0;
+            const raw = (d.A_L30 != null && d.A_L30 !== '') ? d.A_L30
+                : (d['A_L30'] != null && d['A_L30'] !== '' ? d['A_L30']
+                    : (d['A L30'] != null && d['A L30'] !== '' ? d['A L30'] : 0));
+            const n = Number(raw);
+            return isFinite(n) ? n : 0;
+        }
         function amzIsZeroSoldRow(d) {
             if (!amzPefIsChildRow(d)) return false;
             if (amzPefInv(d) <= 0) return false;
-            const sold = Number(d['A_L30'] != null ? d['A_L30'] : d.A_L30) || 0;
-            return !(sold > 0);
+            return !(amzPefAL30(d) > 0);
         }
-        function amzDilGroiMinTarget() {
-            const list = amzNormalizeDilGroiList(amzDilGroiRules);
-            let min = null;
+        function amzDilGroiCurrentList() {
+            const fromModal = ($('#amz-dil-groi-tbody tr').length)
+                ? amzDilGroiDisplayRules()
+                : [];
+            const list = (fromModal && fromModal.length)
+                ? fromModal
+                : amzNormalizeDilGroiList(amzDilGroiRules);
+            return list.length
+                ? list
+                : AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        }
+        /** Lowest Target GROI% among current slabs (A L30 = 0). Tie → lowest Dil From. */
+        function amzDilGroiMinSlab() {
+            const list = amzDilGroiCurrentList();
+            let best = null;
             list.forEach(function(r) {
                 const g = Number(r.groi);
                 if (!isFinite(g)) return;
-                if (min == null || g < min) min = g;
+                if (!best || g < best.groi || (g === best.groi && Number(r.min) < Number(best.min))) {
+                    best = {
+                        groi: g,
+                        label: r.label,
+                        key: r.key,
+                        min: r.min,
+                        max: r.max,
+                    };
+                }
             });
-            return min;
+            return best;
+        }
+        function amzDilGroiMinTarget() {
+            const slab = amzDilGroiMinSlab();
+            return slab ? slab.groi : null;
         }
         function amzSpriceFromTargetGroi(d, roiPct) {
             const lp = parseFloat(d.LP_productmaster) || 0;
@@ -1175,6 +1226,28 @@
         function amzDilGroiMatch(dil) {
             return amzDilGroiMatchInList(dil, amzNormalizeDilGroiList(amzDilGroiRules));
         }
+        function amzDilSlabColorInfo(dil) {
+            const rules = amzNormalizeDilGroiList(amzDilGroiRules);
+            const n = Number(dil);
+            if (!isFinite(n) || n < 0 || !rules.length) {
+                return { color: '#cbd5e1', label: 'Outside', idx: -1 };
+            }
+            const last = rules.length - 1;
+            for (let i = 0; i < rules.length; i++) {
+                const rule = rules[i];
+                const hiOk = (i === last) ? (n <= rule.max) : (n < rule.max);
+                if (n >= rule.min && hiOk) {
+                    return {
+                        color: amzDgSlabColor(i),
+                        label: rule.label,
+                        idx: i,
+                        key: rule.key,
+                    };
+                }
+            }
+            return { color: '#cbd5e1', label: 'Outside', idx: -1 };
+        }
+        window.amzDilSlabColorInfo = amzDilSlabColorInfo;
         function amzDgEachInvChild(fn) {
             if (typeof table === 'undefined' || !table) return;
             const rows = (typeof table.getData === 'function') ? (table.getData('all') || []) : [];
@@ -1452,11 +1525,11 @@
             let key = '';
             let zeroSoldMin = false;
             if (zeroSold) {
-                const minGroi = amzDilGroiMinTarget();
-                if (minGroi == null) return null;
-                groi = minGroi;
-                label = '0 Sold · min GROI';
-                key = 'zero-sold-min';
+                const minSlab = amzDilGroiMinSlab();
+                if (!minSlab) return null;
+                groi = minSlab.groi;
+                label = '0 Sold · min GROI ' + minSlab.groi + '% from ' + minSlab.label;
+                key = minSlab.key || 'zero-sold-min';
                 zeroSoldMin = true;
             } else {
                 const rule = amzDilGroiMatch(dil);
@@ -1511,17 +1584,6 @@
             redrawAmzSprcDilColumn();
             if (typeof amzScheduleRuleSpriceSync === 'function') {
                 amzScheduleRuleSpriceSync({ force: true, delay: 250 });
-            }
-        }
-        function amzDilGroiWriteLocal(rules) {
-            try { localStorage.setItem(AMZ_DIL_GROI_LS_KEY, JSON.stringify(rules || [])); } catch (e) { /* ignore */ }
-        }
-        function amzDilGroiReadLocal() {
-            try {
-                const raw = JSON.parse(localStorage.getItem(AMZ_DIL_GROI_LS_KEY) || 'null');
-                return amzNormalizeDilGroiList(Array.isArray(raw) ? raw : (raw && raw.rules));
-            } catch (e) {
-                return [];
             }
         }
         function cascadeAmzDilGroiFromFirst() {
@@ -1662,40 +1724,25 @@
                     (res && Array.isArray(res.rules)) ? res.rules
                         : (res && res.rules && Array.isArray(res.rules.rules) ? res.rules.rules : [])
                 );
-                const fromLocal = amzDilGroiReadLocal();
-                if (fromServer.length && !(res && res.is_default)) {
-                    amzDilGroiRules = fromServer;
-                    amzDilGroiWriteLocal(fromServer);
-                } else if (fromLocal.length) {
-                    amzDilGroiRules = fromLocal;
-                } else if (fromServer.length) {
+                if (fromServer.length) {
                     amzDilGroiRules = fromServer;
                 }
                 renderAmzDilGroiModalTable();
                 redrawAmzSprcDilColumn();
                 if (fromServer.length && !(res && res.is_default)) {
-                    $('#amz-dil-groi-status').text('Loaded saved Dil → GROI slabs for Amazon.');
-                } else if (fromLocal.length) {
-                    $('#amz-dil-groi-status').text('Loaded last saved Dil → GROI slabs. Click Save Rule to store on the server.');
+                    $('#amz-dil-groi-status').text('Loaded saved Dil → GROI slabs from API.');
                 } else {
                     $('#amz-dil-groi-status').text('Using first-time defaults (0.1–5 → 50 … 20–25 → 70, +5 each). Add or delete slabs, then Save Rule.');
                 }
             } catch (e) {
-                const local = amzDilGroiReadLocal();
-                if (local.length) amzDilGroiRules = local;
                 renderAmzDilGroiModalTable();
                 const reason = (e && e.responseJSON && e.responseJSON.message)
                     || (e && e.status ? ('HTTP ' + e.status) : 'network error');
-                $('#amz-dil-groi-status').text(
-                    local.length
-                        ? ('Server load failed (' + reason + ') — showing last saved slabs. Click Save Rule.')
-                        : ('Could not load saved rules (' + reason + ') — using defaults.')
-                );
+                $('#amz-dil-groi-status').text('Could not load saved rules from API (' + reason + ') — using defaults.');
             }
         }
         function saveAmzDilGroiRules() {
             const rules = readAmzDilGroiRulesFromModal();
-            amzDilGroiWriteLocal(rules);
             return $.ajax({
                 url: '/channel-promo-pricing/amazon/dil-groi',
                 method: 'POST',
@@ -1710,12 +1757,11 @@
                     const saved = amzNormalizeDilGroiList(res.rules);
                     if (saved.length) {
                         amzDilGroiRules = saved;
-                        amzDilGroiWriteLocal(saved);
                     }
                     renderAmzDilGroiModalTable();
                 }
                 amzAfterDilGroiRulesChanged();
-                $('#amz-dil-groi-status').text('Saved. S PRC auto-applied from Sprc Dil.');
+                $('#amz-dil-groi-status').text('Saved via API. S PRC written from Sprc Dil.');
                 return res;
             });
         }
