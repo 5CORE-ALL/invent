@@ -232,15 +232,16 @@ final class AmazonAcosSbgtRule
     }
 
     /**
-     * L30 spend for ACOS: prefer `cost`, else `spend` (same order as
-     * {@see \App\Http\Controllers\AmazonAdsController} / `l30DisplaySpendFromRowArray`).
+     * First finite numeric on the row for the given keys. When $preferPositive, a
+     * stored 0 is skipped so a later key (e.g. `spend` after `cost`) can win.
      *
-     * @param  object|array<string, mixed>  $row
+     * @param  array<string, mixed>  $r
+     * @param  list<string>  $keys
      */
-    public static function l30DisplaySpendForAcos(object|array $row): ?float
+    private static function firstFiniteMetric(array $r, array $keys, bool $preferPositive = false): ?float
     {
-        $r = self::reportRowArray($row);
-        foreach (['cost', 'spend'] as $k) {
+        $zero = null;
+        foreach ($keys as $k) {
             if (! array_key_exists($k, $r)) {
                 continue;
             }
@@ -249,12 +250,53 @@ final class AmazonAcosSbgtRule
                 continue;
             }
             $n = (float) $v;
-            if (is_finite($n)) {
+            if (! is_finite($n)) {
+                continue;
+            }
+            if ($preferPositive && $n > 0) {
                 return $n;
             }
+            if ($preferPositive) {
+                $zero = 0.0;
+
+                continue;
+            }
+
+            return $n;
         }
 
-        return null;
+        return $zero;
+    }
+
+    /**
+     * L30 spend for ACOS: first positive of `cost` then `spend` (same order as
+     * {@see \App\Http\Controllers\AmazonAdsController} / `l30DisplaySpendFromRowArray`).
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function l30DisplaySpendForAcos(object|array $row): ?float
+    {
+        return self::firstFiniteMetric(self::reportRowArray($row), ['cost', 'spend'], true);
+    }
+
+    /**
+     * Spend used only to decide the "spend exists, sold is 0 → ACOS 100%" sentinel.
+     * L30 `cost`/`spend` first, then grid L7/L2/L1 spend overlays.
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function anySpendForAcosSentinel(object|array $row): ?float
+    {
+        $l30 = self::l30DisplaySpendForAcos($row);
+        if ($l30 !== null && $l30 > 0) {
+            return $l30;
+        }
+        $window = self::firstFiniteMetric(self::reportRowArray($row), ['L7spend', 'L2spend', 'L1spend'], true);
+        if ($window !== null && $window > 0) {
+            return $window;
+        }
+
+        return $l30;
     }
 
     /**
@@ -264,46 +306,52 @@ final class AmazonAcosSbgtRule
      */
     public static function l30SalesForAcos(object|array $row): ?float
     {
-        $r = self::reportRowArray($row);
-        foreach (['sales30d', 'sales'] as $k) {
-            if (! array_key_exists($k, $r)) {
-                continue;
-            }
-            $v = $r[$k] ?? null;
-            if ($v === null || $v === '') {
-                continue;
-            }
-            $n = (float) $v;
-            if (is_finite($n)) {
-                return $n;
-            }
-        }
+        return self::firstFiniteMetric(self::reportRowArray($row), ['sales30d', 'sales']);
+    }
 
-        return null;
+    /**
+     * Ads Sold for ACOS: L30 purchases (`purchases30d`, SB `purchases`) or grid `Prchase`.
+     *
+     * @param  object|array<string, mixed>  $row
+     */
+    public static function l30SoldForAcos(object|array $row): ?float
+    {
+        return self::firstFiniteMetric(self::reportRowArray($row), ['purchases30d', 'purchases', 'Prchase']);
     }
 
     /**
      * ACOS % from one L30 summary report row, aligned with {@see \App\Http\Controllers\AmazonAdsController::computedAcosPercentFromReportRow}
-     * (whole-number percent like the All page ACOS column; spend prefers `cost` then `spend`).
+     * (whole-number percent like the All page ACOS column).
+     *
+     * Spend with Ads Sold = 0 is saved as 100% so BGT ACOS, SBGT, filters, pause rules,
+     * and budget crons all use the same value (not 0% / pink).
      *
      * @param  object|array<string, mixed>  $row
      */
     public static function acosPercentForSbgtFromReportRow(object|array $row): ?float
     {
         $c = self::l30DisplaySpendForAcos($row);
-        if ($c === null) {
-            return null;
-        }
+        $anySpend = self::anySpendForAcosSentinel($row);
         $sales = self::l30SalesForAcos($row);
-        if ($sales === null) {
+        $sold = self::l30SoldForAcos($row);
+        if ($c === null && $anySpend === null && $sales === null && $sold === null) {
             return null;
         }
-        if ($sales > 0) {
-            $v = ($c / $sales) * 100;
+
+        $spend = $c ?? 0.0;
+        $sentinelSpend = $anySpend ?? $spend;
+
+        // Spend exists and nothing sold → 100% ACOS (even if sales $ is missing or stale).
+        if ($sentinelSpend > 0 && $sold !== null && $sold <= 0) {
+            return 100.0;
+        }
+        if ($sales !== null && $sales > 0) {
+            $base = $spend > 0 ? $spend : $sentinelSpend;
+            $v = ($base / $sales) * 100;
 
             return is_finite($v) ? (float) round($v, 0) : null;
         }
-        if ($c > 0) {
+        if ($sentinelSpend > 0) {
             return 100.0;
         }
 

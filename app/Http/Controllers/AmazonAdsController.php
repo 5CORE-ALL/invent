@@ -365,7 +365,7 @@ class AmazonAdsController extends Controller
             }
         }
 
-        // ACOS (%) = cost / sales * 100 — display after primary sales column when cost + sales exist on the table.
+        // ACOS (%) = cost / sales * 100 — spend + Ads Sold 0 is saved as 100% for BGT / SBGT.
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
@@ -521,44 +521,88 @@ class AmazonAdsController extends Controller
 
     /**
      * ACOS (%) from the same row: (cost / sales) × 100. Sales prefers `sales30d`, else `sales`.
-     * When cost > 0 and sales = 0, ACOS is defined as 100% (same convention as budget tooling).
-     * For the grid, pass a row whose `cost` / `sales30d` already match SP L30 / SL30 overlays when applicable.
+     * When spend > 0 and Ads Sold = 0 (or sales $ = 0), ACOS is saved as 100% for BGT / SBGT / filters.
+     * For the grid, pass a row whose `cost` / sold / `sales30d` already match L30 overlays when applicable.
      *
      * @param  array<int, string>  $dbColumns
      */
     private static function computedAcosPercentFromReportRow(array $rowArr, array $dbColumns): ?float
     {
-        if (! in_array('cost', $dbColumns, true)) {
+        if (! in_array('cost', $dbColumns, true) && ! in_array('spend', $dbColumns, true)) {
             return null;
         }
-        $salesKey = null;
-        if (in_array('sales30d', $dbColumns, true)) {
-            $salesKey = 'sales30d';
-        } elseif (in_array('sales', $dbColumns, true)) {
-            $salesKey = 'sales';
-        }
-        if ($salesKey === null) {
+        $hasSales = in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true);
+        $hasSold = in_array('purchases30d', $dbColumns, true)
+            || in_array('purchases', $dbColumns, true)
+            || array_key_exists('Prchase', $rowArr);
+        if (! $hasSales && ! $hasSold) {
             return null;
-        }
-        $sales = (float) ($rowArr[$salesKey] ?? 0);
-        $cost = $rowArr['cost'] ?? null;
-        if ($cost === null || $cost === '') {
-            return null;
-        }
-        $c = (float) $cost;
-        if (! is_finite($c) || ! is_finite($sales)) {
-            return null;
-        }
-        if ($sales > 0) {
-            $v = ($c / $sales) * 100;
-
-            return is_finite($v) ? (float) round($v, 0) : null;
-        }
-        if ($c > 0) {
-            return 100.0;
         }
 
-        return 0.0;
+        return AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($rowArr);
+    }
+
+    /**
+     * Row passed into {@see computedAcosPercentFromReportRow} / SBGT: L30 spend, sold, sales,
+     * plus L7/L2/L1 spend so "spend exists and sold is 0 → ACOS 100%" matches the grid.
+     *
+     * @param  array<string, mixed>  $rowArr
+     * @param  array<string, mixed>  $arr
+     * @param  array<int, string>  $dbColumns
+     * @param  array<string, array{spend: ?float, purchases30d: ?int, sales30d: ?float, clicks: ?int}>  $l30SliceMap
+     * @return array<string, mixed>
+     */
+    private static function acosCalculationRowFromGridOverlays(
+        array $rowArr,
+        array $arr,
+        array $dbColumns,
+        array $l30SliceMap,
+        string $lkL30
+    ): array {
+        $acosRow = $rowArr;
+        if (array_key_exists('cost', $arr)) {
+            $acosRow['cost'] = $arr['cost'];
+        }
+        if (array_key_exists('spend', $arr)) {
+            $acosRow['spend'] = $arr['spend'];
+        }
+        foreach (['L7spend', 'L2spend', 'L1spend'] as $k) {
+            if (array_key_exists($k, $arr)) {
+                $acosRow[$k] = $arr[$k];
+            }
+        }
+        $hasL30 = $lkL30 !== '' && $l30SliceMap !== [] && array_key_exists($lkL30, $l30SliceMap);
+        if ($hasL30) {
+            $slice = $l30SliceMap[$lkL30];
+            if (($slice['spend'] ?? null) !== null) {
+                $acosRow['cost'] = $slice['spend'];
+            }
+            if (array_key_exists('sales30d', $slice)) {
+                $acosRow['sales30d'] = $slice['sales30d'];
+                $acosRow['sales'] = $slice['sales30d'];
+            }
+            if (array_key_exists('purchases30d', $slice)) {
+                $sold = $slice['purchases30d'];
+                $acosRow['purchases30d'] = $sold === null ? 0 : $sold;
+                $acosRow['purchases'] = $acosRow['purchases30d'];
+                $acosRow['Prchase'] = $acosRow['purchases30d'];
+            }
+        } else {
+            if (array_key_exists('sales30d', $arr)) {
+                $acosRow['sales30d'] = $arr['sales30d'];
+            }
+            if (array_key_exists('sales', $arr) && ! array_key_exists('sales30d', $dbColumns)) {
+                $acosRow['sales'] = $arr['sales'];
+            }
+            if (array_key_exists('Prchase', $arr)) {
+                $sold = $arr['Prchase'];
+                $acosRow['purchases30d'] = $sold === null || $sold === '' ? 0 : $sold;
+                $acosRow['purchases'] = $acosRow['purchases30d'];
+                $acosRow['Prchase'] = $acosRow['purchases30d'];
+            }
+        }
+
+        return $acosRow;
     }
 
     /**
@@ -568,34 +612,57 @@ class AmazonAdsController extends Controller
      */
     private static function sqlExpressionForAcosSort(string $table, array $dbColumns): ?string
     {
-        if (! in_array('cost', $dbColumns, true)) {
+        if (! in_array('cost', $dbColumns, true) && ! in_array('spend', $dbColumns, true)) {
             return null;
         }
-        $costEff = 'COALESCE(cost, 0)';
+        $costParts = [];
         $sumSpend = self::correlatedL30SummarySpendScalarSubquerySql($table, $dbColumns);
         if ($sumSpend !== null) {
-            $costEff = 'COALESCE(('.$sumSpend.'), cost, 0)';
+            $costParts[] = 'NULLIF(('.$sumSpend.'), 0)';
         }
+        if (in_array('cost', $dbColumns, true)) {
+            $costParts[] = 'NULLIF(cost, 0)';
+        }
+        if (in_array('spend', $dbColumns, true)) {
+            $costParts[] = 'NULLIF(spend, 0)';
+        }
+        $costEff = $costParts !== [] ? 'COALESCE('.implode(', ', $costParts).', 0)' : '0';
+        $salesEff = null;
         if (in_array('sales30d', $dbColumns, true)) {
             $salesEff = 'sales30d';
             $sumSales = self::correlatedL30SummarySales30dScalarSubquerySql($table, $dbColumns);
             if ($sumSales !== null) {
                 $salesEff = 'COALESCE(('.$sumSales.'), sales30d)';
             }
-
-            return 'CASE WHEN COALESCE('.$salesEff.', 0) > 0 THEN '.$costEff.' / NULLIF('.$salesEff.', 0) * 100 WHEN '.$costEff.' > 0 THEN 100 ELSE 0 END';
-        }
-        if (in_array('sales', $dbColumns, true)) {
+        } elseif (in_array('sales', $dbColumns, true)) {
             $salesEff = 'sales';
             $sumSales = self::correlatedL30SummarySales30dScalarSubquerySql($table, $dbColumns);
             if ($sumSales !== null) {
                 $salesEff = 'COALESCE(('.$sumSales.'), sales)';
             }
-
-            return 'CASE WHEN COALESCE('.$salesEff.', 0) > 0 THEN '.$costEff.' / NULLIF('.$salesEff.', 0) * 100 WHEN '.$costEff.' > 0 THEN 100 ELSE 0 END';
         }
+        $soldEff = null;
+        $purchCol = self::l30SummaryPurchasesDbColumn($dbColumns);
+        if ($purchCol !== null) {
+            $soldEff = $purchCol;
+            $sumSold = self::correlatedL30SummaryPurchases30dScalarSubquerySql($table, $dbColumns);
+            if ($sumSold !== null) {
+                $soldEff = 'COALESCE(('.$sumSold.'), '.$purchCol.')';
+            }
+        }
+        if ($salesEff === null && $soldEff === null) {
+            return null;
+        }
+        $sql = 'CASE';
+        if ($soldEff !== null) {
+            $sql .= ' WHEN '.$costEff.' > 0 AND COALESCE('.$soldEff.', 0) <= 0 THEN 100';
+        }
+        if ($salesEff !== null) {
+            $sql .= ' WHEN COALESCE('.$salesEff.', 0) > 0 THEN '.$costEff.' / NULLIF('.$salesEff.', 0) * 100';
+        }
+        $sql .= ' WHEN '.$costEff.' > 0 THEN 100 ELSE 0 END';
 
-        return null;
+        return $sql;
     }
 
     /**
@@ -679,7 +746,7 @@ class AmazonAdsController extends Controller
     private static function costPreferCoalesceExprForTableAlias(string $alias, array $dbColumns): ?string
     {
         if (in_array('cost', $dbColumns, true) && in_array('spend', $dbColumns, true)) {
-            return 'COALESCE('.$alias.'.cost, '.$alias.'.spend, 0)';
+            return 'COALESCE(NULLIF('.$alias.'.cost, 0), NULLIF('.$alias.'.spend, 0), 0)';
         }
         if (in_array('cost', $dbColumns, true)) {
             return 'COALESCE('.$alias.'.cost, 0)';
@@ -698,6 +765,7 @@ class AmazonAdsController extends Controller
      */
     private static function l30DisplaySpendFromRowArray(array $r, array $dbColumns): ?float
     {
+        $zero = null;
         foreach (['cost', 'spend'] as $k) {
             if (($k === 'cost' && ! in_array('cost', $dbColumns, true)) || ($k === 'spend' && ! in_array('spend', $dbColumns, true))) {
                 continue;
@@ -707,12 +775,16 @@ class AmazonAdsController extends Controller
                 continue;
             }
             $n = (float) $v;
-            if (is_finite($n)) {
+            if (! is_finite($n)) {
+                continue;
+            }
+            if ($n > 0) {
                 return $n;
             }
+            $zero = 0.0;
         }
 
-        return null;
+        return $zero;
     }
 
     /**
@@ -2881,7 +2953,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Current View L30 → Bgt Views rule (BGT Vs VIEWS modal).
+     * Current View L7 → Bgt Views rule (BGT Vs VIEWS modal).
      */
     public function getBgtViewsRule(): JsonResponse
     {
@@ -2896,7 +2968,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Persist View L30 bands → Bgt Views; grid uses the new mapping after reload.
+     * Persist View L7 bands → Bgt Views; grid uses the new mapping after reload.
      */
     public function saveBgtViewsRule(Request $request): JsonResponse
     {
@@ -2918,7 +2990,7 @@ class AmazonAdsController extends Controller
         }
 
         return response()->json([
-            'message' => 'BGT Vs VIEWS saved. Bgt Views on the grid will use the new View L30 bands after reload.',
+            'message' => 'BGT Vs VIEWS saved. Bgt Views on the grid will use the new View L7 bands after reload.',
             'rule' => AmazonAdsBgtViewsRule::resolvedRule(),
             'status' => 200,
             'timestamp' => time(),
@@ -3744,10 +3816,6 @@ class AmazonAdsController extends Controller
                     }
                 }
             }
-            $l30SalesFromMap = null;
-            if ($l30SliceMap !== [] && $lkSalesRow !== '' && array_key_exists($lkSalesRow, $l30SliceMap)) {
-                $l30SalesFromMap = $l30SliceMap[$lkSalesRow]['sales30d'];
-            }
             $lSlice = ['L7' => null, 'L2' => null, 'L1' => null];
             if ($lSpendMap !== [] && $cid !== '') {
                 $adKeyUtil = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
@@ -3870,12 +3938,12 @@ class AmazonAdsController extends Controller
                     }
                     if (in_array('bgtViews', $columns, true) || in_array('sbgt', $columns, true)) {
                         $hit = AmazonAdsBgtViewsRule::apply(
-                            isset($pc['sess30']) && is_numeric($pc['sess30']) ? (float) $pc['sess30'] : 0.0
+                            isset($pc['sess7']) && is_numeric($pc['sess7']) ? (float) $pc['sess7'] : 0.0
                         );
                         $arr['bgtViews'] = $hit['bgt'];
                         $arr['bgt_views_color'] = $hit['color'];
                         $arr['bgt_views_label'] = $hit['label'];
-                        $arr['page_cvr_sess30'] = $pc['sess30'];
+                        $arr['page_cvr_sess7'] = $pc['sess7'];
                         $arr['page_parent'] = $pc['page_parent'] ?? ($arr['page_parent'] ?? '');
                     }
                     if (in_array('bgtCvr', $columns, true) || in_array('sbgt', $columns, true)) {
@@ -3934,41 +4002,18 @@ class AmazonAdsController extends Controller
                     }
                 }
             }
+            $needAcosCalc = in_array('ACOS', $columns, true)
+                || in_array('sbgt', $columns, true)
+                || in_array('bgtAcos', $columns, true)
+                || $needRuleStatus;
+            $acosCalcRow = $needAcosCalc
+                ? self::acosCalculationRowFromGridOverlays($rowArr, $arr, $dbColumns, $l30SliceMap, $lkSalesRow)
+                : $rowArr;
             if (in_array('ACOS', $columns, true)) {
-                $acosRow = $rowArr;
-                if (in_array('cost', $dbColumns, true) && array_key_exists('cost', $arr)) {
-                    $acosRow['cost'] = $arr['cost'];
-                }
-                if (in_array('sales30d', $dbColumns, true)) {
-                    if (array_key_exists('sales30d', $arr)) {
-                        $acosRow['sales30d'] = $arr['sales30d'];
-                    }
-                } elseif (in_array('sales', $dbColumns, true)) {
-                    if ($l30SalesFromMap !== null) {
-                        $acosRow['sales'] = $l30SalesFromMap;
-                    } elseif (array_key_exists('sales', $arr)) {
-                        $acosRow['sales'] = $arr['sales'];
-                    }
-                }
-                $arr['ACOS'] = self::computedAcosPercentFromReportRow($acosRow, $dbColumns);
+                $arr['ACOS'] = self::computedAcosPercentFromReportRow($acosCalcRow, $dbColumns);
             }
             if (in_array('sbgt', $columns, true) || in_array('bgtAcos', $columns, true)) {
-                $sbgtRow = $rowArr;
-                if (in_array('cost', $dbColumns, true) && array_key_exists('cost', $arr)) {
-                    $sbgtRow['cost'] = $arr['cost'];
-                }
-                if (in_array('sales30d', $dbColumns, true)) {
-                    if (array_key_exists('sales30d', $arr)) {
-                        $sbgtRow['sales30d'] = $arr['sales30d'];
-                    }
-                } elseif (in_array('sales', $dbColumns, true)) {
-                    if ($l30SalesFromMap !== null) {
-                        $sbgtRow['sales'] = $l30SalesFromMap;
-                    } elseif (array_key_exists('sales', $arr)) {
-                        $sbgtRow['sales'] = $arr['sales'];
-                    }
-                }
-                $sbgtTier = self::computedSbgtFromReportRow($sbgtRow, $dbColumns);
+                $sbgtTier = self::computedSbgtFromReportRow($acosCalcRow, $dbColumns);
                 if (in_array('bgtAcos', $columns, true) || in_array('sbgt', $columns, true)) {
                     $arr['bgtAcos'] = $sbgtTier;
                 }
@@ -4001,14 +4046,7 @@ class AmazonAdsController extends Controller
                 $gmRule = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mRule);
                 $acosForRule = $arr['ACOS'] ?? null;
                 if ($acosForRule === null && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
-                    $acosRowRule = $rowArr;
-                    if (array_key_exists('cost', $arr)) {
-                        $acosRowRule['cost'] = $arr['cost'];
-                    }
-                    if (array_key_exists('sales30d', $arr)) {
-                        $acosRowRule['sales30d'] = $arr['sales30d'];
-                    }
-                    $acosForRule = self::computedAcosPercentFromReportRow($acosRowRule, $dbColumns);
+                    $acosForRule = self::computedAcosPercentFromReportRow($acosCalcRow, $dbColumns);
                 }
                 $cidRule = preg_replace('/\D+/', '', trim((string) ($rowArr['campaign_id'] ?? ''))) ?: '';
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
@@ -5241,9 +5279,11 @@ class AmazonAdsController extends Controller
             'sold'       => (int) round($sold),
             'sales'      => round($sales, 2),
             'cvr'        => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
-            'acos'       => $sales > 0
-                ? round(($spend / $sales) * 100, 0)
-                : ($spend > 0 ? 100 : 0),
+            'acos'       => ($spend > 0 && $sold <= 0)
+                ? 100
+                : ($sales > 0
+                    ? round(($spend / $sales) * 100, 0)
+                    : ($spend > 0 ? 100 : 0)),
             'tcos'       => 0,
             'active'     => (int) ($row->active ?? 0),
             'is_sub_row' => $isSubRow,

@@ -73,4 +73,56 @@ class AmazonAdsSbgtTest extends TestCase
             ],
         ]);
     }
+
+    public function test_acos_is_100_when_spend_exists_and_sold_is_zero(): void
+    {
+        $this->assertSame(100.0, AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([
+            'cost' => 12.5,
+            'purchases30d' => 0,
+            'sales30d' => 0,
+        ]));
+        $this->assertSame(100.0, AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([
+            'cost' => 0,
+            'spend' => 8,
+            'purchases30d' => 0,
+            'sales30d' => 40,
+        ]));
+        $this->assertSame(100.0, AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([
+            'cost' => 0,
+            'L7spend' => 4.2,
+            'Prchase' => 0,
+            'sales30d' => 0,
+        ]));
+    }
+
+    public function test_acos_is_100_when_spend_exists_and_sales_missing(): void
+    {
+        $this->assertSame(100.0, AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([
+            'cost' => 5,
+            'purchases30d' => 0,
+        ]));
+    }
+
+    public function test_acos_is_ratio_when_sold_and_sales_exist(): void
+    {
+        $this->assertSame(25.0, AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([
+            'cost' => 10,
+            'purchases30d' => 2,
+            'sales30d' => 40,
+        ]));
+    }
+
+    public function test_acos_is_zero_when_no_spend_and_no_sales(): void
+    {
+        $this->assertSame(0.0, AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([
+            'cost' => 0,
+            'purchases30d' => 0,
+            'sales30d' => 0,
+        ]));
+    }
+
+    public function test_acos_is_null_when_row_has_no_metrics(): void
+    {
+        $this->assertNull(AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([]));
+    }
 }

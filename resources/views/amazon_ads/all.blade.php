@@ -258,7 +258,7 @@
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT Vs ACOS Rule</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtViewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtViewsRuleModal" title="Edit View L30 bands and Bgt Views values">BGT Vs VIEWS</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtViewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtViewsRuleModal" title="Edit View L7 bands and Bgt Views values">BGT Vs VIEWS</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtCvrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtPrcRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
@@ -479,6 +479,7 @@
                         <strong>top to bottom</strong>; the first range that contains the campaign's ACOS gets its SBGT.
                         Use <code>9999</code> on <em>To</em> for the catch-all highest band.
                         <strong>SBGT 0</strong> cannot be pushed as daily budget — those campaigns are paused instead.
+                        <strong>Count</strong> is campaigns on this grid page in that range.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
@@ -488,6 +489,7 @@
                                 <th>ACOS%</th>
                                 <th style="width:110px;">From (%)</th>
                                 <th style="width:110px;">To (%)</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose ACOS% falls in this band">Count</th>
                                 <th style="width:120px;">SBGT</th>
                                 <th style="width:50px;"></th>
                             </tr>
@@ -512,14 +514,15 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtViewsRuleModalLabel">BGT Vs VIEWS — View L30 → Bgt Views</h5>
+                    <h5 class="modal-title" id="amazonAdsBgtViewsRuleModalLabel">BGT Vs VIEWS — View L7 → Bgt Views</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Amz page View L30</strong> range (parent Sess30) for the campaign.
+                        Each row is an inclusive <strong>Amz page View L7</strong> range (parent Sess7) for the campaign.
                         Rows are checked <strong>top to bottom</strong> (Purple → Red); the first range that contains the views gets its
                         <strong>Bgt Views</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Views.
+                        <strong>Count</strong> is campaigns on this grid page in that range.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtViewsRuleTable">
@@ -529,6 +532,7 @@
                                 <th>Label</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose View L7 falls in this slab">Count</th>
                                 <th style="width:120px;">Bgt Views</th>
                                 <th style="width:50px;"></th>
                             </tr>
@@ -561,6 +565,7 @@
                         Each row is an inclusive <strong>Amz page CVR L30</strong> range (parent A L30 ÷ Sess30 × 100) for the campaign.
                         Rows are checked <strong>top to bottom</strong> (Purple → Red); the first range that contains the CVR gets its
                         <strong>Bgt Cvr</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Cvr.
+                        <strong>Count</strong> is campaigns on this grid page in that range.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtCvrRuleTable">
@@ -570,6 +575,7 @@
                                 <th>Label</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose CVR L30 falls in this slab">Count</th>
                                 <th style="width:120px;">Bgt Cvr</th>
                                 <th style="width:50px;"></th>
                             </tr>
@@ -602,6 +608,7 @@
                         Each row is an inclusive <strong>Price</strong> range (same Price column: Amz list, else LMP).
                         Rows are checked <strong>top to bottom</strong>; the first range that contains the price gets its
                         <strong>Bgt Prc</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Prc.
+                        <strong>Count</strong> is campaigns on this grid page in that range.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtPrcRuleTable">
@@ -611,6 +618,7 @@
                                 <th>Label</th>
                                 <th style="width:110px;">From</th>
                                 <th style="width:110px;">To</th>
+                                <th style="width:80px;" title="Campaigns on this grid page whose Price falls in this slab">Count</th>
                                 <th style="width:120px;">Bgt Prc</th>
                                 <th style="width:50px;"></th>
                             </tr>
@@ -1135,10 +1143,10 @@
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row.bgt_views_color) ? String(row.bgt_views_color) : '#6c757d';
-                var views = parseFloat(row && row.page_cvr_sess30);
+                var views = parseFloat(row && (row.viewsL7 != null ? row.viewsL7 : row.page_cvr_sess7));
                 var parent = String((row && row.page_parent) || '').trim();
                 var label = String((row && row.bgt_views_label) || '').trim();
-                var tip = 'Bgt Views from Amz page View L30';
+                var tip = 'Bgt Views from Amz page View L7';
                 if (isFinite(views)) tip += ' · Views ' + Math.round(views);
                 if (parent) tip += ' · ' + parent;
                 if (label) tip += ' · ' + label;
@@ -1395,7 +1403,7 @@
                 }
                 if (c === 'bgtViews') {
                     col.title = 'Bgt Views';
-                    col.headerTooltip = 'Suggested budget from BGT Vs VIEWS — Amz page parent View L30 (Sess30)';
+                    col.headerTooltip = 'Suggested budget from BGT Vs VIEWS — Amz page parent View L7 (Sess7)';
                     col.formatter = fmtBgtViews;
                     col.width = 72;
                     col.minWidth = 64;
@@ -1453,7 +1461,7 @@
                     return;
                 }
                 if (c === 'Label' || c === 'label') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS %'; return; }
-                if (c === 'ACOS') { col.title = 'ACOS%'; col.formatter = fmtAcos; return; }
+                if (c === 'ACOS') { col.title = 'ACOS%'; col.headerTooltip = 'ACOS % = SPL30 ÷ SL 30 × 100. Spend with Ads Sold 0 is saved as 100% for BGT / SBGT / filters.'; col.formatter = fmtAcos; return; }
                 if (c === 'sales') { col.title = 'Sales'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'cost') { col.title = 'SPL30'; col.formatter = fmtDashRounded; return; }
                 if (c === 'L7spend') { col.title = 'L7SP'; col.formatter = fmtDashNumberRaw; return; }
@@ -2341,11 +2349,55 @@
                 });
             }
 
+            // ---- BGT slab counts (campaigns on the current grid page) ----
+            function amzBgtGridRows() {
+                if (!table || typeof table.getData !== 'function') return [];
+                try { return table.getData() || []; } catch (e) { return []; }
+            }
+            function amzBgtFirstBandIndex(value, bands, fromKey, toKey) {
+                if (value == null || !isFinite(value) || !Array.isArray(bands)) return -1;
+                for (var i = 0; i < bands.length; i++) {
+                    var from = parseFloat(bands[i][fromKey]);
+                    var to = parseFloat(bands[i][toKey]);
+                    if (!isFinite(from) || !isFinite(to)) continue;
+                    if (value >= from && value <= to) return i;
+                }
+                return -1;
+            }
+            function amzBgtCountByBands(bands, fromKey, toKey, valueOfRow) {
+                var counts = (bands || []).map(function () { return 0; });
+                amzBgtGridRows().forEach(function (row) {
+                    var idx = amzBgtFirstBandIndex(valueOfRow(row), bands, fromKey, toKey);
+                    if (idx >= 0) counts[idx]++;
+                });
+                return counts;
+            }
+            function amzBgtRefreshCountCells(tbodyId, counts) {
+                document.querySelectorAll('#' + tbodyId + ' [data-count-idx]').forEach(function (el) {
+                    var i = +el.dataset.countIdx;
+                    el.textContent = String(counts[i] != null ? counts[i] : 0);
+                });
+            }
+            function amzBgtCountCellHtml(i, n, tip) {
+                return '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="' + String(tip || '').replace(/"/g, '&quot;') + '">' + (n != null ? n : 0) + '</span></td>';
+            }
+
             // ---- BGT rule modal (ACOS bands -> SBGT) ----
             var amzCurrentBands = [];
+            function amzAcosValueOfRow(row) {
+                var n = parseFloat(row && row.ACOS);
+                return isFinite(n) ? n : null;
+            }
+            function amzAcosCounts(bands) {
+                return amzBgtCountByBands(bands, 'acos_from', 'acos_to', amzAcosValueOfRow);
+            }
+            function amzAcosRefreshCounts() {
+                amzBgtRefreshCountCells('amazonAdsBgtRuleBandsBody', amzAcosCounts(amzCurrentBands));
+            }
             function amzRenderBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtRuleBandsBody');
                 if (!tbody) return;
+                var counts = amzAcosCounts(bands);
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
                     var tr = document.createElement('tr');
@@ -2354,6 +2406,7 @@
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
+                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose ACOS% falls in this band')
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign"></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
@@ -2365,6 +2418,7 @@
                         amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseInt(this.value, 10))
                             : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
+                        if (fld === 'acos_from' || fld === 'acos_to') amzAcosRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
@@ -2443,7 +2497,7 @@
                 });
             }
 
-            // ---- BGT Vs VIEWS (View L30 → Bgt Views); dynamic slabs, Purple → Red, no autofill ----
+            // ---- BGT Vs VIEWS (View L7 → Bgt Views); dynamic slabs, Purple → Red, no autofill ----
             var AMZ_BGT_VIEWS_DEFAULTS = [
                 { views_from: 351, views_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
                 { views_from: 281, views_to: 350, bgt: 5, label: 'Pink', color: '#e83e8c' },
@@ -2492,10 +2546,21 @@
                     color: AMZ_BGT_VIEWS_COLORS[i] || '#6c757d'
                 };
             }
+            function amzBgtViewsValueOfRow(row) {
+                var n = parseFloat(row && (row.viewsL7 != null ? row.viewsL7 : row.page_cvr_sess7));
+                return isFinite(n) ? n : 0;
+            }
+            function amzBgtViewsCounts(bands) {
+                return amzBgtCountByBands(bands, 'views_from', 'views_to', amzBgtViewsValueOfRow);
+            }
+            function amzBgtViewsRefreshCounts() {
+                amzBgtRefreshCountCells('amazonAdsBgtViewsRuleBandsBody', amzBgtViewsCounts(amzBgtViewsBands));
+            }
             function amzRenderBgtViewsBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtViewsRuleBandsBody');
                 if (!tbody) return;
                 var canDelete = bands.length > 1;
+                var counts = amzBgtViewsCounts(bands);
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
                     var tr = document.createElement('tr');
@@ -2504,6 +2569,7 @@
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
+                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose View L7 falls in this slab')
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
@@ -2522,8 +2588,9 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to') amzBgtViewsRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to') amzBgtViewsRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -2650,10 +2717,21 @@
                     color: AMZ_BGT_CVR_COLORS[i] || '#6c757d'
                 };
             }
+            function amzBgtCvrValueOfRow(row) {
+                var n = parseFloat(row && (row.bgt_cvr_page_cvr != null ? row.bgt_cvr_page_cvr : row.pageCvr));
+                return isFinite(n) ? n : 0;
+            }
+            function amzBgtCvrCounts(bands) {
+                return amzBgtCountByBands(bands, 'cvr_from', 'cvr_to', amzBgtCvrValueOfRow);
+            }
+            function amzBgtCvrRefreshCounts() {
+                amzBgtRefreshCountCells('amazonAdsBgtCvrRuleBandsBody', amzBgtCvrCounts(amzBgtCvrBands));
+            }
             function amzRenderBgtCvrBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtCvrRuleBandsBody');
                 if (!tbody) return;
                 var canDelete = bands.length > 1;
+                var counts = amzBgtCvrCounts(bands);
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
                     var tr = document.createElement('tr');
@@ -2662,6 +2740,7 @@
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
+                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose CVR L30 falls in this slab')
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
@@ -2680,8 +2759,9 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to') amzBgtCvrRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to') amzBgtCvrRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -2807,10 +2887,21 @@
                     color: AMZ_BGT_PRC_COLORS[i] || '#6c757d'
                 };
             }
+            function amzBgtPrcValueOfRow(row) {
+                var n = parseFloat(row && (row.bgt_prc_price != null ? row.bgt_prc_price : row.price));
+                return isFinite(n) ? n : null;
+            }
+            function amzBgtPrcCounts(bands) {
+                return amzBgtCountByBands(bands, 'prc_from', 'prc_to', amzBgtPrcValueOfRow);
+            }
+            function amzBgtPrcRefreshCounts() {
+                amzBgtRefreshCountCells('amazonAdsBgtPrcRuleBandsBody', amzBgtPrcCounts(amzBgtPrcBands));
+            }
             function amzRenderBgtPrcBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtPrcRuleBandsBody');
                 if (!tbody) return;
                 var canDelete = bands.length > 1;
+                var counts = amzBgtPrcCounts(bands);
                 tbody.innerHTML = '';
                 bands.forEach(function (band, i) {
                     var tr = document.createElement('tr');
@@ -2819,6 +2910,7 @@
                         + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
+                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose Price falls in this slab')
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
@@ -2831,8 +2923,11 @@
                         else if (fld === 'prc_from' || fld === 'prc_to') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else amzBgtPrcBands[idx][fld] = el.value;
                     };
-                    inp.addEventListener('input', function () { writeBand(this); });
-                    inp.addEventListener('change', function () { writeBand(this); });
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to') amzBgtPrcRefreshCounts();
+                    });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to') amzBgtPrcRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {

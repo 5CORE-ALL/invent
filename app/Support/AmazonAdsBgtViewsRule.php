@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Amz page View L30 (parent Sess30) → suggested daily budget (Bgt Views).
+ * Amz page View L7 (parent Sess7) → suggested daily budget (Bgt Views).
  * Dynamic slabs evaluated top to bottom. Defaults are Purple (high views) → Red (low views).
  */
 final class AmazonAdsBgtViewsRule
