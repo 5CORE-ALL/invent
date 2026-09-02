@@ -1042,7 +1042,7 @@
         </div>
     </div>
 
-    {{-- Dil vs PRMT: 9 Dil% slabs with editable PRMT% --}}
+    {{-- Dil vs PRMT: Dil% slabs with editable PRMT% --}}
     <div class="modal fade" id="pefDilVsPrmtModal" tabindex="-1" aria-labelledby="pefDilVsPrmtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
             <div class="modal-content">
@@ -4747,13 +4747,26 @@
                 prmt -= 1;
             }
             rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
+            [
+                { key: '25-30', label: '25–30%', prmt: 0 },
+                { key: '30-35', label: '30–35%', prmt: 0 },
+                { key: '35-40', label: '35–40%', prmt: 0 },
+                { key: '40-45', label: '40–45%', prmt: 0 },
+                { key: '45-50', label: '45–50%', prmt: 0 },
+                { key: '50-100', label: '50–100%', prmt: 0 },
+            ].forEach(function(r) { rules.push(r); });
             return rules;
         })();
 
     function pefDilSlabKey(dil) {
         const n = Number(dil);
-        if (!isFinite(n) || n < 0.01) return 'none';
-        if (n > 25) return 'gt-25';
+        if (!isFinite(n) || n < 0.01 || n > 100) return 'none';
+        if (n >= 50) return '50-100';
+        if (n >= 45) return '45-50';
+        if (n >= 40) return '40-45';
+        if (n >= 35) return '35-40';
+        if (n >= 30) return '30-35';
+        if (n >= 25) return '25-30';
         if (n >= 24) return '24-25';
         if (n >= 21) return '21-24';
         if (n >= 18) return '18-21';
@@ -4950,11 +4963,19 @@
             prmt -= 1;
         }
         forced.push(['24-25', '24–25%', 1]);
+        [
+            ['25-30', '25–30%', 0],
+            ['30-35', '30–35%', 0],
+            ['35-40', '35–40%', 0],
+            ['40-45', '40–45%', 0],
+            ['45-50', '45–50%', 0],
+            ['50-100', '50–100%', 0],
+        ].forEach(function(t) { forced.push(t); });
         pefDilPrmtRules = forced.map(function(t) {
             return { key: t[0], label: t[1], prmt: t[2] };
         });
         renderDilPrmtModalTable();
-        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0.01–3 … 24–25). Save to persist.');
+        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0.01–3 … 24–25, then 25–30 … 50–100). Save to persist.');
     });
     $('#pef-dil-prmt-save-btn').on('click', saveDilPrmtRules);
     $('#pef-dil-prmt-apply-selected-btn').on('click', function() {

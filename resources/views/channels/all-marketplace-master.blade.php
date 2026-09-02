@@ -1038,9 +1038,13 @@
         }
 
         var METRIC_DIFF_MONEY = {
-            l30_sales: 1, y_sales: 1, ad_spend: 1, pft: 1, ad_sales: 1,
+            l30_sales: 1, y_sales: 1, p_sales: 1, ad_spend: 1, pft: 1, ad_sales: 1,
             inv_at_lp: 1, inv_at_sp: 1, inventory: 1, l60_sales: 1
         };
+
+        function projectedSalesFromL7(l7) {
+            return (parseNumber(l7) / 7) * 30;
+        }
         var METRIC_DIFF_PCT = {
             gprofit: 1, groi: 1, npft: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
         };
@@ -1271,7 +1275,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -1333,6 +1337,10 @@
                 switch (metric) {
                     case 'y_sales': return n(row['Y Sales']);
                     case 'l30_sales': return n(row['L30 Sales']);
+                    case 'p_sales': {
+                        const l7 = n(row['L7 Sales']);
+                        return l7 == null ? null : projectedSalesFromL7(l7);
+                    }
                     case 'l60_sales': return n(row['L-60 Sales']);
                     case 'ad_spend': return n(row['Total Ad Spend']);
                     case 'total_views': return views > 0 ? views : null;
@@ -1457,6 +1465,9 @@
                         if (response.data.length === 0 && response.message) {
                             showToast('info', response.message || 'No channels to display.');
                         }
+                        response.data.forEach(function(row) {
+                            row['P-Sales'] = projectedSalesFromL7(row['L7 Sales'] || 0);
+                        });
                         updateSummaryStats(response.data);
                         function setCompactInvBadge(elId, rawVal, titlePrefix) {
                             const el = document.getElementById(elId);
@@ -1938,6 +1949,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
+                        visible: false,
                         headerTooltip: "Sales over the last 7 Pacific calendar days ending yesterday (inclusive).",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue() || 0);
@@ -1947,6 +1959,44 @@
                             return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
                         },
                         bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong style="color:#adb5bd;">-</strong>';
+                            return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "P-Sales",
+                        field: "P-Sales",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const l7 = parseNumber(row['L7 Sales'] || 0);
+                            const value = parseNumber(cell.getValue() != null && cell.getValue() !== '' ? cell.getValue() : projectedSalesFromL7(l7));
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'p_sales');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!l7 || l7 === 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) {
+                                sum += projectedSalesFromL7(row['L7 Sales'] || 0);
+                            });
+                            return sum;
+                        },
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             if (!value || value === 0) return '<strong style="color:#adb5bd;">-</strong>';
@@ -4137,6 +4187,7 @@
             // (e.g. Growth uses D30 Sales; NP$ is derived from L30 Sales × N PFT).
             // PT / PMT / SERP / KW / HL breakdowns removed from page + Columns menu.
             const PERMANENTLY_HIDDEN_FIELDS = [
+                'L7 Sales',
                 'L-60 Sales', 'L60 Orders', 'NP$', 'D30 Sales',
                 'PT Spent', 'PMT Spent', 'SERP Spent',
                 'PT Clicks', 'PMT Clicks', 'SERP Clicks',
@@ -4853,6 +4904,7 @@
                 'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
                 'y_sales': 'Y Sales',
+                'p_sales': 'P-Sales',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',
                 'gprofit': 'Gprofit%',
@@ -5014,7 +5066,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'p_sales' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals

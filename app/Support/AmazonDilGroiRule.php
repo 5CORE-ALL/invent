@@ -121,6 +121,25 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Lowest Target GROI% in the table (used when A L30 = 0).
+     *
+     * @param  list<array<string, mixed>>  $rules
+     */
+    public static function minTarget(array $rules): ?float
+    {
+        $list = self::normalizeList($rules);
+        $min = null;
+        foreach ($list as $rule) {
+            $g = (float) $rule['groi'];
+            if ($min === null || $g < $min) {
+                $min = $g;
+            }
+        }
+
+        return $min;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rules
      */
     public static function groiForDil(float $dil, array $rules): ?float

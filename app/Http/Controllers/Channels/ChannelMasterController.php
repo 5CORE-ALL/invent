@@ -1964,6 +1964,7 @@ class ChannelMasterController extends Controller
             $row['Y Sales'] = $calc->yesterday_sales !== null ? (float) $calc->yesterday_sales : ($row['Y Sales'] ?? 0);
             $row['L30 Sales'] = $calc->l30_sales !== null ? (int) $calc->l30_sales : ($row['L30 Sales'] ?? 0);
             $row['L7 Sales'] = $calc->l7_sales !== null ? (float) $calc->l7_sales : ($row['L7 Sales'] ?? 0);
+            $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales'] ?? 0);
             $row['L-60 Sales'] = $calc->l60_sales !== null ? (int) $calc->l60_sales : ($row['L-60 Sales'] ?? 0);
             $row['L30 Orders'] = $calc->l30_orders !== null ? (int) $calc->l30_orders : ($row['L30 Orders'] ?? 0);
             $row['Qty'] = $calc->total_quantity !== null ? (int) $calc->total_quantity : ($row['Qty'] ?? 0);
@@ -1981,6 +1982,11 @@ class ChannelMasterController extends Controller
             if ($calc->listing_cvr !== null && $calc->listing_cvr !== '') {
                 $row['CVR'] = (float) $calc->listing_cvr;
             }
+        }
+        unset($row);
+
+        foreach ($rows as &$row) {
+            $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales'] ?? 0);
         }
         unset($row);
 
@@ -6369,6 +6375,7 @@ class ChannelMasterController extends Controller
                     'L30 Sales' => (int) $channel->l30_sales,
                     'Y Sales' => $channel->yesterday_sales,
                     'L7 Sales' => $channel->l7_sales,
+                    'P-Sales' => $this->projectedSalesFromL7($channel->l7_sales),
                     'Growth' => round($channel->growth, 2) . '%',
                     'L7 vs 30 pace %' => $channel->l7_vs_30_pace,
                     
@@ -7011,6 +7018,7 @@ class ChannelMasterController extends Controller
                 'L-60 Sales'     => 0,
                 'L30 Sales'      => 0,
                 'L7 Sales'       => 0,
+                'P-Sales'        => 0,
                 'L7 vs 30 pace %' => null,
                 'Growth'         => 0,
                 'L60 Orders'     => 0,
@@ -7183,6 +7191,7 @@ class ChannelMasterController extends Controller
             $channelLookup = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row['Channel '] ?? $channel))));
             $row['Y Sales'] = round($yesterdaySummaries[$channelLookup] ?? 0, 2);
             $row['L7 Sales'] = round($l7Summaries[$channelLookup] ?? 0, 2);
+            $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales']);
 
             // L7 vs pace: expected L7 = (trailing sales ÷ N days) × 7; % = (L7 − expected) / expected × 100.
             // N must match the rolling window used for this row's L30 Sales. Amazon B2C uses the same
@@ -7244,6 +7253,11 @@ class ChannelMasterController extends Controller
         $finalData = $this->applyGrowthFromYesterdayVsD30($finalData);
 
         \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($finalData);
+
+        foreach ($finalData as &$row) {
+            $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales'] ?? 0);
+        }
+        unset($row);
 
         // Auto-save channel-wise daily summaries (after overlays so total_views etc. match the row)
         try {
@@ -15943,7 +15957,7 @@ class ChannelMasterController extends Controller
             $days = intval($request->input('days', 32));
             $requestedWindow = intval($request->input('window', 0));
             $useDailyWindow = $requestedWindow === 1;
-            $useL7Window = $requestedWindow >= 7 || $metric === 'l7_sales';
+            $useL7Window = $requestedWindow >= 7 || $metric === 'l7_sales' || $metric === 'p_sales';
 
             if (!$channel) {
                 return response()->json(['success' => false, 'message' => 'Channel is required'], 400);
@@ -15958,6 +15972,7 @@ class ChannelMasterController extends Controller
                 // and are skipped below so the chart only shows real Y Sales history).
                 'y_sales' => 'y_sales',
                 'l7_sales' => 'l7_sales',
+                'p_sales' => 'l7_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -16238,12 +16253,12 @@ class ChannelMasterController extends Controller
                         $value = $totalCogs > 0 ? round((($totalPft - $totalSpend) / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'ads_pct') {
                         $value = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0;
-                    } elseif ($metric === 'y_sales' || $metric === 'l7_sales') {
+                    } elseif ($metric === 'y_sales' || $metric === 'l7_sales' || $metric === 'p_sales') {
                         // Skip days that pre-date the y_sales / l7_sales snapshot field so we don't
                         // draw a long flat-zero line before real history begins.
                         // Y Sales can still be filled from orders below when listing-copy
                         // days omitted the key, so do not continue here for y_sales.
-                        if (($metric === 'l7_sales' || $metric === 'y_sales') && !$hasMetricData) continue;
+                        if (in_array($metric, ['l7_sales', 'p_sales', 'y_sales'], true) && !$hasMetricData) continue;
                         $value = round($totalVal, 2);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
                         continue;
@@ -16324,7 +16339,7 @@ class ChannelMasterController extends Controller
                         $cogs = floatval($summaryData['cogs'] ?? 0);
                         $value = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 1) : 0;
                     } else {
-                        $requireKey = in_array($metric, ['y_sales', 'l7_sales'], true)
+                        $requireKey = in_array($metric, ['y_sales', 'l7_sales', 'p_sales'], true)
                             || ($useL7Window && $metricKey !== null && ! in_array($metric, ['cvr', 'nroi', 'pft', 'acos', 'ad_sales', 'ad_sold', 'ads_cvr'], true));
                         if ($requireKey && ! array_key_exists($metricKey, $summaryData)) {
                             continue;
@@ -16341,6 +16356,10 @@ class ChannelMasterController extends Controller
                     $value = (float) $sdForY['y_sales'];
                 } elseif ($metric === 'y_sales' && $isAll && ! ($hasMetricData ?? false) && ! $useDailyWindow) {
                     continue;
+                }
+
+                if ($metric === 'p_sales') {
+                    $value = $this->projectedSalesFromL7($value);
                 }
 
                 $chartData[] = [
@@ -16524,7 +16543,7 @@ class ChannelMasterController extends Controller
     {
         // v9: last graph point + table dot v2 = saved table row.
         // v11: All badges keep the blended pair; eBay 3 included from calculated_data.
-        return 'amm_dot_trends_v12_w'.$window;
+        return 'amm_dot_trends_v13_w'.$window;
     }
 
     /**
@@ -16684,6 +16703,7 @@ class ChannelMasterController extends Controller
                 'l30_sales' => 'l30_sales',
                 'y_sales' => 'y_sales',
                 'l7_sales' => 'l7_sales',
+                'p_sales' => 'l7_sales',
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -16700,7 +16720,7 @@ class ChannelMasterController extends Controller
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
             $out = [];
             $processedByChannel = [];
 
@@ -17183,6 +17203,13 @@ class ChannelMasterController extends Controller
 
             return round(($gprofitPercent / 100) * $sales - $adSpend, 2);
         }
+        if ($metric === 'p_sales') {
+            if (! array_key_exists('l7_sales', $summaryData)) {
+                return null;
+            }
+
+            return $this->projectedSalesFromL7($summaryData['l7_sales']);
+        }
 
         return array_key_exists($metricKey, $summaryData) ? floatval($summaryData[$metricKey]) : null;
     }
@@ -17616,6 +17643,14 @@ class ChannelMasterController extends Controller
         return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'nroi', 'ads_pct', 'acos'], true)
             ? 0.005
             : 0.01;
+    }
+
+    /**
+     * Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.
+     */
+    private function projectedSalesFromL7(mixed $l7Sales): float
+    {
+        return round((floatval($l7Sales) / 7) * 30, 2);
     }
 
     /**
@@ -18437,6 +18472,8 @@ class ChannelMasterController extends Controller
 
         return match ($metric) {
             'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
+            'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
+            'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
             'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
             'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
             'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
@@ -18478,6 +18515,8 @@ class ChannelMasterController extends Controller
                 : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
             $live = [
                 'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
+                'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
+                'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
                 'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
                 'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
                 'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
@@ -18524,7 +18563,7 @@ class ChannelMasterController extends Controller
         }
 
         $sumMetrics = [
-            'y_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
+            'y_sales', 'p_sales', 'l7_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
             'qty', 'ad_spend', 'total_views', 'clicks', 'ad_sales', 'ad_sold',
             'missing_l', 'map', 'nmap',
         ];
@@ -18789,6 +18828,7 @@ class ChannelMasterController extends Controller
                     // chart endpoint filters those days out so the trend isn't a flat-zero line.
                     'y_sales' => floatval($row['Y Sales'] ?? 0),
                     'l7_sales' => floatval($row['L7 Sales'] ?? 0),
+                    'p_sales' => $this->projectedSalesFromL7($row['L7 Sales'] ?? 0),
                     'l7_vs_30_pace_pct' => $row['L7 vs 30 pace %'] !== null ? floatval($row['L7 vs 30 pace %']) : null,
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),

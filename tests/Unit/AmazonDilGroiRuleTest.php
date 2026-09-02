@@ -60,6 +60,17 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertNull(AmazonDilGroiRule::groiForDil(26, $rules));
     }
 
+    public function test_min_target_is_lowest_groi_in_table(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeList([
+            ['min' => 0.1, 'max' => 5, 'groi' => 50],
+            ['min' => 5, 'max' => 10, 'groi' => 55],
+            ['min' => 50, 'max' => 60, 'groi' => 100],
+        ]);
+        $this->assertSame(50.0, AmazonDilGroiRule::minTarget($rules));
+        $this->assertNull(AmazonDilGroiRule::minTarget([]));
+    }
+
     public function test_suggested_price_matches_amazon_groi_formula(): void
     {
         $lp = 40.0;

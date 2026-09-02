@@ -24,16 +24,6 @@
         #amazon-filter-bar #sku-search {
             width: 140px !important;
         }
-        #amazon-filter-bar #target-roi-input,
-        #amazon-filter-bar #target-gpft-input {
-            width: 56px !important;
-        }
-        #amazon-filter-bar #target-roi-controls,
-        #amazon-filter-bar #target-gpft-controls {
-            margin-left: 0 !important;
-            padding: 2px 4px !important;
-            gap: 4px !important;
-        }
         #amazon-filter-bar .btn-sm {
             padding: 0.2rem 0.4rem;
             font-size: 0.8rem;
@@ -715,42 +705,7 @@
                         <option value="blank">Blank S PRC only</option>
                     </select>
 
-                    {{-- Dil vs PRMT / CVR vs CPN — same rules store as /pricing-errors-fix --}}
                     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
-
-                    {{-- Target ROI% bulk control — back-solves S PRC so the Sroi column = Target ROI%. --}}
-                    {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / 0.80  (same 0.80 take-home as Sroi / GROI%) --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC so the SGROI column equals the target (gross; does not target SNROI)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target ROI% applied to all selected rows — matches the SGROI column">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC so SGROI = Target ROI% for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC so S GPFT (Sgpft) = Target GPFT%. --}}
-                    {{-- Formula: sprice = (LP + Ship) / (0.80 − GPFT%/100). Target GPFT% must be < 80. --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC so the S GPFT column equals the target (gross; does not target SNPFT)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target GPFT% applied to all selected rows — matches the S GPFT column. Must be < 80%.">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC so S GPFT = Target GPFT% for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -1290,20 +1245,35 @@
             return inv > 0 && price > 0 && lmp > 0 && price > lmp;
         }
 
-        function amazonCapSpriceToLmp(rowData, sprice) {
-            // 0 Sold Dil → GROI target must stay visible. LMP cap made Pink 70%
-            // look like a normal LMP price (this SKU: $112.99 / 27% SGROI).
-            if (typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(rowData)) {
-                const raw = parseFloat(sprice);
-                return (raw > 0) ? +Number(raw).toFixed(2) : raw;
-            }
-            if (window.SpriceLmpCap) return SpriceLmpCap.prepare(rowData, sprice, lmpWithShipping);
-            const lmp = lmpWithShipping(rowData);
-            let s = parseFloat(sprice);
-            if (!(s > 0)) return s;
-            if (lmp > 0 && s + 0.0001 >= lmp) s = lmp;
-            return +Number(s).toFixed(2);
+        /** SGROI at a candidate S PRC: ((price × 0.80 − ship − LP) / LP) × 100. */
+        function amazonSgroiAtPrice(rowData, price) {
+            const sprice = parseFloat(price);
+            const lp = parseFloat(rowData && rowData.LP_productmaster);
+            if (!(sprice > 0) || !(lp > 0)) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
+        /** LMP is lower than S PRC, and SGROI at LMP is at least 20%. */
+        function amazonShouldCapSpriceToLmp(rowData, sprice) {
+            const lmp = lmpWithShipping(rowData);
+            const s = parseFloat(sprice);
+            if (!(lmp > 0) || !(s > 0) || s + 0.0001 < lmp) return false;
+            const sgroiAtLmp = amazonSgroiAtPrice(rowData, lmp);
+            if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
+            return true;
+        }
+        function amazonCapSpriceToLmp(rowData, sprice) {
+            const s = parseFloat(sprice);
+            if (!(s > 0)) return s;
+            if (!amazonShouldCapSpriceToLmp(rowData, s)) {
+                return +Number(s).toFixed(2);
+            }
+            const lmp = lmpWithShipping(rowData);
+            return +Number(lmp).toFixed(2);
+        }
+        window.amazonSgroiAtPrice = amazonSgroiAtPrice;
+        window.amazonShouldCapSpriceToLmp = amazonShouldCapSpriceToLmp;
+        window.amazonCapSpriceToLmp = amazonCapSpriceToLmp;
 
         /**
          * INV vs INV_AMZ map tolerance — same rule as /map-issues:
@@ -2277,9 +2247,6 @@
                         const liveCvr = sess30 > 0 ? (aL30 / sess30) * 100 : 0;
                         let last = data.length ? data[data.length - 1] : null;
                         const lastKey = last ? (last.date || last.full_date || '') : '';
-                        const livePrmt = (typeof computeAmzLivePrmtPct === 'function')
-                            ? computeAmzLivePrmtPct(liveRow)
-                            : (parseFloat(liveRow.prmt_pct) || 0);
                         const liveSprice = (typeof amazonRowSprice === 'function')
                             ? amazonRowSprice(liveRow)
                             : (parseFloat(liveRow.SPRICE) || 0);
@@ -2288,7 +2255,6 @@
                             last.views = sess30;
                             last.a_l30 = aL30;
                             last.price = parseFloat(liveRow.price || last.price) || last.price;
-                            last.prmt_pct = isFinite(livePrmt) ? livePrmt : last.prmt_pct;
                             if (liveSprice > 0) last.sprice = liveSprice;
                             last.source = 'live';
                         } else {
@@ -2301,7 +2267,6 @@
                                 a_l30: aL30,
                                 price: parseFloat(liveRow.price) || 0,
                                 sprice: liveSprice > 0 ? liveSprice : (parseFloat(liveRow.price) || 0),
-                                prmt_pct: isFinite(livePrmt) ? livePrmt : null,
                                 source: 'live'
                             });
                         }
@@ -2951,7 +2916,6 @@
         }
 
         $(document).ready(function() {
-            // Dil vs PRMT / CVR vs CPN — same rules store as /pricing-errors-fix
             if (typeof initAmazonPefPromoUi === 'function') {
                 initAmazonPefPromoUi();
             }
@@ -3430,230 +3394,6 @@
                 if (v <= pinkAfter) return 'green';
                 return 'pink';
             }
-
-            /*
-             * Target ROI% bulk apply
-             * -----------------------
-             * Back-solves S PRC so the Sroi column (gross, same formula as GROI% with SPRICE)
-             * equals Target ROI%. Does NOT target SNROI (ads-adjusted).
-             *     Sroi = ((sprice × 0.80 − ship − lp) / lp) × 100
-             *  -> sprice = (LP × (1 + Target/100) + Ship) / 0.80
-             * Uses the same hard-coded 0.80 take-home as amazonComputeSroi / saveSpriceToDatabase.
-             */
-            $('#apply-target-roi-btn').on('click', function() {
-                const $btn = $(this);
-                const rawInput = $('#target-roi-input').val();
-                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-                if (rawInput === '' || rawInput == null) {
-                    showToast('error', 'Please enter a Target ROI%');
-                    return;
-                }
-                if (!isFinite(targetRoiPct)) {
-                    showToast('error', 'Target ROI% must be a number');
-                    return;
-                }
-
-                const effectiveSelected = selectedRows;
-
-                if (effectiveSelected.size === 0) {
-                    showToast('error', 'Please select at least one SKU');
-                    return;
-                }
-
-                // Target ROI% → Sroi (gross), not SNROI:
-                //   ((sprice × 0.80 − ship − lp) / lp) × 100 = Target
-                //   -> sprice = (lp × (1 + Target/100) + ship) / 0.80
-                const margin = 0.80;
-                const roiMultiplier = 1 + (targetRoiPct / 100);
-
-                const rowsToProcess = [];
-                table.getRows().forEach(function(r) {
-                    const rd = r.getData();
-                    const sku = rd['(Child) sku'];
-                    if (!effectiveSelected.has(sku) || rd.is_parent_summary) return;
-                    const lp = parseFloat(rd.LP_productmaster) || 0;
-                    if (lp <= 0) return; // skip rows without a usable cost
-                    const ship = parseFloat(rd.Ship_productmaster) || 0;
-                    const candidate = (lp * roiMultiplier + ship) / margin;
-                    const sprice = +candidate.toFixed(2);
-                    if (!isFinite(sprice) || sprice <= 0) return;
-                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
-                });
-
-                if (rowsToProcess.length === 0) {
-                    showToast('warning', 'No selected rows have a usable LP > 0');
-                    return;
-                }
-
-                const confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so SGROI = ${targetRoiPct}%?\n\n(sprice = (LP \u00d7 (1 + Target/100) + Ship) / 0.80)`;
-                if (!confirm(confirmMsg)) {
-                    return;
-                }
-
-                let successCount = 0;
-                let errorCount = 0;
-                const total = rowsToProcess.length;
-
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-                rowsToProcess.forEach(function(item) {
-                    amazonPersistClearThenSave(item.sku, item.sprice, item.row)
-                        .done(function(response) {
-                            successCount++;
-                            const updateData = {
-                                'SPRICE': response.data || item.sprice,
-                                'has_custom_sprice': true,
-                                'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
-                            };
-                            if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
-                            if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
-                            if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
-                            if (response.sgroi_percent !== undefined) updateData['SGROI'] = response.sgroi_percent;
-                            item.row.update(updateData);
-                            item.row.reformat();
-                        })
-                        .fail(function() {
-                            errorCount++;
-                        })
-                        .always(function() {
-                            if (successCount + errorCount === total) {
-                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
-                                if (errorCount === 0) {
-                                    showToast('success', `S PRC saved for ${successCount} SKU(s) — SGROI = ${targetRoiPct}%`);
-                                } else {
-                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
-                                }
-
-                                // Clear shared selection so the next batch starts fresh.
-                                selectedRows.clear();
-                                $('.row-select-checkbox').prop('checked', false);
-                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
-                                if (typeof updateSelectedCount === 'function') {
-                                    updateSelectedCount();
-                                }
-                            }
-                        });
-                });
-            });
-
-            // Enter inside the Target ROI% input triggers Apply S PRC
-            $('#target-roi-input').on('keypress', function(e) {
-                if (e.which === 13) $('#apply-target-roi-btn').click();
-            });
-
-            /*
-             * Target GPFT% bulk apply
-             * ------------------------
-             * Back-solves S PRC so the S GPFT (Sgpft) column equals Target GPFT%.
-             * Does NOT target SNPFT (ads-adjusted). Same hard-coded 0.80 as saveSpriceToDatabase:
-             *     SGPFT = ((sprice × 0.80 − ship − lp) / sprice) × 100
-             *  -> sprice = (lp + ship) / (0.80 − GPFT%/100)
-             * Target GPFT% must be strictly < 80.
-             */
-            $('#apply-target-gpft-btn').on('click', function() {
-                const $btn = $(this);
-                const rawInput = $('#target-gpft-input').val();
-                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-                if (rawInput === '' || rawInput == null) {
-                    showToast('error', 'Please enter a Target GPFT%');
-                    return;
-                }
-                if (!isFinite(targetGpftPct)) {
-                    showToast('error', 'Target GPFT% must be a number');
-                    return;
-                }
-
-                const effectiveSelected = selectedRows;
-
-                if (effectiveSelected.size === 0) {
-                    showToast('error', 'Please select at least one SKU');
-                    return;
-                }
-
-                const margin = 0.80;
-                const targetFraction = targetGpftPct / 100;
-                const denom = margin - targetFraction;
-                if (denom <= 0) {
-                    showToast('error', `Target GPFT% ${targetGpftPct}% is too high \u2014 must be less than 80%.`);
-                    return;
-                }
-
-                const rowsToProcess = [];
-                table.getRows().forEach(function(r) {
-                    const rd = r.getData();
-                    const sku = rd['(Child) sku'];
-                    if (!effectiveSelected.has(sku) || rd.is_parent_summary) return;
-                    const lp = parseFloat(rd.LP_productmaster) || 0;
-                    if (lp <= 0) return; // need a cost to back-solve
-                    const ship = parseFloat(rd.Ship_productmaster) || 0;
-                    const candidate = (lp + ship) / denom;
-                    const sprice = +candidate.toFixed(2);
-                    if (!isFinite(sprice) || sprice <= 0) return;
-                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
-                });
-
-                if (rowsToProcess.length === 0) {
-                    showToast('warning', 'No selected rows have a usable LP > 0');
-                    return;
-                }
-
-                const confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so S GPFT = ${targetGpftPct}%?\n\n(sprice = (LP + Ship) / (0.80 \u2212 ${targetGpftPct}%/100))`;
-                if (!confirm(confirmMsg)) {
-                    return;
-                }
-
-                let successCount = 0;
-                let errorCount = 0;
-                const total = rowsToProcess.length;
-
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-                rowsToProcess.forEach(function(item) {
-                    amazonPersistClearThenSave(item.sku, item.sprice, item.row)
-                        .done(function(response) {
-                            successCount++;
-                            const updateData = {
-                                'SPRICE': response.data || item.sprice,
-                                'has_custom_sprice': true,
-                                'SPRICE_STATUS': response.SPRICE_STATUS != null ? response.SPRICE_STATUS : null
-                            };
-                            if (response.sgpft_percent !== undefined) updateData['SGPFT'] = response.sgpft_percent;
-                            if (response.spft_percent !== undefined) updateData['Spft%'] = response.spft_percent;
-                            if (response.sroi_percent !== undefined) updateData['SROI'] = response.sroi_percent;
-                            if (response.sgroi_percent !== undefined) updateData['SGROI'] = response.sgroi_percent;
-                            item.row.update(updateData);
-                            item.row.reformat();
-                        })
-                        .fail(function() {
-                            errorCount++;
-                        })
-                        .always(function() {
-                            if (successCount + errorCount === total) {
-                                $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
-                                if (errorCount === 0) {
-                                    showToast('success', `S PRC saved for ${successCount} SKU(s) — S GPFT = ${targetGpftPct}%`);
-                                } else {
-                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
-                                }
-
-                                // Clear shared selection so the next batch starts fresh.
-                                selectedRows.clear();
-                                $('.row-select-checkbox').prop('checked', false);
-                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
-                                if (typeof updateSelectedCount === 'function') {
-                                    updateSelectedCount();
-                                }
-                            }
-                        });
-                });
-            });
-
-            // Enter inside the Target GPFT% input triggers Apply S PRC
-            $('#target-gpft-input').on('keypress', function(e) {
-                if (e.which === 13) $('#apply-target-gpft-btn').click();
-            });
 
             // Parent pricing modal: push SPRICE to Amazon only
             $(document).on('click', '.parent-pricing-modal-apply-btn', function(e) {
@@ -4534,14 +4274,16 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. Formula: (LP × (1 + GROI%/100) + Ship) / 0.80. Edit / add / delete slabs with the Sprc Dil toolbar button.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. A L30 = 0 uses the minimum Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / 0.80.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             if (typeof amzDilGroiMetaForRow !== 'function') return '';
                             const meta = amzDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            const tip = (meta.zeroSoldMin
+                                    ? '0 Sold A L30 → min Target GROI'
+                                    : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
                                 + ' → $' + meta.sprc.toFixed(2);
@@ -4566,38 +4308,42 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. Always the live rule price (0 Sold Dil → GROI, or Std − PRMT − CVR Disc − Rev Disc − CVR UP/DN). 0 Sold is not LMP-capped (Pink Dil → 70% GROI). Other rows: S PRC ≥ LMP is capped at LMP.",
+                        headerTooltip: "Read-only. Live rule price. If LMP is lower than S PRC, S PRC becomes LMP — unless SGROI at that LMP would be < 20%, then LMP is not applied. Red triangle stays when S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
-                            let sprice = amazonRowSprice(rowData);
-
-                            if (!(sprice > 0)) return '';
-
-                            const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(rowData);
-                            const lmpNow = lmpWithShipping(rowData);
-                            const cap = (!zeroSold && window.SpriceLmpCap)
-                                ? SpriceLmpCap.apply(rowData, sprice, lmpWithShipping)
-                                : null;
-                            const atOrAboveLmp = zeroSold
-                                ? (lmpNow > 0 && sprice + 0.0001 >= lmpNow)
-                                : (cap
-                                    ? cap.alert
-                                    : (lmpNow > 0 && sprice + 0.0001 >= lmpNow));
-                            if (!zeroSold) {
-                                if (cap && cap.shown > 0) sprice = cap.shown;
-                                else if (atOrAboveLmp) sprice = amazonCapSpriceToLmp(rowData, sprice);
+                            let raw = 0;
+                            if (typeof computeAmzPushPrcPlan === 'function') {
+                                const plan = computeAmzPushPrcPlan(rowData);
+                                if (plan && plan.effective > 0) raw = Number(plan.effective);
                             }
+                            if (!(raw > 0)) raw = amazonRowSprice(rowData);
+
+                            if (!(raw > 0)) return '';
+
+                            const lmpNow = lmpWithShipping(rowData);
+                            const shown = amazonCapSpriceToLmp(rowData, raw);
+                            const sprice = shown > 0 ? shown : raw;
+                            const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
+                            const appliedLmp = wouldHitLmp && shown + 0.0001 <= lmpNow + 0.0001;
+                            const atOrAboveLmp = wouldHitLmp;
+                            const sgroiAtLmp = (typeof amazonSgroiAtPrice === 'function')
+                                ? amazonSgroiAtPrice(rowData, lmpNow)
+                                : null;
 
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
                             const redTri = atOrAboveLmp
-                                ? (zeroSold
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="0 Sold Dil GROI — above LMP $'
-                                        + lmpNow.toFixed(2) + ' (not capped)"></i>'
-                                    : (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>'))
+                                ? (appliedLmp
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                        + lmpNow.toFixed(2) + '"></i>'
+                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
+                                        + lmpNow.toFixed(2)
+                                        + ' not applied — SGROI would be '
+                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
+                                        + '% (&lt; 20%)"></i>')
                                 : '';
                             const blueTri = (!atOrAboveLmp && currentPrice > 0 && sprice > 0
                                 && currentPrice.toFixed(2) !== sprice.toFixed(2))
@@ -4701,7 +4447,7 @@
                         width: 100
                     },
 
-                    // PRMT % / CVR Disc. / Rev Disc. / CVR Up/Dn / T Discounts / Push Prc
+                    // CVR Disc. / Rev Disc. / T Discounts / Push Prc
                     ...amazonPefPromoColumns(),
 
                     {
@@ -5709,9 +5455,7 @@
                 if (field === 'push_prc') return 'Push Prc';
                 if (field === 'cvr_discount') return 'CVR Disc.';
                 if (field === 'review_discount') return 'Rev Disc.';
-                if (field === 'cvr_up_dn') return 'CVR Up/Dn';
                 if (field === 't_discounts') return 'T Discounts';
-                if (field === 'prmt_pct') return 'PRMT %';
                 if (field === 'SPRC_DIL') return 'Sprc Dil';
                 const raw = (def && def.title != null) ? def.title : field;
                 const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -5733,7 +5477,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|prmt_pct|cvr_discount|review_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|cvr_discount|review_discount|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
