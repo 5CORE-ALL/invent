@@ -899,8 +899,8 @@ return [
         // that host is AliExpress/TOP and returns param-appkey.not.exists for these apps.
         // Callback in the app console must match this URI (currently /index, shared with TikTok 2).
         'redirect_uri' => env('ALIBABA_REDIRECT_URI', rtrim((string) env('APP_URL', ''), '/').'/index'),
-        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://gw.api.alibaba.com/auth/authorize.htm'),
-        'token_url' => env('ALIBABA_TOKEN_URL', 'https://gw.api.alibaba.com/openapi/param2/1/system.oauth2/getToken'),
+        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://auth.1688.com/oauth/authorize'),
+        'token_url' => env('ALIBABA_TOKEN_URL', 'https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken'),
         'oauth_site' => env('ALIBABA_OAUTH_SITE', 'alibaba'),
     ],
 

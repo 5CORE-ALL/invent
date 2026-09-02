@@ -68,13 +68,13 @@
                     </div>
                     <div class="card-body">
                         <p class="text-muted small mb-3">
-                            Uses Alibaba Open Platform OAuth
-                            (<code>gw.api.alibaba.com/auth/authorize.htm</code>, <code>site=alibaba</code>).
-                            Not <code>oauth.alibaba.com</code> — that host is AliExpress/TOP and rejects this AppKey.
+                            Uses Open Platform web auth
+                            (<code>auth.1688.com/oauth/authorize</code>, <code>site=alibaba</code>).
+                            <code>gw.api.alibaba.com/auth/authorize.htm</code> is retired (404).
+                            <code>oauth.alibaba.com</code> is AliExpress/TOP and rejects this AppKey.
                             Callback URL in <a href="https://openapi.alibaba.com" target="_blank" rel="noopener">openapi.alibaba.com</a>
                             must be exactly
-                            <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com/index' }}</code>
-                            (this app’s console currently uses <code>/index</code>).
+                            <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com/index' }}</code>.
                         </p>
 
                         <table class="table table-sm table-bordered mb-3">

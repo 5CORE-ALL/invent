@@ -5,30 +5,31 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Alibaba.com Open Platform (openapi.alibaba.com) OAuth — AOP, not oauth.alibaba.com.
+ * Alibaba.com Open Platform OAuth for apps created at openapi.alibaba.com.
  *
- * Apps created at https://openapi.alibaba.com (short AppKeys like 502948) are
- * registered on gw.api.alibaba.com. Hitting oauth.alibaba.com returns
- * param-appkey.not.exists / appkey不存在.
+ * authorize.htm on gw.api.alibaba.com is gone (HTTP 404).
+ * oauth.alibaba.com is AliExpress/TOP and rejects these short AppKeys.
  *
- * Authorize: https://gw.api.alibaba.com/auth/authorize.htm?client_id=&site=alibaba&redirect_uri=
- * Token:     https://gw.api.alibaba.com/openapi/param2/1/system.oauth2/getToken/{appKey}
+ * Live web auth: https://auth.1688.com/oauth/authorize?client_id=&site=alibaba&redirect_uri=
+ * Token:         https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken/{appKey}
  */
 class AlibabaAuthService
 {
     public function getAuthorizeUrl(?string $state = null): string
     {
         $appKey = (string) config('services.alibaba.app_key');
-        $appSecret = (string) config('services.alibaba.app_secret');
         $redirect = $this->redirectUri();
         $state = $state ?: bin2hex(random_bytes(8));
         $site = (string) (config('services.alibaba.oauth_site') ?: 'alibaba');
-        $authUrl = (string) (config('services.alibaba.auth_base') ?: 'https://gw.api.alibaba.com/auth/authorize.htm');
+        $authUrl = (string) (config('services.alibaba.auth_base') ?: 'https://auth.1688.com/oauth/authorize');
 
-        // Never send this app to AliExpress/TOP oauth.alibaba.com — that registry
-        // does not contain openapi.alibaba.com AppKeys.
-        if (str_contains($authUrl, 'oauth.alibaba.com') || str_contains($authUrl, 'aliexpress.com')) {
-            $authUrl = 'https://gw.api.alibaba.com/auth/authorize.htm';
+        if (
+            str_contains($authUrl, 'authorize.htm')
+            || str_contains($authUrl, 'oauth.alibaba.com')
+            || str_contains($authUrl, 'aliexpress.com')
+            || str_contains($authUrl, 'gw.api.alibaba.com')
+        ) {
+            $authUrl = 'https://auth.1688.com/oauth/authorize';
         }
 
         $params = [
@@ -38,12 +39,7 @@ class AlibabaAuthService
             'state' => $state,
         ];
 
-        if (str_contains($authUrl, 'authorize.htm') && $appSecret !== '') {
-            $path = (string) (parse_url($authUrl, PHP_URL_PATH) ?: '/auth/authorize.htm');
-            $params['_aop_signature'] = $this->signAop($path, $params, $appSecret);
-        }
-
-        return $authUrl.'?'.http_build_query($params);
+        return rtrim($authUrl, '?').'?'.http_build_query($params);
     }
 
     /**
@@ -77,8 +73,8 @@ class AlibabaAuthService
 
     public function redirectUri(): string
     {
-        $redirect = (string) (config('services.alibaba.redirect_uri') ?: env('ALIBABA_REDIRECT_URI', ''));
-        if ($redirect === '') {
+        $redirect = trim((string) (config('services.alibaba.redirect_uri') ?: env('ALIBABA_REDIRECT_URI', '')));
+        if ($redirect === '' || str_ends_with(rtrim($redirect, '/'), '/alibaba/callback')) {
             $redirect = rtrim((string) config('app.url'), '/').'/index';
         }
 
@@ -104,8 +100,10 @@ class AlibabaAuthService
         ], $extra);
 
         $urls = [
-            'https://gw.api.alibaba.com/openapi/param2/1/system.oauth2/getToken/'.$appKey,
+            'https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken/'.$appKey,
             'https://gw.api.alibaba.com/openapi/http/1/system.oauth2/getToken/'.$appKey,
+            'https://gw.open.1688.com/openapi/param2/1/system.oauth2/getToken/'.$appKey,
+            'https://gw.api.alibaba.com/openapi/param2/1/system.oauth2/getToken/'.$appKey,
         ];
 
         $lastMessage = 'Alibaba token request failed.';
@@ -116,7 +114,7 @@ class AlibabaAuthService
                 $signed['_aop_signature'] = $this->signAop($path, $params, $appSecret);
             }
 
-            foreach ([$signed, $params] as $body) {
+            foreach ([$params, $signed] as $body) {
                 $response = Http::withoutVerifying()->asForm()->post($url, $body);
                 $parsed = $this->parseTokenResponse($response);
                 if (! empty($parsed['success'])) {
