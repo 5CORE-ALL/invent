@@ -68,9 +68,13 @@
                     </div>
                     <div class="card-body">
                         <p class="text-muted small mb-3">
-                            Uses <code>oauth.alibaba.com</code> with <code>sp=ICBU</code> (not AliExpress).
-                            Callback URL in the developer portal must be exactly
-                            <code>{{ $redirectUri ?? 'http://127.0.0.1:8000/alibaba/callback' }}</code>.
+                            Uses Alibaba Open Platform OAuth
+                            (<code>gw.api.alibaba.com/auth/authorize.htm</code>, <code>site=alibaba</code>).
+                            Not <code>oauth.alibaba.com</code> — that host is AliExpress/TOP and rejects this AppKey.
+                            Callback URL in <a href="https://openapi.alibaba.com" target="_blank" rel="noopener">openapi.alibaba.com</a>
+                            must be exactly
+                            <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com/index' }}</code>
+                            (this app’s console currently uses <code>/index</code>).
                         </p>
 
                         <table class="table table-sm table-bordered mb-3">
@@ -127,7 +131,7 @@
 
                         <div class="d-flex flex-wrap gap-2 mb-3">
                             @if(!empty($authorizeUrl))
-                                <a href="{{ $authorizeUrl }}" class="btn btn-outline-success" target="_blank" rel="noopener">
+                                <a href="{{ $authorizeUrl }}" class="btn btn-outline-success">
                                     Connect with Alibaba (OAuth)
                                 </a>
                             @endif

@@ -52,6 +52,7 @@ class AlibabaSyncController extends Controller
         $credentialsReady = $hasAppCreds && filled($accessToken);
         $oauthState = bin2hex(random_bytes(16));
         $request->session()->put('alibaba_oauth_state', $oauthState);
+        \Illuminate\Support\Facades\Cache::put('alibaba_oauth_state', $oauthState, now()->addMinutes(20));
 
         return view('marketplace.alibaba.connect', [
             'title' => 'Alibaba — Connect',
@@ -66,7 +67,7 @@ class AlibabaSyncController extends Controller
             'maskedAppSecret' => $this->maskCredential($appSecret, 2, 2),
             'maskedAccessToken' => $this->maskCredential($accessToken, 4, 4),
             'apiBase' => $apiBase !== '' ? rtrim($apiBase, '/').(str_ends_with(strtolower($apiBase), '/sync') ? '' : '/sync') : 'https://openapi.alibaba.com/sync',
-            'redirectUri' => (string) (config('services.alibaba.redirect_uri') ?: rtrim((string) config('app.url'), '/').'/alibaba/callback'),
+            'redirectUri' => $this->alibabaAuth->redirectUri(),
             'gateway' => config('services.alibaba.gateway', 'rest'),
             'restBase' => config('services.alibaba.rest_base', 'https://api-sg.alibaba.com/rest'),
             'flashSuccess' => $request->session()->pull('alibaba_connect_success'),
@@ -106,7 +107,10 @@ class AlibabaSyncController extends Controller
             return redirect()->route('marketplace.manager.alibaba.connect');
         }
 
-        $expectedState = (string) $request->session()->get('alibaba_oauth_state', '');
+        $expectedState = (string) (
+            $request->session()->get('alibaba_oauth_state', '')
+            ?: \Illuminate\Support\Facades\Cache::get('alibaba_oauth_state', '')
+        );
         $state = trim((string) ($request->query('state') ?? $request->input('state') ?? ''));
         if ($expectedState !== '' && $state !== '' && ! hash_equals($expectedState, $state)) {
             $request->session()->put('alibaba_connect_error', 'Alibaba OAuth state mismatch. Try Connect again.');

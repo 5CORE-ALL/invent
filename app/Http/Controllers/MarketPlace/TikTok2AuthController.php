@@ -36,6 +36,10 @@ class TikTok2AuthController extends Controller
      */
     public function callback(Request $request)
     {
+        if ($this->looksLikeAlibabaOAuth($request)) {
+            return app(AlibabaSyncController::class)->oauthCallback($request);
+        }
+
         $hasOAuth = $request->filled('code')
             || $request->filled('auth_code')
             || $request->filled('error');
@@ -76,6 +80,34 @@ class TikTok2AuthController extends Controller
         }
 
         return $this->finishExchange($code);
+    }
+
+    /**
+     * /index is also the Alibaba.com Open Platform callback (portal Callback URL).
+     */
+    protected function looksLikeAlibabaOAuth(Request $request): bool
+    {
+        if (! $request->filled('code') && ! $request->filled('error')) {
+            return false;
+        }
+
+        $code = trim((string) ($request->query('code') ?? $request->input('code') ?? ''));
+        if (str_starts_with($code, 'TTP_')) {
+            return false;
+        }
+
+        $state = trim((string) ($request->query('state') ?? ''));
+        $sessionState = (string) $request->session()->get('alibaba_oauth_state', '');
+        $cacheState = (string) Cache::get('alibaba_oauth_state', '');
+
+        if ($state !== '' && $sessionState !== '' && hash_equals($sessionState, $state)) {
+            return true;
+        }
+        if ($state !== '' && $cacheState !== '' && hash_equals($cacheState, $state)) {
+            return true;
+        }
+
+        return $sessionState !== '' || $cacheState !== '';
     }
 
     /**
