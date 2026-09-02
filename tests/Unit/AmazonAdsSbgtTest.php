@@ -125,4 +125,15 @@ class AmazonAdsSbgtTest extends TestCase
     {
         $this->assertNull(AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow([]));
     }
+
+    public function test_bgt_acos_uses_highest_band_for_saved_100_percent(): void
+    {
+        $bands = [
+            ['acos_from' => 40, 'acos_to' => 99, 'sbgt' => 1, 'label' => 'Red', 'color' => '#dc2626'],
+            ['acos_from' => 0, 'acos_to' => 10, 'sbgt' => 12, 'label' => 'Pink', 'color' => '#db2777'],
+        ];
+        $this->assertSame(1, AmazonAcosSbgtRule::sbgtFromAcosAndBands(100.0, $bands));
+        $this->assertSame(1, AmazonAcosSbgtRule::sbgtFromAcosAndBands(40.0, $bands));
+        $this->assertSame(12, AmazonAcosSbgtRule::sbgtFromAcosAndBands(0.0, $bands));
+    }
 }

@@ -375,8 +375,21 @@ final class AmazonAcosSbgtRule
 
     public static function sbgtFromAcosL30(float $acos): int
     {
-        $bands = self::resolvedRule()['bands'];
+        return self::sbgtFromAcosAndBands($acos, self::resolvedRule()['bands']);
+    }
 
+    /**
+     * BGT ACOS tier for a known ACOS %. First matching band wins (top to bottom).
+     * ACOS above every band (e.g. saved 100% when To stopped at 40) uses the highest ACOS band,
+     * not the lowest / pink band.
+     *
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    public static function sbgtFromAcosAndBands(float $acos, array $bands): int
+    {
+        if ($bands === []) {
+            return 1;
+        }
         if (is_finite($acos)) {
             foreach ($bands as $band) {
                 $from = (float) ($band['acos_from'] ?? 0);
@@ -385,6 +398,8 @@ final class AmazonAcosSbgtRule
                     return (int) ($band['sbgt'] ?? 1);
                 }
             }
+
+            return self::clampSbgtFromBands($bands, $acos);
         }
 
         return self::fallbackSbgtFromBands($bands);
@@ -393,17 +408,32 @@ final class AmazonAcosSbgtRule
     /**
      * @param  array<int, array<string, mixed>>  $bands
      */
-    private static function fallbackSbgtFromBands(array $bands): int
+    private static function clampSbgtFromBands(array $bands, float $acos): int
     {
-        $best = null;
+        $highest = null;
+        $lowest = null;
         foreach ($bands as $band) {
             $from = (float) ($band['acos_from'] ?? 0);
-            if ($best === null || $from < (float) ($best['acos_from'] ?? 0)) {
-                $best = $band;
+            if ($highest === null || $from > (float) ($highest['acos_from'] ?? 0)) {
+                $highest = $band;
+            }
+            if ($lowest === null || $from < (float) ($lowest['acos_from'] ?? 0)) {
+                $lowest = $band;
             }
         }
+        if ($highest !== null && $acos >= (float) ($highest['acos_from'] ?? 0)) {
+            return (int) ($highest['sbgt'] ?? 1);
+        }
 
-        return $best !== null ? (int) ($best['sbgt'] ?? 1) : 1;
+        return $lowest !== null ? (int) ($lowest['sbgt'] ?? 1) : 1;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $bands
+     */
+    private static function fallbackSbgtFromBands(array $bands): int
+    {
+        return self::clampSbgtFromBands($bands, 9999.0);
     }
 
     /**

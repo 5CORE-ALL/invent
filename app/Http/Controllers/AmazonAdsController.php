@@ -492,9 +492,9 @@ class AmazonAdsController extends Controller
      *
      * @param  array<int, string>  $dbColumns
      */
-    private static function computedSbgtFromReportRow(array $rowArr, array $dbColumns): ?int
+    private static function computedSbgtFromReportRow(array $rowArr, array $dbColumns, ?float $acos = null): ?int
     {
-        $acos = self::computedAcosPercentFromReportRow($rowArr, $dbColumns);
+        $acos = $acos ?? self::computedAcosPercentFromReportRow($rowArr, $dbColumns);
         if ($acos === null) {
             return null;
         }
@@ -4009,14 +4009,14 @@ class AmazonAdsController extends Controller
             $acosCalcRow = $needAcosCalc
                 ? self::acosCalculationRowFromGridOverlays($rowArr, $arr, $dbColumns, $l30SliceMap, $lkSalesRow)
                 : $rowArr;
+            $acosPct = $needAcosCalc
+                ? self::computedAcosPercentFromReportRow($acosCalcRow, $dbColumns)
+                : null;
             if (in_array('ACOS', $columns, true)) {
-                $arr['ACOS'] = self::computedAcosPercentFromReportRow($acosCalcRow, $dbColumns);
+                $arr['ACOS'] = $acosPct;
             }
             if (in_array('sbgt', $columns, true) || in_array('bgtAcos', $columns, true)) {
-                $sbgtTier = self::computedSbgtFromReportRow($acosCalcRow, $dbColumns);
-                if (in_array('bgtAcos', $columns, true) || in_array('sbgt', $columns, true)) {
-                    $arr['bgtAcos'] = $sbgtTier;
-                }
+                $arr['bgtAcos'] = self::computedSbgtFromReportRow($acosCalcRow, $dbColumns, $acosPct);
             }
             if (in_array('sbgt', $columns, true)) {
                 $arr['sbgt'] = self::summedSbgtFromParts(

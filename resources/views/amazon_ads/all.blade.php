@@ -866,14 +866,50 @@
                 var a = typeof acos === 'number' ? acos : parseFloat(String(acos));
                 if (isNaN(a)) return null;
                 var bands = amzBgtRuleBands();
+                var highest = null;
+                var lowest = null;
                 for (var i = 0; i < bands.length; i++) {
                     var from = parseFloat(bands[i].acos_from);
                     var to = parseFloat(bands[i].acos_to);
                     if (isNaN(from)) from = 0;
                     if (isNaN(to)) to = 9999;
                     if (a >= from && a <= to) return bands[i];
+                    if (!highest || from > parseFloat(highest.acos_from)) highest = bands[i];
+                    if (!lowest || from < parseFloat(lowest.acos_from)) lowest = bands[i];
                 }
-                return null;
+                if (highest && a >= parseFloat(highest.acos_from || 0)) return highest;
+                return lowest;
+            }
+            function amzBgtAcosFromAcos(acos) {
+                var band = amzBandForAcos(acos);
+                if (!band) return null;
+                var t = parseInt(band.sbgt, 10);
+                return isNaN(t) ? null : t;
+            }
+            function amzSumSbgtFromRow(row) {
+                var acos = parseInt(row && row.bgtAcos, 10);
+                if (acos === 0) return 0;
+                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews];
+                var sum = 0, has = false;
+                for (var i = 0; i < parts.length; i++) {
+                    if (parts[i] === null || parts[i] === undefined || parts[i] === '') continue;
+                    var n = parseInt(parts[i], 10);
+                    if (isNaN(n)) continue;
+                    has = true;
+                    sum += n;
+                }
+                if (!has) return null;
+                return sum < 1 ? 0 : sum;
+            }
+            function amzApplyAcosDrivenBgt(rows) {
+                (rows || []).forEach(function (row) {
+                    if (!row) return;
+                    var tier = amzBgtAcosFromAcos(row.ACOS);
+                    if (tier !== null) row.bgtAcos = tier;
+                    var sum = amzSumSbgtFromRow(row);
+                    if (sum !== null) row.sbgt = sum;
+                });
+                return rows;
             }
             function amzAcosTierColor(acos) {
                 var band = amzBandForAcos(acos);
@@ -1105,13 +1141,20 @@
             }
             function fmtSbgt(cell) {
                 var v = cell.getValue();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var field = cell.getField ? cell.getField() : '';
+                if (field === 'bgtAcos') {
+                    var fromAcos = amzBgtAcosFromAcos(row && row.ACOS);
+                    if (fromAcos !== null) v = fromAcos;
+                }
                 if (v === null || v === undefined || v === '') return amzDash();
                 var t = parseInt(v, 10);
                 if (isNaN(t)) return amzDash();
                 if (t === 0) {
                     return '<span class="fw-semibold" style="color:#dc2626;" title="BGT ACOS 0 — cannot push $0; campaign will be paused">0</span>';
                 }
-                return '<span class="fw-semibold" style="color:' + amzSbgtTierColor(t) + ';">' + t + '</span>';
+                var color = (field === 'bgtAcos') ? amzAcosTierColor(row && row.ACOS) : amzSbgtTierColor(t);
+                return '<span class="fw-semibold" style="color:' + color + ';">' + t + '</span>';
             }
             function fmtSbgtSum(cell) {
                 var v = cell.getValue();
@@ -1387,7 +1430,7 @@
                 if (c === 'bgt') { col.title = 'BGT'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'bgtAcos') {
                     col.title = 'BGT ACOS';
-                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — L30 ACOS % bands';
+                    col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — same ACOS% as the ACOS column (spend + Ads Sold 0 is 100%)';
                     col.formatter = fmtSbgt;
                     col.width = 72;
                     col.minWidth = 64;
@@ -1624,7 +1667,8 @@
                     amzUpdateTotalBadge(filtered);
                     amzRefreshUiSoon();
                     amzRefreshU7PieDebounced();
-                    return { last_page: lastPage, data: Array.isArray(response.data) ? response.data : [] };
+                    var rows = Array.isArray(response.data) ? response.data : [];
+                    return { last_page: lastPage, data: amzApplyAcosDrivenBgt(rows) };
                 }
             });
 
