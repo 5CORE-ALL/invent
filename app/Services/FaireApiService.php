@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\FaireMetric;
+use App\Support\Marketplace\FaireDuplicateSkuListing;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -717,16 +718,13 @@ class FaireApiService
                 continue;
             }
             $qty = $this->extractOnHandQuantity($variant);
-            $priceCents = data_get($variant, 'wholesale_price.amount_minor')
-                ?? data_get($variant, 'wholesale_price_cents')
-                ?? data_get($variant, 'retail_price.amount_minor')
-                ?? data_get($variant, 'retail_price_cents');
+            $priceCents = $this->extractVariantWholesaleMinor($variant);
             $rows[] = [
                 'sku' => $sku,
                 'product_id' => (string) ($info['id'] ?? $productId),
                 'product_variant_id' => trim((string) ($variant['id'] ?? $variant['product_variant_id'] ?? '')),
                 'inventory' => is_numeric($qty) ? (int) $qty : null,
-                'price' => is_numeric($priceCents) ? round(((float) $priceCents) / 100, 2) : null,
+                'price' => $priceCents !== null ? round($priceCents / 100, 2) : null,
                 'product_name' => $productName ?? ($info['name'] ?? null),
             ];
         }
@@ -993,6 +991,16 @@ class FaireApiService
             ?? data_get($row, 'inventory.on_hand_quantity');
 
         return is_numeric($qty) ? max(0, (int) $qty) : null;
+    }
+
+    /**
+     * Wholesale cents from a variant. Never falls back to retail.
+     *
+     * @param  array<string, mixed>|null  $variant
+     */
+    public function extractVariantWholesaleMinor(?array $variant): ?int
+    {
+        return FaireDuplicateSkuListing::wholesaleMinor($variant);
     }
 
     /**

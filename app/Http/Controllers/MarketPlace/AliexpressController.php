@@ -1755,9 +1755,16 @@ class AliexpressController extends Controller
                     if (! empty($e['ignored'])) {
                         return null;
                     }
-                    $p = $e['price'] ?? null;
+                    $p = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
+                        ? (float) $e['price']
+                        : 0.0;
+                    if ($p <= 0) {
+                        return null;
+                    }
+                    $shipRaw = $e['ship'] ?? $e['delivery'] ?? $e['shipping_cost'] ?? 0;
+                    $s = ($shipRaw !== '' && $shipRaw !== null) ? max(0, (float) $shipRaw) : 0.0;
 
-                    return $p !== null && $p !== '' ? (float) $p : null;
+                    return round($p + $s, 2);
                 }, $lmpEntries)));
                 $lmp = count($lmpPrices) > 0 ? min($lmpPrices) : null;
                 $lmpLink = null;

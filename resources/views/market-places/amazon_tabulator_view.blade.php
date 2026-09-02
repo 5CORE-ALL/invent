@@ -1124,6 +1124,14 @@
         const AMAZON_REMOVED_COL_FIELDS = {
             NR: true, nrp: true, NRL: true, FBA_Quantity: true, FBA: true, fba: true, fba_price: true, S_STATUS: true, PLS_STATUS: true
         };
+        const AMAZON_DELETED_RULE_COL_FIELDS = {
+            prmt_pct: true, cvr_up_dn: true, zero_sold: true, zero_sold_prmt: true
+        };
+        function amazonSkipColVisField(field) {
+            return !field || field === '__schema'
+                || AMAZON_REMOVED_COL_FIELDS[field]
+                || AMAZON_DELETED_RULE_COL_FIELDS[field];
+        }
         const TABULATOR_COLUMN_ORDER_URL = '/tabulator-column-order';
         let amazonApplyingColumnOrder = false;
         let amazonColumnOrderSaveTimer = null;
@@ -5642,7 +5650,7 @@
                             if (COL_VIS_CATEGORY_KEYS.indexOf(cat) === -1) {
                                 cat = classifyAmazonColumn(field, title);
                             }
-                            if (field === '__schema' || AMAZON_REMOVED_COL_FIELDS[field]) return;
+                            if (amazonSkipColVisField(field)) return;
                             const isVisible = amazonVisibilityIsStale(map)
                                 ? (def.visible !== false)
                                 : (map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible());
@@ -5699,7 +5707,7 @@
                 const visibility = {};
                 table.getColumns().forEach(col => {
                     const field = col.getDefinition().field;
-                    if (field && !AMAZON_REMOVED_COL_FIELDS[field]) {
+                    if (field && !amazonSkipColVisField(field)) {
                         visibility[field] = col.isVisible();
                     }
                 });
@@ -5734,7 +5742,7 @@
                         }
                         table.getColumns().forEach(col => {
                             const field = col.getDefinition().field;
-                            if (!field || AMAZON_REMOVED_COL_FIELDS[field]) return;
+                            if (amazonSkipColVisField(field)) return;
                             if (!savedVisibility.hasOwnProperty(field)) return;
                             if (savedVisibility[field]) col.show();
                             else col.hide();

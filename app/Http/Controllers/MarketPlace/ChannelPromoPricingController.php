@@ -40,7 +40,7 @@ class ChannelPromoPricingController extends Controller
         'ebay1', 'ebay2', 'ebay2op', 'ebay3',
         'shopify_b2c', 'shopify_b2b', 'reverb',
         'macys', 'macy', 'bestbuy', 'walmart', 'wayfair',
-        'temu', 'temu2', 'doba', 'doba_withoutship',
+        'temu', 'temu2', 'temu3', 'doba', 'doba_withoutship',
         'tiktok', 'tiktok2', 'topdawg', 'purchasing_power',
         'aliexpress', 'shein', 'newegg', 'faire', 'pls',
         'mercari_wship', 'mercari_woship', 'fb_marketplace',
@@ -1532,7 +1532,7 @@ class ChannelPromoPricingController extends Controller
      *
      * @var list<string>
      */
-    private const CVR_UP_DN_CHANNELS = ['amazon', 'ebay1', 'temu', 'temu2'];
+    private const CVR_UP_DN_CHANNELS = ['amazon', 'ebay1', 'temu', 'temu2', 'temu3'];
 
     /**
      * Default first rules: any CVR drop → +3, any CVR up → −3.

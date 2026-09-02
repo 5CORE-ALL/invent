@@ -43,26 +43,6 @@
         #ebay-filter-bar #sku-search {
             width: 140px !important;
         }
-        #ebay-filter-bar #target-roi-input,
-        #ebay-filter-bar #target-gpft-input,
-        #ebay-filter-bar #target-price-input {
-            width: 52px !important;
-        }
-        #ebay-filter-bar #target-roi-controls,
-        #ebay-filter-bar #target-gpft-controls,
-        #ebay-filter-bar #target-price-controls {
-            margin-left: 0 !important;
-            padding: 0 4px !important;
-            gap: 3px !important;
-            min-height: 26px;
-            height: 26px;
-        }
-        #ebay-filter-bar #target-roi-controls .form-label,
-        #ebay-filter-bar #target-gpft-controls .form-label,
-        #ebay-filter-bar #target-price-controls .form-label {
-            font-size: 0.72rem !important;
-            line-height: 1 !important;
-        }
         #summary-stats {
             order: -1;
             padding: 0.28rem 0.45rem !important;
@@ -635,6 +615,7 @@
         }
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay1'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css'])
     </style>
 @endsection
 
@@ -659,9 +640,9 @@
 
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all" selected>INV</option>
+                        <option value="all">INV</option>
                         <option value="zero">0 INV</option>
-                        <option value="more">INV &gt; 0</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="el30-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -772,58 +753,9 @@
                         <option value="pink">Pink</option>
                     </select>
 
-                    {{-- Dil vs PRMT / Cpn% / Push Prc — same action row as Amazon --}}
+                    {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
-
-                    {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target. --}}
-                    {{-- Formula: sprice = (LP × (1 + Target/100) + Ship) / margin --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-roi-controls"
-                        title="Target SGROI% — sets SPRICE so S GROI column = Target (gross ROI: fees + shipping, no Ads%)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target SGROI% applied to all selected rows when you click 'Apply SPRICE'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE = (LP \u00d7 (1 + Target/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPFT = Target GPFT%. --}}
-                    {{-- Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay take-home margin (e.g. < 85%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE = (LP + Ship) / (margin \u2212 Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target Price ($) — set SPRICE to an absolute dollar amount for selected SKUs. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-price-controls"
-                        title="Target Price ($) — sets SPRICE to this dollar amount on every selected row.">
-                        <label for="target-price-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> Target $:
-                        </label>
-                        <input type="number" id="target-price-input" class="form-control form-control-sm text-end"
-                            placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
-                            title="Absolute target price applied to all selected rows as SPRICE">
-                        <button id="apply-target-price-btn" class="btn btn-sm btn-success" type="button"
-                            title="Save SPRICE = Target $ for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons'])
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block pricing-filter-item">
@@ -1445,6 +1377,7 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay1'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals'])
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
     @include('partials.price-lt80-lmp-badge-script')
@@ -1485,6 +1418,7 @@
         const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay1'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script'])
 
         /**
          * Net ROI — same shape as Amazon NROI / SNROI badge:
@@ -3278,174 +3212,6 @@
                 }
             });
 
-           
-            function ebayApplyTargetSpriceBatch(opts) {
-                // opts: { targetPct, computeSprice(rd) -> {sprice, skipReason?}, label, $btn, btnHtml }
-                const $btn = opts.$btn;
-                if (typeof selectedSkus === 'undefined' || selectedSkus.size === 0) {
-                    showToast('error', 'Please select at least one SKU');
-                    return;
-                }
-
-                const rowsToProcess = [];
-                const skipped = [];
-                table.getRows().forEach(function(r) {
-                    const rd = r.getData();
-                    const sku = rd['(Child) sku'];
-                    if (!sku || !selectedSkus.has(sku)) return;
-                    if (rd.is_parent_summary || rd.is_parent_row) return;
-                    const res = opts.computeSprice(rd);
-                    if (!res || res.skipReason) {
-                        if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
-                        return;
-                    }
-                    const sprice = +Number(res.sprice).toFixed(2);
-                    if (!isFinite(sprice) || sprice <= 0) return;
-                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
-                });
-
-                if (rowsToProcess.length === 0) {
-                    if (skipped.length > 0) {
-                        showToast('error', `Cannot apply: ${skipped[0].reason}`);
-                    } else {
-                        showToast('warning', 'No selected rows have a usable LP > 0');
-                    }
-                    return;
-                }
-
-                let confirmMsg = `Compute & save SPRICE for ${rowsToProcess.length} selected SKU(s) using ${opts.label}?`;
-                if (skipped.length > 0) {
-                    confirmMsg += `\n\nNote: ${skipped.length} row(s) will be skipped (${skipped[0].reason}).`;
-                }
-                if (!confirm(confirmMsg)) return;
-
-                let successCount = 0;
-                let errorCount = 0;
-                const total = rowsToProcess.length;
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
-
-                rowsToProcess.forEach(function(item) {
-                    $.ajax({
-                        url: '/ebay-one/save-sprice',
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                        data: { sku: item.sku, sprice: item.sprice },
-                        success: function(response) {
-                            successCount++;
-                            // Field names match the existing eBay saveSpriceWithRetry update payload.
-                            applyEbay1SpriceSaveLive(item.row, response, item.sprice);
-                        },
-                        error: function() { errorCount++; },
-                        complete: function() {
-                            if (successCount + errorCount === total) {
-                                $btn.prop('disabled', false).html(opts.btnHtml);
-                                if (errorCount === 0) {
-                                    showToast('success', `SPRICE saved for ${successCount} SKU(s) @ ${opts.label}`);
-                                } else {
-                                    showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
-                                }
-                                // Wipe selection so the next batch starts clean.
-                                selectedSkus.clear();
-                                $('.sku-select-checkbox').prop('checked', false);
-                                $('#select-all-checkbox').prop('checked', false);
-                                if (typeof updateSelectedCount === 'function') {
-                                    updateSelectedCount();
-                                } else if (typeof updateSelectionUI === 'function') {
-                                    updateSelectionUI();
-                                }
-                            }
-                        }
-                    });
-                });
-            }
-
-            // Target ROI% — targets displayed SGROI (gross), not SNROI:
-            //   (sprice×margin − ship − lp) / lp × 100 = Target
-            //   -> sprice = (lp × (1 + Target/100) + ship) / margin
-            $('#apply-target-roi-btn').on('click', function() {
-                const $btn = $(this);
-                const raw = $('#target-roi-input').val();
-                const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
-                if (raw === '' || raw == null) { showToast('error', 'Please enter a Target ROI%'); return; }
-                if (!isFinite(targetRoiPct)) { showToast('error', 'Target ROI% must be a number'); return; }
-                const roiMultiplier = 1 + (targetRoiPct / 100);
-                ebayApplyTargetSpriceBatch({
-                    targetPct: targetRoiPct,
-                    label: `Target SGROI ${targetRoiPct}%`,
-                    $btn: $btn,
-                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
-                    computeSprice: function(rd) {
-                        const lp = parseFloat(rd.LP_productmaster) || 0;
-                        if (lp <= 0) return null;
-                        const ship = parseFloat(rd.Ship_productmaster) || 0;
-                        const marginRaw = parseFloat(rd.percentage);
-                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
-                        if (margin <= 0) {
-                            return { skipReason: 'Invalid eBay take-home margin' };
-                        }
-                        return { sprice: (lp * roiMultiplier + ship) / margin };
-                    }
-                });
-            });
-            $('#target-roi-input').on('keypress', function(e) {
-                if (e.which === 13) $('#apply-target-roi-btn').click();
-            });
-
-            // Target GPFT%
-            $('#apply-target-gpft-btn').on('click', function() {
-                const $btn = $(this);
-                const raw = $('#target-gpft-input').val();
-                const targetGpftPct = parseFloat(String(raw).replace(',', '.'));
-                if (raw === '' || raw == null) { showToast('error', 'Please enter a Target GPFT%'); return; }
-                if (!isFinite(targetGpftPct)) { showToast('error', 'Target GPFT% must be a number'); return; }
-                const targetFraction = targetGpftPct / 100;
-                ebayApplyTargetSpriceBatch({
-                    targetPct: targetGpftPct,
-                    label: `Target GPFT ${targetGpftPct}%`,
-                    $btn: $btn,
-                    btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
-                    computeSprice: function(rd) {
-                        const lp = parseFloat(rd.LP_productmaster) || 0;
-                        if (lp <= 0) return null;
-                        const ship = parseFloat(rd.Ship_productmaster) || 0;
-                        const marginRaw = parseFloat(rd.percentage);
-                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY_TAKEHOME;
-                        const denom = margin - targetFraction;
-                        if (denom <= 0) {
-                            return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 eBay take-home margin (~${Math.round(margin * 100)}%)` };
-                        }
-                        return { sprice: (lp + ship) / denom };
-                    }
-                });
-            });
-            $('#target-gpft-input').on('keypress', function(e) {
-                if (e.which === 13) $('#apply-target-gpft-btn').click();
-            });
-
-            // Target Price ($) — sets SPRICE to the entered absolute dollar amount for selected SKUs
-            $('#apply-target-price-btn').on('click', function() {
-                const $btn = $(this);
-                const raw = $('#target-price-input').val();
-                const targetPrice = parseFloat(String(raw).replace(',', '.'));
-                if (raw === '' || raw == null) { showToast('error', 'Please enter a Target Price'); return; }
-                if (!isFinite(targetPrice) || targetPrice <= 0) {
-                    showToast('error', 'Target Price must be a number greater than 0');
-                    return;
-                }
-                ebayApplyTargetSpriceBatch({
-                    targetPct: targetPrice,
-                    label: `Target Price $${targetPrice.toFixed(2)}`,
-                    $btn: $btn,
-                    btnHtml: '<i class="fas fa-calculator"></i>',
-                    computeSprice: function() {
-                        return { sprice: targetPrice };
-                    }
-                });
-            });
-            $('#target-price-input').on('keypress', function(e) {
-                if (e.which === 13) $('#apply-target-price-btn').click();
-            });
-
             // Badge click handlers for filtering
             $('#zero-sold-count-badge').on('click', function() {
                 zeroSoldFilterActive = !zeroSoldFilterActive;
@@ -4391,7 +4157,7 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         sorter: "number",
-                        headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation) — same value Dil vs PRMT uses.",
+                        headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const dil = (typeof chPromoListingDil === 'function')
@@ -4409,7 +4175,7 @@
                             else if (dil >= 25 && dil < 50) color = '#28a745';
                             else color = '#e83e8c';
 
-                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Dil vs PRMT">${Math.round(dil)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Sprc Dil">${Math.round(dil)}%</span>`;
                         },
                         width: 50
                     },
@@ -5057,14 +4823,45 @@
                             }
                         },
                     },
-                    // PRMT % / CPN % — ebay1 channel_promo_pricing (independent of Amazon)
+                    // CPN % / Push Prc — PRMT% / CVR Up/Dn / 0 Sold removed; Sprc Dil + CPN
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
+                    {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. E L30 = 0 uses the minimum Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = (meta.zeroSoldMin
+                                    ? '0 Sold E L30 → min Target GROI'
+                                    : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
                     {
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC is the saved value after Apply (clear, then save). Same $ as DB. Red triangle = saved S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when E L30 = 0). Red triangle = S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
@@ -6005,7 +5802,22 @@
             });
 
             // Columns that should ALWAYS stay hidden, regardless of saved state.
-            var alwaysHiddenColumns = ['CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', '_ads_pct'];
+            // prmt_* = deleted Dil vs PRMT rule (removed from ebay1; keep out of the Columns box).
+            var alwaysHiddenColumns = [
+                'CVR_60', 'CVR_45', 'eBay L60', 'eBay L45', '_ads_pct',
+                'prmt_pct', 'cvr_up_dn', 't_discounts',
+                'zero_sold_prmt', 'gt_sold_pct', 'push_prmt'
+            ];
+            function isEbay1RemovedRuleColumn(field, title) {
+                const f = String(field || '');
+                if (alwaysHiddenColumns.indexOf(f) !== -1) return true;
+                const t = String(title || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                return /^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(f)
+                    || /^prmt\s*%?$/i.test(t)
+                    || /^cvr\s*up\/?dn$/i.test(t)
+                    || /^t\s*discounts?$/i.test(t)
+                    || /^0\s*sold/i.test(t);
+            }
             function enforceAlwaysHiddenColumns() {
                 alwaysHiddenColumns.forEach(function(col) {
                     try { table.hideColumn(col); } catch (e) {}
@@ -6428,9 +6240,8 @@
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
-                            if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
-
                             const title = def.title || def.field;
+                            if (isEbay1RemovedRuleColumn(def.field, title)) return;
                             const itemKey = colVisItemKey(def.field, title);
                             const cat = resolveColumnCategory(def.field, title, overrides);
 
@@ -6484,7 +6295,7 @@
                 const visibility = {};
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
-                    if (def.field) {
+                    if (def.field && !isEbay1RemovedRuleColumn(def.field, def.title)) {
                         visibility[def.field] = col.isVisible();
                     }
                 });
@@ -6515,7 +6326,8 @@
                         if (savedVisibility && typeof savedVisibility === 'object') {
                             table.getColumns().forEach(col => {
                                 const def = col.getDefinition();
-                                if (def.field && savedVisibility.hasOwnProperty(def.field)) {
+                                if (!def.field || isEbay1RemovedRuleColumn(def.field, def.title)) return;
+                                if (savedVisibility.hasOwnProperty(def.field)) {
                                     if (savedVisibility[def.field]) {
                                         col.show();
                                     } else {

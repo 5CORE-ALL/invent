@@ -1477,6 +1477,21 @@
                             </li>
 
                             <li class="side-nav-item">
+                                <a data-bs-toggle="collapse" href="#sidebarTemu3Analytics" aria-expanded="false"
+                                    aria-controls="sidebarTemu3Analytics">
+                                    <span> Temu 3 Analytics </span>
+                                    <span class="menu-arrow"></span>
+                                </a>
+                                <div class="collapse" id="sidebarTemu3Analytics">
+                                    <ul class="side-nav-third-level">
+                                        <li>
+                                            <a href="{{ route('temu3.decrease') }}">Temu 3 Pricing</a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </li>
+
+                            <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarThirdLevel1" aria-expanded="false"
                                     aria-controls="sidebarThirdLevel">
                                     <span> Doba </span>

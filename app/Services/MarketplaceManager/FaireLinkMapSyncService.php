@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\FaireMetric;
 use App\Services\FaireApiService;
+use App\Support\Marketplace\FaireDuplicateSkuListing;
 use App\Support\Marketplace\MappingChannelCounts;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -155,6 +156,68 @@ class FaireLinkMapSyncService
     }
 
     /**
+     * Resolve duplicate Faire products for one SKU and keep the live listing.
+     *
+     * @return array{success: bool, message: string, total_upserted: int, product_id?: string, price?: float|null}
+     */
+    public function syncSku(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.', 'total_upserted' => 0];
+        }
+        if (! Schema::hasTable('faire_metric')) {
+            return $this->fail('faire_metric table missing.');
+        }
+        if (! $this->faireApi->isConfigured()) {
+            return $this->fail('Faire API credentials missing.');
+        }
+
+        $this->resetProgress();
+        $res = $this->faireApi->getProducts([
+            'limit' => 50,
+            'page' => 1,
+            'sku' => $sku,
+        ]);
+        if (! empty($res['blocked_by_cloudflare'])) {
+            return $this->fail('Blocked by Cloudflare while fetching Faire products.');
+        }
+        if (empty($res['ok'])) {
+            return $this->fail($res['error'] ?? ('Product fetch failed HTTP '.($res['status'] ?? 0)));
+        }
+
+        $json = is_array($res['json']) ? $res['json'] : [];
+        $products = $json['products'] ?? $json['data'] ?? [];
+        if (! is_array($products)) {
+            $products = [];
+        }
+
+        $pageSkus = [];
+        $upserted = 0;
+        foreach ($products as $product) {
+            if (! is_array($product)) {
+                continue;
+            }
+            $upserted += $this->upsertProduct($product, $pageSkus);
+        }
+        $this->hydrateInventoryFromFaireApi([$sku]);
+
+        $metric = FaireMetric::query()->where('sku', $sku)->first();
+        $price = $metric && $metric->price !== null ? (float) $metric->price : null;
+        $productId = $metric ? trim((string) ($metric->product_id ?? '')) : '';
+
+        return [
+            'success' => true,
+            'message' => $metric
+                ? "Updated {$sku} from Faire API (wholesale \$".number_format((float) $price, 2).', product '.$productId.').'
+                : "Faire API returned no listing for {$sku}.",
+            'total_upserted' => $upserted,
+            'product_id' => $productId !== '' ? $productId : null,
+            'price' => $price,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $product
      * @param  list<string>  $pageSkus
      */
@@ -190,13 +253,21 @@ class FaireLinkMapSyncService
             $pageSkus[] = $sku;
 
             $qty = $this->faireApi->extractOnHandQuantity($variant);
-            // Wholesale only — no retail_price fallback
-            $priceMinor = data_get($variant, 'wholesale_price.amount_minor')
-                ?? data_get($variant, 'wholesale_price_cents');
-            $price = is_numeric($priceMinor) ? round(((float) $priceMinor) / 100, 2) : null;
+            $priceMinor = $this->faireApi->extractVariantWholesaleMinor($variant);
+            $price = $priceMinor !== null ? round($priceMinor / 100, 2) : null;
+            $incomingProductId = $productId !== '' ? $productId : $sku;
+            $incoming = [
+                'product_id' => $incomingProductId,
+                'qty' => $qty ?? 0,
+                'price' => $price,
+                'lifecycle' => (string) ($product['lifecycle_state'] ?? $product['lifecycleState'] ?? ''),
+            ];
+            if (! $this->rememberBestSkuListing($sku, $incoming)) {
+                continue;
+            }
 
             $payload = [
-                'product_id' => $productId !== '' ? $productId : $sku,
+                'product_id' => $incomingProductId,
                 'product_name' => $name !== '' ? $name : null,
             ];
             $listingStatus = $this->listingStatusFromProduct($product);
@@ -296,6 +367,11 @@ class FaireLinkMapSyncService
                         if ($sku === '') {
                             continue;
                         }
+                        $existingPid = FaireMetric::query()->where('sku', $sku)->value('product_id');
+                        $existingPid = is_string($existingPid) ? trim($existingPid) : '';
+                        if ($existingPid !== '' && $productId !== '' && $existingPid !== $productId) {
+                            continue;
+                        }
                         FaireMetric::updateOrCreate(
                             ['sku' => $sku],
                             array_filter([
@@ -387,9 +463,20 @@ class FaireLinkMapSyncService
             return;
         }
 
+        $storedProductIdBySku = FaireMetric::query()
+            ->whereIn('sku', $skus)
+            ->pluck('product_id', 'sku');
+
         $live = $this->faireApi->getInventoryBySkus($skus);
         foreach ($live as $sku => $row) {
             if (! is_array($row) || ! array_key_exists('qty', $row) || $row['qty'] === null) {
+                unset($live[$sku]);
+                continue;
+            }
+            $wantPid = trim((string) ($storedProductIdBySku[$sku] ?? ''));
+            $gotPid = trim((string) ($row['product_id'] ?? ''));
+            if ($wantPid !== '' && $gotPid !== '' && $wantPid !== $gotPid) {
+                unset($live[$sku]);
                 continue;
             }
             FaireMetric::query()->where('sku', $sku)->update([
@@ -446,6 +533,25 @@ class FaireLinkMapSyncService
     }
 
     /**
+     * Keep the best Faire product seen for this SKU during the current sync.
+     *
+     * @param  array{product_id: string, qty: int, price: float|null, lifecycle: string}  $incoming
+     */
+    protected function rememberBestSkuListing(string $sku, array $incoming): bool
+    {
+        $state = $this->getProgress();
+        $all = is_array($state['best_by_sku'] ?? null) ? $state['best_by_sku'] : [];
+        $current = isset($all[$sku]) && is_array($all[$sku]) ? $all[$sku] : null;
+        if (! FaireDuplicateSkuListing::preferIncoming($incoming, $current)) {
+            return false;
+        }
+        $all[$sku] = $incoming;
+        $this->updateProgress(['best_by_sku' => $all]);
+
+        return true;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function getProgress(): array
@@ -471,6 +577,7 @@ class FaireLinkMapSyncService
             'page' => 0,
             'total_page' => null,
             'total_upserted' => 0,
+            'best_by_sku' => [],
             'message' => 'Starting…',
             'done' => false,
             'error' => false,

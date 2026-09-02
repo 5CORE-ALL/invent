@@ -343,6 +343,7 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'temu', 'channelPromoHidePushCpn' => true])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'temu'])
     </style>
 @endsection
 
@@ -471,37 +472,11 @@
                         <option value="red">Red</option>
                     </select>
 
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / marketplace%">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button" title="Apply Target ROI%">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
                     <button type="button" id="apply-lmp-minus-1-toolbar-btn"
                         class="btn btn-sm btn-outline-primary ms-2 fw-bold pricing-filter-item"
                         title="Apply LMP: set SPRICE so S Temu B Prc = LMP × 0.99 for selected SKUs">
                         LMP
                     </button>
-
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Temu Ship) / (marketplace% − Target GPFT%/100)">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button" title="Apply Target GPFT%">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
 
                     <select id="dil-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -526,6 +501,7 @@
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'temu', 'channelPromoHidePushCpn' => true])
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'temu'])
 
                     {{-- Temu-only actions (kept after ebay-aligned filters) --}}
                     <div class="btn-group align-items-center pricing-filter-item" role="group">
@@ -1034,6 +1010,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'temu', 'channelPromoHidePushCpn' => true])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'temu'])
 @endsection
 
 @section('script-bottom')
@@ -1799,6 +1776,7 @@
         return sku.indexOf('PARENT ') === 0 || sku === 'PARENT' || sku.includes('PARENT');
     }
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'temu', 'channelPromoHidePushCpn' => true])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'temu'])
     function temu2RowSpriceForAlert(data) {
         return typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(data) : 0;
     }
@@ -1892,9 +1870,13 @@
         return getTemu2DisplayLmp(row);
     }
 
-    /** Discounted Price = 0 Sold Dil→Target GROI%, else Std × (1 − T Promo%/100). Never uses stored S PRC. */
+    /** Discounted Price = Sprc Dil (Dil → Target GROI%), else 0 Sold / Std × (1 − T Promo). Never uses stored S PRC. */
     function temuDiscountedPrice(row) {
         if (!row || (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(row))) return 0;
+        if (typeof ebaySprcDilForRow === 'function') {
+            const sprcDil = Number(ebaySprcDilForRow(row));
+            if (sprcDil > 0) return +sprcDil.toFixed(2);
+        }
         if (typeof chPromoTemuZeroSoldSprice === 'function') {
             const zeroSold = Number(chPromoTemuZeroSoldSprice(row));
             if (zeroSold > 0) return +zeroSold.toFixed(2);
@@ -1911,8 +1893,7 @@
     }
 
     /**
-     * S PRC = Discounted Price, then the lowest of eBay / Amazon / LMP when those are cheaper.
-     * 0 Sold Dil→Target GROI% is not capped (SGROI must stay at 50/60/70).
+     * S PRC = Discounted Price (Sprc Dil), then the lowest of eBay / Amazon / LMP when those are cheaper.
      * Stored S PRC is never the source — only an explicit candidate (use_passed_as_discounted).
      */
     function temuSpriceCapResult(row, rawSprice, extra) {
@@ -2569,159 +2550,6 @@
             if (e.which === 13) {
                 applyDiscount();
             }
-        });
-
-        /*
-         * Target ROI% / Target GPFT% bulk apply (Temu 1)
-         * ----------------------------------------------------------------
-         * Back-solves S PRC for every selected row so the resulting SROI / SGPFT
-         * column matches the entered target:
-         *     S Recovery = sprice × 0.88
-         *     SROI%  = S Profit / lp; S Profit = (S Recovery × marketplace% − temu_ship − lp)
-         *           → sprice = (lp * (1 + ROI%/100) + temu_ship) / (0.88 × marketplace%)
-         *     SGPFT% on Full Sprice = (sprice × marketplace% − temu_ship − lp) / sprice * 100
-         *           → sprice = (lp + temu_ship) / (marketplace% − GPFT%/100)
-         * Each save goes through the existing saveSpriceWithRetry() pipeline so
-         * sprice_status (processing → saved / error) and sgprft_percent /
-         * sroi_percent stay in sync exactly like Decrease / Increase / Same Price.
-         * Rounding is plain 2-decimal — no .99 / .49 retail snapping — because
-         * snapping would shift the achieved SROI / SGPFT off the target.
-         */
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                showToast('Target ROI% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first', 'error');
-                return;
-            }
-
-            applyTargetBackSolveTemu2(function (rowData) {
-                const lp = parseFloat(rowData['lp']) || 0;
-                if (lp <= 0) return null;
-                const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                const margin = temuSpriceMargin(rowData);
-                // SROI = S Profit/LP; S Profit = (S Recovery × margin) − ship − LP
-                // → sprice = (lp × (1 + ROI%/100) + ship) / (0.88 × marketplace%)
-                const candidate = (lp * (1 + targetRoiPct / 100) + temuShip) / (TEMU2_S_RECOVERY_RATE * margin);
-                const newPrice = +candidate.toFixed(2);
-                if (!isFinite(newPrice) || newPrice <= 0) return null;
-                return newPrice;
-            }, `Target ROI ${targetRoiPct}%`);
-        });
-
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                showToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first', 'error');
-                return;
-            }
-
-            const marginCap = TEMU_MARGIN;
-            const denomCheck = marginCap - targetGpftPct / 100;
-            if (denomCheck <= 0) {
-                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < ${(marginCap * 100).toFixed(0)}% (marketplace take-home).`, 'error');
-                return;
-            }
-
-            applyTargetBackSolveTemu2(function (rowData) {
-                const lp = parseFloat(rowData['lp']) || 0;
-                if (lp <= 0) return null;
-                const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                const margin = temuSpriceMargin(rowData);
-                const denom = margin - targetGpftPct / 100;
-                if (denom <= 0) return null;
-                // SGPRFT on Full Sprice → sprice = (lp + ship) / (margin − GPFT%/100)
-                const candidate = (lp + temuShip) / denom;
-                const newPrice = +candidate.toFixed(2);
-                if (!isFinite(newPrice) || newPrice <= 0) return null;
-                return newPrice;
-            }, `Target GPFT ${targetGpftPct}%`);
-        });
-
-        // Shared back-solve runner — mirrors applyDiscount's per-row save loop so
-        // sprice_status icons and reformat() behave identically.
-        function applyTargetBackSolveTemu2(computeFn, labelPrefix) {
-            const allData      = table.getData('all');
-            const totalSkus    = selectedSkus.size;
-            let updatedCount   = 0;
-            let errorCount     = 0;
-            let skippedNoLp    = 0;
-
-            const tasks = [];
-            allData.forEach(row => {
-                const sku = row['sku'];
-                if (!sku || !selectedSkus.has(sku)) return;
-
-                const newPrice = computeFn(row);
-                if (newPrice == null) { skippedNoLp++; return; }
-
-                const tableRow = table.getRows().find(r => r.getData()['sku'] === sku);
-                if (!tableRow) return;
-                const originalSPrice = parseFloat(row['sprice']) || 0;
-
-                tableRow.update({ sprice: newPrice, sprice_status: 'processing' });
-                tableRow.reformat();
-
-                tasks.push({ sku: sku, newPrice: newPrice, tableRow: tableRow, originalSPrice: originalSPrice });
-            });
-
-            if (tasks.length === 0) {
-                const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                showToast(`No selected rows have a usable LP > 0${note}`, 'warning');
-                return;
-            }
-
-            tasks.forEach(t => {
-                temuPersistClearThenSave(t.sku, t.newPrice, t.tableRow)
-                    .then(() => {
-                        updatedCount++;
-                        if (updatedCount + errorCount === tasks.length) {
-                            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                            if (errorCount === 0) {
-                                showToast(`${labelPrefix} applied to ${updatedCount} SKU(s)${note}`, 'success');
-                            } else {
-                                showToast(`${labelPrefix} applied to ${updatedCount} SKU(s), ${errorCount} failed${note}`, 'error');
-                            }
-                        }
-                    })
-                    .catch(() => {
-                        errorCount++;
-                        if (t.tableRow) {
-                            t.tableRow.update({ sprice: t.originalSPrice });
-                            t.tableRow.reformat();
-                        }
-                        if (updatedCount + errorCount === tasks.length) {
-                            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                            showToast(`${labelPrefix} applied to ${updatedCount} SKU(s), ${errorCount} failed${note}`, 'error');
-                        }
-                    });
-            });
-        }
-
-        $('#target-roi-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
         // Badge click filters — same pattern as /ebay-tabulator-view
@@ -3908,17 +3736,29 @@
                     width: 60,
                     minWidth: 55,
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof chPromoListingDil === 'function')
+                                ? chPromoListingDil(row)
+                                : (parseFloat(row.dil_percent) || 0);
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
                     formatter: function(cell) {
-                        const dil = parseFloat(cell.getValue()) || 0;
-                        
+                        const rowData = cell.getRow().getData();
+                        const dil = (typeof chPromoListingDil === 'function')
+                            ? chPromoListingDil(rowData)
+                            : (parseFloat(cell.getValue()) || 0);
+
+                        if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
+
                         let color = '';
-                        if (dil < 16.66) color = '#a00211'; // red (includes 0)
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
-                        else if (dil >= 25 && dil < 50) color = '#28a745'; // green
-                        else color = '#e83e8c'; // pink (50 and above)
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                        if (dil < 25) color = '#a00211';
+                        else if (dil >= 25 && dil < 50) color = '#28a745';
+                        else color = '#e83e8c';
+
+                        return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Sprc Dil">${Math.round(dil)}%</span>`;
                     }
                 },
                 {
@@ -4443,6 +4283,37 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Temu L30 = 0 uses the minimum Target GROI. S PRC is back-solved so SGROI matches the target.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = (meta.zeroSoldMin
+                                ? '0 Sold Temu L30 → min Target GROI'
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: "S PRC",
                     field: "sprice",
                     hozAlign: "center",
@@ -4452,7 +4323,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "Same value that is saved. 0 Sold: Dil→Target GROI% (Red 50 / Green 60 / Pink 70), not capped. Else Std × (1 − T Promo), then the lowest of eBay, Amazon, and LMP. Never the live listing price. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4586,7 +4457,7 @@
                     accessorDownload: function(value, data) {
                         return temuExportSgroi(data);
                     },
-                    headerTooltip: "0 Sold: Dil target GROI% (Red 50 / Green 60 / Pink 70). Else SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP",
+                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
@@ -5143,7 +5014,9 @@
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
-                    const dil = parseFloat(data.dil_percent) || 0;
+                    const dil = (typeof chPromoListingDil === 'function')
+                        ? chPromoListingDil(data)
+                        : (parseFloat(data.dil_percent) || 0);
                     if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
@@ -6027,7 +5900,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|base_price|temu_price|temu_price_display|s_profit|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|sprice|SPRC_DIL|s_recovery|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship|prmt_pct|cpn_pct|zero_sold|cvr_up_dn|t_discounts|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|recovery|prmt|cpn|dsc|appr|push\s*prc)\b/i.test(tl)
             ) {
                 return 'pricing';
@@ -6104,6 +5977,7 @@
                         const def = col.getDefinition();
                         if (!def.field || def.field === '_select') return;
                         if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
+                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -6143,7 +6017,7 @@
             const visibility = {};
             table.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (def.field) {
+                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) {
                     visibility[def.field] = col.isVisible();
                 }
             });

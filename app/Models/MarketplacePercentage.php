@@ -59,6 +59,7 @@ class MarketplacePercentage extends Model
             'wayfair' => ['Wayfair'],
             'temu' => ['Temu'],
             'temu2' => ['Temu 2', 'TemuTwo', 'Temu2', 'Temu'],
+            'temu3' => ['Temu 3', 'TemuThree', 'Temu3', 'Temu'],
             'doba', 'doba_withoutship' => ['Doba'],
             'tiktok', 'tiktok2' => ['TiktokShop'],
             'topdawg' => ['TopDawg'],
@@ -121,11 +122,14 @@ class MarketplacePercentage extends Model
     {
         $temu = static::takeHomeDecimal('Temu');
         $temu2 = static::takeHomeDecimal('Temu 2', 'TemuTwo', 'Temu2');
+        $temu3 = static::takeHomeDecimal('Temu 3', 'TemuThree', 'Temu3', 'Temu');
 
         return [
             'temu' => $temu,
             'temu2' => $temu2,
             'temutwo' => $temu2,
+            'temu3' => $temu3,
+            'temuthree' => $temu3,
         ];
     }
 

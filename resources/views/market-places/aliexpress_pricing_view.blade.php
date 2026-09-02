@@ -492,11 +492,15 @@
                     <div class="border rounded p-3 mb-3 bg-light">
                         <h6 class="mb-3"><i class="fas fa-plus text-success me-1"></i> Add New LMP</h6>
                         <div class="row g-2 align-items-end">
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
                                 <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="aeLmpNewPrice" placeholder="e.g. 29.99">
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-2">
+                                <label class="form-label small mb-0">Shipping</label>
+                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="aeLmpNewShip" placeholder="0.00">
+                            </div>
+                            <div class="col-md-5">
                                 <label class="form-label small mb-0">Product Link</label>
                                 <input type="text" class="form-control form-control-sm" id="aeLmpNewLink" placeholder="https://...">
                             </div>
@@ -512,7 +516,8 @@
                             <thead class="table-light">
                                 <tr>
                                     <th style="width: 50px;">#</th>
-                                    <th>Price</th>
+                                    <th title="Displayed price is item price + shipping">Price</th>
+                                    <th style="width: 90px;">Ship</th>
                                     <th>Link</th>
                                     <th class="text-center" style="width: 70px;" title="Ignore for L1">Ignore</th>
                                     <th style="width: 80px;">Actions</th>
@@ -660,19 +665,31 @@
             }
             return false;
         }
+        function aeLmpEntryShip(e) {
+            if (!e) return 0;
+            const raw = (e.ship != null && e.ship !== '') ? e.ship
+                : ((e.delivery != null && e.delivery !== '') ? e.delivery : e.shipping_cost);
+            const n = parseFloat(raw);
+            return n > 0 ? n : 0;
+        }
+        function aeLmpEntryLanded(e) {
+            const p = parseFloat(e && e.price);
+            if (!(p > 0)) return 0;
+            return Math.round((p + aeLmpEntryShip(e)) * 100) / 100;
+        }
         function aeLmpLowestFromEntries(entries) {
             let min = null;
             let link = null;
             let ignoredMin = null;
             (entries || []).forEach(function(e) {
-                const p = parseFloat(e && e.price);
-                if (!(p > 0)) return;
+                const landed = aeLmpEntryLanded(e);
+                if (!(landed > 0)) return;
                 if (aeEntryIsIgnored(e)) {
-                    if (ignoredMin === null || p < ignoredMin) ignoredMin = p;
+                    if (ignoredMin === null || landed < ignoredMin) ignoredMin = landed;
                     return;
                 }
-                if (min === null || p < min) {
-                    min = p;
+                if (min === null || landed < min) {
+                    min = landed;
                     link = e.link || link;
                 }
             });
@@ -1940,9 +1957,18 @@
                             const skuEsc = (row.sku || '').replace(/"/g, '&quot;');
                             const redDot = '<span class="ae-lmp-missing-dot d-inline-flex align-items-center justify-content-center" style="width:14px;height:14px;border-radius:50%;background:#dc3545;box-shadow:0 0 0 1px rgba(0,0,0,.08);"></span>';
                             if (hasLmp) {
-                                const title = displayNum + ' (' + activeCount + ' active) — click to edit';
-                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1">' + displayNum + '</span> ' +
-                                    '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
+                                let title = displayNum + ' (' + activeCount + ' active) — click to edit';
+                                const lowestEntry = (entries || []).find(function(e) {
+                                    return !aeEntryIsIgnored(e) && aeLmpEntryLanded(e) === lowest;
+                                });
+                                const shipPart = lowestEntry ? aeLmpEntryShip(lowestEntry) : 0;
+                                if (shipPart > 0 && lowestEntry) {
+                                    const base = parseFloat(lowestEntry.price) || 0;
+                                    title = base.toFixed(2) + ' + ' + shipPart.toFixed(2) + ' ship = ' + displayNum
+                                        + ' (' + activeCount + ' active) — click to edit';
+                                }
+                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1" title="' + title.replace(/"/g, '&quot;') + '">' + displayNum + '</span> ' +
+                                    '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
                             }
                             if (extra.ignored_price > 0) {
                                 const ign = extra.ignored_price % 1 === 0 ? extra.ignored_price.toLocaleString() : extra.ignored_price.toFixed(2);
@@ -2869,24 +2895,49 @@
                 aeLmpModalSku = sku || '';
                 $('#aeLmpModalSku').text(aeLmpModalSku);
                 $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewShip').val('');
                 $('#aeLmpNewLink').val('');
                 const tbody = $('#aeLmpEntriesContainer');
                 tbody.empty();
                 const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
                 list.forEach(function(entry) {
-                    aeAppendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '', !!entry.ignored);
+                    aeAppendLmpTableRow(
+                        tbody,
+                        entry.price !== undefined && entry.price !== null ? entry.price : '',
+                        entry.link || '',
+                        !!entry.ignored,
+                        aeLmpEntryShip(entry)
+                    );
                 });
                 aeUpdateLmpLowestHighlight();
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aeLmpModal')).show();
             }
-            function aeAppendLmpTableRow(tbody, price, link, ignored) {
+            function aeLmpParseNum(raw) {
+                if (raw === '' || raw == null) return null;
+                const n = parseFloat(raw);
+                return isNaN(n) ? null : n;
+            }
+            function aeLmpLandedFromTr(tr) {
+                const price = aeLmpParseNum($(tr).find('.ae-lmp-price').val());
+                if (price === null || !(price > 0)) return null;
+                const ship = aeLmpParseNum($(tr).find('.ae-lmp-ship').val());
+                const s = (ship !== null && ship > 0) ? ship : 0;
+                return Math.round((price + s) * 100) / 100;
+            }
+            function aeAppendLmpTableRow(tbody, price, link, ignored, ship) {
                 const tr = $('<tr class="ae-lmp-entry-row">' +
                     '<td class="ae-lmp-num text-center align-middle"></td>' +
-                    '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm ae-lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="ae-lmp-lowest-badge"></span></td>' +
+                    '<td class="align-middle">' +
+                        '<input type="number" step="0.01" min="0" class="form-control form-control-sm ae-lmp-price border-0 bg-transparent" style="max-width:90px" placeholder="Price" title="Item price">' +
+                        '<div class="ae-lmp-landed-display small fw-semibold" title="Price + shipping"></div>' +
+                        '<span class="ae-lmp-lowest-badge"></span>' +
+                    '</td>' +
+                    '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm ae-lmp-ship border-0 bg-transparent" style="max-width:80px" placeholder="0.00" title="Shipping"></td>' +
                     '<td class="align-middle"><input type="text" class="form-control form-control-sm ae-lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary ae-lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
                     '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"></td>' +
                     '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger ae-lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
                 tr.find('.ae-lmp-price').val(price !== '' && price != null ? price : '');
+                tr.find('.ae-lmp-ship').val(ship !== '' && ship != null && parseFloat(ship) > 0 ? ship : '');
                 tr.find('.ae-lmp-link').val(link || '');
                 if (ignored) {
                     tr.addClass('lmp-ignored-row');
@@ -2900,7 +2951,7 @@
                     aeUpdateLmpLowestHighlight();
                     aeSaveLmpEntriesNow();
                 });
-                tr.find('.ae-lmp-price, .ae-lmp-link').on('input', function() {
+                tr.find('.ae-lmp-price, .ae-lmp-ship, .ae-lmp-link').on('input', function() {
                     aeUpdateLmpLowestHighlight();
                     aeScheduleLmpAutosave();
                 });
@@ -2929,11 +2980,18 @@
                     tr.toggleClass('lmp-ignored-row', ignored);
                     tr.removeClass('table-dark');
                     tr.find('.ae-lmp-lowest-badge').empty();
+                    const landed = aeLmpLandedFromTr(tr);
+                    const ship = aeLmpParseNum(tr.find('.ae-lmp-ship').val());
+                    const $landed = tr.find('.ae-lmp-landed-display');
+                    if (landed !== null && ship !== null && ship > 0) {
+                        const itemPrice = aeLmpParseNum(tr.find('.ae-lmp-price').val()) || 0;
+                        $landed.text(landed.toFixed(2)).attr('title', itemPrice.toFixed(2) + ' + ' + ship.toFixed(2) + ' ship');
+                    } else {
+                        $landed.text('').removeAttr('title');
+                    }
                     if (ignored) return;
-                    const val = tr.find('.ae-lmp-price').val();
-                    const num = val !== '' && val != null ? parseFloat(val) : null;
-                    if (num !== null && !isNaN(num)) {
-                        if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
+                    if (landed !== null) {
+                        if (minVal === null || landed < minVal) { minVal = landed; minTr = tr; }
                     }
                 });
                 if (minTr && minVal !== null) {
@@ -2949,11 +3007,19 @@
                 const entries = [];
                 $('#aeLmpEntriesContainer .ae-lmp-entry-row').each(function() {
                     const price = $(this).find('.ae-lmp-price').val();
+                    const shipRaw = aeLmpParseNum($(this).find('.ae-lmp-ship').val());
+                    const ship = (shipRaw !== null && shipRaw > 0) ? Math.round(shipRaw * 100) / 100 : 0;
                     const link = $(this).find('.ae-lmp-link').val();
                     const ignored = $(this).find('.lmp-ignore-cb').is(':checked');
                     if (price || link) {
+                        const priceNum = price ? parseFloat(price) : null;
+                        const landed = (priceNum > 0) ? Math.round((priceNum + ship) * 100) / 100 : null;
                         entries.push({
-                            price: price ? parseFloat(price) : null,
+                            price: priceNum,
+                            ship: ship,
+                            delivery: ship,
+                            shipping_cost: ship,
+                            total_price: landed,
                             link: link ? String(link).trim() : null,
                             ignored: ignored
                         });
@@ -3032,19 +3098,22 @@
             }
             $('#aeLmpAddRowBtn').on('click', function() {
                 const price = $('#aeLmpNewPrice').val();
+                const ship = $('#aeLmpNewShip').val();
                 const link = $('#aeLmpNewLink').val();
                 if (!price && !link) {
                     aeNotify('Enter Price or Link', 'warning');
                     return;
                 }
-                aeAppendLmpTableRow($('#aeLmpEntriesContainer'), price || '', link || '');
+                aeAppendLmpTableRow($('#aeLmpEntriesContainer'), price || '', link || '', false, ship || 0);
                 $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewShip').val('');
                 $('#aeLmpNewLink').val('');
                 aeUpdateLmpLowestHighlight();
                 aeSaveLmpEntriesNow();
             });
             $('#aeLmpClearFormBtn').on('click', function() {
                 $('#aeLmpNewPrice').val('');
+                $('#aeLmpNewShip').val('');
                 $('#aeLmpNewLink').val('');
             });
             LmpIgnore.bind({

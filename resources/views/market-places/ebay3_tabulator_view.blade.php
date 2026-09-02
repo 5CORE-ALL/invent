@@ -307,15 +307,6 @@
             font-size: 0.72rem !important;
             margin-bottom: 0 !important;
         }
-        #ebay3-filter-bar #target-roi-input,
-        #ebay3-filter-bar #target-gpft-input {
-            width: 52px !important;
-            height: 24px !important;
-            min-height: 24px !important;
-            font-size: 0.75rem !important;
-            padding: 0.1rem 0.25rem !important;
-        }
-
         #summary-stats {
             order: -1;
             padding: 0.28rem 0.45rem !important;
@@ -434,6 +425,7 @@
         }
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay3'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
@@ -619,6 +611,7 @@
                     </button>
 
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay3'])
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
 
                     {{-- Sbid (Views) — same as /ebay-tabulator-view + /ebay3/campaign-ads --}}
                     <button type="button" class="btn btn-sm pricing-filter-item"
@@ -627,40 +620,6 @@
                             title="Configure Min/Max caps and the daily ±%/day step per L7 View colour for the S BID column">
                         <i class="fas fa-eye me-1"></i>Sbid
                     </button>
-
-
-                    {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target (gross, no Ads%). --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-roi-controls"
-                        title="Target SGROI% — sets SPRICE so S GROI column = Target (gross ROI: fees + shipping, no Ads%)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target SGROI% applied to all selected rows when you click 'Apply SPRICE'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE so SGROI equals Target for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light pricing-filter-item"
-                        id="target-gpft-controls"
-                        title="Target SGPFT% — sets SPRICE = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target SGPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay3 take-home margin (typically < 85%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE so SGPFT equals Target for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
 
                 </div>
             </div>
@@ -960,6 +919,7 @@
 
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
 @endsection
 
 @section('script-bottom')
@@ -971,6 +931,7 @@
     const TABULATOR_COLUMN_CHANNEL = 'ebay3_tabulator';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
     const KW_SPENT = {{ $kwSpent ?? 0 }};
@@ -2033,149 +1994,6 @@
             });
         }
 
-        /*
-         * Target ROI% / Target GPFT% bulk apply (eBay3, margin = row.percentage or EbayThree table)
-         * ------------------------------------------------------------------
-         * Back-solves SPRICE so the resulting SGROI / SGPFT columns match the entered
-         * target (gross only — Ads% / SNROI are not used). eBay3 formulas:
-         *     SGPFT% = ((sprice * margin − ship − lp) / sprice) * 100
-         *     SGROI% = ((sprice * margin − ship − lp) / lp)     * 100
-         *   → sprice = (lp * (1 + ROI%/100)  + ship) / margin
-         *   → sprice = (lp + ship) / (margin − GPFT%/100)
-         * Each save goes through the existing saveSpriceWithRetry() Promise pipeline
-         * so SPRICE_STATUS (processing → saved / error) and the server-recomputed
-         * SGPFT / SGROI values stay in sync exactly like applyDiscount.
-         * Rounding is plain 2-decimal — no .99 / .49 retail snapping — because
-         * snapping would shift the achieved SGROI / SGPFT off the user-typed target.
-         */
-        function ebay3ApplyTargetBackSolve(computeFn, labelPrefix) {
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Price % mode to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const allData     = table.getData('all');
-            const targetSkus  = new Set(selectedSkus);
-            const tasks       = [];
-            let skippedNoLp   = 0;
-            const skippedHigh = [];
-
-            allData.forEach(row => {
-                if (row.Parent && String(row.Parent).startsWith('PARENT')) return;
-                const sku = row['(Child) sku'];
-                if (!sku || !targetSkus.has(sku)) return;
-
-                const lp = parseFloat(row['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(row['Ship_productmaster']) || 0;
-
-                const EBAY3_MARGIN = (typeof EBAY3_TAKEHOME === 'number' && EBAY3_TAKEHOME > 0) ? EBAY3_TAKEHOME : 1;
-                const computed = computeFn(lp, ship, EBAY3_MARGIN);
-                if (computed == null) { skippedHigh.push(sku); return; }
-                const newSprice = +computed.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const tableRow = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
-                if (!tableRow) return;
-                tableRow.update({ SPRICE: newSprice, SPRICE_STATUS: 'processing' });
-
-                tasks.push({ sku: sku, newSprice: newSprice, tableRow: tableRow });
-            });
-
-            if (tasks.length === 0) {
-                if (skippedHigh.length > 0) {
-                    showToast(`${labelPrefix} too high — must be less than the eBay3 take-home margin (< 85%).`, 'error');
-                } else {
-                    showToast('No selected rows have a usable LP > 0', 'warning');
-                }
-                return;
-            }
-
-            let okCount  = 0;
-            let errCount = 0;
-            const total  = tasks.length;
-
-            tasks.forEach(t => {
-                saveSpriceWithRetry(t.sku, t.newSprice, t.tableRow)
-                    .then(() => {
-                        okCount++;
-                        if (okCount + errCount === total) {
-                            let note = '';
-                            if (skippedNoLp > 0)    note += ` (${skippedNoLp} skipped — no LP)`;
-                            if (skippedHigh.length) note += ` (${skippedHigh.length} skipped — target ≥ margin)`;
-                            if (errCount === 0) {
-                                showToast(`${labelPrefix} applied to ${okCount} SKU(s)${note}`, 'success');
-                            } else {
-                                showToast(`${labelPrefix} applied to ${okCount} SKU(s), ${errCount} failed${note}`, 'error');
-                            }
-                        }
-                    })
-                    .catch(() => {
-                        errCount++;
-                        if (okCount + errCount === total) {
-                            let note = '';
-                            if (skippedNoLp > 0)    note += ` (${skippedNoLp} skipped — no LP)`;
-                            if (skippedHigh.length) note += ` (${skippedHigh.length} skipped — target ≥ margin)`;
-                            showToast(`${labelPrefix} applied to ${okCount} SKU(s), ${errCount} failed${note}`, 'error');
-                        }
-                    });
-            });
-        }
-
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target ROI%', 'error');
-                return;
-            }
-            if (!isFinite(targetRoiPct)) {
-                showToast('Target ROI% must be a number', 'error');
-                return;
-            }
-
-            // Target displayed SGROI (gross), not SNROI:
-            //   (sprice×margin − ship − lp) / lp × 100 = Target
-            //   -> sprice = (lp × (1 + Target/100) + ship) / margin
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            ebay3ApplyTargetBackSolve(function (lp, ship, margin) {
-                if (margin <= 0) return null;
-                return (lp * roiMultiplier + ship) / margin;
-            }, `Target SGROI ${targetRoiPct}%`);
-        });
-
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) {
-                showToast('Please enter a Target GPFT%', 'error');
-                return;
-            }
-            if (!isFinite(targetGpftPct)) {
-                showToast('Target GPFT% must be a number', 'error');
-                return;
-            }
-
-            // Target displayed SGPFT:
-            //   ((sprice×margin − ship − lp) / sprice) × 100 = Target
-            //   -> sprice = (lp + ship) / (margin − Target/100)
-            const targetFraction = targetGpftPct / 100;
-            ebay3ApplyTargetBackSolve(function (lp, ship, margin) {
-                const denom = margin - targetFraction;
-                if (denom <= 0) return null; // signals "target ≥ margin" skip
-                return (lp + ship) / denom;
-            }, `Target SGPFT ${targetGpftPct}%`);
-        });
-
-        $('#target-roi-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
-        });
-
         // ==================== Play/Pause parent navigation (like pricing-master-cvr) ====================
         /** CVR 30 for a parent tree row: SCVR from API, else eBay L30 / views. */
         function parentRowCvr30(parentRow) {
@@ -2840,7 +2658,7 @@
                     field: "E Dil%",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation) — same value Dil vs PRMT uses.",
+                    headerTooltip: "Listing Dil (Σ OV L30 ÷ Σ INV by variation). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const dil = (typeof chPromoListingDil === 'function')
@@ -2854,12 +2672,11 @@
                         if (!(dil > 0)) return '<span style="color: #6c757d;">0%</span>';
 
                         let color = '';
-                        if (dil < 16.66) color = '#a00211';
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                        if (dil < 25) color = '#a00211';
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
 
-                        return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Dil vs PRMT">${Math.round(dil)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;" title="Listing Dil — same as Sprc Dil">${Math.round(dil)}%</span>`;
                     },
                     width: 50
                 },
@@ -3226,11 +3043,43 @@
                 },
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. E L30 = 0 uses the minimum Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary || rowData.is_parent_row) return '';
+                        if (typeof ebay3IsAlertParentRow === 'function' && ebay3IsAlertParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = (meta.zeroSoldMin
+                                ? '0 Sold E L30 → min Target GROI'
+                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                    },
+                    {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
-                    headerTooltip: "S PRC is the saved value after Apply (clear, then save). Same $ as DB. Red triangle = saved S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when E L30 = 0). Red triangle = S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
@@ -4403,7 +4252,7 @@
             }
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr|push\s*std\s*prc)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
@@ -4488,6 +4337,7 @@
                         const def = col.getDefinition();
                         if (!def.field) return;
                         if (def.field === '_parent_expand' || def.field === '_select') return;
+                        if (/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) return;
 
                         const rawTitle = def.title || def.field;
                         const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
@@ -4527,7 +4377,7 @@
             const visibility = {};
             table.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (def.field) {
+                if (def.field && !/^(prmt_pct|cvr_up_dn|t_discounts|zero_sold_prmt|gt_sold_pct|push_prmt)$/i.test(def.field)) {
                     visibility[def.field] = col.isVisible();
                 }
             });

@@ -208,9 +208,8 @@
                         </select>
                         <select id="fr-dil-filter" class="form-select form-select-sm pricing-filter-item">
                             <option value="all">DIL%</option>
-                            <option value="red">Red &lt;16.7%</option>
-                            <option value="yellow">Yellow 16.7–25%</option>
-                            <option value="green">Green 25–50%</option>
+                            <option value="red">Red &lt;25%</option>
+                            <option value="green">Green 25-50%</option>
                             <option value="pink">Pink 50%+</option>
                         </select>
 
@@ -531,16 +530,56 @@
         let frMoreSoldActive = false;
         let blueTriangleFilterActive = false;
 
-        function frIsParentRow(d) {
-            return !!(d && (d.is_parent || d.is_parent_summary));
+        /** Same as /temu1-data discounted price: 0 Sold Dil→GROI%, else Std × (1 − T Promo). No EB/Amz/LMP cap. */
+        function frDiscountedPrice(row) {
+            if (!row || frIsParentRow(row)) return 0;
+            if (typeof chPromoZeroSoldRuleSprice === 'function') {
+                const zeroSold = Number(chPromoZeroSoldRuleSprice(row));
+                if (zeroSold > 0) return +zeroSold.toFixed(2);
+            }
+            if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
+                const combo = Number(chPromoTemuSpriceFromStdPrmtCpn(row));
+                if (combo > 0) return +combo.toFixed(2);
+            }
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const calc = Number(chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true }));
+                if (calc > 0) return +Number(calc).toFixed(2);
+            }
+            return 0;
+        }
+        function frRuleSprice(row, extra) {
+            extra = extra || {};
+            if (!row || frIsParentRow(row)) return 0;
+            if (typeof chPromoZeroSoldRuleSprice === 'function') {
+                const zeroSold = Number(chPromoZeroSoldRuleSprice(row));
+                if (zeroSold > 0) return +zeroSold.toFixed(2);
+            }
+            const passed = Number(extra.candidate != null ? extra.candidate : extra.sprice);
+            if (extra.use_passed_as_discounted && passed > 0) return +passed.toFixed(2);
+            return frDiscountedPrice(row);
+        }
+        window.frRuleSprice = frRuleSprice;
+        function frFaireSpriceMetrics(d, sprice) {
+            const lp = parseFloat(d && d.lp) || 0;
+            const margin = parseFloat(d && d._margin) || 0.75;
+            const s = parseFloat(sprice) || 0;
+            return {
+                sgpft: s > 0 ? Math.round(((s * margin - lp) / s) * 100) : 0,
+                sroi: lp > 0 ? Math.round(((s * margin - lp) / lp) * 100) : 0,
+            };
         }
         function frRowSpriceForAlert(data) {
-            let sprice = parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
-            if (typeof chPromoLiveSprice === 'function' && !frIsParentRow(data)) {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (frIsParentRow(data)) return 0;
+            const rule = frRuleSprice(data);
+            if (rule > 0) return rule;
+            if (typeof chPromoLiveSprice === 'function') {
+                const calc = Number(chPromoLiveSprice(data));
+                if (calc > 0) return calc;
             }
-            return sprice;
+            return parseFloat(data && (data.SPRICE != null ? data.SPRICE : data.sprice)) || 0;
+        }
+        function frPushSprice(d) {
+            return frRowSpriceForAlert(d);
         }
         function frHasBlueTriangle(data) {
             if (frIsParentRow(data)) return false;
@@ -998,7 +1037,7 @@
             } catch (e) { /* ignore */ }
             try {
                 const d = row.getData();
-                const sprice = parseFloat(d.sprice) || 0;
+                const sprice = frPushSprice(d);
                 const status = d.push_status || null;
                 const el = pushCell.getElement();
                 if (!el) return;
@@ -1021,7 +1060,7 @@
             const d = row.getData();
             if (d.is_parent) return;
             const sku = d.sku;
-            const price = parseFloat(d.sprice) || 0;
+            const price = frPushSprice(d);
             const productId = d.product_id || '';
             if (!sku || price <= 0) {
                 if (window.toastr) toastr.warning('SPRICE must be > 0 to push');
@@ -1059,7 +1098,7 @@
                 const d = row.getData();
                 if (d.is_parent) return;
                 const sku = d.sku;
-                const price = parseFloat(d.sprice) || 0;
+                const price = frPushSprice(d);
                 if (!sku || price <= 0) return;
                 if (selectedOnly && !frSelectedSkus.has(sku)) return;
                 list.push({
@@ -1846,8 +1885,7 @@
                     const inv = parseFloat(d.inv) || 0;
                     const ovL30 = parseFloat(d.ov_l30) || 0;
                     const dil = inv === 0 ? 0 : (ovL30 / inv) * 100;
-                    if (dilColor === 'red') return dil < 16.66;
-                    if (dilColor === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilColor === 'red') return dil < 25;
                     if (dilColor === 'green') return dil >= 25 && dil < 50;
                     if (dilColor === 'pink') return dil >= 50;
                     return true;
@@ -2220,7 +2258,7 @@
                             const ovL30 = parseFloat(row.ov_l30) || 0;
                             if (inv === 0) return '<span style="color:#6c757d;">0%</span>';
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 16.66 ? '#a00211' : dil < 25 ? '#ffc107' : dil < 50 ? '#28a745' : '#e83e8c';
+                            let color = dil < 25 ? '#a00211' : dil < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(dil) + '%</span>';
                         }
                     },
@@ -2346,31 +2384,24 @@
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                        headerTooltip: 'Same as /temu1-data without caps: 0 Sold Dil→Target GROI%, else Std × (1 − (PRMT% + CVR%)/100). No eBay, Amazon, or LMP cap. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                            let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(d);
+                            let value = frRuleSprice(d);
+                            if (!(value > 0) && typeof chPromoLiveSprice === 'function') {
+                                const calc = Number(chPromoLiveSprice(d));
                                 if (calc > 0) value = calc;
                             }
+                            if (!(value > 0)) value = parseFloat(cell.getValue() || 0) || 0;
                             if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
                             const live = parseFloat(d.price) || 0;
-                            const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const formatted = money(value);
-                            const priceHtml = overLmp
-                                ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
-                                : '<span style="font-weight:600;">' + formatted + '</span>';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + blueTri + '</span>';
                         }
                     },
                     {
@@ -2378,7 +2409,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            const sprice = frRowSpriceForAlert(d);
+                            const metrics = frFaireSpriceMetrics(d, sprice);
+                            const v = sprice > 0 ? metrics.sroi : (parseFloat(cell.getValue()) || 0);
                             if (isNaN(v) || v === 0) return '<span style="font-weight:700;">0%</span>';
                             let color;
                             if (v < 40) color = '#a00211';
@@ -2393,7 +2426,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue());
+                            const sprice = frRowSpriceForAlert(d);
+                            const metrics = frFaireSpriceMetrics(d, sprice);
+                            const v = sprice > 0 ? metrics.sgpft : (parseFloat(cell.getValue()) || 0);
                             if (isNaN(v) || v === 0) return '0%';
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
@@ -2411,7 +2446,7 @@
                                 if (status === 'pushed') return 4;
                                 if (status === 'pushing') return 3;
                                 if (status === 'error') return 2;
-                                return (parseFloat(d && d.sprice) || 0) > 0 ? 1 : 0;
+                                return frPushSprice(d) > 0 ? 1 : 0;
                             };
                             return rank(aRow.getData()) - rank(bRow.getData());
                         },
@@ -2419,7 +2454,7 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const sprice = parseFloat(d.sprice) || 0;
+                            const sprice = frPushSprice(d);
                             if (sprice <= 0) return '';
                             const pushStatus = d.push_status || null;
                             const sku = String(d.sku || '');

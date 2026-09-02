@@ -12,9 +12,10 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoShowZeroSoldDilRule = true;
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3'], true);
+    $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
-    $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['ebay1', 'temu', 'temu2'], true);
+    $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'shopify_b2c'], true);
     $channelPromoUsesAmazonCvrDisc = $channelPromoChannel === 'shopify_b2c';
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
@@ -639,12 +640,13 @@
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
                     @include('partials.sprice-lmp-cap-script')
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
+                    @unless(!empty($channelPromoUsesSprcDil))
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-prmt-btn"
                             title="{{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount: shared Dil vs PRMT (0.01–3 → 12 … 24–25 → 1). Auto-fills B2B disc; PRMT% auto-applies when Dil slab changes.' : 'Shared Dil vs PRMT (0.01–3 … 21–24, 24–25). PRMT% auto-applies when Dil slab changes. Save updates all marketplaces.' }}">
                             <i class="fas fa-sliders-h"></i> {{ $channelPromoChannel === 'shopify_b2b' ? 'B2B discount' : ($channelPromoChannel === 'aliexpress' ? 'PRMT%' : 'Prmt%') }}
                         </button>
-                        @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
+                        @if(in_array($channelPromoChannel, ['ebay2op', 'ebay3'], true))
                         <button type="button" class="btn btn-sm dropdown-toggle dropdown-toggle-split" id="ch-promo-prmt-menu-btn"
                             data-bs-toggle="dropdown" aria-expanded="false" title="More Prmt% actions">
                             <span class="visually-hidden">More</span>
@@ -658,6 +660,7 @@
                         </ul>
                         @endif
                     </div>
+                    @endunless
                     @if(in_array($channelPromoChannel, ['aliexpress', 'shein'], true))
                     <button type="button" class="btn btn-sm" id="ch-promo-dil-vs-sgroi-btn"
                         title="Same Dil slabs as Dil vs PRMT. Maps Dil% to Target SGROI%. S PRC auto-updates so SGROI equals the target when AL30 &gt; 0. If AL30 = 0, use 0 Sold.">
@@ -724,10 +727,12 @@
                     @if(!empty($channelPromoShowCvrUpDn))
                     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => $channelPromoChannel])
                     @endif
+                    @if($channelPromoShowZeroSoldDilRule)
                     <button type="button" class="btn btn-sm" id="ch-promo-zero-sold-vs-dil-btn"
                         title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. This page has its own rule table. Apply sets S PRC so SGROI equals the target when 0 sold.">
                         0 Sold
                     </button>
+                    @endif
                     @unless(in_array($channelPromoChannel, ['macys', 'macy']))
                     @if(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3']))
                     @unless(in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3'], true))
@@ -842,6 +847,7 @@
     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'modals', 'cvrUpDnChannel' => $channelPromoChannel])
     @endif
 
+    @unless(!empty($channelPromoUsesSprcDil))
     <div class="modal fade" id="chPromoDilVsPrmtModal" tabindex="-1" aria-labelledby="chPromoDilVsPrmtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
             <div class="modal-content">
@@ -892,6 +898,7 @@
             </div>
         </div>
     </div>
+    @endunless
 
     @if(in_array($channelPromoChannel, ['aliexpress', 'shein'], true))
     <div class="modal fade" id="chPromoDilVsSgroiModal" tabindex="-1" aria-labelledby="chPromoDilVsSgroiModalLabel" aria-hidden="true">
@@ -1138,6 +1145,14 @@
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
 
         const CHANNEL_PROMO_CHANNEL = @json($channelPromoChannel ?? 'ebay1');
+        function chPromoUsesSprcDilInsteadOfPrmt() {
+            return CHANNEL_PROMO_CHANNEL === 'ebay1'
+                || CHANNEL_PROMO_CHANNEL === 'ebay2'
+                || CHANNEL_PROMO_CHANNEL === 'ebay3'
+                || CHANNEL_PROMO_CHANNEL === 'temu'
+                || CHANNEL_PROMO_CHANNEL === 'temu2'
+                || CHANNEL_PROMO_CHANNEL === 'temu3';
+        }
         const CHANNEL_PROMO_TAKEHOME = {{ (float) ($channelPromoTakehome ?? 1) }};
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
@@ -1306,6 +1321,18 @@
                 soldField: 'temu_l30',
                 saveSpriceMode: 'sku',
             },
+            temu3: {
+                label: 'Temu 3',
+                saveSpriceUrl: '/temu3-pricing/save-sprice',
+                pushPriceUrl: '/temu3/push-price',
+                priceField: 'temu_price',
+                cvrField: 'cvr_percent',
+                dilField: 'dil_percent',
+                invField: 'inventory',
+                skuField: 'sku',
+                soldField: 'temu_l30',
+                saveSpriceMode: 'sku',
+            },
             doba: {
                 label: 'Doba',
                 saveSpriceUrl: '/doba/save-sprice',
@@ -1420,11 +1447,12 @@
                 saveSpriceUrl: '/faire/pricing-save-sprice',
                 pushPriceUrl: '/cvr-master-push-price',
                 priceField: 'price',
-                cvrField: 'CVR%',
+                cvrField: 'cvr',
                 dilField: 'dil_percent',
                 invField: 'inv',
                 skuField: 'sku',
                 soldField: 'al30',
+                soldFieldLabel: 'AL30',
                 saveSpriceMode: 'updates',
             },
             pls: {
@@ -2761,6 +2789,7 @@
         }
         /** PRMT% used in S PRC (Dil vs PRMT slab on eBay / AliExpress / Shein). */
         function chPromoEbayPrmtUsed(d) {
+            if (chPromoUsesSprcDilInsteadOfPrmt()) return 0;
             if (chPromoIsEbayChannel()
                 && typeof chPromoIsZeroSoldRow === 'function'
                 && chPromoIsZeroSoldRow(d)) {
@@ -2795,6 +2824,7 @@
         }
         /** cvr % / CPN% / CVR Disc used in S PRC. */
         function chPromoEbayCpnUsed(d) {
+            if (CHANNEL_PROMO_HIDE_CVR_CPN) return 0;
             if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                 && typeof chPromoIsZeroSoldRow === 'function'
                 && chPromoIsZeroSoldRow(d)) {
@@ -2821,9 +2851,9 @@
             return chPromoRound2(chPromoEbayPrmtUsed(d) + chPromoEbayCpnUsed(d) + adj);
         }
         function chPromoCvrUpDnEnabled() {
-            return CHANNEL_PROMO_CHANNEL === 'ebay1'
-                || CHANNEL_PROMO_CHANNEL === 'temu'
-                || CHANNEL_PROMO_CHANNEL === 'temu2';
+            return CHANNEL_PROMO_CHANNEL === 'temu'
+                || CHANNEL_PROMO_CHANNEL === 'temu2'
+                || CHANNEL_PROMO_CHANNEL === 'temu3';
         }
         function chPromoLastCouponPct(d) {
             return Math.round(Math.max(0, Number(d && d.PEF_COUPON_PCT) || 0));
@@ -3253,6 +3283,12 @@
             return 0;
         }
         function chPromoShouldCapSpriceToLmp(d) {
+            // Faire: CVR / PRMT / 0 Sold only — never LMP, eBay, or Amazon cap.
+            if (typeof chPromoIsFairePromoChannel === 'function'
+                ? chPromoIsFairePromoChannel()
+                : CHANNEL_PROMO_CHANNEL === 'faire') {
+                return false;
+            }
             if (!d) return true;
             // 0 Sold (AL30 = 0): keep Target GROI% S PRC — do not cap at LMP.
             return !(typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(d));
@@ -3289,6 +3325,21 @@
                     const v = Number(temuPrepareSpriceForSave(d, fill, extra));
                     return v > 0 ? chPromoRound2(v) : 0;
                 }
+            }
+            if (d && chPromoIsFairePromoChannel()) {
+                const zeroSold = typeof chPromoTemuZeroSoldSprice === 'function'
+                    ? Number(chPromoTemuZeroSoldSprice(d))
+                    : 0;
+                if (zeroSold > 0) return chPromoRound2(zeroSold);
+                if (typeof window.frRuleSprice === 'function') {
+                    const opts = Object.assign({}, extra, {
+                        candidate: requested,
+                        use_passed_as_discounted: extra.use_passed_as_discounted === true || requested > 0,
+                    });
+                    const v = Number(window.frRuleSprice(d, opts));
+                    if (v > 0) return chPromoRound2(v);
+                }
+                return chPromoRound2(requested);
             }
             const skipCap = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(d);
             const capped = skipCap
@@ -3558,6 +3609,10 @@
          *  Does not write into SPRICE — an unsaved row stays empty, not a live guess. */
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
+            if (typeof ebaySprcDilForRow === 'function') {
+                const sprcDil = ebaySprcDilForRow(d);
+                if (sprcDil > 0) return chPromoCapSpriceToLmp(d, sprcDil);
+            }
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
             const dilSgroi = (!zeroSold && typeof chPromoDilSgroiRuleSprice === 'function')
                 ? chPromoDilSgroiRuleSprice(d)
@@ -3566,14 +3621,14 @@
                 ? zeroSold
                 : (dilSgroi > 0
                     ? dilSgroi
-                    : (chPromoIsTemuPromoChannel()
+                    : (chPromoUsesPrmtCpnDiscountedStart()
                         ? chPromoTemuDiscountedStart(d)
                         : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d) || 0)));
             const live = (zeroSold > 0 || dilSgroi > 0)
                 ? (zeroSold > 0 ? zeroSold : dilSgroi)
                 : chPromoResolveTemuSprice(d, start, { use_passed_as_discounted: start > 0 });
             if (!(live > 0)) return 0;
-            return chPromoCapSpriceToLmp(d, live);
+            return chPromoIsFairePromoChannel() ? chPromoRound2(live) : chPromoCapSpriceToLmp(d, live);
         }
         /** Cell / S GPFT / S GROI: saved SPRICE only. No live fallback. */
         function chPromoSavedOrLiveSprice(d) {
@@ -3599,7 +3654,9 @@
             if (chPromoIsEbayChannel()
                 || (typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel())
                 || CHANNEL_PROMO_CHANNEL === 'temu'
-                || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                || CHANNEL_PROMO_CHANNEL === 'temu2'
+                || CHANNEL_PROMO_CHANNEL === 'temu3'
+                || CHANNEL_PROMO_CHANNEL === 'faire') {
                 return 0;
             }
             const price = chPromoPrice(d);
@@ -3658,8 +3715,11 @@
             if (String(CHANNEL_PROMO_CHANNEL).indexOf('ebay') === 0) {
                 return chPromoListingDil(d);
             }
-            // Temu Dil column = (OV L30 / INV) × 100 — already stored as dil_percent
-            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+            // Temu Dil column = listing Dil (Σ OV L30 ÷ Σ INV), same as Sprc Dil
+            if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3') {
+                if (typeof chPromoUsesSprcDilInsteadOfPrmt === 'function' && chPromoUsesSprcDilInsteadOfPrmt()) {
+                    return chPromoListingDil(d);
+                }
                 let dil = Number(d.dil_percent);
                 if (isFinite(dil)) return dil;
                 if (inv <= 0) return 0;
@@ -3731,6 +3791,7 @@
         }
         /** Live PRMT% from Dil slabs (eBay / AE / Shein / Newegg / TikTok Amazon map). */
         function chPromoUsesLiveDilPrmtSlabs() {
+            if (chPromoUsesSprcDilInsteadOfPrmt()) return false;
             return chPromoIsEbayChannel()
                 || CHANNEL_PROMO_CHANNEL === 'aliexpress'
                 || CHANNEL_PROMO_CHANNEL === 'shein'
@@ -3739,6 +3800,7 @@
         }
         /** Live cvr % from CVR vs CPN slabs (eBay / Newegg / AliExpress). Amazon CVR Disc has its own column path. */
         function chPromoUsesLiveCvrCpnSlabs() {
+            if (CHANNEL_PROMO_HIDE_CVR_CPN) return false;
             return (chPromoIsEbayChannel()
                 || CHANNEL_PROMO_CHANNEL === 'newegg'
                 || (typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel()))
@@ -3902,10 +3964,12 @@
         function chPromoReverbComboEnabled() {
             return !!CHANNEL_PROMO_SHOW_ZERO_SOLD_RULES;
         }
-        /** S PRC = Std × (1 − (PRMT% + CPN%)/100) — Temu and Reverb coupon. */
+        /** S PRC = Std × (1 − (PRMT% + CPN%)/100) — Temu, Faire, and Reverb coupon. */
         function chPromoPrmtCpnComboEnabled() {
             return CHANNEL_PROMO_CHANNEL === 'temu'
                 || CHANNEL_PROMO_CHANNEL === 'temu2'
+                || CHANNEL_PROMO_CHANNEL === 'temu3'
+                || CHANNEL_PROMO_CHANNEL === 'faire'
                 || (CHANNEL_PROMO_CHANNEL === 'reverb' && !CHANNEL_PROMO_HIDE_CVR_CPN);
         }
         function chPromoZeroSoldPrmtInt(d) {
@@ -3917,7 +3981,14 @@
                 || d.ZERO_SOLD_PRC_APPLIED === '1' || d.ZERO_SOLD_PRC_APPLIED === 'true'));
         }
         function chPromoIsTemuPromoChannel() {
-            return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2';
+            return CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3';
+        }
+        function chPromoIsFairePromoChannel() {
+            return CHANNEL_PROMO_CHANNEL === 'faire';
+        }
+        /** Temu / Faire: 0 Sold Dil→GROI, else Std × (1 − T Promo). Faire never applies EB/Amz/LMP caps. */
+        function chPromoUsesPrmtCpnDiscountedStart() {
+            return chPromoIsTemuPromoChannel() || chPromoIsFairePromoChannel();
         }
         /** Persist SPRICE = 0, then insert the discounted or LMP-capped price — all marketplace blades. */
         function chPromoShouldPersistClearThenSprice() {
@@ -3925,6 +3996,10 @@
         }
         /** Temu discounted start: 0 Sold Dil→Target GROI%, else Std × (1 − T Promo). Never stored S PRC. */
         function chPromoTemuDiscountedStart(d) {
+            if (typeof ebaySprcDilForRow === 'function') {
+                const sprcDil = Number(ebaySprcDilForRow(d));
+                if (sprcDil > 0) return chPromoRound2(sprcDil);
+            }
             const zeroSold = typeof chPromoTemuZeroSoldSprice === 'function'
                 ? Number(chPromoTemuZeroSoldSprice(d))
                 : 0;
@@ -3939,14 +4014,20 @@
             }
             return 0;
         }
-        /** Temu: 0 Sold Dil→Target GROI%, else min(Discounted, eBay, Amz, displayed LMP). */
+        /** Temu: 0 Sold Dil→Target GROI%, else min(Discounted, eBay, Amz, displayed LMP). Faire: same rules, no caps. */
         function chPromoResolveTemuSprice(d, sprice, extra) {
             extra = extra || {};
-            if (d && chPromoIsTemuPromoChannel()) {
+            if (d && chPromoUsesPrmtCpnDiscountedStart()) {
                 const zeroSold = typeof chPromoTemuZeroSoldSprice === 'function'
                     ? Number(chPromoTemuZeroSoldSprice(d))
                     : 0;
                 if (zeroSold > 0) return chPromoRound2(zeroSold);
+            }
+            if (d && chPromoIsFairePromoChannel()) {
+                const start = (extra.use_passed_as_discounted && Number(sprice) > 0)
+                    ? Number(sprice)
+                    : (chPromoTemuDiscountedStart(d) || Number(sprice) || 0);
+                return start > 0 ? chPromoRound2(start) : 0;
             }
             if (d && typeof temuPrepareSpriceForSave === 'function' && chPromoIsTemuPromoChannel()) {
                 const start = (extra.use_passed_as_discounted && Number(sprice) > 0)
@@ -3982,9 +4063,12 @@
             const passed = Number(candidate);
             return chPromoResolveTemuSprice(d, passed, { use_passed_as_discounted: passed > 0 });
         }
-        /** Temu 0 Sold Dil→Target GROI% owns S PRC. Dil/PRMT/CPN must not overwrite it. */
+        /** Temu / Faire 0 Sold Dil→Target GROI% owns S PRC. Dil/PRMT/CPN must not overwrite it. */
         function chPromoTemuZeroSoldOwnsSprice(d) {
-            return chPromoIsTemuPromoChannel()
+            if (typeof chPromoUsesSprcDilInsteadOfPrmt === 'function' && chPromoUsesSprcDilInsteadOfPrmt()) {
+                return false;
+            }
+            return chPromoUsesPrmtCpnDiscountedStart()
                 && typeof chPromoIsZeroSoldRow === 'function'
                 && chPromoIsZeroSoldRow(d);
         }
@@ -4079,7 +4163,7 @@
                 // Persist a real clear. Temu prepare would otherwise rewrite Std × promo.
                 val = 0;
             } else if (rowData && typeof temuPrepareSpriceForSave === 'function'
-                && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2')) {
+                && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3')) {
                 val = temuPrepareSpriceForSave(rowData, sprice);
             } else {
                 val = extra.skip_lmp_cap || !chPromoShouldCapSpriceToLmp(rowData)
@@ -4143,7 +4227,7 @@
             const val = !(requested > 0)
                 ? 0
                 : ((typeof temuPrepareSpriceForSave === 'function'
-                    && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2'))
+                    && (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3'))
                     ? temuPrepareSpriceForSave(d, sprice)
                     : chPromoFloorShopifySpriceToAmz(
                         d,
@@ -4866,7 +4950,8 @@
             const margin = chPromoZeroSoldTakehomeMargin(d);
             if (!(margin > 0)) return 0;
             const roi = isFinite(Number(roiPct)) ? Number(roiPct) : 0;
-            const price = (lp * (1 + roi / 100) + chPromoShipCost(d)) / margin;
+            const ship = CHANNEL_PROMO_CHANNEL === 'faire' ? 0 : chPromoShipCost(d);
+            const price = (lp * (1 + roi / 100) + ship) / margin;
             return (isFinite(price) && price > 0) ? chPromoRound2(price) : 0;
         }
         function chPromoPatchDatasetSprice(sku, updates) {
@@ -6956,11 +7041,12 @@
                     const cpn = encoded ? (Number(encoded.cpn) || 0) : 0;
                     const dilBand = chPromoDilColorBand(chPromoZeroSoldDilPct(d));
                     const zsMargin = chPromoZeroSoldTakehomeMargin(d);
+                    const zsShip = chPromoIsFairePromoChannel() ? 0 : chPromoShipCost(d);
                     const sgpft = fill > 0
-                        ? Math.round(((fill * zsMargin - chPromoLp(d) - chPromoShipCost(d)) / fill) * 100)
+                        ? Math.round(((fill * zsMargin - chPromoLp(d) - zsShip) / fill) * 100)
                         : 0;
                     const sroi = chPromoLp(d) > 0
-                        ? Math.round(((fill * zsMargin - chPromoLp(d) - chPromoShipCost(d)) / chPromoLp(d)) * 100)
+                        ? Math.round(((fill * zsMargin - chPromoLp(d) - zsShip) / chPromoLp(d)) * 100)
                         : 0;
                     const temuMetrics = (chPromoIsTemuPromoChannel()
                         && typeof temuSpriceRelatedMetrics === 'function')
@@ -7139,6 +7225,7 @@
         }
 
         async function applyChPromoDilPrmtToTargets(targets, label, opts) {
+            if (chPromoUsesSprcDilInsteadOfPrmt()) return;
             opts = opts || {};
             const silent = !!opts.silent;
             readChPromoDilPrmtRulesFromModal();
@@ -7527,6 +7614,7 @@
             return out;
         }
         function chPromoScheduleDilPrmtAutoApply(opts) {
+            if (chPromoUsesSprcDilInsteadOfPrmt()) return;
             opts = opts || {};
             if (!Object.keys(chPromoDilLastSlab).length) chPromoLoadDilLastSlabs();
             if (opts.saveRules) {
@@ -7713,6 +7801,7 @@
         }
 
         async function applyChPromoCvrCpnToTargets(targets, label, opts) {
+            if (CHANNEL_PROMO_HIDE_CVR_CPN) return;
             opts = opts || {};
             const silent = !!opts.silent;
             readChPromoCvrCpnRulesFromModal();
@@ -7881,6 +7970,7 @@
         }
 
         async function pushEbay1CodedCouponsForTargets(targets) {
+            if (CHANNEL_PROMO_HIDE_CVR_CPN) return;
             const jobs = [];
             targets.forEach(function(t) {
                 const d = t.row.getData();
@@ -8924,10 +9014,16 @@
             extra = extra || {};
             const finish = function(p) {
                 if (!(p >= 0.01)) return 0;
-                let out = extra.skip_lmp_cap ? chPromoRound2(p) : chPromoCapSpriceToLmp(d, p, extra);
+                let out = (extra.skip_lmp_cap || chPromoIsFairePromoChannel())
+                    ? chPromoRound2(p)
+                    : chPromoCapSpriceToLmp(d, p, extra);
                 if (!extra.skip_amz_floor) out = chPromoFloorShopifySpriceToAmz(d, out);
                 return out;
             };
+            if (typeof ebaySprcDilForRow === 'function') {
+                const sprcDil = ebaySprcDilForRow(d);
+                if (sprcDil > 0) return finish(sprcDil);
+            }
             if (typeof chPromoZeroSoldRuleSprice === 'function') {
                 const zeroSold = chPromoZeroSoldRuleSprice(d);
                 if (zeroSold > 0) return finish(zeroSold);
@@ -8976,7 +9072,7 @@
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
             const start = zeroSold > 0
                 ? zeroSold
-                : (chPromoIsTemuPromoChannel()
+                : (chPromoUsesPrmtCpnDiscountedStart()
                     ? chPromoTemuDiscountedStart(d)
                     : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d)));
             let fill = zeroSold > 0
@@ -9070,7 +9166,7 @@
                     ? zeroSold
                     : (dilSgroi > 0
                         ? dilSgroi
-                        : (chPromoIsTemuPromoChannel()
+                        : (chPromoUsesPrmtCpnDiscountedStart()
                             ? chPromoTemuDiscountedStart(d)
                             : chPromoFloorShopifySpriceToAmz(d, chPromoSpriceFromStdTPromo(d))));
                 const fill = (zeroSold > 0 || dilSgroi > 0)
@@ -9503,7 +9599,7 @@
                 }
                 const item = ready[i++];
                 const rowData = item.row.getData();
-                const start = chPromoIsTemuPromoChannel()
+                const start = chPromoUsesPrmtCpnDiscountedStart()
                     ? chPromoTemuDiscountedStart(rowData)
                     : chPromoFloorShopifySpriceToAmz(rowData, chPromoSpriceFromStdTPromo(rowData));
                 const fill = chPromoResolveTemuSprice(rowData, start, { use_passed_as_discounted: start > 0 });
@@ -10047,7 +10143,7 @@
             };
         }
         function channelPromoPricingColumns() {
-            return [
+            const cols = [
                 ...(CHANNEL_PROMO_CHANNEL === 'shopify_b2b' ? [channelPromoB2bDiscountColumn()] : []),
                 {
                     title: 'PRMT %',
@@ -10448,6 +10544,17 @@
                 ...((['ebay1', 'ebay2', 'ebay3'].indexOf(CHANNEL_PROMO_CHANNEL) !== -1)
                     ? [channelPromoPushPrcColumn()] : []),
             ];
+            if (chPromoUsesSprcDilInsteadOfPrmt()) {
+                return cols.filter(function(c) {
+                    return c && c.field !== 'prmt_pct'
+                        && c.field !== 'cvr_up_dn'
+                        && c.field !== 't_discounts'
+                        && c.field !== 'zero_sold_prmt'
+                        && c.field !== 'gt_sold_pct'
+                        && c.field !== 'push_prmt';
+                });
+            }
+            return cols;
         }
 
         function initChannelPromoPricingUi() {
@@ -10478,7 +10585,7 @@
                         chPromoToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save reload-push switch');
                     });
             });
-            if (typeof loadChPromoDilPrmtRules === 'function') {
+            if (!chPromoUsesSprcDilInsteadOfPrmt() && typeof loadChPromoDilPrmtRules === 'function') {
                 chPromoLoadDilLastSlabs();
                 Promise.resolve(loadChPromoDilPrmtRules()).catch(function() { /* defaults */ });
             }
@@ -10613,7 +10720,7 @@
                                 ? ' If discounted S PRC is <strong>below Amz price</strong>, S PRC is raised to A Price (Amz label).'
                                 : '');
                     }
-                } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2') {
+                } else if (CHANNEL_PROMO_CHANNEL === 'temu' || CHANNEL_PROMO_CHANNEL === 'temu2' || CHANNEL_PROMO_CHANNEL === 'temu3') {
                     const help = document.getElementById('ch-promo-dil-prmt-help');
                     if (help) {
                         help.innerHTML = 'Map Dil% slabs to PRMT%. On Temu, Dil is <strong>SKU-wise</strong> '
@@ -11103,6 +11210,14 @@
                 appr: 1,
             };
             if (CHANNEL_PROMO_HIDE_PUSH_CPN || CHANNEL_PROMO_CHANNEL !== 'temu') hide.push_cpn = 1;
+            if (chPromoUsesSprcDilInsteadOfPrmt()) {
+                hide.prmt_pct = 1;
+                hide.cvr_up_dn = 1;
+                hide.t_discounts = 1;
+                hide.zero_sold_prmt = 1;
+                hide.gt_sold_pct = 1;
+                hide.push_prmt = 1;
+            }
             return (channelPromoPricingColumns() || []).filter(function(c) {
                 return c && !hide[c.field];
             });
@@ -11135,6 +11250,8 @@
         window.chPromoEbayStdMinusPrmtCpnEnabled = chPromoEbayStdMinusPrmtCpnEnabled;
         window.autopopulateEbaySpriceFromStdPrmtCpn = autopopulateEbaySpriceFromStdPrmtCpn;
         window.chPromoPrmtCpnComboEnabled = chPromoPrmtCpnComboEnabled;
+        window.chPromoIsFairePromoChannel = chPromoIsFairePromoChannel;
+        window.chPromoUsesPrmtCpnDiscountedStart = chPromoUsesPrmtCpnDiscountedStart;
         window.chPromoPlanSaleSprice = chPromoPlanSaleSprice;
         window.chPromoPaintPushStdPrcSpinner = chPromoPaintPushStdPrcSpinner;
         window.chPromoRefreshPushStdPrcCell = chPromoRefreshPushStdPrcCell;

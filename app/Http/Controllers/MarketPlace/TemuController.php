@@ -24,6 +24,9 @@ use App\Models\TemuPricing;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2Metric;
 use App\Models\Temu2DataView;
+use App\Models\Temu3Pricing;
+use App\Models\Temu3DataView;
+use App\Models\Temu3ViewData;
 use App\Models\TemuViewData;
 use App\Models\TemuAdsView;
 use App\Models\TemuViewDataL7;
@@ -2072,7 +2075,7 @@ class TemuController extends Controller
      * Read Temu 2 pricing upload into a plain row array (header + data).
      * TSV/CSV use native PHP (fast); Excel uses PhpSpreadsheet data-only load.
      */
-    private function readTemu2PricingUploadRows(string $path, string $ext): array
+    protected function readTemu2PricingUploadRows(string $path, string $ext): array
     {
         if (in_array($ext, ['tsv', 'txt', 'csv'], true)) {
             $delimiter = $ext === 'csv' ? ',' : "\t";
@@ -2417,7 +2420,7 @@ class TemuController extends Controller
      *
      * @return array{sgprft: float, sroi: float}
      */
-    private function temuSpriceMetricsForSku(string $sku, float $sprice): array
+    protected function temuSpriceMetricsForSku(string $sku, float $sprice): array
     {
         $productMaster = ProductMaster::where('sku', $sku)->first()
             ?? ProductMaster::whereRaw('TRIM(sku) = ?', [$sku])->first();
@@ -2848,7 +2851,7 @@ class TemuController extends Controller
      */
     public function getTemuDecreaseData(Request $request)
     {
-        return $this->buildTemuDecreaseDataResponse($request, false);
+        return $this->buildTemuDecreaseDataResponse($request, 'temu');
     }
 
     /**
@@ -2857,18 +2860,31 @@ class TemuController extends Controller
      */
     public function getTemu2DecreaseData(Request $request)
     {
-        return $this->buildTemuDecreaseDataResponse($request, true);
+        return $this->buildTemuDecreaseDataResponse($request, 'temu2');
     }
 
     public function getTemu2DecreaseDataL7(Request $request)
     {
         $request->query->set('period', 'L7');
 
-        return $this->buildTemuDecreaseDataResponse($request, true);
+        return $this->buildTemuDecreaseDataResponse($request, 'temu2');
     }
 
-    private function buildTemuDecreaseDataResponse(Request $request, bool $isTemu2Pricing)
+    /**
+     * @param  string|bool  $channel  'temu' | 'temu2' | 'temu3' (bool kept for older callers)
+     */
+    protected function buildTemuDecreaseDataResponse(Request $request, $channel = 'temu')
     {
+        if ($channel === true) {
+            $channel = 'temu2';
+        } elseif ($channel === false) {
+            $channel = 'temu';
+        }
+        $channel = (string) $channel;
+        $isTemu2Pricing = $channel === 'temu2';
+        $isTemu3 = $channel === 'temu3';
+        $isSheetPricing = $isTemu2Pricing || $isTemu3;
+
         try {
             // This payload is ~5MB / ~250MB peak (Product Master + orders + ads + Amazon SP).
             // Apache's default memory_limit is 128M, which fatals before the catch and
@@ -2953,7 +2969,9 @@ class TemuController extends Controller
                 ];
             };
 
-            if ($isTemu2Pricing) {
+            if ($isTemu3) {
+                $allPricingData = collect();
+            } elseif ($isTemu2Pricing) {
                 $allPricingData = Schema::hasTable('temu2_metrics')
                     ? Temu2Metric::query()
                         ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'recommended_base_price', 'product_clicks_l30'])
@@ -2982,17 +3000,19 @@ class TemuController extends Controller
                 }
             }
 
-            // Temu 2: Price + Goods ID from temu2_pricing matched by SKU → CP Master.
-            // Goods ID from this sheet is the join key for temu2_view_data Views (product_clicks).
+            // Temu 2 / Temu 3: Price + Goods ID from uploaded price sheet matched by SKU → CP Master.
+            // Goods ID from this sheet is the join key for view_data Views (product_clicks).
             // Drop API / leftover metric prices so a sheet with no Price shows $0.
             $temu2PricingGoodsIdBySku = []; // original CP Master sku => normalized goods_id
-            if ($isTemu2Pricing) {
+            if ($isSheetPricing) {
                 foreach ($pricingData as $existing) {
                     $existing->base_price = 0;
                 }
             }
-            if ($isTemu2Pricing && Schema::hasTable('temu2_pricing')) {
-                $sheetRows = Temu2Pricing::query()
+            $sheetPricingModel = $isTemu3 ? Temu3Pricing::class : ($isTemu2Pricing ? Temu2Pricing::class : null);
+            $sheetPricingTable = $isTemu3 ? 'temu3_pricing' : 'temu2_pricing';
+            if ($isSheetPricing && $sheetPricingModel && Schema::hasTable($sheetPricingTable)) {
+                $sheetRows = $sheetPricingModel::query()
                     ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'product_name', 'category', 'variation', 'status', 'detail_status'])
                     ->get();
                 foreach ($sheetRows as $sheet) {
@@ -3082,9 +3102,11 @@ class TemuController extends Controller
                 [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
             }
             $orderRows = collect(
-                $isTemu2Pricing
-                    ? TemuShopifySalesService::getTemu2OrdersTableRows($apiStart, $apiEnd)
-                    : TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd)
+                $isTemu3
+                    ? []
+                    : ($isTemu2Pricing
+                        ? TemuShopifySalesService::getTemu2OrdersTableRows($apiStart, $apiEnd)
+                        : TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd))
             )->map(fn ($r) => (object) $r);
             foreach ($orderRows as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
@@ -3111,9 +3133,11 @@ class TemuController extends Controller
             $l60ByNormalizedSku = array_fill_keys(array_keys($normalizedPmSkus), 0);
             [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
             $orderRowsL60 = collect(
-                $isTemu2Pricing
-                    ? TemuShopifySalesService::getTemu2OrdersTableRows($l60Start, $l60End)
-                    : TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End)
+                $isTemu3
+                    ? []
+                    : ($isTemu2Pricing
+                        ? TemuShopifySalesService::getTemu2OrdersTableRows($l60Start, $l60End)
+                        : TemuShopifySalesService::getOrdersTableRows($l60Start, $l60End))
             )->map(fn ($r) => (object) $r);
             foreach ($orderRowsL60 as $row) {
                 $raw = trim((string) ($row->contribution_sku ?? ''));
@@ -3223,8 +3247,18 @@ class TemuController extends Controller
             // Views (Temu 1): Seller Center sheet → temu_view_data.product_clicks (by goods_id).
             // Temu OpenAPI has no product-page views; ads clkCntAll is ad-only (often 0 with organic sales).
             // Fallback: temu_metrics.product_clicks_l30 (Ads API) when sheet has no row for that goods_id.
-            // Temu 2: temu2_view_data sheet.
-            if ($isTemu2Pricing) {
+            // Temu 2: temu2_view_data sheet. Temu 3: temu3_view_data sheet.
+            if ($isTemu3) {
+                $viewData = Schema::hasTable('temu3_view_data')
+                    ? Temu3ViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+                        ->groupBy('goods_id')
+                        ->get()
+                        ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                    : collect();
+
+                $viewDataL7 = collect();
+                $viewDataL7ToL14 = collect();
+            } elseif ($isTemu2Pricing) {
                 $viewData = Schema::hasTable('temu2_view_data')
                     ? Temu2ViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
                         ->groupBy('goods_id')
@@ -3269,7 +3303,25 @@ class TemuController extends Controller
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
 
-            if ($isTemu2Pricing) {
+            if ($isTemu3) {
+                $adsViewsData = collect();
+                $emptyCampaign = collect();
+                [
+                    $campaignReportL30,
+                    $campaignReportL30BySku,
+                    $campaignReportL30BySkuLoose,
+                    $campaignReportL60,
+                    $campaignReportL60BySku,
+                    $campaignReportL60BySkuLoose,
+                    $campaignReportL7,
+                    $campaignReportL7BySku,
+                    $campaignReportL7BySkuLoose,
+                ] = [
+                    $emptyCampaign, $emptyCampaign, $emptyCampaign,
+                    $emptyCampaign, $emptyCampaign, $emptyCampaign,
+                    $emptyCampaign, $emptyCampaign, $emptyCampaign,
+                ];
+            } elseif ($isTemu2Pricing) {
                 // Temu 2 still uses /temu2/ads campaign-report uploads.
                 $adsViewsData = Schema::hasTable('temu_ads_views')
                     ? TemuAdsView::selectRaw('goods_id, SUM(clicks) as ads_views')
@@ -3305,17 +3357,24 @@ class TemuController extends Controller
                 ] = $this->temuAdsApiReportIndexes($campaignRange, $normalizeSku, $normalizeSkuLoose);
             }
 
-            // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
-            $temuDataViewData = ($isTemu2Pricing ? Temu2DataView::query() : TemuDataView::query())
-                ->whereIn('sku', $skus)
-                ->select('sku', 'value')
-                ->get()
-                ->keyBy('sku');
+            // Fetch saved SPRICE values (Temu 2 / Temu 3 use their own data_view tables)
+            $dataViewClass = $isTemu3
+                ? Temu3DataView::class
+                : ($isTemu2Pricing ? Temu2DataView::class : TemuDataView::class);
+            $temuDataViewData = Schema::hasTable((new $dataViewClass)->getTable())
+                ? $dataViewClass::query()
+                    ->whereIn('sku', $skus)
+                    ->select('sku', 'value')
+                    ->get()
+                    ->keyBy('sku')
+                : collect();
 
             // R Prc fallback indexes (Temu 1 already has recommended on $pricingData items)
             $recommendedBySkuId = [];
             $recommendedBySku = [];
-            if ($isTemu2Pricing) {
+            if ($isTemu3) {
+                // Sheet-only — no API recommended prices.
+            } elseif ($isTemu2Pricing) {
                 TemuMetric::query()
                     ->select('sku', 'sku_id', 'recommended_base_price')
                     ->whereNotNull('recommended_base_price')
@@ -3419,7 +3478,7 @@ class TemuController extends Controller
             };
 
             // PRMT%/CPN%/DSC%/Appr/Push Prc — temu / temu2_promo_pricing (site-specific)
-            $promoChannel = $isTemu2Pricing ? 'temu2' : 'temu';
+            $promoChannel = $isTemu3 ? 'temu3' : ($isTemu2Pricing ? 'temu2' : 'temu');
             $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
 
             $ebayData = EbayMetric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
@@ -3430,7 +3489,7 @@ class TemuController extends Controller
             $ebay2Data = Ebay2Metric::whereIn('sku', $skus)->select('sku', 'ebay_price')->get()->keyBy('sku');
 
             // Temu 1: temu_listing_statuses. Temu 2: same keys live in temu2_data_view JSON (value).
-            $statusData = $isTemu2Pricing
+            $statusData = ($isTemu2Pricing || $isTemu3)
                 ? collect()
                 : TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
@@ -3469,7 +3528,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $adsViewsData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap, $lookupStdPrc) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $adsViewsData, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $isTemu3, $isSheetPricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku, $promoMap, $lookupStdPrc) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3523,10 +3582,10 @@ class TemuController extends Controller
                 $temuL30 = $temuSales ? (int) ($temuSales->temu_l30 ?? 0) : 0;
                 
                 // Views / O Clicks by goods_id:
-                // Temu 2 → Goods ID from temu2_pricing, then SUM(product_clicks) from temu2_view_data
+                // Temu 2 / Temu 3 → Goods ID from price sheet, then SUM(product_clicks) from view_data
                 //           across every uploaded file/date for that Goods ID (no Ads API fallback).
                 // Temu 1 → temu_view_data sheet; Ads API fallback when sheet has no row.
-                if ($isTemu2Pricing) {
+                if ($isSheetPricing) {
                     $goodsId = $temu2PricingGoodsIdBySku[$sku]
                         ?? TemuGoodsIdHelper::normalizeKey($item->goods_id ?? null);
                 } else {
@@ -3537,8 +3596,8 @@ class TemuController extends Controller
                 // Sheet SUM(product_clicks) for this Goods ID (all uploaded dates/files).
                 $sheetProductClicks = $viewDataItem ? (int) $viewDataItem->product_clicks : 0;
                 $oClicks = $sheetProductClicks;
-                if ($isTemu2Pricing) {
-                    // Views column = uploaded sheet sum only, matched via temu2_pricing.goods_id
+                if ($isSheetPricing) {
+                    // Views column = uploaded sheet sum only, matched via price-sheet goods_id
                     $productClicks = $sheetProductClicks;
                 } else {
                     $productClicks = $viewDataItem
@@ -3627,7 +3686,7 @@ class TemuController extends Controller
                     ?? ($pricingSkuIdEarly !== null && isset($recommendedBySkuId[$pricingSkuIdEarly])
                         ? $recommendedBySkuId[$pricingSkuIdEarly]
                         : ($recommendedBySku[$normalizeSku($sku)] ?? null));
-                $basePrice = $isTemu2Pricing
+                $basePrice = $isSheetPricing
                     ? max(0, $catalogBase)
                     : TemuShopifySalesService::resolveListingBasePrice($catalogBase, $recommendedForBase);
                 
@@ -3667,7 +3726,7 @@ class TemuController extends Controller
                     : null;
                 // CVR denom = same Views as the column: o_clicks (sheet) else product_clicks.
                 // Temu 1 may add ads views when the sheet has no row; Temu 2 is sheet-only.
-                $cvrDenom = $isTemu2Pricing
+                $cvrDenom = $isSheetPricing
                     ? ((int) $oClicks > 0 ? (int) $oClicks : (int) $productClicks)
                     : ((int) $oClicks > 0
                         ? (int) $oClicks
@@ -3743,7 +3802,7 @@ class TemuController extends Controller
                         : ($recommendedBySku[$normalizedCurrentSku] ?? null));
                 
                 // nr_req / listed / links: Temu 2 → temu2_data_view JSON; Temu 1 → temu_listing_statuses
-                if ($isTemu2Pricing) {
+                if ($isTemu2Pricing || $isTemu3) {
                     $nr_req = $temuDataViewValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
                     $listed = $temuDataViewValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
                     $buyer_link = $temuDataViewValue['buyer_link'] ?? null;
@@ -3952,7 +4011,7 @@ class TemuController extends Controller
             // Split those totals evenly across child SKUs that share the goods_id so
             // each child isn't given the full amount. Parent rows then show the
             // goods_id total once (not a sum of children).
-            if ($isTemu2Pricing) {
+            if ($isSheetPricing) {
                 $normalizeParentKey = static function ($value): string {
                     return strtoupper(trim((string) $value));
                 };
@@ -4240,13 +4299,16 @@ class TemuController extends Controller
                 })->values();
             }
 
-            // Auto-save daily summary in background (L30 only, Temu channel table only)
-            if (!$isL7Period && !$isTemu2Pricing) {
+            // Auto-save daily summary in background (L30 only, Temu 1 channel table only)
+            if (!$isL7Period && !$isTemu2Pricing && !$isTemu3) {
                 $this->saveDailySummaryIfNeeded($processedData->toArray());
             }
 
             // Campaign / Ads totals — Temu 1 from Ads API; Temu 2 from campaign-report upload.
-            if ($isTemu2Pricing) {
+            if ($isTemu3) {
+                $totalCampaignCount = 0;
+                $totalAdSpend = 0.0;
+            } elseif ($isTemu2Pricing) {
                 $totalCampaignCount = Temu2CampaignReport::distinct('goods_id')
                     ->pluck('goods_id')
                     ->filter()
@@ -4344,7 +4406,9 @@ class TemuController extends Controller
                 'add_to_cart_number' => 0,
                 'row_count'          => 0,
             ];
-            if ($isTemu2Pricing) {
+            if ($isTemu3) {
+                // No ads API / campaign-report table for Temu 3.
+            } elseif ($isTemu2Pricing) {
                 $tot = Temu2CampaignReport::where('report_range', $campaignRange)
                     ->selectRaw('
                         COUNT(*) AS row_count,
@@ -5320,7 +5384,7 @@ class TemuController extends Controller
     /**
      * @return list<\Illuminate\Http\UploadedFile>
      */
-    private function collectTemuViewUploadFiles(Request $request): array
+    protected function collectTemuViewUploadFiles(Request $request): array
     {
         $request->validate([
             'file' => 'nullable|file|max:10240',
@@ -5365,7 +5429,7 @@ class TemuController extends Controller
         return $uploadFiles;
     }
 
-    private function temuViewUploadWantsJson(Request $request): bool
+    protected function temuViewUploadWantsJson(Request $request): bool
     {
         return $request->expectsJson() || $request->ajax();
     }
@@ -5373,7 +5437,7 @@ class TemuController extends Controller
     /**
      * @param  array{imported:int,skipped:int,files:int,deleted:int,replaced:bool}  $result
      */
-    private function temuViewUploadResult(Request $request, array $result, string $table)
+    protected function temuViewUploadResult(Request $request, array $result, string $table)
     {
         if (! empty($result['replaced'])) {
             $message = "Replaced {$table} ({$result['deleted']} old rows). Imported {$result['imported']} record(s) from {$result['files']} file(s). ({$result['skipped']} skipped)";
@@ -5391,7 +5455,7 @@ class TemuController extends Controller
         return back()->with('success', $message);
     }
 
-    private function temuViewUploadError(Request $request, \Throwable $e)
+    protected function temuViewUploadError(Request $request, \Throwable $e)
     {
         $message = 'Error uploading file: '.$e->getMessage();
         if ($this->temuViewUploadWantsJson($request)) {
@@ -5408,7 +5472,7 @@ class TemuController extends Controller
      * @param  list<\Illuminate\Http\UploadedFile>  $uploadFiles
      * @return array{imported:int,skipped:int,files:int,deleted:int,replaced:bool}
      */
-    private function replaceTemuViewTableFromUploads(string $table, array $uploadFiles, bool $replaceAll = true): array
+    protected function replaceTemuViewTableFromUploads(string $table, array $uploadFiles, bool $replaceAll = true): array
     {
         @set_time_limit(300);
         $this->ensureTemuViewIdAutoIncrement($table);

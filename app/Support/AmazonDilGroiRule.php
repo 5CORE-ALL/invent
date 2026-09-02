@@ -3,7 +3,8 @@
 namespace App\Support;
 
 /**
- * Amazon Analytics (/amazon-tabulator-view) Dil% slabs → Target GROI% → Sprc Dil.
+ * Dil% slabs → Target GROI% → Sprc Dil.
+ * Used by Amazon (`amazon_dil_vs_groi`), eBay 1–3 (`ebay1_dil_vs_groi` / `ebay2_dil_vs_groi` / `ebay3_dil_vs_groi`), and Temu 1–2 (`temu_dil_vs_groi` / `temu2_dil_vs_groi`).
  * First-time defaults: five slabs 0.1–25%. Add/delete is allowed; match is by min/max.
  */
 class AmazonDilGroiRule

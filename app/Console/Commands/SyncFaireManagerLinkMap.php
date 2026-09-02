@@ -9,7 +9,8 @@ use Illuminate\Console\Command;
 class SyncFaireManagerLinkMap extends Command
 {
     protected $signature = 'faire:sync-link-map
-                            {--force : Run even if Auto-link listings by SKU is Off}';
+                            {--force : Run even if Auto-link listings by SKU is Off}
+                            {--sku= : Reconcile one SKU from the Faire products API}';
 
     protected $description = 'Refresh Faire SKU ↔ product_id link map from Faire API (local only).';
 
@@ -22,7 +23,8 @@ class SyncFaireManagerLinkMap extends Command
         }
 
         @set_time_limit(0);
-        $result = $sync->syncAll();
+        $sku = trim((string) $this->option('sku'));
+        $result = $sku !== '' ? $sync->syncSku($sku) : $sync->syncAll();
         $this->info($result['message'] ?? 'Done.');
 
         return ! empty($result['success']) ? self::SUCCESS : self::FAILURE;

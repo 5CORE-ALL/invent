@@ -227,6 +227,7 @@ use App\Http\Controllers\MarketPlace\Shopifyb2cController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
 use App\Http\Controllers\MarketPlace\TemuController;
+use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
@@ -4951,6 +4952,24 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-decrease-column-visibility', [TemuController::class, 'saveTemu2DecreaseColumnVisibility']);
     Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
     Route::post('/temu2-decrease/save-links', [TemuController::class, 'saveTemu2DecreaseLinks'])->name('temu2.decrease.save.links');
+
+    // Temu 3 Analytics — sheet-only (no Open API). Price upload truncates temu3_pricing.
+    Route::get('/temu3-decrease', [Temu3Controller::class, 'temu3DecreaseView'])->name('temu3.decrease');
+    Route::get('/temu3-decrease-data', [Temu3Controller::class, 'getTemu3DecreaseData']);
+    Route::get('/temu3-decrease-data-l7', [Temu3Controller::class, 'getTemu3DecreaseDataL7'])->name('temu3.decrease.l7');
+    Route::post('/temu3-decrease-column-visibility', [Temu3Controller::class, 'saveTemu3DecreaseColumnVisibility']);
+    Route::get('/temu3-decrease-column-visibility', [Temu3Controller::class, 'getTemu3DecreaseColumnVisibility']);
+    Route::post('/temu3-decrease/save-links', [Temu3Controller::class, 'saveTemu3DecreaseLinks'])->name('temu3.decrease.save.links');
+    Route::post('/temu3-pricing/upload', [Temu3Controller::class, 'uploadTemu3Pricing'])->name('temu3.pricing.upload');
+    Route::get('/temu3-pricing/sample', [Temu3Controller::class, 'downloadTemu3PricingSample'])->name('temu3.pricing.sample');
+    Route::post('/temu3-view-data/upload', [Temu3Controller::class, 'uploadTemu3ViewData'])->name('temu3.viewdata.upload');
+    Route::get('/temu3-view-data/sample', [Temu3Controller::class, 'downloadTemu3ViewDataSample'])->name('temu3.viewdata.sample');
+    Route::post('/temu3-pricing/update-price', [Temu3Controller::class, 'updateTemu3Price']);
+    Route::post('/temu3-pricing/save-sprice', [Temu3Controller::class, 'saveTemu3Sprice']);
+    Route::post('/temu3-pricing/save-sprice-batch', [Temu3Controller::class, 'saveTemu3SpriceBatch']);
+    Route::post('/temu3/push-price', [Temu3Controller::class, 'pushTemu3Price'])->name('temu3.push.price');
+    Route::post('/temu3-data-view/save-listing-fields', [Temu3Controller::class, 'saveTemu3ListingFieldsToDataView'])->name('temu3.dataview.save.listing');
+    Route::post('/temu3-clear-sprice', [Temu3Controller::class, 'clearAllTemu3Sprice'])->name('temu3.clear.sprice');
 
     // Temu Ads (API) — temu.searchrec.ad.reports.goods.query raw store + Tabulator
     Route::controller(TemuAdsController::class)->group(function () {

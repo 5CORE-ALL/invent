@@ -23,6 +23,7 @@ use App\Models\SheinDataView;
 use App\Models\ShopifyB2BDataView;
 use App\Models\Shopifyb2cDataView;
 use App\Models\Temu2DataView;
+use App\Models\Temu3DataView;
 use App\Models\TemuDataView;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
@@ -63,6 +64,7 @@ class ChannelPromoPricingService
         'wayfair',
         'temu',
         'temu2',
+        'temu3',
         'doba',
         'doba_withoutship',
         'tiktok',
@@ -98,6 +100,7 @@ class ChannelPromoPricingService
         'wayfair' => WayfairDataView::class,
         'temu' => TemuDataView::class,
         'temu2' => Temu2DataView::class,
+        'temu3' => Temu3DataView::class,
         'doba' => DobaDataView::class,
         'doba_withoutship' => DobaWithoutShipDataView::class,
         'tiktok' => TiktokShopDataView::class,
