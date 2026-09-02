@@ -4522,6 +4522,36 @@
                     },
 
                     {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof amzSprcDilForRow === 'function')
+                                    ? (amzSprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. Formula: (LP × (1 + GROI%/100) + Ship) / 0.80. Edit / add / delete slabs with the Sprc Dil toolbar button.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            if (typeof amzDilGroiMetaForRow !== 'function') return '';
+                            const meta = amzDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+
+                    {
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
@@ -4574,12 +4604,6 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
                                 : '';
-
-                            // When SPRICE matches Amazon price and is below LMP, show "-" (hold)
-                            if (!atOrAboveLmp && currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
-                                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '<span style="color:#adb5bd;" title="Same as Amz price">-</span></span>';
-                            }
 
                             let formattedValue = '$' + sprice.toFixed(2);
                             if (atOrAboveLmp) {
@@ -5688,6 +5712,7 @@
                 if (field === 'cvr_up_dn') return 'CVR Up/Dn';
                 if (field === 't_discounts') return 'T Discounts';
                 if (field === 'prmt_pct') return 'PRMT %';
+                if (field === 'SPRC_DIL') return 'Sprc Dil';
                 const raw = (def && def.title != null) ? def.title : field;
                 const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                 return t || field;
@@ -5708,8 +5733,8 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|push_prc|prmt_pct|cvr_discount|review_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
-                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|push_prc|prmt_pct|cvr_discount|review_discount|cvr_up_dn|t_discounts|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
                 ) {
                     return 'price';
                 }
@@ -6036,11 +6061,19 @@
                 });
 
                 const priceIdx = valid.indexOf('price');
+                const sprcDilIdx = valid.indexOf('SPRC_DIL');
                 const spriceIdx = valid.indexOf('SPRICE');
-                if (priceIdx !== -1 && spriceIdx !== -1 && spriceIdx !== priceIdx + 1) {
-                    valid.splice(spriceIdx, 1);
-                    const insertAt = valid.indexOf('price') + 1;
-                    valid.splice(insertAt, 0, 'SPRICE');
+                if (priceIdx !== -1 && (spriceIdx !== -1 || sprcDilIdx !== -1)) {
+                    if (spriceIdx !== -1) valid.splice(valid.indexOf('SPRICE'), 1);
+                    if (valid.indexOf('SPRC_DIL') !== -1) valid.splice(valid.indexOf('SPRC_DIL'), 1);
+                    let insertAt = valid.indexOf('price') + 1;
+                    if (sprcDilIdx !== -1) {
+                        valid.splice(insertAt, 0, 'SPRC_DIL');
+                        insertAt++;
+                    }
+                    if (spriceIdx !== -1) {
+                        valid.splice(insertAt, 0, 'SPRICE');
+                    }
                 }
 
                 amazonApplyingColumnOrder = true;

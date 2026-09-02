@@ -1,6 +1,7 @@
 {{--
-  Dil vs PRMT + PRMT% / CVR Disc. / Rev Disc. / Push Prc for Amazon tabulator.
+  Dil vs PRMT + PRMT% / CVR Disc. / Rev Disc. / Push Prc / Sprc Dil for Amazon tabulator.
   Dil vs PRMT rules store is shared across all marketplaces (dil_vs_prmt_shared).
+  Sprc Dil: Amazon-only Dil 0.1–25% (5 slabs) → Target GROI% (amazon_dil_vs_groi).
   Amazon path: discount SPRICE via /save-amazon-sprice (no eBay Marketing APIs).
 --}}
 @php
@@ -61,7 +62,8 @@
         }
         #pef-dil-prmt-table .pef-dil-prmt-input,
         #amz-cvr-disc-table .amz-cvr-disc-input,
-        #amz-review-disc-table .amz-review-disc-input {
+        #amz-review-disc-table .amz-review-disc-input,
+        #amz-dil-groi-table .amz-dil-groi-input {
             max-width: 90px;
             margin-left: auto;
             text-align: right;
@@ -183,6 +185,27 @@
         #amzReviewDiscModal .amz-rd-add-btn {
             font-size: 12px;
         }
+        #amz-dil-groi-table .amz-dil-groi-input {
+            max-width: 90px;
+            margin-left: auto;
+            text-align: right;
+            font-weight: 600;
+        }
+        #amz-dil-groi-table .amz-dg-min,
+        #amz-dil-groi-table .amz-dg-max {
+            margin-left: 0;
+        }
+        #amz-dil-groi-table .amz-dil-groi-row-del {
+            border: none;
+            background: none;
+            color: #dc3545;
+            padding: 0 4px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        #amzDilGroiModal .amz-dg-add-btn {
+            font-size: 12px;
+        }
         #amz-zero-sold-btn {
             background: #e83e8c;
             border-color: #e83e8c;
@@ -192,6 +215,17 @@
         #amz-zero-sold-btn:focus {
             background: #d63384;
             border-color: #d63384;
+            color: #fff;
+        }
+        #amz-dil-groi-btn {
+            background: #6f42c1;
+            border-color: #6f42c1;
+            color: #fff;
+        }
+        #amz-dil-groi-btn:hover,
+        #amz-dil-groi-btn:focus {
+            background: #5a32a3;
+            border-color: #5a32a3;
             color: #fff;
         }
         #amz-zero-sold-table .amz-zero-sold-roi-input {
@@ -511,6 +545,10 @@
                         title="0 Sold: Dil color (Red / Green / Pink) → Target GROI%. Amazon has its own rule table. Apply sets S PRC so SGROI equals the target when A L30 = 0.">
                         0 Sold
                     </button>
+                    <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
+                        title="Dil slabs → Target GROI%. Add or delete slabs. Sprc Dil (before S PRC) shows the suggested price.">
+                        <i class="fas fa-sliders-h"></i> Sprc Dil
+                    </button>
                     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'buttons', 'cvrUpDnChannel' => 'amazon'])
 @endif
 
@@ -685,6 +723,56 @@
 
     @include('partials.cvr-up-dn', ['cvrUpDnPart' => 'modals', 'cvrUpDnChannel' => 'amazon'])
 
+    <div class="modal fade" id="amzDilGroiModal" tabindex="-1" aria-labelledby="amzDilGroiModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="amzDilGroiModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> Dil vs Target GROI — Sprc Dil
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map Dil% ranges to <strong>Target GROI%</strong>.
+                        First-time defaults: <strong>0.1–25%</strong> in 5 slabs.
+                        Dil is <strong>SKU-wise</strong> (OV L30 ÷ INV), same as the Dil column.
+                        <strong>Sprc Dil</strong> (column before S PRC) suggests
+                        <code>(LP × (1 + GROI%/100) + Ship) / 0.80</code>
+                        from the first slab that contains the SKU Dil.
+                        INV = 0, missing LP, or Dil outside every slab → blank.
+                        Changing the first Target GROI% fills the rest (−5 each).
+                        Add or delete slabs as needed (at least one).
+                        <strong>Save Rule</strong> stores Amazon’s table. Suggestion only — does not write S PRC.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-dil-groi-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width:90px;">From</th>
+                                    <th class="text-center" style="width:90px;">To</th>
+                                    <th class="text-end" style="width:130px;">Target GROI%</th>
+                                    <th style="width:36px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="amz-dil-groi-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn mt-2" id="amz-dil-groi-add-btn">
+                        <i class="fas fa-plus me-1"></i> Add slab
+                    </button>
+                    <div class="small text-muted mt-2" id="amz-dil-groi-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-primary" id="amz-dil-groi-save-btn"
+                        title="Save Dil → Target GROI% slabs. Sprc Dil updates live.">
+                        <i class="fas fa-save me-1"></i> Save Rule
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Dil vs PRMT: same model/datasource as /pricing-errors-fix --}}
     <div class="modal fade" id="pefDilVsPrmtModal" tabindex="-1" aria-labelledby="pefDilVsPrmtModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
@@ -790,6 +878,14 @@
             { key: 'pink', label: 'Pink Dil (50%+)', groi: 70 },
         ];
         let amzZeroSoldRules = AMZ_ZERO_SOLD_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        const AMZ_DIL_GROI_DEFAULTS = [
+            { key: '0.1-5', label: '0.1–5%', min: 0.1, max: 5, groi: 70 },
+            { key: '5-10', label: '5–10%', min: 5, max: 10, groi: 65 },
+            { key: '10-15', label: '10–15%', min: 10, max: 15, groi: 60 },
+            { key: '15-20', label: '15–20%', min: 15, max: 20, groi: 55 },
+            { key: '20-25', label: '20–25%', min: 20, max: 25, groi: 50 },
+        ];
+        let amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzPageReloadPushEnabled = false;
 
         function amzPefCsrf() {
@@ -1149,6 +1245,241 @@
             const price = (lp * (1 + roi / 100) + ship) / 0.80;
             return (isFinite(price) && price > 0) ? amzPefRound2(price) : 0;
         }
+        function amzDilGroiFmtNum(n) {
+            const x = Number(n);
+            if (!isFinite(x)) return '0';
+            return amzPefRound2(x).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+        }
+        function amzNormalizeDilGroiRule(raw) {
+            if (!raw) return null;
+            let min = Number(raw.min);
+            let max = Number(raw.max);
+            if (!isFinite(min) || !isFinite(max)) {
+                const m = String(raw.key || '').match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+                if (!m) return null;
+                min = Number(m[1]);
+                max = Number(m[2]);
+            }
+            if (!isFinite(min) || !isFinite(max) || min < 0 || max <= min) return null;
+            min = amzPefRound2(min);
+            max = amzPefRound2(max);
+            let groi = Number(raw.groi);
+            if (!isFinite(groi) || groi < 0) groi = 0;
+            groi = amzPefRound2(groi);
+            const key = amzDilGroiFmtNum(min) + '-' + amzDilGroiFmtNum(max);
+            return {
+                key: key,
+                label: amzDilGroiFmtNum(min) + '–' + amzDilGroiFmtNum(max) + '%',
+                min: min,
+                max: max,
+                groi: groi,
+            };
+        }
+        function amzNormalizeDilGroiList(list) {
+            const out = [];
+            (Array.isArray(list) ? list : []).forEach(function(item) {
+                const rule = amzNormalizeDilGroiRule(item);
+                if (rule) out.push(rule);
+            });
+            out.sort(function(a, b) { return a.min - b.min; });
+            return out;
+        }
+        function amzDilGroiMatch(dil) {
+            const n = Number(dil);
+            if (!isFinite(n)) return null;
+            const list = amzNormalizeDilGroiList(amzDilGroiRules);
+            const last = list.length - 1;
+            for (let i = 0; i < list.length; i++) {
+                const rule = list[i];
+                const hiOk = (i === last) ? (n <= rule.max) : (n < rule.max);
+                if (n >= rule.min && hiOk) return rule;
+            }
+            return null;
+        }
+        function amzDilGroiMetaForRow(d) {
+            if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return null;
+            const dil = amzPefDil(d);
+            const rule = amzDilGroiMatch(dil);
+            if (!rule) return null;
+            const sprc = amzSpriceFromTargetGroi(d, rule.groi);
+            if (!(sprc > 0)) return null;
+            return {
+                dil: dil,
+                key: rule.key,
+                label: rule.label,
+                groi: rule.groi,
+                sprc: sprc,
+            };
+        }
+        function amzSprcDilForRow(d) {
+            const meta = amzDilGroiMetaForRow(d);
+            return meta ? meta.sprc : 0;
+        }
+        function redrawAmzSprcDilColumn() {
+            if (typeof table === 'undefined' || !table) return;
+            try {
+                const col = table.getColumn('SPRC_DIL');
+                if (col) table.redraw(true);
+            } catch (e) { /* ignore */ }
+        }
+        function cascadeAmzDilGroiFromFirst() {
+            const $rows = $('#amz-dil-groi-tbody tr');
+            if (!$rows.length) return;
+            const firstVal = parseFloat($rows.eq(0).find('.amz-dg-groi').val());
+            if (!isFinite(firstVal)) return;
+            $rows.each(function(i) {
+                const groi = firstVal - (i * 5);
+                const $inp = $(this).find('.amz-dg-groi');
+                if (i > 0) $inp.val(groi);
+            });
+            readAmzDilGroiRulesFromModal();
+        }
+        function amzOnDilGroiNumberChanged(inputEl) {
+            const first = $('#amz-dil-groi-tbody .amz-dg-groi').get(0);
+            if (inputEl === first) {
+                cascadeAmzDilGroiFromFirst();
+            } else {
+                readAmzDilGroiRulesFromModal();
+            }
+            redrawAmzSprcDilColumn();
+        }
+        function renderAmzDilGroiModalTable() {
+            const $tb = $('#amz-dil-groi-tbody');
+            if (!$tb.length) return;
+            $tb.empty();
+            const list = amzNormalizeDilGroiList(amzDilGroiRules);
+            amzDilGroiRules = list.length
+                ? list
+                : AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+            const canDelete = amzDilGroiRules.length > 1;
+            amzDilGroiRules.forEach(function(r, idx) {
+                const first = idx === 0;
+                $tb.append(
+                    '<tr data-idx="' + idx + '">'
+                    + '<td><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-dil-groi-input amz-dg-min" value="' + r.min + '"></td>'
+                    + '<td><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-dil-groi-input amz-dg-max" value="' + r.max + '"></td>'
+                    + '<td class="text-end">'
+                    + '<input type="number" class="form-control form-control-sm amz-dil-groi-input amz-dg-groi" '
+                    + 'step="0.1" value="' + r.groi + '"'
+                    + (first ? ' title="Changing this sets following slabs to −5 each"' : '')
+                    + '>'
+                    + '</td>'
+                    + '<td class="text-center">'
+                    + (canDelete
+                        ? '<button type="button" class="amz-dil-groi-row-del" data-idx="' + idx + '" title="Remove slab">&times;</button>'
+                        : '')
+                    + '</td></tr>'
+                );
+            });
+        }
+        function readAmzDilGroiRulesFromModal() {
+            const rules = [];
+            $('#amz-dil-groi-tbody tr').each(function() {
+                const rule = amzNormalizeDilGroiRule({
+                    min: parseFloat($(this).find('.amz-dg-min').val()),
+                    max: parseFloat($(this).find('.amz-dg-max').val()),
+                    groi: parseFloat($(this).find('.amz-dg-groi').val()),
+                });
+                if (rule) rules.push(rule);
+            });
+            amzDilGroiRules = rules.length
+                ? amzNormalizeDilGroiList(rules)
+                : AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+            return amzDilGroiRules.map(function(r) {
+                return { key: r.key, label: r.label, min: r.min, max: r.max, groi: Number(r.groi) || 0 };
+            });
+        }
+        function amzDilGroiAddSlab() {
+            readAmzDilGroiRulesFromModal();
+            let nextMin = 0.1;
+            let lastGroi = 70;
+            amzDilGroiRules.forEach(function(r) {
+                const hi = Number(r.max);
+                if (isFinite(hi) && hi > nextMin) nextMin = hi;
+                if (isFinite(Number(r.groi))) lastGroi = Number(r.groi);
+            });
+            const nextMax = amzPefRound2(nextMin + 5);
+            const nextGroi = Math.max(0, amzPefRound2(lastGroi - 5));
+            const added = amzNormalizeDilGroiRule({ min: nextMin, max: nextMax, groi: nextGroi });
+            if (!added) {
+                amzPefToast('error', 'Could not add slab');
+                return;
+            }
+            amzDilGroiRules.push(added);
+            amzDilGroiRules = amzNormalizeDilGroiList(amzDilGroiRules);
+            renderAmzDilGroiModalTable();
+            redrawAmzSprcDilColumn();
+        }
+        function amzDilGroiDeleteSlab(idx) {
+            const rules = [];
+            $('#amz-dil-groi-tbody tr').each(function() {
+                const rule = amzNormalizeDilGroiRule({
+                    min: parseFloat($(this).find('.amz-dg-min').val()),
+                    max: parseFloat($(this).find('.amz-dg-max').val()),
+                    groi: parseFloat($(this).find('.amz-dg-groi').val()),
+                });
+                if (rule) rules.push(rule);
+            });
+            if (rules.length <= 1) {
+                amzPefToast('error', 'Keep at least one Dil slab');
+                return;
+            }
+            if (!isFinite(idx) || idx < 0 || idx >= rules.length) return;
+            rules.splice(idx, 1);
+            amzDilGroiRules = amzNormalizeDilGroiList(rules);
+            renderAmzDilGroiModalTable();
+            redrawAmzSprcDilColumn();
+        }
+        async function loadAmzDilGroiRules() {
+            $('#amz-dil-groi-status').text('Loading…');
+            try {
+                const res = await $.ajax({
+                    url: '/channel-promo-pricing/amazon/dil-groi',
+                    method: 'GET',
+                    dataType: 'json',
+                });
+                if (res && Array.isArray(res.rules) && res.rules.length) {
+                    const loaded = amzNormalizeDilGroiList(res.rules);
+                    if (loaded.length) amzDilGroiRules = loaded;
+                }
+                renderAmzDilGroiModalTable();
+                redrawAmzSprcDilColumn();
+                $('#amz-dil-groi-status').text(res && res.is_default
+                    ? 'Using first-time defaults (0.1–5 → 70 … 20–25 → 50). Add or delete slabs, then Save Rule.'
+                    : 'Loaded saved Dil → GROI slabs for Amazon.');
+            } catch (e) {
+                renderAmzDilGroiModalTable();
+                $('#amz-dil-groi-status').text('Could not load saved rules — using defaults.');
+            }
+        }
+        function saveAmzDilGroiRules() {
+            const rules = readAmzDilGroiRulesFromModal();
+            return $.ajax({
+                url: '/channel-promo-pricing/amazon/dil-groi',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { rules: rules, _token: amzPefCsrf() },
+            }).then(function(res) {
+                if (res && Array.isArray(res.rules)) {
+                    const saved = amzNormalizeDilGroiList(res.rules);
+                    if (saved.length) amzDilGroiRules = saved;
+                    renderAmzDilGroiModalTable();
+                }
+                redrawAmzSprcDilColumn();
+                $('#amz-dil-groi-status').text('Saved.');
+                return res;
+            });
+        }
+        function openAmzDilGroiModal() {
+            const modalEl = document.getElementById('amzDilGroiModal');
+            if (!modalEl) return;
+            renderAmzDilGroiModalTable();
+            loadAmzDilGroiRules();
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        window.amzSprcDilForRow = amzSprcDilForRow;
+        window.amzDilGroiMetaForRow = amzDilGroiMetaForRow;
+        window.openAmzDilGroiModal = openAmzDilGroiModal;
         function renderAmzZeroSoldModalTable() {
             const $tb = $('#amz-zero-sold-tbody').empty();
             amzZeroSoldRules.forEach(function(r, idx) {
@@ -3425,6 +3756,9 @@
             } else {
                 amzNoteRuleReady('zero');
             }
+            if (typeof loadAmzDilGroiRules === 'function') {
+                Promise.resolve(loadAmzDilGroiRules()).catch(function() { /* defaults */ });
+            }
             if (typeof loadCvrUpDnRules === 'function') {
                 Promise.resolve(loadCvrUpDnRules()).then(function() {
                     amzScheduleRuleSpriceSync({ delay: 250 });
@@ -3576,6 +3910,36 @@
                 loadAmzZeroSoldRules();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
+            $('#amz-dil-groi-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                openAmzDilGroiModal();
+            });
+            $('#amz-dil-groi-add-btn').off('click.amzpef').on('click.amzpef', function(e) {
+                e.preventDefault();
+                amzDilGroiAddSlab();
+            });
+            $(document).off('click.amzdg', '.amz-dil-groi-row-del').on('click.amzdg', '.amz-dil-groi-row-del', function() {
+                const idx = parseInt($(this).attr('data-idx'), 10);
+                amzDilGroiDeleteSlab(idx);
+            });
+            $('#amz-dil-groi-save-btn').off('click.amzpef').on('click.amzpef', async function(e) {
+                e.preventDefault();
+                const $btn = $(this);
+                const html = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+                try {
+                    await saveAmzDilGroiRules();
+                    amzPefToast('success', 'Sprc Dil rule saved');
+                } catch (xhr) {
+                    amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+                } finally {
+                    $btn.prop('disabled', false).html(html);
+                }
+            });
+            $(document).off('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input')
+                .on('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input', function() {
+                    amzOnDilGroiNumberChanged(this);
+                });
             $('#amzZeroSoldModal').off('shown.bs.modal.amzzs').on('shown.bs.modal.amzzs', function() {
                 renderAmzZeroSoldPie();
             });

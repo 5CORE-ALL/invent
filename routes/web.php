@@ -5545,6 +5545,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'dilSgroiRules'])->name('channel.promo.dil-sgroi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'saveDilSgroiRules'])->name('channel.promo.dil-sgroi.save');
+    Route::get('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'dilGroiRules'])->name('channel.promo.dil-groi.get');
+    Route::post('/channel-promo-pricing/{channel}/dil-groi', [ChannelPromoPricingController::class, 'saveDilGroiRules'])->name('channel.promo.dil-groi.save');
     Route::get('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'gtSoldPrcRules'])->name('channel.promo.gt-sold-prc.get');
     Route::post('/channel-promo-pricing/{channel}/gt-sold-prc', [ChannelPromoPricingController::class, 'saveGtSoldPrcRules'])->name('channel.promo.gt-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/page-reload-push', [ChannelPromoPricingController::class, 'pageReloadPushSetting'])->name('channel.promo.page-reload-push.get');

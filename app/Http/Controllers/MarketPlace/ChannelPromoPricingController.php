@@ -24,6 +24,7 @@ use App\Services\Support\ChannelPushPrcJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
 use App\Services\Support\ChannelPushSpriceJobStore;
 use App\Services\Support\ChannelPushSpriceRunner;
+use App\Support\AmazonDilGroiRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1379,6 +1380,66 @@ class ChannelPromoPricingController extends Controller
             self::sharedDilSgroiDefaults(),
             $incoming,
             'sgroi'
+        );
+
+        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+    }
+
+    public function dilGroiRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_dil_vs_groi')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'rules' => AmazonDilGroiRule::defaults(),
+            ]);
+        }
+
+        $rules = AmazonDilGroiRule::normalizeList($saved);
+        if ($rules === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'rules' => AmazonDilGroiRule::defaults(),
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'rules' => $rules,
+        ]);
+    }
+
+    public function saveDilGroiRules(Request $request, string $channel): JsonResponse
+    {
+        $channel = $this->normalizeRulesChannel($channel);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $rules = AmazonDilGroiRule::normalizeList($incoming);
+        if ($rules === []) {
+            return response()->json(['success' => false, 'message' => 'At least one Dil slab is required'], 422);
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_dil_vs_groi'],
+            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
         );
 
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
