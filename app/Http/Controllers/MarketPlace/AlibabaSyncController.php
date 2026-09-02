@@ -35,8 +35,8 @@ use Illuminate\View\View;
 class AlibabaSyncController extends Controller
 {
     public function __construct(
-        protected AlibabaApiService $aliExpressApi,
-        protected AlibabaAuthService $aliExpressAuth,
+        protected AlibabaApiService $alibabaApi,
+        protected AlibabaAuthService $alibabaAuth,
         protected ShopifyApiService $shopifyApi,
         protected MarketplaceApiConfigService $apiConfig
     ) {}
@@ -46,15 +46,18 @@ class AlibabaSyncController extends Controller
         $appKey = (string) config('services.alibaba.app_key');
         $appSecret = (string) config('services.alibaba.app_secret');
         $accessToken = (string) config('services.alibaba.access_token');
-        $refreshToken = (string) env('ALIBABA_REFRESH_TOKEN', '');
+        $refreshToken = (string) (config('services.alibaba.refresh_token') ?: '');
         $apiBase = (string) config('services.alibaba.api_base');
-        $credentialsReady = filled($appKey) && filled($appSecret) && filled($accessToken);
+        $hasAppCreds = filled($appKey) && filled($appSecret);
+        $credentialsReady = $hasAppCreds && filled($accessToken);
+        $oauthState = bin2hex(random_bytes(16));
+        $request->session()->put('alibaba_oauth_state', $oauthState);
 
         return view('marketplace.alibaba.connect', [
             'title' => 'Alibaba — Connect',
             'connected' => $this->apiConfig->isConfigured('alibaba'),
             'credentialsReady' => $credentialsReady,
-            'authorizeUrl' => $this->aliExpressAuth->getAuthorizeUrl(),
+            'authorizeUrl' => $hasAppCreds ? $this->alibabaAuth->getAuthorizeUrl($oauthState) : null,
             'hasAppKey' => filled($appKey),
             'hasAppSecret' => filled($appSecret),
             'hasToken' => filled($accessToken),
@@ -62,11 +65,203 @@ class AlibabaSyncController extends Controller
             'maskedAppKey' => $this->maskCredential($appKey),
             'maskedAppSecret' => $this->maskCredential($appSecret, 2, 2),
             'maskedAccessToken' => $this->maskCredential($accessToken, 4, 4),
-            'apiBase' => $apiBase !== '' ? rtrim($apiBase, '/').(str_ends_with(strtolower($apiBase), '/sync') ? '' : '/sync') : 'https://api-sg.alibaba.com/sync',
-            'redirectUri' => (string) (config('services.alibaba.redirect_uri') ?: config('app.url')),
-            'gateway' => config('services.alibaba.gateway', env('ALIBABA_GATEWAY', 'sync')),
-            'restBase' => config('services.alibaba.rest_base', env('ALIBABA_REST_BASE', 'https://api-sg.alibaba.com/rest')),
+            'apiBase' => $apiBase !== '' ? rtrim($apiBase, '/').(str_ends_with(strtolower($apiBase), '/sync') ? '' : '/sync') : 'https://openapi.alibaba.com/sync',
+            'redirectUri' => (string) (config('services.alibaba.redirect_uri') ?: rtrim((string) config('app.url'), '/').'/alibaba/callback'),
+            'gateway' => config('services.alibaba.gateway', 'rest'),
+            'restBase' => config('services.alibaba.rest_base', 'https://api-sg.alibaba.com/rest'),
+            'flashSuccess' => $request->session()->pull('alibaba_connect_success'),
+            'flashError' => $request->session()->pull('alibaba_connect_error'),
         ]);
+    }
+
+    public function oauthCallback(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        $error = trim((string) ($request->query('error') ?? $request->input('error') ?? ''));
+        $errorDescription = trim((string) (
+            $request->query('error_description')
+            ?? $request->input('error_description')
+            ?? $request->query('message')
+            ?? ''
+        ));
+        if ($error !== '') {
+            $request->session()->put(
+                'alibaba_connect_error',
+                'Alibaba OAuth denied: '.$error.($errorDescription !== '' ? ' — '.$errorDescription : '')
+            );
+
+            return redirect()->route('marketplace.manager.alibaba.connect');
+        }
+
+        $code = trim((string) (
+            $request->query('code')
+            ?? $request->input('code')
+            ?? ''
+        ));
+        if ($code === '') {
+            $request->session()->put(
+                'alibaba_connect_error',
+                'Alibaba OAuth callback missing authorization code. Try Connect with Alibaba again, or paste a token.'
+            );
+
+            return redirect()->route('marketplace.manager.alibaba.connect');
+        }
+
+        $expectedState = (string) $request->session()->get('alibaba_oauth_state', '');
+        $state = trim((string) ($request->query('state') ?? $request->input('state') ?? ''));
+        if ($expectedState !== '' && $state !== '' && ! hash_equals($expectedState, $state)) {
+            $request->session()->put('alibaba_connect_error', 'Alibaba OAuth state mismatch. Try Connect again.');
+
+            return redirect()->route('marketplace.manager.alibaba.connect');
+        }
+
+        $claimKey = 'alibaba_oauth_code_claimed_'.hash('sha256', $code);
+        if ($request->session()->get($claimKey)) {
+            if (filled(config('services.alibaba.access_token'))) {
+                $request->session()->put('alibaba_connect_success', 'Alibaba already connected (duplicate callback ignored).');
+            } else {
+                $request->session()->put(
+                    'alibaba_connect_error',
+                    'This authorization code was already used. Click Connect with Alibaba again.'
+                );
+            }
+
+            return redirect()->route('marketplace.manager.alibaba.connect');
+        }
+        $request->session()->put($claimKey, true);
+        $request->session()->forget('alibaba_oauth_state');
+
+        $result = $this->persistOAuthTokensFromCode($code);
+        if (! empty($result['success'])) {
+            $request->session()->put('alibaba_connect_success', $result['message']);
+        } else {
+            $request->session()->put('alibaba_connect_error', $result['message'] ?? 'Token exchange failed.');
+        }
+
+        return redirect()->route('marketplace.manager.alibaba.connect');
+    }
+
+    public function exchangeAuthCode(Request $request): JsonResponse
+    {
+        $code = trim((string) $request->input('code', ''));
+        if ($code === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paste the authorization code from the Alibaba redirect URL.',
+            ]);
+        }
+
+        return response()->json($this->persistOAuthTokensFromCode($code));
+    }
+
+    public function saveAccessToken(Request $request): JsonResponse
+    {
+        $token = trim((string) $request->input('access_token', ''));
+        if ($token === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paste an Alibaba access token first.',
+            ]);
+        }
+
+        $ok = $this->updateEnvValue('ALIBABA_ACCESS_TOKEN', $token);
+        if (! $ok) {
+            return response()->json([
+                'success' => false,
+                'message' => '.env is not writable. Set ALIBABA_ACCESS_TOKEN manually.',
+            ]);
+        }
+
+        config(['services.alibaba.access_token' => $token]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'ALIBABA_ACCESS_TOKEN saved. Click Test connection.',
+        ]);
+    }
+
+    public function revokeAccessToken(): JsonResponse
+    {
+        $token = (string) ($this->alibabaApi->getAccessToken() ?? config('services.alibaba.access_token') ?? '');
+        if ($token === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'No local Alibaba access token to revoke.',
+            ]);
+        }
+
+        $this->updateEnvValue('ALIBABA_ACCESS_TOKEN', '');
+        $this->updateEnvValue('ALIBABA_REFRESH_TOKEN', '');
+        config([
+            'services.alibaba.access_token' => null,
+            'services.alibaba.refresh_token' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Local Alibaba tokens cleared. Paste a new token or Connect with OAuth.',
+        ]);
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    protected function persistOAuthTokensFromCode(string $code): array
+    {
+        $result = $this->alibabaAuth->exchangeCodeForToken($code);
+        if (empty($result['success']) || empty($result['access_token'])) {
+            return [
+                'success' => false,
+                'message' => $result['message'] ?? 'Alibaba token exchange failed.',
+            ];
+        }
+
+        $wroteAccess = $this->updateEnvValue('ALIBABA_ACCESS_TOKEN', (string) $result['access_token']);
+        $refresh = isset($result['refresh_token']) ? trim((string) $result['refresh_token']) : '';
+        if ($refresh !== '') {
+            $this->updateEnvValue('ALIBABA_REFRESH_TOKEN', $refresh);
+        }
+
+        config([
+            'services.alibaba.access_token' => (string) $result['access_token'],
+            'services.alibaba.refresh_token' => $refresh !== '' ? $refresh : config('services.alibaba.refresh_token'),
+        ]);
+
+        if (! $wroteAccess) {
+            return [
+                'success' => false,
+                'message' => 'Token received but .env is not writable. Add ALIBABA_ACCESS_TOKEN manually, then refresh config cache.',
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Alibaba access token saved to .env. You can Test connection now.',
+        ];
+    }
+
+    protected function updateEnvValue(string $key, string $value): bool
+    {
+        $path = base_path('.env');
+        if (! is_file($path) || ! is_writable($path)) {
+            return false;
+        }
+
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            return false;
+        }
+
+        $escaped = '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"';
+        $line = $key.'='.$escaped;
+        $pattern = '/^'.preg_quote($key, '/').'=.*$/m';
+
+        if (preg_match($pattern, $contents)) {
+            $contents = preg_replace_callback($pattern, static fn () => $line, $contents, 1);
+        } else {
+            $contents = rtrim($contents, "\n")."\n".$line."\n";
+        }
+
+        return file_put_contents($path, $contents) !== false;
     }
 
     public function testConnection(): JsonResponse
@@ -74,12 +269,12 @@ class AlibabaSyncController extends Controller
         if (! $this->apiConfig->isConfigured('alibaba')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Alibaba API credentials missing. Set ALIBABA_APP_KEY, ALIBABA_APP_SECRET, and ALIBABA_ACCESS_TOKEN in .env.',
+                'message' => 'Alibaba API credentials missing. Set ALIBABA_APP_KEY, ALIBABA_APP_SECRET, and ALIBABA_ACCESS_TOKEN in .env — or paste a token on Connect.',
             ]);
         }
 
         try {
-            $result = $this->aliExpressApi->getInventory(1, 1);
+            $result = $this->alibabaApi->testConnection();
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -115,7 +310,7 @@ class AlibabaSyncController extends Controller
             ]);
         }
 
-        $total = $result['data']['total_count'] ?? count($result['data']['products'] ?? []);
+        $total = $result['total_products'] ?? $result['data']['total_count'] ?? count($result['data']['products'] ?? []);
         $sample = $result['data']['products'][0] ?? null;
 
         return response()->json([
@@ -392,7 +587,7 @@ class AlibabaSyncController extends Controller
         $canFetchAe = $productId && $productId !== (string) $metric?->sku && $this->apiConfig->isConfigured('alibaba');
 
         if ($canFetchAe) {
-            $info = $this->aliExpressApi->getProductInfo($productId);
+            $info = $this->alibabaApi->getProductInfo($productId);
             if (! empty($info['success'])) {
                 $aeLive = $info['data'] ?? null;
                 $aeDataSource = 'api';
@@ -406,7 +601,7 @@ class AlibabaSyncController extends Controller
 
         $aeSkuRows = [];
         if (is_array($aeLive)) {
-            $aeSkuRows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+            $aeSkuRows = $this->alibabaApi->extractSkuRowsFromProductInfo(
                 $aeLive,
                 (string) ($metric->product_id ?? ''),
                 $metric->product_name ?? null
@@ -492,7 +687,7 @@ class AlibabaSyncController extends Controller
             ]);
         }
 
-        $info = $this->aliExpressApi->getProductInfo((string) $metric->product_id);
+        $info = $this->alibabaApi->getProductInfo((string) $metric->product_id);
         if (empty($info['success'])) {
             return response()->json([
                 'success' => false,
@@ -501,7 +696,7 @@ class AlibabaSyncController extends Controller
         }
 
         $aeData = is_array($info['data'] ?? null) ? $info['data'] : [];
-        $rows = $this->aliExpressApi->extractSkuRowsFromProductInfo(
+        $rows = $this->alibabaApi->extractSkuRowsFromProductInfo(
             $aeData,
             (string) $metric->product_id,
             $metric->product_name

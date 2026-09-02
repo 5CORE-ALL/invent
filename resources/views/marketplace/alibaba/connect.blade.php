@@ -16,41 +16,70 @@
 
         @include('marketplace.alibaba._nav', ['active' => 'connect'])
 
+        @if(!empty($flashSuccess))
+            <div class="alert alert-success">{{ $flashSuccess }}</div>
+        @endif
+        @if(!empty($flashError))
+            <div class="alert alert-danger">{{ $flashError }}</div>
+        @endif
+
         @if($credentialsReady ?? false)
             <div class="alert alert-success d-flex align-items-start gap-2">
                 <i class="ri-checkbox-circle-line fs-5 mt-1"></i>
                 <div>
                     <strong>Credentials found in .env</strong>
-                    <p class="mb-0 small">App key, secret, and access token are configured. Click <strong>Test connection</strong> below to verify the API responds (or wait — it runs automatically).</p>
+                    <p class="mb-0 small">App key, secret, and access token are configured. Click <strong>Test connection</strong> to verify the Alibaba.com ICBU API.</p>
                 </div>
             </div>
         @else
             <div class="alert alert-warning">
-                <strong>Setup required</strong> — add missing values to <code>.env</code>, then refresh this page.
+                <strong>Setup required</strong> — paste an access token below, or complete OAuth. App key and secret must already be in <code>.env</code>.
             </div>
         @endif
 
         <div class="row">
             <div class="col-lg-8">
+                <div class="card mb-3">
+                    <div class="card-header"><h5 class="card-title mb-0">1) Paste access token</h5></div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-2">
+                            Alibaba.com Open Platform → your ICBU app token, or the <code>access_token</code> from an OAuth redirect.
+                            Saved as <code>ALIBABA_ACCESS_TOKEN</code>.
+                        </p>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" id="alibaba-access-token-input" placeholder="Paste Alibaba access token" autocomplete="off">
+                            <button type="button" class="btn btn-success" id="btn-save-alibaba-token">Save token</button>
+                        </div>
+                        <button type="button" class="btn btn-primary" id="btn-test-alibaba">
+                            <i class="ri-wifi-line"></i> Test connection
+                        </button>
+                        <div id="alibaba-test-result" class="mt-3 small"></div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="card-title mb-0">API Connection</h5>
+                        <h5 class="card-title mb-0">2) OAuth (Alibaba.com ICBU)</h5>
                         @if($connected)
-                            <span class="badge bg-success">Credentials OK</span>
+                            <span class="badge bg-success">Token present</span>
                         @else
-                            <span class="badge bg-warning text-dark">Incomplete</span>
+                            <span class="badge bg-warning text-dark">No token</span>
                         @endif
                     </div>
                     <div class="card-body">
-                        <p class="text-muted mb-3">Credentials are read from <code>.env</code>. Shopify B2C is the source shop. OAuth uses <strong>Alibaba.com ICBU</strong> (<code>oauth.alibaba.com</code>), not AliExpress.</p>
+                        <p class="text-muted small mb-3">
+                            Uses <code>oauth.alibaba.com</code> with <code>sp=ICBU</code> (not AliExpress).
+                            Callback URL in the developer portal must be exactly
+                            <code>{{ $redirectUri ?? 'http://127.0.0.1:8000/alibaba/callback' }}</code>.
+                        </p>
 
-                        <table class="table table-sm table-bordered mb-4">
+                        <table class="table table-sm table-bordered mb-3">
                             <tbody>
                                 <tr>
-                                    <th style="width: 200px;">App Key</th>
+                                    <th style="width: 180px;">App Key</th>
                                     <td>
                                         @if($hasAppKey)
-                                            <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
+                                            <span class="cred-ok">Set</span>
                                             <span class="cred-mask text-muted ms-2">{{ $maskedAppKey }}</span>
                                         @else
                                             <span class="cred-miss">Missing — <code>ALIBABA_APP_KEY</code></span>
@@ -61,7 +90,7 @@
                                     <th>App Secret</th>
                                     <td>
                                         @if($hasAppSecret)
-                                            <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
+                                            <span class="cred-ok">Set</span>
                                             <span class="cred-mask text-muted ms-2">{{ $maskedAppSecret }}</span>
                                         @else
                                             <span class="cred-miss">Missing — <code>ALIBABA_APP_SECRET</code></span>
@@ -72,7 +101,7 @@
                                     <th>Access Token</th>
                                     <td>
                                         @if($hasToken)
-                                            <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
+                                            <span class="cred-ok">Set</span>
                                             <span class="cred-mask text-muted ms-2">{{ $maskedAccessToken }}</span>
                                         @else
                                             <span class="cred-miss">Missing — <code>ALIBABA_ACCESS_TOKEN</code></span>
@@ -83,8 +112,7 @@
                                     <th>Refresh Token</th>
                                     <td>
                                         @if($hasRefreshToken ?? false)
-                                            <span class="cred-ok"><i class="ri-check-line"></i> Set</span>
-                                            <span class="text-muted small ms-1">(optional, for token renewal)</span>
+                                            <span class="cred-ok">Set</span>
                                         @else
                                             <span class="text-muted">Not set — optional</span>
                                         @endif
@@ -92,56 +120,37 @@
                                 </tr>
                                 <tr>
                                     <th>API gateway</th>
-                                    <td><code>{{ $gateway ?? 'sync' }}</code> → <code>{{ ($gateway ?? 'sync') === 'rest' ? ($restBase ?? 'https://api-sg.alibaba.com/rest') : ($apiBase ?? 'https://api-sg.alibaba.com/sync') }}</code></td>
-                                </tr>
-                                <tr>
-                                    <th>OAuth redirect</th>
-                                    <td><code>{{ $redirectUri ?? config('app.url') }}</code></td>
+                                    <td><code>{{ $gateway ?? 'rest' }}</code> → <code>{{ ($gateway ?? 'rest') === 'rest' ? ($restBase ?? 'https://api-sg.alibaba.com/rest') : ($apiBase ?? 'https://openapi.alibaba.com/sync') }}</code></td>
                                 </tr>
                             </tbody>
                         </table>
 
                         <div class="d-flex flex-wrap gap-2 mb-3">
-                            <button type="button" class="btn btn-primary" id="btn-test-connection">
-                                <i class="ri-link me-1"></i> Test connection
-                            </button>
-                            <a href="{{ $authorizeUrl }}" target="_blank" rel="noopener" class="btn btn-outline-secondary">
-                                <i class="ri-key-2-line me-1"></i> Re-authorize (new token)
-                            </a>
+                            @if(!empty($authorizeUrl))
+                                <a href="{{ $authorizeUrl }}" class="btn btn-outline-success" target="_blank" rel="noopener">
+                                    Connect with Alibaba (OAuth)
+                                </a>
+                            @endif
+                            <button type="button" class="btn btn-outline-danger" id="btn-revoke-alibaba">Revoke token</button>
                         </div>
 
-                        <div id="test-result" class="p-3 rounded border bg-light small">
-                            @if($credentialsReady ?? false)
-                                <span class="text-muted"><i class="ri-loader-4-line"></i> Running connection test…</span>
-                            @else
-                                <span class="text-muted">Complete .env credentials, then test connection.</span>
-                            @endif
+                        <p class="text-muted small mb-2">If OAuth opened in a new tab and you landed on a URL with <code>?code=</code>, paste that code here:</p>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="alibaba-auth-code-input" placeholder="Paste authorization code" autocomplete="off">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-exchange-alibaba-code">Exchange code</button>
                         </div>
                     </div>
                 </div>
 
                 @if($credentialsReady ?? false)
-                    <div class="card border-success">
+                    <div class="card border-success mt-3">
                         <div class="card-header bg-success-subtle"><h5 class="card-title mb-0 text-success">Next steps</h5></div>
                         <div class="card-body">
                             <ol class="mb-0">
                                 <li class="mb-2">Confirm <strong>Test connection</strong> shows success above.</li>
-                                <li class="mb-2">Go to <a href="{{ route('marketplace.products', 'alibaba') }}">Listings</a> → <strong>Sync from Alibaba API</strong> to pull your products.</li>
+                                <li class="mb-2">Go to <a href="{{ route('marketplace.products', 'alibaba') }}">Listings</a> → <strong>Sync Alibaba link map</strong> to pull products.</li>
                                 <li class="mb-2">Open <a href="{{ route('marketplace.settings', 'alibaba') }}">Sync Settings</a> → enable inventory / order sync.</li>
-                                <li>Order import jobs use the <code>alibaba</code> queue — started automatically by <code>scripts/cron-alibaba-worker.sh</code> (see deploy / crontab).</li>
-                            </ol>
-                        </div>
-                    </div>
-                @else
-                    <div class="card">
-                        <div class="card-header"><h5 class="card-title mb-0">Setup steps</h5></div>
-                        <div class="card-body">
-                            <ol class="mb-0">
-                                <li class="mb-2">Add <code>ALIBABA_APP_KEY</code> and <code>ALIBABA_APP_SECRET</code> to <code>.env</code>.</li>
-                                <li class="mb-2">In the Alibaba.com developer portal, set Callback URL to exactly <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com' }}</code>.</li>
-                                <li class="mb-2">Click <strong>Re-authorize</strong>, log in on <strong>Alibaba.com</strong>, then run:<br>
-                                    <code>php artisan alibaba:auth-url --exchange=CODE_FROM_REDIRECT --write-env</code></li>
-                                <li class="mb-2">Click <strong>Test connection</strong>.</li>
+                                <li>Order import jobs use the <code>alibaba</code> queue.</li>
                             </ol>
                         </div>
                     </div>
@@ -150,56 +159,86 @@
         </div>
     </div>
 </div>
+@endsection
 
+@section('script')
 <script>
-function runConnectionTest(auto) {
-    var el = document.getElementById('test-result');
-    var btn = document.getElementById('btn-test-connection');
-    if (!el) return;
-    if (!auto && btn) btn.disabled = true;
-    el.innerHTML = '<span class="text-muted"><i class="ri-loader-4-line"></i> Testing Alibaba API…</span>';
+(function () {
+    const out = document.getElementById('alibaba-test-result');
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
-    fetch('{{ route('marketplace.manager.alibaba.test') }}', {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-            'Accept': 'application/json',
-        },
-    })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-        if (data.success) {
-            var extra = data.total_products != null ? ' <span class="text-muted">(' + data.total_products + ' product(s) reported)</span>' : '';
-            el.innerHTML = '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-line"></i> ' + (data.message || 'Connected') + '</span>' + extra;
-            el.className = 'p-3 rounded border border-success bg-success-subtle small';
-        } else {
-            var html = '<span class="text-danger fw-semibold"><i class="ri-error-warning-line"></i> ' + (data.message || 'Failed') + '</span>';
-            if (data.network_error && data.tips && data.tips.length) {
-                html += '<ul class="mb-0 mt-2 ps-3">';
-                data.tips.forEach(function (t) { html += '<li>' + t + '</li>'; });
-                html += '</ul>';
-            }
-            el.innerHTML = html;
-            el.className = 'p-3 rounded border border-danger bg-danger-subtle small';
-        }
-    })
-    .catch(function () {
-        el.innerHTML = '<span class="text-danger">Request failed. Check you are logged in and try again.</span>';
-        el.className = 'p-3 rounded border border-danger bg-danger-subtle small';
-    })
-    .finally(function () {
-        if (btn) btn.disabled = false;
+    async function postJson(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: body ? JSON.stringify(body) : undefined,
+        });
+        return res.json();
+    }
+
+    function show(data) {
+        if (!out) return;
+        var extra = data.total_products != null ? ' (' + data.total_products + ' product(s) reported)' : '';
+        out.innerHTML = data.success
+            ? '<span class="text-success">' + (data.message || 'OK') + extra + '</span>'
+            : '<span class="text-danger">' + (data.message || 'Failed') + '</span>';
+    }
+
+    document.getElementById('btn-test-alibaba')?.addEventListener('click', async function () {
+        out.innerHTML = '<span class="text-muted">Testing…</span>';
+        try { show(await postJson(@json(route('marketplace.manager.alibaba.test')))); }
+        catch (e) { out.innerHTML = '<span class="text-danger">' + e.message + '</span>'; }
     });
-}
 
-document.getElementById('btn-test-connection')?.addEventListener('click', function () {
-    runConnectionTest(false);
-});
+    document.getElementById('btn-revoke-alibaba')?.addEventListener('click', async function () {
+        out.innerHTML = '<span class="text-muted">Revoking…</span>';
+        try {
+            const data = await postJson(@json(route('marketplace.manager.alibaba.revoke')));
+            show(data);
+            if (data.success) setTimeout(function () { window.location.reload(); }, 700);
+        } catch (e) { out.innerHTML = '<span class="text-danger">' + e.message + '</span>'; }
+    });
 
-@if($credentialsReady ?? false)
-document.addEventListener('DOMContentLoaded', function () {
-    runConnectionTest(true);
-});
-@endif
+    document.getElementById('btn-save-alibaba-token')?.addEventListener('click', async function () {
+        const token = (document.getElementById('alibaba-access-token-input').value || '').trim();
+        if (!token) {
+            out.innerHTML = '<span class="text-danger">Paste a token first.</span>';
+            return;
+        }
+        out.innerHTML = '<span class="text-muted">Saving…</span>';
+        try {
+            const data = await postJson(@json(route('marketplace.manager.alibaba.save.token')), { access_token: token });
+            show(data);
+            if (data.success) setTimeout(function () { window.location.reload(); }, 700);
+        } catch (e) { out.innerHTML = '<span class="text-danger">' + e.message + '</span>'; }
+    });
+
+    document.getElementById('btn-exchange-alibaba-code')?.addEventListener('click', async function () {
+        const code = (document.getElementById('alibaba-auth-code-input').value || '').trim();
+        if (!code) {
+            out.innerHTML = '<span class="text-danger">Paste an authorization code first.</span>';
+            return;
+        }
+        out.innerHTML = '<span class="text-muted">Exchanging…</span>';
+        try {
+            const data = await postJson(@json(route('marketplace.manager.alibaba.exchange')), { code: code });
+            show(data);
+            if (data.success) setTimeout(function () { window.location.reload(); }, 700);
+        } catch (e) { out.innerHTML = '<span class="text-danger">' + e.message + '</span>'; }
+    });
+
+    @if($credentialsReady ?? false)
+    document.addEventListener('DOMContentLoaded', async function () {
+        if (!out) return;
+        out.innerHTML = '<span class="text-muted">Testing…</span>';
+        try { show(await postJson(@json(route('marketplace.manager.alibaba.test')))); }
+        catch (e) { out.innerHTML = '<span class="text-danger">' + e.message + '</span>'; }
+    });
+    @endif
+})();
 </script>
 @endsection

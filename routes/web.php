@@ -631,6 +631,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/aliexpress/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncMismatchInventoryNow'])->name('aliexpress.sync.mismatch.inventory');
         Route::get('/alibaba/connect', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'connect'])->name('alibaba.connect');
         Route::post('/alibaba/test-connection', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'testConnection'])->name('alibaba.test');
+        Route::post('/alibaba/save-access-token', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'saveAccessToken'])->name('alibaba.save.token');
+        Route::post('/alibaba/revoke-access-token', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'revokeAccessToken'])->name('alibaba.revoke');
+        Route::post('/alibaba/exchange-auth-code', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'exchangeAuthCode'])->name('alibaba.exchange');
         Route::post('/alibaba/refresh-products', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProducts'])->name('alibaba.refresh');
         Route::get('/alibaba/refresh-products/status', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProductsStatus'])->name('alibaba.refresh.status');
         Route::post('/alibaba/fetch-orders', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'fetchOrders'])->name('alibaba.fetch.orders');
@@ -806,6 +809,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
+    Route::get('/alibaba/callback', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'oauthCallback'])->name('alibaba.oauth.callback');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
     Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls'])->group(function () {

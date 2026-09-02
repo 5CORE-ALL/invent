@@ -655,7 +655,7 @@ class AliExpressApiService
      *
      * @param  array<string, mixed>  $businessParams
      */
-    private function callApi(string $method, array $businessParams = []): array
+    protected function callApi(string $method, array $businessParams = []): array
     {
         return $this->gateway === 'rest'
             ? $this->callRestGateway($method, $businessParams)
@@ -667,7 +667,7 @@ class AliExpressApiService
      *
      * @param  array<string, array<string, mixed>>  $paramsByGateway
      */
-    private function callApiFlexible(string $method, array $paramsByGateway): array
+    protected function callApiFlexible(string $method, array $paramsByGateway): array
     {
         $order = $this->gateway === 'rest' ? ['rest', 'sync'] : ['sync', 'rest'];
         if (! $this->gatewayFallback) {
@@ -744,7 +744,7 @@ class AliExpressApiService
      *
      * @param  array<string, mixed>  $businessParams  Flat business fields (e.g. current_page, page_size)
      */
-    private function callRestGateway(string $method, array $businessParams = []): array
+    protected function callRestGateway(string $method, array $businessParams = []): array
     {
         if ($this->appKey === '' || $this->appSecret === '') {
             return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
@@ -1000,7 +1000,7 @@ class AliExpressApiService
      *
      * @param  array<string, mixed>  $businessParams  Top-level API keys (e.g. edit_product_request => JSON string)
      */
-    private function callSync(string $method, array $businessParams = []): array
+    protected function callSync(string $method, array $businessParams = []): array
     {
         if ($this->appKey === '' || $this->appSecret === '') {
             return [
@@ -1113,7 +1113,7 @@ class AliExpressApiService
      *
      * @param  array<string, mixed>  $payload
      */
-    private function encodeRequestPayload(array $payload): string
+    protected function encodeRequestPayload(array $payload): string
     {
         return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
@@ -1170,7 +1170,7 @@ class AliExpressApiService
     /**
      * Unwrap single-key nested response like aliexpress_solution_product_edit_response.
      */
-    private function unwrapSolutionEnvelope(array $json): array
+    protected function unwrapSolutionEnvelope(array $json): array
     {
         if (count($json) !== 1) {
             return $json;
@@ -1186,6 +1186,7 @@ class AliExpressApiService
         if (
             str_contains(strtolower($key), 'response')
             || str_contains(strtolower($key), 'aliexpress_')
+            || str_contains(strtolower($key), 'alibaba_')
         ) {
             return $first;
         }
@@ -1196,7 +1197,7 @@ class AliExpressApiService
     /**
      * Normalize product list JSON after successful REST call.
      */
-    private function parseSolutionProductListResponse($payload): array
+    protected function parseSolutionProductListResponse($payload): array
     {
         if (!is_array($payload)) {
             return [
@@ -2236,7 +2237,7 @@ class AliExpressApiService
     public function extractSkuRowsFromListItem(array $item, bool $fetchDetail = false): array
     {
         $item = $this->normalizeApiRow($item);
-        $productId = (string) ($item['product_id'] ?? $item['id'] ?? '');
+        $productId = (string) ($item['product_id'] ?? $item['productId'] ?? $item['id'] ?? '');
         if ($productId === '') {
             return [];
         }
@@ -2259,12 +2260,15 @@ class AliExpressApiService
             ?? $item['aeop_aeop_product_skus']
             ?? $item['skus']
             ?? $item['product_skus']
+            ?? $item['sku_list']
+            ?? $item['product_sku_list']
+            ?? $item['sku_info_list']
             ?? null;
 
         if (is_array($nested) && $nested !== []) {
             foreach ($this->normalizeList($nested) as $skuRow) {
                 $skuRow = $this->normalizeApiRow($skuRow);
-                $sku = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? ''));
+                $sku = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? $skuRow['seller_sku'] ?? $skuRow['cargo_number'] ?? ''));
                 $price = $this->extractPriceFromRow($skuRow);
                 if ($sku === '' && $price <= 0) {
                     continue;
@@ -2320,6 +2324,7 @@ class AliExpressApiService
             ?? $info['aeop_ae_product_s_k_u_s']
             ?? $info['product_sku_list']
             ?? $info['sku_info_list']
+            ?? $info['sku_list']
             ?? $info['skus']
             ?? [];
         if (is_string($skus)) {
@@ -2329,7 +2334,7 @@ class AliExpressApiService
 
         foreach ($this->normalizeList($skus) as $skuRow) {
             $skuRow = $this->normalizeApiRow($skuRow);
-            $sku = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? ''));
+            $sku = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? $skuRow['seller_sku'] ?? $skuRow['cargo_number'] ?? ''));
             $price = $this->extractPriceFromRow($skuRow);
             if ($sku === '' && $price <= 0) {
                 continue;
@@ -2363,7 +2368,7 @@ class AliExpressApiService
     /**
      * Normalize order list payload to a flat list of orders with product lines.
      */
-    private function parseSolutionOrderListResponse(array $payload): array
+    protected function parseSolutionOrderListResponse(array $payload): array
     {
         $result = $payload['result'] ?? $payload;
         if (! is_array($result)) {
@@ -2396,6 +2401,10 @@ class AliExpressApiService
             ?? $order['product_list']['aeop_order_product_dto']
             ?? $order['product_list']
             ?? $order['child_order_list']
+            ?? $order['product_items']
+            ?? $order['order_entries']
+            ?? $order['entry_list']
+            ?? $order['sku_list']
             ?? [];
 
         $lines = [];
@@ -2403,7 +2412,7 @@ class AliExpressApiService
             $product = $this->normalizeApiRow($product);
             $lines[] = [
                 'product_id' => (string) ($product['product_id'] ?? ''),
-                'sku_code' => (string) ($product['sku_code'] ?? $product['sku'] ?? ''),
+                'sku_code' => (string) ($product['sku_code'] ?? $product['sku'] ?? $product['seller_sku'] ?? $product['cargo_number'] ?? ''),
                 'product_count' => (int) ($product['product_count'] ?? $product['quantity'] ?? 1),
                 'product_unit_price' => [
                     'amount' => $this->extractPriceFromRow($product),
@@ -2509,7 +2518,7 @@ class AliExpressApiService
     private function extractProductName(array $item): ?string
     {
         $item = $this->normalizeApiRow($item);
-        foreach (['subject', 'product_name', 'title', 'product_title'] as $key) {
+        foreach (['subject', 'product_name', 'title', 'product_title', 'name'] as $key) {
             if (! empty($item[$key]) && is_string($item[$key])) {
                 return trim($item[$key]);
             }

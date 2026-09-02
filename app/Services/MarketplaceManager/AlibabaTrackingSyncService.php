@@ -41,7 +41,7 @@ class AlibabaTrackingSyncService
     public function pushTrackingForOrder(AlibabaOrderMetric $line): array
     {
         if (empty($this->aliExpressApi->getAccessToken())) {
-            return ['success' => false, 'message' => 'ALIEXPRESS_ACCESS_TOKEN missing.'];
+            return ['success' => false, 'message' => 'ALIBABA_ACCESS_TOKEN missing.'];
         }
 
         $orderId = trim((string) $line->order_id);
