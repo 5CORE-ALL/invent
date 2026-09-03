@@ -59,9 +59,17 @@ class ListingPublishCommonController extends Controller
             ? 'single'
             : 'variation';
         $parentHint = trim((string) $request->input('parent', $request->input('parent_hint', '')));
+        $categoryId = (int) preg_replace('/\D+/', '', (string) $request->input('category_id', ''));
 
         try {
-            $result = $preview->publishSkus($skus, $channel, ! $request->boolean('confirmed'), $mode, $parentHint);
+            $result = $preview->publishSkus(
+                $skus,
+                $channel,
+                ! $request->boolean('confirmed'),
+                $mode,
+                $parentHint,
+                $categoryId > 0 ? $categoryId : null
+            );
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,

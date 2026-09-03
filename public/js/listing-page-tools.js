@@ -171,53 +171,53 @@
         const sku = String(data.sku || '').trim();
         if (!sku) return '';
         const label = escapeHtml(cfg().channelLabel || 'marketplace');
-        const independent = supportsIndependentPublish();
         return '<button type="button" class="listing-mp-publish-btn" data-sku="' + escapeHtml(sku) +
-            '" title="' + (independent ? 'Publish this SKU independently or as a variation to ' : 'Review variations then publish to ') +
+            '" title="Choose single listing or your own variation group for ' +
             label + '"><i class="fas fa-cloud-upload-alt"></i> Publish</button>';
     }
 
     let previewSeedSkus = [];
     let lastPreviewGroups = [];
 
-    function supportsIndependentPublish() {
-        const c = cfg();
-        if (c.supportsIndependentPublish === true) return true;
-        const channel = String(c.channel || '').toLowerCase();
-        return channel === 'temu' || channel === 'reverb' || channel === 'reverbcom';
-    }
-
     function selectedPublishMode() {
-        if (!supportsIndependentPublish()) return 'variation';
         const checked = document.querySelector('input[name="listing-publish-mode"]:checked');
         const mode = String((checked && checked.value) || cDefaultPublishMode()).toLowerCase();
-        return mode === 'single' ? 'single' : 'variation';
+        return mode === 'variation' ? 'variation' : 'single';
     }
 
     function cDefaultPublishMode() {
-        const raw = String(cfg().defaultPublishMode || (supportsIndependentPublish() ? 'single' : 'variation')).toLowerCase();
+        const raw = String(cfg().defaultPublishMode || 'single').toLowerCase();
         return raw === 'variation' ? 'variation' : 'single';
+    }
+
+    function isAliexpressChannel() {
+        return String(cfg().channel || '').toLowerCase() === 'aliexpress';
+    }
+
+    function selectedCategoryId() {
+        const el = document.getElementById('listing-publish-category-id');
+        return el ? String(el.value || '').replace(/\D+/g, '') : '';
     }
 
     function applyPublishModeUi() {
         const box = document.getElementById('listing-publish-mode-box');
-        if (box) box.style.display = supportsIndependentPublish() ? '' : 'none';
-        const want = cDefaultPublishMode();
-        const radio = document.querySelector('input[name="listing-publish-mode"][value="' + want + '"]');
-        if (radio) radio.checked = true;
+        if (box) box.style.display = '';
+        const catBox = document.getElementById('listing-publish-aliexpress-category');
+        if (catBox) catBox.hidden = !isAliexpressChannel();
         updateModalCopy();
     }
 
     function updateModalCopy() {
         const title = document.getElementById('listingPublishModalLabel');
-        const note = document.querySelector('#listingPublishModal .listing-publish-modal-note');
+        const note = document.getElementById('listing-publish-modal-note')
+            || document.querySelector('#listingPublishModal .listing-publish-modal-note');
         const btn = document.getElementById('listing-publish-confirm');
         const single = selectedPublishMode() === 'single';
-        if (title) title.textContent = single ? 'Publish independently' : 'Publish as variation';
+        if (title) title.textContent = single ? 'Publish single listings' : 'Publish variation listing';
         if (note) {
             note.textContent = single
-                ? 'Each checked SKU becomes its own marketplace listing. Siblings are not bundled. Uncheck a child to leave it off.'
-                : 'Each parent becomes one marketplace listing. Missing L siblings are included automatically. Already listed and NRL SKUs are skipped. Uncheck a child to leave it off this listing.';
+                ? 'Each checked SKU becomes its own marketplace listing. Suggested siblings are hidden in this mode.'
+                : 'One marketplace listing per group. Only the SKUs you check are included — suggested siblings stay off until you check them.';
         }
         if (btn && !btn.disabled) {
             btn.innerHTML = single
@@ -228,9 +228,8 @@
 
     function childShouldCheck(child) {
         if (child.status !== 'will_publish') return false;
-        if (selectedPublishMode() !== 'single') return true;
+        if (typeof child.selected === 'boolean') return child.selected;
         const sku = String(child.sku || '').trim();
-        if (!previewSeedSkus.length) return child.selected !== false;
         return previewSeedSkus.indexOf(sku) !== -1;
     }
 
@@ -288,16 +287,22 @@
             const selectedCount = children.filter(childShouldCheck).length;
             html += '<div class="listing-publish-group" data-group-index="' + gi + '" data-parent="' + escapeHtml(parent) + '">';
             html += '<div class="listing-publish-group-head">' + escapeHtml(parent) + ' · ' + selectedCount +
-                (single ? ' independent listing' + (selectedCount === 1 ? '' : 's') : (' variation' + (selectedCount === 1 ? '' : 's'))) + '</div>';
-            html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
+                (single
+                    ? ' selected for single listing' + (selectedCount === 1 ? '' : 's')
+                    : ' selected for this variation') + '</div>';
+            html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
             children.forEach(function (child) {
                 const sku = String(child.sku || '');
                 const publishable = child.status === 'will_publish';
                 const checked = childShouldCheck(child);
                 if (checked) canPublish = true;
+                const role = checked
+                    ? '<span class="listing-publish-role is-picked">Your pick</span>'
+                    : '<span class="listing-publish-role is-suggested">Suggested sibling</span>';
                 html += '<tr><td><input type="checkbox" class="listing-publish-sku-check" data-sku="' +
                     escapeHtml(sku) + '"' + (checked ? ' checked' : '') + (publishable ? '' : ' disabled') + '></td>';
                 html += '<td>' + escapeHtml(sku) + '</td><td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
+                html += '<td>' + role + '</td>';
                 html += '<td>' + statusLabel(child.status, child.reason) + '</td></tr>';
             });
             html += '</tbody></table></div>';
@@ -372,18 +377,21 @@
         previewSeedSkus = unique.slice();
         applyPublishModeUi();
         const box = document.getElementById('listing-publish-groups');
-        if (box) box.innerHTML = '<p class="text-muted mb-0">Loading variation preview…</p>';
+        if (box) box.innerHTML = '<p class="text-muted mb-0">Loading listing preview…</p>';
         const confirm = document.getElementById('listing-publish-confirm');
         if (confirm) confirm.disabled = true;
         showModal();
+        requestPreview(unique);
+    }
+
+    function requestPreview(skus) {
         const c = cfg();
-        const url = actionUrl();
         $.ajax({
-            url: url,
+            url: actionUrl(),
             type: 'POST',
             data: {
-                skus: unique,
-                sku_parents: skuParentsMap(unique),
+                skus: skus,
+                sku_parents: skuParentsMap(skus),
                 preview: 1,
                 channel: c.channel || '',
                 mode: selectedPublishMode()
@@ -394,7 +402,7 @@
             },
             error: function (xhr) {
                 hideModal();
-                notify('danger', ajaxError(xhr) || 'Could not build variation preview.');
+                notify('danger', ajaxError(xhr) || 'Could not build listing preview.');
             }
         });
     }
@@ -427,7 +435,8 @@
                 publish: 1,
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
-                parent: parent || ''
+                parent: parent || '',
+                category_id: selectedCategoryId()
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
             timeout: 180000
@@ -508,7 +517,13 @@
         $(document).off('change.listingPageTools', 'input[name="listing-publish-mode"]')
             .on('change.listingPageTools', 'input[name="listing-publish-mode"]', function () {
                 updateModalCopy();
-                if (lastPreviewGroups.length) renderGroups(lastPreviewGroups);
+                if (previewSeedSkus.length) {
+                    const box = document.getElementById('listing-publish-groups');
+                    if (box) box.innerHTML = '<p class="text-muted mb-0">Updating preview…</p>';
+                    requestPreview(previewSeedSkus);
+                } else if (lastPreviewGroups.length) {
+                    renderGroups(lastPreviewGroups);
+                }
             });
 
         $(document).off('change.listingPageTools', '.listing-publish-sku-check')
@@ -517,9 +532,17 @@
                 const parent = String($group.attr('data-parent') || '').trim();
                 const selectedCount = $group.find('.listing-publish-sku-check:checked:not(:disabled)').length;
                 const single = selectedPublishMode() === 'single';
+                const $role = $(this).closest('tr').find('.listing-publish-role');
+                if ($role.length) {
+                    if (this.checked && !this.disabled) {
+                        $role.removeClass('is-suggested').addClass('is-picked').text('Your pick');
+                    } else {
+                        $role.removeClass('is-picked').addClass('is-suggested').text('Suggested sibling');
+                    }
+                }
                 $group.find('.listing-publish-group-head').text(
                     parent + ' · ' + selectedCount +
-                    (single ? ' independent listing' + (selectedCount === 1 ? '' : 's') : (' variation' + (selectedCount === 1 ? '' : 's')))
+                    (single ? ' selected for single listing' + (selectedCount === 1 ? '' : 's') : ' selected for this variation')
                 );
                 const anyChecked = $('#listing-publish-groups .listing-publish-sku-check:checked:not(:disabled)').length > 0;
                 $('#listing-publish-confirm').prop('disabled', !anyChecked);

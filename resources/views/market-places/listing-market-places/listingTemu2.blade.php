@@ -3,7 +3,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
-    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=3">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -511,14 +511,13 @@
         }
 
         .temu2-publish-mode {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
             margin-bottom: 14px;
-            padding: 10px 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            background: #f8fafc;
+            padding: 0;
+            border: 0;
+            background: transparent;
             font-size: 13px;
             color: #0f172a;
         }
@@ -530,10 +529,45 @@
             margin: 0;
             cursor: pointer;
             font-weight: 500;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .temu2-publish-mode label:has(input:checked) {
+            border-color: #0d6efd;
+            background: #eff6ff;
+            box-shadow: 0 0 0 1px #0d6efd;
+        }
+
+        .temu2-publish-mode label strong { display: block; font-size: 13px; color: #0f172a; }
+        .temu2-publish-mode label em {
+            display: block;
+            font-style: normal;
+            font-weight: 400;
+            font-size: 12px;
+            color: #475569;
+            margin-top: 2px;
         }
 
         .temu2-publish-mode input {
             margin-top: 3px;
+            flex: 0 0 auto;
+        }
+
+        .temu2-publish-role {
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 1px 7px;
+            white-space: nowrap;
+        }
+        .temu2-publish-role.is-picked { background: #dcfce7; color: #166534; }
+        .temu2-publish-role.is-suggested { background: #f1f5f9; color: #475569; }
+
+        @media (max-width: 640px) {
+            .temu2-publish-mode { grid-template-columns: 1fr; }
         }
 
         .temu2-publish-group {
@@ -728,22 +762,27 @@
                         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="temu2PublishModalLabel">Publish to Temu 2</h5>
+                                    <h5 class="modal-title" id="temu2PublishModalLabel">Publish listings</h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <p class="temu2-publish-modal-note">
-                                        The parent is used as the Temu goods title. Check the children you want on this listing.
-                                        Unchecked siblings stay off. Products in Temu Deleted can be published again.
+                                    <p class="temu2-publish-modal-note" id="temu2-publish-modal-note">
+                                        Only SKUs you check are published. Suggested siblings stay off until you check them.
                                     </p>
-                                    <div class="temu2-publish-mode" role="radiogroup" aria-label="Publish mode">
+                                    <div class="temu2-publish-mode" role="radiogroup" aria-label="How do you want to list?">
                                         <label>
-                                            <input type="radio" name="temu2-publish-mode" value="variation" checked>
-                                            <span>One variation listing — all checked SKUs under this parent</span>
+                                            <input type="radio" name="temu2-publish-mode" value="single" checked>
+                                            <span>
+                                                <strong>Single listing</strong>
+                                                <em>Each checked SKU becomes its own listing. Suggested siblings are hidden.</em>
+                                            </span>
                                         </label>
                                         <label>
-                                            <input type="radio" name="temu2-publish-mode" value="single">
-                                            <span>Each checked SKU as its own listing — still uses the parent title</span>
+                                            <input type="radio" name="temu2-publish-mode" value="variation">
+                                            <span>
+                                                <strong>Variation listing</strong>
+                                                <em>One listing with the SKUs you check. Suggested siblings start unchecked.</em>
+                                            </span>
                                         </label>
                                     </div>
                                     <div id="temu2-publish-groups"></div>
@@ -752,7 +791,7 @@
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="temu2-publish-confirm">
-                                        <i class="fas fa-cloud-upload-alt"></i> Publish
+                                        <i class="fas fa-cloud-upload-alt"></i> Publish listing(s)
                                     </button>
                                 </div>
                             </div>
@@ -1352,24 +1391,18 @@
                 return out;
             }
 
-            function skuParentsMap(skus) {
-                const parentKeys = {};
-                (skus || []).forEach(function (sku) {
-                    const parent = listingParentForSku(sku);
-                    if (parent) parentKeys[parent.toUpperCase()] = true;
+            let temu2PreviewSeedSkus = [];
+
+            function isPreviewSeedSku(sku) {
+                const want = skuKey(sku);
+                return temu2PreviewSeedSkus.some(function (seed) {
+                    return skuKey(seed) === want;
                 });
+            }
+
+            function skuParentsMap(skus) {
                 const pairs = [];
                 const seen = {};
-                listingRows().forEach(function (row) {
-                    const sku = String(row.sku || '').trim();
-                    if (!sku || isParentSku(sku) || seen[sku]) return;
-                    const parent = String(row.parent || '').trim();
-                    const selected = (skus || []).some(function (s) { return String(s || '').trim() === sku; });
-                    if (selected || (parent && parentKeys[parent.toUpperCase()])) {
-                        seen[sku] = true;
-                        pairs.push({ sku: sku, parent: parent });
-                    }
-                });
                 (skus || []).forEach(function (sku) {
                     sku = String(sku || '').trim();
                     if (!sku || seen[sku]) return;
@@ -1382,17 +1415,11 @@
             function expandPreviewSkus(skus) {
                 const unique = [];
                 const seen = {};
-                const add = function (sku) {
+                (skus || []).forEach(function (sku) {
                     sku = String(sku || '').trim();
                     if (!sku || isParentSku(sku) || seen[sku]) return;
                     seen[sku] = true;
                     unique.push(sku);
-                };
-                (skus || []).forEach(add);
-                unique.slice().forEach(function (sku) {
-                    listingChildrenForParent(listingParentForSku(sku)).forEach(function (row) {
-                        add(row.sku);
-                    });
                 });
                 return unique;
             }
@@ -1409,9 +1436,11 @@
                         byParent[key] = { parent: parent, children: [] };
                         parentOrder.push(key);
                     }
+                    const single = selectedPublishMode() === 'single';
                     listingChildrenForParent(parent).forEach(function (row) {
                         const childSku = String(row.sku || '').trim();
                         if (!childSku) return;
+                        if (single && !isPreviewSeedSku(childSku)) return;
                         if (byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(childSku); })) return;
                         byParent[key].children.push({
                             sku: childSku,
@@ -1419,7 +1448,7 @@
                             inv: row.INV ?? 0,
                             status: 'will_publish',
                             reason: '',
-                            selected: true
+                            selected: isPreviewSeedSku(childSku)
                         });
                     });
                     if (!byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(sku); })) {
@@ -1429,7 +1458,7 @@
                             inv: 0,
                             status: 'will_publish',
                             reason: '',
-                            selected: true
+                            selected: isPreviewSeedSku(sku)
                         });
                     }
                 });
@@ -1489,8 +1518,28 @@
             }
 
             function selectedPublishMode() {
-                const mode = String($('input[name="temu2-publish-mode"]:checked').val() || 'variation').toLowerCase();
-                return mode === 'single' ? 'single' : 'variation';
+                const mode = String($('input[name="temu2-publish-mode"]:checked').val() || 'single').toLowerCase();
+                return mode === 'variation' ? 'variation' : 'single';
+            }
+
+            function updateTemu2ModalCopy() {
+                const single = selectedPublishMode() === 'single';
+                $('#temu2PublishModalLabel').text(single ? 'Publish single listings' : 'Publish variation listing');
+                $('#temu2-publish-modal-note').text(single
+                    ? 'Each checked SKU becomes its own Temu listing. Suggested siblings are hidden in this mode.'
+                    : 'One Temu listing per group. Only the SKUs you check are included — suggested siblings stay off until you check them.');
+                const $btn = $('#temu2-publish-confirm');
+                if (!$btn.prop('disabled')) {
+                    $btn.html(single
+                        ? '<i class="fas fa-cloud-upload-alt"></i> Publish listing(s)'
+                        : '<i class="fas fa-cloud-upload-alt"></i> Publish variation(s)');
+                }
+            }
+
+            function childShouldCheck(child) {
+                if (child.status !== 'will_publish') return false;
+                if (typeof child.selected === 'boolean') return child.selected;
+                return isPreviewSeedSku(child.sku);
             }
 
             function renderPublishGroups(groups) {
@@ -1499,30 +1548,29 @@
                     $('#temu2-publish-confirm').prop('disabled', true);
                     return;
                 }
-                const onlySingle = groups.every(function (group) {
-                    return normalizePreviewChildren(group.children).length <= 1 || group.single_child;
-                });
-                $('input[name="temu2-publish-mode"][value="' + (onlySingle ? 'single' : 'variation') + '"]').prop('checked', true);
+                const single = selectedPublishMode() === 'single';
                 let html = '';
                 let canPublish = false;
                 groups.forEach(function (group, gi) {
                     const parent = String(group.parent || 'Standalone');
                     const children = normalizePreviewChildren(group.children);
-                    const selectedCount = children.filter(function (child) {
-                        return child.status === 'will_publish' && child.selected !== false;
-                    }).length;
+                    const selectedCount = children.filter(childShouldCheck).length;
                     html += `<div class="temu2-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
-                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected</div>`;
-                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU (spec)</th><th>INV</th><th>Status</th></tr></thead><tbody>';
+                    html += `<div class="temu2-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</div>`;
+                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
                     children.forEach(function (child) {
                         const sku = String(child.sku || '');
                         const publishable = child.status === 'will_publish';
-                        const checked = publishable && child.selected !== false;
+                        const checked = childShouldCheck(child);
                         if (checked) canPublish = true;
+                        const role = checked
+                            ? '<span class="temu2-publish-role is-picked">Your pick</span>'
+                            : '<span class="temu2-publish-role is-suggested">Suggested sibling</span>';
                         html += '<tr>';
                         html += `<td><input type="checkbox" class="temu2-publish-sku-check" data-sku="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
                         html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
                         html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
+                        html += `<td>${role}</td>`;
                         html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
                         html += '</tr>';
                     });
@@ -1531,13 +1579,26 @@
                 $('#temu2-publish-groups').html(html);
                 $('#temu2-publish-confirm').prop('disabled', !canPublish);
                 $('#temu2-publish-progress').text('');
+                updateTemu2ModalCopy();
             }
 
             $(document).on('change', '.temu2-publish-sku-check', function () {
                 const $group = $(this).closest('.temu2-publish-group');
                 const parent = String($group.attr('data-parent') || '').trim();
                 const selectedCount = $group.find('.temu2-publish-sku-check:checked:not(:disabled)').length;
-                $group.find('.temu2-publish-group-head').text(parent + ' · ' + selectedCount + ' selected');
+                const single = selectedPublishMode() === 'single';
+                const $role = $(this).closest('tr').find('.temu2-publish-role');
+                if ($role.length) {
+                    if (this.checked && !this.disabled) {
+                        $role.removeClass('is-suggested').addClass('is-picked').text('Your pick');
+                    } else {
+                        $role.removeClass('is-picked').addClass('is-suggested').text('Suggested sibling');
+                    }
+                }
+                $group.find('.temu2-publish-group-head').text(
+                    parent + ' · ' + selectedCount + ' selected for ' +
+                    (single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation')
+                );
                 const anyChecked = $('#temu2-publish-groups .temu2-publish-sku-check:checked:not(:disabled)').length > 0;
                 $('#temu2-publish-confirm').prop('disabled', !anyChecked);
             });
@@ -1555,7 +1616,14 @@
                         groups.push({ parent: parent, skus: skus });
                     }
                 });
-                return groups;
+                if (selectedPublishMode() !== 'single') return groups;
+                const out = [];
+                groups.forEach(function (group) {
+                    group.skus.forEach(function (sku) {
+                        out.push({ parent: sku, skus: [sku] });
+                    });
+                });
+                return out;
             }
 
             function markRowsListed(skus, goodsId) {
@@ -1575,21 +1643,7 @@
                 calculateTotals();
             }
 
-            function openPublishPreview(skus) {
-                const unique = expandPreviewSkus(skus);
-                if (!unique.length) {
-                    showNotification('danger', 'Select at least one SKU.');
-                    return;
-                }
-                $('#temu2-publish-groups').html('<p class="text-muted mb-0">Loading variation preview…</p>');
-                $('#temu2-publish-confirm').prop('disabled', true);
-                $('#temu2-publish-progress').text('');
-                const onlySingle = unique.length === 1 || unique.every(function (sku) {
-                    return listingChildrenForParent(listingParentForSku(sku)).length <= 1;
-                });
-                $('input[name="temu2-publish-mode"][value="' + (onlySingle ? 'single' : 'variation') + '"]').prop('checked', true);
-                showBsModal('temu2PublishModal');
-                renderPublishGroups(fallbackGroupsFromTable(unique));
+            function requestTemu2Preview(unique) {
                 $.ajax({
                     url: "{{ url('/listing_temu2/save-status') }}",
                     type: 'POST',
@@ -1599,7 +1653,8 @@
                         skus: unique,
                         sku_parents: skuParentsMap(unique),
                         preview: 1,
-                        channel: 'temu2'
+                        channel: 'temu2',
+                        mode: selectedPublishMode()
                     }),
                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                     success: function (response) {
@@ -1612,12 +1667,35 @@
                             return;
                         }
                         hideBsModal('temu2PublishModal');
-                        let msg = 'Could not build variation preview.';
+                        let msg = 'Could not build listing preview.';
                         if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
                         showNotification('danger', msg);
                     }
                 });
             }
+
+            function openPublishPreview(skus) {
+                const unique = expandPreviewSkus(skus);
+                if (!unique.length) {
+                    showNotification('danger', 'Select at least one SKU.');
+                    return;
+                }
+                temu2PreviewSeedSkus = unique.slice();
+                $('#temu2-publish-groups').html('<p class="text-muted mb-0">Loading listing preview…</p>');
+                $('#temu2-publish-confirm').prop('disabled', true);
+                $('#temu2-publish-progress').text('');
+                updateTemu2ModalCopy();
+                showBsModal('temu2PublishModal');
+                renderPublishGroups(fallbackGroupsFromTable(unique));
+                requestTemu2Preview(unique);
+            }
+
+            $(document).on('change', 'input[name="temu2-publish-mode"]', function () {
+                updateTemu2ModalCopy();
+                if (!temu2PreviewSeedSkus.length) return;
+                $('#temu2-publish-groups').html('<p class="text-muted mb-0">Updating preview…</p>');
+                requestTemu2Preview(temu2PreviewSeedSkus);
+            });
 
             function publishAjaxError(xhr) {
                 if (xhr.status === 0) {
@@ -1799,5 +1877,5 @@
             publishUrl: '/listing_temu2/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=4"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
 @endsection

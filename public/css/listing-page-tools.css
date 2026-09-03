@@ -83,26 +83,69 @@
 .listing-mp-publish-btn:hover { background: #0b5ed7; color: #fff; }
 .listing-publish-modal-note { font-size: 13px; color: #475569; margin-bottom: 12px; }
 .listing-publish-mode {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
     margin-bottom: 14px;
-    padding: 10px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #f8fafc;
+    padding: 0;
+    border: 0;
+    background: transparent;
     font-size: 13px;
     color: #0f172a;
 }
-.listing-publish-mode label {
+.listing-publish-mode-card {
     display: flex;
     align-items: flex-start;
     gap: 8px;
     margin: 0;
     cursor: pointer;
     font-weight: 500;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
 }
-.listing-publish-mode input { margin-top: 3px; }
+.listing-publish-mode-card:has(input:checked) {
+    border-color: #0d6efd;
+    background: #eff6ff;
+    box-shadow: 0 0 0 1px #0d6efd;
+}
+.listing-publish-mode-card strong { display: block; font-size: 13px; color: #0f172a; }
+.listing-publish-mode-card em {
+    display: block;
+    font-style: normal;
+    font-weight: 400;
+    font-size: 12px;
+    color: #475569;
+    margin-top: 2px;
+}
+.listing-publish-mode input { margin-top: 3px; flex: 0 0 auto; }
+@media (max-width: 640px) {
+    .listing-publish-mode { grid-template-columns: 1fr; }
+}
+.listing-publish-category {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fff7ed;
+}
+.listing-publish-category label {
+    display: block;
+    font-weight: 700;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+.listing-publish-category small { display: block; color: #9a3412; margin-top: 4px; }
+.listing-publish-role {
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
+}
+.listing-publish-role.is-picked { background: #dcfce7; color: #166534; }
+.listing-publish-role.is-suggested { background: #f1f5f9; color: #475569; }
 .listing-publish-group {
     border: 1px solid #e2e8f0;
     border-radius: 8px;

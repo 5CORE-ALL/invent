@@ -133,11 +133,27 @@ class Temu2ListingPublishService
      * @param  array<string, string>  $skuParents  Optional listing-page parent keyed by SKU
      * @return array{success: bool, groups: list<array<string, mixed>>}
      */
-    public function previewFromSkus(array $seedSkus, array $skuParents = []): array
+    public function previewFromSkus(array $seedSkus, array $skuParents = [], string $mode = 'variation'): array
     {
+        $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         $seeds = $this->uniqueTrimmedSkus($seedSkus);
+        $seedNorm = [];
+        foreach ($seeds as $sku) {
+            $norm = $this->skuNorm($sku);
+            if ($norm !== '') {
+                $seedNorm[$norm] = true;
+            }
+        }
         $groups = [];
         foreach ($this->expandSeedSkusToParentGroups($seeds, $skuParents) as $parent => $children) {
+            if ($mode === 'single') {
+                $children = $children->filter(function ($product) use ($seedNorm) {
+                    return isset($seedNorm[$this->skuNorm((string) $product->sku)]);
+                })->values();
+            }
+            if ($children->isEmpty()) {
+                continue;
+            }
             $groups[] = $this->formatPreviewGroup($parent, $children, $seeds);
         }
 
@@ -905,12 +921,11 @@ class Temu2ListingPublishService
         $rows = [];
         $publishSkus = [];
         $selectedCount = 0;
-        $onlyChild = $children->count() === 1;
         foreach ($children as $product) {
             $sku = trim((string) $product->sku);
             $classified = $this->classifyChildSku($sku);
             $publishable = ($classified['status'] ?? '') === 'will_publish';
-            $selected = $publishable && ($onlyChild || $seedNorm === [] || isset($seedNorm[$this->skuNorm($sku)]));
+            $selected = $publishable && isset($seedNorm[$this->skuNorm($sku)]);
             $rows[] = [
                 'sku' => $sku,
                 'spec' => $sku,
