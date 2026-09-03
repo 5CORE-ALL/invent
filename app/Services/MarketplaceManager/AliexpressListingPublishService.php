@@ -223,7 +223,7 @@ class AliexpressListingPublishService
         ];
         $request = array_merge($request, $this->productPackageFields($pkg));
 
-        Log::info('AliExpress publish: sending product.post', [
+        Log::info('AliExpress publish: posting from category schema', [
             'parent' => $parentKey,
             'skus' => $publishSkus,
             'category_id' => $categoryId,
@@ -598,7 +598,7 @@ class AliexpressListingPublishService
     }
 
     /**
-     * Official package fields plus the US schema name aeLogisticsWeight.
+     * Official package fields. US schema names are filled from schema.get, not guessed here.
      *
      * @param  array<string, mixed>  $pkg
      * @return array<string, mixed>
@@ -606,29 +606,11 @@ class AliexpressListingPublishService
     private function productPackageFields(array $pkg): array
     {
         $kg = (string) $pkg['weight'];
-        $kgNum = (float) $kg;
 
         return [
             'weight' => $kg,
             'weight_lb' => (string) ($pkg['weight_lb'] ?? ''),
-            'package_weight' => $kgNum,
-            'gross_weight' => $kg,
-            'aeLogisticsWeight' => $kgNum,
-            'usLogisticsWeight' => [
-                'Package weight' => $kgNum,
-                'value' => $kgNum,
-                'weight' => $kgNum,
-            ],
-            'usl' => ['logisticsWeight' => $kgNum],
-            'usl.logisticsWeight' => $kgNum,
-            'category_attributes' => [
-                'aeLogisticsWeight' => ['value' => $kgNum],
-                'usLogisticsWeight' => [
-                    'Package weight' => $kgNum,
-                    'value' => $kgNum,
-                ],
-                'Package weight' => ['value' => $kgNum],
-            ],
+            'package_weight' => (float) $kg,
             'attribute_list' => [
                 [
                     'aliexpress_attribute_name_id' => 2,
@@ -650,12 +632,6 @@ class AliexpressListingPublishService
         return [
             'weight' => $kg,
             'package_weight' => (float) $kg,
-            'gross_weight' => $kg,
-            'aeLogisticsWeight' => (float) $kg,
-            'usLogisticsWeight' => [
-                'Package weight' => (float) $kg,
-                'value' => (float) $kg,
-            ],
         ];
     }
 
