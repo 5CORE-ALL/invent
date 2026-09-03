@@ -81,11 +81,7 @@ class AliexpressListingPublishService
             ];
         }
 
-        $products = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->whereIn('sku', $publishSkus)
-            ->get()
-            ->keyBy(fn ($row) => (string) $row->sku);
+        $products = $this->findProductsBySkus($publishSkus);
 
         $primarySku = $publishSkus[0];
         $primary = $products->get($primarySku);
@@ -224,7 +220,10 @@ class AliexpressListingPublishService
             'gross_weight' => (string) $pkg['weight'],
             'usLogisticsWeight' => (string) $pkg['weight'],
             'aeLogisticsWeightPackage' => [
-                'weight' => (string) $pkg['weight'],
+                'weight' => (float) $pkg['weight'],
+                'length' => (int) $pkg['length'],
+                'width' => (int) $pkg['width'],
+                'height' => (int) $pkg['height'],
             ],
             'package_length' => (int) $pkg['length'],
             'package_width' => (int) $pkg['width'],
@@ -672,21 +671,26 @@ class AliexpressListingPublishService
         return is_array($values) ? $values : [];
     }
 
-    private function dimWtMasterNumber(array $values, string $key): ?float
+    private function dimWtMasterNumber(array $values, string ...$keys): ?float
     {
-        if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {
-            return null;
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {
+                continue;
+            }
+            $raw = $values[$key];
+            if (is_string($raw)) {
+                $raw = trim(str_replace(',', '', $raw));
+            }
+            if (! is_numeric($raw)) {
+                continue;
+            }
+            $n = (float) $raw;
+            if ($n > 0) {
+                return $n;
+            }
         }
-        $raw = $values[$key];
-        if (is_string($raw)) {
-            $raw = trim(str_replace(',', '', $raw));
-        }
-        if (! is_numeric($raw)) {
-            return null;
-        }
-        $n = (float) $raw;
 
-        return $n > 0 ? $n : null;
+        return null;
     }
 
     /**
@@ -694,17 +698,16 @@ class AliexpressListingPublishService
      */
     private function dimWtMasterItemPackage(array $values): array
     {
-        $inch = function (string $actKey, string $declKey) use ($values): ?float {
-            return $this->dimWtMasterNumber($values, $actKey)
-                ?? $this->dimWtMasterNumber($values, $declKey);
-        };
-
         return [
-            'length_in' => $inch('l', 'l_decl'),
-            'width_in' => $inch('w', 'w_decl'),
-            'height_in' => $inch('h', 'h_decl'),
-            'weight_lb' => $inch('wt_act', 'wt_decl'),
+            // /dim-wt-master Item L/W/H IN, then Decl
+            'length_in' => $this->dimWtMasterNumber($values, 'l', 'l_decl'),
+            'width_in' => $this->dimWtMasterNumber($values, 'w', 'w_decl'),
+            'height_in' => $this->dimWtMasterNumber($values, 'h', 'h_decl'),
+            // /dim-wt-master "Itm wt GW" (lb), then Decl
+            'weight_lb' => $this->dimWtMasterNumber($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
+            // /dim-wt-master "Wt ACT (Kg)" when filled
             'weight_kg' => $this->dimWtMasterNumber($values, 'wt_act_kg'),
+            // /dim-wt-master Item L/W/H CM
             'length_cm' => $this->dimWtMasterNumber($values, 'l_cm'),
             'width_cm' => $this->dimWtMasterNumber($values, 'w_cm'),
             'height_cm' => $this->dimWtMasterNumber($values, 'h_cm'),
@@ -744,7 +747,7 @@ class AliexpressListingPublishService
     {
         $sku = trim($sku);
         $row = $hint;
-        if (! $row || strcasecmp(trim((string) $row->sku), $sku) !== 0) {
+        if (! $row || $this->normalizeSkuKey((string) $row->sku) !== $this->normalizeSkuKey($sku)) {
             $row = $this->findProductLoose($sku) ?? $hint;
         }
         $pkg = $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
@@ -762,21 +765,60 @@ class AliexpressListingPublishService
         return $pkg;
     }
 
-    private function findProductLoose(string $sku): ?ProductMaster
+    private function normalizeSkuKey(string $sku): string
     {
-        $sku = trim($sku);
-        if ($sku === '') {
-            return null;
+        $sku = strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)));
+        $sku = preg_replace('/\s+/u', ' ', $sku) ?? $sku;
+
+        return trim($sku);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return \Illuminate\Support\Collection<string, ProductMaster>
+     */
+    private function findProductsBySkus(array $skus): \Illuminate\Support\Collection
+    {
+        $wanted = [];
+        foreach ($skus as $sku) {
+            $key = $this->normalizeSkuKey((string) $sku);
+            if ($key !== '') {
+                $wanted[$key] = (string) $sku;
+            }
+        }
+        if ($wanted === []) {
+            return collect();
         }
 
-        return ProductMaster::query()
+        $rows = ProductMaster::query()
             ->whereNull('deleted_at')
-            ->where('sku', $sku)
-            ->first()
-            ?: ProductMaster::query()
-                ->whereNull('deleted_at')
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                ->first();
+            ->where(function ($query) use ($wanted) {
+                $query->whereIn('sku', array_values($wanted));
+                foreach (array_keys($wanted) as $key) {
+                    $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+                }
+            })
+            ->get();
+
+        $byNorm = [];
+        foreach ($rows as $row) {
+            $byNorm[$this->normalizeSkuKey((string) $row->sku)] = $row;
+        }
+
+        $out = collect();
+        foreach ($skus as $sku) {
+            $hit = $byNorm[$this->normalizeSkuKey((string) $sku)] ?? null;
+            if ($hit) {
+                $out[(string) $sku] = $hit;
+            }
+        }
+
+        return $out;
+    }
+
+    private function findProductLoose(string $sku): ?ProductMaster
+    {
+        return $this->findProductsBySkus([$sku])->get($sku);
     }
 
     private function parentProductFor(ProductMaster $product, string $sku): ?ProductMaster
