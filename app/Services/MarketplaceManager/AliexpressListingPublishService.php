@@ -26,7 +26,7 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = ''): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -58,7 +58,7 @@ class AliexpressListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -130,11 +130,11 @@ class AliexpressListingPublishService
         }
 
         $parentKey = trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($primary);
-        $categoryId = $this->resolveCategoryId($primary, $primarySku, $title, $gallery[0] ?? '');
+        $categoryId = $this->resolveCategoryId($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId);
         if ($categoryId === null) {
             return [
                 'success' => false,
-                'message' => 'Could not resolve an AliExpress category. Set ALIEXPRESS_DEFAULT_CATEGORY_ID or list a sibling SKU first.',
+                'message' => 'Could not resolve an AliExpress category. Enter the category ID in the publish window, or set ALIEXPRESS_DEFAULT_CATEGORY_ID.',
             ];
         }
 
@@ -293,8 +293,12 @@ class AliexpressListingPublishService
         return $out;
     }
 
-    private function resolveCategoryId(ProductMaster $primary, string $sku, string $title, string $imageUrl): ?int
+    private function resolveCategoryId(ProductMaster $primary, string $sku, string $title, string $imageUrl, ?int $override = null): ?int
     {
+        if ($override !== null && $override > 0) {
+            return $override;
+        }
+
         $configured = (int) preg_replace('/\D+/', '', (string) config('services.aliexpress.default_category_id', ''));
         if ($configured > 0) {
             return $configured;

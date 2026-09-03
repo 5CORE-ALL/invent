@@ -114,7 +114,7 @@ class SyncShopifyOrdersToInventory extends Command
 
     private function httpClient()
     {
-        return Http::withHeaders([
+        return Http::withoutVerifying()->withHeaders([
             'X-Shopify-Access-Token' => $this->accessToken,
             'Content-Type'           => 'application/json',
         ])->timeout(120);

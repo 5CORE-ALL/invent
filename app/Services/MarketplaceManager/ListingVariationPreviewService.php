@@ -29,7 +29,7 @@ class ListingVariationPreviewService
         $channel = strtolower(trim($channel));
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
-            return $this->temu2->previewFromSkus($seedSkus, $skuParents);
+            return $this->temu2->previewFromSkus($seedSkus, $skuParents, $mode);
         }
 
         $seeds = [];
@@ -42,7 +42,7 @@ class ListingVariationPreviewService
         $seedList = array_values($seeds);
 
         $groups = [];
-        foreach ($this->expandSeedSkusToParentGroups($seedSkus) as $parent => $children) {
+        foreach ($this->expandSeedSkusToParentGroups($seedSkus, $mode === 'variation') as $parent => $children) {
             $groups[] = $this->formatPreviewGroup($channel, $parent, $children, $seedList, $mode);
         }
 
@@ -56,7 +56,7 @@ class ListingVariationPreviewService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = ''): array
+    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null): array
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
@@ -69,7 +69,7 @@ class ListingVariationPreviewService
             return $this->faire->publishSkus($skus, $expandSiblings);
         }
         if ($channel === 'aliexpress') {
-            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint);
+            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
         }
         if (in_array($channel, ['reverb', 'reverbcom'], true)) {
             return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint);
@@ -87,7 +87,7 @@ class ListingVariationPreviewService
      * @param  list<string>  $seedSkus
      * @return array<string, Collection<int, ProductMaster>>
      */
-    private function expandSeedSkusToParentGroups(array $seedSkus): array
+    private function expandSeedSkusToParentGroups(array $seedSkus, bool $includeSiblings = true): array
     {
         $seeds = [];
         foreach ($seedSkus as $sku) {
@@ -106,6 +106,23 @@ class ListingVariationPreviewService
             ->whereNull('deleted_at')
             ->whereIn('sku', $seeds)
             ->get();
+
+        if (! $includeSiblings) {
+            $groups = [];
+            foreach ($products as $product) {
+                $sku = trim((string) $product->sku);
+                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                    continue;
+                }
+                $parent = $this->groupKeyForProduct($product);
+                if (! isset($groups[$parent])) {
+                    $groups[$parent] = collect();
+                }
+                $groups[$parent]->push($product);
+            }
+
+            return $groups;
+        }
 
         $parentKeys = [];
         foreach ($products as $product) {
@@ -170,7 +187,7 @@ class ListingVariationPreviewService
             $classified = $this->classifyChildSku($sku, $product, $listedMap, $nrValues);
             $shopifyRow = $shopify->get($sku);
             $selected = $classified['status'] === 'will_publish'
-                && ($mode !== 'single' || $seedLookup === [] || isset($seedLookup[strtoupper($sku)]));
+                && isset($seedLookup[strtoupper($sku)]);
             $rows[] = [
                 'sku' => $sku,
                 'spec' => $sku,
