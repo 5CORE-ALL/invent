@@ -4940,21 +4940,6 @@
                     },
 
                     {
-                        title: "S GPFT",
-                        field: "SGPFT",
-                        visible: false,
-                        hozAlign: "center",
-                        headerTooltip: "S GPFT from saved S PRC (same $ as the S PRC cell / DB).",
-                        formatter: function(cell) {
-                            const percent = ebayComputeSgpftFromSprice(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '';
-
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 80
-                    },
-                    {
                         title: "S GROI",
                         field: "SGROI",
                         hozAlign: "center",
@@ -4965,6 +4950,21 @@
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "S GPFT",
+                        field: "SGPFT",
+                        visible: false,
+                        hozAlign: "center",
+                        headerTooltip: "S GPFT from saved S PRC (same $ as the S PRC cell / DB).",
+                        formatter: function(cell) {
+                            const percent = ebayComputeSgpftFromSprice(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
