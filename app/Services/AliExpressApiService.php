@@ -1521,11 +1521,11 @@ class AliExpressApiService
     }
 
     /**
-     * Official IOP file upload: /sync HMAC-SHA256, system params on the query, file omitted from the sign.
+     * Official IopClient file upload. Method names without "/" are signed as key+value only (no /sync prefix).
      *
      * @param  array<string, string>  $businessParams
      */
-    private function callIopFileUpload(string $method, array $businessParams, string $fileField, string $bytes, string $fileName, string $tokenKey = 'session'): array
+    private function callIopFileUpload(string $method, array $businessParams, string $fileField, string $bytes, string $fileName): array
     {
         if ($this->appKey === '' || $this->appSecret === '') {
             return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
@@ -1537,56 +1537,89 @@ class AliExpressApiService
             ];
         }
 
-        $tokenKey = $tokenKey === 'access_token' ? 'access_token' : 'session';
-        $system = [
+        $sysParams = [
             'app_key' => $this->appKey,
-            'format' => $this->format !== '' ? $this->format : 'json',
+            'sign_method' => 'sha256',
+            'timestamp' => time().'000',
             'method' => $method,
             'partner_id' => $this->partnerId !== '' ? $this->partnerId : 'iop-sdk-php',
-            'sign_method' => 'sha256',
-            'simplify' => $this->simplify !== '' ? (string) $this->simplify : 'true',
-            'timestamp' => time().'000',
-            $tokenKey => (string) $this->accessToken,
+            'simplify' => 'true',
+            'format' => 'json',
+            'session' => (string) $this->accessToken,
         ];
-        $api = [];
+        $apiParams = [];
         foreach ($businessParams as $key => $value) {
             if ($value === null || $value === '' || (string) $key === $fileField) {
                 continue;
             }
-            $api[$key] = (string) $value;
+            $apiParams[(string) $key] = (string) $value;
         }
 
-        $forSign = array_merge($api, $system);
-        unset($forSign['sign']);
-        ksort($forSign);
-        $source = ($this->signPath !== '' ? $this->signPath : '/sync');
-        foreach ($forSign as $key => $value) {
-            $source .= (string) $key.(string) $value;
+        $signParams = array_merge($apiParams, $sysParams);
+        ksort($signParams);
+        $stringToBeSigned = str_contains($method, '/') ? $method : '';
+        foreach ($signParams as $key => $value) {
+            $stringToBeSigned .= (string) $key.(string) $value;
         }
-        $system['sign'] = strtoupper(hash_hmac('sha256', $source, $this->appSecret));
+        $sysParams['sign'] = strtoupper(hash_hmac('sha256', $stringToBeSigned, $this->appSecret));
 
-        $queryUrl = $this->apiBase.'?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
-        $mime = $this->imageMimeType($bytes, $fileName);
-        $multipart = [];
-        foreach ($api as $name => $contents) {
-            $multipart[] = ['name' => $name, 'contents' => $contents];
+        $requestUrl = rtrim($this->apiBase, '/').'?';
+        foreach ($sysParams as $key => $value) {
+            $requestUrl .= $key.'='.urlencode((string) $value).'&';
         }
-        $multipart[] = [
-            'name' => $fileField,
-            'contents' => $bytes,
-            'filename' => $fileName,
-            'headers' => ['Content-Type' => $mime],
-        ];
+        $requestUrl = rtrim($requestUrl, '&');
 
-        try {
-            $response = $this->httpClient()
-                ->connectTimeout(10)
-                ->timeout(40)
-                ->asMultipart()
-                ->post($queryUrl, $multipart);
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            return $this->networkErrorResult('Could not reach AliExpress photobank (sync).', $e);
+        $delimiter = '-------------'.uniqid();
+        $data = '';
+        foreach ($apiParams as $name => $content) {
+            $data .= '--'.$delimiter."\r\n";
+            $data .= 'Content-Disposition: form-data; name="'.$name.'"';
+            $data .= "\r\n\r\n".$content."\r\n";
         }
+        $data .= '--'.$delimiter."\r\n";
+        $data .= 'Content-Disposition: form-data; name="'.$fileField.'"; filename="'.$fileName."\" \r\n";
+        $data .= 'Content-Type: '.$this->imageMimeType($bytes, $fileName)."\r\n\r\n";
+        $data .= $bytes."\r\n";
+        $data .= '--'.$delimiter.'--';
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $requestUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FAILONERROR, false);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 40);
+        curl_setopt($ch, CURLOPT_USERAGENT, $sysParams['partner_id']);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: multipart/form-data; boundary='.$delimiter,
+            'Content-Length: '.strlen($data),
+        ]);
+        if ($this->resolveIpv4 && defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        }
+        if ($this->httpProxy !== null) {
+            curl_setopt($ch, CURLOPT_PROXY, $this->httpProxy);
+        }
+
+        $body = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $error = curl_error($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($body === false || $errno) {
+            return $this->networkErrorResult(
+                'Could not reach AliExpress photobank (sync).',
+                new \RuntimeException($error !== '' ? $error : 'curl error '.$errno)
+            );
+        }
+
+        $response = new \Illuminate\Http\Client\Response(
+            new \GuzzleHttp\Psr7\Response($status > 0 ? $status : 502, [], (string) $body)
+        );
 
         return $this->parseHttpResponse($response, $method, 'iop-file');
     }
@@ -3296,36 +3329,39 @@ class AliExpressApiService
         if ($bytes === '') {
             return ['success' => false, 'message' => $downloaded['message'] ?? 'Could not download the Image Master photo.'];
         }
-        $fileName = (string) ($downloaded['filename'] ?? 'image.jpg');
+        $prepared = $this->preparePhotobankImage($bytes, (string) ($downloaded['filename'] ?? 'image.jpg'));
+        $bytes = (string) ($prepared['bytes'] ?? '');
+        if ($bytes === '') {
+            return ['success' => false, 'message' => $prepared['message'] ?? 'Could not prepare the Image Master photo for AliExpress.'];
+        }
+        $fileName = (string) ($prepared['filename'] ?? 'image.jpg');
         $business = [
             'file_name' => $fileName,
             'group_id' => '0',
         ];
+        $last = 'AliExpress photobank upload failed.';
 
-        $parsed = $this->callTopRouterWithFile(
+        foreach ([
             'aliexpress.photobank.redefining.uploadimageforsdk',
-            $business,
-            'image_bytes',
-            $bytes,
-            $fileName
-        );
-        $url = $this->extractPhotobankUrl($parsed);
-        if ($url !== '') {
-            return ['success' => true, 'url' => $url, 'message' => ''];
+            'aliexpress.photobank.redefining.uploadimage',
+        ] as $method) {
+            foreach ([
+                fn () => $this->callIopFileUpload($method, $business, 'image_bytes', $bytes, $fileName),
+                fn () => $this->callRestWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+                fn () => $this->callTopRouterWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+            ] as $sender) {
+                $parsed = $sender();
+                $url = $this->extractPhotobankUrl($parsed);
+                if ($url !== '') {
+                    return ['success' => true, 'url' => $url, 'message' => ''];
+                }
+                $last = trim((string) ($parsed['message'] ?? $last));
+                if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
+                    break 2;
+                }
+            }
         }
 
-        $publicUrl = $this->storePublicImage($bytes, $fileName);
-        if ($publicUrl !== '') {
-            Log::warning('AliExpress photobank unavailable, hosting Image Master photo on app URL', [
-                'source' => mb_substr($sourceUrl, 0, 200),
-                'public' => $publicUrl,
-                'photobank' => $parsed['message'] ?? '',
-            ]);
-
-            return ['success' => true, 'url' => $publicUrl, 'message' => ''];
-        }
-
-        $last = trim((string) ($parsed['message'] ?? 'AliExpress photobank upload failed.'));
         Log::warning('AliExpress photobank upload failed', [
             'source' => mb_substr($sourceUrl, 0, 200),
             'file' => $fileName,
@@ -3336,29 +3372,6 @@ class AliExpressApiService
             'success' => false,
             'message' => $last !== '' ? $last : 'AliExpress photobank upload failed.',
         ];
-    }
-
-    private function storePublicImage(string $bytes, string $fileName): string
-    {
-        $ext = strtolower((string) pathinfo($fileName, PATHINFO_EXTENSION));
-        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
-            $ext = str_starts_with($bytes, "\x89PNG") ? 'png' : 'jpg';
-        }
-        $dir = public_path('aliexpress-publish');
-        if (! is_dir($dir) && ! @mkdir($dir, 0755, true) && ! is_dir($dir)) {
-            return '';
-        }
-        $name = sha1($bytes).'.'.$ext;
-        $path = $dir.DIRECTORY_SEPARATOR.$name;
-        if (! is_file($path) && file_put_contents($path, $bytes) === false) {
-            return '';
-        }
-        $base = rtrim((string) config('app.url', ''), '/');
-        if ($base === '') {
-            return '';
-        }
-
-        return $base.'/aliexpress-publish/'.$name;
     }
 
     public function isAliExpressCdnUrl(string $url): bool
@@ -3439,7 +3452,7 @@ class AliExpressApiService
                 $response = $this->httpClient()
                     ->withHeaders([
                         'User-Agent' => 'Mozilla/5.0 (compatible; 5CORE-ImageMaster/1.0)',
-                        'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                        'Accept' => 'image/jpeg,image/jpg,image/png,image/gif,image/*,*/*;q=0.8',
                     ])
                     ->get($try);
             } catch (\Throwable $e) {
@@ -3468,6 +3481,72 @@ class AliExpressApiService
         }
 
         return ['bytes' => '', 'filename' => 'image.jpg', 'message' => $last];
+    }
+
+    /**
+     * AliExpress photobank accepts JPEG/PNG/GIF only (not WebP/AVIF).
+     *
+     * @return array{bytes: string, filename: string, message?: string}
+     */
+    private function preparePhotobankImage(string $bytes, string $fileName): array
+    {
+        if ($this->isWebpImage($bytes) || $this->isAvifImage($bytes)) {
+            $converted = $this->convertImageToJpeg($bytes);
+            if ($converted === '') {
+                return [
+                    'bytes' => '',
+                    'filename' => $fileName,
+                    'message' => 'AliExpress does not accept WebP/AVIF. Could not convert the Image Master photo to JPEG.',
+                ];
+            }
+            $bytes = $converted;
+            $fileName = preg_replace('/\.[a-z0-9]+$/i', '', $fileName) ?: 'image';
+            $fileName .= '.jpg';
+        }
+
+        if (strlen($bytes) > 3 * 1024 * 1024) {
+            return ['bytes' => '', 'filename' => $fileName, 'message' => 'Image Master photo is larger than 3MB.'];
+        }
+
+        return ['bytes' => $bytes, 'filename' => $fileName];
+    }
+
+    private function isWebpImage(string $bytes): bool
+    {
+        return strlen($bytes) >= 12
+            && str_starts_with($bytes, 'RIFF')
+            && substr($bytes, 8, 4) === 'WEBP';
+    }
+
+    private function isAvifImage(string $bytes): bool
+    {
+        $brand = strtolower(substr($bytes, 4, 12));
+
+        return strlen($bytes) >= 16 && (str_contains($brand, 'ftypavif') || str_contains($brand, 'ftypavis'));
+    }
+
+    private function convertImageToJpeg(string $bytes): string
+    {
+        if (! function_exists('imagecreatefromstring') || ! function_exists('imagejpeg')) {
+            return '';
+        }
+        $image = @imagecreatefromstring($bytes);
+        if ($image === false) {
+            return '';
+        }
+        if (function_exists('imagepalettetotruecolor') && ! imageistruecolor($image)) {
+            imagepalettetotruecolor($image);
+        }
+        if (function_exists('imagealphablending') && function_exists('imagesavealpha')) {
+            imagealphablending($image, true);
+            imagesavealpha($image, false);
+        }
+        ob_start();
+        $ok = imagejpeg($image, null, 90);
+        imagedestroy($image);
+        $jpeg = (string) ob_get_clean();
+
+        return $ok && $jpeg !== '' ? $jpeg : '';
     }
 
     /**
