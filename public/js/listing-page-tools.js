@@ -250,7 +250,7 @@
     }
 
     function reverbCategorySearchUrl() {
-        return cfg().categorySearchUrl || '/listing_reverb/categories';
+        return cfg().categorySearchUrl || '/listing-manager/ebay/categories';
     }
 
     function searchReverbCategories(query) {
@@ -267,7 +267,11 @@
         reverbCatXhr = $.ajax({
             url: reverbCategorySearchUrl(),
             type: 'GET',
-            data: { q: query },
+            data: {
+                q: query,
+                channel: cfg().channel || 'reverb',
+                title: query
+            },
             dataType: 'json',
             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             success: function (res) {

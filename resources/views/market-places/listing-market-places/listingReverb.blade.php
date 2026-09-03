@@ -1090,8 +1090,8 @@
             defaultPublishMode: 'single',
             previewUrl: '/listing_reverb/save-status',
             publishUrl: '/listing_reverb/save-status',
-            categorySearchUrl: '/listing_reverb/categories'
+            categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=12"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=13"></script>
 @endsection
