@@ -2,54 +2,92 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
- * Alibaba.com Open Platform OAuth for apps created at openapi.alibaba.com.
+ * Alibaba.com Open Platform OAuth.
  *
- * authorize.htm on gw.api.alibaba.com is gone (HTTP 404).
- * oauth.alibaba.com is AliExpress/TOP and rejects these short AppKeys.
+ * Docs: https://openapi.alibaba.com/doc/api.htm#/api?cid=4&path=/auth/token/create
  *
- * Live web auth: https://auth.1688.com/oauth/authorize?client_id=&site=alibaba&redirect_uri=
- * Token:         https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken/{appKey}
+ * 1. Seller authorizes → callback receives ?code=
+ * 2. Exchange code with signed IOP POST /auth/token/create (no existing access_token).
+ * 3. Optional refresh: POST /auth/token/refresh
+ *
+ * Official authorize hosts: oauth.alibaba.com (sp=icbu), open-api.alibaba.com, api.taobao.global.
  */
 class AlibabaAuthService
 {
-    public function getAuthorizeUrl(?string $state = null): string
+    /**
+     * @return list<string>
+     */
+    public function authorizeBases(): array
     {
-        $appKey = (string) config('services.alibaba.app_key');
-        $redirect = $this->redirectUri();
-        $state = $state ?: bin2hex(random_bytes(8));
-        $site = strtolower((string) (config('services.alibaba.oauth_site') ?: 'alibaba'));
-        if (! in_array($site, ['alibaba', '1688'], true)) {
-            $site = 'alibaba';
-        }
-
-        // auth.1688.com only accepts site=1688 ("不支持的站点" for site=alibaba).
-        $defaultHost = $site === '1688'
-            ? 'https://auth.1688.com/oauth/authorize'
-            : 'https://auth.alibaba.com/oauth/authorize';
-        $authUrl = (string) (config('services.alibaba.auth_base') ?: $defaultHost);
-
-        if (
-            str_contains($authUrl, 'authorize.htm')
-            || str_contains($authUrl, 'oauth.alibaba.com')
-            || str_contains($authUrl, 'aliexpress.com')
-            || str_contains($authUrl, 'gw.api.alibaba.com')
-            || ($site === 'alibaba' && str_contains($authUrl, 'auth.1688.com'))
-            || ($site === '1688' && str_contains($authUrl, 'auth.alibaba.com'))
-        ) {
-            $authUrl = $defaultHost;
-        }
-
-        $params = [
-            'client_id' => $appKey,
-            'site' => $site,
-            'redirect_uri' => $redirect,
-            'state' => $state,
+        $configured = trim((string) (config('services.alibaba.auth_base') ?: ''));
+        $bases = [
+            $configured !== '' ? $configured : 'https://oauth.alibaba.com/authorize',
+            'https://oauth.alibaba.com/authorize',
+            'https://open-api.alibaba.com/oauth/authorize',
+            'https://api.taobao.global/oauth/authorize',
         ];
 
-        return rtrim($authUrl, '?').'?'.http_build_query($params);
+        $out = [];
+        foreach ($bases as $base) {
+            if (
+                str_contains($base, 'authorize.htm')
+                || str_contains($base, 'auth.1688.com')
+                || str_contains($base, 'auth.alibaba.com')
+                || str_contains($base, 'aliexpress.com')
+            ) {
+                continue;
+            }
+            $base = rtrim($base, '?&');
+            if ($base !== '' && ! in_array($base, $out, true)) {
+                $out[] = $base;
+            }
+        }
+
+        return $out !== [] ? $out : ['https://oauth.alibaba.com/authorize'];
+    }
+
+    public function getAuthorizeUrl(?string $state = null): string
+    {
+        $urls = $this->getAuthorizeUrls($state);
+
+        return $urls[0] ?? $this->buildAuthorizeUrl('https://oauth.alibaba.com/authorize', $state);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getAuthorizeUrls(?string $state = null): array
+    {
+        $state = $state ?: bin2hex(random_bytes(8));
+
+        return array_values(array_map(
+            fn (string $base) => $this->buildAuthorizeUrl($base, $state),
+            $this->authorizeBases()
+        ));
+    }
+
+    public function buildAuthorizeUrl(string $authUrl, ?string $state = null): string
+    {
+        $query = [
+            'response_type' => 'code',
+            'client_id' => (string) config('services.alibaba.app_key'),
+            'redirect_uri' => $this->redirectUri(),
+            'state' => $state ?: bin2hex(random_bytes(8)),
+            'force_auth' => 'true',
+        ];
+
+        if (str_contains($authUrl, 'oauth.alibaba.com')) {
+            $query['sp'] = 'icbu';
+            $query['view'] = 'web';
+            $query['force_login'] = 'true';
+        }
+
+        return $authUrl.'?'.http_build_query($query);
     }
 
     /**
@@ -57,11 +95,8 @@ class AlibabaAuthService
      */
     public function exchangeCodeForToken(string $code): array
     {
-        return $this->requestToken([
-            'grant_type' => 'authorization_code',
-            'need_refresh_token' => 'true',
+        return $this->callTokenApi('/auth/token/create', [
             'code' => $code,
-            'redirect_uri' => $this->redirectUri(),
         ]);
     }
 
@@ -75,8 +110,7 @@ class AlibabaAuthService
             return ['success' => false, 'message' => 'ALIBABA_REFRESH_TOKEN missing. Re-authorize to get a new token.'];
         }
 
-        return $this->requestToken([
-            'grant_type' => 'refresh_token',
+        return $this->callTokenApi('/auth/token/refresh', [
             'refresh_token' => $refreshToken,
         ]);
     }
@@ -102,10 +136,10 @@ class AlibabaAuthService
     }
 
     /**
-     * @param  array<string, string>  $extra
+     * @param  array<string, string>  $business
      * @return array{success: bool, access_token?: string, refresh_token?: string, expires_in?: int, message?: string}
      */
-    protected function requestToken(array $extra): array
+    protected function callTokenApi(string $path, array $business): array
     {
         $appKey = (string) config('services.alibaba.app_key');
         $appSecret = (string) config('services.alibaba.app_secret');
@@ -114,56 +148,232 @@ class AlibabaAuthService
             return ['success' => false, 'message' => 'ALIBABA_APP_KEY / ALIBABA_APP_SECRET missing.'];
         }
 
-        $params = array_merge([
-            'client_id' => $appKey,
-            'client_secret' => $appSecret,
-        ], $extra);
+        $lastMessage = 'Alibaba '.$path.' failed.';
 
-        $urls = [
-            'https://gw.open.1688.com/openapi/http/1/system.oauth2/getToken/'.$appKey,
-            'https://gw.api.alibaba.com/openapi/http/1/system.oauth2/getToken/'.$appKey,
-            'https://gw.open.1688.com/openapi/param2/1/system.oauth2/getToken/'.$appKey,
-            'https://gw.api.alibaba.com/openapi/param2/1/system.oauth2/getToken/'.$appKey,
-        ];
-
-        $lastMessage = 'Alibaba token request failed.';
-        foreach ($urls as $url) {
-            $path = (string) (parse_url($url, PHP_URL_PATH) ?: '');
-            $signed = $params;
-            if ($path !== '') {
-                $signed['_aop_signature'] = $this->signAop($path, $params, $appSecret);
-            }
-
-            foreach ([$params, $signed] as $body) {
-                $response = Http::withoutVerifying()->asForm()->post($url, $body);
-                $parsed = $this->parseTokenResponse($response);
+        foreach ($this->iopRestBases() as $rest) {
+            foreach ($this->iopBusinessVariants($business) as $params) {
+                $parsed = $this->postSignedIop($rest, $path, $appKey, $appSecret, $params);
                 if (! empty($parsed['success'])) {
                     return $parsed;
                 }
                 $lastMessage = $parsed['message'] ?? $lastMessage;
             }
+
+            $direct = $this->postSignedIop(rtrim($rest, '/').$path, $path, $appKey, $appSecret, $business, false);
+            if (! empty($direct['success'])) {
+                return $direct;
+            }
+            $lastMessage = $direct['message'] ?? $lastMessage;
         }
 
-        return ['success' => false, 'message' => $lastMessage];
+        $form = array_merge([
+            'client_id' => $appKey,
+            'client_secret' => $appSecret,
+            'grant_type' => isset($business['refresh_token']) ? 'refresh_token' : 'authorization_code',
+            'redirect_uri' => $this->redirectUri(),
+        ], $business);
+
+        foreach ($this->simpleTokenUrls($path) as $url) {
+            $parsed = $this->postForm($url, $form);
+            if (! empty($parsed['success'])) {
+                return $parsed;
+            }
+            $lastMessage = $parsed['message'] ?? $lastMessage;
+        }
+
+        $top = $this->postTopAuthTokenCreate($appKey, $appSecret, $business);
+        if (! empty($top['success'])) {
+            return $top;
+        }
+
+        Log::warning('Alibaba token API failed', [
+            'path' => $path,
+            'message' => $top['message'] ?? $lastMessage,
+        ]);
+
+        return ['success' => false, 'message' => $top['message'] ?? $lastMessage];
     }
 
     /**
-     * AOP HMAC-SHA1: path + sorted key+value (no _aop_signature), uppercase hex.
+     * @return list<string>
+     */
+    protected function iopRestBases(): array
+    {
+        $configured = trim((string) (config('services.alibaba.rest_base') ?: ''));
+
+        return array_values(array_unique(array_filter([
+            $configured !== '' ? rtrim($configured, '/') : null,
+            'https://open-api.alibaba.com/rest',
+            'https://api.taobao.global/rest',
+            'https://api-sg.alibaba.com/rest',
+            'https://openapi.alibaba.com/rest',
+        ])));
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function simpleTokenUrls(string $path): array
+    {
+        $leaf = $path === '/auth/token/refresh' ? 'refresh' : 'create';
+
+        return [
+            'https://open-api.alibaba.com/rest/auth/token/'.$leaf,
+            'https://api.taobao.global/rest/auth/token/'.$leaf,
+            'https://api-sg.alibaba.com/auth/token/'.$leaf,
+            'https://openapi.alibaba.com/auth/token/'.$leaf,
+            'https://oauth.alibaba.com/token',
+        ];
+    }
+
+    /**
+     * Official IopRequest only sends `code` (and optionally grantType).
      *
+     * @param  array<string, string>  $business
+     * @return list<array<string, string>>
+     */
+    protected function iopBusinessVariants(array $business): array
+    {
+        $core = array_filter([
+            'code' => $business['code'] ?? null,
+            'refresh_token' => $business['refresh_token'] ?? null,
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        $withGrant = $core;
+        if (isset($core['code'])) {
+            $withGrant['grantType'] = 'authorization_code';
+        }
+
+        return isset($core['code']) ? [$core, $withGrant] : [$core];
+    }
+
+    /**
+     * @param  array<string, string>  $business
+     * @return array{success: bool, access_token?: string, refresh_token?: string, expires_in?: int, message?: string}
+     */
+    protected function postSignedIop(string $url, string $method, string $appKey, string $appSecret, array $business, bool $includeMethod = true): array
+    {
+        $params = array_merge([
+            'app_key' => $appKey,
+            'sign_method' => 'sha256',
+            'timestamp' => (string) (int) round(microtime(true) * 1000),
+        ], $business);
+
+        if ($includeMethod) {
+            $params['method'] = $method;
+        }
+
+        $params['sign'] = $this->signIop($params, $method, $appSecret);
+
+        return $this->postForm($url, $params);
+    }
+
+    /**
+     * Official ICBU step 3: taobao.top.auth.token.create on the TOP router.
+     *
+     * @param  array<string, string>  $business
+     * @return array{success: bool, access_token?: string, refresh_token?: string, expires_in?: int, message?: string}
+     */
+    protected function postTopAuthTokenCreate(string $appKey, string $appSecret, array $business): array
+    {
+        $method = isset($business['refresh_token'])
+            ? 'taobao.top.auth.token.refresh'
+            : 'taobao.top.auth.token.create';
+
+        $params = [
+            'method' => $method,
+            'app_key' => $appKey,
+            'timestamp' => gmdate('Y-m-d H:i:s', time() + 8 * 3600),
+            'format' => 'json',
+            'v' => '2.0',
+            'sign_method' => 'md5',
+        ];
+        if (isset($business['code'])) {
+            $params['code'] = $business['code'];
+        }
+        if (isset($business['refresh_token'])) {
+            $params['refresh_token'] = $business['refresh_token'];
+        }
+
+        $params['sign'] = $this->signTopMd5($params, $appSecret);
+
+        $last = ['success' => false, 'message' => 'TOP token create failed.'];
+        foreach ([
+            'https://api.taobao.com/router/rest',
+            'https://gw.api.taobao.com/router/rest',
+        ] as $url) {
+            $last = $this->postForm($url, $params);
+            if (! empty($last['success'])) {
+                return $last;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
+     * @param  array<string, string>  $form
+     * @return array{success: bool, access_token?: string, refresh_token?: string, expires_in?: int, message?: string}
+     */
+    protected function postForm(string $url, array $form): array
+    {
+        try {
+            $response = Http::withoutVerifying()
+                ->connectTimeout(12)
+                ->timeout(25)
+                ->asForm()
+                ->post($url, $form);
+        } catch (ConnectionException $e) {
+            return ['success' => false, 'message' => 'Could not reach '.$url.': '.$e->getMessage()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $parsed = $this->parseTokenResponse($response);
+        if (empty($parsed['success'])) {
+            Log::info('Alibaba token endpoint miss', [
+                'url' => $url,
+                'status' => $response->status(),
+                'message' => $parsed['message'] ?? null,
+            ]);
+        }
+
+        return $parsed;
+    }
+
+    /**
      * @param  array<string, string>  $params
      */
-    protected function signAop(string $path, array $params, string $secret): string
+    protected function signIop(array $params, string $apiName, string $secret): string
     {
-        unset($params['_aop_signature']);
+        unset($params['sign']);
         ksort($params);
-        $source = $path;
+        $source = $apiName;
         foreach ($params as $key => $value) {
             if ($value !== null && $value !== '') {
                 $source .= (string) $key.(string) $value;
             }
         }
 
-        return strtoupper(bin2hex(hash_hmac('sha1', $source, $secret, true)));
+        return strtoupper(hash_hmac('sha256', $source, $secret));
+    }
+
+    /**
+     * @param  array<string, string>  $params
+     */
+    protected function signTopMd5(array $params, string $secret): string
+    {
+        unset($params['sign']);
+        ksort($params);
+        $source = $secret;
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $source .= (string) $key.(string) $value;
+            }
+        }
+        $source .= $secret;
+
+        return strtoupper(md5($source));
     }
 
     /**
@@ -174,40 +384,55 @@ class AlibabaAuthService
         $json = $response->json();
         $raw = is_array($json) ? $json : ($response->body() !== '' ? $response->body() : null);
         if (! is_array($json)) {
+            $body = trim((string) $response->body());
+
             return [
                 'success' => false,
-                'message' => $response->body() !== '' ? $response->body() : 'Invalid token response.',
+                'message' => $body !== '' ? mb_substr($body, 0, 400) : 'Invalid token response from '.$response->effectiveUri(),
                 'raw' => $raw,
                 'http_status' => $response->status(),
             ];
         }
 
+        $tokenResult = $json['token_result']
+            ?? data_get($json, 'top_auth_token_create_response.token_result')
+            ?? data_get($json, 'top_auth_token_refresh_response.token_result');
+        if (is_string($tokenResult) && $tokenResult !== '') {
+            $decoded = json_decode($tokenResult, true);
+            if (is_array($decoded)) {
+                $json = array_merge($json, $decoded);
+            }
+        } elseif (is_array($tokenResult)) {
+            $json = array_merge($json, $tokenResult);
+        }
+
         $access = $json['access_token']
-            ?? data_get($json, 'token_result.access_token')
             ?? data_get($json, 'result.access_token');
         $refresh = $json['refresh_token']
-            ?? data_get($json, 'token_result.refresh_token')
             ?? data_get($json, 'result.refresh_token');
 
         if (empty($access)) {
-            return [
-                'success' => false,
-                'message' => (string) (
+            $err = $json['error_response'] ?? null;
+            $message = is_array($err)
+                ? (string) ($err['sub_msg'] ?? $err['msg'] ?? $err['message'] ?? json_encode($err))
+                : (string) (
                     $json['error_description']
                     ?? $json['error_msg']
                     ?? $json['message']
                     ?? $json['error']
                     ?? $json['error_code']
                     ?? $response->body()
-                ),
+                );
+
+            return [
+                'success' => false,
+                'message' => $message !== '' ? mb_substr($message, 0, 400) : 'Token API returned no access_token.',
                 'raw' => $json,
                 'http_status' => $response->status(),
             ];
         }
 
-        $expiresIn = $json['expires_in']
-            ?? data_get($json, 'token_result.expires_in')
-            ?? data_get($json, 'result.expires_in');
+        $expiresIn = $json['expires_in'] ?? $json['expire_time'] ?? null;
 
         return [
             'success' => true,

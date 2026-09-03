@@ -52,9 +52,9 @@
                     <div class="card-header"><h5 class="card-title mb-0">1) Paste access token</h5></div>
                     <div class="card-body">
                         <p class="text-muted small mb-2">
-                            Fastest: <a href="https://openapi.alibaba.com" target="_blank" rel="noopener">openapi.alibaba.com</a>
-                            → <strong>5Core Product Manager</strong> → <strong>Auth Management</strong> → authorize the Alibaba.com seller → copy <code>access_token</code>.
-                            Paste it here. Saved as <code>ALIBABA_ACCESS_TOKEN</code>.
+                            Auth Management on <a href="https://openapi.alibaba.com" target="_blank" rel="noopener">openapi.alibaba.com</a>
+                            only sets token policy — it does not give you an access token to copy.
+                            Use <strong>Connect with Alibaba</strong> below. If you already have a token, paste it here; it is saved as <code>ALIBABA_ACCESS_TOKEN</code>.
                         </p>
                         <div class="input-group mb-2">
                             <input type="text" class="form-control" id="alibaba-access-token-input" placeholder="Paste Alibaba access token" autocomplete="off">
@@ -85,10 +85,12 @@
                             <code class="user-select-all">{{ $redirectUri }}</code>
                         </div>
                         <p class="text-muted small mb-3">
-                            Then click <strong>Connect with Alibaba</strong>. After you authorize, Alibaba sends a <code>code</code> to
-                            <code class="user-select-all">{{ $redirectUri }}</code>
-                            and we exchange it for a token. On localhost the callback page prints the full token JSON.
-                            Use <code>auth.alibaba.com</code> (Alibaba.com), not <code>auth.1688.com</code>.
+                            Official flow from
+                            <a href="https://openapi.alibaba.com/doc/api.htm#/api?cid=4&amp;path=/auth/token/create&amp;methodType=GET/POST" target="_blank" rel="noopener">/auth/token/create</a>:
+                            authorize → we receive <code>code</code> at the callback → we POST
+                            <code>/auth/token/create</code> (signed IOP) and save <code>ALIBABA_ACCESS_TOKEN</code>.
+                            On localhost the callback page prints the full token JSON.
+                            Do not use <code>auth.alibaba.com</code> or <code>auth.1688.com</code>.
                         </p>
 
                         <table class="table table-sm table-bordered mb-3">
@@ -145,10 +147,17 @@
 
                         <div class="d-flex flex-wrap gap-2 mb-3">
                             @if(!empty($authorizeUrl))
-                                <a href="{{ $authorizeUrl }}" class="btn btn-outline-success">
+                                <a href="{{ $authorizeUrl }}" class="btn btn-success">
                                     Connect with Alibaba (OAuth)
                                 </a>
                             @endif
+                            @foreach(($authorizeUrls ?? []) as $altUrl)
+                                @if($altUrl !== ($authorizeUrl ?? ''))
+                                    <a href="{{ $altUrl }}" class="btn btn-outline-success">
+                                        Try {{ parse_url($altUrl, PHP_URL_HOST) }}
+                                    </a>
+                                @endif
+                            @endforeach
                             <button type="button" class="btn btn-outline-danger" id="btn-revoke-alibaba">Revoke token</button>
                         </div>
 
