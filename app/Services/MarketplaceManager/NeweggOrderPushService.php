@@ -741,7 +741,7 @@ class NeweggOrderPushService
 
         try {
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders([
+                $response = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $config['token'],
                     'Content-Type' => 'application/json',
                 ])->timeout(60)->post($url, $payload);
@@ -794,41 +794,14 @@ class NeweggOrderPushService
     protected function addFulfillmentTracking(string $shopifyOrderId, string $trackingNumber, string $carrier): void
     {
         $config = $this->shopifyConfig();
-        $storeUrl = $config['store_url'];
-        $token = $config['token'];
 
         try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/2024-01/orders/{$shopifyOrderId}/fulfillment_orders.json");
-
-            if (! $response->successful()) {
-                return;
-            }
-
-            $lineItems = [];
-            foreach ($response->json('fulfillment_orders') ?? [] as $fo) {
-                if (! empty($fo['id'])) {
-                    $lineItems[] = ['fulfillment_order_id' => $fo['id']];
-                }
-            }
-            if ($lineItems === []) {
-                return;
-            }
-
-            Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->post("https://{$storeUrl}/admin/api/2024-01/fulfillments.json", [
-                'fulfillment' => [
-                    'line_items_by_fulfillment_order' => $lineItems,
-                    'tracking_info' => [
-                        'number' => $trackingNumber,
-                        'company' => mb_substr($carrier, 0, 100),
-                    ],
-                    'notify_customer' => false,
-                ],
-            ]);
+            app(VeeqoShopifyFulfillmentService::class)->fulfillShopifyFromLabels(
+                $shopifyOrderId,
+                $config,
+                [],
+                ['tracking' => $trackingNumber, 'carrier' => $carrier]
+            );
         } catch (\Throwable $e) {
             Log::warning('NeweggOrderPushService: fulfillment tracking failed', [
                 'shopify_order_id' => $shopifyOrderId,
@@ -852,7 +825,7 @@ class NeweggOrderPushService
         $url = 'https://'.$config['store_url'].'/admin/api/2024-01/variants.json?sku='.urlencode($sku);
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $config['token'],
             ])->timeout(30)->get($url);
 

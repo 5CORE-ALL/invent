@@ -637,7 +637,7 @@ class VeeqoShopifyFulfillmentService
     protected function findShopifyOrderByAmazonId(string $storeUrl, string $token, string $amazonOrderId, ?string $shopifyOrderName = null): ?array
     {
         try {
-            $gql = Http::withHeaders([
+            $gql = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
             ])->timeout(30)->post("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/graphql.json", [
@@ -664,7 +664,7 @@ class VeeqoShopifyFulfillmentService
 
         if ($shopifyOrderName) {
             try {
-                $res = Http::withHeaders([
+                $res = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $token,
                 ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders.json", [
                     'status' => 'any',
@@ -1449,6 +1449,11 @@ class VeeqoShopifyFulfillmentService
             }
             $lineItems = $prepared['line_items'] ?? [];
             if ($lineItems === []) {
+                $updated = $this->updateExistingShopifyFulfillmentTracking($storeUrl, $token, $shopifyOrderId, $tracking, $carrier);
+                if (! empty($updated['success'])) {
+                    return $updated;
+                }
+
                 return [
                     'success' => false,
                     'message' => 'Shopify has no open fulfillment orders to fulfill (already fulfilled, on hold, or assigned to a service).',
@@ -1495,6 +1500,81 @@ class VeeqoShopifyFulfillmentService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * When fulfillment orders are already closed, attach tracking to the existing fulfillment.
+     *
+     * @return array{success: bool, already?: bool, message: string}
+     */
+    protected function updateExistingShopifyFulfillmentTracking(
+        string $storeUrl,
+        string $token,
+        string $shopifyOrderId,
+        string $tracking,
+        string $carrier
+    ): array {
+        $orderRes = $this->shopifyApi(
+            $storeUrl,
+            $token,
+            'GET',
+            "orders/{$shopifyOrderId}.json",
+            ['fields' => 'id,fulfillments']
+        );
+        if (! $orderRes->successful()) {
+            return ['success' => false, 'message' => 'Could not load Shopify fulfillments to update tracking.'];
+        }
+
+        $want = strtoupper(preg_replace('/\s+/', '', $tracking) ?? $tracking);
+        foreach ($orderRes->json('order.fulfillments') ?? [] as $fulfillment) {
+            if (! is_array($fulfillment) || empty($fulfillment['id'])) {
+                continue;
+            }
+            $status = strtolower((string) ($fulfillment['status'] ?? ''));
+            if (in_array($status, ['cancelled', 'error', 'failure'], true)) {
+                continue;
+            }
+
+            $existing = '';
+            if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
+                $existing = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
+            }
+            if ($existing === '' && ! empty($fulfillment['tracking_number'])) {
+                $existing = trim((string) $fulfillment['tracking_number']);
+            }
+            $existingNorm = strtoupper(preg_replace('/\s+/', '', $existing) ?? $existing);
+            if ($existingNorm !== '' && $existingNorm === $want) {
+                return ['success' => true, 'already' => true, 'message' => 'Tracking already on Shopify.'];
+            }
+
+            $post = $this->shopifyApi(
+                $storeUrl,
+                $token,
+                'POST',
+                'fulfillments/'.((int) $fulfillment['id']).'/update_tracking.json',
+                [
+                    'fulfillment' => [
+                        'notify_customer' => false,
+                        'tracking_info' => [
+                            'number' => $tracking,
+                            'company' => mb_substr($carrier, 0, 100),
+                        ],
+                    ],
+                ]
+            );
+            if ($post->successful()) {
+                return ['success' => true, 'message' => 'Shopify fulfillment tracking updated.'];
+            }
+
+            Log::warning('VeeqoShopifyFulfillmentService: update_tracking failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'fulfillment_id' => $fulfillment['id'],
+                'status' => $post->status(),
+                'body' => mb_substr((string) $post->body(), 0, 300),
+            ]);
+        }
+
+        return ['success' => false, 'message' => 'No Shopify fulfillment available to attach tracking.'];
     }
 
     protected function releaseShopifyFulfillmentHold(string $storeUrl, string $token, int $fulfillmentOrderId): bool
@@ -1836,7 +1916,7 @@ class VeeqoShopifyFulfillmentService
         $last = null;
         for ($attempt = 1; $attempt <= 4; $attempt++) {
             try {
-                $req = Http::withHeaders([
+                $req = Http::withoutVerifying()->withHeaders([
                     'X-Shopify-Access-Token' => $token,
                     'Content-Type' => 'application/json',
                 ])->timeout(30);
@@ -1958,7 +2038,7 @@ class VeeqoShopifyFulfillmentService
         }
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::withoutVerifying()->withHeaders([
                 'X-Shopify-Access-Token' => $token,
             ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
                 'fields' => 'id,fulfillments,fulfillment_status',
@@ -2416,6 +2496,9 @@ class VeeqoShopifyFulfillmentService
             ];
             if (Schema::hasColumn('shopify_raw_orders', 'tracking_company') && trim($carrier) !== '') {
                 $payload['tracking_company'] = trim($carrier);
+            }
+            if (Schema::hasColumn('shopify_raw_orders', 'fulfillment_status')) {
+                $payload['fulfillment_status'] = 'fulfilled';
             }
             $query = DB::table('shopify_raw_orders');
             $numericId = $this->shopifyNumericId($sid);
