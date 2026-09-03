@@ -208,18 +208,52 @@ class AliExpressApiService
      */
     public function suggestCategory(string $title, string $imageUrl = ''): ?int
     {
+        $hit = $this->suggestCategoryMatch($title, $imageUrl);
+
+        return ($hit['id'] ?? 0) > 0 ? (int) $hit['id'] : null;
+    }
+
+    /**
+     * @param  list<string>  $hints
+     * @return array{id: int, path: string}
+     */
+    public function suggestCategoryMatch(string $title, string $imageUrl = '', array $hints = []): array
+    {
+        $candidates = $this->suggestCategoryCandidates($title, $imageUrl);
+        $extra = 0;
+        foreach ($hints as $hint) {
+            $hint = trim((string) $hint);
+            if ($hint === '' || strcasecmp($hint, $title) === 0) {
+                continue;
+            }
+            $candidates = array_merge($candidates, $this->suggestCategoryCandidates($hint, ''));
+            $extra++;
+            if ($extra >= 2) {
+                break;
+            }
+        }
+
+        return $this->pickBestSuggestedCategory($candidates, $hints !== [] ? $hints : [$title]);
+    }
+
+    /**
+     * @return list<array{id: int, path: string}>
+     */
+    public function suggestCategoryCandidates(string $title, string $imageUrl = ''): array
+    {
         $title = trim($title);
         if ($title === '') {
-            return null;
+            return [];
         }
 
         $payloads = [
-            ['subject' => $title],
-            ['title' => $title],
+            ['title' => $title, 'language' => 'en'],
+            ['subject' => $title, 'language' => 'en'],
+            ['title' => $title, 'language' => 'en_US'],
         ];
         if ($imageUrl !== '') {
-            $payloads[] = ['subject' => $title, 'image_url' => $imageUrl];
-            $payloads[] = ['subject' => $title, 'imageUrl' => $imageUrl];
+            $payloads[] = ['title' => $title, 'language' => 'en', 'image_url' => $imageUrl];
+            $payloads[] = ['title' => $title, 'language' => 'en', 'imageUrl' => $imageUrl];
         }
 
         foreach ([
@@ -234,14 +268,103 @@ class AliExpressApiService
                 if (empty($res['success'])) {
                     continue;
                 }
-                $id = $this->extractCategoryId($res['data'] ?? []);
-                if ($id !== null) {
-                    return $id;
+                $found = $this->extractSuggestedCategories($res['data'] ?? []);
+                if ($found !== []) {
+                    return $found;
                 }
             }
         }
 
-        return null;
+        return [];
+    }
+
+    /**
+     * @param  list<array{id: int, path: string}>  $candidates
+     * @param  list<string>  $hints
+     * @return array{id: int, path: string}
+     */
+    private function pickBestSuggestedCategory(array $candidates, array $hints): array
+    {
+        $best = ['id' => 0, 'path' => '', 'score' => -1];
+        $tokens = [];
+        foreach ($hints as $hint) {
+            foreach (preg_split('/[^a-z0-9]+/i', strtolower((string) $hint)) ?: [] as $token) {
+                if (strlen($token) >= 3) {
+                    $tokens[$token] = true;
+                }
+            }
+        }
+        foreach ($candidates as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $path = trim((string) ($row['path'] ?? ''));
+            if ($id <= 0) {
+                continue;
+            }
+            $hay = strtolower($path);
+            $score = 1;
+            foreach (array_keys($tokens) as $token) {
+                if (str_contains($hay, $token)) {
+                    $score += 4;
+                }
+            }
+            if ($score > $best['score']) {
+                $best = ['id' => $id, 'path' => $path !== '' ? $path : 'Category '.$id, 'score' => $score];
+            }
+        }
+
+        return ['id' => (int) $best['id'], 'path' => (string) $best['path']];
+    }
+
+    /**
+     * @return list<array{id: int, path: string}>
+     */
+    public function extractSuggestedCategories(mixed $data): array
+    {
+        $out = [];
+        $seen = [];
+        $walk = function ($node) use (&$out, &$seen, &$walk): void {
+            if (! is_array($node)) {
+                return;
+            }
+            $name = trim((string) ($node['name'] ?? $node['category_name'] ?? $node['categoryName'] ?? ''));
+            $path = $node['name_path'] ?? $node['category_name_path'] ?? $node['path'] ?? $node['full_path'] ?? '';
+            if (is_array($path)) {
+                $path = implode(' / ', array_values(array_filter(array_map(static fn ($part) => trim((string) $part), $path))));
+            }
+            $path = trim((string) $path);
+            $hasCategoryKey = isset($node['category_id']) || isset($node['leaf_category_id']) || isset($node['categoryId']);
+            $id = (int) preg_replace('/\D+/', '', (string) (
+                $node['category_id'] ?? $node['leaf_category_id'] ?? $node['categoryId'] ?? (($name !== '' || $path !== '' || $hasCategoryKey) ? ($node['id'] ?? '') : '')
+            ));
+            if ($id > 0 && ! isset($seen[$id])) {
+                $seen[$id] = true;
+                $out[] = [
+                    'id' => $id,
+                    'path' => $path !== '' ? $path : ($name !== '' ? $name : 'Category '.$id),
+                ];
+            }
+            foreach ($node as $key => $child) {
+                if (! is_array($child)) {
+                    continue;
+                }
+                $keyLower = strtolower((string) $key);
+                if (
+                    str_contains($keyLower, 'categor')
+                    || in_array($keyLower, ['result', 'data', 'list', 'suggest_category', 'suggest_category_list'], true)
+                ) {
+                    if ($child !== [] && array_is_list($child)) {
+                        foreach ($child as $row) {
+                            $walk($row);
+                        }
+                    } else {
+                        $walk($child);
+                    }
+                }
+            }
+        };
+        $walk(is_array($data) ? $data : []);
+
+        return $out;
     }
 
     /**

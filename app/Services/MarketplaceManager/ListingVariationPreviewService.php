@@ -53,6 +53,9 @@ class ListingVariationPreviewService
         if (in_array($channel, ['reverb', 'reverbcom'], true) && $seedList !== []) {
             $payload['suggested_category'] = $this->reverb->suggestCategoryForSku($seedList[0]);
         }
+        if ($channel === 'aliexpress' && $seedList !== []) {
+            $payload['suggested_category'] = $this->aliexpress->suggestCategoryForSku($seedList[0]);
+        }
 
         return $payload;
     }
@@ -61,7 +64,7 @@ class ListingVariationPreviewService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null): array
+    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null): array
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
@@ -74,7 +77,7 @@ class ListingVariationPreviewService
             return $this->faire->publishSkus($skus, $expandSiblings);
         }
         if ($channel === 'aliexpress') {
-            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
+            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
         }
         if (in_array($channel, ['reverb', 'reverbcom'], true)) {
             return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid);

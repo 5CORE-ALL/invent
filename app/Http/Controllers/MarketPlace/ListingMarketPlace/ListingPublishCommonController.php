@@ -61,6 +61,7 @@ class ListingPublishCommonController extends Controller
         $parentHint = trim((string) $request->input('parent', $request->input('parent_hint', '')));
         $categoryId = (int) preg_replace('/\D+/', '', (string) $request->input('category_id', ''));
         $categoryUuid = trim((string) $request->input('category_uuid', ''));
+        $categoryName = trim((string) $request->input('category_name', ''));
         if (! preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $categoryUuid)) {
             $categoryUuid = '';
         }
@@ -73,7 +74,8 @@ class ListingPublishCommonController extends Controller
                 $mode,
                 $parentHint,
                 $categoryId > 0 ? $categoryId : null,
-                $categoryUuid !== '' ? $categoryUuid : null
+                $categoryUuid !== '' ? $categoryUuid : null,
+                $categoryName !== '' ? $categoryName : null
             );
         } catch (\Throwable $e) {
             return response()->json([

@@ -204,6 +204,11 @@
         return el ? String(el.value || '').replace(/\D+/g, '') : '';
     }
 
+    function selectedCategoryName() {
+        const el = document.getElementById('listing-publish-category-name');
+        return el ? String(el.value || '').trim() : '';
+    }
+
     function selectedCategoryUuid() {
         const el = document.getElementById('listing-publish-category-uuid');
         return el ? String(el.value || '').trim() : '';
@@ -221,6 +226,18 @@
             : 'No Reverb category matched this product type yet. Publish will try again from the title.');
     }
 
+    function applySuggestedAliexpressCategory(suggested) {
+        const pathEl = document.getElementById('listing-publish-aliexpress-category-path');
+        const idEl = document.getElementById('listing-publish-category-id');
+        const path = String((suggested && suggested.path) || '').trim();
+        const id = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        if (idEl) idEl.value = id;
+        if (!pathEl) return;
+        pathEl.textContent = path || (id
+            ? 'AliExpress category matched from the product type.'
+            : 'No category matched yet. Type a category name below, or publish and we will try from the title.');
+    }
+
     function applyPublishModeUi() {
         const box = document.getElementById('listing-publish-mode-box');
         if (box) box.style.display = '';
@@ -229,6 +246,7 @@
         const reverbBox = document.getElementById('listing-publish-reverb-category');
         if (reverbBox) reverbBox.hidden = !isReverbChannel();
         if (isReverbChannel()) applySuggestedCategory(null);
+        if (isAliexpressChannel()) applySuggestedAliexpressCategory(null);
         updateModalCopy();
     }
 
@@ -425,6 +443,7 @@
             success: function (response) {
                 renderGroups((response && response.groups) || []);
                 if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
+                if (isAliexpressChannel()) applySuggestedAliexpressCategory(response && response.suggested_category);
             },
             error: function (xhr) {
                 hideModal();
@@ -462,7 +481,8 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: selectedCategoryId(),
+                category_id: selectedCategoryName() ? '' : selectedCategoryId(),
+                category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid()
             },
             headers: { 'X-CSRF-TOKEN': csrf() },

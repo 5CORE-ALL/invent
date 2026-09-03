@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AliexpressMetric;
 use App\Models\AliexpressPricingPrice;
+use App\Models\ProductCategory;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
@@ -26,7 +27,7 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -58,7 +59,7 @@ class AliexpressListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -130,11 +131,12 @@ class AliexpressListingPublishService
         }
 
         $parentKey = trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($primary);
-        $categoryId = $this->resolveCategoryId($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId);
-        if ($categoryId === null) {
+        $resolved = $this->resolveCategory($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId, $categoryName);
+        $categoryId = (int) ($resolved['id'] ?? 0);
+        if ($categoryId <= 0) {
             return [
                 'success' => false,
-                'message' => 'Could not resolve an AliExpress category. Enter the category ID in the publish window, or set ALIEXPRESS_DEFAULT_CATEGORY_ID.',
+                'message' => 'Could not match an AliExpress category from the product type. Type a category name (for example Guitar Capos) and try again.',
             ];
         }
 
@@ -194,6 +196,7 @@ class AliexpressListingPublishService
             'parent' => $parentKey,
             'skus' => $publishSkus,
             'category_id' => $categoryId,
+            'category_path' => (string) ($resolved['path'] ?? ''),
             'freight_template_id' => $freightId,
             'mode' => $mode,
         ]);
@@ -296,15 +299,55 @@ class AliexpressListingPublishService
         return $out;
     }
 
-    private function resolveCategoryId(ProductMaster $primary, string $sku, string $title, string $imageUrl, ?int $override = null): ?int
+    /**
+     * @return array{id: int, path: string}
+     */
+    public function suggestCategoryForSku(string $sku): array
     {
-        if ($override !== null && $override > 0) {
-            return $override;
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['id' => 0, 'path' => ''];
+        }
+        $product = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first();
+        if (! $product) {
+            return ['id' => 0, 'path' => ''];
+        }
+        $title = $this->resolveTitle($product, $sku);
+        $images = $this->productImages($product);
+
+        return $this->resolveCategory($product, $sku, $title, $images[0] ?? '', null, null);
+    }
+
+    /**
+     * @return array{id: int, path: string}
+     */
+    private function resolveCategory(ProductMaster $primary, string $sku, string $title, string $imageUrl, ?int $overrideId, ?string $overrideName): array
+    {
+        if ($overrideId !== null && $overrideId > 0) {
+            return ['id' => $overrideId, 'path' => ''];
         }
 
-        $configured = (int) preg_replace('/\D+/', '', (string) config('services.aliexpress.default_category_id', ''));
-        if ($configured > 0) {
-            return $configured;
+        $overrideName = trim((string) $overrideName);
+        if ($overrideName !== '' && preg_match('/^\d{5,}$/', $overrideName)) {
+            return ['id' => (int) $overrideName, 'path' => ''];
+        }
+        if ($overrideName !== '') {
+            $hit = $this->api->suggestCategoryMatch($overrideName, $imageUrl, [$overrideName]);
+            if ((int) ($hit['id'] ?? 0) > 0) {
+                return $hit;
+            }
+        }
+
+        $hints = $this->productTypeHints($primary, $sku, $title);
+        if ($overrideName !== '') {
+            array_unshift($hints, $overrideName);
+        }
+        $hit = $this->api->suggestCategoryMatch($title, $imageUrl, $hints);
+        if ((int) ($hit['id'] ?? 0) > 0) {
+            return $hit;
         }
 
         $parent = $this->groupKey($primary);
@@ -323,13 +366,59 @@ class AliexpressListingPublishService
             if (empty($info['success'])) {
                 continue;
             }
+            $fromSibling = $this->api->extractSuggestedCategories($info['data'] ?? []);
+            if ($fromSibling !== []) {
+                return $fromSibling[0];
+            }
             $id = $this->api->extractCategoryId($info['data'] ?? []);
             if ($id !== null) {
-                return $id;
+                return ['id' => $id, 'path' => 'Same as listed sibling'];
             }
         }
 
-        return $this->api->suggestCategory($title, $imageUrl);
+        $configured = (int) preg_replace('/\D+/', '', (string) config('services.aliexpress.default_category_id', ''));
+        if ($configured > 0) {
+            return ['id' => $configured, 'path' => 'Default AliExpress category'];
+        }
+
+        return ['id' => 0, 'path' => ''];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function productTypeHints(ProductMaster $product, string $sku, string $title): array
+    {
+        $hints = [];
+        $parent = $this->groupKey($product);
+        if ($parent !== '' && strcasecmp($parent, $sku) !== 0) {
+            $hints[] = $parent;
+        }
+
+        $categoryId = (int) ($product->category_id ?? 0);
+        if ($categoryId > 0) {
+            $name = trim((string) ProductCategory::query()->where('id', $categoryId)->value('category_name'));
+            if ($name !== '') {
+                $hints[] = $name;
+            }
+        }
+        if (Schema::hasColumn('product_master', 'category')) {
+            $legacy = trim((string) ($product->getAttribute('category') ?? ''));
+            if ($legacy !== '') {
+                $hints[] = $legacy;
+            }
+        }
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['type', 'Type', 'product_type', 'category', 'Category'] as $key) {
+            $raw = trim((string) ($values[$key] ?? ''));
+            if ($raw !== '') {
+                $hints[] = $raw;
+            }
+        }
+        $hints[] = $title;
+
+        return $hints;
     }
 
     private function resolveFreightTemplateId(ProductMaster $primary, string $sku): string

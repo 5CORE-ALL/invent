@@ -126,9 +126,9 @@
 .listing-publish-category {
     margin-bottom: 14px;
     padding: 10px 12px;
-    border: 1px solid #fecaca;
+    border: 1px solid #e2e8f0;
     border-radius: 8px;
-    background: #fff7ed;
+    background: #f8fafc;
 }
 .listing-publish-category label {
     display: block;
@@ -136,7 +136,8 @@
     font-size: 12px;
     margin-bottom: 4px;
 }
-.listing-publish-category small { display: block; color: #9a3412; margin-top: 4px; }
+.listing-publish-category small { display: block; color: #64748b; margin-top: 4px; }
+.listing-publish-category input[type="text"] { margin-bottom: 2px; }
 .listing-publish-category-path {
     font-weight: 700;
     font-size: 13px;

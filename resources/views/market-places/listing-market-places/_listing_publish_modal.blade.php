@@ -26,9 +26,12 @@
                                         </label>
                                     </div>
                                     <div id="listing-publish-aliexpress-category" class="listing-publish-category" hidden>
-                                        <label for="listing-publish-category-id">AliExpress category ID</label>
-                                        <input type="text" id="listing-publish-category-id" class="form-control form-control-sm" placeholder="e.g. 200000345" inputmode="numeric" autocomplete="off">
-                                        <small>Required if AliExpress cannot guess the category. Find it on the seller category picker, then publish again.</small>
+                                        <label>Suggested AliExpress category</label>
+                                        <div id="listing-publish-aliexpress-category-path" class="listing-publish-category-path">Matching from the product type…</div>
+                                        <input type="hidden" id="listing-publish-category-id" value="">
+                                        <label for="listing-publish-category-name">Or type a category name</label>
+                                        <input type="text" id="listing-publish-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Capos" autocomplete="off">
+                                        <small>Use the category name, like other marketplaces. You do not need a category ID.</small>
                                     </div>
                                     <div id="listing-publish-reverb-category" class="listing-publish-category" hidden>
                                         <label>Suggested Reverb category</label>
