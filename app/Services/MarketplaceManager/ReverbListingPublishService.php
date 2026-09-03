@@ -44,15 +44,16 @@ class ReverbListingPublishService
         }
 
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
-        $publishSkus = ($expandSiblings && $mode === 'variation')
-            ? $this->expandToPublishableSiblings($skus)
-            : $this->filterPublishable($skus);
-
-        if ($publishSkus === []) {
-            return [
-                'success' => false,
-                'message' => 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).',
-            ];
+        if ($expandSiblings && $mode === 'variation') {
+            $publishSkus = $this->expandToPublishableSiblings($skus);
+            if ($publishSkus === []) {
+                return [
+                    'success' => false,
+                    'message' => $this->publishBlockReason($skus),
+                ];
+            }
+        } else {
+            $publishSkus = $skus;
         }
 
         if (count($publishSkus) > 1) {
@@ -85,10 +86,7 @@ class ReverbListingPublishService
         }
 
         $sku = $publishSkus[0];
-        $product = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->where('sku', $sku)
-            ->first();
+        $product = $this->findProduct($sku);
         if (! $product) {
             return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
         }
@@ -106,9 +104,9 @@ class ReverbListingPublishService
             ];
         }
 
-        $images = $this->productImages($product);
+        $images = $this->productImages($product, $sku);
         if ($images === []) {
-            return ['success' => false, 'message' => 'No images on product master for '.$sku.'.'];
+            return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Shopify), not a local/filename-only path.'];
         }
 
         $resolved = $this->resolveCategory($product, $sku, $title, $categoryUuid);
@@ -268,8 +266,8 @@ class ReverbListingPublishService
             if (in_array($nr, ['NR', 'NRL'], true)) {
                 continue;
             }
-            $product = $products->get(strtolower($sku));
-            if (! $product || $this->productImages($product) === []) {
+            $product = $products->get(strtolower($sku)) ?: $this->findProduct($sku);
+            if (! $product || $this->productImages($product, $sku) === []) {
                 continue;
             }
             $out[] = $sku;
@@ -590,25 +588,61 @@ class ReverbListingPublishService
         return 'Generic';
     }
 
+    private function findProduct(string $sku): ?ProductMaster
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        return ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first()
+            ?: ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+    }
+
+    private function publishBlockReason(array $skus): string
+    {
+        $reasons = [];
+        foreach ($this->uniqueSkus($skus) as $sku) {
+            $product = $this->findProduct($sku);
+            if (! $product) {
+                $reasons[] = $sku.': not in product master';
+                continue;
+            }
+            if ($this->productImages($product, $sku) === []) {
+                $reasons[] = $sku.': no public https image';
+                continue;
+            }
+            $reasons[] = $sku.': already listed or NRL';
+        }
+
+        return $reasons !== []
+            ? implode('; ', $reasons)
+            : 'No Missing L child SKUs left to publish (already listed, NRL, or missing images).';
+    }
+
     /**
      * @return list<string>
      */
-    private function productImages(ProductMaster $product): array
+    private function productImages(ProductMaster $product, string $sku = ''): array
     {
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
-            $raw = trim($raw);
-            if ($raw === '' || in_array($raw, $urls, true)) {
+            $url = $this->absoluteImageUrl($raw);
+            if ($url === '' || in_array($url, $urls, true)) {
                 return;
             }
-            if (! preg_match('#^https?://#i', $raw)) {
-                return;
-            }
-            $urls[] = $raw;
+            $urls[] = $url;
         };
 
         $push((string) ($product->main_image ?? ''));
         $push((string) ($product->main_image_brand ?? ''));
+        $push((string) ($product->image_url ?? ''));
         for ($i = 1; $i <= 20; $i++) {
             $push((string) ($product->{'image'.$i} ?? ''));
         }
@@ -617,8 +651,38 @@ class ReverbListingPublishService
             $raw = $values[$key] ?? '';
             $push(is_array($raw) ? (string) ($raw[0]['url'] ?? $raw[0] ?? '') : (string) $raw);
         }
+        if ($sku !== '') {
+            $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
+            if ($shopify) {
+                $push((string) ($shopify->image_src ?? ''));
+            }
+        }
 
         return $urls;
+    }
+
+    private function absoluteImageUrl(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        if (str_starts_with($raw, '//')) {
+            return 'https:'.$raw;
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+
+        $base = rtrim((string) (config('services.reverb.sku_image_public_base_url') ?: config('app.url')), '/');
+        if ($base === '') {
+            return '';
+        }
+        if (str_starts_with($raw, '/')) {
+            return $base.$raw;
+        }
+
+        return $base.'/'.ltrim($raw, '/');
     }
 
     private function persistListed(string $sku, string $listingId, string $title, float $price, int $inv, string $webUrl): void
