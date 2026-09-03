@@ -48,6 +48,6 @@ return [
     | Required item specifics defaults (Ebay publish)
     |--------------------------------------------------------------------------
     */
-    'default_brand' => env('LISTING_MANAGER_DEFAULT_BRAND', '5 Core Inc'),
-    'default_manufacturer' => env('LISTING_MANAGER_DEFAULT_MANUFACTURER', '5 Core Inc'),
+    'default_brand' => env('LISTING_MANAGER_DEFAULT_BRAND', '5 Core Inc.'),
+    'default_manufacturer' => env('LISTING_MANAGER_DEFAULT_MANUFACTURER', '5 Core Inc.'),
 ];

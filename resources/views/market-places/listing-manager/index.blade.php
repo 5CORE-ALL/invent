@@ -1498,8 +1498,8 @@
             ['UPC', escapeHtml(p.upc || '—')],
             ['Manufacturer Part Number', escapeHtml(p.mpn || '—')],
             ['ASIN', escapeHtml(p.asin || '—')],
-            ['Vendor / Brand', escapeHtml(p.vendor || '5 Core Inc')],
-            ['Manufacturer', escapeHtml(p.manufacturer || '5 Core Inc')],
+            ['Vendor / Brand', escapeHtml(p.vendor || '5 Core Inc.')],
+            ['Manufacturer', escapeHtml(p.manufacturer || '5 Core Inc.')],
             ['Parent', escapeHtml(p.parent || p.sku || '—')],
             ['Product Type', escapeHtml(p.product_type || '—')],
             ['Tags', escapeHtml(p.tags || '—')],
@@ -2036,8 +2036,8 @@
             $('#lc-category-path-input').val($('#lc-category-path-visible').val() || '');
         }
         const images = editorImages.slice();
-        const brand = ($('#lc-brand').val() || $('#lc-brand-id').val() || '').trim() || '5 Core Inc';
-        const manufacturer = ($('#lc-manufacturer').val() || $('#lc-manufacturer-specific').val() || '').trim() || '5 Core Inc';
+        const brand = ($('#lc-brand').val() || $('#lc-brand-id').val() || '').trim() || '5 Core Inc.';
+        const manufacturer = ($('#lc-manufacturer').val() || $('#lc-manufacturer-specific').val() || '').trim() || '5 Core Inc.';
         const mpn = ($('#lc-mpn').val() || '').trim() || ($('#lc-sku').val() || '').trim();
         const upc = ($('#lc-upc').val() || $('#lc-upc-specific').val() || '').trim();
         const specifics = {
@@ -2457,8 +2457,8 @@
         $('#lc-sku').val(draft.sku || '');
         $('#lc-asin').val(draft.asin || snap.asin || '');
         const sku = String(draft.sku || '').trim();
-        const defaultBrand = '5 Core Inc';
-        const defaultManufacturer = '5 Core Inc';
+        const defaultBrand = '5 Core Inc.';
+        const defaultManufacturer = '5 Core Inc.';
         const upcVal = d.upc || (d.item_specifics && d.item_specifics.UPC) || snap.upc || '';
         $('#lc-upc').val(upcVal);
         $('#lc-ean').val(d.ean || '');

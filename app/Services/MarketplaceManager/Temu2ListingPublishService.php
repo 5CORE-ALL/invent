@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class Temu2ListingPublishService
 {
-    private const BRAND_NAME = '5 Core Inc';
+    private const BRAND_NAME = '5 Core Inc.';
 
     private const MAX_IMAGES = 10;
 

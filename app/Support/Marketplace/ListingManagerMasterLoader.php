@@ -379,8 +379,8 @@ class ListingManagerMasterLoader
             'message' => 'Identifiers loaded from Product Master.',
             'source' => 'identifiers',
             'upc' => $upc,
-            'brand' => $brand !== '' ? $brand : '5 Core Inc',
-            'manufacturer' => $manufacturer !== '' ? $manufacturer : '5 Core Inc',
+            'brand' => $brand !== '' ? $brand : (trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.'),
+            'manufacturer' => $manufacturer !== '' ? $manufacturer : (trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.'),
         ];
     }
 

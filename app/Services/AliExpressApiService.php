@@ -150,35 +150,54 @@ class AliExpressApiService
      */
     public function postProduct(array $request): array
     {
-        $encoded = $this->encodeRequestPayload($request);
-        $attempts = [
-            ['aliexpress.solution.product.post', ['post_product_request' => $encoded]],
-            ['aliexpress.solution.product.post', ['aeop_a_e_product' => $encoded]],
-            ['aliexpress.postproduct.redefining.postaeproduct', ['aeop_a_e_product' => $encoded]],
-        ];
-        $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
-        foreach ($attempts as [$method, $params]) {
-            $res = $this->callApiFlexible($method, [
-                'rest' => $params,
-                'sync' => $params,
-            ]);
-            if (! empty($res['success'])) {
-                $productId = $this->extractPostedProductId($res['data'] ?? [])
-                    ?: $this->extractPostedProductId($res['result'] ?? [])
-                    ?: $this->extractPostedProductId($res);
-                if ($productId !== '') {
-                    $res['product_id'] = $productId;
+        $attempts = [$request];
+        if (trim((string) ($request['brand_name'] ?? '')) !== '') {
+            $withoutBrand = $request;
+            unset($withoutBrand['brand_name']);
+            $attempts[] = $withoutBrand;
+        }
 
-                    return $res;
-                }
-                $last = [
-                    'success' => false,
-                    'message' => 'AliExpress accepted the request but did not return a product ID, so nothing was created in the seller portal.',
-                    'data' => $res['data'] ?? null,
-                ];
-                continue;
+        $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
+        foreach ($attempts as $payload) {
+            $encoded = $this->encodeRequestPayload($payload);
+            $res = $this->callApiFlexible('aliexpress.solution.product.post', [
+                'rest' => ['post_product_request' => $encoded],
+                'sync' => ['post_product_request' => $encoded],
+            ]);
+            $productId = $this->extractPostedProductId($res['data'] ?? [])
+                ?: $this->extractPostedProductId($res['result'] ?? [])
+                ?: $this->extractPostedProductId($res);
+            if ($productId !== '') {
+                $res['success'] = true;
+                $res['product_id'] = $productId;
+
+                return $res;
             }
-            $last = $res;
+
+            $bizError = $this->extractPostFailureMessage($res);
+            $last = [
+                'success' => false,
+                'message' => $bizError,
+                'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
+            ];
+            if (empty($res['success']) && ! $this->isRetryableProductPostError($bizError)) {
+                break;
+            }
+        }
+
+        $skuCodes = [];
+        foreach ($request['sku_info_list'] ?? [] as $row) {
+            if (is_array($row)) {
+                $skuCodes[] = (string) ($row['sku_code'] ?? '');
+            }
+        }
+        $foundId = $this->findPostedProductIdBySkus($skuCodes);
+        if ($foundId !== '') {
+            return [
+                'success' => true,
+                'product_id' => $foundId,
+                'message' => 'AliExpress created the product (found in seller catalog).',
+            ];
         }
 
         return $last;
@@ -273,28 +292,147 @@ class AliExpressApiService
         if (! is_array($data)) {
             $id = trim((string) $data);
 
-            return preg_match('/^\d{6,}$/', $id) ? $id : '';
+            return preg_match('/^\d{8,}$/', $id) ? $id : '';
         }
-        foreach (['product_id', 'productId', 'item_id', 'itemId'] as $key) {
-            if (! array_key_exists($key, $data) || is_array($data[$key])) {
+        foreach ($data as $key => $value) {
+            $keyLower = strtolower((string) $key);
+            if (is_string($key) && (str_contains($keyLower, 'product_id') || in_array($keyLower, ['productid', 'item_id', 'itemid'], true))) {
+                if (! is_array($value)) {
+                    $id = trim((string) $value);
+                    if (preg_match('/^\d{8,}$/', $id) && $id !== '0') {
+                        return $id;
+                    }
+                }
+            }
+        }
+        foreach ($data as $value) {
+            if (! is_array($value)) {
                 continue;
             }
-            $id = trim((string) $data[$key]);
-            if (preg_match('/^\d{6,}$/', $id)) {
-                return $id;
-            }
-        }
-        foreach (['result', 'data', 'response'] as $wrap) {
-            if (! isset($data[$wrap])) {
-                continue;
-            }
-            $nested = $this->extractPostedProductId($data[$wrap], $depth + 1);
+            $nested = $this->extractPostedProductId($value, $depth + 1);
             if ($nested !== '') {
                 return $nested;
             }
         }
 
         return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $res
+     */
+    private function extractPostFailureMessage(array $res): string
+    {
+        foreach ([$res['message'] ?? null, $this->extractBusinessResultError(is_array($res['data'] ?? null) ? $res['data'] : [])] as $msg) {
+            $msg = trim((string) $msg);
+            if ($msg !== '' && ! str_contains(strtolower($msg), 'did not return a product id')) {
+                if (! str_contains(strtolower($msg), 'accepted the request')) {
+                    return $msg;
+                }
+            }
+        }
+
+        $buckets = [
+            $res['data'] ?? null,
+            $res['result'] ?? null,
+            $res['response'] ?? null,
+        ];
+        foreach ($buckets as $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+            foreach (['error_message', 'error_msg', 'sub_msg', 'msg', 'message'] as $key) {
+                $msg = trim((string) data_get($bucket, $key, ''));
+                if ($msg !== '') {
+                    return $msg;
+                }
+                $nested = trim((string) data_get($bucket, 'result.'.$key, ''));
+                if ($nested !== '') {
+                    return $nested;
+                }
+            }
+        }
+
+        return 'AliExpress did not create a product. Check category ID, freight template, images, and brand permission, then try again.';
+    }
+
+    private function isRetryableProductPostError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return $m === ''
+            || str_contains($m, 'brand')
+            || str_contains($m, 'accepted the request')
+            || str_contains($m, 'did not return a product');
+    }
+
+    /**
+     * @param  list<string>  $skuCodes
+     */
+    public function findPostedProductIdBySkus(array $skuCodes): string
+    {
+        $want = [];
+        foreach ($skuCodes as $sku) {
+            $sku = strtoupper(trim((string) $sku));
+            if ($sku !== '') {
+                $want[$sku] = true;
+            }
+        }
+        if ($want === []) {
+            return '';
+        }
+
+        foreach (['auditing', 'onSelling', 'offline', 'editingRequired'] as $status) {
+            $res = $this->getInventory(1, 50, ['product_status_type' => $status]);
+            if (empty($res['success'])) {
+                continue;
+            }
+            foreach ($res['data']['products'] ?? [] as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                $id = $this->extractPostedProductId($product);
+                if ($id === '') {
+                    continue;
+                }
+                foreach ($this->extractSkuCodesFromListedProduct($product) as $code) {
+                    if (isset($want[strtoupper($code)])) {
+                        return $id;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     * @return list<string>
+     */
+    private function extractSkuCodesFromListedProduct(array $product): array
+    {
+        $codes = [];
+        $push = function (mixed $raw) use (&$codes): void {
+            $sku = strtoupper(trim((string) $raw));
+            if ($sku !== '') {
+                $codes[] = $sku;
+            }
+        };
+        $push($product['sku_code'] ?? $product['sku'] ?? null);
+        foreach (['sku_info_list', 'aeop_ae_product_s_k_us', 'sku_list'] as $key) {
+            $list = $product[$key] ?? null;
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (is_array($row)) {
+                    $push($row['sku_code'] ?? $row['sku'] ?? $row['skuCode'] ?? null);
+                }
+            }
+        }
+
+        return $codes;
     }
 
     /**
@@ -1070,8 +1208,12 @@ class AliExpressApiService
         }
 
         $success = $result['success'] ?? null;
+        $error = trim((string) ($result['error_message'] ?? $result['error_msg'] ?? $result['sub_msg'] ?? $result['message'] ?? ''));
         if ($success === false || $success === 'false' || $success === 0 || $success === '0') {
-            return (string) ($result['error_message'] ?? $result['error_msg'] ?? $result['message'] ?? 'AliExpress API returned success=false.');
+            return $error !== '' ? $error : 'AliExpress API returned success=false.';
+        }
+        if ($error !== '' && ($result['error_code'] ?? $result['errorCode'] ?? null)) {
+            return $error;
         }
 
         return null;

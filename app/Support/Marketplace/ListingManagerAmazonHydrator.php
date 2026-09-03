@@ -173,8 +173,8 @@ class ListingManagerAmazonHydrator
         $images = ListingManagerImageStore::applyToList($images);
         $dims = self::dimensions($listing?->item_dimensions, $pm);
 
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
         $brand = $defaultBrand;
         $manufacturer = $defaultManufacturer;
 
@@ -243,8 +243,8 @@ class ListingManagerAmazonHydrator
             $defaults = (array) config('listing_manager.ebay2_defaults', []);
         }
 
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
         $sku = trim((string) ($hydrated['sku'] ?? $hydrated['mpn'] ?? ''));
         $brand = trim((string) ($existingDetails['brand'] ?? '')) ?: $defaultBrand;
         $manufacturer = trim((string) ($existingDetails['manufacturer'] ?? ($hydrated['manufacturer'] ?? ''))) ?: $defaultManufacturer;

@@ -1698,11 +1698,12 @@ class ReverbApiService
             }
         }
 
-        $upc = trim((string) ($fields['upc'] ?? ''));
-        if ($upc !== '') {
-            $payload['upc'] = $upc;
-        } else {
+        $skipUpc = filter_var($fields['upc_does_not_apply'] ?? false, FILTER_VALIDATE_BOOLEAN)
+            || trim((string) ($fields['upc'] ?? '')) === '';
+        if ($skipUpc) {
             $payload['upc_does_not_apply'] = true;
+        } else {
+            $payload['upc'] = trim((string) $fields['upc']);
         }
 
         $desc = trim((string) ($fields['description'] ?? ''));

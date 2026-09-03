@@ -179,9 +179,9 @@ class ListingManagerEbayTradingPublisher
             }
 
             $brand = trim((string) ($payload['brand'] ?? ''))
-                ?: (trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc');
+                ?: (trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.');
             $manufacturer = trim((string) ($payload['manufacturer'] ?? ''))
-                ?: (trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc');
+                ?: (trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.');
             $mpn = trim((string) ($payload['mpn'] ?? '')) ?: $sku;
             $upc = trim((string) ($payload['upc'] ?? ''));
 

@@ -169,10 +169,10 @@ class AliexpressListingPublishService
 
         $request = [
             'language' => 'en',
-            'locale' => 'en_US',
+            'subject' => $subject,
+            'description' => $description,
             'aliexpress_category_id' => $categoryId,
-            'category_id' => (string) $categoryId,
-            'brand_name' => $this->resolveBrand($primary),
+            'brand_name' => $this->resolveBrand(),
             'multi_language_subject_list' => [
                 ['language' => 'en', 'subject' => $subject],
             ],
@@ -207,27 +207,17 @@ class AliexpressListingPublishService
             ];
         }
 
-        $online = $this->api->onlineProducts([$productId]);
         $this->persistListed($prepared, $productId);
         $this->forgetListingCaches();
 
         $count = count($publishSkus);
         $created = $count > 1
-            ? 'Created AliExpress product #'.$productId.' with '.$count.' variations of '.$parentKey
-            : 'Created AliExpress product #'.$productId.' for '.$primarySku;
-        if (empty($online['success'])) {
-            return [
-                'success' => true,
-                'message' => $created.'. It is in the seller portal as draft/offline/pending review — open that tab and click Publish. '.($online['message'] ?? ''),
-                'goods_id' => $productId,
-                'sku_id' => $productId,
-                'skus' => $publishSkus,
-            ];
-        }
+            ? 'Submitted AliExpress product #'.$productId.' with '.$count.' variations of '.$parentKey
+            : 'Submitted AliExpress product #'.$productId.' for '.$primarySku;
 
         return [
             'success' => true,
-            'message' => $created.' and put it on selling. Search the seller portal for product ID '.$productId.'.',
+            'message' => $created.' to Under review. After AliExpress accepts it, the listing goes live. Search the seller portal Auditing / Under review tab for product ID '.$productId.'.',
             'goods_id' => $productId,
             'sku_id' => $productId,
             'skus' => $publishSkus,
@@ -374,18 +364,16 @@ class AliexpressListingPublishService
         return $this->api->firstFreightTemplateId();
     }
 
-    private function resolveBrand(ProductMaster $product): string
+    private function resolveBrand(): string
     {
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['brand', 'Brand', 'brand_name'] as $key) {
-            $brand = trim((string) ($values[$key] ?? ''));
-            if ($brand !== '') {
-                return mb_substr($brand, 0, 80);
-            }
+        $configured = trim((string) config('services.aliexpress.brand_name', ''));
+        $norm = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $configured));
+        if ($configured !== '' && $norm !== '5CORE') {
+            return mb_substr($configured, 0, 80);
         }
-        $configured = trim((string) config('services.aliexpress.brand_name', '5CORE'));
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.'));
 
-        return $configured !== '' ? $configured : '5CORE';
+        return mb_substr($brand !== '' ? $brand : '5 Core Inc.', 0, 80);
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string
@@ -562,7 +550,7 @@ class AliexpressListingPublishService
                         'price' => $row['price'],
                     ];
                     if (Schema::hasColumn('aliexpress_metric', 'listing_status')) {
-                        $payload['listing_status'] = 'onselling';
+                        $payload['listing_status'] = 'auditing';
                     }
                     AliexpressMetric::updateOrCreate(
                         ['product_id' => $productId, 'sku' => $sku],

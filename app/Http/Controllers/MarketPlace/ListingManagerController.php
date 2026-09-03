@@ -435,8 +435,8 @@ class ListingManagerController extends Controller
                     : (($shopify['success'] ?? false) ? 'Main Store' : 'Amazon'),
                 'upc' => (string) ($hydrated['upc'] ?? ListingManagerAmazonHydrator::upcFromCpMaster($sku, $pm, $listing, $raw)),
                 'mpn' => (string) ($pm['mpn'] ?? $pm['part_number'] ?? $listing?->part_number ?? ''),
-                'vendor' => (string) ($hydrated['brand'] ?: config('listing_manager.default_brand', '5 Core Inc')),
-            'manufacturer' => (string) ($hydrated['manufacturer'] ?: config('listing_manager.default_manufacturer', '5 Core Inc')),
+                'vendor' => (string) ($hydrated['brand'] ?: config('listing_manager.default_brand', '5 Core Inc.')),
+            'manufacturer' => (string) ($hydrated['manufacturer'] ?: config('listing_manager.default_manufacturer', '5 Core Inc.')),
             'parent' => ListingManagerFamily::parentKey($sku),
                 'product_type' => (string) ($hydrated['product_type'] ?: ($pm['product_type'] ?? $listing?->product_type ?? '')),
                 'tags' => (string) ($pm['tags'] ?? $pm['generic_keyword'] ?? ''),
@@ -2252,8 +2252,8 @@ class ListingManagerController extends Controller
     private function ensureIdentifierDefaults(array $details, string $sku): array
     {
         $sku = trim($sku);
-        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc')) ?: '5 Core Inc';
-        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc')) ?: '5 Core Inc';
+        $defaultBrand = trim((string) config('listing_manager.default_brand', '5 Core Inc.')) ?: '5 Core Inc.';
+        $defaultManufacturer = trim((string) config('listing_manager.default_manufacturer', '5 Core Inc.')) ?: '5 Core Inc.';
         $brand = trim((string) ($details['brand'] ?? '')) ?: $defaultBrand;
         $manufacturer = trim((string) ($details['manufacturer'] ?? '')) ?: $defaultManufacturer;
         $mpn = trim((string) ($details['mpn'] ?? '')) ?: $sku;

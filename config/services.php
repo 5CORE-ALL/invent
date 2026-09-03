@@ -590,7 +590,7 @@ return [
         /** MPN for bullet ReviseItem only when GetItem has no seller SKU; must not duplicate Brand. Prefer leaving empty when SKU exists on listings. */
         'mpn_fallback_value' => env('EBAY_MPN_FALLBACK_VALUE', ''),
         /** If Brand is required but missing from ItemSpecifics, use this (override with EBAY_BRAND_FALLBACK_VALUE). */
-        'brand_fallback_value' => env('EBAY_BRAND_FALLBACK_VALUE', '5 Core'),
+        'brand_fallback_value' => env('EBAY_BRAND_FALLBACK_VALUE', '5 Core Inc.'),
         /** Max chars eBay accepts for item-specific Bullet Point values in common categories. */
         'item_specific_bullet_max_length' => (int) env('EBAY_ITEM_SPECIFIC_BULLET_MAX_LENGTH', 65),
         /** Required by some categories when revising item specifics. Override with EBAY_TYPE_FALLBACK_VALUE if needed. */
@@ -965,7 +965,7 @@ return [
         'default_category_id' => env('ALIEXPRESS_DEFAULT_CATEGORY_ID', ''),
         'product_unit' => env('ALIEXPRESS_PRODUCT_UNIT', '100000015'),
         'shipping_lead_time' => (int) env('ALIEXPRESS_SHIPPING_LEAD_TIME', 7),
-        'brand_name' => env('ALIEXPRESS_BRAND_NAME', '5CORE'),
+        'brand_name' => env('ALIEXPRESS_BRAND_NAME', '5 Core Inc.'),
         'service_policy_id' => env('ALIEXPRESS_SERVICE_POLICY_ID', '0'),
     ],
 

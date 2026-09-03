@@ -68,12 +68,6 @@ class ReverbListingValidator
             $issues[] = ['section' => 'details', 'field' => 'category', 'message' => 'Category is blank.'];
         }
 
-        $upcDoesNotApply = filter_var($listing['upc_does_not_apply'] ?? false, FILTER_VALIDATE_BOOLEAN);
-        $upc = trim((string) ($listing['upc'] ?? ''));
-        if (! $upcDoesNotApply && $upc === '') {
-            $issues[] = ['section' => 'details', 'field' => 'upc', 'message' => 'UPC / EAN is blank (or check UPC does not apply).'];
-        }
-
         $price = $listing['price_amount'] ?? null;
         if ($price === null || $price === '' || ! is_numeric($price) || (float) $price <= 0) {
             $issues[] = ['section' => 'pricing', 'field' => 'price', 'message' => 'Price is blank or must be greater than 0.'];

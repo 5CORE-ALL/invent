@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\ProductCategory;
+use App\Models\ProductImage;
 use App\Models\ProductMaster;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbMetric;
@@ -13,6 +14,7 @@ use App\Services\ReverbApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -126,17 +128,15 @@ class ReverbListingPublishService
             ];
         }
 
-        $values = is_array($product->Values) ? $product->Values : [];
-        $make = trim((string) ($product->reverb_make ?? $values['brand'] ?? ''));
-        if ($make === '' || strcasecmp($make, 'Unknown') === 0) {
-            $make = $this->makeFromTitle($title);
-        }
+        $explicitMake = trim((string) ($product->reverb_make ?? ''));
+        $make = ($explicitMake !== '' && strcasecmp($explicitMake, 'Unknown') !== 0 && strcasecmp($explicitMake, 'Generic') !== 0)
+            ? $explicitMake
+            : $this->defaultListingBrand();
         $model = trim((string) ($product->reverb_model ?? ''));
         if ($model === '' || strcasecmp($model, 'Unknown') === 0) {
             $model = $sku;
         }
 
-        $upc = trim((string) ($product->barcode ?? $values['upc'] ?? $values['gtin'] ?? $values['ean'] ?? ''));
         $inv = $this->publishInventory($sku, $condition['name']);
         $shippingProfileId = $this->resolveShippingProfileId($product, $sku);
 
@@ -147,8 +147,8 @@ class ReverbListingPublishService
             'finish' => trim((string) ($product->reverb_finish ?? '')),
             'year' => trim((string) ($product->reverb_year ?? '')),
             'sku' => $sku,
-            'upc' => $upc,
-            'upc_does_not_apply' => $upc === '',
+            'upc' => '',
+            'upc_does_not_apply' => true,
             'description' => $this->resolveDescription($product, $title),
             'price_amount' => $price,
             'price_currency' => 'USD',
@@ -170,6 +170,8 @@ class ReverbListingPublishService
             'category_uuid' => $categoryUuid,
             'category_path' => (string) ($resolved['path'] ?? ''),
             'condition' => $condition['name'],
+            'photo_count' => count($images),
+            'make' => $make,
         ]);
 
         $res = $this->api->createListing($fields);
@@ -181,12 +183,24 @@ class ReverbListingPublishService
         }
 
         $listingId = trim((string) ($res['listing_id'] ?? ''));
+        if ($listingId !== '' && $images !== []) {
+            $imgRes = $this->api->updateListingImages($listingId, $images, 'replace');
+            if (empty($imgRes['success'])) {
+                Log::warning('Reverb publish: listing created but full image replace failed', [
+                    'sku' => $sku,
+                    'listing_id' => $listingId,
+                    'image_count' => count($images),
+                    'message' => $imgRes['message'] ?? '',
+                ]);
+            }
+        }
         $this->persistListed($sku, $listingId, $title, $price, $inv, (string) ($res['web_url'] ?? ''));
         $this->forgetListingCaches();
 
         return [
             'success' => true,
-            'message' => 'Published '.$sku.' to Reverb'.($listingId !== '' ? ' (#'.$listingId.')' : '').'.',
+            'message' => 'Published '.$sku.' to Reverb'.($listingId !== '' ? ' (#'.$listingId.')' : '')
+                .' with '.count($images).' photo'.(count($images) === 1 ? '' : 's').'.',
             'goods_id' => $listingId !== '' ? $listingId : null,
             'sku_id' => $listingId !== '' ? $listingId : null,
             'skus' => [$sku],
@@ -578,14 +592,11 @@ class ReverbListingPublishService
         return $title;
     }
 
-    private function makeFromTitle(string $title): string
+    private function defaultListingBrand(): string
     {
-        $first = trim((string) strtok($title, ' '));
-        if ($first !== '' && strcasecmp($first, 'Unknown') !== 0 && mb_strlen($first) <= 40) {
-            return $first;
-        }
+        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.'));
 
-        return 'Generic';
+        return $brand !== '' ? $brand : '5 Core Inc.';
     }
 
     private function findProduct(string $sku): ?ProductMaster
@@ -633,32 +644,216 @@ class ReverbListingPublishService
     {
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
-            $url = $this->absoluteImageUrl($raw);
-            if ($url === '' || in_array($url, $urls, true)) {
-                return;
+            foreach ($this->splitImageValues($raw) as $one) {
+                $url = $this->absoluteImageUrl($one);
+                if ($url === '' || in_array($url, $urls, true)) {
+                    continue;
+                }
+                $urls[] = $url;
             }
-            $urls[] = $url;
         };
 
+        $this->pushMasterGallery($product, $push);
+
+        $childSku = $sku !== '' ? $sku : trim((string) $product->sku);
+        $parentSku = trim((string) ($product->parent ?? ''));
+        if ($parentSku !== '' && strcasecmp($parentSku, $childSku) !== 0) {
+            $parent = $this->findProduct($parentSku);
+            if ($parent) {
+                $this->pushMasterGallery($parent, $push);
+            }
+        }
+
+        if ($childSku !== '') {
+            foreach ($this->shopifyCatalogImages($childSku) as $url) {
+                $push((string) $url);
+            }
+            foreach ($this->productImageRows($childSku) as $url) {
+                $push((string) $url);
+            }
+            foreach ($this->reverbImageMasterUrls($childSku) as $url) {
+                $push((string) $url);
+            }
+        }
+
+        return array_slice($urls, 0, 25);
+    }
+
+    /**
+     * @param  callable(string): void  $push
+     */
+    private function pushMasterGallery(ProductMaster $product, callable $push): void
+    {
         $push((string) ($product->main_image ?? ''));
-        $push((string) ($product->main_image_brand ?? ''));
-        $push((string) ($product->image_url ?? ''));
         for ($i = 1; $i <= 20; $i++) {
             $push((string) ($product->{'image'.$i} ?? ''));
         }
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['hero_image', 'trust_image', 'ugc_image', 'image_path', 'image', 'Image', 'main_image', 'photo'] as $key) {
-            $raw = $values[$key] ?? '';
-            $push(is_array($raw) ? (string) ($raw[0]['url'] ?? $raw[0] ?? '') : (string) $raw);
+        $push((string) ($product->main_image_brand ?? ''));
+        $push((string) ($product->image_url ?? ''));
+
+        $v2 = $product->description_v2_images ?? null;
+        if (is_array($v2)) {
+            foreach ($v2 as $item) {
+                $push(is_array($item) ? (string) ($item['url'] ?? $item['src'] ?? '') : (string) $item);
+            }
+        } elseif (is_string($v2) && $v2 !== '') {
+            $push($v2);
         }
-        if ($sku !== '') {
-            $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-            if ($shopify) {
-                $push((string) ($shopify->image_src ?? ''));
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['hero_image', 'trust_image', 'ugc_image', 'image_path', 'image', 'Image', 'main_image', 'photo', 'images', 'gallery'] as $key) {
+            $raw = $values[$key] ?? '';
+            if (is_array($raw)) {
+                foreach ($raw as $item) {
+                    $push(is_array($item) ? (string) ($item['url'] ?? $item['src'] ?? $item['href'] ?? '') : (string) $item);
+                }
+            } else {
+                $push((string) $raw);
+            }
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitImageValues(string $raw): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+        if (str_starts_with($raw, '[') || str_starts_with($raw, '{')) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $out = [];
+                $walk = function ($item) use (&$out, &$walk): void {
+                    if (is_string($item) && trim($item) !== '') {
+                        $out[] = trim($item);
+                    } elseif (is_array($item)) {
+                        $url = $item['url'] ?? $item['src'] ?? $item['href'] ?? null;
+                        if (is_string($url) && trim($url) !== '') {
+                            $out[] = trim($url);
+                        } else {
+                            foreach ($item as $nested) {
+                                $walk($nested);
+                            }
+                        }
+                    }
+                };
+                $walk($decoded);
+
+                return $out !== [] ? $out : [];
+            }
+        }
+        if (str_contains($raw, "\n") || str_contains($raw, '|')) {
+            $parts = preg_split('/[\r\n|]+/', $raw) ?: [];
+            $parts = array_values(array_filter(array_map('trim', $parts)));
+            if (count($parts) > 1) {
+                return $parts;
             }
         }
 
+        return [$raw];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function shopifyCatalogImages(string $sku): array
+    {
+        $urls = [];
+        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
+        if ($shopify) {
+            $urls[] = (string) ($shopify->image_src ?? '');
+        }
+        if (! Schema::hasTable('shopify_catalog_variants') || ! Schema::hasTable('shopify_catalog_products')) {
+            return $urls;
+        }
+
+        $select = ['p.id'];
+        foreach (['image_src', 'images', 'image_urls'] as $col) {
+            if (Schema::hasColumn('shopify_catalog_products', $col)) {
+                $select[] = 'p.'.$col;
+            }
+        }
+
+        $row = DB::table('shopify_catalog_variants as v')
+            ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+            ->whereRaw('UPPER(TRIM(COALESCE(v.sku, \'\'))) = ?', [strtoupper($sku)])
+            ->orderByDesc('v.id')
+            ->select($select)
+            ->first();
+        if (! $row) {
+            return $urls;
+        }
+
+        foreach (['image_urls', 'images'] as $col) {
+            if (! isset($row->{$col})) {
+                continue;
+            }
+            $decoded = is_array($row->{$col}) ? $row->{$col} : json_decode((string) $row->{$col}, true);
+            if (! is_array($decoded)) {
+                continue;
+            }
+            foreach ($decoded as $item) {
+                if (is_string($item)) {
+                    $urls[] = $item;
+                } elseif (is_array($item)) {
+                    $urls[] = (string) ($item['src'] ?? $item['url'] ?? '');
+                }
+            }
+        }
+        $urls[] = (string) ($row->image_src ?? '');
+
         return $urls;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function productImageRows(string $sku): array
+    {
+        if (! Schema::hasTable('product_images')) {
+            return [];
+        }
+
+        return ProductImage::query()
+            ->where(function ($query) use ($sku): void {
+                $query->where('sku', $sku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->get()
+            ->map(function (ProductImage $row): string {
+                $cdn = trim((string) ($row->cdn_url ?? ''));
+
+                return $cdn !== '' ? $cdn : (string) ($row->image_path ?? '');
+            })
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function reverbImageMasterUrls(string $sku): array
+    {
+        if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'image_master_json')) {
+            return [];
+        }
+
+        $raw = ReverbProduct::query()
+            ->where(function ($query) use ($sku): void {
+                $query->where('sku', $sku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            })
+            ->value('image_master_json');
+        if (is_array($raw)) {
+            return array_map(static fn ($item) => is_array($item) ? (string) ($item['url'] ?? $item['src'] ?? '') : (string) $item, $raw);
+        }
+        $decoded = json_decode((string) $raw, true);
+
+        return is_array($decoded)
+            ? array_map(static fn ($item) => is_array($item) ? (string) ($item['url'] ?? $item['src'] ?? '') : (string) $item, $decoded)
+            : [];
     }
 
     private function absoluteImageUrl(string $raw): string
