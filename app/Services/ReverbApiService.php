@@ -4151,16 +4151,15 @@ class ReverbApiService
             return $cached;
         }
 
-        $json = $this->reverbApiGet('/categories');
-        $roots = is_array($json['categories'] ?? null) ? $json['categories'] : [];
-        if ($roots === [] && is_array($json['_embedded']['categories'] ?? null)) {
-            $roots = $json['_embedded']['categories'];
-        }
-        if ($roots === []) {
-            $flatJson = $this->reverbApiGet('/categories/flat');
-            $roots = is_array($flatJson['categories'] ?? null) ? $flatJson['categories'] : [];
-            if ($roots === [] && is_array($flatJson['_embedded']['categories'] ?? null)) {
-                $roots = $flatJson['_embedded']['categories'];
+        $roots = [];
+        foreach (['/categories/flat', '/categories'] as $path) {
+            $json = $this->reverbApiGet($path);
+            $roots = is_array($json['categories'] ?? null) ? $json['categories'] : [];
+            if ($roots === [] && is_array($json['_embedded']['categories'] ?? null)) {
+                $roots = $json['_embedded']['categories'];
+            }
+            if ($roots !== []) {
+                break;
             }
         }
 

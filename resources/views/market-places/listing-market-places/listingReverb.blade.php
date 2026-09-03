@@ -1093,5 +1093,5 @@
             categorySearchUrl: '/listing_reverb/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=11"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=12"></script>
 @endsection

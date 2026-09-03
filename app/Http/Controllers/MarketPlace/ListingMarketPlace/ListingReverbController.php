@@ -54,7 +54,7 @@ class ListingReverbController extends Controller
         $title = trim((string) $request->input('title', ''));
         $result = $reverb->searchListingCategories($q, $title);
 
-        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        return response()->json($result);
     }
 
     public function saveStatus(Request $request)

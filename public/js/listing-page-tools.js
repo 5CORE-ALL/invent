@@ -268,6 +268,8 @@
             url: reverbCategorySearchUrl(),
             type: 'GET',
             data: { q: query },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             success: function (res) {
                 const rows = (res && res.categories) || [];
                 if (!rows.length) {

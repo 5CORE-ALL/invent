@@ -73,6 +73,11 @@ class RoutingController extends Controller
         if ($first == "assets")
             return redirect('home');
 
+        if ($first === 'listing_reverb' && $second === 'categories') {
+            return app(\App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingReverbController::class)
+                ->searchCategories($request, app(\App\Services\ReverbApiService::class));
+        }
+
         $viewName = $first . '.' . $second;
 
         if (!view()->exists($viewName)) {
