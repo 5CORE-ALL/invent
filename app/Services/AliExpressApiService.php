@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\AliexpressDataView;
@@ -198,16 +199,22 @@ class AliExpressApiService
             'message' => $this->extractPostFailureMessage($res),
             'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
         ];
+        if ($this->isTransientAliExpressError((string) $last['message'])) {
+            Log::warning('AliExpress publish: instance.post RPC timeout, trying official product.post', [
+                'category_id' => $categoryId,
+                'message' => $last['message'],
+            ]);
+        }
 
         $official = $this->officialProductPostRequest($request, $weightFill['fields']);
         $encodedPost = $this->encodeRequestPayload($official);
-        $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
-            'rest' => ['post_product_request' => $encodedPost],
-            'sync' => ['post_product_request' => $encodedPost],
+        $postRes = $this->postProductCreateWithRetry('aliexpress.solution.product.post', [
+            'post_product_request' => $encodedPost,
         ]);
         $productId = $this->extractPostedProductId($postRes['data'] ?? [])
             ?: $this->extractPostedProductId($postRes['result'] ?? [])
-            ?: $this->extractPostedProductId($postRes);
+            ?: $this->extractPostedProductId($postRes)
+            ?: (string) ($postRes['product_id'] ?? '');
         if ($productId !== '') {
             $postRes['success'] = true;
             $postRes['product_id'] = $productId;
@@ -520,7 +527,58 @@ class AliExpressApiService
 
         return $m === ''
             || str_contains($m, 'accepted the request')
-            || str_contains($m, 'did not return a product');
+            || str_contains($m, 'did not return a product')
+            || $this->isTransientAliExpressError($message);
+    }
+
+    private function isTransientAliExpressError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'rpc timeout')
+            || str_contains($m, 'rpc time out')
+            || str_contains($m, 'top-remote-connection-timeout')
+            || str_contains($m, 'service timeout')
+            || str_contains($m, 'timed out')
+            || str_contains($m, 'try again later')
+            || str_contains($m, 'system busy');
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     * @return array<string, mixed>
+     */
+    private function postProductCreateWithRetry(string $method, array $params): array
+    {
+        $last = [];
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            if ($attempt > 1) {
+                usleep(1_500_000);
+                Log::info('AliExpress publish: retry create after transient error', [
+                    'method' => $method,
+                    'attempt' => $attempt,
+                ]);
+            }
+            $res = $this->callApiFlexible($method, [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            $last = $res;
+            $productId = $this->extractPostedProductId($res['data'] ?? [])
+                ?: $this->extractPostedProductId($res['result'] ?? [])
+                ?: $this->extractPostedProductId($res);
+            if ($productId !== '') {
+                $res['success'] = true;
+                $res['product_id'] = $productId;
+
+                return $res;
+            }
+            if (! $this->isTransientAliExpressError($this->extractPostFailureMessage($res))) {
+                return $res;
+            }
+        }
+
+        return $last;
     }
 
     /**
@@ -593,6 +651,11 @@ class AliExpressApiService
             return [];
         }
 
+        $cached = Cache::get('aliexpress.product_schema.'.$categoryId);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
         $last = [];
         foreach ([
             ['aliexpress_category_id' => $categoryId],
@@ -610,6 +673,8 @@ class AliExpressApiService
                 $schema = $this->extractSchemaJson($res);
             }
             if ($schema !== []) {
+                Cache::put('aliexpress.product_schema.'.$categoryId, $schema, 1800);
+
                 return $schema;
             }
         }
@@ -720,22 +785,27 @@ class AliExpressApiService
             return [];
         }
 
-        $query = ['aliexpress_category_id' => $categoryId];
-        foreach ([
-            ['query_sku_attribute_info_request' => $query],
-            ['query_sku_attribute_info_request' => $this->encodeRequestPayload($query)],
-        ] as $params) {
-            $res = $this->callApiFlexible('aliexpress.solution.sku.attribute.query', [
-                'rest' => $params,
-                'sync' => $params,
-            ]);
-            $parsed = $this->parseSkuAttributeQuery($res);
-            if ($parsed !== []) {
-                return $parsed;
-            }
+        $cached = Cache::get('aliexpress.sku_attributes.'.$categoryId);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
         }
 
-        return $this->queryChildCategorySkuAttributes($categoryId);
+        $query = ['aliexpress_category_id' => $categoryId];
+        $res = $this->callApiFlexible('aliexpress.solution.sku.attribute.query', [
+            'rest' => ['query_sku_attribute_info_request' => $query],
+            'sync' => ['query_sku_attribute_info_request' => $query],
+        ]);
+        $parsed = $this->parseSkuAttributeQuery($res);
+        if ($parsed !== []) {
+            Cache::put('aliexpress.sku_attributes.'.$categoryId, $parsed, 1800);
+
+            return $parsed;
+        }
+        if (! empty($res['network_error'])) {
+            return $this->queryChildCategorySkuAttributes($categoryId);
+        }
+
+        return [];
     }
 
     /**
