@@ -4488,26 +4488,32 @@ class AliExpressApiService
     public function uploadImagesToPhotobank(array $urls): array
     {
         $hosted = [];
+        $map = [];
+        $lastFail = 'No Image Master photos to upload.';
         foreach (array_slice(array_values(array_unique(array_filter(array_map('trim', $urls)))), 0, 6) as $url) {
             if ($this->isAliExpressCdnUrl($url)) {
                 $hosted[] = $url;
+                $map[$url] = $url;
                 continue;
             }
             $res = $this->uploadPhotobankImage($url);
             if (empty($res['success']) || trim((string) ($res['url'] ?? '')) === '') {
-                return [
-                    'success' => false,
-                    'message' => $res['message'] ?? 'AliExpress photobank upload failed for an Image Master photo.',
-                    'urls' => [],
-                ];
+                $lastFail = (string) ($res['message'] ?? $lastFail);
+                Log::warning('AliExpress photobank: skipped Image Master photo', [
+                    'source' => mb_substr($url, 0, 200),
+                    'message' => $lastFail,
+                ]);
+                continue;
             }
             $hosted[] = (string) $res['url'];
+            $map[$url] = (string) $res['url'];
         }
 
         return [
             'success' => $hosted !== [],
-            'message' => $hosted === [] ? 'No Image Master photos to upload.' : '',
+            'message' => $hosted === [] ? $lastFail : '',
             'urls' => $hosted,
+            'map' => $map,
         ];
     }
 
@@ -4645,16 +4651,43 @@ class AliExpressApiService
         if (is_string($stripped) && $stripped !== $url) {
             $candidates[] = $stripped;
         }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($host === 'cdn.shopify.com') {
+            $alt = preg_replace('#://cdn\.shopify\.com#i', '://cdn.shopifycdn.com', $url);
+            if (is_string($alt) && $alt !== $url) {
+                $candidates[] = $alt;
+            }
+        }
 
         $last = 'Could not download the Image Master photo.';
-        foreach ($candidates as $try) {
+        foreach (array_values(array_unique($candidates)) as $try) {
+            $got = $this->httpGetImageBytes($try);
+            if (($got['bytes'] ?? '') !== '') {
+                return $got;
+            }
+            $last = (string) ($got['message'] ?? $last);
+        }
+
+        return ['bytes' => '', 'filename' => 'image.jpg', 'message' => $last];
+    }
+
+    /**
+     * @return array{bytes: string, filename: string, message?: string}
+     */
+    private function httpGetImageBytes(string $url): array
+    {
+        $headers = [
+            'User-Agent' => 'Mozilla/5.0 (compatible; 5CORE-ImageMaster/1.0)',
+            'Accept' => 'image/jpeg,image/jpg,image/png,image/gif,image/*,*/*;q=0.8',
+        ];
+        $clients = [
+            $this->httpClient(),
+            $this->imageDownloadClient($url),
+        ];
+        $last = 'Could not download the Image Master photo.';
+        foreach ($clients as $client) {
             try {
-                $response = $this->httpClient()
-                    ->withHeaders([
-                        'User-Agent' => 'Mozilla/5.0 (compatible; 5CORE-ImageMaster/1.0)',
-                        'Accept' => 'image/jpeg,image/jpg,image/png,image/gif,image/*,*/*;q=0.8',
-                    ])
-                    ->get($try);
+                $response = $client->withHeaders($headers)->get($url);
             } catch (\Throwable $e) {
                 $last = 'Could not download Image Master photo: '.$e->getMessage();
                 continue;
@@ -4671,7 +4704,7 @@ class AliExpressApiService
             if (strlen($bytes) > 3 * 1024 * 1024) {
                 return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo is larger than 3MB.'];
             }
-            $path = (string) (parse_url($try, PHP_URL_PATH) ?? '');
+            $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
             $name = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($path)) ?: 'image.jpg';
             if (! str_contains($name, '.')) {
                 $name .= '.jpg';
@@ -4681,6 +4714,79 @@ class AliExpressApiService
         }
 
         return ['bytes' => '', 'filename' => 'image.jpg', 'message' => $last];
+    }
+
+    /**
+     * When the server DNS cannot resolve cdn.shopify.com, use public DNS and pin the IP.
+     */
+    private function imageDownloadClient(string $url): \Illuminate\Http\Client\PendingRequest
+    {
+        $pending = $this->httpClient();
+        $curl = [];
+        if (defined('CURLOPT_DNS_SERVERS')) {
+            $curl[CURLOPT_DNS_SERVERS] = '8.8.8.8,1.1.1.1';
+        }
+        if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+            $curl[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        $scheme = strtolower((string) (parse_url($url, PHP_URL_SCHEME) ?: 'https'));
+        $port = (int) (parse_url($url, PHP_URL_PORT) ?: ($scheme === 'https' ? 443 : 80));
+        $ip = $host !== '' ? $this->resolveHostWithPublicDns($host) : null;
+        if ($ip !== null && defined('CURLOPT_RESOLVE')) {
+            $curl[CURLOPT_RESOLVE] = [$host.':'.$port.':'.$ip];
+        }
+        if ($curl !== []) {
+            $pending = $pending->withOptions(['curl' => $curl]);
+        }
+
+        return $pending;
+    }
+
+    private function resolveHostWithPublicDns(string $host): ?string
+    {
+        $host = strtolower(trim($host));
+        if ($host === '' || filter_var($host, FILTER_VALIDATE_IP)) {
+            return $host !== '' ? $host : null;
+        }
+        $cacheKey = 'aliexpress.dns.'.$host;
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && filter_var($cached, FILTER_VALIDATE_IP)) {
+            return $cached;
+        }
+
+        $lookups = [
+            ['https://1.1.1.1/dns-query', ['name' => $host, 'type' => 'A']],
+            ['https://dns.google/resolve', ['name' => $host, 'type' => 'A']],
+        ];
+        foreach ($lookups as [$endpoint, $query]) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->connectTimeout(5)
+                    ->timeout(10)
+                    ->withHeaders(['Accept' => 'application/dns-json'])
+                    ->get($endpoint, $query);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if (! $response->successful()) {
+                continue;
+            }
+            foreach ((array) $response->json('Answer') as $answer) {
+                if (! is_array($answer)) {
+                    continue;
+                }
+                $ip = trim((string) ($answer['data'] ?? ''));
+                $type = (int) ($answer['type'] ?? 0);
+                if ($type === 1 && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    Cache::put($cacheKey, $ip, 600);
+
+                    return $ip;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -133,9 +133,9 @@ class AliexpressListingPublishService
                 'message' => $upload['message'] ?? 'Could not upload Image Master photos to AliExpress photobank.',
             ];
         }
-        $hostedBySource = [];
+        $hostedBySource = is_array($upload['map'] ?? null) ? $upload['map'] : [];
         foreach (array_values($gallery) as $i => $source) {
-            if (isset($upload['urls'][$i])) {
+            if (! isset($hostedBySource[$source]) && isset($upload['urls'][$i])) {
                 $hostedBySource[$source] = $upload['urls'][$i];
             }
         }
