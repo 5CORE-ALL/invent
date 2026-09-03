@@ -1502,8 +1502,8 @@ class FaireController extends Controller
      */
     private function resolveFaireNrForRules(string $forecastNr, array $meta, bool $hasProductMaster): ?string
     {
-        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? '')));
-        if ($nrl === 'NRL') {
+        $nrl = strtoupper(trim((string) ($meta['NRL'] ?? $meta['NR'] ?? '')));
+        if (in_array($nrl, ['NRL', 'NR'], true) || ($meta['NRL'] ?? null) === true || ($meta['NR'] ?? null) === true) {
             return 'NR';
         }
         if ($nrl === 'REQ') {

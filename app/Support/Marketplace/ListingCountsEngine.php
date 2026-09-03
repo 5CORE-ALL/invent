@@ -43,7 +43,7 @@ class ListingCountsEngine
                 continue;
             }
 
-            $nrReq = self::nrReqFromDataView($nrValuesBySkuUpper->get(strtoupper($sku)));
+            $nrReq = self::nrReqFromDataView(self::lookupNrValue($nrValuesBySkuUpper, $sku));
             if ($nrReq === 'REQ') {
                 $reqCount++;
             } else {
@@ -68,16 +68,33 @@ class ListingCountsEngine
     }
 
     /**
-     * Normalize DataView NRL value to REQ|NR (EbayTwo default).
+     * Normalize DataView NRL/NR value to REQ|NR.
+     * Faire analytics stores NR; Amazon/eBay2 store NRL; listing-status uses nr_req.
      */
     public static function nrReqFromDataView(mixed $raw): string
     {
-        if (! is_array($raw)) {
-            $raw = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
+        if (is_string($raw)) {
+            $trimmed = strtoupper(trim($raw));
+            if (in_array($trimmed, ['NRL', 'NR'], true)) {
+                return 'NR';
+            }
+            $raw = json_decode($raw, true) ?: [];
+        } elseif (! is_array($raw)) {
+            $raw = [];
         }
-        $nrlRaw = strtoupper(trim((string) ($raw['NRL'] ?? '')));
 
-        return in_array($nrlRaw, ['NRL', 'NR'], true) ? 'NR' : 'REQ';
+        foreach (['NRL', 'NR', 'NRP', 'nr_req'] as $key) {
+            $value = $raw[$key] ?? null;
+            if ($value === true || $value === 1 || $value === '1') {
+                return 'NR';
+            }
+            $normalized = strtoupper(trim((string) $value));
+            if (in_array($normalized, ['NRL', 'NR'], true)) {
+                return 'NR';
+            }
+        }
+
+        return 'REQ';
     }
 
     /**
@@ -91,11 +108,75 @@ class ListingCountsEngine
             return collect();
         }
 
-        return $dataViewClass::whereIn('sku', $skus)
+        $wanted = [];
+        foreach ($skus as $sku) {
+            foreach (self::skuLookupKeys((string) $sku) as $key) {
+                $wanted[$key] = true;
+            }
+        }
+        if ($wanted === []) {
+            return collect();
+        }
+
+        $out = collect();
+        $dataViewClass::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
             ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
+            ->each(function ($row) use ($out, $wanted) {
+                $keys = self::skuLookupKeys((string) $row->sku);
+                $matches = false;
+                foreach ($keys as $key) {
+                    if (isset($wanted[$key])) {
+                        $matches = true;
+                        break;
+                    }
+                }
+                if (! $matches) {
+                    return;
+                }
+                foreach ($keys as $key) {
+                    if (! $out->has($key)) {
+                        $out[$key] = $row->value;
+                    }
+                }
             });
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function skuLookupKeys(string $sku): array
+    {
+        $sku = trim(str_replace("\xC2\xA0", ' ', $sku));
+        if ($sku === '') {
+            return [];
+        }
+
+        $keys = [
+            strtoupper($sku),
+            strtoupper(preg_replace('/\s+/u', ' ', $sku) ?? $sku),
+            strtoupper(str_replace(' ', '', $sku)),
+        ];
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '') {
+            $keys[] = strtoupper($norm);
+        }
+
+        return array_values(array_unique(array_filter($keys)));
+    }
+
+    public static function lookupNrValue(Collection $nrValuesBySkuUpper, string $sku): mixed
+    {
+        foreach (self::skuLookupKeys($sku) as $key) {
+            if ($nrValuesBySkuUpper->has($key)) {
+                return $nrValuesBySkuUpper->get($key);
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -420,6 +420,10 @@
             color: #fff;
         }
 
+        #faire-listing-wrap select.nr-req-dropdown {
+            cursor: pointer;
+        }
+
         .nrl-badge-btn,
         .listing-auto-badge {
             display: inline-block;
@@ -784,11 +788,21 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            const value = data.nr_req || 'REQ';
-            if (value === 'NR') {
-                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From channel DataView NRL">NRL</span>`;
-            }
-            return `<span class="listing-auto-badge listing-auto-badge--req" title="From channel DataView NRL">REQ</span>`;
+            const value = (data.nr_req === 'NR' || data.nr_req === 'NRL') ? 'NR' : 'REQ';
+            const sku = String(data.sku || '').replace(/"/g, '&quot;');
+            return `<select class="form-select form-select-sm nr-req-dropdown" data-sku="${sku}" data-val="${value}">
+                <option class="req-option" value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                <option class="nr-option" value="NR" ${value === 'NR' ? 'selected' : ''}>NRL</option>
+            </select>`;
+        }
+
+        function saveFaireNrReq(sku, nrReq) {
+            return $.ajax({
+                url: '/listing_faire/save-status',
+                type: 'POST',
+                data: { sku: sku, nr_req: nrReq },
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+            });
         }
 
         function showBsModal(id) {
@@ -940,8 +954,11 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 110,
-                        headerTooltip: 'Automatic from channel DataView NRL',
-                        formatter: formatNrReq
+                        headerTooltip: 'Set NRL / REQ. Saved to Faire DataView.',
+                        formatter: formatNrReq,
+                        cellClick: function (e) {
+                            e.stopPropagation();
+                        }
                     },
                     {
                         title: 'Buyer Link',
@@ -1048,6 +1065,28 @@
 
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');
+            });
+
+            $(document).on('change', '#faire-listing-wrap select.nr-req-dropdown', function () {
+                const $el = $(this);
+                const sku = String($el.data('sku') || '').trim();
+                const nrReq = $el.val() === 'NR' ? 'NR' : 'REQ';
+                if (!sku) return;
+
+                $el.attr('data-val', nrReq);
+                const row = faireListingTable ? faireListingTable.getRows().find(r => String(r.getData().sku || '') === sku) : null;
+                if (row) {
+                    row.update({ nr_req: nrReq });
+                }
+                calculateTotals();
+
+                saveFaireNrReq(sku, nrReq)
+                    .done(function () {
+                        showNotification('success', sku + ' set to ' + (nrReq === 'NR' ? 'NRL' : 'REQ'));
+                    })
+                    .fail(function (xhr) {
+                        showNotification('danger', (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Could not save NRL/REQ');
+                    });
             });
 
             $(document).on('click', '#confirmImportBtn', function () {

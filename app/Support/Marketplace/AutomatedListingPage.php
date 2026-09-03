@@ -56,13 +56,13 @@ class AutomatedListingPage
         return $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
-            $skuUpper = strtoupper(trim($childSku));
 
             $item->INV = $shopifyData[$childSku]->inv ?? 0;
             $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
 
             $item->buyer_link = null;
             $item->seller_link = null;
+            $status = [];
             $statusRow = $statusData[$skuLower]
                 ?? $statusData[ShopifySku::normalizeSkuForShopifyLookup($childSku)]
                 ?? null;
@@ -76,8 +76,11 @@ class AutomatedListingPage
             }
 
             $item->nr_req = ListingCountsEngine::nrReqFromDataView(
-                $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
+                ListingCountsEngine::lookupNrValue($nrValues, $childSku)
             );
+            if ($item->nr_req === 'REQ' && $status !== []) {
+                $item->nr_req = ListingCountsEngine::nrReqFromDataView($status);
+            }
 
             $listingId = ListingCountsEngine::listingIdFromMap($listedMap, $childSku);
             $idOrNull = $listingId !== '' ? $listingId : null;
