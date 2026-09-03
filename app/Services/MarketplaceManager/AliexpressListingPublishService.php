@@ -171,8 +171,6 @@ class AliexpressListingPublishService
 
         $request = [
             'language' => 'en',
-            'subject' => $subject,
-            'description' => $description,
             'aliexpress_category_id' => $categoryId,
             'brand_name' => $this->resolveBrand(),
             'multi_language_subject_list' => [
