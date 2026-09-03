@@ -170,7 +170,22 @@ class AliexpressListingPublishService
             ];
         }
 
-        $pkg = $this->packageSize($primary);
+        $pkg = $this->packageSize($primary, $primarySku);
+        if (empty($pkg['has_weight'])) {
+            foreach ($prepared as $row) {
+                $try = $this->packageSize($row['product'], $row['sku']);
+                if (! empty($try['has_weight'])) {
+                    $pkg = $try;
+                    break;
+                }
+            }
+        }
+        if (empty($pkg['has_weight'])) {
+            return [
+                'success' => false,
+                'message' => $primarySku.': Package weight is missing on Dim/Wt Master. Add Itm wt GW (or kg) on /dim-wt-master, then publish again.',
+            ];
+        }
         $subject = mb_substr($title, 0, 128);
         $description = $this->resolveDescription($primary, $subject);
         $variation = count($prepared) > 1;
@@ -205,6 +220,12 @@ class AliexpressListingPublishService
             'inventory_deduction_strategy' => 'place_order_withhold',
             'shipping_lead_time' => max(1, (int) config('services.aliexpress.shipping_lead_time', 7)),
             'weight' => (string) $pkg['weight'],
+            'package_weight' => (string) $pkg['weight'],
+            'gross_weight' => (string) $pkg['weight'],
+            'usLogisticsWeight' => (string) $pkg['weight'],
+            'aeLogisticsWeightPackage' => [
+                'weight' => (string) $pkg['weight'],
+            ],
             'package_length' => (int) $pkg['length'],
             'package_width' => (int) $pkg['width'],
             'package_height' => (int) $pkg['height'],
@@ -219,6 +240,8 @@ class AliexpressListingPublishService
             'category_path' => (string) ($resolved['path'] ?? ''),
             'freight_template_id' => $freightId,
             'mode' => $mode,
+            'weight_kg' => $pkg['weight'],
+            'package_cm' => $pkg['length'].'x'.$pkg['width'].'x'.$pkg['height'],
         ]);
 
         $res = $this->api->postProduct($request);
@@ -592,24 +615,190 @@ class AliexpressListingPublishService
     }
 
     /**
-     * @return array{length: int, width: int, height: int, weight: string}
+     * Item package from /dim-wt-master (product_master.Values): Itm wt GW / kg + Item L/W/H.
+     *
+     * @return array{length: int, width: int, height: int, weight: string, has_weight: bool}
      */
-    private function packageSize(ProductMaster $product): array
+    private function packageSize(ProductMaster $product, string $sku = ''): array
     {
-        $num = function ($raw, float $fallback): float {
-            if (is_numeric($raw) && (float) $raw > 0) {
-                return (float) $raw;
+        $sku = trim($sku !== '' ? $sku : (string) $product->sku);
+        $pkg = $this->dimWtMasterPackageForSku($sku, $product);
+
+        $weightKg = null;
+        if (($pkg['weight_kg'] ?? null) !== null) {
+            $weightKg = (float) $pkg['weight_kg'];
+        } elseif (($pkg['weight_lb'] ?? null) !== null) {
+            $weightKg = (float) $pkg['weight_lb'] * 0.45359237;
+        }
+
+        $toCm = static function (?float $cm, ?float $inches, int $fallback): int {
+            if ($cm !== null && $cm > 0) {
+                return (int) max(1, round($cm));
+            }
+            if ($inches !== null && $inches > 0) {
+                return (int) max(1, round($inches * 2.54));
             }
 
             return $fallback;
         };
 
+        $hasWeight = $weightKg !== null && $weightKg > 0;
+
         return [
-            'length' => (int) max(1, round($num($product->length ?? $product->package_length ?? null, 10))),
-            'width' => (int) max(1, round($num($product->width ?? $product->package_width ?? null, 10))),
-            'height' => (int) max(1, round($num($product->height ?? $product->package_height ?? null, 10))),
-            'weight' => number_format($num($product->weight ?? $product->package_weight ?? null, 0.5), 2, '.', ''),
+            'length' => $toCm($pkg['length_cm'] ?? null, $pkg['length_in'] ?? null, 10),
+            'width' => $toCm($pkg['width_cm'] ?? null, $pkg['width_in'] ?? null, 10),
+            'height' => $toCm($pkg['height_cm'] ?? null, $pkg['height_in'] ?? null, 10),
+            'weight' => $hasWeight
+                ? number_format(max(0.001, min(500, $weightKg)), 3, '.', '')
+                : '',
+            'has_weight' => $hasWeight,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function dimWtMasterValues(?ProductMaster $product): array
+    {
+        if (! $product) {
+            return [];
+        }
+        $values = $product->Values;
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($values) ? $values : [];
+    }
+
+    private function dimWtMasterNumber(array $values, string $key): ?float
+    {
+        if (! array_key_exists($key, $values) || $values[$key] === null || $values[$key] === '') {
+            return null;
+        }
+        $raw = $values[$key];
+        if (is_string($raw)) {
+            $raw = trim(str_replace(',', '', $raw));
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+        $n = (float) $raw;
+
+        return $n > 0 ? $n : null;
+    }
+
+    /**
+     * @return array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}
+     */
+    private function dimWtMasterItemPackage(array $values): array
+    {
+        $inch = function (string $actKey, string $declKey) use ($values): ?float {
+            return $this->dimWtMasterNumber($values, $actKey)
+                ?? $this->dimWtMasterNumber($values, $declKey);
+        };
+
+        return [
+            'length_in' => $inch('l', 'l_decl'),
+            'width_in' => $inch('w', 'w_decl'),
+            'height_in' => $inch('h', 'h_decl'),
+            'weight_lb' => $inch('wt_act', 'wt_decl'),
+            'weight_kg' => $this->dimWtMasterNumber($values, 'wt_act_kg'),
+            'length_cm' => $this->dimWtMasterNumber($values, 'l_cm'),
+            'width_cm' => $this->dimWtMasterNumber($values, 'w_cm'),
+            'height_cm' => $this->dimWtMasterNumber($values, 'h_cm'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $base
+     * @param  array<string, mixed>  $fill
+     * @return array<string, mixed>
+     */
+    private function mergeDimWtMasterPackage(array $base, array $fill): array
+    {
+        foreach ($base as $key => $value) {
+            if ($value === null && ($fill[$key] ?? null) !== null) {
+                $base[$key] = $fill[$key];
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * @param  array<string, mixed>  $pkg
+     */
+    private function dimWtMasterHasWeight(array $pkg): bool
+    {
+        return ($pkg['weight_lb'] ?? null) !== null || ($pkg['weight_kg'] ?? null) !== null;
+    }
+
+    /**
+     * Load /dim-wt-master item package for this SKU, then fill blanks from the parent row.
+     *
+     * @return array{length_in: ?float, width_in: ?float, height_in: ?float, weight_lb: ?float, weight_kg: ?float, length_cm: ?float, width_cm: ?float, height_cm: ?float}
+     */
+    private function dimWtMasterPackageForSku(string $sku, ?ProductMaster $hint = null): array
+    {
+        $sku = trim($sku);
+        $row = $hint;
+        if (! $row || strcasecmp(trim((string) $row->sku), $sku) !== 0) {
+            $row = $this->findProductLoose($sku) ?? $hint;
+        }
+        $pkg = $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
+        if ($this->dimWtMasterHasWeight($pkg) || ! $row) {
+            return $pkg;
+        }
+        $parent = $this->parentProductFor($row, $sku);
+        if ($parent) {
+            $pkg = $this->mergeDimWtMasterPackage(
+                $pkg,
+                $this->dimWtMasterItemPackage($this->dimWtMasterValues($parent))
+            );
+        }
+
+        return $pkg;
+    }
+
+    private function findProductLoose(string $sku): ?ProductMaster
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        return ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first()
+            ?: ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+    }
+
+    private function parentProductFor(ProductMaster $product, string $sku): ?ProductMaster
+    {
+        $parentKey = $this->groupKey($product);
+        if ($parentKey === '' || strcasecmp($parentKey, trim($sku)) === 0) {
+            return null;
+        }
+
+        return ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parentKey)
+            ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
+            ->first()
+            ?: ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where('sku', $parentKey)
+                ->first()
+            ?: ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($parentKey)])
+                ->first();
     }
 
     /**
