@@ -614,11 +614,19 @@ class AliexpressListingPublishService
             'package_weight' => $kgNum,
             'gross_weight' => $kg,
             'aeLogisticsWeight' => $kgNum,
-            'usLogisticsWeight' => $kgNum,
+            'usLogisticsWeight' => [
+                'Package weight' => $kgNum,
+                'value' => $kgNum,
+                'weight' => $kgNum,
+            ],
             'usl' => ['logisticsWeight' => $kgNum],
             'usl.logisticsWeight' => $kgNum,
             'category_attributes' => [
                 'aeLogisticsWeight' => ['value' => $kgNum],
+                'usLogisticsWeight' => [
+                    'Package weight' => $kgNum,
+                    'value' => $kgNum,
+                ],
                 'Package weight' => ['value' => $kgNum],
             ],
             'attribute_list' => [
@@ -644,7 +652,10 @@ class AliexpressListingPublishService
             'package_weight' => (float) $kg,
             'gross_weight' => $kg,
             'aeLogisticsWeight' => (float) $kg,
-            'usLogisticsWeight' => (float) $kg,
+            'usLogisticsWeight' => [
+                'Package weight' => (float) $kg,
+                'value' => (float) $kg,
+            ],
         ];
     }
 

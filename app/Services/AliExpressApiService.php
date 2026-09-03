@@ -168,6 +168,11 @@ class AliExpressApiService
             $asValue = $request;
             $asValue['aeLogisticsWeight'] = ['value' => $weight, 'unit' => 'kg'];
             $asValue['package_weight'] = $weight;
+            $asValue['usLogisticsWeight'] = [
+                'Package weight' => $weight,
+                'value' => $weight,
+                'weight' => $weight,
+            ];
             $asValue['usl'] = ['logisticsWeight' => $weight];
             $postShapes[] = $asValue;
         }
@@ -563,6 +568,19 @@ class AliExpressApiService
     }
 
     /**
+     * @param  array<string, mixed>  $request
+     */
+    private function aliexpressWeightPounds(array $request, float $kg): float
+    {
+        $lb = $request['weight_lb'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 3);
+        }
+
+        return $kg > 0 ? round($kg / 0.45359237, 3) : 0.0;
+    }
+
+    /**
      * Schema instance post uses package_weight (number) and US field aeLogisticsWeight.
      *
      * @param  array<string, mixed>  $request
@@ -634,7 +652,11 @@ class AliExpressApiService
             'package_width' => (int) ($request['package_width'] ?? 10),
             'package_height' => (int) ($request['package_height'] ?? 10),
             'aeLogisticsWeight' => $weight,
-            'usLogisticsWeight' => $weight,
+            'usLogisticsWeight' => [
+                'Package weight' => $weight,
+                'value' => $weight,
+                'weight' => $weight,
+            ],
             'usl' => ['logisticsWeight' => $weight],
             'shipping_preparation_time' => max(1, (int) ($request['shipping_lead_time'] ?? 7)),
             'shipping_template_id' => (string) ($request['freight_template_id'] ?? ''),
@@ -644,17 +666,38 @@ class AliExpressApiService
                 [
                     'Brand Name' => ['value' => (string) ($request['brand_name'] ?? '5 Core Inc.')],
                     'aeLogisticsWeight' => ['value' => $weight],
+                    'usLogisticsWeight' => [
+                        'Package weight' => $weight,
+                        'value' => $weight,
+                    ],
                     'Package weight' => ['value' => $weight],
                 ]
             ),
         ];
 
-        return [
+        $lb = $this->aliexpressWeightPounds($request, $weight);
+        $out = [
             $base,
             array_merge($base, [
                 'aeLogisticsWeight' => ['value' => $weight, 'unit' => 'kg'],
+                'usLogisticsWeight' => [
+                    'Package weight' => $weight,
+                    'value' => $weight,
+                    'unit' => 'kg',
+                ],
             ]),
         ];
+        if ($lb > 0 && abs($lb - $weight) > 0.0001) {
+            $out[] = array_merge($base, [
+                'usLogisticsWeight' => [
+                    'Package weight' => $lb,
+                    'value' => $lb,
+                    'unit' => 'lb',
+                ],
+            ]);
+        }
+
+        return $out;
     }
 
     /**
