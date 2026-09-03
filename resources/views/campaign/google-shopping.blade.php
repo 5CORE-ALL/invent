@@ -433,7 +433,11 @@
                                 {{-- Populated dynamically after the grid builds --}}
                             </ul>
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and BGT ACOS values">BGT Vs ACOS Rule</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-views-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtViewsRuleModal" title="Edit View L7 bands and Bgt Views values">BGT Vs VIEWS</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-cvr-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-prc-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-reviews-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes SBGTs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
@@ -581,16 +585,17 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">SBGT rule — ACOS % → Suggested Budget</h5>
+                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">BGT Vs ACOS — ACOS % → BGT ACOS</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Same ACOS → SBGT brackets as <strong>/facebook-ads</strong>, matched on
+                        Same ACOS → BGT ACOS brackets as <strong>/amazon-ads/all</strong>, matched on
                         <strong>ACOS % only</strong> (no spend gate). Rows are checked
                         <strong>top to bottom</strong>; the first range that contains the
-                        campaign's ACOS gets its SBGT. Use <code>9999</code> on
-                        <em>To</em> for the catch-all highest band.
+                        campaign's ACOS gets its BGT ACOS. Grid <strong>SBGT</strong> is the sum of
+                        Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews.
+                        Use <code>9999</code> on <em>To</em> for the catch-all highest band.
                     </p>
                     <div class="table-responsive">
                     <table class="table table-sm table-bordered align-middle mb-0" id="gac-sbgt-rule-table">
@@ -615,6 +620,175 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="gacRawSbgtRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="gacRawBgtViewsRuleModal" tabindex="-1" aria-labelledby="gacRawBgtViewsRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacRawBgtViewsRuleModalLabel">BGT Vs VIEWS — View L7 → Bgt Views</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Shopify View L7</strong> range for the campaign SKU
+                        (parent = sum of children). Rows are checked <strong>top to bottom</strong>; the first
+                        range that contains the views gets its <strong>Bgt Views</strong>.
+                        Saved in a Google-only table — not synced with Amazon.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Name</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:80px;">Count</th>
+                                <th style="width:120px;">Bgt Views</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="gac-bgt-views-bands-body"></tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-views-add-band-btn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtViewsRuleErr" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtViewsRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="gacRawBgtCvrRuleModal" tabindex="-1" aria-labelledby="gacRawBgtCvrRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacRawBgtCvrRuleModalLabel">BGT Vs CVR — CVR L30 → Bgt Cvr</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Google Shopping CVR L30</strong> range
+                        (Sold ÷ Clicks × 100). Rows are checked <strong>top to bottom</strong>.
+                        Saved in a Google-only table — not synced with Amazon.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Name</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:80px;">Count</th>
+                                <th style="width:120px;">Bgt Cvr</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="gac-bgt-cvr-bands-body"></tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-cvr-add-band-btn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtCvrRuleErr" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtCvrRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="gacRawBgtPrcRuleModal" tabindex="-1" aria-labelledby="gacRawBgtPrcRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacRawBgtPrcRuleModalLabel">BGT PRC — Price → Bgt Prc</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>Shopify Price</strong> range (parent = average of children with price &gt; 0).
+                        Rows are checked <strong>top to bottom</strong>.
+                        Saved in a Google-only table — not synced with Amazon.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Name</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:80px;">Count</th>
+                                <th style="width:120px;">Bgt Prc</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="gac-bgt-prc-bands-body"></tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-prc-add-band-btn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtPrcRuleErr" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtPrcRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="gacRawBgtReviewsRuleModal" tabindex="-1" aria-labelledby="gacRawBgtReviewsRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacRawBgtReviewsRuleModalLabel">BGT Vs REVIEWS — Reviews → Bgt Reviews</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">
+                        Each row is an inclusive <strong>star rating</strong> range (lowest rating among campaign SKUs).
+                        Rows are checked <strong>top to bottom</strong>.
+                        Saved in a Google-only table — not synced with Amazon.
+                    </p>
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Name</th>
+                                <th style="width:110px;">From</th>
+                                <th style="width:110px;">To</th>
+                                <th style="width:80px;">Count</th>
+                                <th style="width:120px;">Bgt Reviews</th>
+                                <th style="width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="gac-bgt-reviews-bands-body"></tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-reviews-add-band-btn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtReviewsRuleErr" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtReviewsRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -774,6 +948,14 @@
             const dataUrl = @json(route('google.shopping.campaigns.data'));
             const gacRawRuleGetUrl = @json(route('google.shopping.campaigns.rule'));
             const gacRawRuleSaveUrl = @json(route('google.shopping.campaigns.rule.save'));
+            const gacBgtViewsRuleGetUrl = @json(route('google.shopping.campaigns.bgt-views-rule'));
+            const gacBgtViewsRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-views-rule.save'));
+            const gacBgtCvrRuleGetUrl = @json(route('google.shopping.campaigns.bgt-cvr-rule'));
+            const gacBgtCvrRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-cvr-rule.save'));
+            const gacBgtPrcRuleGetUrl = @json(route('google.shopping.campaigns.bgt-prc-rule'));
+            const gacBgtPrcRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-prc-rule.save'));
+            const gacBgtReviewsRuleGetUrl = @json(route('google.shopping.campaigns.bgt-reviews-rule'));
+            const gacBgtReviewsRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-reviews-rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
@@ -803,6 +985,18 @@
                 is_parent: true,
                 id_mismatch: true,
                 id_alert_title: true,
+                bgt_views_color: true,
+                bgt_views_label: true,
+                bgt_cvr_color: true,
+                bgt_cvr_label: true,
+                bgt_cvr_page_cvr: true,
+                bgt_prc_color: true,
+                bgt_prc_label: true,
+                bgt_prc_price: true,
+                ovl30: true,
+                bgt_reviews_color: true,
+                bgt_reviews_label: true,
+                bgt_reviews_rating: true,
             };
             /** Toggle: L30 spend = 0 + INV &gt; 0 + Merchant Item ID check. */
             let gacRawVerifyIdActive = false;
@@ -911,16 +1105,99 @@
                 var valTxt = isFinite(v) ? v.toLocaleString() : '—';
                 var trend = row.sbgt_trend || 'na';
                 var color = trend === 'up' ? '#05bd30' : (trend === 'down' ? '#ff2727' : '#9ca3af');
+                if (isFinite(v) && v === 0) color = '#dc2626';
                 var prev = row.sbgt_prev;
                 var prevTxt = (prev === null || prev === undefined) ? '—' : Math.round(prev).toLocaleString();
-                var tip = (trend === 'na')
-                    ? 'No previous day saved yet — click for daily history'
-                    : ('Prev (' + (row.sbgt_prev_date || '') + '): ' + prevTxt + ' → today ' + valTxt + ' — click for daily history');
+                var views = parseInt(row.bgt_views, 10);
+                var cvr = parseInt(row.bgt_cvr, 10);
+                var acos = parseInt(row.bgt_acos, 10);
+                var prc = parseInt(row.bgt_prc, 10);
+                var rev = parseInt(row.bgt_reviews, 10);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0);
+                if (trend === 'na') {
+                    tip += ' · No previous day saved yet — click for daily history';
+                } else {
+                    tip += ' · Prev (' + (row.sbgt_prev_date || '') + '): ' + prevTxt + ' → today ' + valTxt;
+                }
                 var cid = (row.campaign_id != null) ? String(row.campaign_id) : '';
                 var dot = '<span class="gac-sbgt-dot" role="button" tabindex="0" data-sbgt-cid="' + gacRawEscAttr(cid) + '"'
                         + ' title="' + gacRawEscAttr(tip) + '"'
                         + ' style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + color + ';margin-left:6px;cursor:pointer;vertical-align:middle;flex-shrink:0;"></span>';
-                return '<span style="display:inline-flex;align-items:center;justify-content:center;">' + valTxt + dot + '</span>';
+                return '<span style="display:inline-flex;align-items:center;justify-content:center;" title="' + gacRawEscAttr(tip) + '">' + valTxt + dot + '</span>';
+            }
+            function gacRawBgtPartFormatter(cell, colorKey, extraTip) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return '—';
+                var t = parseInt(v, 10);
+                if (!isFinite(t)) return '—';
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row[colorKey]) ? String(row[colorKey]) : '#6c757d';
+                if (t === 0) color = '#dc2626';
+                var tip = extraTip(row, t);
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + gacRawEscAttr(tip) + '">' + t + '</span>';
+            }
+            function gacRawBgtAcosFormatter(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return '—';
+                var t = parseInt(v, 10);
+                if (!isFinite(t)) return '—';
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var acos = parseFloat(row && row.acos_l30);
+                var color = '#6c757d';
+                if (t === 0) {
+                    color = '#dc2626';
+                } else if (isFinite(acos)) {
+                    if (acos <= 10) color = '#ec4899';
+                    else if (acos <= 20) color = '#22c55e';
+                    else if (acos <= 30) color = '#93c5fd';
+                    else if (acos <= 40) color = '#ca8a04';
+                    else color = '#dc2626';
+                }
+                var tip = 'BGT ACOS from ACOS L30';
+                if (isFinite(acos)) tip += ' · ACOS ' + Math.round(acos) + '%';
+                if (t === 0) tip += ' · zeros SBGT';
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + gacRawEscAttr(tip) + '">' + t + '</span>';
+            }
+            function gacRawBgtViewsFormatter(cell) {
+                return gacRawBgtPartFormatter(cell, 'bgt_views_color', function(row) {
+                    var views = parseFloat(row && row.views_l7);
+                    var label = String((row && row.bgt_views_label) || '').trim();
+                    var tip = 'Bgt Views from Shopify View L7';
+                    if (isFinite(views)) tip += ' · Views ' + Math.round(views);
+                    if (label) tip += ' · ' + label;
+                    return tip;
+                });
+            }
+            function gacRawBgtCvrFormatter(cell) {
+                return gacRawBgtPartFormatter(cell, 'bgt_cvr_color', function(row) {
+                    var cvr = parseFloat(row && (row.bgt_cvr_page_cvr != null ? row.bgt_cvr_page_cvr : row.cvr_l30));
+                    var label = String((row && row.bgt_cvr_label) || '').trim();
+                    var tip = 'Bgt Cvr from Google Shopping CVR L30';
+                    if (isFinite(cvr)) tip += ' · CVR ' + cvr + '%';
+                    if (label) tip += ' · ' + label;
+                    return tip;
+                });
+            }
+            function gacRawBgtPrcFormatter(cell) {
+                return gacRawBgtPartFormatter(cell, 'bgt_prc_color', function(row) {
+                    var price = parseFloat(row && row.bgt_prc_price);
+                    var label = String((row && row.bgt_prc_label) || '').trim();
+                    var tip = 'BGT PRC from Shopify Price';
+                    if (isFinite(price)) tip += ' · $' + price;
+                    if (label) tip += ' · ' + label;
+                    return tip;
+                });
+            }
+            function gacRawBgtReviewsFormatter(cell) {
+                return gacRawBgtPartFormatter(cell, 'bgt_reviews_color', function(row) {
+                    var rating = parseFloat(row && row.bgt_reviews_rating);
+                    var label = String((row && row.bgt_reviews_label) || '').trim();
+                    var tip = 'Bgt Reviews from campaign star rating';
+                    if (isFinite(rating)) tip += ' · ' + rating + '★';
+                    if (label) tip += ' · ' + label;
+                    return tip;
+                });
             }
 
             function gacRawOpenSbgtHistory(campaignId) {
@@ -1678,6 +1955,11 @@
                         ub2: '2 UB%',
                         ub1: '1 UB%',
                         bgt: 'BGT',
+                        bgt_acos: 'BGT ACOS',
+                        bgt_views: 'Bgt Views',
+                        bgt_cvr: 'Bgt Cvr',
+                        bgt_prc: 'BGT PRC',
+                        bgt_reviews: 'Bgt Reviews',
                         sbgt: 'SBGT',
                         sbid: 'SBID',
                     };
@@ -1816,6 +2098,8 @@
                         ub2: true,
                         ub1: true,
                         bgt: true,
+                        bgt_acos: true,
+                        bgt_cvr: true,
                         sbgt: true,
                         sbid: true,
                     };
@@ -1865,6 +2149,71 @@
                                 return Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '—';
                             };
                         }
+                        if (col.field === 'dil') {
+                            col.title = 'Dil';
+                            col.headerTooltip = 'Shopify OV L30 ÷ INV × 100 (parent = summed children). Same formula as Amazon Ads Dil.';
+                            col.hozAlign = 'center';
+                            col.headerHozAlign = 'center';
+                            col.minWidth = 60;
+                            col.headerSort = false;
+                            col.formatter = function(c) {
+                                var row = c.getRow ? c.getRow().getData() : {};
+                                var inv = parseFloat(row && (row.inventory != null ? row.inventory : row.inv));
+                                var ovl30 = parseFloat(row && row.ovl30);
+                                var dil = parseFloat(c.getValue());
+                                if (!isFinite(inv) || inv === 0) {
+                                    return '<span style="color:#6c757d;">0%</span>';
+                                }
+                                if (!isFinite(dil) && isFinite(ovl30)) {
+                                    dil = (ovl30 / inv) * 100;
+                                }
+                                if (!isFinite(dil)) return '—';
+                                var color = '#e83e8c';
+                                if (dil < 16.66) color = '#a00211';
+                                else if (dil < 25) color = '#ffc107';
+                                else if (dil < 50) color = '#28a745';
+                                var tip = 'Dil = OV L30 ÷ INV × 100';
+                                if (isFinite(ovl30)) tip += ' · ' + Math.round(ovl30) + ' ÷ ' + Math.round(inv);
+                                return '<span class="fw-semibold" style="color:' + color + ';" title="' + tip + '">' + Math.round(dil) + '%</span>';
+                            };
+                        }
+                        if (col.field === 'views_l30' || col.field === 'views_l7') {
+                            var isL7 = col.field === 'views_l7';
+                            col.title = isL7 ? 'Views L7' : 'Views L30';
+                            col.headerTooltip = isL7
+                                ? 'Shopify View L7 — same value used by Bgt Views (parent = sum of children). Red when under 70.'
+                                : 'Shopify View L30 (parent = sum of children).';
+                            col.hozAlign = 'center';
+                            col.headerHozAlign = 'center';
+                            col.minWidth = 68;
+                            col.headerSort = false;
+                            col.formatter = function(c) {
+                                var v = c.getValue();
+                                if (v === null || v === undefined || v === '') return '—';
+                                var n = Number(v);
+                                if (!Number.isFinite(n)) return '—';
+                                var num = Math.round(n);
+                                var formatted = num.toLocaleString('en-US');
+                                var field = c.getField ? c.getField() : '';
+                                if (field === 'views_l7' && num < 70) {
+                                    return '<span class="fw-semibold" style="color:#a00211;" title="Shopify View L7 — under 70">' + formatted + '</span>';
+                                }
+                                return formatted;
+                            };
+                        }
+                        if (col.field === 'price') {
+                            col.title = 'Price';
+                            col.headerTooltip = 'Shopify price (parent = average of children with price > 0). Same value used by BGT PRC.';
+                            col.hozAlign = 'right';
+                            col.headerHozAlign = 'center';
+                            col.minWidth = 72;
+                            col.headerSort = false;
+                            col.formatter = function(c) {
+                                var v = parseFloat(c.getValue());
+                                if (!isFinite(v) || v <= 0) return '—';
+                                return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            };
+                        }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
                             col.title = moneySpendTitles[col.field];
                             col.formatter = moneyRoundedFormatter;
@@ -1905,7 +2254,31 @@
                             } else if (col.field === 'ub7' || col.field === 'ub2' || col.field === 'ub1') {
                                 col.formatter = ubUtilColorFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 57);
+                            } else if (col.field === 'bgt_acos') {
+                                col.headerTooltip = 'Suggested budget from BGT Vs ACOS Rule — same ACOS% as the ACOS column';
+                                col.formatter = gacRawBgtAcosFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 72);
+                            } else if (col.field === 'bgt_views') {
+                                col.headerTooltip = 'Suggested budget from BGT Vs VIEWS — Shopify View L7';
+                                col.formatter = gacRawBgtViewsFormatter;
+                                col.headerSort = false;
+                                col.minWidth = Math.max(col.minWidth || 0, 72);
+                            } else if (col.field === 'bgt_cvr') {
+                                col.headerTooltip = 'Suggested budget from BGT Vs CVR — Google Shopping CVR L30';
+                                col.formatter = gacRawBgtCvrFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 68);
+                            } else if (col.field === 'bgt_prc') {
+                                col.headerTooltip = 'Suggested budget from BGT PRC — Shopify Price';
+                                col.formatter = gacRawBgtPrcFormatter;
+                                col.headerSort = false;
+                                col.minWidth = Math.max(col.minWidth || 0, 68);
+                            } else if (col.field === 'bgt_reviews') {
+                                col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating';
+                                col.formatter = gacRawBgtReviewsFormatter;
+                                col.headerSort = false;
+                                col.minWidth = Math.max(col.minWidth || 0, 68);
                             } else if (col.field === 'sbgt') {
+                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
                                 col.formatter = gacRawSbgtCellFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'sbid') {
@@ -3215,6 +3588,239 @@
                         .finally(function() { sbidSaveBtn.disabled = false; });
                 });
             }
+
+            function gacBindBgtSlabRule(opts) {
+                var bands = [];
+                var defaults = opts.defaults || [];
+                var labels = opts.labels || [];
+                var colors = opts.colors || [];
+                var fromKey = opts.fromKey;
+                var toKey = opts.toKey;
+                var minBgt = opts.minBgt != null ? opts.minBgt : 0;
+                function normalize(existing) {
+                    var prev = Array.isArray(existing) ? existing : [];
+                    var out = [];
+                    prev.forEach(function(keep) {
+                        if (!keep || typeof keep !== 'object') return;
+                        var from = parseFloat(keep[fromKey]);
+                        var to = parseFloat(keep[toKey]);
+                        var bgt = parseInt(keep.bgt, 10);
+                        var row = {};
+                        row[fromKey] = isFinite(from) ? from : '';
+                        row[toKey] = isFinite(to) ? to : '';
+                        row.bgt = isFinite(bgt) && bgt >= minBgt ? bgt : '';
+                        row.label = keep.label != null ? String(keep.label) : '';
+                        row.color = keep.color || '#6c757d';
+                        out.push(row);
+                    });
+                    return out.length ? out : defaults.map(function(d) { return Object.assign({}, d); });
+                }
+                function valueOfRow(row) {
+                    return opts.valueOfRow ? opts.valueOfRow(row) : null;
+                }
+                function counts() {
+                    var out = (bands || []).map(function() { return 0; });
+                    if (!table || typeof table.getData !== 'function') return out;
+                    var rows = [];
+                    try { rows = table.getData() || []; } catch (e) { return out; }
+                    rows.forEach(function(row) {
+                        var n = valueOfRow(row);
+                        if (n == null || !isFinite(n)) return;
+                        for (var i = 0; i < bands.length; i++) {
+                            var from = parseFloat(bands[i][fromKey]);
+                            var to = parseFloat(bands[i][toKey]);
+                            if (!isFinite(from) || !isFinite(to)) continue;
+                            var hit = (n >= from && n <= to);
+                            if (!hit && opts.fillGaps) {
+                                var nextFrom = (i < bands.length - 1) ? parseFloat(bands[i + 1][fromKey]) : NaN;
+                                hit = isFinite(nextFrom) && n > to && n < nextFrom;
+                            }
+                            if (hit) { out[i]++; break; }
+                        }
+                    });
+                    return out;
+                }
+                function render() {
+                    var tbody = document.getElementById(opts.tbodyId);
+                    if (!tbody) return;
+                    var canDelete = bands.length > 1;
+                    var c = counts();
+                    tbody.innerHTML = '';
+                    bands.forEach(function(band, i) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML = ''
+                            + '<td class="text-muted small">' + (i + 1) + '</td>'
+                            + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
+                            + '<td><input type="number" step="' + (opts.step || '1') + '" min="0" class="form-control form-control-sm" value="' + (band[fromKey] != null ? band[fromKey] : '') + '" data-idx="' + i + '" data-field="' + fromKey + '"></td>'
+                            + '<td><input type="number" step="' + (opts.step || '1') + '" min="0" class="form-control form-control-sm" value="' + (band[toKey] != null ? band[toKey] : '') + '" data-idx="' + i + '" data-field="' + toKey + '"></td>'
+                            + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '">' + (c[i] != null ? c[i] : 0) + '</span></td>'
+                            + '<td><input type="number" step="1" min="' + minBgt + '" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
+                            + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
+                        tbody.appendChild(tr);
+                    });
+                    tbody.querySelectorAll('input[data-idx]').forEach(function(inp) {
+                        inp.addEventListener('input', function() {
+                            var idx = +this.dataset.idx, fld = this.dataset.field;
+                            if (!bands[idx]) return;
+                            if (fld === 'bgt') bands[idx][fld] = (this.value === '' ? '' : parseInt(this.value, 10));
+                            else if (fld === fromKey || fld === toKey) bands[idx][fld] = (this.value === '' ? '' : parseFloat(this.value));
+                            else bands[idx][fld] = this.value;
+                            if (fld === fromKey || fld === toKey) {
+                                var c = counts();
+                                tbody.querySelectorAll('[data-count-idx]').forEach(function(el) {
+                                    var ci = +el.dataset.countIdx;
+                                    el.textContent = String(c[ci] != null ? c[ci] : 0);
+                                });
+                            }
+                        });
+                    });
+                    tbody.querySelectorAll('[data-remove-idx]').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            if (bands.length <= 1) return;
+                            bands.splice(+this.dataset.removeIdx, 1);
+                            render();
+                        });
+                    });
+                }
+                function loadFromRule(rule) {
+                    bands = normalize((rule && Array.isArray(rule.bands)) ? rule.bands : []);
+                    render();
+                }
+                var modalEl = document.getElementById(opts.modalId);
+                if (modalEl) {
+                    modalEl.addEventListener('show.bs.modal', function() {
+                        var err = document.getElementById(opts.errId);
+                        if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                        fetch(opts.getUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                            .then(function(r) { return r.json(); })
+                            .then(function(body) { loadFromRule((body && body.rule) || {}); })
+                            .catch(function() { loadFromRule({}); });
+                    });
+                }
+                var addBtn = document.getElementById(opts.addBtnId);
+                if (addBtn) {
+                    addBtn.addEventListener('click', function() {
+                        var last = bands.length ? bands[bands.length - 1] : null;
+                        var lastTo = last ? parseFloat(last[toKey]) : NaN;
+                        var from = isFinite(lastTo) ? lastTo : 0;
+                        if (opts.fillGaps && isFinite(lastTo)) from = +(lastTo + 0.01).toFixed(2);
+                        var i = bands.length;
+                        var row = { bgt: minBgt, label: labels[i] || ('Slab ' + (i + 1)), color: colors[i] || '#6c757d' };
+                        row[fromKey] = from;
+                        row[toKey] = opts.fillGaps ? +(from + 0.49).toFixed(2) : 9999;
+                        bands.push(row);
+                        render();
+                    });
+                }
+                var saveBtn = document.getElementById(opts.saveBtnId);
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', function() {
+                        var err = document.getElementById(opts.errId);
+                        if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                        var cleaned = (bands || []).map(function(b) {
+                            var row = {
+                                bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                                label: (b.label || '').toString(),
+                                color: (b.color || '#6c757d').toString()
+                            };
+                            row[fromKey] = (b[fromKey] === '' || b[fromKey] == null) ? NaN : parseFloat(b[fromKey]);
+                            row[toKey] = (b[toKey] === '' || b[toKey] == null) ? NaN : parseFloat(b[toKey]);
+                            return row;
+                        });
+                        if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
+                        for (var i = 0; i < cleaned.length; i++) {
+                            var b = cleaned[i];
+                            if (!isFinite(b[fromKey]) || !isFinite(b[toKey]) || !isFinite(b.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt values.'; err.classList.remove('d-none'); } return; }
+                            if (b[fromKey] > b[toKey]) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
+                            if (b[fromKey] < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
+                            if (b.bgt < minBgt) { if (err) { err.textContent = 'Bgt must be ' + minBgt + ' or more.'; err.classList.remove('d-none'); } return; }
+                        }
+                        saveBtn.disabled = true;
+                        fetch(opts.saveUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': gacCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ bands: cleaned })
+                        })
+                            .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                            .then(function(out) {
+                                var body = out.body || {};
+                                if (!out.ok || body.status === 422 || body.status === 500) { if (err) { err.textContent = body.message || body.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
+                                if (typeof bootstrap !== 'undefined' && modalEl) { var inst = bootstrap.Modal.getInstance(modalEl); if (inst) inst.hide(); }
+                                return Promise.resolve(table.setData(dataUrl));
+                            })
+                            .then(function() { gacRawRefreshTableUiSoon(); })
+                            .catch(function() { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
+                            .finally(function() { saveBtn.disabled = false; });
+                    });
+                }
+            }
+
+            gacBindBgtSlabRule({
+                defaults: [
+                    { views_from: 351, views_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
+                    { views_from: 281, views_to: 350, bgt: 5, label: 'Pink', color: '#e83e8c' },
+                    { views_from: 211, views_to: 280, bgt: 4, label: 'Green', color: '#28a745' },
+                    { views_from: 141, views_to: 210, bgt: 3, label: 'Blue', color: '#2563eb' },
+                    { views_from: 71, views_to: 140, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                    { views_from: 0, views_to: 70, bgt: 1, label: 'Red', color: '#a00211' }
+                ],
+                labels: ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'],
+                colors: ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
+                fromKey: 'views_from', toKey: 'views_to', step: '1', minBgt: 0,
+                modalId: 'gacRawBgtViewsRuleModal', tbodyId: 'gac-bgt-views-bands-body',
+                addBtnId: 'gac-bgt-views-add-band-btn', saveBtnId: 'gacRawBgtViewsRuleSaveBtn', errId: 'gacRawBgtViewsRuleErr',
+                getUrl: gacBgtViewsRuleGetUrl, saveUrl: gacBgtViewsRuleSaveUrl,
+                valueOfRow: function(row) { var n = parseFloat(row && row.views_l7); return isFinite(n) ? n : 0; }
+            });
+            gacBindBgtSlabRule({
+                defaults: [
+                    { cvr_from: 20, cvr_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
+                    { cvr_from: 16, cvr_to: 20, bgt: 5, label: 'Pink', color: '#e83e8c' },
+                    { cvr_from: 12, cvr_to: 16, bgt: 4, label: 'Green', color: '#28a745' },
+                    { cvr_from: 8, cvr_to: 12, bgt: 3, label: 'Blue', color: '#2563eb' },
+                    { cvr_from: 4, cvr_to: 8, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                    { cvr_from: 0, cvr_to: 4, bgt: 1, label: 'Red', color: '#a00211' }
+                ],
+                labels: ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'],
+                colors: ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
+                fromKey: 'cvr_from', toKey: 'cvr_to', step: '0.01', minBgt: 0,
+                modalId: 'gacRawBgtCvrRuleModal', tbodyId: 'gac-bgt-cvr-bands-body',
+                addBtnId: 'gac-bgt-cvr-add-band-btn', saveBtnId: 'gacRawBgtCvrRuleSaveBtn', errId: 'gacRawBgtCvrRuleErr',
+                getUrl: gacBgtCvrRuleGetUrl, saveUrl: gacBgtCvrRuleSaveUrl,
+                valueOfRow: function(row) { var n = parseFloat(row && (row.bgt_cvr_page_cvr != null ? row.bgt_cvr_page_cvr : row.cvr_l30)); return isFinite(n) ? n : 0; }
+            });
+            gacBindBgtSlabRule({
+                defaults: [
+                    { prc_from: 151, prc_to: 9999, bgt: 5, label: 'Pink', color: '#e83e8c' },
+                    { prc_from: 101, prc_to: 150, bgt: 4, label: 'Green', color: '#28a745' },
+                    { prc_from: 61, prc_to: 100, bgt: 3, label: 'Blue', color: '#2563eb' },
+                    { prc_from: 41, prc_to: 60, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                    { prc_from: 0, prc_to: 40, bgt: 1, label: 'Red', color: '#a00211' }
+                ],
+                labels: ['Pink', 'Green', 'Blue', 'Yellow', 'Red'],
+                colors: ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
+                fromKey: 'prc_from', toKey: 'prc_to', step: '0.01', minBgt: 0,
+                modalId: 'gacRawBgtPrcRuleModal', tbodyId: 'gac-bgt-prc-bands-body',
+                addBtnId: 'gac-bgt-prc-add-band-btn', saveBtnId: 'gacRawBgtPrcRuleSaveBtn', errId: 'gacRawBgtPrcRuleErr',
+                getUrl: gacBgtPrcRuleGetUrl, saveUrl: gacBgtPrcRuleSaveUrl,
+                valueOfRow: function(row) { var n = parseFloat(row && row.bgt_prc_price); return isFinite(n) ? n : null; }
+            });
+            gacBindBgtSlabRule({
+                defaults: [
+                    { rev_from: 2.99, rev_to: 3.5, bgt: 1, label: 'Red', color: '#a00211' },
+                    { rev_from: 3.51, rev_to: 4, bgt: 2, label: 'Yellow', color: '#ffc107' },
+                    { rev_from: 4.01, rev_to: 4.5, bgt: 3, label: 'Blue', color: '#2563eb' },
+                    { rev_from: 4.51, rev_to: 5, bgt: 4, label: 'Green', color: '#28a745' }
+                ],
+                labels: ['Red', 'Yellow', 'Blue', 'Green'],
+                colors: ['#a00211', '#ffc107', '#2563eb', '#28a745'],
+                fromKey: 'rev_from', toKey: 'rev_to', step: '0.01', minBgt: 1, fillGaps: true,
+                modalId: 'gacRawBgtReviewsRuleModal', tbodyId: 'gac-bgt-reviews-bands-body',
+                addBtnId: 'gac-bgt-reviews-add-band-btn', saveBtnId: 'gacRawBgtReviewsRuleSaveBtn', errId: 'gacRawBgtReviewsRuleErr',
+                getUrl: gacBgtReviewsRuleGetUrl, saveUrl: gacBgtReviewsRuleSaveUrl,
+                valueOfRow: function(row) { var n = parseFloat(row && row.bgt_reviews_rating); return isFinite(n) ? n : null; }
+            });
         });
     </script>
 @endsection

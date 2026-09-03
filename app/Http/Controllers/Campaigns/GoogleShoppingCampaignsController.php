@@ -7,6 +7,12 @@ use App\Models\GoogleAdsNegativeKeyword;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\GoogleAdsSbidService;
+use App\Support\GoogleShoppingBgtCvrRule;
+use App\Support\GoogleShoppingBgtParts;
+use App\Support\GoogleShoppingBgtPrcRule;
+use App\Support\GoogleShoppingBgtReviewsRule;
+use App\Support\GoogleShoppingBgtSkuMetrics;
+use App\Support\GoogleShoppingBgtViewsRule;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -262,6 +268,113 @@ class GoogleShoppingCampaignsController extends Controller
             'rule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
             'status' => 200,
         ]);
+    }
+
+    public function getBgtViewsRule(): JsonResponse
+    {
+        return $this->jsonBgtRuleGet(GoogleShoppingBgtViewsRule::class);
+    }
+
+    public function saveBgtViewsRule(Request $request): JsonResponse
+    {
+        return $this->jsonBgtRuleSave(
+            $request,
+            GoogleShoppingBgtViewsRule::class,
+            'Could not save BGT Vs VIEWS rule.',
+            'BGT Vs VIEWS saved. Bgt Views on the grid will use the new View L7 bands after reload.'
+        );
+    }
+
+    public function getBgtCvrRule(): JsonResponse
+    {
+        return $this->jsonBgtRuleGet(GoogleShoppingBgtCvrRule::class);
+    }
+
+    public function saveBgtCvrRule(Request $request): JsonResponse
+    {
+        return $this->jsonBgtRuleSave(
+            $request,
+            GoogleShoppingBgtCvrRule::class,
+            'Could not save BGT Vs CVR rule.',
+            'BGT Vs CVR saved. Bgt Cvr on the grid will use the new CVR L30 bands after reload.'
+        );
+    }
+
+    public function getBgtPrcRule(): JsonResponse
+    {
+        return $this->jsonBgtRuleGet(GoogleShoppingBgtPrcRule::class);
+    }
+
+    public function saveBgtPrcRule(Request $request): JsonResponse
+    {
+        return $this->jsonBgtRuleSave(
+            $request,
+            GoogleShoppingBgtPrcRule::class,
+            'Could not save BGT PRC rule.',
+            'BGT PRC saved. BGT PRC on the grid will use the new Price bands after reload.'
+        );
+    }
+
+    public function getBgtReviewsRule(): JsonResponse
+    {
+        return $this->jsonBgtRuleGet(GoogleShoppingBgtReviewsRule::class);
+    }
+
+    public function saveBgtReviewsRule(Request $request): JsonResponse
+    {
+        return $this->jsonBgtRuleSave(
+            $request,
+            GoogleShoppingBgtReviewsRule::class,
+            'Could not save BGT Vs REVIEWS rule.',
+            'BGT Vs REVIEWS saved. Bgt Reviews on the grid will use the new Reviews bands after reload.'
+        );
+    }
+
+    /**
+     * @param  class-string  $class
+     */
+    private function jsonBgtRuleGet(string $class): JsonResponse
+    {
+        $class::forgetResolvedCache();
+
+        return response()->json([
+            'rule' => $class::resolvedRule(),
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
+    /**
+     * @param  class-string  $class
+     */
+    private function jsonBgtRuleSave(Request $request, string $class, string $failMsg, string $okMsg): JsonResponse
+    {
+        try {
+            $normalized = $class::normalizeRule($request->all());
+            $class::persistRule($normalized);
+            $class::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $failMsg,
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => $okMsg,
+            'rule' => $class::resolvedRule(),
+            'status' => 200,
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
     /**
@@ -596,6 +709,7 @@ class GoogleShoppingCampaignsController extends Controller
         $query = $this->buildRawGridBaseQuery();
         $query->whereIn('g.campaign_id', $campaignIds);
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
+        $bgtResolver = $this->shoppingBgtMetricsResolver();
         $byId = [];
 
         foreach ($query->get() as $row) {
@@ -605,6 +719,7 @@ class GoogleShoppingCampaignsController extends Controller
                 unset($arr['spend_window_micros']);
             }
             self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+            $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
             $byId[(string) ($arr['campaign_id'] ?? '')] = $arr;
         }
 
@@ -711,6 +826,7 @@ class GoogleShoppingCampaignsController extends Controller
         $summary = $this->summarizeRawGridRows($collection);
 
         $invResolver = $this->buildInventoryResolver();
+        $bgtResolver = $this->shoppingBgtMetricsResolver();
 
         // Verify ID: L30 spend = 0 (SQL) + INV > 0 (PHP). Inventory is not in SQL, so
         // load the spend=0 set, filter, then paginate + verify Merchant Item IDs.
@@ -726,7 +842,7 @@ class GoogleShoppingCampaignsController extends Controller
                 ->all();
             $prevSbgtMap = $this->previousSbgtMap($allCampaignIds);
 
-            $enriched = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
+            $enriched = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver, $bgtResolver) {
                 $arr = self::rawGridRowToArray($row);
                 if (isset($arr['spend_window_micros'])) {
                     $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
@@ -734,6 +850,7 @@ class GoogleShoppingCampaignsController extends Controller
                 }
 
                 self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+                $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
                 $this->applyRowChannelOverrides($arr);
                 $this->attachSbgtTrend($arr, $prevSbgtMap);
                 $this->attachInventoryFields($arr, $invResolver);
@@ -776,7 +893,7 @@ class GoogleShoppingCampaignsController extends Controller
             ->all();
         $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
 
-        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver) {
+        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver, $bgtResolver) {
             $arr = self::rawGridRowToArray($row);
             if (isset($arr['spend_window_micros'])) {
                 $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
@@ -784,6 +901,7 @@ class GoogleShoppingCampaignsController extends Controller
             }
 
             self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+            $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
             $this->applyRowChannelOverrides($arr);
             $this->attachSbgtTrend($arr, $prevSbgtMap);
             $this->attachInventoryFields($arr, $invResolver);
@@ -860,6 +978,7 @@ class GoogleShoppingCampaignsController extends Controller
         $rawRule = $rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule();
         $now = now();
         $count = 0;
+        $bgtResolver = $this->shoppingBgtMetricsResolver();
 
         foreach ($this->buildRawGridBaseQuery($endYmd)->get() as $row) {
             $arr = json_decode(json_encode($row), true);
@@ -868,6 +987,7 @@ class GoogleShoppingCampaignsController extends Controller
                 unset($arr['spend_window_micros']);
             }
             self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+            $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
 
             $cid = (string) ($arr['campaign_id'] ?? '');
             if ($cid === '') {
@@ -2005,6 +2125,8 @@ class GoogleShoppingCampaignsController extends Controller
             'ub7' => $ub7,
             'ub2' => $ub2,
             'ub1' => $ub1,
+            'bgt_acos' => $sbgtExpr,
+            'bgt_cvr' => $this->bgtCvrSortSqlExpression($cvrExpr),
             'sbgt' => $sbgtExpr,
             // COALESCE so NULL (no SBID suggestion) sorts as lowest, matching the "—" cells.
             'sbid' => "COALESCE({$sbidExpr}, -1)",
@@ -2067,6 +2189,68 @@ class GoogleShoppingCampaignsController extends Controller
         return '(CASE WHEN '.$acosExpr.' < 0 THEN '.$fallback.' '
             .implode(' ', $whens)
             .' ELSE '.$fallback.' END)';
+    }
+
+    /**
+     * SQL CASE matching {@see GoogleShoppingBgtCvrRule::apply()} for ORDER BY.
+     */
+    private function bgtCvrSortSqlExpression(string $cvrExpr): string
+    {
+        $bands = GoogleShoppingBgtCvrRule::resolvedRule()['bands'] ?? [];
+        $whens = [];
+        foreach ($bands as $band) {
+            if (! is_array($band)) {
+                continue;
+            }
+            $from = (float) ($band['cvr_from'] ?? 0);
+            $to = (float) ($band['cvr_to'] ?? 9999);
+            $bgt = (int) ($band['bgt'] ?? 0);
+            $whens[] = sprintf(
+                'WHEN %s >= %s AND %s <= %s THEN %d',
+                $cvrExpr,
+                $this->sqlFloatLiteral($from),
+                $cvrExpr,
+                $this->sqlFloatLiteral($to),
+                $bgt
+            );
+        }
+
+        if ($whens === []) {
+            return '0';
+        }
+
+        return '(CASE '.implode(' ', $whens).' ELSE 0 END)';
+    }
+
+    protected function usesShoppingBgtParts(): bool
+    {
+        return $this->channelKey() === 'shopping';
+    }
+
+    /**
+     * @return \Closure(string): array{views_l7: float, views_l30: float, price: float|null, rating: float|null, inv: float, ovl30: float, dil: float|null}|null
+     */
+    protected function shoppingBgtMetricsResolver(): ?\Closure
+    {
+        if (! $this->usesShoppingBgtParts()) {
+            return null;
+        }
+
+        return GoogleShoppingBgtSkuMetrics::resolver();
+    }
+
+    /**
+     * @param  array<string, mixed>  $arr
+     * @param  \Closure(string): array{views_l7: float, views_l30: float, price: float|null, rating: float|null, inv: float, ovl30: float, dil: float|null}|null  $resolver
+     * @param  array{sbgt: array<string, mixed>, sbid: array<string, float>}  $rawRule
+     */
+    protected function attachShoppingBgtParts(array &$arr, ?\Closure $resolver, array $rawRule): void
+    {
+        if ($resolver === null) {
+            return;
+        }
+        $metrics = $resolver((string) ($arr['campaign_name'] ?? ''));
+        GoogleShoppingBgtParts::applyToRow($arr, $metrics, $rawRule);
     }
 
     /**
@@ -2629,6 +2813,7 @@ class GoogleShoppingCampaignsController extends Controller
             'campaign_name',
             'is_parent',
             'inventory',
+            'dil',
             'spend',
             'l7_spend',
             'l2_spend',
@@ -2642,15 +2827,35 @@ class GoogleShoppingCampaignsController extends Controller
             'ad_sold_L30',
             'ad_sales_L30',
             'acos_l30',
+            'price',
             'cvr_l30',
             'ub7',
             'ub2',
             'ub1',
             'bgt',
+            'bgt_acos',
+            'views_l30',
+            'views_l7',
+            'bgt_views',
+            'bgt_cvr',
+            'bgt_prc',
+            'bgt_reviews',
             'sbgt',
             'sbgt_prev',
             'sbgt_prev_date',
             'sbgt_trend',
+            'bgt_views_color',
+            'bgt_views_label',
+            'bgt_cvr_color',
+            'bgt_cvr_label',
+            'bgt_cvr_page_cvr',
+            'bgt_prc_color',
+            'bgt_prc_label',
+            'bgt_prc_price',
+            'ovl30',
+            'bgt_reviews_color',
+            'bgt_reviews_label',
+            'bgt_reviews_rating',
             'sbid',
             'id_mismatch',
             'id_alert_title',

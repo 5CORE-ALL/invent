@@ -9,6 +9,8 @@ use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
+use App\Support\GoogleShoppingBgtParts;
+use App\Support\GoogleShoppingBgtSkuMetrics;
 use App\Support\GoogleShoppingCampaignNameMatcher;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use Illuminate\Console\Command;
@@ -138,8 +140,10 @@ class UpdateShoppingBudgetCronCommand extends Command
                 'budget_amount_micros',
                 'date',
                 'metrics_cost_micros',
+                'metrics_clicks',
                 'ga4_ad_sales',
-                'ga4_actual_revenue'
+                'ga4_actual_revenue',
+                'ga4_actual_sold_units'
             )
                 ->where('advertising_channel_type', 'SHOPPING')
                 ->where('campaign_status', '!=', 'ARCHIVED')
@@ -152,6 +156,7 @@ class UpdateShoppingBudgetCronCommand extends Command
             $this->info('Found '.$googleCampaigns->count().' SHOPPING campaigns in L30 range');
 
             $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
+            $bgtSkuResolver = GoogleShoppingBgtSkuMetrics::resolver();
 
             $toPush = [];
             $budgetDetails = [];
@@ -264,6 +269,8 @@ class UpdateShoppingBudgetCronCommand extends Command
                 // Use same L30 sales as frontend (aggregateMetricsByRange): prefer GA4 actual revenue when available
                 $totalGA4ActualSales = $campaignRanges->sum('ga4_actual_revenue');
                 $totalSales = ($totalGA4ActualSales > 0) ? $totalGA4ActualSales : $campaignRanges->sum('ga4_ad_sales');
+                $totalClicks = (int) $campaignRanges->sum('metrics_clicks');
+                $totalSold = (float) $campaignRanges->sum('ga4_actual_sold_units');
 
                 // ACOS from rounded L30 spend/sales — same as G-Shopping raw grid (enrichRawRowGoogleShoppingStyle)
                 $spendR = (int) round($totalSpend);
@@ -274,13 +281,22 @@ class UpdateShoppingBudgetCronCommand extends Command
                 } elseif ($spendR > 0) {
                     $acos = 100.0;
                 }
+                $cvrL30 = $totalClicks > 0 ? round(($totalSold / $totalClicks) * 100.0, 1) : 0.0;
+                $skuMetrics = $bgtSkuResolver((string) ($matchedCampaign->campaign_name ?? $pm->sku));
 
                 // Get current budget from latest-by-date row (same as frontend BGT in getGoogleShoppingAdsData)
                 $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)->sortByDesc('date')->first();
                 $currentBudget = ($latestCampaign && $latestCampaign->budget_amount_micros) ? $latestCampaign->budget_amount_micros / 1000000 : 0;
 
-                // Daily budget dollars = persisted SBGT tier (same rule as raw Tabulator SBGT column)
-                $newBudget = GoogleShoppingCampaignsRawRule::sbgtFromAcos((float) $acos, $rawRule);
+                // Daily budget = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews (same as grid SBGT)
+                $newBudget = GoogleShoppingBgtParts::suggestedDailyBudget(
+                    (float) $acos,
+                    $cvrL30,
+                    isset($skuMetrics['views_l7']) ? (float) $skuMetrics['views_l7'] : 0.0,
+                    isset($skuMetrics['price']) && is_numeric($skuMetrics['price']) ? (float) $skuMetrics['price'] : null,
+                    isset($skuMetrics['rating']) && is_numeric($skuMetrics['rating']) ? (float) $skuMetrics['rating'] : null,
+                    $rawRule
+                );
 
                 // Track individual campaigns (for statistics)
                 $skipCounters['total_campaigns_processed']++;
