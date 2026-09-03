@@ -160,6 +160,7 @@ class AliExpressApiService
         $schema = $this->getProductSchema($categoryId);
         $request = $this->applyCategorySkuAttributes($request, $schema);
         $weightFill = $this->fillWeightFromSchema($schema, $weight, $lb);
+        $weightFill['fields'] = $this->ensureUsLogisticsWeightFields($weightFill['fields'], $weight, $lb);
         $baseInstance = $this->buildOneSchemaInstance($request, $weight);
         $instance = array_merge($baseInstance, $weightFill['fields']);
         if (isset($baseInstance['category_attributes']) || isset($weightFill['fields']['category_attributes'])) {
@@ -1268,6 +1269,10 @@ class AliExpressApiService
     {
         $type = $this->schemaNodeType($node);
         $props = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+        if ($this->isUsLogisticsWeightParent($path) && $type !== 'object' && $props === []) {
+            return $this->usPackageWeightObject($kg, $lb);
+        }
+
         if ($type === 'object' || $props !== []) {
             $out = [];
             $required = is_array($node['required'] ?? null) ? $node['required'] : [];
@@ -1288,15 +1293,8 @@ class AliExpressApiService
                     ? $this->schemaUnitValue($child, $childPath)
                     : $this->fillSchemaNode($child, $kg, $lb, $childPath);
             }
-            if ($out === []) {
-                $unit = $this->inferWeightUnit($path, $node);
-                $out['Package weight'] = $this->formatMarketplaceWeight(
-                    $kg,
-                    $lb,
-                    $unit,
-                    $this->marketplaceWeightKind($unit, $node, 'string'),
-                    $node
-                );
+            if ($out === [] || ($this->isUsLogisticsWeightParent($path) && ! $this->hasPackageWeightKey($out))) {
+                $out = array_merge($out, $this->usPackageWeightObject($kg, $lb));
             }
 
             return $out;
@@ -1305,6 +1303,64 @@ class AliExpressApiService
         $unit = $this->inferWeightUnit($path, $node);
 
         return $this->formatMarketplaceWeight($kg, $lb, $unit, $this->marketplaceWeightKind($unit, $node, $type), $node);
+    }
+
+    private function isUsLogisticsWeightParent(string $path): bool
+    {
+        $hay = strtolower($path);
+
+        return in_array($hay, ['uslogisticsweight', 'aelogisticsweight', 'usl', 'usl.logisticsweight'], true)
+            || preg_match('/(^|\.)(uslogisticsweight|aelogisticsweight)$/', $hay) === 1;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     */
+    private function hasPackageWeightKey(array $fields): bool
+    {
+        foreach ($fields as $key => $value) {
+            if (strcasecmp((string) $key, 'Package weight') === 0 && $value !== null && $value !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array{Package weight: string}
+     */
+    private function usPackageWeightObject(float $kg, float $lb): array
+    {
+        return [
+            'Package weight' => $this->formatMarketplaceWeight($kg, $lb, 'lb', 'string'),
+        ];
+    }
+
+    /**
+     * AliExpress US always validates usLogisticsWeight.Package weight as a nested field.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    private function ensureUsLogisticsWeightFields(array $fields, float $kg, float $lb): array
+    {
+        if ($kg <= 0 && $lb <= 0) {
+            return $fields;
+        }
+        $object = $this->usPackageWeightObject($kg, $lb);
+        foreach (['usLogisticsWeight', 'aeLogisticsWeight'] as $key) {
+            $current = $fields[$key] ?? null;
+            if (is_array($current)) {
+                $fields[$key] = $this->hasPackageWeightKey($current)
+                    ? $current
+                    : array_merge($current, $object);
+            } else {
+                $fields[$key] = $object;
+            }
+        }
+
+        return $fields;
     }
 
     /**
@@ -1620,6 +1676,8 @@ class AliExpressApiService
         $out['sku_info_list'] = $skus;
         $out = array_merge($out, $schemaWeightFields);
         $kg = $this->aliexpressWeightNumber($request);
+        $lb = $this->aliexpressWeightPounds($request, $kg);
+        $out = $this->ensureUsLogisticsWeightFields($out, $kg, $lb);
         // Official product.post weight is a kg string (min 0.001). Do not overwrite it with a US object.
         $out['weight'] = number_format(max(0.001, $kg), 3, '.', '');
         if (! isset($out['package_weight']) || ! is_numeric($out['package_weight'])) {
