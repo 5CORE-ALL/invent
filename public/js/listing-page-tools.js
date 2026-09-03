@@ -205,6 +205,10 @@
     }
 
     function selectedCategoryName() {
+        if (isReverbChannel()) {
+            const reverbEl = document.getElementById('listing-publish-reverb-category-name');
+            if (reverbEl) return String(reverbEl.value || '').trim();
+        }
         const el = document.getElementById('listing-publish-category-name');
         return el ? String(el.value || '').trim() : '';
     }
@@ -217,13 +221,19 @@
     function applySuggestedCategory(suggested) {
         const pathEl = document.getElementById('listing-publish-reverb-category-path');
         const uuidEl = document.getElementById('listing-publish-category-uuid');
+        const nameEl = document.getElementById('listing-publish-reverb-category-name');
         const path = String((suggested && suggested.path) || '').trim();
         const id = String((suggested && suggested.id) || '').trim();
+        const name = String((suggested && suggested.name) || '').trim();
+        const leaf = path.split(/[>\/|]/).pop().trim();
         if (uuidEl) uuidEl.value = id;
+        if (nameEl) nameEl.value = name || leaf || '';
         if (!pathEl) return;
         pathEl.textContent = path || (id
             ? 'Reverb category matched from the product type.'
-            : 'No Reverb category matched this product type yet. Publish will try again from the title.');
+            : (name
+                ? 'Using the product category. Type a Reverb name if you want a different one.'
+                : 'No Reverb category matched yet. Type a category name below, or publish and we will try from the title.'));
     }
 
     function applySuggestedAliexpressCategory(suggested) {
@@ -386,9 +396,16 @@
     function ajaxError(xhr) {
         if (!xhr) return 'Request failed.';
         if (xhr.status === 0) return 'Timed out or the connection dropped. Try again.';
-        if (xhr.responseJSON && xhr.responseJSON.message) return xhr.responseJSON.message;
+        let json = xhr.responseJSON;
+        if (!json && xhr.responseText) {
+            try { json = JSON.parse(xhr.responseText); } catch (e) { json = null; }
+        }
+        if (json && (json.message || json.error)) return String(json.message || json.error);
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
         if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
+        if (xhr.status === 502 || xhr.status === 504) return 'Publish timed out while talking to AliExpress. Try again.';
+        if (xhr.status === 500) return 'Server error during publish. Try again.';
+        if (xhr.status) return 'Request failed (HTTP ' + xhr.status + ').';
         return 'Request failed.';
     }
 
@@ -560,6 +577,18 @@
             }
             openPreview(selected);
         });
+
+        $(document).off('input.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('input.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                const uuidEl = document.getElementById('listing-publish-category-uuid');
+                if (uuidEl) uuidEl.value = '';
+                const pathEl = document.getElementById('listing-publish-reverb-category-path');
+                if (pathEl) {
+                    pathEl.textContent = String(this.value || '').trim()
+                        ? 'Will match this category name on publish.'
+                        : 'Type a Reverb category name, or leave blank to use the product type.';
+                }
+            });
 
         $(document).off('change.listingPageTools', 'input[name="listing-publish-mode"]')
             .on('change.listingPageTools', 'input[name="listing-publish-mode"]', function () {

@@ -1092,5 +1092,5 @@
             publishUrl: '/listing_reverb/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=7"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=8"></script>
 @endsection

@@ -80,7 +80,7 @@ class ListingVariationPreviewService
             return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
         }
         if (in_array($channel, ['reverb', 'reverbcom'], true)) {
-            return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid);
+            return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName);
         }
 
         $label = $this->channelLabel($channel);
