@@ -174,6 +174,7 @@ class AliExpressApiService
             'weight_payload' => $weightFill['fields'],
             'weight_kg' => $weight,
             'weight_lb' => $lb,
+            'us_package_weight_lb' => $this->formatMarketplaceWeight($weight, $lb, 'lb', 'string'),
         ]);
 
         $encoded = $this->encodeRequestPayload($instance);
@@ -654,7 +655,7 @@ class AliExpressApiService
     }
 
     /**
-     * Fill only schema weight properties from Dim/Wt kg (and lb when the schema unit is pounds).
+     * Fill schema weight properties from Dim/Wt, converting kg/lb to each field's marketplace unit.
      *
      * @param  array<string, mixed>  $schema
      * @return array{keys: list<string>, fields: array<string, mixed>}
@@ -669,7 +670,7 @@ class AliExpressApiService
                 continue;
             }
             $keys[] = $name;
-            $fields[$name] = $this->fillSchemaNode($node, $kg, $lb);
+            $fields[$name] = $this->fillSchemaNode($node, $kg, $lb, $name);
         }
         $catProps = $props['category_attributes']['properties'] ?? [];
         if (is_array($catProps) && $catProps !== []) {
@@ -679,7 +680,7 @@ class AliExpressApiService
                     continue;
                 }
                 $keys[] = 'category_attributes.'.$name;
-                $catFill[$name] = $this->fillSchemaNode($node, $kg, $lb);
+                $catFill[$name] = $this->fillSchemaNode($node, $kg, $lb, 'category_attributes.'.$name);
                 if (! isset($fields[$name])) {
                     $fields[$name] = $catFill[$name];
                 }
@@ -691,12 +692,16 @@ class AliExpressApiService
                 );
             }
         }
-        if ($fields === [] && $kg > 0) {
+        if ($fields === [] && ($kg > 0 || $lb > 0)) {
             $keys = ['package_weight', 'usLogisticsWeight', 'aeLogisticsWeight'];
             $fields = [
-                'package_weight' => $kg,
-                'usLogisticsWeight' => $kg,
-                'aeLogisticsWeight' => $kg,
+                'package_weight' => $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number'),
+                'usLogisticsWeight' => [
+                    'Package weight' => $this->formatMarketplaceWeight($kg, $lb, 'lb', 'string'),
+                ],
+                'aeLogisticsWeight' => [
+                    'Package weight' => $this->formatMarketplaceWeight($kg, $lb, 'lb', 'string'),
+                ],
             ];
         }
 
@@ -745,7 +750,7 @@ class AliExpressApiService
     /**
      * @param  array<string, mixed>  $node
      */
-    private function fillSchemaNode(array $node, float $kg, float $lb): mixed
+    private function fillSchemaNode(array $node, float $kg, float $lb, string $path = ''): mixed
     {
         $type = $this->schemaNodeType($node);
         $props = is_array($node['properties'] ?? null) ? $node['properties'] : [];
@@ -757,6 +762,7 @@ class AliExpressApiService
                     continue;
                 }
                 $childName = (string) $name;
+                $childPath = $path === '' ? $childName : $path.'.'.$childName;
                 $needed = $required === []
                     || in_array($childName, $required, true)
                     || $this->isSchemaWeightProperty($childName, $child)
@@ -765,18 +771,46 @@ class AliExpressApiService
                     continue;
                 }
                 $out[$childName] = $this->isSchemaUnitProperty($childName, $child)
-                    ? $this->schemaUnitValue($child)
-                    : $this->fillSchemaNode($child, $kg, $lb);
+                    ? $this->schemaUnitValue($child, $childPath)
+                    : $this->fillSchemaNode($child, $kg, $lb, $childPath);
             }
             if ($out === []) {
-                $out['Package weight'] = $kg;
-                $out['value'] = $kg;
+                $unit = $this->inferWeightUnit($path, $node);
+                $out['Package weight'] = $this->formatMarketplaceWeight(
+                    $kg,
+                    $lb,
+                    $unit,
+                    $this->marketplaceWeightKind($unit, $node, 'string'),
+                    $node
+                );
             }
 
             return $out;
         }
 
-        return $this->schemaWeightScalar($node, $kg, $lb, $type === 'string');
+        $unit = $this->inferWeightUnit($path, $node);
+
+        return $this->formatMarketplaceWeight($kg, $lb, $unit, $this->marketplaceWeightKind($unit, $node, $type), $node);
+    }
+
+    /**
+     * US package weight is a 2-decimal string. Official kg weight stays a number unless the schema says string.
+     *
+     * @param  array<string, mixed>  $node
+     */
+    private function marketplaceWeightKind(string $unit, array $node, string $type): string
+    {
+        if ($type === 'integer' || $this->schemaNodeType($node) === 'integer') {
+            return 'integer';
+        }
+        if (in_array($unit, ['lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'], true)) {
+            return 'string';
+        }
+        if ($type === 'string' || $this->schemaPrefersString($node)) {
+            return 'string';
+        }
+
+        return 'number';
     }
 
     /**
@@ -816,19 +850,56 @@ class AliExpressApiService
     /**
      * @param  array<string, mixed>  $node
      */
-    private function schemaUnitValue(array $node): string
+    private function schemaUnitValue(array $node, string $path = ''): string
     {
+        $preferLb = $this->inferWeightUnit($path, $node) === 'lb';
         $enum = $node['enum'] ?? [];
-        if (is_array($enum)) {
+        if (is_array($enum) && $enum !== []) {
+            $picked = null;
             foreach ($enum as $one) {
-                $one = strtolower(trim((string) $one));
-                if (in_array($one, ['kg', 'kilogram', 'kilograms'], true)) {
-                    return (string) $one;
+                $raw = trim((string) $one);
+                $one = strtolower($raw);
+                if ($preferLb && in_array($one, ['lb', 'lbs', 'pound', 'pounds'], true)) {
+                    return $raw;
                 }
+                if (! $preferLb && in_array($one, ['kg', 'kilogram', 'kilograms'], true)) {
+                    return $raw;
+                }
+                $picked ??= $raw;
             }
-            if ($enum !== []) {
-                return (string) reset($enum);
-            }
+
+            return (string) $picked;
+        }
+
+        return $preferLb ? 'lb' : 'kg';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function inferWeightUnit(string $path, array $node = []): string
+    {
+        $hay = strtolower(
+            $path.' '
+            .(string) ($node['title'] ?? '').' '
+            .(string) ($node['unit'] ?? '').' '
+            .(string) ($node['id'] ?? '').' '
+            .(string) ($node['description'] ?? '')
+        );
+        if (preg_match('/\b(oz|ounce|ounces)\b/', $hay)) {
+            return 'oz';
+        }
+        if (preg_match('/\b(g|gram|grams)\b/', $hay) && ! str_contains($hay, 'kg') && ! str_contains($hay, 'logistics')) {
+            return 'g';
+        }
+        if (
+            preg_match('/\b(lb|lbs|pound|pounds)\b/', $hay)
+            || str_contains($hay, 'uslogistics')
+            || str_contains($hay, 'aelogistics')
+            || str_contains($hay, 'usl.')
+            || preg_match('/\busl\b/', $hay)
+        ) {
+            return 'lb';
         }
 
         return 'kg';
@@ -837,13 +908,74 @@ class AliExpressApiService
     /**
      * @param  array<string, mixed>  $node
      */
-    private function schemaWeightScalar(array $node, float $kg, float $lb, bool $asString): float|string
+    private function schemaPrefersString(array $node): bool
     {
-        $hay = strtolower((string) ($node['title'] ?? '').' '.((string) ($node['unit'] ?? '')).' '.((string) ($node['id'] ?? '')));
-        $value = (str_contains($hay, 'lb') || str_contains($hay, 'pound')) ? $lb : $kg;
-        $value = $value > 0 ? $value : $kg;
+        return $this->schemaNodeType($node) === 'string' || isset($node['pattern']);
+    }
 
-        return $asString ? (string) $value : $value;
+    /**
+     * Convert Dim/Wt kg+lb into the unit and JSON type AliExpress asks for.
+     *
+     * US logistics fields: pounds, usually a 2-decimal string ("0.60").
+     * Official package_weight / weight: kilograms (number or "0.272").
+     *
+     * @param  array<string, mixed>  $node
+     */
+    private function formatMarketplaceWeight(float $kg, float $lb, string $unit, string $kind, array $node = []): float|int|string
+    {
+        $unit = strtolower(trim($unit));
+        if (in_array($unit, ['lb', 'lbs', 'pound', 'pounds'], true)) {
+            $raw = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
+            $decimals = 2;
+            $min = 0.01;
+        } elseif (in_array($unit, ['oz', 'ounce', 'ounces'], true)) {
+            $pounds = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
+            $raw = $pounds * 16;
+            $decimals = 1;
+            $min = 0.1;
+        } elseif (in_array($unit, ['g', 'gram', 'grams'], true)) {
+            $raw = $kg * 1000;
+            $decimals = 0;
+            $min = 1;
+        } else {
+            $raw = $kg > 0 ? $kg : ($lb > 0 ? $lb * 0.45359237 : 0.0);
+            $decimals = 3;
+            $min = 0.001;
+        }
+
+        $decimals = $this->schemaWeightDecimals($node, $decimals);
+        $raw = max($min, $raw);
+        if ($kind === 'integer') {
+            return (int) max(1, (int) round($raw));
+        }
+
+        $formatted = number_format($raw, $decimals, '.', '');
+
+        return $kind === 'string' ? $formatted : (float) $formatted;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function schemaWeightDecimals(array $node, int $default): int
+    {
+        $pattern = (string) ($node['pattern'] ?? '');
+        if ($pattern !== '' && preg_match('/\\\\d\{1,(\d+)\}/', $pattern, $match)) {
+            return max(0, min(4, (int) $match[1]));
+        }
+        $multiple = $node['multipleOf'] ?? $node['multiple_of'] ?? null;
+        if (is_numeric($multiple)) {
+            $multiple = (float) $multiple;
+            if ($multiple >= 1) {
+                return 0;
+            }
+            $text = rtrim(rtrim(sprintf('%.10f', $multiple), '0'), '.');
+            $dot = strpos($text, '.');
+
+            return $dot === false ? 0 : max(0, min(4, strlen($text) - $dot - 1));
+        }
+
+        return $default;
     }
 
     /**
@@ -972,8 +1104,15 @@ class AliExpressApiService
             ]));
         }
         $out['sku_info_list'] = $skus;
+        $out = array_merge($out, $schemaWeightFields);
+        $kg = $this->aliexpressWeightNumber($request);
+        // Official product.post weight is a kg string (min 0.001). Do not overwrite it with a US object.
+        $out['weight'] = number_format(max(0.001, $kg), 3, '.', '');
+        if (! isset($out['package_weight']) || ! is_numeric($out['package_weight'])) {
+            $out['package_weight'] = (float) $out['weight'];
+        }
 
-        return array_merge($out, $schemaWeightFields);
+        return $out;
     }
 
     /**
