@@ -137,6 +137,12 @@
     margin-bottom: 4px;
 }
 .listing-publish-category small { display: block; color: #9a3412; margin-top: 4px; }
+.listing-publish-category-path {
+    font-weight: 700;
+    font-size: 13px;
+    color: #0f172a;
+    margin: 2px 0 4px;
+}
 .listing-publish-role {
     font-size: 11px;
     font-weight: 700;

@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\ProductCategory;
 use App\Models\ProductMaster;
 use App\Models\ReverbListingStatus;
 use App\Models\ReverbMetric;
@@ -28,7 +29,7 @@ class ReverbListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = ''): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?string $categoryUuid = null): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -60,7 +61,7 @@ class ReverbListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -110,11 +111,12 @@ class ReverbListingPublishService
             return ['success' => false, 'message' => 'No images on product master for '.$sku.'.'];
         }
 
-        $categoryUuid = $this->resolveCategoryUuid($product, $sku, $title);
+        $resolved = $this->resolveCategory($product, $sku, $title, $categoryUuid);
+        $categoryUuid = (string) ($resolved['id'] ?? '');
         if ($categoryUuid === '') {
             return [
                 'success' => false,
-                'message' => 'Could not resolve a Reverb category for '.$sku.'. Set REVERB_DEFAULT_CATEGORY_UUID or fill Reverb Listing Master category.',
+                'message' => 'Could not match a Reverb category for the product type of '.$sku.'. Check the title or Product Master category, then try again.',
             ];
         }
 
@@ -168,6 +170,7 @@ class ReverbListingPublishService
             'sku' => $sku,
             'parent' => trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($product),
             'category_uuid' => $categoryUuid,
+            'category_path' => (string) ($resolved['path'] ?? ''),
             'condition' => $condition['name'],
         ]);
 
@@ -275,29 +278,42 @@ class ReverbListingPublishService
         return $out;
     }
 
-    private function resolveCategoryUuid(ProductMaster $product, string $sku, string $title): string
+    /**
+     * @return array{id: string, path: string}
+     */
+    public function suggestCategoryForSku(string $sku): array
     {
-        $configured = trim((string) config('services.reverb.default_category_uuid', ''));
-        if ($this->looksLikeUuid($configured)) {
-            return $configured;
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['id' => '', 'path' => ''];
+        }
+        $product = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->first();
+        if (! $product) {
+            return ['id' => '', 'path' => ''];
         }
 
-        $queries = [];
-        $categoryName = trim((string) ($product->category ?? ''));
-        if ($categoryName !== '') {
-            $queries[] = $categoryName;
-        }
-        $queries[] = $title;
-        $parent = $this->groupKey($product);
-        if ($parent !== '' && strcasecmp($parent, $sku) !== 0) {
-            $queries[] = $parent;
+        return $this->resolveCategory($product, $sku, $this->resolveTitle($product, $sku));
+    }
+
+    /**
+     * @return array{id: string, path: string}
+     */
+    private function resolveCategory(ProductMaster $product, string $sku, string $title, ?string $override = null): array
+    {
+        $override = trim((string) $override);
+        if ($this->looksLikeUuid($override)) {
+            return ['id' => $override, 'path' => ''];
         }
 
-        foreach ($queries as $query) {
-            $uuid = $this->firstCategoryUuid($query, $title);
-            if ($uuid !== '') {
-                return $uuid;
-            }
+        $suggested = $this->api->suggestListingCategory($title, $this->productTypeHints($product, $sku, $title));
+        if ($this->looksLikeUuid((string) ($suggested['id'] ?? ''))) {
+            return [
+                'id' => (string) $suggested['id'],
+                'path' => (string) ($suggested['path'] ?? ''),
+            ];
         }
 
         $siblingId = $this->siblingListingId($product, $sku);
@@ -310,25 +326,58 @@ class ReverbListingPublishService
                 }
                 $uuid = trim((string) ($cat['uuid'] ?? $cat['id'] ?? ''));
                 if ($this->looksLikeUuid($uuid)) {
-                    return $uuid;
+                    return [
+                        'id' => $uuid,
+                        'path' => trim((string) ($cat['full_name'] ?? $cat['name'] ?? 'Same as listed sibling')),
+                    ];
                 }
             }
         }
 
-        return $this->firstCategoryUuid($title, $title);
+        $configured = trim((string) config('services.reverb.default_category_uuid', ''));
+        if ($this->looksLikeUuid($configured)) {
+            return ['id' => $configured, 'path' => 'Default Reverb category'];
+        }
+
+        return ['id' => '', 'path' => ''];
     }
 
-    private function firstCategoryUuid(string $query, string $title): string
+    /**
+     * @return list<string>
+     */
+    private function productTypeHints(ProductMaster $product, string $sku, string $title): array
     {
-        $res = $this->api->searchListingCategories($query, $title);
-        foreach ($res['categories'] ?? [] as $row) {
-            $id = trim((string) ($row['id'] ?? ''));
-            if ($this->looksLikeUuid($id)) {
-                return $id;
+        $hints = [];
+        $parent = $this->groupKey($product);
+        if ($parent !== '' && strcasecmp($parent, $sku) !== 0) {
+            $hints[] = $parent;
+        }
+
+        $categoryId = (int) ($product->category_id ?? 0);
+        if ($categoryId > 0) {
+            $name = trim((string) ProductCategory::query()->where('id', $categoryId)->value('category_name'));
+            if ($name !== '') {
+                $hints[] = $name;
+            }
+        }
+        if (Schema::hasColumn('product_master', 'category')) {
+            $legacy = trim((string) ($product->getAttribute('category') ?? ''));
+            if ($legacy !== '') {
+                $hints[] = $legacy;
             }
         }
 
-        return '';
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['type', 'Type', 'product_type', 'category', 'Category'] as $key) {
+            $raw = trim((string) ($values[$key] ?? ''));
+            if ($raw !== '') {
+                $hints[] = $raw;
+            }
+        }
+
+        $hints[] = $title;
+
+        return $hints;
     }
 
     /**

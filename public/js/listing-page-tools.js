@@ -194,9 +194,31 @@
         return String(cfg().channel || '').toLowerCase() === 'aliexpress';
     }
 
+    function isReverbChannel() {
+        const c = String(cfg().channel || '').toLowerCase();
+        return c === 'reverb' || c === 'reverbcom';
+    }
+
     function selectedCategoryId() {
         const el = document.getElementById('listing-publish-category-id');
         return el ? String(el.value || '').replace(/\D+/g, '') : '';
+    }
+
+    function selectedCategoryUuid() {
+        const el = document.getElementById('listing-publish-category-uuid');
+        return el ? String(el.value || '').trim() : '';
+    }
+
+    function applySuggestedCategory(suggested) {
+        const pathEl = document.getElementById('listing-publish-reverb-category-path');
+        const uuidEl = document.getElementById('listing-publish-category-uuid');
+        const path = String((suggested && suggested.path) || '').trim();
+        const id = String((suggested && suggested.id) || '').trim();
+        if (uuidEl) uuidEl.value = id;
+        if (!pathEl) return;
+        pathEl.textContent = path || (id
+            ? 'Reverb category matched from the product type.'
+            : 'No Reverb category matched this product type yet. Publish will try again from the title.');
     }
 
     function applyPublishModeUi() {
@@ -204,6 +226,9 @@
         if (box) box.style.display = '';
         const catBox = document.getElementById('listing-publish-aliexpress-category');
         if (catBox) catBox.hidden = !isAliexpressChannel();
+        const reverbBox = document.getElementById('listing-publish-reverb-category');
+        if (reverbBox) reverbBox.hidden = !isReverbChannel();
+        if (isReverbChannel()) applySuggestedCategory(null);
         updateModalCopy();
     }
 
@@ -399,6 +424,7 @@
             headers: { 'X-CSRF-TOKEN': csrf() },
             success: function (response) {
                 renderGroups((response && response.groups) || []);
+                if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
             },
             error: function (xhr) {
                 hideModal();
@@ -436,7 +462,8 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: selectedCategoryId()
+                category_id: selectedCategoryId(),
+                category_uuid: selectedCategoryUuid()
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
             timeout: 180000
