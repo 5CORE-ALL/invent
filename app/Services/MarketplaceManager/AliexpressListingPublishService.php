@@ -191,6 +191,11 @@ class AliexpressListingPublishService
                 'sku_code' => $row['sku'],
                 'price' => number_format((float) $row['price'], 2, '.', ''),
                 'inventory' => max(1, (int) $row['inv']),
+                'weight' => (string) $pkg['weight'],
+                'package_weight' => (float) $pkg['weight'],
+                'gross_weight' => (string) $pkg['weight'],
+                'aeLogisticsWeight' => (string) $pkg['weight'],
+                'usLogisticsWeight' => (string) $pkg['weight'],
             ];
             if ($variation) {
                 $skuRow['sku_attributes_list'] = [[
@@ -216,15 +221,27 @@ class AliexpressListingPublishService
             'inventory_deduction_strategy' => 'place_order_withhold',
             'shipping_lead_time' => max(1, (int) config('services.aliexpress.shipping_lead_time', 7)),
             'weight' => (string) $pkg['weight'],
-            'package_weight' => (string) $pkg['weight'],
+            'package_weight' => (float) $pkg['weight'],
             'gross_weight' => (string) $pkg['weight'],
             'usLogisticsWeight' => (string) $pkg['weight'],
+            'aeLogisticsWeight' => (string) $pkg['weight'],
+            'ae_logistics_weight' => (string) $pkg['weight'],
             'aeLogisticsWeightPackage' => [
                 'weight' => (float) $pkg['weight'],
+                'Package weight' => (string) $pkg['weight'],
                 'length' => (int) $pkg['length'],
                 'width' => (int) $pkg['width'],
                 'height' => (int) $pkg['height'],
             ],
+            'attribute_list' => [
+                ['attribute_name' => 'aeLogisticsWeight', 'attribute_value' => (string) $pkg['weight']],
+                ['attribute_name' => 'Package weight', 'attribute_value' => (string) $pkg['weight']],
+            ],
+            'extra_params' => json_encode([
+                'aeLogisticsWeight' => (string) $pkg['weight'],
+                'usLogisticsWeight' => (string) $pkg['weight'],
+                'package_weight' => (string) $pkg['weight'],
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'package_length' => (int) $pkg['length'],
             'package_width' => (int) $pkg['width'],
             'package_height' => (int) $pkg['height'],

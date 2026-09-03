@@ -151,10 +151,27 @@ class AliExpressApiService
     public function postProduct(array $request): array
     {
         $attempts = [$request];
+        $weight = trim((string) (
+            (is_scalar($request['aeLogisticsWeight'] ?? null) ? $request['aeLogisticsWeight'] : '')
+            ?: ($request['weight'] ?? '')
+            ?: ($request['package_weight'] ?? '')
+        ));
+        if ($weight !== '') {
+            $asObject = $request;
+            $asObject['aeLogisticsWeight'] = [
+                'Package weight' => $weight,
+                'value' => $weight,
+                'weight' => (float) $weight,
+            ];
+            $attempts[] = $asObject;
+        }
         if (trim((string) ($request['brand_name'] ?? '')) !== '') {
-            $withoutBrand = $request;
-            unset($withoutBrand['brand_name']);
-            $attempts[] = $withoutBrand;
+            $bases = $attempts;
+            foreach ($bases as $base) {
+                $withoutBrand = $base;
+                unset($withoutBrand['brand_name']);
+                $attempts[] = $withoutBrand;
+            }
         }
 
         $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
@@ -180,7 +197,9 @@ class AliExpressApiService
                 'message' => $bizError,
                 'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
             ];
-            if (empty($res['success']) && ! $this->isRetryableProductPostError($bizError)) {
+            if (empty($res['success'])
+                && ! $this->isRetryableProductPostError($bizError)
+                && ! $this->isAliExpressPackageSizeRequired($bizError)) {
                 break;
             }
         }
