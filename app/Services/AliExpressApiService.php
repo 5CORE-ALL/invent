@@ -165,13 +165,15 @@ class AliExpressApiService
             ];
             $attempts[] = $asObject;
         }
-        if (trim((string) ($request['brand_name'] ?? '')) !== '') {
-            $bases = $attempts;
-            foreach ($bases as $base) {
-                $withoutBrand = $base;
-                unset($withoutBrand['brand_name']);
-                $attempts[] = $withoutBrand;
+        $brand = trim((string) ($request['brand_name'] ?? ''));
+        if ($brand === '') {
+            $brand = '5 Core Inc.';
+            foreach ($attempts as $i => $base) {
+                $attempts[$i]['brand_name'] = $brand;
             }
+        }
+        foreach ($attempts as $i => $base) {
+            $attempts[$i] = $this->ensureAliExpressBrandAttribute($base, $brand);
         }
 
         $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
@@ -503,9 +505,38 @@ class AliExpressApiService
         $m = strtolower($message);
 
         return $m === ''
-            || str_contains($m, 'brand')
             || str_contains($m, 'accepted the request')
             || str_contains($m, 'did not return a product');
+    }
+
+    /**
+     * AliExpress requires brand_name, or attribute_list with aliexpress_attribute_name_id = 2.
+     *
+     * @param  array<string, mixed>  $request
+     * @return array<string, mixed>
+     */
+    private function ensureAliExpressBrandAttribute(array $request, string $brand): array
+    {
+        $brand = trim($brand) !== '' ? trim($brand) : '5 Core Inc.';
+        $request['brand_name'] = $brand;
+        $attrs = is_array($request['attribute_list'] ?? null) ? $request['attribute_list'] : [];
+        $hasBrandId = false;
+        foreach ($attrs as $row) {
+            if (is_array($row) && (int) ($row['aliexpress_attribute_name_id'] ?? 0) === 2) {
+                $hasBrandId = true;
+                break;
+            }
+        }
+        if (! $hasBrandId) {
+            array_unshift($attrs, [
+                'aliexpress_attribute_name_id' => 2,
+                'attribute_name' => 'Brand Name',
+                'attribute_value' => $brand,
+            ]);
+        }
+        $request['attribute_list'] = $attrs;
+
+        return $request;
     }
 
     /**

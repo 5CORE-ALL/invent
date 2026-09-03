@@ -234,6 +234,11 @@ class AliexpressListingPublishService
                 'height' => (int) $pkg['height'],
             ],
             'attribute_list' => [
+                [
+                    'aliexpress_attribute_name_id' => 2,
+                    'attribute_name' => 'Brand Name',
+                    'attribute_value' => $this->resolveBrand(),
+                ],
                 ['attribute_name' => 'aeLogisticsWeight', 'attribute_value' => (string) $pkg['weight']],
                 ['attribute_name' => 'Package weight', 'attribute_value' => (string) $pkg['weight']],
             ],
@@ -514,14 +519,7 @@ class AliexpressListingPublishService
 
     private function resolveBrand(): string
     {
-        $configured = trim((string) config('services.aliexpress.brand_name', ''));
-        $norm = strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $configured));
-        if ($configured !== '' && $norm !== '5CORE') {
-            return mb_substr($configured, 0, 80);
-        }
-        $brand = trim((string) config('listing_manager.default_brand', '5 Core Inc.'));
-
-        return mb_substr($brand !== '' ? $brand : '5 Core Inc.', 0, 80);
+        return '5 Core Inc.';
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string
