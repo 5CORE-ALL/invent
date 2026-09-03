@@ -2140,15 +2140,19 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Grid values come only from channel_master_calculated_data.
-     * Marketplace page live pulls run in channel:calculate-data, not here.
+     * Grid values come from channel_master_calculated_data. Today Sales is
+     * intra-day, so overlay live Eastern totals after restoring the snapshot
+     * (hourly calculate-data otherwise leaves the column stale at $0).
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        return $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveSheinYSalesOnChannelRows($rows);
+
+        return $this->overlayLiveTodaySalesOnChannelRows($rows);
     }
 
     /**
@@ -2175,6 +2179,40 @@ class ChannelMasterController extends Controller
             if ($value !== null) {
                 $row['Today Sales'] = $value;
             }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Shein Y Sales: snapshot stays $0 on gap days (no orders on Pacific
+     * yesterday). Overlay the last complete Pacific day that has sales.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveSheinYSalesOnChannelRows(array $rows): array
+    {
+        try {
+            $value = $this->computeSheinYSalesLikeAmazon();
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Shein Y Sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        if ($value === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'shein') {
+                continue;
+            }
+            $this->applyLiveYSalesIfPositive($row, $value);
+            break;
         }
         unset($row);
 
@@ -2367,6 +2405,7 @@ class ChannelMasterController extends Controller
             'mercariwship' => fn () => $this->computeMercariYSalesLikeAmazon(true),
             'mercariwoship' => fn () => $this->computeMercariYSalesLikeAmazon(false),
             'topdawg' => fn () => $this->computeTopDawgYSalesLikeAmazon(),
+            'shein' => fn () => $this->computeSheinYSalesLikeAmazon(),
         ];
 
         foreach ($rows as &$row) {
@@ -8175,7 +8214,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Shein: revenue on Pacific calendar day before latest order_processed_on (matches tabulator / aggregateSheinDailyDataLikeTabulator line revenue).
+     * Shein Y Sales from shein_daily_data (same GMV as /shein-tabulator).
+     * Prefer Pacific yesterday; if that day is empty (gap / timezone slip),
+     * use the latest complete Pacific day before yesterday that has sales.
      */
     private function computeSheinYSalesLikeAmazon(): ?float
     {
@@ -8183,20 +8224,43 @@ class ChannelMasterController extends Controller
             return null;
         }
 
-        $latestRaw = DB::table('shein_daily_data')->whereNotNull('order_processed_on')->max('order_processed_on');
-        if (! $latestRaw) {
+        if (! DB::table('shein_daily_data')->whereNotNull('order_processed_on')->exists()) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestRaw)->timezone('America/Los_Angeles');
-        $yStart = $latestPacific->copy()->subDay()->startOfDay();
-        $yEnd = $latestPacific->copy()->subDay()->endOfDay();
+        [$yStart, $yEnd] = $this->pacificYesterdayBounds();
+        $sum = $this->sumSheinDailyDataRevenue($yStart, $yEnd);
+        if ($sum > 0) {
+            return $sum;
+        }
 
+        $cursor = Carbon::yesterday('America/Los_Angeles')->subDay();
+        $floor = $cursor->copy()->subDays(13);
+        while ($cursor->gte($floor)) {
+            $sum = $this->sumSheinDailyDataRevenue(
+                $cursor->copy()->startOfDay(),
+                $cursor->copy()->endOfDay()
+            );
+            if ($sum > 0) {
+                return $sum;
+            }
+            $cursor->subDay();
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Product-price × qty for shein_daily_data in [$start, $end], excluding
+     * refund/return/cancel/closed/exchange (same rules as /shein-tabulator).
+     */
+    private function sumSheinDailyDataRevenue(Carbon $start, Carbon $end): float
+    {
         $sum = 0.0;
         foreach (
             DB::table('shein_daily_data')
-                ->where('order_processed_on', '>=', $yStart)
-                ->where('order_processed_on', '<=', $yEnd)
+                ->where('order_processed_on', '>=', $start)
+                ->where('order_processed_on', '<=', $end)
                 ->cursor() as $row
         ) {
             $orderNum = trim((string) ($row->order_number ?? ''));
@@ -8213,10 +8277,7 @@ class ChannelMasterController extends Controller
                 continue;
             }
             $quantity = max(1, (int) ($row->quantity ?? 0));
-            $productPrice = (float) ($row->product_price ?? 0);
-            // Sales = Product Price × qty (Seller Hub GMV)
-            $lineRevenue = $productPrice * $quantity;
-            $sum += $lineRevenue;
+            $sum += (float) ($row->product_price ?? 0) * $quantity;
         }
 
         return round($sum, 2);

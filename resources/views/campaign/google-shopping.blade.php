@@ -453,7 +453,7 @@
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes each row’s SBGT as daily budget (chunks of 10). SBGT 0 / INV ≤ 0 pauses the campaign — $0 cannot be pushed.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 4 using grid values (by campaign_id). Skips SBID — and non-ENABLED rows. Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
@@ -2594,8 +2594,9 @@
                 wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
 
-            function gacPushTargetCampaignIds() {
+            function gacPushTargetCampaignIds(opts) {
                 if (!table) return [];
+                opts = opts || {};
                 var selected = table.getSelectedData();
                 var rows = (selected && selected.length > 0) ? selected : table.getData();
                 var seen = {};
@@ -2604,6 +2605,14 @@
                     if (!row) return;
                     var cid = row.campaign_id;
                     if (cid === null || cid === undefined || cid === '') return;
+                    if (opts.requireSbid) {
+                        var sbid = row.sbid;
+                        if (sbid === null || sbid === undefined || sbid === '' || !(Number(sbid) > 0)) return;
+                    }
+                    if (opts.enabledOnly) {
+                        var st = String(row.campaign_status || '').toUpperCase();
+                        if (st && st !== 'ENABLED') return;
+                    }
                     var s = String(cid).replace(/\D/g, '');
                     if (!s) s = String(cid).trim();
                     if (s && !seen[s]) {
@@ -2672,6 +2681,9 @@
                         return res.json().then(function(body) {
                             return { ok: res.ok, status: res.status, body: body };
                         }).catch(function() {
+                            if (res.status === 504) {
+                                throw new Error('Nginx timed out after 120s (HTTP 504). Google Ads may still have applied this chunk — retry with fewer rows or wait and push again.');
+                            }
                             throw new Error('Server returned a non-JSON response (HTTP '
                                 + res.status + '). The request may have timed out — try fewer rows.');
                         });
@@ -2823,20 +2835,25 @@
             var pushSbidBtn = document.getElementById('gac-raw-push-sbid');
             if (pushSbidBtn) {
                 pushSbidBtn.addEventListener('click', function() {
-                    var ids = gacPushTargetCampaignIds();
+                    var ids = gacPushTargetCampaignIds({ requireSbid: true, enabledOnly: true });
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
+                    if (!ids.length) {
+                        window.alert('No ENABLED campaigns with an SBID to push. Rows with SBID — or a non-ENABLED status are skipped.');
+                        return;
+                    }
                     var scope = nSel > 0
-                        ? ('the ' + ids.length + ' checked row(s)')
-                        : ('all ' + ids.length + ' row(s) on this page');
-                    var sbidChunks = Math.ceil(ids.length / 10) || 1;
+                        ? ('the ' + ids.length + ' checked row(s) with SBID')
+                        : ('all ' + ids.length + ' ENABLED row(s) with SBID on this page');
+                    var sbidChunkSize = 4;
+                    var sbidChunks = Math.ceil(ids.length / sbidChunkSize) || 1;
                     gacRunArtisanPush({
                         url: gacRawPushSbidUrl,
                         btn: pushSbidBtn,
                         campaign_ids: ids,
-                        chunkSize: 10,
-                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of 10 (' + sbidChunks + ' request(s)). Each row uses the SBID shown in the grid. Rows with SBID — are skipped.',
+                        chunkSize: sbidChunkSize,
+                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of ' + sbidChunkSize + ' (' + sbidChunks + ' request(s)) so nginx does not 504. Each row uses the SBID shown in the grid.',
                         loadingTitle: 'Pushing SBID (sbid:update)…',
-                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s) in chunks of 10.',
+                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s) in chunks of ' + sbidChunkSize + '.',
                     });
                 });
             }
