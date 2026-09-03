@@ -1150,6 +1150,66 @@ class AliExpressApiService
     }
 
     /**
+     * Business /rest file upload. The file part is omitted from the sign.
+     *
+     * @param  array<string, string>  $businessParams
+     */
+    private function callRestWithFile(string $method, array $businessParams, string $fileField, string $bytes, string $fileName): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
+        }
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.').',
+            ];
+        }
+
+        $params = [
+            'app_key' => $this->appKey,
+            'method' => $method,
+            'access_token' => (string) $this->accessToken,
+            'sign_method' => 'sha256',
+            'timestamp' => (string) (int) round(microtime(true) * 1000),
+        ];
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '' || (string) $key === $fileField) {
+                continue;
+            }
+            $params[(string) $key] = (string) $value;
+        }
+
+        $last = ['success' => false, 'message' => 'AliExpress photobank upload failed.'];
+        foreach ([$method, '/rest'] as $apiName) {
+            $attempt = $params;
+            $attempt['sign'] = $this->signBusinessApi($attempt, $apiName);
+            try {
+                $response = $this->httpClient()
+                    ->connectTimeout(10)
+                    ->timeout(40)
+                    ->asMultipart()
+                    ->attach($fileField, $bytes, $fileName)
+                    ->post($this->restBase, $attempt);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                $last = $this->networkErrorResult('Could not reach AliExpress photobank (rest).', $e);
+                continue;
+            }
+
+            $parsed = $this->parseHttpResponse($response, $method, 'rest-file');
+            $last = $parsed;
+            if ($this->extractPhotobankUrl($parsed) !== '' || ! empty($parsed['success'])) {
+                return $parsed;
+            }
+            if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
+                return $parsed;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
      * AliExpress business API sign — apiName prefix + sorted key+value, HMAC-SHA256 uppercase hex.
      *
      * @param  array<string, string>  $params
@@ -1194,7 +1254,11 @@ class AliExpressApiService
             return true;
         }
 
-        return str_contains($message, 'invalid method')
+        return ! empty($result['invalid_json'])
+            || str_contains($message, 'invalid json')
+            || str_contains($message, 'web page')
+            || str_contains($message, 'empty response')
+            || str_contains($message, 'invalid method')
             || str_contains($message, 'isv.invalid-method')
             || str_contains($message, 'missing-parameter')
             || str_contains($message, 'missing parameter')
@@ -1288,11 +1352,23 @@ class AliExpressApiService
         }
 
         if (! is_array($json)) {
+            $raw = (string) $body;
+            $plain = trim(preg_replace('/\s+/', ' ', strip_tags($raw)) ?? '');
+            $looksHtml = str_contains(strtolower($raw), '<html')
+                || str_contains(strtolower($raw), '<!doctype');
+            $message = $looksHtml
+                ? 'AliExpress photobank returned a web page instead of JSON.'
+                : ($plain !== ''
+                    ? 'Invalid JSON response: '.mb_substr($plain, 0, 160)
+                    : 'AliExpress photobank returned an empty response.');
+
             return [
                 'success' => false,
                 'status' => $response->status(),
-                'message' => 'Invalid JSON response.',
-                'response' => $body,
+                'invalid_json' => true,
+                'network_error' => $looksHtml || $plain === '',
+                'message' => $message,
+                'response' => mb_substr($raw, 0, 400),
             ];
         }
 
@@ -3189,24 +3265,20 @@ class AliExpressApiService
             'aliexpress.photobank.redefining.uploadimageforsdk',
             'aliexpress.photobank.redefining.uploadimage',
         ] as $method) {
-            $parsed = $this->callSyncWithFile($method, $business, 'image_bytes', $bytes, $fileName);
-            $url = $this->extractPhotobankUrl($parsed);
-            if ($url !== '') {
-                return ['success' => true, 'url' => $url, 'message' => ''];
-            }
-            $last = trim((string) ($parsed['message'] ?? $last));
-            if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
-                break;
-            }
-
-            $parsed = $this->callTopRouterWithFile($method, $business, 'image_bytes', $bytes, $fileName);
-            $url = $this->extractPhotobankUrl($parsed);
-            if ($url !== '') {
-                return ['success' => true, 'url' => $url, 'message' => ''];
-            }
-            $last = trim((string) ($parsed['message'] ?? $last));
-            if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
-                break;
+            foreach ([
+                fn () => $this->callRestWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+                fn () => $this->callTopRouterWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+                fn () => $this->callSyncWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+            ] as $send) {
+                $parsed = $send();
+                $url = $this->extractPhotobankUrl($parsed);
+                if ($url !== '') {
+                    return ['success' => true, 'url' => $url, 'message' => ''];
+                }
+                $last = trim((string) ($parsed['message'] ?? $last));
+                if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
+                    break 2;
+                }
             }
         }
 
