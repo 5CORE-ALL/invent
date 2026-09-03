@@ -59,6 +59,7 @@ class AlibabaSyncController extends Controller
             'connected' => $this->apiConfig->isConfigured('alibaba'),
             'credentialsReady' => $credentialsReady,
             'authorizeUrl' => $hasAppCreds ? $this->alibabaAuth->getAuthorizeUrl($oauthState) : null,
+            'authorizeUrls' => $hasAppCreds ? $this->alibabaAuth->getAuthorizeUrls($oauthState) : [],
             'hasAppKey' => filled($appKey),
             'hasAppSecret' => filled($appSecret),
             'hasToken' => filled($accessToken),
