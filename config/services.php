@@ -965,6 +965,8 @@ return [
         'default_category_id' => env('ALIEXPRESS_DEFAULT_CATEGORY_ID', ''),
         'product_unit' => env('ALIEXPRESS_PRODUCT_UNIT', '100000015'),
         'shipping_lead_time' => (int) env('ALIEXPRESS_SHIPPING_LEAD_TIME', 7),
+        'brand_name' => env('ALIEXPRESS_BRAND_NAME', '5CORE'),
+        'service_policy_id' => env('ALIEXPRESS_SERVICE_POLICY_ID', '0'),
     ],
 
     /*

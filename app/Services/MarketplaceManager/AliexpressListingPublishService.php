@@ -138,85 +138,98 @@ class AliexpressListingPublishService
             ];
         }
 
-        $pkg = $this->packageSize($primary);
-        $skuList = [];
-        foreach ($prepared as $row) {
-            $skuList[] = [
-                'sku_code' => $row['sku'],
-                'price' => number_format($row['price'], 2, '.', ''),
-                'inventory' => max(1, (int) $row['inv']),
+        $freightId = $this->resolveFreightTemplateId($primary, $primarySku);
+        if ($freightId === '') {
+            return [
+                'success' => false,
+                'message' => 'AliExpress freight template is missing. Set ALIEXPRESS_FREIGHT_TEMPLATE_ID from freighttemplate.aliexpress.com (do not use 1000).',
             ];
         }
 
-        $freightId = trim((string) config('services.aliexpress.freight_template_id', ''));
+        $pkg = $this->packageSize($primary);
+        $subject = mb_substr($title, 0, 128);
+        $description = $this->resolveDescription($primary, $subject);
+        $variation = count($prepared) > 1;
+        $skuInfoList = [];
+        foreach ($prepared as $row) {
+            $skuRow = [
+                'sku_code' => $row['sku'],
+                'price' => number_format((float) $row['price'], 2, '.', ''),
+                'inventory' => max(1, (int) $row['inv']),
+            ];
+            if ($variation) {
+                $skuRow['sku_attributes_list'] = [[
+                    'sku_attribute_name' => 'Specification',
+                    'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
+                    'sku_image_url' => $row['images'][0] ?? ($gallery[0] ?? ''),
+                ]];
+            }
+            $skuInfoList[] = $skuRow;
+        }
+
         $request = [
+            'language' => 'en',
             'locale' => 'en_US',
-            'category_id' => $categoryId,
-            'subject_list' => [
-                ['locale' => 'en_US', 'value' => $title],
+            'aliexpress_category_id' => $categoryId,
+            'category_id' => (string) $categoryId,
+            'brand_name' => $this->resolveBrand($primary),
+            'multi_language_subject_list' => [
+                ['language' => 'en', 'subject' => $subject],
             ],
+            'multi_language_description_list' => [$this->descriptionModules($description)],
+            'main_image_urls_list' => array_slice($gallery, 0, 6),
+            'sku_info_list' => $skuInfoList,
             'product_unit' => (int) config('services.aliexpress.product_unit', 100000015),
             'inventory_deduction_strategy' => 'place_order_withhold',
             'shipping_lead_time' => max(1, (int) config('services.aliexpress.shipping_lead_time', 7)),
-            'package_weight' => (string) $pkg['weight'],
+            'weight' => (string) $pkg['weight'],
             'package_length' => (int) $pkg['length'],
             'package_width' => (int) $pkg['width'],
             'package_height' => (int) $pkg['height'],
-            'currency_code' => 'USD',
-            'multimedia' => [
-                'main_image_list' => array_map(
-                    static fn (string $url) => ['url' => $url],
-                    array_slice($gallery, 0, 6)
-                ),
-            ],
-            'product_sku_list' => $skuList,
+            'freight_template_id' => (int) $freightId,
+            'service_policy_id' => (int) config('services.aliexpress.service_policy_id', 0),
         ];
-        if ($freightId !== '') {
-            $request['freight_template_id'] = $freightId;
-        }
 
         Log::info('AliExpress publish: sending product.post', [
             'parent' => $parentKey,
             'skus' => $publishSkus,
             'category_id' => $categoryId,
+            'freight_template_id' => $freightId,
+            'mode' => $mode,
         ]);
 
         $res = $this->api->postProduct($request);
-        if (empty($res['success'])) {
-            $fallback = $request;
-            $fallback['aeop_ae_product_s_k_us'] = [
-                'aeop_ae_product_sku' => array_map(static function (array $row) {
-                    return [
-                        'sku_code' => $row['sku_code'],
-                        'sku_price' => $row['price'],
-                        'ipm_sku_stock' => $row['inventory'],
-                    ];
-                }, $skuList),
-            ];
-            unset($fallback['product_sku_list']);
-            $res = $this->api->postProduct($fallback);
-        }
-
-        if (empty($res['success'])) {
+        $productId = trim((string) ($res['product_id'] ?? ''));
+        if (empty($res['success']) || $productId === '') {
             return [
                 'success' => false,
-                'message' => $res['message'] ?? 'AliExpress product post failed.',
+                'message' => $res['message'] ?? 'AliExpress product post failed. Nothing was created in the seller portal.',
             ];
         }
 
-        $productId = trim((string) ($res['product_id'] ?? ''));
+        $online = $this->api->onlineProducts([$productId]);
         $this->persistListed($prepared, $productId);
         $this->forgetListingCaches();
 
         $count = count($publishSkus);
+        $created = $count > 1
+            ? 'Created AliExpress product #'.$productId.' with '.$count.' variations of '.$parentKey
+            : 'Created AliExpress product #'.$productId.' for '.$primarySku;
+        if (empty($online['success'])) {
+            return [
+                'success' => true,
+                'message' => $created.'. It is in the seller portal as draft/offline/pending review — open that tab and click Publish. '.($online['message'] ?? ''),
+                'goods_id' => $productId,
+                'sku_id' => $productId,
+                'skus' => $publishSkus,
+            ];
+        }
 
         return [
             'success' => true,
-            'message' => $count > 1
-                ? 'Published '.$count.' variations of '.$parentKey.' to AliExpress.'
-                : 'Published '.$primarySku.' to AliExpress.',
-            'goods_id' => $productId !== '' ? $productId : null,
-            'sku_id' => $productId !== '' ? $productId : null,
+            'message' => $created.' and put it on selling. Search the seller portal for product ID '.$productId.'.',
+            'goods_id' => $productId,
+            'sku_id' => $productId,
             'skus' => $publishSkus,
         ];
     }
@@ -327,6 +340,110 @@ class AliexpressListingPublishService
         }
 
         return $this->api->suggestCategory($title, $imageUrl);
+    }
+
+    private function resolveFreightTemplateId(ProductMaster $primary, string $sku): string
+    {
+        $configured = trim((string) config('services.aliexpress.freight_template_id', ''));
+        if ($configured !== '' && $configured !== '1000' && ctype_digit($configured)) {
+            return $configured;
+        }
+
+        $parent = $this->groupKey($primary);
+        $siblings = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parent)
+            ->pluck('sku')
+            ->all();
+        $metrics = AliexpressListingCounts::metricsByNormalizedSku();
+        foreach ($siblings as $sib) {
+            $productId = AliexpressListingCounts::productIdForSku((string) $sib, $metrics);
+            if ($productId === '') {
+                continue;
+            }
+            $info = $this->api->getProductInfo($productId);
+            if (empty($info['success'])) {
+                continue;
+            }
+            $id = $this->api->extractFreightTemplateId($info['data'] ?? []);
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        return $this->api->firstFreightTemplateId();
+    }
+
+    private function resolveBrand(ProductMaster $product): string
+    {
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['brand', 'Brand', 'brand_name'] as $key) {
+            $brand = trim((string) ($values[$key] ?? ''));
+            if ($brand !== '') {
+                return mb_substr($brand, 0, 80);
+            }
+        }
+        $configured = trim((string) config('services.aliexpress.brand_name', '5CORE'));
+
+        return $configured !== '' ? $configured : '5CORE';
+    }
+
+    private function resolveDescription(ProductMaster $product, string $title): string
+    {
+        $html = trim((string) ($product->description_html ?? ''));
+        if ($html !== '') {
+            return $html;
+        }
+        foreach (['description_1500', 'description_1000', 'description_800', 'description_600', 'product_description'] as $col) {
+            $text = trim((string) ($product->{$col} ?? ''));
+            if ($text !== '') {
+                return nl2br(e($text), false);
+            }
+        }
+        $bullets = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $b = trim((string) ($product->{'bullet'.$i} ?? ''));
+            if ($b !== '') {
+                $bullets[] = $b;
+            }
+        }
+        if ($bullets !== []) {
+            $out = '<p>'.e($title).'</p><ul>';
+            foreach ($bullets as $b) {
+                $out .= '<li>'.e($b).'</li>';
+            }
+
+            return $out.'</ul>';
+        }
+
+        return '<p>'.e($title).'</p>';
+    }
+
+    /**
+     * @return array{language: string, web_detail: string, mobile_detail: string}
+     */
+    private function descriptionModules(string $html): array
+    {
+        $plain = trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5)) ?? '');
+        if ($plain === '') {
+            $plain = 'Product details';
+        }
+
+        return [
+            'language' => 'en',
+            'web_detail' => json_encode([
+                'moduleList' => [
+                    ['type' => 'html', 'html' => ['content' => $html]],
+                ],
+                'version' => '2.0.0',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'mobile_detail' => json_encode([
+                'moduleList' => [
+                    ['type' => 'text', 'texts' => ['content' => mb_substr($plain, 0, 2000), 'class' => 'body']],
+                ],
+                'version' => '2.0.0',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ];
     }
 
     private function resolveTitle(ProductMaster $product, string $sku): string

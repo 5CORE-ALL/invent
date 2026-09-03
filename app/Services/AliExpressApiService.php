@@ -163,12 +163,20 @@ class AliExpressApiService
                 'sync' => $params,
             ]);
             if (! empty($res['success'])) {
-                $productId = $this->extractPostedProductId($res['data'] ?? []);
+                $productId = $this->extractPostedProductId($res['data'] ?? [])
+                    ?: $this->extractPostedProductId($res['result'] ?? [])
+                    ?: $this->extractPostedProductId($res);
                 if ($productId !== '') {
                     $res['product_id'] = $productId;
-                }
 
-                return $res;
+                    return $res;
+                }
+                $last = [
+                    'success' => false,
+                    'message' => 'AliExpress accepted the request but did not return a product ID, so nothing was created in the seller portal.',
+                    'data' => $res['data'] ?? null,
+                ];
+                continue;
             }
             $last = $res;
         }
@@ -257,20 +265,94 @@ class AliExpressApiService
     /**
      * @param  mixed  $data
      */
-    private function extractPostedProductId(mixed $data): string
+    private function extractPostedProductId(mixed $data, int $depth = 0): string
     {
-        if (! is_array($data)) {
+        if ($depth > 8) {
             return '';
         }
+        if (! is_array($data)) {
+            $id = trim((string) $data);
+
+            return preg_match('/^\d{6,}$/', $id) ? $id : '';
+        }
         foreach (['product_id', 'productId', 'item_id', 'itemId'] as $key) {
-            $id = trim((string) ($data[$key] ?? ''));
+            if (! array_key_exists($key, $data) || is_array($data[$key])) {
+                continue;
+            }
+            $id = trim((string) $data[$key]);
+            if (preg_match('/^\d{6,}$/', $id)) {
+                return $id;
+            }
+        }
+        foreach (['result', 'data', 'response'] as $wrap) {
+            if (! isset($data[$wrap])) {
+                continue;
+            }
+            $nested = $this->extractPostedProductId($data[$wrap], $depth + 1);
+            if ($nested !== '') {
+                return $nested;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * First usable seller freight template (id 1000 is AliExpress default and is invalid for overseas).
+     */
+    public function firstFreightTemplateId(): string
+    {
+        foreach ([
+            'aliexpress.freight.redefining.listfreighttemplate',
+            'aliexpress.solution.seller.freight.list.get',
+        ] as $method) {
+            $res = $this->callApiFlexible($method, [
+                'rest' => [],
+                'sync' => [],
+            ]);
+            if (empty($res['success'])) {
+                continue;
+            }
+            $id = $this->extractFreightTemplateId($res['data'] ?? []);
             if ($id !== '') {
                 return $id;
             }
         }
-        foreach (['result', 'data'] as $wrap) {
-            if (isset($data[$wrap])) {
-                $nested = $this->extractPostedProductId($data[$wrap]);
+
+        return '';
+    }
+
+    public function extractFreightTemplateId(mixed $data, int $depth = 0): string
+    {
+        if ($depth > 8) {
+            return '';
+        }
+        if (! is_array($data)) {
+            $id = trim((string) $data);
+
+            return ($id !== '' && $id !== '1000' && ctype_digit($id)) ? $id : '';
+        }
+        foreach (['freight_template_id', 'freightTemplateId', 'template_id', 'templateId'] as $key) {
+            if (! array_key_exists($key, $data) || is_array($data[$key])) {
+                continue;
+            }
+            $id = $this->extractFreightTemplateId($data[$key], $depth + 1);
+            if ($id !== '') {
+                return $id;
+            }
+        }
+        foreach (['result', 'data', 'aeop_freight_template_d_t_o_list', 'freight_template_list', 'template_list'] as $wrap) {
+            if (! isset($data[$wrap])) {
+                continue;
+            }
+            $nested = $this->extractFreightTemplateId($data[$wrap], $depth + 1);
+            if ($nested !== '') {
+                return $nested;
+            }
+        }
+        if (isset($data[0]) && is_array($data[0])) {
+            foreach ($data as $row) {
+                $nested = $this->extractFreightTemplateId($row, $depth + 1);
                 if ($nested !== '') {
                     return $nested;
                 }
