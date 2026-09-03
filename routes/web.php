@@ -7218,6 +7218,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/month', [PayrollController::class, 'storeMonth'])->name('month.store');
         Route::put('/month/{payrollMonth}', [PayrollController::class, 'updateMonth'])->name('month.update');
         Route::post('/month/{payrollMonth}/sync-employees', [PayrollController::class, 'syncEmployees'])->name('month.sync-employees');
+        Route::post('/month/{payrollMonth}/sync-final-hours', [PayrollController::class, 'syncFinalHours'])->name('month.sync-final-hours');
         Route::post('/month/{payrollMonth}/recalculate', [PayrollController::class, 'recalculate'])->name('month.recalculate');
         Route::post('/month/{payrollMonth}/toggle-lock', [PayrollController::class, 'toggleLock'])->name('month.toggle-lock');
         Route::post('/month/{payrollMonth}/components', [PayrollController::class, 'storeComponent'])->name('month.components.store');

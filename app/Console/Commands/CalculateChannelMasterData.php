@@ -40,6 +40,9 @@ class CalculateChannelMasterData extends Command
 
     protected string $monitorJobName = 'Channel Calculate Data';
 
+    /** Expire before the next hourly tick so a crashed run cannot block all night. */
+    protected int $monitorLockTtlSeconds = 3300;
+
     public function handle(): int
     {
         return $this->runMonitored(

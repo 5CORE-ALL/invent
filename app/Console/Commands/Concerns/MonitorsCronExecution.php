@@ -42,7 +42,7 @@ trait MonitorsCronExecution
         $lockKey = '';
 
         try {
-            $lockKey = $locks->acquire($commandName);
+            $lockKey = $locks->acquire($commandName, $this->monitoredLockTtl());
         } catch (Throwable $e) {
             $this->error($e->getMessage());
 
@@ -89,6 +89,15 @@ trait MonitorsCronExecution
         } finally {
             $locks->release($lockKey);
         }
+    }
+
+    protected function monitoredLockTtl(): ?int
+    {
+        if (property_exists($this, 'monitorLockTtlSeconds') && $this->monitorLockTtlSeconds) {
+            return (int) $this->monitorLockTtlSeconds;
+        }
+
+        return null;
     }
 
     protected function monitoredJobName(): string

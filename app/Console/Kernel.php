@@ -827,13 +827,14 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
-        $ist($schedule->command('channel:calculate-data --force')
-            ->everyTenMinutes()
+        // 24/7 hourly — do not wrap in $ist() (that window stops after 20:00 IST).
+        $schedule->command('channel:calculate-data --force')
+            ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('channel-master-calculate-data')
-            ->withoutOverlapping(120)
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');

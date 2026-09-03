@@ -1891,9 +1891,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * /all-marketplace-master grid = channel_master_calculated_data only.
-     * Do not overlay live order/API numbers on page load — refresh happens in
-     * channel:calculate-data, which writes this table.
+     * Grid starts from channel_master_calculated_data, then the same live
+     * Pacific-yesterday Amazon overlay the Y Sales chart last point uses.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -1901,8 +1900,14 @@ class ChannelMasterController extends Controller
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
         $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->overlayLiveAmazonYSalesOnChannelRows($rows);
+        $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
+        foreach ($rows as &$row) {
+            $row = $this->withYProfitColumns($row);
+        }
+        unset($row);
 
-        return $this->overlayLiveTodaySalesOnChannelRows($rows);
+        return $rows;
     }
 
     /**

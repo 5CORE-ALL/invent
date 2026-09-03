@@ -192,6 +192,7 @@
             <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" id="btnToggleLock"><i class="ri-lock-line"></i> Lock</button>
             <a href="#" id="btnDownloadPayoutSheet" class="btn btn-sm btn-success text-nowrap"><i class="ri-file-excel-2-line me-1"></i>Download</a>
             <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="btnSyncEmployees"><i class="ri-refresh-line"></i> Sync Hours</button>
+            <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="btnSyncFinalHours" title="Copy Final Hour into Hours LM and recalculate salary"><i class="ri-arrow-left-right-line"></i> Sync Final Hour</button>
             @endif
         </div>
     </div>
@@ -499,6 +500,42 @@
                     }
                     return txt;
                 } },
+            { title: 'New Logger', field: 'new_logger_hours', hozAlign: 'center', width: 120,
+                headerTooltip: 'Built-in logger hours after the first 18 days',
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    const v = parseFloat(c.getValue());
+                    if (isNaN(v)) return '—';
+                    const days = parseInt(d.new_logger_days, 10);
+                    const range = (d.logger_new_from && d.logger_new_to)
+                        ? (d.logger_new_from + ' – ' + d.logger_new_to)
+                        : 'after day 18';
+                    const tip = (!isNaN(days) && days > 0)
+                        ? (days + ' day' + (days === 1 ? '' : 's') + ' from built-in logger (' + range + ')')
+                        : ('Built-in attendance logger (' + range + ')');
+                    return '<span title="' + esc(tip) + '">' + Math.round(v) + 'h</span>';
+                } },
+            { title: 'Final Hour', field: 'final_hours', hozAlign: 'center', width: 120,
+                headerTooltip: '18 days TeamLogger + remaining days New Logger',
+                formatter: (c) => {
+                    const d = c.getRow().getData();
+                    const v = parseFloat(c.getValue());
+                    if (isNaN(v)) return '—';
+                    const team = parseFloat(d.team_logger_split_hours ?? d.team_logger_15_hours);
+                    const neu = parseFloat(d.new_logger_hours);
+                    const second = parseFloat(d.final_second_hours);
+                    const secondH = !isNaN(second) ? Math.round(second) : (isNaN(neu) ? 0 : Math.round(neu));
+                    const secondSrc = (!isNaN(neu) && neu > 0) ? 'New Logger' : 'TeamLogger';
+                    const teamRange = (d.logger_team_from && d.logger_team_to)
+                        ? (d.logger_team_from + ' – ' + d.logger_team_to)
+                        : 'first 18 days';
+                    const newRange = (d.logger_new_from && d.logger_new_to)
+                        ? (d.logger_new_from + ' – ' + d.logger_new_to)
+                        : 'after day 18';
+                    const tip = (isNaN(team) ? 0 : Math.round(team)) + 'h TeamLogger (' + teamRange + ') + '
+                        + secondH + 'h ' + secondSrc + ' (' + newRange + ')';
+                    return '<strong title="' + esc(tip) + '">' + Math.round(v) + 'h</strong>';
+                } },
             { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
@@ -755,6 +792,17 @@
             loadMonth();
         } catch (err) {
             alert((err && err.message) ? err.message : 'Failed to sync hours.');
+        }
+    });
+
+    document.getElementById('btnSyncFinalHours')?.addEventListener('click', async () => {
+        if (!confirm('Copy Final Hour into Hours LM for this month and recalculate salary?')) return;
+        try {
+            const res = await api(`${base}/month/${currentMonthId()}/sync-final-hours`, 'POST', {});
+            alert(res.message || 'Final Hour synced to Hours LM.');
+            loadMonth();
+        } catch (err) {
+            alert((err && err.message) ? err.message : 'Failed to sync Final Hour.');
         }
     });
 

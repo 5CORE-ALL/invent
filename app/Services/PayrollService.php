@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\AttendanceDailySummary;
+use App\Models\AttendanceSession;
 use App\Models\PayrollArrear;
 use App\Models\PayrollEmployeeSalary;
 use App\Models\PayrollMonth;
@@ -16,6 +18,9 @@ use Carbon\Carbon;
 
 class PayrollService
 {
+    /** First N calendar days of the month come from TeamLogger; the rest from New Logger. */
+    public const LOGGER_TEAM_DAYS = 18;
+
     public function __construct(
         protected TeamSalaryCalculator $teamSalary
     ) {}
@@ -122,6 +127,238 @@ class PayrollService
         }
 
         return $query;
+    }
+
+    /**
+     * First 18 calendar days → TeamLogger; remaining days → built-in logger.
+     * Display only — does not change Hours LM or salary amounts.
+     *
+     * @param  iterable<int, User|object>  $users
+     * @return array<int, array{hours: float, days: int, team_hours: float, final_hours: float, team_from: string, team_to: string, new_from: ?string, new_to: string}>
+     */
+    public function loggerSplitHoursByUser(PayrollMonth $month, iterable $users): array
+    {
+        $users = collect($users)->filter(fn ($u) => $u && isset($u->id));
+        if ($users->isEmpty()) {
+            return [];
+        }
+
+        $split = $this->loggerSplitDates($month);
+        if (! $split) {
+            return [];
+        }
+
+        $userIds = $users->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $newLogger = $split['new_start']
+            ? $this->builtLoggerHoursForRange($userIds, $split['new_start'], $split['new_end'])
+            : [];
+
+        $teamLoggerService = new TeamLoggerService();
+        $teamFirst = $teamLoggerService->fetchByDateRange($split['team_start'], $split['team_end'], true);
+        $teamSecond = $split['new_start']
+            ? $teamLoggerService->fetchByDateRange($split['new_start'], $split['new_end'], true)
+            : [];
+
+        $hours = [];
+        foreach ($users as $user) {
+            $userId = (int) $user->id;
+            $email = $this->resolveTeamLoggerEmail((string) ($user->email ?? ''));
+            $teamHours = $this->productiveHoursFromTeamLoggerEntry($teamFirst[$email] ?? null);
+            $built = $newLogger[$userId] ?? ['hours' => 0.0, 'days' => 0];
+            $secondHours = $built['hours'] > 0
+                ? $built['hours']
+                : $this->productiveHoursFromTeamLoggerEntry($teamSecond[$email] ?? null);
+
+            $hours[$userId] = [
+                'hours' => $built['hours'],
+                'days' => $built['days'],
+                'team_hours' => $teamHours,
+                'second_hours' => $secondHours,
+                'final_hours' => $teamHours + $secondHours,
+                'team_from' => $split['team_start'],
+                'team_to' => $split['team_end'],
+                'new_from' => $split['new_start'],
+                'new_to' => $split['new_end'],
+            ];
+        }
+
+        return $hours;
+    }
+
+    /**
+     * Copy Final Hour (18d TeamLogger + remaining New Logger) into Hours LM
+     * and recalculate salary. Marks hours as overridden so TeamLogger refresh
+     * does not overwrite the split total.
+     *
+     * @return array{updated:int, unchanged:int, skipped_no_data:int, locked:bool}
+     */
+    public function syncFinalHoursToHoursLm(PayrollMonth $month, ?string $editedBy = 'Final Hour sync'): array
+    {
+        $stats = [
+            'updated' => 0,
+            'unchanged' => 0,
+            'skipped_no_data' => 0,
+            'locked' => (bool) $month->is_locked,
+        ];
+
+        if ($month->is_locked) {
+            return $stats;
+        }
+
+        $rows = PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get();
+        $split = $this->loggerSplitHoursByUser($month, $rows->pluck('user')->filter());
+        $changed = false;
+
+        foreach ($rows as $row) {
+            if (! $row->user || ! array_key_exists($row->user_id, $split)) {
+                $stats['skipped_no_data']++;
+                continue;
+            }
+
+            $finalHours = (float) ($split[$row->user_id]['final_hours'] ?? 0);
+            if ((float) $row->hours_worked === $finalHours && $row->hours_overridden) {
+                $stats['unchanged']++;
+                continue;
+            }
+
+            $row->update([
+                'hours_worked' => $finalHours,
+                'hours_overridden' => true,
+                'edited_by' => $editedBy,
+                'edited_at' => now(),
+            ]);
+            $stats['updated']++;
+            $changed = true;
+        }
+
+        if ($changed) {
+            $this->recalculateMonth($month);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Built-in attendance-logger hours for the payroll month (display only).
+     *
+     * @param  array<int, int|string>  $userIds
+     * @return array<int, array{hours: float, days: int}>
+     */
+    public function builtLoggerHoursByUser(PayrollMonth $month, array $userIds, ?string $from = null, ?string $to = null): array
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if ($userIds === []) {
+            return [];
+        }
+
+        $start = $from;
+        $end = $to;
+        if (! $start || ! $end) {
+            $start = $month->period_start?->toDateString();
+            $end = $month->period_end?->toDateString();
+            if (! $start || ! $end) {
+                [$start, $end] = $this->periodDatesFromLabel($month->month_label);
+            }
+        }
+        if (! $start || ! $end) {
+            return [];
+        }
+
+        return $this->builtLoggerHoursForRange($userIds, $start, $end);
+    }
+
+    /**
+     * @return array{team_start: string, team_end: string, new_start: ?string, new_end: string}|null
+     */
+    protected function loggerSplitDates(PayrollMonth $month): ?array
+    {
+        $start = $month->period_start?->copy();
+        $end = $month->period_end?->copy();
+        if (! $start || ! $end) {
+            [$startDate, $endDate] = $this->periodDatesFromLabel($month->month_label);
+            if (! $startDate || ! $endDate) {
+                return null;
+            }
+            $start = Carbon::parse($startDate)->startOfDay();
+            $end = Carbon::parse($endDate)->startOfDay();
+        }
+
+        $teamEnd = $start->copy()->addDays(self::LOGGER_TEAM_DAYS - 1);
+        if ($teamEnd->gt($end)) {
+            $teamEnd = $end->copy();
+        }
+        $newStart = $teamEnd->copy()->addDay();
+
+        return [
+            'team_start' => $start->toDateString(),
+            'team_end' => $teamEnd->toDateString(),
+            'new_start' => $newStart->lte($end) ? $newStart->toDateString() : null,
+            'new_end' => $end->toDateString(),
+        ];
+    }
+
+    /**
+     * @param  array<int, int>  $userIds
+     * @return array<int, array{hours: float, days: int}>
+     */
+    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end): array
+    {
+        $startAt = Carbon::parse($start)->startOfDay();
+        $endAt = Carbon::parse($end)->endOfDay();
+
+        $fromSummaries = AttendanceDailySummary::query()
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('work_date', [$start, $end])
+            ->selectRaw('user_id, SUM(active_seconds) as active_seconds, SUM(total_work_seconds) as work_seconds, SUM(CASE WHEN active_seconds > 0 OR total_work_seconds > 0 THEN 1 ELSE 0 END) as days')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
+        $fromSessions = AttendanceSession::query()
+            ->whereIn('user_id', $userIds)
+            ->where('started_at', '<=', $endAt)
+            ->where(function ($q) use ($startAt) {
+                $q->whereNull('ended_at')->orWhere('ended_at', '>=', $startAt);
+            })
+            ->selectRaw('user_id, SUM(total_active_seconds) as active_seconds, COUNT(DISTINCT DATE(started_at)) as days')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
+        $hours = [];
+        foreach ($userIds as $userId) {
+            $summary = $fromSummaries->get($userId);
+            $session = $fromSessions->get($userId);
+
+            $summaryActive = (int) ($summary?->active_seconds ?? 0);
+            $summaryWork = (int) ($summary?->work_seconds ?? 0);
+            $sessionActive = (int) ($session?->active_seconds ?? 0);
+            $summarySeconds = $summaryActive > 0 ? $summaryActive : $summaryWork;
+            $seconds = max($summarySeconds, $sessionActive);
+
+            $hours[$userId] = [
+                'hours' => $seconds > 0 ? (float) (int) round($seconds / 3600) : 0.0,
+                'days' => (int) max((int) ($summary?->days ?? 0), (int) ($session?->days ?? 0)),
+            ];
+        }
+
+        return $hours;
+    }
+
+    /** @param  array<string, mixed>|null  $entry */
+    protected function productiveHoursFromTeamLoggerEntry(?array $entry): float
+    {
+        if (! $entry) {
+            return 0.0;
+        }
+
+        $total = (float) ($entry['total_hours'] ?? 0);
+        $idle = (float) ($entry['idle_hours'] ?? 0);
+        if ($total > 0) {
+            return (float) (int) round(max(0, $total - max(0, $idle)));
+        }
+
+        return (float) (int) round((float) ($entry['hours'] ?? $entry['active_hours'] ?? 0));
     }
 
     /**

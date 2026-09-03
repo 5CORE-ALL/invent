@@ -143,11 +143,17 @@ class PayrollController extends Controller
             'payslips',
         ]);
 
-        $employees = PayrollEmployeeSalary::with('user')
+        $salaryRows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
             ->orderBy('id')
-            ->get()
-            ->map(fn ($r) => $this->employeeRowPayload($r));
+            ->get();
+
+        $newLoggerByUser = $this->payroll->loggerSplitHoursByUser(
+            $payrollMonth,
+            $salaryRows->pluck('user')->filter()
+        );
+
+        $employees = $salaryRows->map(fn ($r) => $this->employeeRowPayload($r, $newLoggerByUser));
 
         $salaryByUser = PayrollEmployeeSalary::where('payroll_month_id', $payrollMonth->id)
             ->get()
@@ -247,6 +253,34 @@ class PayrollController extends Controller
         return response()->json([
             'success' => true,
             'message' => $this->syncHoursMessage($stats, $payrollMonth->month_label),
+            'stats' => $stats,
+        ]);
+    }
+
+    public function syncFinalHours(Request $request, PayrollMonth $payrollMonth): JsonResponse
+    {
+        $this->authorizeSheetAdmin();
+        $this->ensureUnlocked($payrollMonth);
+
+        $stats = $this->payroll->syncFinalHoursToHoursLm(
+            $payrollMonth,
+            $request->user()?->name ?: 'Final Hour sync'
+        );
+
+        $updated = (int) ($stats['updated'] ?? 0);
+        $unchanged = (int) ($stats['unchanged'] ?? 0);
+        $skipped = (int) ($stats['skipped_no_data'] ?? 0);
+        $parts = ["{$updated} employee Hours LM row(s) updated from Final Hour."];
+        if ($unchanged > 0) {
+            $parts[] = "{$unchanged} already matched.";
+        }
+        if ($skipped > 0) {
+            $parts[] = "{$skipped} had no Final Hour data.";
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => implode(' ', $parts),
             'stats' => $stats,
         ]);
     }
@@ -453,9 +487,29 @@ class PayrollController extends Controller
         }
     }
 
-    /** @return array<string, mixed> */
-    protected function employeeRowPayload(PayrollEmployeeSalary $r): array
+    /**
+     * @param  array<int, array{hours: float, days: int, team_hours?: float, final_hours?: float, team_from?: string, team_to?: string, new_from?: ?string, new_to?: string}>  $newLoggerByUser
+     * @return array<string, mixed>
+     */
+    protected function employeeRowPayload(PayrollEmployeeSalary $r, array $newLoggerByUser = []): array
     {
+        if (! array_key_exists($r->user_id, $newLoggerByUser)) {
+            $month = $r->payrollMonth;
+            if ($month) {
+                $newLoggerByUser = $this->payroll->loggerSplitHoursByUser($month, array_filter([$r->user]));
+            }
+        }
+        $logger = $newLoggerByUser[$r->user_id] ?? [
+            'hours' => 0.0,
+            'days' => 0,
+            'team_hours' => 0.0,
+            'final_hours' => 0.0,
+        ];
+        $teamHours = (float) ($logger['team_hours'] ?? 0);
+        $newHours = (float) ($logger['hours'] ?? 0);
+        $secondHours = (float) ($logger['second_hours'] ?? $newHours);
+        $finalHours = (float) ($logger['final_hours'] ?? ($teamHours + $secondHours));
+
         return [
             'id' => $r->id,
             'user_id' => $r->user_id,
@@ -477,6 +531,16 @@ class PayrollController extends Controller
             'salary_lm' => (float) $r->salary_pp + (float) $r->increment,
             'hours_worked' => $r->hours_worked,
             'hours_overridden' => (bool) $r->hours_overridden,
+            'new_logger_hours' => $newHours,
+            'new_logger_days' => $logger['days'] ?? 0,
+            'team_logger_split_hours' => $teamHours,
+            'team_logger_15_hours' => $teamHours,
+            'final_second_hours' => $secondHours,
+            'final_hours' => $finalHours,
+            'logger_team_from' => $logger['team_from'] ?? null,
+            'logger_team_to' => $logger['team_to'] ?? null,
+            'logger_new_from' => $logger['new_from'] ?? null,
+            'logger_new_to' => $logger['new_to'] ?? null,
             'amount_lm' => $r->gross_amount,
             'amount_p' => $r->net_amount,
             'gross_amount' => $r->gross_amount,
