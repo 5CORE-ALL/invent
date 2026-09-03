@@ -2663,11 +2663,9 @@ class AliExpressApiService
                 break;
             }
             $signVariants = [
-                ['sign_method' => $this->restSignMethod === 'md5' ? 'md5' : 'hmac', 'style' => 'top'],
+                ['sign_method' => 'hmac', 'style' => 'top'],
+                ['sign_method' => 'md5', 'style' => 'top'],
             ];
-            if ($index === 0) {
-                $signVariants[] = ['sign_method' => 'sha256', 'style' => 'sha256'];
-            }
             foreach ($signVariants as $variant) {
                 $attempt = $params;
                 $attempt['sign_method'] = $variant['sign_method'];
@@ -3299,29 +3297,35 @@ class AliExpressApiService
             return ['success' => false, 'message' => $downloaded['message'] ?? 'Could not download the Image Master photo.'];
         }
         $fileName = (string) ($downloaded['filename'] ?? 'image.jpg');
-        $last = 'AliExpress photobank upload failed.';
         $business = [
             'file_name' => $fileName,
             'group_id' => '0',
         ];
 
-        foreach ([
+        $parsed = $this->callTopRouterWithFile(
             'aliexpress.photobank.redefining.uploadimageforsdk',
-            'aliexpress.photobank.redefining.uploadimage',
-        ] as $method) {
-            foreach (['session', 'access_token'] as $tokenKey) {
-                $parsed = $this->callIopFileUpload($method, $business, 'image_bytes', $bytes, $fileName, $tokenKey);
-                $url = $this->extractPhotobankUrl($parsed);
-                if ($url !== '') {
-                    return ['success' => true, 'url' => $url, 'message' => ''];
-                }
-                $last = trim((string) ($parsed['message'] ?? $last));
-                if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
-                    break 2;
-                }
-            }
+            $business,
+            'image_bytes',
+            $bytes,
+            $fileName
+        );
+        $url = $this->extractPhotobankUrl($parsed);
+        if ($url !== '') {
+            return ['success' => true, 'url' => $url, 'message' => ''];
         }
 
+        $publicUrl = $this->storePublicImage($bytes, $fileName);
+        if ($publicUrl !== '') {
+            Log::warning('AliExpress photobank unavailable, hosting Image Master photo on app URL', [
+                'source' => mb_substr($sourceUrl, 0, 200),
+                'public' => $publicUrl,
+                'photobank' => $parsed['message'] ?? '',
+            ]);
+
+            return ['success' => true, 'url' => $publicUrl, 'message' => ''];
+        }
+
+        $last = trim((string) ($parsed['message'] ?? 'AliExpress photobank upload failed.'));
         Log::warning('AliExpress photobank upload failed', [
             'source' => mb_substr($sourceUrl, 0, 200),
             'file' => $fileName,
@@ -3332,6 +3336,29 @@ class AliExpressApiService
             'success' => false,
             'message' => $last !== '' ? $last : 'AliExpress photobank upload failed.',
         ];
+    }
+
+    private function storePublicImage(string $bytes, string $fileName): string
+    {
+        $ext = strtolower((string) pathinfo($fileName, PATHINFO_EXTENSION));
+        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+            $ext = str_starts_with($bytes, "\x89PNG") ? 'png' : 'jpg';
+        }
+        $dir = public_path('aliexpress-publish');
+        if (! is_dir($dir) && ! @mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return '';
+        }
+        $name = sha1($bytes).'.'.$ext;
+        $path = $dir.DIRECTORY_SEPARATOR.$name;
+        if (! is_file($path) && file_put_contents($path, $bytes) === false) {
+            return '';
+        }
+        $base = rtrim((string) config('app.url', ''), '/');
+        if ($base === '') {
+            return '';
+        }
+
+        return $base.'/aliexpress-publish/'.$name;
     }
 
     public function isAliExpressCdnUrl(string $url): bool
