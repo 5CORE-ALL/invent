@@ -482,6 +482,38 @@ class EbayChannelMetricsService
     }
 
     /**
+     * Same order-total rules as sumSalesForPacificDates(), but the calendar day
+     * is taken in $tz (used by All Marketplace Today Sales — Eastern midnight).
+     */
+    public static function sumSalesForTimezoneDates(int $which, string $fromYmd, string $toYmd, string $tz): ?float
+    {
+        try {
+            if ($which === 3) {
+                return self::sumEbay3SalesForTimezoneDates($fromYmd, $toYmd, $tz);
+            }
+
+            if ($which !== 1 && $which !== 2) {
+                return null;
+            }
+
+            $payloads = self::loadEbayOrderPayloadsForTimezone($which, $fromYmd, $toYmd, $tz);
+            $total = 0.0;
+            foreach ($payloads as $raw) {
+                $sale = self::ebayPayloadSaleIfInTimezoneRange($raw, $fromYmd, $toYmd, $tz);
+                if ($sale !== null) {
+                    $total += $sale;
+                }
+            }
+
+            return round($total, 2);
+        } catch (\Throwable $e) {
+            Log::warning("EbayChannelMetricsService::sumSalesForTimezoneDates({$which}) failed: ".$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
      * One raw Fulfillment-API order per order_id. Live metrics first, then ebay_orders.
      *
      * @return array<string, array<string, mixed>>
@@ -594,6 +626,137 @@ class EbayChannelMetricsService
                     return;
                 }
                 $day = $row->creation_date ? Carbon::parse($row->creation_date)->format('Y-m-d') : null;
+                if ($day === null || $day < $fromYmd || $day > $toYmd) {
+                    return;
+                }
+                $oid = (string) $row->order_id;
+                if (! isset($byOrder[$oid])) {
+                    $byOrder[$oid] = ['total_price' => (float) ($row->total_price ?? 0), 'car' => 0.0];
+                }
+                $byOrder[$oid]['car'] += (float) ($row->ebay_collect_and_remit_tax ?? 0);
+            });
+
+        $total = 0.0;
+        foreach ($byOrder as $v) {
+            $total += round($v['total_price'] + $v['car'], 2);
+        }
+
+        return round($total, 2);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private static function loadEbayOrderPayloadsForTimezone(int $which, string $fromYmd, string $toYmd, string $tz): array
+    {
+        $padFrom = Carbon::parse($fromYmd, $tz)->subDay()->startOfDay();
+        $padTo = Carbon::parse($toYmd, $tz)->addDay()->endOfDay();
+
+        $byOrder = [];
+        $metricsModel = $which === 1 ? Ebay1OrderMetric::class : Ebay2OrderMetric::class;
+        $metricsTable = $which === 1 ? 'ebay1_order_metrics' : 'ebay2_order_metrics';
+
+        if (Schema::hasTable($metricsTable)) {
+            $rows = $metricsModel::query()
+                ->whereBetween('order_date', [$padFrom, $padTo])
+                ->whereNotNull('raw_payload')
+                ->get(['order_id', 'raw_payload']);
+
+            foreach ($rows as $row) {
+                $oid = trim((string) $row->order_id);
+                if ($oid === '' || isset($byOrder[$oid])) {
+                    continue;
+                }
+                $raw = is_array($row->raw_payload)
+                    ? $row->raw_payload
+                    : json_decode((string) $row->raw_payload, true);
+                if (is_array($raw)) {
+                    $byOrder[$oid] = $raw;
+                }
+            }
+        }
+
+        if ($byOrder !== []) {
+            return $byOrder;
+        }
+
+        $orderModel = $which === 1 ? EbayOrder::class : Ebay2Order::class;
+        $orderTable = $which === 1 ? 'ebay_orders' : 'ebay2_orders';
+        if (! Schema::hasTable($orderTable)) {
+            return [];
+        }
+
+        $orders = $orderModel::query()
+            ->whereIn('period', ['l30', 'l60'])
+            ->whereBetween('order_date', [$padFrom, $padTo])
+            ->get(['ebay_order_id', 'order_date', 'raw_data']);
+
+        foreach ($orders as $order) {
+            $oid = trim((string) $order->ebay_order_id);
+            if ($oid === '' || isset($byOrder[$oid])) {
+                continue;
+            }
+            $raw = is_array($order->raw_data)
+                ? $order->raw_data
+                : json_decode((string) $order->raw_data, true);
+            if (is_array($raw)) {
+                $byOrder[$oid] = $raw;
+            }
+        }
+
+        return $byOrder;
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    private static function ebayPayloadSaleIfInTimezoneRange(array $raw, string $fromYmd, string $toYmd, string $tz): ?float
+    {
+        $cs = $raw['cancelStatus']['cancelState'] ?? '';
+        $ps = $raw['orderPaymentStatus'] ?? '';
+        if ($cs === 'CANCELED' || $ps === 'FULLY_REFUNDED') {
+            return null;
+        }
+
+        $created = $raw['creationDate'] ?? null;
+        if (! $created) {
+            return null;
+        }
+
+        $day = Carbon::parse($created)->setTimezone($tz)->toDateString();
+        if ($day < $fromYmd || $day > $toYmd) {
+            return null;
+        }
+
+        $base = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+        $car = 0.0;
+        foreach (($raw['lineItems'] ?? []) as $li) {
+            if (! is_array($li)) {
+                continue;
+            }
+            foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                $car += (float) ($t['amount']['value'] ?? 0);
+            }
+        }
+
+        return round($base + $car, 2);
+    }
+
+    private static function sumEbay3SalesForTimezoneDates(string $fromYmd, string $toYmd, string $tz): float
+    {
+        $byOrder = [];
+        Ebay3DailyData::query()
+            ->where('period', 'l30')
+            ->whereDate('creation_date', '>=', Carbon::parse($fromYmd, $tz)->subDay()->toDateString())
+            ->whereDate('creation_date', '<=', Carbon::parse($toYmd, $tz)->addDay()->toDateString())
+            ->get()
+            ->each(function ($row) use (&$byOrder, $fromYmd, $toYmd, $tz) {
+                if (($row->cancel_status ?? '') === 'CANCELED' || ($row->order_payment_status ?? '') === 'FULLY_REFUNDED') {
+                    return;
+                }
+                $day = $row->creation_date
+                    ? Carbon::parse($row->creation_date)->timezone($tz)->toDateString()
+                    : null;
                 if ($day === null || $day < $fromYmd || $day > $toYmd) {
                     return;
                 }

@@ -3,26 +3,22 @@
 @section('css')
 <style>
     .dashboard-cards-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 0.75rem;
         margin-top: 0.25rem;
         margin-bottom: 0.75rem;
-        align-items: stretch;
     }
-    /* Uniform rectangular tiles — no full-width banners */
+    /* Full-width (col-12) banner cards */
     .dashboard-cards-grid > .dashboard-badge-panel {
-        margin: 0 !important;
+        margin: 0 0 1rem 0 !important;
         width: 100%;
         max-width: 100%;
         min-width: 0;
-        min-height: 220px;
-        height: 100%;
-        padding: 0.75rem !important;
+        min-height: 0;
+        height: auto;
+        padding: 1rem 1.15rem !important;
         display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.55rem;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 0.75rem;
         border-radius: 0.5rem !important;
         box-sizing: border-box;
     }
@@ -30,9 +26,9 @@
         width: 100%;
         max-width: 100%;
         display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.55rem;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 0.75rem;
     }
     .dashboard-badge-panel__icon {
         flex: 0 0 40px;
@@ -125,22 +121,9 @@
         cursor: pointer;
         user-select: none;
     }
-    @media (min-width: 1400px) {
-        .dashboard-cards-grid {
-            grid-template-columns: repeat(4, 1fr);
-        }
-    }
-    @media (max-width: 991.98px) {
-        .dashboard-cards-grid {
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
     @media (max-width: 575.98px) {
-        .dashboard-cards-grid {
-            grid-template-columns: 1fr;
-        }
         .dashboard-cards-grid > .dashboard-badge-panel {
-            min-height: 0;
+            flex-direction: column;
         }
     }
     #lcMetricChartModal.modal {
@@ -444,9 +427,9 @@
 @include('partials.dashboard-card-playback')
 @include('partials.dashboard-card-actions')
 
-<div class="dashboard-cards-grid">
+<div class="row g-0 dashboard-cards-grid">
 <!-- All Marketplace Master — badges_data (page_name: all-marketplace-master) -->
-<div id="all-marketplace-master-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="all-marketplace-master-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true">
         <i class="ri-store-2-line" title="Store"></i>
     </div>
@@ -479,7 +462,7 @@
 </div>
 
 <!-- Advertisement — all /advertisement-master header badges -->
-<div id="advertisement-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="advertisement-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fecaca, #fff1f2); padding: 0; overflow: hidden;">
         <a href="{{ route('advertisement.master') }}" title="Open Advertisement Master">
             <img
@@ -517,7 +500,7 @@
 </div>
 
 <!-- Video — badges_data KPIs from Video Master / Videos / Video Request & Check -->
-<div id="video-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="video-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #bae6fd, #eff6ff); padding: 0; overflow: hidden;">
         <a href="{{ route('video.master') }}" title="Open Video Master">
             <img
@@ -568,7 +551,7 @@
 </div>
 
 <!-- Raw Images — missing original files -->
-<div id="raw-images-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="raw-images-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fde68a, #fffbeb); display:flex;align-items:center;justify-content:center;">
         <a href="{{ route('raw.images') }}" title="Open Raw Images" style="color:#b45309;font-size:28px;">
             <i class="fas fa-camera"></i>
@@ -594,7 +577,7 @@
 </div>
 
 <!-- Pricing — user-provided PRICE image -->
-<div id="pricing-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="pricing-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fefce8, #fefce8); padding: 0; overflow: hidden;">
         <a href="{{ route('pricing.master.cvr') }}" title="Open Pricing Master CVR">
             <img
@@ -694,7 +677,7 @@
 </div>
 
 <!-- Customer Care — user-provided headset image -->
-<div id="customer-care-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="customer-care-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #ddd6fe, #f5f3ff); padding: 0; overflow: hidden;">
         <a href="{{ route('customer.care') }}" title="Open Customer Care Overview">
             <img
@@ -755,7 +738,7 @@
 </div>
 
 <!-- Fulfillment — user-provided label printer image -->
-<div id="fulfillment-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="fulfillment-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #e5e7eb, #f9fafb); padding: 0; overflow: hidden;">
         <a href="{{ route('fullfillment.rate') }}" title="Open Fulfillment Rate">
             <img
@@ -819,7 +802,7 @@
 </div>
 
 <!-- Dispatch — user-provided DISPATCH letters image -->
-<div id="dispatch-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="dispatch-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #bfdbfe, #eff6ff); padding: 0; overflow: hidden;">
         <a href="{{ route('customer.care.dispatch.issues.only') }}" title="Open Dispatch Issues">
             <img
@@ -877,7 +860,7 @@
 </div>
 
 <!-- Purchases — user-provided China shipping image -->
-<div id="purchases-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="purchases-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fecaca, #fff1f2); padding: 0; overflow: hidden;">
         <a href="{{ route('purchase.index') }}" title="Open Purchase">
             <img
@@ -943,7 +926,7 @@
 </div>
 
 <!-- Inventory — user-provided INVENTORY image -->
-<div id="inventory-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="inventory-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fed7aa, #fff7ed); padding: 0; overflow: hidden;">
         <a href="{{ route('view-inventory-data') }}" title="Open Inventory Main">
             <img
@@ -1024,7 +1007,7 @@
 </div>
 
 <!-- Account Health — user-provided health-e commerce image -->
-<div id="account-health-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="account-health-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #a5f3fc, #ecfeff); padding: 0; overflow: hidden;">
         <a href="{{ route('account.health.master.channel.dashboard') }}" title="Open Dashboard Account Health" target="_blank" rel="noopener">
             <img
@@ -1090,7 +1073,7 @@
 </div>
 
 <!-- On Sea Transit — badges_data (page_name: on-sea-transit) -->
-<div id="on-sea-transit-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="on-sea-transit-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true">
         <span class="dashboard-badge-panel__icon-emoji">🚢</span>
     </div>
@@ -1116,7 +1099,7 @@
 </div>
 
 <!-- Forecast Analysis — badges_data (page_name: forecast-analysis) -->
-<div id="forecast-analysis-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="forecast-analysis-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true">
         <span class="dashboard-badge-panel__icon-emoji">📊</span>
     </div>
@@ -1146,7 +1129,7 @@
 </div>
 
 <!-- Listing Catalogue — Missing L / N Map / Variations Verify scores + rolling history -->
-<div id="listing-catalogue-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="listing-catalogue-card" class="col-12 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fef3c7, #fffbeb);">
         <img src="{{ asset('assets/images/listing-catalogue-icon.png') }}" alt="Listing Catalogue" class="dashboard-badge-panel__icon-img">
     </div>

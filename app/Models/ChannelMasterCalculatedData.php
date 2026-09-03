@@ -23,6 +23,7 @@ class ChannelMasterCalculatedData extends Model
         'l60_sales',
         'l30_sales',
         'yesterday_sales',
+        'today_sales',
         'l7_sales',
         'growth',
         'l7_vs_30_pace',
@@ -73,6 +74,7 @@ class ChannelMasterCalculatedData extends Model
         'l60_sales' => 'decimal:2',
         'l30_sales' => 'decimal:2',
         'yesterday_sales' => 'decimal:2',
+        'today_sales' => 'decimal:2',
         'l7_sales' => 'decimal:2',
         'growth' => 'decimal:2',
         'l7_vs_30_pace' => 'decimal:2',
@@ -165,6 +167,7 @@ class ChannelMasterCalculatedData extends Model
                 \Cache::forget('amm_all_y_sales_chart_v2_d'.$days);
                 \Cache::forget('amm_all_y_sales_chart_d'.$days);
             }
+            \Cache::forget(\App\Services\Support\ChannelTodaySalesService::CACHE_PREFIX.now('America/New_York')->toDateString());
         } catch (\Throwable $e) {
             // File cache dirs may be missing after optimize:clear.
         }

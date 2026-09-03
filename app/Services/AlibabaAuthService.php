@@ -83,6 +83,16 @@ class AlibabaAuthService
 
     public function redirectUri(): string
     {
+        try {
+            $request = request();
+            $host = (string) $request->getHost();
+            if (in_array($host, ['127.0.0.1', 'localhost'], true)) {
+                return $request->getSchemeAndHttpHost().'/alibaba/callback';
+            }
+        } catch (\Throwable $e) {
+            // console / no HTTP request
+        }
+
         $redirect = trim((string) (config('services.alibaba.redirect_uri') ?: env('ALIBABA_REDIRECT_URI', '')));
         if ($redirect === '' || str_ends_with(rtrim($redirect, '/'), '/index')) {
             $redirect = 'https://inventory.5coremanagement.com/alibaba/callback';
@@ -162,10 +172,13 @@ class AlibabaAuthService
     protected function parseTokenResponse(\Illuminate\Http\Client\Response $response): array
     {
         $json = $response->json();
+        $raw = is_array($json) ? $json : ($response->body() !== '' ? $response->body() : null);
         if (! is_array($json)) {
             return [
                 'success' => false,
                 'message' => $response->body() !== '' ? $response->body() : 'Invalid token response.',
+                'raw' => $raw,
+                'http_status' => $response->status(),
             ];
         }
 
@@ -187,6 +200,8 @@ class AlibabaAuthService
                     ?? $json['error_code']
                     ?? $response->body()
                 ),
+                'raw' => $json,
+                'http_status' => $response->status(),
             ];
         }
 
@@ -199,6 +214,8 @@ class AlibabaAuthService
             'access_token' => (string) $access,
             'refresh_token' => $refresh ? (string) $refresh : null,
             'expires_in' => $expiresIn !== null ? (int) $expiresIn : null,
+            'raw' => $json,
+            'http_status' => $response->status(),
         ];
     }
 }

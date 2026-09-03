@@ -43,6 +43,12 @@ class BadgeDataCatalog
                 'channels' => 'Channels',
                 'l30_sales' => 'Sales',
                 'y_sales' => 'Y Sales',
+                'y_pft' => 'Y PFT',
+                'y_npft' => 'Y NPFT',
+                'y_npft_amt' => 'Y NPFT',
+                'y_npft_pct' => 'Y-Npft%',
+                'today_sales' => 'Today Sales',
+                'p_sales' => 'P-Sales',
                 'l30_orders' => 'Orders',
                 'gprofit_pct' => 'GPFT',
                 'g_roi' => 'G ROI',
@@ -52,6 +58,7 @@ class BadgeDataCatalog
                 'cvr_pct' => 'CVR',
                 'net_profit' => 'NPFT $',
                 'npft_pct' => 'NPFT %',
+                'p_npft_pct' => 'P-Npft%',
                 'n_roi' => 'NROI',
                 'clicks' => 'Clicks',
                 'map' => 'Map',
@@ -332,9 +339,10 @@ class BadgeDataCatalog
             'channels', 'l30_orders', 'clicks', 'map', 'nmap', 'missing_l', 'total_reviews', 'seller_total_reviews'
                 => number_format((int) round($n)),
             'y_sales' => $n > 0 ? '$'.number_format((int) round($n)) : 'NYS',
-            'l30_sales', 'ad_spend', 'net_profit', 'inventory_value_amazon', 'inv_at_lp', 'inv_at_sp'
+            'y_pft', 'y_npft', 'y_npft_amt' => $n != 0.0 ? '$'.number_format((int) round($n)) : 'NYS',
+            'today_sales', 'l30_sales', 'p_sales', 'ad_spend', 'net_profit', 'inventory_value_amazon', 'inv_at_lp', 'inv_at_sp'
                 => '$'.number_format((int) round($n)),
-            'gprofit_pct', 'ads_pct', 'npft_pct', 'g_roi', 'n_roi' => number_format($n, 1).'%',
+            'gprofit_pct', 'ads_pct', 'npft_pct', 'p_npft_pct', 'y_npft_pct', 'g_roi', 'n_roi' => number_format($n, 1).'%',
             'cvr_pct' => $value === null ? '-' : number_format($n, 2).'%',
             'tat' => $n > 0 ? number_format($n, 2) : '0',
             'avg_rating', 'seller_avg_rating' => number_format($n, 1).' ★',

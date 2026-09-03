@@ -23,6 +23,15 @@
             <div class="alert alert-danger">{{ $flashError }}</div>
         @endif
 
+        @if(!empty($tokenResponse))
+            <div class="card border-info mb-3">
+                <div class="card-header"><h5 class="card-title mb-0">OAuth token response</h5></div>
+                <div class="card-body">
+                    <pre class="bg-light p-3 small mb-0" style="white-space: pre-wrap; word-break: break-all;">{{ json_encode($tokenResponse['raw'] ?? $tokenResponse, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
+                </div>
+            </div>
+        @endif
+
         @if($credentialsReady ?? false)
             <div class="alert alert-success d-flex align-items-start gap-2">
                 <i class="ri-checkbox-circle-line fs-5 mt-1"></i>
@@ -76,7 +85,9 @@
                             <code class="user-select-all">{{ $redirectUri }}</code>
                         </div>
                         <p class="text-muted small mb-3">
-                            Then click <strong>Connect with Alibaba</strong>. After you authorize, Alibaba sends a <code>code</code> here and we exchange it for <code>ALIBABA_ACCESS_TOKEN</code>.
+                            Then click <strong>Connect with Alibaba</strong>. After you authorize, Alibaba sends a <code>code</code> to
+                            <code class="user-select-all">{{ $redirectUri }}</code>
+                            and we exchange it for a token. On localhost the callback page prints the full token JSON.
                             Use <code>auth.alibaba.com</code> (Alibaba.com), not <code>auth.1688.com</code>.
                         </p>
 
@@ -187,8 +198,20 @@
         return res.json();
     }
 
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+
     function show(data) {
         if (!out) return;
+        if (data && (data.raw || data.access_token)) {
+            out.innerHTML = '<pre class="bg-light p-3 small mb-0" style="white-space:pre-wrap;word-break:break-all;">'
+                + escapeHtml(JSON.stringify(data.raw || data, null, 2))
+                + '</pre>';
+            return;
+        }
         var extra = data.total_products != null ? ' (' + data.total_products + ' product(s) reported)' : '';
         out.innerHTML = data.success
             ? '<span class="text-success">' + (data.message || 'OK') + extra + '</span>'

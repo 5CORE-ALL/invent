@@ -47,6 +47,7 @@ use App\Support\EbayCampaignReportRollup;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\ChannelMetricDotPair;
 use App\Support\Marketplace\EbayTwoListingCounts;
+use App\Services\Support\ChannelTodaySalesService;
 use App\Services\Support\YesterdayMarketplaceMetricsService;
 use App\Models\AliExpressSheetData;
 use App\Models\AliexpressDailyData;
@@ -895,16 +896,27 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Same L30 as /temu2-tabulator: temu2_daily_data rows matched to Product Master,
-     * revenue = qty × FB price (base + $2.99 when base ≤ $26.99).
-     * Do not use /temu2-decrease sales_summary — that reads temu2_orders and can
-     * overwrite the master Sales column with $0.
+     * Temu 2 L30: live temu2_orders in the Pacific L30 window (same clock as Temu 1).
+     * Sheet unit prices from the last temu2_daily_data upload fill rows that still
+     * have no order_base_amount — so Sales keep moving after the sheet goes stale.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float}|null
      */
     private function getTemu2TabulatorSalesSummary(): ?array
     {
         try {
+            if (Schema::hasTable('temu2_orders')) {
+                [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
+                $live = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
+                if ((float) ($live['sales'] ?? 0) > 0) {
+                    return [
+                        'total_orders' => (int) ($live['orders'] ?? 0),
+                        'total_quantity' => (int) ($live['qty'] ?? 0),
+                        'total_revenue' => round((float) $live['sales'], 2),
+                    ];
+                }
+            }
+
             if (! Schema::hasTable('temu2_daily_data')) {
                 return null;
             }
@@ -1312,7 +1324,7 @@ class ChannelMasterController extends Controller
                     $this->applyLiveYSalesIfPositive($row, $ySales);
                 }
                 $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
-                if ($l7Sales !== null) {
+                if ($l7Sales !== null && (float) $l7Sales > 0) {
                     $row['L7 Sales'] = $l7Sales;
                 }
             } catch (\Throwable $e) {
@@ -1888,7 +1900,53 @@ class ChannelMasterController extends Controller
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        return $this->restoreSavedTableMetricsOnChannelRows($rows);
+        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
+
+        return $this->overlayLiveTodaySalesOnChannelRows($rows);
+    }
+
+    /**
+     * Today Sales is intra-day (Eastern midnight → now). Overlay live totals on
+     * every fast-path load so the column moves as new orders land.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveTodaySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $svc = app(ChannelTodaySalesService::class);
+            $sales = $svc->salesByLookupKey();
+        } catch (\Throwable $e) {
+            Log::warning('Live Today Sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            $value = $svc->valueForChannel($name, $sales);
+            if ($value !== null) {
+                $row['Today Sales'] = $value;
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function todaySalesByLookupKey(): array
+    {
+        try {
+            return app(ChannelTodaySalesService::class)->salesByLookupKey();
+        } catch (\Throwable $e) {
+            Log::warning('Today Sales lookup failed: '.$e->getMessage());
+
+            return [];
+        }
     }
 
     /**
@@ -1949,6 +2007,7 @@ class ChannelMasterController extends Controller
     private function restoreSavedTableMetricsOnChannelRows(array $rows): array
     {
         $saved = [];
+        $hasTodaySales = Schema::hasColumn('channel_master_calculated_data', 'today_sales');
         foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $calc) {
             $ch = $this->allMarketplaceSnapshotKey((string) $calc->channel);
             if ($ch !== '') {
@@ -1962,6 +2021,9 @@ class ChannelMasterController extends Controller
                 continue;
             }
             $row['Y Sales'] = $calc->yesterday_sales !== null ? (float) $calc->yesterday_sales : ($row['Y Sales'] ?? 0);
+            if ($hasTodaySales) {
+                $row['Today Sales'] = $calc->today_sales !== null ? (float) $calc->today_sales : ($row['Today Sales'] ?? 0);
+            }
             $row['L30 Sales'] = $calc->l30_sales !== null ? (int) $calc->l30_sales : ($row['L30 Sales'] ?? 0);
             $row['L7 Sales'] = $calc->l7_sales !== null ? (float) $calc->l7_sales : ($row['L7 Sales'] ?? 0);
             $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales'] ?? 0);
@@ -1987,6 +2049,7 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales'] ?? 0);
+            $row = $this->withYProfitColumns($row);
         }
         unset($row);
 
@@ -4071,37 +4134,38 @@ class ChannelMasterController extends Controller
      * Shopify inventory + LP from product_master Values JSON (same matching as Inv@LP).
      * Only includes ACTIVE status SKUs from product_master.
      *
-     * @return array{inv_sum: float, inv_at_lp: float, inv_at_sp: float, weighted_avg_lp: float}
+     * @return array{inv_sum: float, inv_at_lp: float, inv_at_sp: float, weighted_avg_lp: float, dil_bands: array<string, array{count: int, units: float, inv_at_lp: float, inv_at_sp: float}>}
      */
     private function getShopifyInvLpMetrics(): array
     {
-        $empty = ['inv_sum' => 0.0, 'inv_at_lp' => 0.0, 'inv_at_sp' => 0.0, 'weighted_avg_lp' => 0.0];
+        $emptyBands = $this->emptyInvDilBands();
+        $empty = [
+            'inv_sum' => 0.0,
+            'inv_at_lp' => 0.0,
+            'inv_at_sp' => 0.0,
+            'weighted_avg_lp' => 0.0,
+            'dil_bands' => $emptyBands,
+        ];
 
-        // Get active SKUs from product_master (excluding deleted and non-active)
-        $productMasters = ProductMaster::whereNull('deleted_at')
-            ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
-            ->get();
-            
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $productMasters = $productMasters->filter(function ($pm) {
+            return strtolower(ProductMaster::statusValueFromValues($pm->Values ?? [])) === 'active';
+        });
         if ($productMasters->isEmpty()) {
             return $empty;
         }
-        
-        $activeSkus = $productMasters->pluck('sku')->unique()->filter()->values()->toArray();
-        
-        // Get Shopify inventory for active SKUs only
-        $shopifySkus = ShopifySku::whereNotNull('sku')
-            ->whereIn('sku', $activeSkus)
-            ->get(['sku', 'inv']);
-            
-        if ($shopifySkus->isEmpty()) {
+
+        $activeSkus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
+        $shopifyByPmSku = ShopifySku::mapByProductSkus($activeSkus);
+        if ($shopifyByPmSku->isEmpty()) {
             return $empty;
         }
-        
+
         $pmBySku = $productMasters->keyBy(function ($item) {
             return strtoupper(trim((string) $item->sku));
         });
 
-        $stdBySku = [];
+        $stdByNorm = [];
         try {
             foreach (AmazonDataView::whereIn('sku', $activeSkus)->get(['sku', 'value']) as $adv) {
                 $val = is_array($adv->value)
@@ -4109,7 +4173,10 @@ class ChannelMasterController extends Controller
                     : (json_decode((string) ($adv->value ?? ''), true) ?: []);
                 $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? null;
                 if (is_numeric($std) && (float) $std > 0) {
-                    $stdBySku[strtoupper(trim((string) $adv->sku))] = (float) $std;
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $adv->sku);
+                    if ($norm !== '') {
+                        $stdByNorm[$norm] = (float) $std;
+                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -4119,42 +4186,254 @@ class ChannelMasterController extends Controller
         $invSum = 0.0;
         $invAtLp = 0.0;
         $invAtSp = 0.0;
-        foreach ($shopifySkus as $row) {
-            $sku = trim((string) $row->sku);
-            if ($sku === '') {
+        $dilBands = $emptyBands;
+        foreach ($shopifyByPmSku as $pmSku => $row) {
+            if (stripos((string) $pmSku, 'PARENT') !== false) {
                 continue;
             }
-            
-            // Exclude SKUs with null or 0 inventory
-            if ($row->inv === null || $row->inv === '' || !is_numeric($row->inv)) {
+            if ($row->inv === null || $row->inv === '' || ! is_numeric($row->inv)) {
                 continue;
             }
-            
+
             $inv = (float) $row->inv;
-            
-            // Exclude SKUs with 0 or near-0 inventory (< 0.01)
             if ($inv < 0.01) {
                 continue;
             }
-            
+
             $invSum += $inv;
-            $pm = $pmBySku->get(strtoupper($sku));
+            $pm = $pmBySku->get(strtoupper(trim((string) $pmSku)));
             $lp = 0.0;
             if ($pm) {
                 $values = is_array($pm->Values ?? null) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
                 $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($pm->lp) ? (float) $pm->lp : 0);
             }
-            $invAtLp += $inv * $lp;
-            $invAtSp += $inv * ($stdBySku[strtoupper($sku)] ?? 0.0);
+            $lpValue = $inv * $lp;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $pmSku);
+            $spValue = $inv * ($stdByNorm[$norm] ?? 0.0);
+            $invAtLp += $lpValue;
+            $invAtSp += $spValue;
+
+            $l30 = 0.0;
+            if (is_numeric($row->quantity ?? null)) {
+                $l30 = (float) $row->quantity;
+            } elseif (is_numeric($row->shopify_l30 ?? null)) {
+                $l30 = (float) $row->shopify_l30;
+            }
+            $band = $this->invDilBandKey($l30, $inv);
+            $dilBands[$band]['count']++;
+            $dilBands[$band]['units'] += $inv;
+            $dilBands[$band]['inv_at_lp'] += $lpValue;
+            $dilBands[$band]['inv_at_sp'] += $spValue;
         }
         $weightedAvgLp = $invSum > 0 ? round($invAtLp / $invSum, 2) : 0.0;
+
+        foreach ($dilBands as $key => $band) {
+            $dilBands[$key]['units'] = round((float) $band['units'], 2);
+            $dilBands[$key]['inv_at_lp'] = round((float) $band['inv_at_lp'], 2);
+            $dilBands[$key]['inv_at_sp'] = round((float) $band['inv_at_sp'], 2);
+        }
 
         return [
             'inv_sum' => round($invSum, 2),
             'inv_at_lp' => round($invAtLp, 2),
             'inv_at_sp' => round($invAtSp, 2),
             'weighted_avg_lp' => $weightedAvgLp,
+            'dil_bands' => $dilBands,
         ];
+    }
+
+    /**
+     * @return array<string, array{count: int, units: float, inv_at_lp: float, inv_at_sp: float}>
+     */
+    private function emptyInvDilBands(): array
+    {
+        $bands = [];
+        foreach (array_keys($this->invDilBandDefs()) as $key) {
+            $bands[$key] = [
+                'count' => 0,
+                'units' => 0.0,
+                'inv_at_lp' => 0.0,
+                'inv_at_sp' => 0.0,
+            ];
+        }
+
+        return $bands;
+    }
+
+    /**
+     * INV DIL slabs: red <25, green 25–50, pink ≥50 (same 3-color language as eBay Dil).
+     *
+     * @return array<string, array{label: string, color: string}>
+     */
+    private function invDilBandDefs(): array
+    {
+        return [
+            'red' => ['label' => 'Red <25%', 'color' => '#a00211'],
+            'green' => ['label' => 'Green 25–50%', 'color' => '#28a745'],
+            'pink' => ['label' => 'Pink ≥50%', 'color' => '#e83e8c'],
+        ];
+    }
+
+    private function invDilBandKey(float $l30, float $inv): string
+    {
+        if ($inv < 0.01) {
+            return 'red';
+        }
+        $dil = ($l30 / $inv) * 100;
+        if ($dil < 25) {
+            return 'red';
+        }
+        if ($dil < 50) {
+            return 'green';
+        }
+
+        return 'pink';
+    }
+
+    /**
+     * @param  array<string, mixed>  $metrics
+     * @return array{slices: list<array<string, mixed>>, history: list<array<string, mixed>>}
+     */
+    private function inventoryDilPiesFromMetrics(array $metrics): array
+    {
+        $bands = is_array($metrics['dil_bands'] ?? null) ? $metrics['dil_bands'] : $this->emptyInvDilBands();
+        $slices = [];
+        foreach ($this->invDilBandDefs() as $key => $def) {
+            $row = is_array($bands[$key] ?? null) ? $bands[$key] : [];
+            $slices[] = [
+                'key' => $key,
+                'label' => $def['label'],
+                'color' => $def['color'],
+                'count' => (int) ($row['count'] ?? 0),
+                'units' => round((float) ($row['units'] ?? 0), 2),
+                'inv_at_lp' => round((float) ($row['inv_at_lp'] ?? 0), 2),
+                'inv_at_sp' => round((float) ($row['inv_at_sp'] ?? 0), 2),
+            ];
+        }
+        $this->rememberInventoryDilHistory($slices);
+
+        return [
+            'slices' => $slices,
+            'history' => $this->inventoryDilHistoryRows(),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $slices
+     */
+    private function rememberInventoryDilHistory(array $slices): void
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $hist = \Cache::get('channel_master_inv_dil_hist', []);
+            if (! is_array($hist)) {
+                $hist = [];
+            }
+            $day = [];
+            foreach ($slices as $s) {
+                $k = (string) ($s['key'] ?? '');
+                if ($k === '') {
+                    continue;
+                }
+                $day[$k] = (int) ($s['count'] ?? 0);
+                $day[$k.'_units'] = (float) ($s['units'] ?? 0);
+                $day[$k.'_lp'] = (float) ($s['inv_at_lp'] ?? 0);
+                $day[$k.'_sp'] = (float) ($s['inv_at_sp'] ?? 0);
+            }
+            $hist[$today] = $day;
+            ksort($hist);
+            $keys = array_keys($hist);
+            while (count($keys) > 90) {
+                unset($hist[$keys[0]]);
+                array_shift($keys);
+            }
+            \Cache::put('channel_master_inv_dil_hist', $hist, now()->addDays(120));
+        } catch (\Throwable $e) {
+            // ignore cache write failures
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function inventoryDilHistoryRows(): array
+    {
+        $hist = \Cache::get('channel_master_inv_dil_hist', []);
+        if (! is_array($hist)) {
+            return [];
+        }
+        $out = [];
+        foreach ($hist as $date => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $date = (string) $date;
+            $out[] = array_merge($row, [
+                'date' => $date,
+                'label' => strlen($date) >= 10 ? substr($date, 5) : $date,
+            ]);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{slices?: list<array<string, mixed>>}  $pies
+     * @return list<array{color: string, inv: float, percent: float, count: int}>
+     */
+    private function inventoryByColorFromDilPies(array $pies): array
+    {
+        $slices = is_array($pies['slices'] ?? null) ? $pies['slices'] : [];
+        $total = 0.0;
+        foreach ($slices as $s) {
+            $total += (float) ($s['inv_at_lp'] ?? 0);
+        }
+        $names = ['red' => 'Red', 'green' => 'Green', 'pink' => 'Pink'];
+        $out = [];
+        foreach ($slices as $s) {
+            $value = (float) ($s['inv_at_lp'] ?? 0);
+            $count = (int) ($s['count'] ?? 0);
+            if ($value <= 0 && $count <= 0) {
+                continue;
+            }
+            $key = (string) ($s['key'] ?? '');
+            $out[] = [
+                'color' => $names[$key] ?? (string) ($s['label'] ?? $key),
+                'inv' => round($value, 2),
+                'percent' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+                'count' => $count,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Keep channel_master_summary_data in sync after a live Inv@LP / Inv@SP refill.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function rememberChannelMasterInventorySummary(array $payload): void
+    {
+        try {
+            $existing = \Cache::get('channel_master_summary_data', []);
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+            $existing['inv_at_lp'] = $payload['inv_at_lp'] ?? ($existing['inv_at_lp'] ?? 0);
+            $existing['inv_at_sp'] = $payload['inv_at_sp'] ?? ($existing['inv_at_sp'] ?? 0);
+            $existing['shopify_inv_sum'] = $payload['shopify_inv_sum'] ?? ($existing['shopify_inv_sum'] ?? 0);
+            $existing['shopify_weighted_avg_lp'] = $payload['shopify_weighted_avg_lp'] ?? ($existing['shopify_weighted_avg_lp'] ?? 0);
+            if (! empty($payload['inventory_pies'])) {
+                $existing['inventory_pies'] = $payload['inventory_pies'];
+            }
+            if (! empty($payload['inventory_by_color'])) {
+                $existing['inventory_by_color'] = $payload['inventory_by_color'];
+            }
+            \Cache::put('channel_master_summary_data', $existing, 86400);
+        } catch (\Throwable $e) {
+            // ignore cache write failures
+        }
     }
 
     /**
@@ -4174,9 +4453,12 @@ class ChannelMasterController extends Controller
             }
         }
 
-        $missingSp = ! array_key_exists('inv_at_sp', $payload) || $payload['inv_at_sp'] === null || $payload['inv_at_sp'] === '';
-        $missingLp = ! array_key_exists('inv_at_lp', $payload) || $payload['inv_at_lp'] === null || $payload['inv_at_lp'] === '';
-        if ($missingSp || $missingLp) {
+        $missingSp = ! array_key_exists('inv_at_sp', $payload) || $payload['inv_at_sp'] === null || $payload['inv_at_sp'] === ''
+            || (float) $payload['inv_at_sp'] <= 0;
+        $missingLp = ! array_key_exists('inv_at_lp', $payload) || $payload['inv_at_lp'] === null || $payload['inv_at_lp'] === ''
+            || (float) $payload['inv_at_lp'] <= 0;
+        $missingPies = empty($payload['inventory_pies']['slices']) && empty($payload['inventory_by_color']);
+        if ($missingSp || $missingLp || $missingPies) {
             try {
                 $shopifyMetrics = $this->getShopifyInvLpMetrics();
                 if ($missingLp) {
@@ -4187,7 +4469,14 @@ class ChannelMasterController extends Controller
                 if ($missingSp) {
                     $payload['inv_at_sp'] = $shopifyMetrics['inv_at_sp'] ?? 0;
                 }
+                if ($missingPies) {
+                    $pies = $this->inventoryDilPiesFromMetrics($shopifyMetrics);
+                    $payload['inventory_pies'] = $pies;
+                    $payload['inventory_by_color'] = $this->inventoryByColorFromDilPies($pies);
+                }
+                $this->rememberChannelMasterInventorySummary($payload);
             } catch (\Throwable $e) {
+                $payload['inv_at_lp'] = (float) ($payload['inv_at_lp'] ?? 0);
                 $payload['inv_at_sp'] = (float) ($payload['inv_at_sp'] ?? 0);
             }
         }
@@ -4250,133 +4539,15 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Sum of inventory VALUE (INV * Amazon Price) grouped by DIL color categories based on L30 sales.
-     * DIL % = (L30 / INV) × 100, categorized into 4 color bands.
-     * Note: Using 'quantity' field as L30 (consistent with other controllers)
-     * Amazon prices fetched from amazon_datsheets table
-     * Returns value instead of count - 'inv' field now represents $ value
+     * Inventory $ at LP grouped by DIL color (red / green / pink).
      *
-     * @return list<array{color: string, inv: float, percent: float}>
+     * @return list<array{color: string, inv: float, percent: float, count: int}>
      */
     private function getShopifyInventoryByColor(): array
     {
-        // Get active SKUs from product_master (excluding deleted and non-active)
-        $activeSkus = ProductMaster::whereNull('deleted_at')
-            ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
-            ->pluck('sku')
-            ->toArray();
-        
-        if (empty($activeSkus)) {
-            return [];
-        }
-        
-        // Fetch Amazon prices from amazon_datsheets table (gracefully handle if table doesn't exist)
-        $amazonPrices = collect();
-        try {
-            if (Schema::hasTable('amazon_datsheets')) {
-                $amazonPrices = DB::table('amazon_datsheets')
-                    ->whereIn('sku', $activeSkus)
-                    ->select('sku', 'price')
-                    ->get()
-                    ->keyBy('sku');
-            }
-        } catch (\Exception $e) {
-            \Log::warning('Could not fetch Amazon prices from amazon_datsheets table: ' . $e->getMessage());
-        }
-        
-        // Get Shopify SKUs with inventory and L30 sales data for active SKUs only
-        // Note: 'quantity' field is the L30 sales data used across the application
-        $shopifySkus = ShopifySku::whereNotNull('sku')
-            ->whereIn('sku', $activeSkus)
-            ->get(['sku', 'inv', 'quantity']);
-        
-        if ($shopifySkus->isEmpty()) {
-            return [];
-        }
-
-        $byColor = [];
-        $countByColor = [];
-        foreach ($shopifySkus as $row) {
-            $sku = trim((string) $row->sku);
-            if ($sku === '') {
-                continue;
-            }
-            
-            // Exclude parent rows (same pattern as other calculations in this controller)
-            if (stripos($sku, 'PARENT') !== false) {
-                continue;
-            }
-            
-            // Exclude SKUs with null or 0 inventory
-            if ($row->inv === null || $row->inv === '' || !is_numeric($row->inv)) {
-                continue;
-            }
-            
-            $inv = (float) $row->inv;
-            
-            // Exclude SKUs with 0 or near-0 inventory (using DIL threshold: < 0.01)
-            if ($inv < 0.01) {
-                continue;
-            }
-            
-            $l30 = is_numeric($row->quantity) ? (float) $row->quantity : 0.0;
-            
-            // Get Amazon price for this SKU (default to 0 if not found)
-            $amazonPrice = isset($amazonPrices[$sku]) ? (float) $amazonPrices[$sku]->price : 0.0;
-            
-            // Calculate inventory value (INV * Amazon Price)
-            $invValue = $inv * $amazonPrice;
-            
-            // Determine DIL color category based on L30 and inventory
-            $color = $this->getDilColorCategory($l30, $inv);
-            $byColor[$color] = ($byColor[$color] ?? 0.0) + $invValue;
-            $countByColor[$color] = ($countByColor[$color] ?? 0) + 1;
-        }
-
-        if ($byColor === []) {
-            return [];
-        }
-
-        $totalValue = array_sum($byColor);
-        $pct = function (float $value) use ($totalValue): float {
-            return $totalValue > 0 ? round(($value / $totalValue) * 100, 1) : 0.0;
-        };
-
-        // Define the order of DIL categories for consistent display
-        $categoryOrder = [
-            'Pink',
-            'Green',
-            'Yellow',
-            'Red',
-            'No Inventory'
-        ];
-
-        $out = [];
-        foreach ($categoryOrder as $category) {
-            if (isset($byColor[$category]) && $byColor[$category] > 0) {
-                $value = (float) $byColor[$category];
-                $out[] = [
-                    'color' => $category,
-                    'inv' => round($value, 2), // Keep 'inv' key for frontend compatibility but now it's value
-                    'percent' => $pct($value),
-                    'count' => $countByColor[$category] ?? 0,
-                ];
-            }
-        }
-
-        // Add any categories not in the predefined order (shouldn't happen, but just in case)
-        foreach ($byColor as $color => $value) {
-            if (!in_array($color, $categoryOrder) && $value > 0) {
-                $out[] = [
-                    'color' => (string) $color,
-                    'inv' => round($value, 2), // Keep 'inv' key for frontend compatibility but now it's value
-                    'percent' => $pct($value),
-                    'count' => $countByColor[$color] ?? 0,
-                ];
-            }
-        }
-
-        return $out;
+        return $this->inventoryByColorFromDilPies(
+            $this->inventoryDilPiesFromMetrics($this->getShopifyInvLpMetrics())
+        );
     }
 
     /**
@@ -5844,6 +6015,33 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * INV modal pies: Inv@LP / Inv@SP by DIL color (red / green / pink) + daily history.
+     */
+    public function getInventoryPies()
+    {
+        try {
+            $metrics = $this->getShopifyInvLpMetrics();
+            $pies = $this->inventoryDilPiesFromMetrics($metrics);
+
+            return response()->json([
+                'status' => 200,
+                'inv_sum' => $metrics['inv_sum'],
+                'inv_at_lp' => $metrics['inv_at_lp'],
+                'inv_at_sp' => $metrics['inv_at_sp'],
+                'slices' => $pies['slices'],
+                'history' => $pies['history'],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Could not load inventory pies: '.$e->getMessage(),
+                'slices' => [],
+                'history' => [],
+            ], 500);
+        }
+    }
+
+    /**
      * Yesterday-only Active Channel page (GPFT / GROI from Pacific yesterday, not L30).
      */
     public function yesterdayMarketplaceMaster()
@@ -6272,6 +6470,7 @@ class ChannelMasterController extends Controller
             $cachedPayload = \Cache::get($cacheKey);
             if (is_array($cachedPayload) && ($cachedPayload['status'] ?? null) === 200) {
                 $cachedPayload['data'] = $this->applyFastPathLiveSalesOverlays($cachedPayload['data'] ?? []);
+                $cachedPayload['data'] = $this->scaleReverbViewsForAllMarketplaceMaster($cachedPayload['data']);
                 $cachedPayload = $this->ensureInventoryExtrasOnPayload($cachedPayload);
 
                 return response()->json($this->attachCachedDotTrends($cachedPayload));
@@ -6353,8 +6552,10 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            $hasTodaySales = Schema::hasColumn('channel_master_calculated_data', 'today_sales');
+
             // Format data for frontend (match expected format)
-            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap) {
+            $formattedData = $channels->map(function($channel) use ($logoMap, $sellerLinkMap, $aliasMap, $promotionsMap, $complianceCountMap, $hasTodaySales) {
                 $canonicalKey = $this->canonicalChannelKey($channel->channel);
                 return [
                     'Channel ' => $this->allMarketplaceDisplayName($channel->channel),
@@ -6374,8 +6575,11 @@ class ChannelMasterController extends Controller
                     'L-60 Sales' => (int) $channel->l60_sales,
                     'L30 Sales' => (int) $channel->l30_sales,
                     'Y Sales' => $channel->yesterday_sales,
+                    'Today Sales' => $hasTodaySales ? (float) ($channel->today_sales ?? 0) : 0,
                     'L7 Sales' => $channel->l7_sales,
                     'P-Sales' => $this->projectedSalesFromL7($channel->l7_sales),
+                    'Y PFT' => $this->yProfitDollars($channel->yesterday_sales, $channel->gprofit_pct),
+                    'Y NPFT' => $this->yProfitDollars($channel->yesterday_sales, $channel->n_pft),
                     'Growth' => round($channel->growth, 2) . '%',
                     'L7 vs 30 pace %' => $channel->l7_vs_30_pace,
                     
@@ -6467,6 +6671,7 @@ class ChannelMasterController extends Controller
             // Live order/API overlays run inside channel:calculate-data, not here.
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
             $formattedData = $this->applyFastPathLiveSalesOverlays($formattedData);
+            $formattedData = $this->scaleReverbViewsForAllMarketplaceMaster($formattedData);
 
             if (! $section && ! $paginate) {
                 \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($formattedData);
@@ -6485,6 +6690,7 @@ class ChannelMasterController extends Controller
                 'inv_at_sp' => $summaryData['inv_at_sp'] ?? 0,
                 'shopify_inv_sum' => $summaryData['shopify_inv_sum'] ?? 0,
                 'shopify_weighted_avg_lp' => $summaryData['shopify_weighted_avg_lp'] ?? 0,
+                'inventory_pies' => $summaryData['inventory_pies'] ?? [],
                 'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
                 'stock_availability' => $summaryData['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
                 'ad_spend_by_channel' => $summaryData['ad_spend_by_channel'] ?? [],
@@ -6994,6 +7200,8 @@ class ChannelMasterController extends Controller
             // 'shopify' => 'getShopifyChannelData',
         ];
 
+        $todaySalesByKey = $this->todaySalesByLookupKey();
+
         foreach ($channels as $channelRow) {
             $channel = $channelRow->channel;
 
@@ -7019,6 +7227,8 @@ class ChannelMasterController extends Controller
                 'L30 Sales'      => 0,
                 'L7 Sales'       => 0,
                 'P-Sales'        => 0,
+                'Y PFT'          => 0,
+                'Y NPFT'         => 0,
                 'L7 vs 30 pace %' => null,
                 'Growth'         => 0,
                 'L60 Orders'     => 0,
@@ -7190,6 +7400,13 @@ class ChannelMasterController extends Controller
             // Key must match saveChannelDailySummaries: lowercase, no spaces/dashes/&/slashes
             $channelLookup = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row['Channel '] ?? $channel))));
             $row['Y Sales'] = round($yesterdaySummaries[$channelLookup] ?? 0, 2);
+            $row['Today Sales'] = round(
+                app(ChannelTodaySalesService::class)->valueForChannel(
+                    (string) ($row['Channel '] ?? $channel),
+                    $todaySalesByKey
+                ) ?? 0,
+                2
+            );
             $row['L7 Sales'] = round($l7Summaries[$channelLookup] ?? 0, 2);
             $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales']);
 
@@ -7237,7 +7454,8 @@ class ChannelMasterController extends Controller
         // Sum of (Shopify inventory * LP) for Inv@LP badge and chart + Inv / LP breakdown
         $shopifyInvLp = $this->getShopifyInvLpMetrics();
         $invAtLp = $shopifyInvLp['inv_at_lp'];
-        $inventoryByColor = $this->getShopifyInventoryByColor();
+        $inventoryPies = $this->inventoryDilPiesFromMetrics($shopifyInvLp);
+        $inventoryByColor = $this->inventoryByColorFromDilPies($inventoryPies);
         $stockAvailability = $this->getStockAvailability();
         $adSpendByChannel = $this->buildAdSpendByChannelFromRows($finalData);
         $salesByChannel = $this->buildSalesByChannelWithPercentage($finalData);
@@ -7256,6 +7474,7 @@ class ChannelMasterController extends Controller
 
         foreach ($finalData as &$row) {
             $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales'] ?? 0);
+            $row = $this->withYProfitColumns($row);
         }
         unset($row);
 
@@ -7266,6 +7485,8 @@ class ChannelMasterController extends Controller
             \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
         }
 
+        $finalData = $this->scaleReverbViewsForAllMarketplaceMaster($finalData);
+
         return response()->json([
             'status'  => 200,
             'message' => 'Channel data fetched successfully',
@@ -7275,6 +7496,7 @@ class ChannelMasterController extends Controller
             'inv_at_sp' => round($shopifyInvLp['inv_at_sp'] ?? 0, 2),
             'shopify_inv_sum' => $shopifyInvLp['inv_sum'],
             'shopify_weighted_avg_lp' => $shopifyInvLp['weighted_avg_lp'],
+            'inventory_pies' => $inventoryPies,
             'inventory_by_color' => $inventoryByColor,
             'stock_availability' => $stockAvailability,
             'ad_spend_by_channel' => $adSpendByChannel,
@@ -15973,6 +16195,10 @@ class ChannelMasterController extends Controller
                 'y_sales' => 'y_sales',
                 'l7_sales' => 'l7_sales',
                 'p_sales' => 'l7_sales',
+                'p_npft' => null,    // computed: GPFT% − (ad spend / P-Sales) on L7 pace
+                'y_pft' => null,     // computed: Y Sales × GPFT%
+                'y_npft_amt' => null, // computed: Y Sales × NPFT%
+                'y_npft_pct' => null, // computed: NPFT% weighted by Y Sales
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -16026,6 +16252,19 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
+            if (! $isAll && $metric === 'l30_sales' && $channel === 'temu2') {
+                $chartData = $this->buildTemu2LiveRollingSalesChart($days, 30);
+                $chartData = $this->pinChartSeriesLastToTable(
+                    $chartData,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $chartData]);
+            }
+
             // All-channel Y Sales badge: snapshots only (no per-channel live order
             // lookups). The old path called realPacificDayYSales for every channel
             // × day and made the badge take many seconds to open.
@@ -16037,7 +16276,7 @@ class ChannelMasterController extends Controller
             }
 
             // Metrics that should be averaged (percentages) vs summed (counts/amounts)
-            $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
+            $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'p_npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
 
             // Snapshots are captured on California calendar "today", but marketplace APIs
@@ -16150,6 +16389,7 @@ class ChannelMasterController extends Controller
                                 $viewsCarryByChannel[$rowChannel] = ['views' => $cvrM['views'], 'qty' => $cvrM['qty']];
                             }
                         }
+                        $sd = $this->scaleReverbSnapshotViewsAndCvrIfNeeded((string) ($row->channel ?? ''), $sd);
                         $count++;
                         if ($metricKey !== null && is_array($sd) && array_key_exists($metricKey, $sd)) {
                             $hasMetricData = true;
@@ -16193,6 +16433,26 @@ class ChannelMasterController extends Controller
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
                             $totalSpend += $channelAdSpend;
+                        } elseif ($metric === 'p_npft') {
+                            if (array_key_exists('l7_sales', $sd)) {
+                                $hasMetricData = true;
+                            }
+                            $pSales = $this->projectedSalesFromL7($sd['l7_sales'] ?? 0);
+                            $totalPft += ($channelGprofit / 100) * $pSales;
+                            $totalSales += $pSales;
+                            $totalSpend += $channelAdSpend;
+                        } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct') {
+                            if (array_key_exists('y_sales', $sd)) {
+                                $hasMetricData = true;
+                            }
+                            $ySales = floatval($sd['y_sales'] ?? 0);
+                            $channelNpft = floatval($sd['npft_percent'] ?? 0);
+                            if ($channelNpft == 0.0) {
+                                $channelNpft = $channelGprofit - floatval($sd['tcos_percent'] ?? 0);
+                            }
+                            $rate = $metric === 'y_pft' ? $channelGprofit : $channelNpft;
+                            $totalPft += ($rate / 100) * $ySales;
+                            $totalSales += $ySales;
                         } elseif ($metric === 'groi' || $metric === 'nroi') {
                             $totalPft += $channelPft;
                             $totalCogs += $channelCogs;
@@ -16242,6 +16502,23 @@ class ChannelMasterController extends Controller
                         $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
                         $adsPct = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
                         $value = round($gpft - $adsPct, 1);
+                    } elseif ($metric === 'p_npft') {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
+                        $adsPct = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+                        $value = round($gpft - $adsPct, 1);
+                    } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt') {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = round($totalPft, 2);
+                    } elseif ($metric === 'y_npft_pct') {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 1) : 0;
                     } elseif ($metric === 'groi') {
                         // G ROI = total profit / total cogs * 100
                         $value = $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0;
@@ -16281,6 +16558,7 @@ class ChannelMasterController extends Controller
                             $cvrCarryQty = $cvrM['qty'];
                         }
                     }
+                    $summaryData = $this->scaleReverbSnapshotViewsAndCvrIfNeeded($channel, $summaryData);
                     if ($useDailyWindow && $metric === 'total_views' && ! array_key_exists('total_views', $summaryData)) {
                         continue;
                     }
@@ -16326,6 +16604,25 @@ class ChannelMasterController extends Controller
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
                         $adSpend = floatval($summaryData['total_ad_spend'] ?? 0);
                         $value = round(($gprofitPercent / 100) * $sales - $adSpend, 2);
+                    } elseif ($metric === 'p_npft') {
+                        if (! array_key_exists('l7_sales', $summaryData)) {
+                            continue;
+                        }
+                        $pNpft = $this->projectedNpftFromL7(
+                            $summaryData['l7_sales'],
+                            $summaryData['gprofit_percent'] ?? 0,
+                            $summaryData['total_ad_spend'] ?? 0
+                        );
+                        if ($pNpft === null) {
+                            continue;
+                        }
+                        $value = round($pNpft, 1);
+                    } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct') {
+                        $yVal = $this->getMetricValueFromSummaryData($channel, $metric, $summaryData, $metricMap, true);
+                        if ($yVal === null) {
+                            continue;
+                        }
+                        $value = $yVal;
                     } elseif ($metric === 'nroi') {
                         // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — same as page badge
                         // (do not cut Ads%/TCOS% from GROI%).
@@ -16704,6 +17001,10 @@ class ChannelMasterController extends Controller
                 'y_sales' => 'y_sales',
                 'l7_sales' => 'l7_sales',
                 'p_sales' => 'l7_sales',
+                'p_npft' => null,
+                'y_pft' => null,
+                'y_npft_amt' => null,
+                'y_npft_pct' => null,
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -16720,7 +17021,7 @@ class ChannelMasterController extends Controller
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'y_npft_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
             $out = [];
             $processedByChannel = [];
 
@@ -17145,6 +17446,7 @@ class ChannelMasterController extends Controller
      */
     private function getMetricValueFromSummaryData(string $channel, string $metric, array $summaryData, array $metricMap, bool $allowLegacyListingCvrFallback = false): ?float
     {
+        $summaryData = $this->scaleReverbSnapshotViewsAndCvrIfNeeded($channel, $summaryData);
         $metricKey = $metricMap[$metric] ?? $metric;
 
         if ($metric === 'tat') {
@@ -17210,6 +17512,36 @@ class ChannelMasterController extends Controller
 
             return $this->projectedSalesFromL7($summaryData['l7_sales']);
         }
+        if ($metric === 'p_npft') {
+            if (! array_key_exists('l7_sales', $summaryData)) {
+                return null;
+            }
+
+            return $this->projectedNpftFromL7(
+                $summaryData['l7_sales'],
+                $summaryData['gprofit_percent'] ?? 0,
+                $summaryData['total_ad_spend'] ?? 0
+            );
+        }
+        if ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct') {
+            if (! array_key_exists('y_sales', $summaryData)) {
+                return null;
+            }
+
+            $ySales = floatval($summaryData['y_sales'] ?? 0);
+            if ($metric === 'y_pft') {
+                return $this->yProfitDollars($ySales, $summaryData['gprofit_percent'] ?? 0);
+            }
+            $npft = floatval($summaryData['npft_percent'] ?? 0);
+            if ($npft == 0.0) {
+                $npft = floatval($summaryData['gprofit_percent'] ?? 0) - floatval($summaryData['tcos_percent'] ?? 0);
+            }
+            if ($metric === 'y_npft_pct') {
+                return round($npft, 1);
+            }
+
+            return $this->yProfitDollars($ySales, $npft);
+        }
 
         return array_key_exists($metricKey, $summaryData) ? floatval($summaryData[$metricKey]) : null;
     }
@@ -17219,6 +17551,37 @@ class ChannelMasterController extends Controller
     {
         if ($metric === 'cvr') {
             return null;
+        }
+
+        if ($metric === 'p_npft') {
+            $pGross = 0.0;
+            $pSales = 0.0;
+            $spend = 0.0;
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['l7_sales', 'gprofit_pct', 'total_ad_spend']) as $row) {
+                $ps = $this->projectedSalesFromL7($row->l7_sales);
+                $pSales += $ps;
+                $pGross += ((float) ($row->gprofit_pct ?? 0) / 100) * $ps;
+                $spend += (float) ($row->total_ad_spend ?? 0);
+            }
+
+            return $pSales > 0 ? round((($pGross - $spend) / $pSales) * 100, 1) : null;
+        }
+
+        if (in_array($metric, ['y_pft', 'y_npft_amt', 'y_npft_pct'], true)) {
+            $ySales = 0.0;
+            $yPft = 0.0;
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['yesterday_sales', 'gprofit_pct', 'n_pft']) as $row) {
+                $ys = (float) ($row->yesterday_sales ?? 0);
+                $rate = $metric === 'y_pft' ? (float) ($row->gprofit_pct ?? 0) : (float) ($row->n_pft ?? 0);
+                $ySales += $ys;
+                $yPft += ($rate / 100) * $ys;
+            }
+
+            if ($metric === 'y_npft_pct') {
+                return $ySales > 0 ? round(($yPft / $ySales) * 100, 1) : null;
+            }
+
+            return round($yPft, 2);
         }
 
         // Metrics that are averaged (percentages) — cannot simply sum
@@ -17540,7 +17903,7 @@ class ChannelMasterController extends Controller
             } catch (\Throwable $e) {
                 continue;
             }
-            if ($live !== null) {
+            if ($live !== null && (float) $live > 0) {
                 $pt['value'] = round((float) $live, 2);
             }
         }
@@ -17640,7 +18003,7 @@ class ChannelMasterController extends Controller
 
     private function metricDotEpsilon(string $metric): float
     {
-        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'nroi', 'ads_pct', 'acos'], true)
+        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'p_npft', 'y_npft_pct', 'nroi', 'ads_pct', 'acos'], true)
             ? 0.005
             : 0.01;
     }
@@ -17651,6 +18014,132 @@ class ChannelMasterController extends Controller
     private function projectedSalesFromL7(mixed $l7Sales): float
     {
         return round((floatval($l7Sales) / 7) * 30, 2);
+    }
+
+    /**
+     * Projected NPFT% at L7 sales pace: GPFT% − (ad spend / P-Sales) × 100.
+     */
+    private function projectedNpftFromL7(mixed $l7Sales, mixed $gprofitPercent, mixed $adSpend): ?float
+    {
+        $pSales = $this->projectedSalesFromL7($l7Sales);
+        if ($pSales <= 0) {
+            return null;
+        }
+
+        return round((float) $gprofitPercent - ((float) $adSpend / $pSales) * 100, 2);
+    }
+
+    private function yProfitDollars(mixed $ySales, mixed $percent): float
+    {
+        return round(((float) $ySales * (float) $percent) / 100, 2);
+    }
+
+    /**
+     * Yesterday profit $ from Y Sales × the channel GPFT% / NPFT%.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function withYProfitColumns(array $row): array
+    {
+        $y = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Y Sales'] ?? 0));
+        $gp = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+        $np = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['N PFT'] ?? 0));
+        $row['Y PFT'] = $this->yProfitDollars($y, $gp);
+        $row['Y NPFT'] = $this->yProfitDollars($y, $np);
+
+        return $row;
+    }
+
+    /**
+     * Reverb listing views on /all-marketplace-master are 1/100 of the pricing-page total.
+     * CVR is recalculated on the scaled views. Stored snapshots stay raw.
+     */
+    private const REVERB_MASTER_VIEWS_DIVISOR = 100;
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function scaleReverbViewsForAllMarketplaceMaster(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
+            if ($this->allMarketplaceSnapshotKey($name) !== 'reverb') {
+                continue;
+            }
+            $this->scaleReverbViewsAndCvrOnMasterRow($row);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function scaleReverbViewsAndCvrOnMasterRow(array &$row): void
+    {
+        if (! empty($row['_reverb_views_scaled'])) {
+            return;
+        }
+
+        $rawViews = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Views'] ?? 0));
+        $scaledViews = $rawViews / self::REVERB_MASTER_VIEWS_DIVISOR;
+        $row['Total Views'] = $scaledViews > 0 ? (int) round($scaledViews) : 0;
+        $row['CVR'] = $this->reverbMasterCvrFromUnitsAndViews(
+            $this->reverbMasterUnitsFromRow($row),
+            $scaledViews
+        );
+
+        $row['_reverb_views_scaled'] = true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function reverbMasterUnitsFromRow(array $row): float
+    {
+        $qty = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Qty'] ?? 0));
+        if ($qty > 0) {
+            return $qty;
+        }
+
+        return (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Orders'] ?? 0));
+    }
+
+    private function reverbMasterCvrFromUnitsAndViews(float $units, float $scaledViews): float
+    {
+        return $scaledViews > 0 ? round(($units / $scaledViews) * 100, 2) : 0.0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $sd
+     * @return array<string, mixed>
+     */
+    private function scaleReverbSnapshotViewsAndCvrIfNeeded(string $channel, array $sd): array
+    {
+        if ($this->allMarketplaceSnapshotKey($channel) !== 'reverb' || ! empty($sd['_reverb_views_scaled'])) {
+            return $sd;
+        }
+        if (! array_key_exists('total_views', $sd) || $sd['total_views'] === null || $sd['total_views'] === '') {
+            return $sd;
+        }
+
+        $rawViews = (float) $sd['total_views'];
+        $scaledViews = $rawViews / self::REVERB_MASTER_VIEWS_DIVISOR;
+        $sd['total_views'] = $scaledViews;
+        $units = (float) ($sd['total_quantity'] ?? 0);
+        if ($units <= 0) {
+            $units = (float) ($sd['l30_orders'] ?? 0);
+        }
+        $sd['listing_cvr'] = $this->reverbMasterCvrFromUnitsAndViews($units, $scaledViews);
+        $sd['_reverb_views_scaled'] = true;
+
+        return $sd;
     }
 
     /**
@@ -18469,12 +18958,21 @@ class ChannelMasterController extends Controller
         $cvr = ($listingCvr !== null && $listingCvr !== '')
             ? (float) $listingCvr
             : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
+        if ($channel === 'reverb') {
+            $views = $views / self::REVERB_MASTER_VIEWS_DIVISOR;
+            $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
+            $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
+        }
 
         return match ($metric) {
             'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
             'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
             'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
-            'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
+            'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+            'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
+            'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
+            'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
+            'l30_sales' => $this->savedOrLiveTemu2L30Sales($channel, $row),
             'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
             'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
             'total_views' => $views > 0 ? $views : null,
@@ -18513,10 +19011,19 @@ class ChannelMasterController extends Controller
             $cvr = ($listingCvr !== null && $listingCvr !== '')
                 ? (float) $listingCvr
                 : ($views > 0 ? round(($qty / $views) * 100, 2) : null);
+            if ($ch === 'reverb') {
+                $views = $views / self::REVERB_MASTER_VIEWS_DIVISOR;
+                $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
+                $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
+            }
             $live = [
                 'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
                 'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
                 'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
+                'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+                'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
+                'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
+                'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
                 'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
                 'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
                 'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
@@ -18563,13 +19070,15 @@ class ChannelMasterController extends Controller
         }
 
         $sumMetrics = [
-            'y_sales', 'p_sales', 'l7_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
+            'y_sales', 'y_pft', 'y_npft_amt', 'p_sales', 'l7_sales', 'l30_sales', 'l60_sales', 'l60_orders', 'l30_orders',
             'qty', 'ad_spend', 'total_views', 'clicks', 'ad_sales', 'ad_sold',
             'missing_l', 'map', 'nmap',
         ];
         $weightBy = [
             'gprofit' => 'l30_sales',
             'npft' => 'l30_sales',
+            'p_npft' => 'p_sales',
+            'y_npft_pct' => 'y_sales',
             'ads_pct' => 'l30_sales',
             'groi' => 'l30_sales',
             'nroi' => 'l30_sales',
@@ -18680,6 +19189,50 @@ class ChannelMasterController extends Controller
         $chartData[] = ['date' => $label, 'value' => round((float) $value, 2)];
 
         return $chartData;
+    }
+
+    /**
+     * Temu 2 Sales column chart: rolling 30-day FB sales from temu2_orders
+     * through yesterday, so the graph keeps moving after the sheet upload stalls.
+     *
+     * @return list<array{date: string, value: float}>
+     */
+    private function buildTemu2LiveRollingSalesChart(int $days, int $windowDays): array
+    {
+        $end = now('America/Los_Angeles')->subDay();
+        $chartStart = $end->copy()->subDays(max(1, $days) - 1);
+        $dataStart = $chartStart->copy()->subDays(max(1, $windowDays) - 1);
+        $byDay = TemuShopifySalesService::temu2DailySalesByDate($dataStart->copy()->startOfDay(), $end->copy()->endOfDay());
+
+        $out = [];
+        $cursor = $chartStart->copy();
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            for ($i = 0; $i < $windowDays; $i++) {
+                $d = $cursor->copy()->subDays($i)->toDateString();
+                $sum += (float) ($byDay[$d]['sales'] ?? 0);
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    private function savedOrLiveTemu2L30Sales(string $channel, $row): ?float
+    {
+        if ($this->allMarketplaceSnapshotKey($channel) === 'temu2') {
+            $live = $this->getTemu2TabulatorSalesSummary();
+            $rev = (float) ($live['total_revenue'] ?? 0);
+            if ($rev > 0) {
+                return $rev;
+            }
+        }
+
+        return $row->l30_sales !== null ? (float) $row->l30_sales : null;
     }
 
     /**
@@ -18852,6 +19405,7 @@ class ChannelMasterController extends Controller
                     'groi_percent' => floatval($row['G Roi'] ?? 0),
                     'groi_l60' => floatval($row['G RoiL60'] ?? 0),
                     'npft_percent' => round($npftPercent, 2),
+                    'p_npft_percent' => $this->projectedNpftFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $adSpend),
                     'nroi_percent' => floatval($row['N ROI'] ?? 0),
                     'tcos_percent' => round($tcosPercent, 2),
                     'total_ad_spend' => $adSpend,

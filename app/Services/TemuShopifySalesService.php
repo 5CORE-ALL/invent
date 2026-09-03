@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
+use App\Models\Temu2DailyData;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
 use App\Models\Temu2Pricing;
@@ -372,6 +373,51 @@ class TemuShopifySalesService
         ];
     }
 
+    /**
+     * Per Pacific-day FB sales / base sales / qty / orders from temu2_orders
+     * (sheet unit price fills in when order_base_amount is missing).
+     *
+     * @return array<string, array{sales: float, base_sales: float, qty: int, orders: int}>
+     */
+    public static function temu2DailySalesByDate(Carbon $startDate, Carbon $endDate): array
+    {
+        $out = [];
+        foreach (self::getTemu2OrdersTableRows($startDate, $endDate) as $r) {
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $base = (float) ($r['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+            $d = substr((string) ($r['created_at'] ?? ''), 0, 10);
+            if ($d === '') {
+                continue;
+            }
+            if (! isset($out[$d])) {
+                $out[$d] = ['sales' => 0.0, 'base_sales' => 0.0, 'qty' => 0, 'oids' => []];
+            }
+            $out[$d]['sales'] += self::lineSales($base, $qty);
+            $out[$d]['base_sales'] += $base * $qty;
+            $out[$d]['qty'] += $qty;
+            $oid = trim((string) ($r['order_id'] ?? ''));
+            if ($oid !== '') {
+                $out[$d]['oids'][$oid] = true;
+            }
+        }
+
+        $flat = [];
+        foreach ($out as $d => $row) {
+            $flat[$d] = [
+                'sales' => round((float) $row['sales'], 2),
+                'base_sales' => round((float) $row['base_sales'], 2),
+                'qty' => (int) $row['qty'],
+                'orders' => count($row['oids']),
+            ];
+        }
+        ksort($flat);
+
+        return $flat;
+    }
+
     /** Y Sales from temu_orders: base-price revenue on *yesterday* (wall-clock Pacific). */
     public static function computeYSalesFromOrders(): ?float
     {
@@ -392,6 +438,44 @@ class TemuShopifySalesService
         // with L7/L30/L60 + the tabulator, which all use base_sales. Using the FB-adjusted
         // figure (base + $2.99/unit freight) here inflated Y Sales above what Temu reports.
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
+    }
+
+    /**
+     * Seller-center unit prices from the last Temu 2 sheet upload.
+     * Used when temu2_orders.order_base_amount was never fetched (currently all null).
+     *
+     * @return array{0: array<string, float>, 1: array<string, float>} [orderId => price, sku => price]
+     */
+    private static function temu2SheetPriceMaps(): array
+    {
+        static $byOrderId = null;
+        static $bySku = null;
+        if ($byOrderId !== null && $bySku !== null) {
+            return [$byOrderId, $bySku];
+        }
+
+        $byOrderId = [];
+        $bySku = [];
+        if (! Schema::hasTable('temu2_daily_data')) {
+            return [$byOrderId, $bySku];
+        }
+
+        foreach (Temu2DailyData::query()->get(['order_id', 'contribution_sku', 'base_price_total']) as $row) {
+            $price = (float) ($row->base_price_total ?? 0);
+            if ($price <= 0) {
+                continue;
+            }
+            $oid = trim((string) ($row->order_id ?? ''));
+            if ($oid !== '') {
+                $byOrderId[$oid] = $price;
+            }
+            $sku = strtoupper(trim((string) ($row->contribution_sku ?? '')));
+            if ($sku !== '' && ! isset($bySku[$sku])) {
+                $bySku[$sku] = $price;
+            }
+        }
+
+        return [$byOrderId, $bySku];
     }
 
     /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
@@ -636,6 +720,15 @@ class TemuShopifySalesService
             $orderAmount = $o->order_base_amount !== null ? (float) $o->order_base_amount : 0.0;
             if ($orderAmount > 0 && $quantity > 0) {
                 $price = $orderAmount / $quantity;
+            }
+            if ($isTemu2 && $price <= 0) {
+                [$sheetByOrder, $sheetBySku] = self::temu2SheetPriceMaps();
+                $oid = trim((string) ($o->parent_order_sn ?: ($o->order_sn ?? '')));
+                if ($oid !== '' && isset($sheetByOrder[$oid])) {
+                    $price = (float) $sheetByOrder[$oid];
+                } elseif ($sku !== '' && isset($sheetBySku[strtoupper($sku)])) {
+                    $price = (float) $sheetBySku[strtoupper($sku)];
+                }
             }
 
             $fbPrice = self::computeFbPrice($price, $quantity);

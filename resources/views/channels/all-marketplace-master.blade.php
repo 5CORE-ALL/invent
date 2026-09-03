@@ -331,6 +331,90 @@
         #summary-stats .summary-trend-dot.down { background: #ef4444; }
         #summary-stats .summary-trend-dot.flat,
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
+
+        #amm-inv-btn {
+            background: #111827;
+            border-color: #111827;
+            color: #fff;
+            font-weight: 700;
+        }
+        #amm-inv-btn:hover,
+        #amm-inv-btn:focus {
+            background: #000;
+            border-color: #000;
+            color: #fff;
+        }
+        #ammInvModal .amm-inv-pies {
+            display: flex;
+            gap: 10px;
+            margin: 0 0 10px;
+            flex-wrap: wrap;
+        }
+        #ammInvModal .amm-inv-pie-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            flex: 1 1 280px;
+            min-width: 260px;
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #ammInvModal .amm-inv-pie-canvas-wrap {
+            width: 148px;
+            height: 148px;
+            flex: 0 0 148px;
+        }
+        #ammInvModal .amm-inv-pie-legend {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #ammInvModal .amm-inv-pie-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 0 4px;
+        }
+        #ammInvModal .amm-inv-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            line-height: 1.3;
+            padding: 2px 0;
+        }
+        #ammInvModal .amm-inv-pie-swatch {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            flex: 0 0 8px;
+        }
+        #ammInvModal .amm-inv-pie-name { flex: 1 1 auto; font-weight: 600; color: #334155; }
+        #ammInvModal .amm-inv-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
+        #ammInvModal .amm-inv-pie-val { font-weight: 700; min-width: 40px; text-align: right; }
+        #ammInvModal .amm-inv-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
+        #ammInvModal .amm-inv-hist-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 8px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
+        }
+        #ammInvModal .amm-inv-hist-dot:hover { transform: scale(1.35); }
+        #ammInvModal .amm-inv-hist-wrap {
+            display: none;
+            margin: 0 0 6px;
+            padding: 6px 8px 4px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        #ammInvModal .amm-inv-hist-wrap.is-open { display: block; }
+        #ammInvModal .amm-inv-hist-canvas-wrap { height: 160px; }
         #marketplace-table .metric-diff-value {
             font-size: 9px;
             font-weight: 700;
@@ -396,6 +480,10 @@
                         title="7-Day Channel Master — same metrics as Yesterday over 7 complete days" aria-label="7-Day Channel Master">
                         <i class="fas fa-calendar-week" style="color: #000;"></i>
                     </a>
+                    <button type="button" id="amm-inv-btn" class="btn btn-sm"
+                        title="Inventory by DIL: Red &lt;25%, Green 25–50%, Pink ≥50%. Two pies — Inv@LP and Inv@SP.">
+                        INV
+                    </button>
 
                 </div>
 
@@ -410,6 +498,18 @@
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
+                            <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
+                            <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now.">
+                            Today Sales: <span id="total-today-sales">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30.">
+                            <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amz Daily Sales); other channels vary.">
                             <span class="summary-trend-dot none" data-metric="l30_orders" title="Rolling history"></span>Orders: <span id="total-l30-orders">0</span>
@@ -444,6 +544,12 @@
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="npft" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             <span class="summary-trend-dot none" data-metric="npft" title="Rolling history"></span>NPFT: <span id="avg-npft">0.0%</span>
                         </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
+                            <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y-Npft% = blended NPFT% weighted by Y Sales: sum(Y Sales × NPFT%) ÷ sum(Y Sales). Same rate used for the Y NPFT $ column.">
+                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>Y-Npft%: <span id="avg-y-npft">0.0%</span>
+                        </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             <span class="summary-trend-dot none" data-metric="nroi" title="Rolling history"></span>NROI: <span id="avg-nroi">0.0%</span>
                         </span>
@@ -469,6 +575,61 @@
             <div class="card-body" style="padding: 0;">
                 <div id="marketplace-table-wrapper" style="width: 100%;">
                     <div id="marketplace-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ammInvModal" tabindex="-1" aria-labelledby="ammInvModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="ammInvModalLabel">
+                        INV — Red / Green / Pink
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <div id="amm-inv-loading" class="text-center py-3" style="display:none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    </div>
+                    <div id="amm-inv-error" class="text-center py-2 text-danger small" style="display:none;"></div>
+                    <div class="amm-inv-pies">
+                        <div class="amm-inv-pie-wrap">
+                            <div class="amm-inv-pie-canvas-wrap">
+                                <canvas id="amm-inv-lp-pie"></canvas>
+                            </div>
+                            <div>
+                                <div class="amm-inv-pie-title">Inv@LP</div>
+                                <div class="amm-inv-pie-legend" id="amm-inv-lp-legend"></div>
+                            </div>
+                        </div>
+                        <div class="amm-inv-pie-wrap">
+                            <div class="amm-inv-pie-canvas-wrap">
+                                <canvas id="amm-inv-sp-pie"></canvas>
+                            </div>
+                            <div>
+                                <div class="amm-inv-pie-title">Inv@SP</div>
+                                <div class="amm-inv-pie-legend" id="amm-inv-sp-legend"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="amm-inv-hist-wrap" id="amm-inv-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="amm-inv-hist-title">INV history</span>
+                            <button type="button" class="btn-close" id="amm-inv-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="amm-inv-hist-canvas-wrap">
+                            <canvas id="amm-inv-hist"></canvas>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-0">
+                        Active SKUs with INV ≥ 0.01. DIL = L30 ÷ INV × 100.
+                        <span style="color:#a00211;font-weight:700;">Red &lt;25%</span>,
+                        <span style="color:#28a745;font-weight:700;">Green 25–50%</span>,
+                        <span style="color:#e83e8c;font-weight:700;">Pink ≥50%</span>.
+                        Count is SKUs. Pies are inventory $ at LP and SP.
+                    </p>
                 </div>
             </div>
         </div>
@@ -1004,8 +1165,15 @@
     <script>
         let table = null;
         var channelMetricDotTrendsUrl = "{{ url('channel-metric-dot-trends') }}";
+        var ammInvPiesUrl = "{{ route('all.marketplace.master.inv.pies') }}";
         var dotTrendsLoadedOnce = false;
         var DEFAULT_DOT_GRAY = '#6c757d';
+        var lastInventoryPies = null;
+        var ammInvLpPieChart = null;
+        var ammInvSpPieChart = null;
+        var ammInvHistChart = null;
+        var ammInvLiveSlices = [];
+        var ammInvLiveHistory = [];
 
         function snapshotChannelKey(name) {
             var k = (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1038,15 +1206,26 @@
         }
 
         var METRIC_DIFF_MONEY = {
-            l30_sales: 1, y_sales: 1, p_sales: 1, ad_spend: 1, pft: 1, ad_sales: 1,
+            l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, ad_spend: 1, pft: 1, ad_sales: 1,
             inv_at_lp: 1, inv_at_sp: 1, inventory: 1, l60_sales: 1
         };
 
         function projectedSalesFromL7(l7) {
             return (parseNumber(l7) / 7) * 30;
         }
+        function projectedNpftFromL7(l7, gprofitPercent, adSpend) {
+            const pSales = projectedSalesFromL7(l7);
+            if (!pSales || pSales <= 0) return null;
+            return parseNumber(gprofitPercent) - (parseNumber(adSpend) / pSales) * 100;
+        }
+        function yGrossPftFromRow(row) {
+            return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['Gprofit%'] || 0)) / 100;
+        }
+        function yNetPftFromRow(row) {
+            return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['N PFT'] || 0)) / 100;
+        }
         var METRIC_DIFF_PCT = {
-            gprofit: 1, groi: 1, npft: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
+            gprofit: 1, groi: 1, npft: 1, p_npft: 1, y_npft_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
         };
 
         function formatMetricDiffText(metric, diff) {
@@ -1275,7 +1454,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','y_npft_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -1320,7 +1499,7 @@
             function colorFromDotPair(v1, v2, metric) {
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                    || metric === 'npft' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                    || metric === 'npft' || metric === 'p_npft' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
                 return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
@@ -1336,10 +1515,29 @@
                 };
                 switch (metric) {
                     case 'y_sales': return n(row['Y Sales']);
+                    case 'y_pft': return yGrossPftFromRow(row);
+                    case 'y_npft_amt': return yNetPftFromRow(row);
+                    case 'y_npft_pct': {
+                        const ySales = n(row['Y Sales']);
+                        if (ySales == null || ySales <= 0) return null;
+                        return n(row['N PFT']);
+                    }
                     case 'l30_sales': return n(row['L30 Sales']);
                     case 'p_sales': {
                         const l7 = n(row['L7 Sales']);
                         return l7 == null ? null : projectedSalesFromL7(l7);
+                    }
+                    case 'p_npft': {
+                        const l7 = n(row['L7 Sales']);
+                        if (l7 == null) return null;
+                        let spend = n(row['Total Ad Spend']) || 0;
+                        const chName = (row['Channel '] || '').trim().toLowerCase();
+                        if (spend <= 0 && chName.indexOf('reverb') !== -1) {
+                            const bumpPct = n(row['Ads%'] != null ? row['Ads%'] : row['TACOS']) || 0;
+                            const l30 = n(row['L30 Sales']) || 0;
+                            if (bumpPct > 0 && l30 > 0) spend = (bumpPct / 100) * l30;
+                        }
+                        return projectedNpftFromL7(l7, n(row['Gprofit%']) || 0, spend);
                     }
                     case 'l60_sales': return n(row['L-60 Sales']);
                     case 'ad_spend': return n(row['Total Ad Spend']);
@@ -1348,7 +1546,7 @@
                     case 'l30_orders': return n(row['L30 Orders']);
                     case 'l60_orders': return n(row['L60 Orders']);
                     case 'cvr':
-                        if (ch === 'amazon') return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
+                        if (ch === 'amazon' || ch === 'reverb') return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
                         if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') return n(row['CVR']);
                         return views > 0 ? Math.round((qty / views) * 10000) / 100 : null;
                     case 'gprofit': return n(row['Gprofit%']);
@@ -1467,6 +1665,8 @@
                         }
                         response.data.forEach(function(row) {
                             row['P-Sales'] = projectedSalesFromL7(row['L7 Sales'] || 0);
+                            row['Y PFT'] = yGrossPftFromRow(row);
+                            row['Y NPFT'] = yNetPftFromRow(row);
                         });
                         updateSummaryStats(response.data);
                         function setCompactInvBadge(elId, rawVal, titlePrefix) {
@@ -1504,6 +1704,11 @@
                             response.inv_at_sp,
                             'Inventory Sum — Shopify INV × Standard Price'
                         );
+                        if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
+                            lastInventoryPies = response.inventory_pies;
+                        } else if (Array.isArray(response.inventory_by_color) && response.inventory_by_color.length) {
+                            lastInventoryPies = { slices: response.inventory_by_color, history: [] };
+                        }
                         // TAT = inv ÷ L30 Sales (months of cover)
                         const tatEl = document.getElementById('tat-badge');
                         if (tatEl && response.data && response.data.length) {
@@ -1944,6 +2149,107 @@
                         }
                     },
                     {
+                        title: "Y PFT",
+                        field: "Y PFT",
+                        headerTooltip: "Yesterday gross profit $ = Y Sales × GPFT%. Uses the Y Sales column, not rolling L30 Sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        mutator: function(value, data) {
+                            return yGrossPftFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const ySales = parseNumber(row['Y Sales'] || 0);
+                            const value = parseNumber(cell.getValue());
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'y_pft');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_pft" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!ySales) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
+                            }
+                            return `<span style="font-weight:600;color:#17a2b8;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) { sum += yGrossPftFromRow(row); });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (!value) return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
+                            return `<strong style="color:#17a2b8;">$${Math.round(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Y NPFT",
+                        field: "Y NPFT",
+                        headerTooltip: "Yesterday net profit $ = Y Sales × NPFT%. Uses the Y Sales column, not rolling L30 Sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        mutator: function(value, data) {
+                            return yNetPftFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const ySales = parseNumber(row['Y Sales'] || 0);
+                            const value = parseNumber(cell.getValue());
+                            const channel = (row['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'y_npft_amt');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_npft_amt" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            if (!ySales) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
+                            }
+                            const color = value > 0 ? '#198754' : (value < 0 ? '#dc3545' : '#6c757d');
+                            return `<span style="font-weight:600;color:${color};">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) { sum += yNetPftFromRow(row); });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (!value) return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
+                            const color = value > 0 ? '#198754' : (value < 0 ? '#dc3545' : '#6c757d');
+                            return `<strong style="color:${color};">$${Math.round(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Today Sales",
+                        field: "Today Sales",
+                        headerTooltip: "Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Same revenue sources as Y Sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 128,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue() || 0);
+                            if (!value || value === 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">$0</span>`;
+                            }
+                            return `<span style="font-weight:600;color:#fd7e14;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong style="color:#adb5bd;">$0</strong>';
+                            return `<strong style="color:#fd7e14;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "L7 Sales",
                         field: "L7 Sales",
                         hozAlign: "center",
@@ -2085,6 +2391,7 @@
                     {
                         title: "views",
                         field: "Total Views",
+                        headerTooltip: "Listing/Map traffic. Reverb views are ÷ 100 (then CVR uses that scaled total).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -2115,7 +2422,7 @@
                     {
                         title: "CVR",
                         field: "CVR",
-                        headerTooltip: "Per channel: Qty ÷ Total Views — units-based (matches /temu-decrease). Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks). Big view updates can lower this % without &quot;true&quot; conversion collapsing.",
+                        headerTooltip: "Per channel: Qty ÷ Total Views — units-based (matches /temu-decrease). Reverb Views are ÷ 100 first, then CVR is recalculated. Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             // Prefer server-provided CVR (Temu / Temu 2 use temu_l30 ÷ product_clicks
@@ -2138,10 +2445,12 @@
                             const serverCvr = row['CVR'];
                             const hasServerCvr = (serverCvr !== undefined && serverCvr !== null && serverCvr !== '');
                             const isAmazon = snapshotChannelKey(channel) === 'amazon';
+                            const isReverb = snapshotChannelKey(channel) === 'reverb';
                             let pct;
-                            if (isAmazon) {
+                            if (isAmazon || isReverb) {
                                 if (views === 0) return '-';
-                                pct = (parseNumber(row['Qty'] || 0) / views) * 100;
+                                const units = parseNumber(row['Qty'] || 0) || parseNumber(row['L30 Orders'] || 0);
+                                pct = (units / views) * 100;
                             } else if (hasServerCvr) {
                                 pct = parseNumber(serverCvr);
                             } else {
@@ -3799,20 +4108,20 @@
             function colorSummaryBadgeDots(channelKeys) {
                 var inverted = invertedDotMetrics;
                 var sumMetrics = {
-                    l30_sales: 1, y_sales: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
+                    l30_sales: 1, y_sales: 1, y_pft: 1, y_npft_amt: 1, p_sales: 1, l30_orders: 1, qty: 1, ad_spend: 1, pft: 1,
                     clicks: 1, ad_sales: 1, ad_sold: 1, total_views: 1, inv_at_lp: 1,
                     inv_at_sp: 1, inventory: 1, missing_l: 1, map: 1, nmap: 1,
                     reviews: 1, l60_sales: 1, l60_orders: 1
                 };
                 var weightBy = {
-                    gprofit: 'l30_sales', npft: 'l30_sales', ads_pct: 'l30_sales',
+                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', y_npft_pct: 'y_sales', ads_pct: 'l30_sales',
                     groi: 'l30_sales', nroi: 'l30_sales',
                     cvr: 'total_views', ads_cvr: 'clicks', acos: 'ad_sales'
                 };
                 function pairClass(v1, v2, metric) {
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
                     var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                        || metric === 'npft' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                        || metric === 'npft' || metric === 'p_npft' || metric === 'y_npft_pct' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
                     var isInv = inverted.indexOf(metric) >= 0;
                     if (isInv) return v2 < v1 ? 'up' : 'down';
@@ -3874,6 +4183,11 @@
                 let totalChannels = data.length;
                 let totalL30Sales = 0;
                 let totalYSales = 0;
+                let totalYGross = 0;
+                let totalYNet = 0;
+                let totalTodaySales = 0;
+                let totalPSales = 0;
+                let totalPGross = 0;
                 let totalL30Orders = 0;
                 let totalQty = 0;
                 let totalClicks = 0;
@@ -3894,6 +4208,10 @@
                     const channel = (row['Channel '] || '').trim().toLowerCase();
                     const l30Sales = parseNumber(row['L30 Sales'] || 0);
                     const ySales = parseNumber(row['Y Sales'] || 0);
+                    const todaySales = parseNumber(row['Today Sales'] || 0);
+                    const pSales = parseNumber(row['P-Sales'] != null && row['P-Sales'] !== ''
+                        ? row['P-Sales']
+                        : projectedSalesFromL7(row['L7 Sales'] || 0));
                     const l30Orders = parseNumber(row['L30 Orders'] || 0);
                     const qty = parseNumber(row['Qty'] || 0);
                     const clicks = parseNumber(row['clicks'] || 0);
@@ -3919,6 +4237,11 @@
 
                     totalL30Sales += l30Sales;
                     totalYSales += ySales;
+                    totalYGross += (gprofitPercent / 100) * ySales;
+                    totalYNet += (npft / 100) * ySales;
+                    totalTodaySales += todaySales;
+                    totalPSales += pSales;
+                    totalPGross += (gprofitPercent / 100) * pSales;
                     totalL30Orders += l30Orders;
                     totalQty += qty;
                     totalClicks += clicks;
@@ -4001,6 +4324,47 @@
                     }
                 })();
                 (function() {
+                    const $el = $('#total-y-pft');
+                    if (totalYSales > 0) {
+                        const val = Math.round(totalYGross);
+                        $el.text('$' + val.toLocaleString('en-US'));
+                        $el.closest('.badge').attr('title',
+                            'Y PFT $ = sum(Y Sales × GPFT%): $' + val.toLocaleString('en-US'));
+                        setBadgeExact($el, val);
+                    } else {
+                        $el.text('NYS');
+                        setBadgeExact($el, null);
+                    }
+                })();
+                (function() {
+                    const $el = $('#total-y-npft');
+                    if (totalYSales > 0) {
+                        const val = Math.round(totalYNet);
+                        $el.text('$' + val.toLocaleString('en-US'));
+                        $el.closest('.badge').attr('title',
+                            'Y NPFT $ = sum(Y Sales × NPFT%): $' + val.toLocaleString('en-US'));
+                        setBadgeExact($el, val);
+                    } else {
+                        $el.text('NYS');
+                        setBadgeExact($el, null);
+                    }
+                })();
+                (function() {
+                    const val = Math.round(totalTodaySales);
+                    const $el = $('#total-today-sales');
+                    $el.text('$' + val.toLocaleString('en-US'));
+                    $el.closest('.badge').attr('title',
+                        'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US'));
+                })();
+                (function() {
+                    const val = Math.round(totalPSales);
+                    const $el = $('#total-p-sales');
+                    $el.text(toCompact(val));
+                    $el.closest('.badge').attr('title',
+                        'Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. $' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                })();
+                (function() {
                     const val = Math.round(totalL30Orders);
                     const $el = $('#total-l30-orders');
                     $el.text(val.toLocaleString('en-US'));
@@ -4058,6 +4422,12 @@
                 data.forEach(row => {
                     const views = parseNumber(row['Total Views'] || 0);
                     if (views <= 0) return;
+                    const ch = snapshotChannelKey(row['Channel '] || row['Channel'] || '');
+                    if (ch === 'reverb' || ch === 'amazon') {
+                        cvrUnits += parseNumber(row['Qty'] || 0) || parseNumber(row['L30 Orders'] || 0);
+                        cvrViews += views;
+                        return;
+                    }
                     const serverCvr = row['CVR'];
                     if (serverCvr !== undefined && serverCvr !== null && serverCvr !== '') {
                         cvrUnits += (parseNumber(serverCvr) / 100) * views;
@@ -4092,6 +4462,24 @@
                     const val = pct1(avgNpft);
                     const $el = $('#avg-npft');
                     $el.text(val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const avgPNpft = totalPSales > 0 ? ((totalPGross - totalAdSpend) / totalPSales) * 100 : 0;
+                    const val = pct1(avgPNpft);
+                    const $el = $('#avg-p-npft');
+                    $el.text(val.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title',
+                        'Projected NPFT% = (Σ P-Sales × GPFT% − ad spend) ÷ Σ P-Sales. P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const avgYNpft = totalYSales > 0 ? (totalYNet / totalYSales) * 100 : 0;
+                    const val = pct1(avgYNpft);
+                    const $el = $('#avg-y-npft');
+                    $el.text(val.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title',
+                        'Y-Npft% = (Σ Y Sales × NPFT%) ÷ Σ Y Sales. PFT dollars use the Y Sales column. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -4904,6 +5292,8 @@
                 'l60_orders': 'L60 Orders',
                 'l30_sales': 'Sales',
                 'y_sales': 'Y Sales',
+                'y_pft': 'Y PFT',
+                'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
                 'l30_orders': 'Orders',
                 'qty': 'Qty',
@@ -4912,6 +5302,8 @@
                 'ads_pct': 'TAcos %',
                 'pft': 'Total Pft',
                 'npft': 'N PFT%',
+                'p_npft': 'P-Npft%',
+                'y_npft_pct': 'Y-Npft%',
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
                 'map': 'Map',
@@ -5016,6 +5408,208 @@
                 return (isNaN(n) ? null : n * mult);
             }
 
+            function ammInvMoneyCompact(n) {
+                const v = Math.round(Number(n) || 0);
+                const abs = Math.abs(v);
+                if (abs >= 1000000) return '$' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                if (abs >= 1000) return '$' + Math.round(v / 1000) + 'K';
+                return '$' + v.toLocaleString('en-US');
+            }
+            function ammInvNormalizeSlices(raw) {
+                const defs = [
+                    { key: 'red', label: 'Red <25%', color: '#a00211' },
+                    { key: 'green', label: 'Green 25–50%', color: '#28a745' },
+                    { key: 'pink', label: 'Pink ≥50%', color: '#e83e8c' },
+                ];
+                const byKey = {};
+                (raw || []).forEach(function(s) {
+                    const key = String(s.key || s.color || '').toLowerCase();
+                    if (!key) return;
+                    byKey[key] = s;
+                });
+                return defs.map(function(d) {
+                    const s = byKey[d.key] || {};
+                    return {
+                        key: d.key,
+                        label: s.label || d.label,
+                        color: s.color || d.color,
+                        count: Number(s.count) || 0,
+                        units: Number(s.units) || 0,
+                        inv_at_lp: Number(s.inv_at_lp != null ? s.inv_at_lp : s.inv) || 0,
+                        inv_at_sp: Number(s.inv_at_sp) || 0,
+                    };
+                });
+            }
+            function ammInvLegendHtml(chart, slices, valueKey) {
+                const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
+                return '<div class="amm-inv-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
+                    + '<span class="amm-inv-pie-swatch" style="visibility:hidden;"></span>'
+                    + '<span class="amm-inv-pie-name">DIL</span>'
+                    + '<span class="amm-inv-pie-count">count</span>'
+                    + '<span class="amm-inv-pie-val">$</span>'
+                    + '<span class="amm-inv-pie-pct">of total</span>'
+                    + '<span class="amm-inv-hist-dot" style="visibility:hidden;"></span>'
+                    + '</div>'
+                    + slices.map(function(s) {
+                        const n = Number(s[valueKey]) || 0;
+                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                        return '<div class="amm-inv-pie-row">'
+                            + '<span class="amm-inv-pie-swatch" style="background:' + s.color + ';"></span>'
+                            + '<span class="amm-inv-pie-name">' + s.label + '</span>'
+                            + '<span class="amm-inv-pie-count">' + (s.count || 0) + '</span>'
+                            + '<span class="amm-inv-pie-val">' + ammInvMoneyCompact(n) + '</span>'
+                            + '<span class="amm-inv-pie-pct">' + pct + '%</span>'
+                            + '<button type="button" class="amm-inv-hist-dot" data-chart="' + chart + '" data-band="' + s.key + '" '
+                            + 'style="background:' + s.color + ';" title="' + s.label + ' daily history"></button>'
+                            + '</div>';
+                    }).join('');
+            }
+            function ammInvDrawPie(canvasId, chartRef, slices, valueKey) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas || typeof Chart === 'undefined') return;
+                const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
+                if (chartRef === 'lp' && ammInvLpPieChart) { ammInvLpPieChart.destroy(); ammInvLpPieChart = null; }
+                if (chartRef === 'sp' && ammInvSpPieChart) { ammInvSpPieChart.destroy(); ammInvSpPieChart = null; }
+                const chart = new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: slices.map(function(s) { return s.label; }),
+                        datasets: [{
+                            data: slices.map(function(s) { return Number(s[valueKey]) || 0; }),
+                            backgroundColor: slices.map(function(s) { return s.color; }),
+                            borderColor: '#fff',
+                            borderWidth: 1,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const slice = slices[ctx.dataIndex] || {};
+                                        const n = Number(ctx.raw) || 0;
+                                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                        return ' ' + (slice.count || 0) + ' SKUs  ·  ' + ammInvMoneyCompact(n) + '  ·  ' + pct + '%';
+                                    },
+                                },
+                            },
+                        },
+                    },
+                });
+                if (chartRef === 'lp') ammInvLpPieChart = chart;
+                else ammInvSpPieChart = chart;
+            }
+            function ammInvRenderPies(payload) {
+                const slices = ammInvNormalizeSlices((payload && payload.slices) || []);
+                ammInvLiveSlices = slices;
+                ammInvLiveHistory = Array.isArray(payload && payload.history) ? payload.history : [];
+                lastInventoryPies = { slices: slices, history: ammInvLiveHistory };
+                $('#amm-inv-lp-legend').html(ammInvLegendHtml('lp', slices, 'inv_at_lp'));
+                $('#amm-inv-sp-legend').html(ammInvLegendHtml('sp', slices, 'inv_at_sp'));
+                ammInvDrawPie('amm-inv-lp-pie', 'lp', slices, 'inv_at_lp');
+                ammInvDrawPie('amm-inv-sp-pie', 'sp', slices, 'inv_at_sp');
+            }
+            function ammInvDrawHist(chart, band) {
+                const spec = ammInvLiveSlices.find(function(s) { return s.key === band; })
+                    || { key: band, label: band, color: '#111827' };
+                const field = chart === 'sp' ? (band + '_sp') : (band + '_lp');
+                const title = (chart === 'sp' ? 'Inv@SP ' : 'Inv@LP ') + spec.label;
+                $('#amm-inv-hist-title').text(title);
+                $('#amm-inv-hist-wrap').addClass('is-open');
+                const rows = (ammInvLiveHistory || []).slice();
+                const canvas = document.getElementById('amm-inv-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (ammInvHistChart) {
+                    ammInvHistChart.destroy();
+                    ammInvHistChart = null;
+                }
+                ammInvHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        datasets: [{
+                            data: rows.map(function(r) { return Number(r[field] != null ? r[field] : r[band]) || 0; }),
+                            borderColor: spec.color,
+                            backgroundColor: spec.color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: spec.color,
+                            pointBorderColor: spec.color,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return ' ' + ammInvMoneyCompact(ctx.raw);
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function(v) { return ammInvMoneyCompact(v); },
+                                },
+                            },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } },
+                        },
+                    },
+                });
+            }
+            function ammInvOpenModal() {
+                const modalEl = document.getElementById('ammInvModal');
+                if (modalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    $('#ammInvModal').modal('show');
+                }
+                $('#amm-inv-error').hide().text('');
+                if (lastInventoryPies && lastInventoryPies.slices) {
+                    ammInvRenderPies(lastInventoryPies);
+                } else {
+                    $('#amm-inv-loading').show();
+                }
+                $.getJSON(ammInvPiesUrl)
+                    .done(function(res) {
+                        $('#amm-inv-loading').hide();
+                        if (!res || (res.status && Number(res.status) !== 200)) {
+                            $('#amm-inv-error').text((res && res.message) || 'Could not load INV pies.').show();
+                            return;
+                        }
+                        ammInvRenderPies(res);
+                    })
+                    .fail(function() {
+                        $('#amm-inv-loading').hide();
+                        if (!lastInventoryPies) {
+                            $('#amm-inv-error').text('Could not load INV pies.').show();
+                        }
+                    });
+            }
+            $(document).on('click', '#amm-inv-btn', function(e) {
+                e.preventDefault();
+                ammInvOpenModal();
+            });
+            $(document).on('click', '#ammInvModal .amm-inv-hist-dot', function(e) {
+                e.preventDefault();
+                ammInvDrawHist($(this).data('chart'), $(this).data('band'));
+            });
+            $(document).on('click', '#amm-inv-hist-close', function() {
+                $('#amm-inv-hist-wrap').removeClass('is-open');
+            });
+
             // Badge click handler — show overall (all channels) metric trend
             $(document).on('click', '.badge-chart-link', function(e) {
                 const metricKey = $(this).data('metric');
@@ -5066,7 +5660,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'p_sales' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals
@@ -5074,7 +5668,7 @@
                     if (m === 'cvr' || m === 'ads_cvr') {
                         return v.toFixed(2) + '%';
                     }
-                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'y_npft_pct' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);
