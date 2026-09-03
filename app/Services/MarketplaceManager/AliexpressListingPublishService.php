@@ -598,12 +598,7 @@ class AliexpressListingPublishService
     }
 
     /**
-     * Item package from /dim-wt-master (product_master.Values): Itm wt GW / kg + Item L/W/H.
-     *
-     * @return array{length: int, width: int, height: int, weight: string, has_weight: bool}
-     */
-    /**
-     * US local AliExpress validates usl.logisticsWeight ("Package weight").
+     * Official package fields plus the US schema name aeLogisticsWeight.
      *
      * @param  array<string, mixed>  $pkg
      * @return array<string, mixed>
@@ -611,34 +606,20 @@ class AliexpressListingPublishService
     private function productPackageFields(array $pkg): array
     {
         $kg = (string) $pkg['weight'];
-        $lb = (string) ($pkg['weight_lb'] ?: $kg);
         $kgNum = (float) $kg;
-        $usl = [
-            'logisticsWeight' => $kg,
-            'packageWeight' => $kg,
-            'weight' => $kg,
-            'Package weight' => $kg,
-            'usLogisticsWeight' => $kg,
-        ];
 
         return [
             'weight' => $kg,
-            'weight_lb' => $lb,
+            'weight_lb' => (string) ($pkg['weight_lb'] ?? ''),
             'package_weight' => $kgNum,
             'gross_weight' => $kg,
-            'logisticsWeight' => $kg,
-            'usLogisticsWeight' => $kg,
-            'us_logistics_weight' => $kg,
-            'aeLogisticsWeight' => $kg,
-            'ae_logistics_weight' => $kg,
-            'usl.logisticsWeight' => $kg,
-            'usl' => $usl,
-            'aeLogisticsWeightPackage' => [
-                'weight' => $kgNum,
-                'Package weight' => $kg,
-                'length' => (int) $pkg['length'],
-                'width' => (int) $pkg['width'],
-                'height' => (int) $pkg['height'],
+            'aeLogisticsWeight' => $kgNum,
+            'usLogisticsWeight' => $kgNum,
+            'usl' => ['logisticsWeight' => $kgNum],
+            'usl.logisticsWeight' => $kgNum,
+            'category_attributes' => [
+                'aeLogisticsWeight' => ['value' => $kgNum],
+                'Package weight' => ['value' => $kgNum],
             ],
             'attribute_list' => [
                 [
@@ -646,20 +627,7 @@ class AliexpressListingPublishService
                     'attribute_name' => 'Brand Name',
                     'attribute_value' => $this->resolveBrand(),
                 ],
-                ['attribute_name' => 'aeLogisticsWeight', 'attribute_value' => $kg],
-                ['attribute_name' => 'usl.logisticsWeight', 'attribute_value' => $kg],
-                ['attribute_name' => 'usLogisticsWeight', 'attribute_value' => $kg],
-                ['attribute_name' => 'Package weight', 'attribute_value' => $kg],
             ],
-            'extra_params' => json_encode([
-                'aeLogisticsWeight' => $kg,
-                'usLogisticsWeight' => $kg,
-                'usl.logisticsWeight' => $kg,
-                'usl' => $usl,
-                'package_weight' => $kg,
-                'logisticsWeight' => $kg,
-                'weight_lb' => $lb,
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ];
     }
 
@@ -675,14 +643,8 @@ class AliexpressListingPublishService
             'weight' => $kg,
             'package_weight' => (float) $kg,
             'gross_weight' => $kg,
-            'aeLogisticsWeight' => $kg,
-            'usLogisticsWeight' => $kg,
-            'usl.logisticsWeight' => $kg,
-            'logisticsWeight' => $kg,
-            'usl' => [
-                'logisticsWeight' => $kg,
-                'Package weight' => $kg,
-            ],
+            'aeLogisticsWeight' => (float) $kg,
+            'usLogisticsWeight' => (float) $kg,
         ];
     }
 

@@ -150,64 +150,41 @@ class AliExpressApiService
      */
     public function postProduct(array $request): array
     {
-        $attempts = [$request];
-        $weight = trim((string) (
-            (is_scalar($request['aeLogisticsWeight'] ?? null) ? $request['aeLogisticsWeight'] : '')
-            ?: ($request['weight'] ?? '')
-            ?: ($request['package_weight'] ?? '')
-        ));
-        if ($weight !== '') {
-            $asObject = $request;
-            $asObject['aeLogisticsWeight'] = [
-                'Package weight' => $weight,
-                'value' => $weight,
-                'weight' => (float) $weight,
-            ];
-            $asObject['usl'] = array_merge(
-                is_array($request['usl'] ?? null) ? $request['usl'] : [],
-                [
-                    'logisticsWeight' => $weight,
-                    'Package weight' => $weight,
-                    'value' => $weight,
-                ]
-            );
-            $asObject['usl.logisticsWeight'] = $weight;
-            $asObject['logisticsWeight'] = $weight;
-            $attempts[] = $asObject;
+        $brand = trim((string) ($request['brand_name'] ?? '')) ?: '5 Core Inc.';
+        $request = $this->ensureAliExpressBrandAttribute($request, $brand);
+        $weight = $this->aliexpressWeightNumber($request);
 
-            $lb = trim((string) ($request['weight_lb'] ?? ''));
-            if ($lb === '' && is_numeric($weight)) {
-                $lb = number_format(((float) $weight) / 0.45359237, 3, '.', '');
-            }
-            if ($lb !== '' && $lb !== $weight) {
-                $asLb = $asObject;
-                $asLb['usl'] = array_merge(is_array($asLb['usl'] ?? null) ? $asLb['usl'] : [], [
-                    'logisticsWeight' => $lb,
-                    'Package weight' => $lb,
-                ]);
-                $asLb['usl.logisticsWeight'] = $lb;
-                $asLb['usLogisticsWeight'] = $lb;
-                $asLb['logisticsWeight'] = $lb;
-                $attempts[] = $asLb;
-            }
+        $attempts = [];
+        foreach ($this->schemaProductInstances($request, $weight) as $instance) {
+            $attempts[] = [
+                'method' => 'aliexpress.solution.schema.product.instance.post',
+                'rest' => ['product_instance_request' => $this->encodeRequestPayload($instance)],
+                'sync' => ['product_instance_request' => $this->encodeRequestPayload($instance)],
+            ];
         }
-        $brand = trim((string) ($request['brand_name'] ?? ''));
-        if ($brand === '') {
-            $brand = '5 Core Inc.';
-            foreach ($attempts as $i => $base) {
-                $attempts[$i]['brand_name'] = $brand;
-            }
+
+        $postShapes = [$request];
+        if ($weight > 0) {
+            $asValue = $request;
+            $asValue['aeLogisticsWeight'] = ['value' => $weight, 'unit' => 'kg'];
+            $asValue['package_weight'] = $weight;
+            $asValue['usl'] = ['logisticsWeight' => $weight];
+            $postShapes[] = $asValue;
         }
-        foreach ($attempts as $i => $base) {
-            $attempts[$i] = $this->ensureAliExpressBrandAttribute($base, $brand);
+        foreach ($postShapes as $payload) {
+            $encoded = $this->encodeRequestPayload($payload);
+            $attempts[] = [
+                'method' => 'aliexpress.solution.product.post',
+                'rest' => ['post_product_request' => $encoded],
+                'sync' => ['post_product_request' => $encoded],
+            ];
         }
 
         $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
-        foreach ($attempts as $payload) {
-            $encoded = $this->encodeRequestPayload($payload);
-            $res = $this->callApiFlexible('aliexpress.solution.product.post', [
-                'rest' => ['post_product_request' => $encoded],
-                'sync' => ['post_product_request' => $encoded],
+        foreach ($attempts as $attempt) {
+            $res = $this->callApiFlexible($attempt['method'], [
+                'rest' => $attempt['rest'],
+                'sync' => $attempt['sync'],
             ]);
             $productId = $this->extractPostedProductId($res['data'] ?? [])
                 ?: $this->extractPostedProductId($res['result'] ?? [])
@@ -225,7 +202,9 @@ class AliExpressApiService
                 'message' => $bizError,
                 'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
             ];
+            $isSchema = str_contains((string) ($attempt['method'] ?? ''), 'schema');
             if (empty($res['success'])
+                && ! $isSchema
                 && ! $this->isRetryableProductPostError($bizError)
                 && ! $this->isAliExpressPackageSizeRequired($bizError)) {
                 break;
@@ -563,6 +542,119 @@ class AliExpressApiService
         $request['attribute_list'] = $attrs;
 
         return $request;
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     */
+    private function aliexpressWeightNumber(array $request): float
+    {
+        foreach (['aeLogisticsWeight', 'package_weight', 'weight', 'usLogisticsWeight'] as $key) {
+            $value = $request[$key] ?? null;
+            if (is_array($value)) {
+                $value = $value['value'] ?? $value['weight'] ?? $value['Package weight'] ?? $value['logisticsWeight'] ?? null;
+            }
+            if (is_numeric($value) && (float) $value > 0) {
+                return round((float) $value, 3);
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Schema instance post uses package_weight (number) and US field aeLogisticsWeight.
+     *
+     * @param  array<string, mixed>  $request
+     * @return list<array<string, mixed>>
+     */
+    private function schemaProductInstances(array $request, float $weight): array
+    {
+        $title = trim((string) ($request['multi_language_subject_list'][0]['subject'] ?? ''));
+        $desc = $request['multi_language_description_list'][0] ?? [];
+        $html = is_array($desc)
+            ? (string) (data_get($desc, 'web_detail') ?: data_get($desc, 'html') ?: '')
+            : '';
+        if ($html !== '' && str_starts_with(trim($html), '{')) {
+            $decoded = json_decode($html, true);
+            $html = (string) (data_get($decoded, 'moduleList.0.html.content') ?: $html);
+        }
+        if (trim(strip_tags($html)) === '') {
+            $html = '<p>'.e($title !== '' ? $title : 'Product details').'</p>';
+        }
+
+        $skus = [];
+        foreach ($request['sku_info_list'] ?? [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = [
+                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'inventory' => max(1, (int) ($row['inventory'] ?? 1)),
+                'price' => (float) ($row['price'] ?? 0),
+            ];
+            $attrs = [];
+            foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+                if (! is_array($attr)) {
+                    continue;
+                }
+                $name = trim((string) ($attr['sku_attribute_name'] ?? 'Specification'));
+                if ($name === '') {
+                    continue;
+                }
+                $attrs[$name] = [
+                    'alias' => mb_substr((string) ($attr['sku_attribute_value'] ?? ''), 0, 70),
+                    'sku_image_url' => (string) ($attr['sku_image_url'] ?? ''),
+                ];
+            }
+            if ($attrs !== []) {
+                $sku['sku_attributes'] = $attrs;
+            }
+            $skus[] = $sku;
+        }
+
+        $base = [
+            'locale' => 'en_US',
+            'category_id' => (int) ($request['aliexpress_category_id'] ?? 0),
+            'product_units_type' => (string) ($request['product_unit'] ?? '100000015'),
+            'title_multi_language_list' => [
+                ['locale' => 'en_US', 'title' => $title],
+            ],
+            'description_multi_language_list' => [[
+                'locale' => 'en_US',
+                'module_list' => [
+                    ['type' => 'html', 'html' => ['content' => $html]],
+                ],
+            ]],
+            'image_url_list' => array_values($request['main_image_urls_list'] ?? []),
+            'sku_info_list' => $skus,
+            'inventory_deduction_strategy' => (string) ($request['inventory_deduction_strategy'] ?? 'place_order_withhold'),
+            'package_weight' => $weight,
+            'package_length' => (int) ($request['package_length'] ?? 10),
+            'package_width' => (int) ($request['package_width'] ?? 10),
+            'package_height' => (int) ($request['package_height'] ?? 10),
+            'aeLogisticsWeight' => $weight,
+            'usLogisticsWeight' => $weight,
+            'usl' => ['logisticsWeight' => $weight],
+            'shipping_preparation_time' => max(1, (int) ($request['shipping_lead_time'] ?? 7)),
+            'shipping_template_id' => (string) ($request['freight_template_id'] ?? ''),
+            'service_template_id' => (string) ($request['service_policy_id'] ?? '0'),
+            'category_attributes' => array_merge(
+                is_array($request['category_attributes'] ?? null) ? $request['category_attributes'] : [],
+                [
+                    'Brand Name' => ['value' => (string) ($request['brand_name'] ?? '5 Core Inc.')],
+                    'aeLogisticsWeight' => ['value' => $weight],
+                    'Package weight' => ['value' => $weight],
+                ]
+            ),
+        ];
+
+        return [
+            $base,
+            array_merge($base, [
+                'aeLogisticsWeight' => ['value' => $weight, 'unit' => 'kg'],
+            ]),
+        ];
     }
 
     /**
