@@ -266,9 +266,8 @@
         if (reverbCatXhr && reverbCatXhr.abort) reverbCatXhr.abort();
         reverbCatXhr = $.ajax({
             url: reverbCategorySearchUrl(),
-            type: 'POST',
+            type: 'GET',
             data: { q: query },
-            headers: { 'X-CSRF-TOKEN': csrf() },
             success: function (res) {
                 const rows = (res && res.categories) || [];
                 if (!rows.length) {
