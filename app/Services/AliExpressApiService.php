@@ -1521,11 +1521,11 @@ class AliExpressApiService
     }
 
     /**
-     * IOP /sync file upload. The file part is omitted from the sign.
+     * Official IOP file upload: /sync HMAC-SHA256, system params on the query, file omitted from the sign.
      *
      * @param  array<string, string>  $businessParams
      */
-    private function callSyncWithFile(string $method, array $businessParams, string $fileField, string $bytes, string $fileName): array
+    private function callIopFileUpload(string $method, array $businessParams, string $fileField, string $bytes, string $fileName, string $tokenKey = 'session'): array
     {
         if ($this->appKey === '' || $this->appSecret === '') {
             return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
@@ -1537,7 +1537,17 @@ class AliExpressApiService
             ];
         }
 
-        $system = $this->buildBaseParams($method);
+        $tokenKey = $tokenKey === 'access_token' ? 'access_token' : 'session';
+        $system = [
+            'app_key' => $this->appKey,
+            'format' => $this->format !== '' ? $this->format : 'json',
+            'method' => $method,
+            'partner_id' => $this->partnerId !== '' ? $this->partnerId : 'iop-sdk-php',
+            'sign_method' => 'sha256',
+            'simplify' => $this->simplify !== '' ? (string) $this->simplify : 'true',
+            'timestamp' => time().'000',
+            $tokenKey => (string) $this->accessToken,
+        ];
         $api = [];
         foreach ($businessParams as $key => $value) {
             if ($value === null || $value === '' || (string) $key === $fileField) {
@@ -1547,13 +1557,26 @@ class AliExpressApiService
         }
 
         $forSign = array_merge($api, $system);
-        $system['sign'] = $this->sign($this->buildSignSource($forSign));
+        unset($forSign['sign']);
+        ksort($forSign);
+        $source = ($this->signPath !== '' ? $this->signPath : '/sync');
+        foreach ($forSign as $key => $value) {
+            $source .= (string) $key.(string) $value;
+        }
+        $system['sign'] = strtoupper(hash_hmac('sha256', $source, $this->appSecret));
+
         $queryUrl = $this->apiBase.'?'.http_build_query($system, '', '&', PHP_QUERY_RFC3986);
+        $mime = $this->imageMimeType($bytes, $fileName);
         $multipart = [];
         foreach ($api as $name => $contents) {
             $multipart[] = ['name' => $name, 'contents' => $contents];
         }
-        $multipart[] = ['name' => $fileField, 'contents' => $bytes, 'filename' => $fileName];
+        $multipart[] = [
+            'name' => $fileField,
+            'contents' => $bytes,
+            'filename' => $fileName,
+            'headers' => ['Content-Type' => $mime],
+        ];
 
         try {
             $response = $this->httpClient()
@@ -1565,7 +1588,28 @@ class AliExpressApiService
             return $this->networkErrorResult('Could not reach AliExpress photobank (sync).', $e);
         }
 
-        return $this->parseHttpResponse($response, $method, 'sync-file');
+        return $this->parseHttpResponse($response, $method, 'iop-file');
+    }
+
+    private function imageMimeType(string $bytes, string $fileName): string
+    {
+        if (str_starts_with($bytes, "\x89PNG")) {
+            return 'image/png';
+        }
+        if (str_starts_with($bytes, 'GIF8')) {
+            return 'image/gif';
+        }
+        if (str_starts_with($bytes, "\xFF\xD8\xFF")) {
+            return 'image/jpeg';
+        }
+        $ext = strtolower((string) pathinfo($fileName, PATHINFO_EXTENSION));
+
+        return match ($ext) {
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'image/jpeg',
+        };
     }
 
     /**
@@ -3265,12 +3309,8 @@ class AliExpressApiService
             'aliexpress.photobank.redefining.uploadimageforsdk',
             'aliexpress.photobank.redefining.uploadimage',
         ] as $method) {
-            foreach ([
-                fn () => $this->callRestWithFile($method, $business, 'image_bytes', $bytes, $fileName),
-                fn () => $this->callTopRouterWithFile($method, $business, 'image_bytes', $bytes, $fileName),
-                fn () => $this->callSyncWithFile($method, $business, 'image_bytes', $bytes, $fileName),
-            ] as $send) {
-                $parsed = $send();
+            foreach (['session', 'access_token'] as $tokenKey) {
+                $parsed = $this->callIopFileUpload($method, $business, 'image_bytes', $bytes, $fileName, $tokenKey);
                 $url = $this->extractPhotobankUrl($parsed);
                 if ($url !== '') {
                     return ['success' => true, 'url' => $url, 'message' => ''];
