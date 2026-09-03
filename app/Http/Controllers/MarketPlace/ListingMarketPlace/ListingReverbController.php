@@ -10,6 +10,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ReverbListingStatus;
+use App\Services\ReverbApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -45,6 +46,15 @@ class ListingReverbController extends Controller
             'status' => 200,
             'data' => AutomatedListingPage::rows('reverb'),
         ]);
+    }
+
+    public function searchCategories(Request $request, ReverbApiService $reverb)
+    {
+        $q = trim((string) $request->input('q', $request->query('q', '')));
+        $title = trim((string) $request->input('title', ''));
+        $result = $reverb->searchListingCategories($q, $title);
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
 
     public function saveStatus(Request $request)

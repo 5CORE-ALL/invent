@@ -3,7 +3,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
-    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=4">
+    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=5">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -1089,8 +1089,9 @@
             supportsIndependentPublish: true,
             defaultPublishMode: 'single',
             previewUrl: '/listing_reverb/save-status',
-            publishUrl: '/listing_reverb/save-status'
+            publishUrl: '/listing_reverb/save-status',
+            categorySearchUrl: '/listing_reverb/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=8"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=10"></script>
 @endsection

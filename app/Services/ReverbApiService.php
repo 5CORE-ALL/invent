@@ -3815,10 +3815,24 @@ class ReverbApiService
             }
             $seen[$id] = true;
             $out[] = $row;
-            if (count($out) >= 60) {
-                break;
-            }
         }
+        if ($q !== '' && $out !== []) {
+            $needle = mb_strtolower($q);
+            usort($out, function ($a, $b) use ($needle) {
+                $pa = mb_strtolower((string) ($a['path'] ?? ''));
+                $pb = mb_strtolower((string) ($b['path'] ?? ''));
+                $la = trim((string) substr($pa, (int) strrpos($pa, '>') + 1));
+                $lb = trim((string) substr($pb, (int) strrpos($pb, '>') + 1));
+                $aLeaf = str_contains($la, $needle) ? 1 : 0;
+                $bLeaf = str_contains($lb, $needle) ? 1 : 0;
+                if ($aLeaf !== $bLeaf) {
+                    return $bLeaf <=> $aLeaf;
+                }
+
+                return substr_count($pb, '>') <=> substr_count($pa, '>');
+            });
+        }
+        $out = array_slice($out, 0, 60);
 
         if ($out === [] && $q !== '') {
             foreach ($this->scoreListingCategories($q.' '.$title) as $row) {

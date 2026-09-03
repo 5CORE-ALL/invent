@@ -4853,6 +4853,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-reverb', [ListingReverbController::class, 'listingReverb'])->name('listing.reverb');
     Route::get('/listing_reverb/view-data', [ListingReverbController::class, 'getViewListingReverbData']);
     Route::post('/listing_reverb/save-status', [ListingReverbController::class, 'saveStatus']);
+    Route::match(['get', 'post'], '/listing_reverb/categories', [ListingReverbController::class, 'searchCategories']);
     Route::get('/reverb', [ReverbController::class, 'reverbView'])->name('reverb');
     Route::post('/listing_reverb/import', [ListingReverbController::class, 'import'])->name('listing_reverb.import');
     Route::get('/listing_reverb/export', [ListingReverbController::class, 'export'])->name('listing_reverb.export');

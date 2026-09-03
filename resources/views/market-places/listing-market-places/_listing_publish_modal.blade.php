@@ -38,8 +38,11 @@
                                         <div id="listing-publish-reverb-category-path" class="listing-publish-category-path">Matching from the product type…</div>
                                         <input type="hidden" id="listing-publish-category-uuid" value="">
                                         <label for="listing-publish-reverb-category-name">Category</label>
-                                        <input type="text" id="listing-publish-reverb-category-name" class="form-control form-control-sm" placeholder="e.g. Microphone Stands" autocomplete="off">
-                                        <small>Defaults from the product type or Product Master category. Type another Reverb category name to change it.</small>
+                                        <div class="listing-publish-cat-wrap">
+                                            <input type="text" id="listing-publish-reverb-category-name" class="form-control form-control-sm" placeholder="e.g. Stands" autocomplete="off">
+                                            <div id="listing-publish-reverb-category-results" class="listing-publish-cat-results" hidden></div>
+                                        </div>
+                                        <small>Type to search Reverb categories. Click one from the list to use it.</small>
                                     </div>
                                     <div id="listing-publish-groups"></div>
                                     <div id="listing-publish-progress"></div>
