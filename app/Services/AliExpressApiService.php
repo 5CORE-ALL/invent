@@ -163,7 +163,33 @@ class AliExpressApiService
                 'value' => $weight,
                 'weight' => (float) $weight,
             ];
+            $asObject['usl'] = array_merge(
+                is_array($request['usl'] ?? null) ? $request['usl'] : [],
+                [
+                    'logisticsWeight' => $weight,
+                    'Package weight' => $weight,
+                    'value' => $weight,
+                ]
+            );
+            $asObject['usl.logisticsWeight'] = $weight;
+            $asObject['logisticsWeight'] = $weight;
             $attempts[] = $asObject;
+
+            $lb = trim((string) ($request['weight_lb'] ?? ''));
+            if ($lb === '' && is_numeric($weight)) {
+                $lb = number_format(((float) $weight) / 0.45359237, 3, '.', '');
+            }
+            if ($lb !== '' && $lb !== $weight) {
+                $asLb = $asObject;
+                $asLb['usl'] = array_merge(is_array($asLb['usl'] ?? null) ? $asLb['usl'] : [], [
+                    'logisticsWeight' => $lb,
+                    'Package weight' => $lb,
+                ]);
+                $asLb['usl.logisticsWeight'] = $lb;
+                $asLb['usLogisticsWeight'] = $lb;
+                $asLb['logisticsWeight'] = $lb;
+                $attempts[] = $asLb;
+            }
         }
         $brand = trim((string) ($request['brand_name'] ?? ''));
         if ($brand === '') {
@@ -796,6 +822,8 @@ class AliExpressApiService
             || str_contains($m, 'logisticssize')
             || str_contains($m, 'uslogisticsweight')
             || str_contains($m, 'us_logistics_weight')
+            || str_contains($m, 'usl.logisticsweight')
+            || str_contains($m, 'logisticsweight')
             || str_contains($m, 'chk_basic_required');
     }
 

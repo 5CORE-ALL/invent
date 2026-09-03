@@ -187,16 +187,11 @@ class AliexpressListingPublishService
         $variation = count($prepared) > 1;
         $skuInfoList = [];
         foreach ($prepared as $row) {
-            $skuRow = [
+            $skuRow = array_merge([
                 'sku_code' => $row['sku'],
                 'price' => number_format((float) $row['price'], 2, '.', ''),
                 'inventory' => max(1, (int) $row['inv']),
-                'weight' => (string) $pkg['weight'],
-                'package_weight' => (float) $pkg['weight'],
-                'gross_weight' => (string) $pkg['weight'],
-                'aeLogisticsWeight' => (string) $pkg['weight'],
-                'usLogisticsWeight' => (string) $pkg['weight'],
-            ];
+            ], $this->skuPackageFields($pkg));
             if ($variation) {
                 $skuRow['sku_attributes_list'] = [[
                     'sku_attribute_name' => 'Specification',
@@ -220,39 +215,13 @@ class AliexpressListingPublishService
             'product_unit' => (int) config('services.aliexpress.product_unit', 100000015),
             'inventory_deduction_strategy' => 'place_order_withhold',
             'shipping_lead_time' => max(1, (int) config('services.aliexpress.shipping_lead_time', 7)),
-            'weight' => (string) $pkg['weight'],
-            'package_weight' => (float) $pkg['weight'],
-            'gross_weight' => (string) $pkg['weight'],
-            'usLogisticsWeight' => (string) $pkg['weight'],
-            'aeLogisticsWeight' => (string) $pkg['weight'],
-            'ae_logistics_weight' => (string) $pkg['weight'],
-            'aeLogisticsWeightPackage' => [
-                'weight' => (float) $pkg['weight'],
-                'Package weight' => (string) $pkg['weight'],
-                'length' => (int) $pkg['length'],
-                'width' => (int) $pkg['width'],
-                'height' => (int) $pkg['height'],
-            ],
-            'attribute_list' => [
-                [
-                    'aliexpress_attribute_name_id' => 2,
-                    'attribute_name' => 'Brand Name',
-                    'attribute_value' => $this->resolveBrand(),
-                ],
-                ['attribute_name' => 'aeLogisticsWeight', 'attribute_value' => (string) $pkg['weight']],
-                ['attribute_name' => 'Package weight', 'attribute_value' => (string) $pkg['weight']],
-            ],
-            'extra_params' => json_encode([
-                'aeLogisticsWeight' => (string) $pkg['weight'],
-                'usLogisticsWeight' => (string) $pkg['weight'],
-                'package_weight' => (string) $pkg['weight'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'package_length' => (int) $pkg['length'],
             'package_width' => (int) $pkg['width'],
             'package_height' => (int) $pkg['height'],
             'freight_template_id' => (int) $freightId,
             'service_policy_id' => (int) config('services.aliexpress.service_policy_id', 0),
         ];
+        $request = array_merge($request, $this->productPackageFields($pkg));
 
         Log::info('AliExpress publish: sending product.post', [
             'parent' => $parentKey,
@@ -633,6 +602,90 @@ class AliexpressListingPublishService
      *
      * @return array{length: int, width: int, height: int, weight: string, has_weight: bool}
      */
+    /**
+     * US local AliExpress validates usl.logisticsWeight ("Package weight").
+     *
+     * @param  array<string, mixed>  $pkg
+     * @return array<string, mixed>
+     */
+    private function productPackageFields(array $pkg): array
+    {
+        $kg = (string) $pkg['weight'];
+        $lb = (string) ($pkg['weight_lb'] ?: $kg);
+        $kgNum = (float) $kg;
+        $usl = [
+            'logisticsWeight' => $kg,
+            'packageWeight' => $kg,
+            'weight' => $kg,
+            'Package weight' => $kg,
+            'usLogisticsWeight' => $kg,
+        ];
+
+        return [
+            'weight' => $kg,
+            'weight_lb' => $lb,
+            'package_weight' => $kgNum,
+            'gross_weight' => $kg,
+            'logisticsWeight' => $kg,
+            'usLogisticsWeight' => $kg,
+            'us_logistics_weight' => $kg,
+            'aeLogisticsWeight' => $kg,
+            'ae_logistics_weight' => $kg,
+            'usl.logisticsWeight' => $kg,
+            'usl' => $usl,
+            'aeLogisticsWeightPackage' => [
+                'weight' => $kgNum,
+                'Package weight' => $kg,
+                'length' => (int) $pkg['length'],
+                'width' => (int) $pkg['width'],
+                'height' => (int) $pkg['height'],
+            ],
+            'attribute_list' => [
+                [
+                    'aliexpress_attribute_name_id' => 2,
+                    'attribute_name' => 'Brand Name',
+                    'attribute_value' => $this->resolveBrand(),
+                ],
+                ['attribute_name' => 'aeLogisticsWeight', 'attribute_value' => $kg],
+                ['attribute_name' => 'usl.logisticsWeight', 'attribute_value' => $kg],
+                ['attribute_name' => 'usLogisticsWeight', 'attribute_value' => $kg],
+                ['attribute_name' => 'Package weight', 'attribute_value' => $kg],
+            ],
+            'extra_params' => json_encode([
+                'aeLogisticsWeight' => $kg,
+                'usLogisticsWeight' => $kg,
+                'usl.logisticsWeight' => $kg,
+                'usl' => $usl,
+                'package_weight' => $kg,
+                'logisticsWeight' => $kg,
+                'weight_lb' => $lb,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $pkg
+     * @return array<string, mixed>
+     */
+    private function skuPackageFields(array $pkg): array
+    {
+        $kg = (string) $pkg['weight'];
+
+        return [
+            'weight' => $kg,
+            'package_weight' => (float) $kg,
+            'gross_weight' => $kg,
+            'aeLogisticsWeight' => $kg,
+            'usLogisticsWeight' => $kg,
+            'usl.logisticsWeight' => $kg,
+            'logisticsWeight' => $kg,
+            'usl' => [
+                'logisticsWeight' => $kg,
+                'Package weight' => $kg,
+            ],
+        ];
+    }
+
     private function packageSize(ProductMaster $product, string $sku = ''): array
     {
         $sku = trim($sku !== '' ? $sku : (string) $product->sku);
@@ -657,6 +710,11 @@ class AliexpressListingPublishService
         };
 
         $hasWeight = $weightKg !== null && $weightKg > 0;
+        $weightLb = $hasWeight
+            ? (($pkg['weight_lb'] ?? null) !== null
+                ? (float) $pkg['weight_lb']
+                : $weightKg / 0.45359237)
+            : null;
 
         return [
             'length' => $toCm($pkg['length_cm'] ?? null, $pkg['length_in'] ?? null, 10),
@@ -664,6 +722,9 @@ class AliexpressListingPublishService
             'height' => $toCm($pkg['height_cm'] ?? null, $pkg['height_in'] ?? null, 10),
             'weight' => $hasWeight
                 ? number_format(max(0.001, min(500, $weightKg)), 3, '.', '')
+                : '',
+            'weight_lb' => $weightLb !== null
+                ? number_format(max(0.001, $weightLb), 3, '.', '')
                 : '',
             'has_weight' => $hasWeight,
         ];
