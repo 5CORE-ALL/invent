@@ -46,7 +46,8 @@ class BadgeDataCatalog
                 'y_pft' => 'Y PFT',
                 'y_npft' => 'Y NPFT',
                 'y_npft_amt' => 'Y NPFT',
-                'y_npft_pct' => 'Y-Npft%',
+                'y_npft_pct' => 'yNprft%',
+                'y_groi_pct' => 'YGroi%',
                 'today_sales' => 'Today Sales',
                 'p_sales' => 'P-Sales',
                 'l30_orders' => 'Orders',
@@ -342,7 +343,7 @@ class BadgeDataCatalog
             'y_pft', 'y_npft', 'y_npft_amt' => $n != 0.0 ? '$'.number_format((int) round($n)) : 'NYS',
             'today_sales', 'l30_sales', 'p_sales', 'ad_spend', 'net_profit', 'inventory_value_amazon', 'inv_at_lp', 'inv_at_sp'
                 => '$'.number_format((int) round($n)),
-            'gprofit_pct', 'ads_pct', 'npft_pct', 'p_npft_pct', 'y_npft_pct', 'g_roi', 'n_roi' => number_format($n, 1).'%',
+            'gprofit_pct', 'ads_pct', 'npft_pct', 'p_npft_pct', 'y_npft_pct', 'y_groi_pct', 'g_roi', 'n_roi' => number_format($n, 1).'%',
             'cvr_pct' => $value === null ? '-' : number_format($n, 2).'%',
             'tat' => $n > 0 ? number_format($n, 2) : '0',
             'avg_rating', 'seller_avg_rating' => number_format($n, 1).' ★',

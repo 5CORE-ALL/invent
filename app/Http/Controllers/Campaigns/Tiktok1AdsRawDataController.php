@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Campaigns;
 use App\Http\Controllers\Controller;
 use App\Models\TiktokCampaignReport;
 use App\Support\TikTokAdsSkuResolver;
+use App\Support\Tiktok1AdsRawDataTotals;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -40,34 +41,7 @@ class Tiktok1AdsRawDataController extends Controller
             }
 
             $rows = TiktokCampaignReport::query()->orderByDesc('id')->get();
-            $sums = [
-                'count' => $rows->count(),
-                'cost_l30' => 0.0,
-                'cost_l1' => 0.0,
-                'orders_l30' => 0,
-                'orders_l1' => 0,
-                'revenue_l30' => 0.0,
-                'revenue_l1' => 0.0,
-            ];
-            foreach ($rows as $row) {
-                $range = strtoupper(trim((string) ($row->report_range ?? '')));
-                $cost = (float) ($row->cost ?? 0);
-                $orders = (int) ($row->sku_orders ?? 0);
-                $revenue = (float) ($row->gross_revenue ?? 0);
-                if ($range === 'L1') {
-                    $sums['cost_l1'] += $cost;
-                    $sums['orders_l1'] += $orders;
-                    $sums['revenue_l1'] += $revenue;
-                } else {
-                    $sums['cost_l30'] += $cost;
-                    $sums['orders_l30'] += $orders;
-                    $sums['revenue_l30'] += $revenue;
-                }
-            }
-            $sums['cost_l30'] = round($sums['cost_l30'], 2);
-            $sums['cost_l1'] = round($sums['cost_l1'], 2);
-            $sums['revenue_l30'] = round($sums['revenue_l30'], 2);
-            $sums['revenue_l1'] = round($sums['revenue_l1'], 2);
+            $sums = Tiktok1AdsRawDataTotals::sums();
 
             $data = $rows->map(function (TiktokCampaignReport $row) {
                 $arr = $row->toArray();

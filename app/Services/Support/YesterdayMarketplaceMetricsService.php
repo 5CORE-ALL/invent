@@ -226,6 +226,7 @@ class YesterdayMarketplaceMetricsService
             'ebay3' => $this->ebay3($date),
             'temu' => $this->temu($start, $end, $date),
             'temu2' => $this->temu2($start, $end, $date),
+            'temu3', 'temuthree' => $this->temu3($start, $end),
             'shopify', 'shopifyb2c' => $this->shopify($start, $end),
             'doba' => $this->doba($start, $end),
             'bestbuy', 'bestbuyusa' => $this->mirakl('Best Buy USA', 'BestbuyUSA', 80, 'ship_bb', $start, $end),
@@ -491,6 +492,28 @@ class YesterdayMarketplaceMetricsService
             (int) $m['qty'],
             (float) $m['sales'],
             $ads['sales']
+        );
+    }
+
+    /**
+     * Temu 3 sheet: Full Temu Price sales, no ads.
+     *
+     * @return array<string, mixed>
+     */
+    private function temu3(Carbon $start, Carbon $end): array
+    {
+        $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+
+        return $this->pack(
+            (float) ($m['sales'] ?? 0),
+            (float) ($m['sales'] ?? 0),
+            (float) ($m['pft'] ?? 0),
+            (float) ($m['cogs'] ?? 0),
+            0.0,
+            (int) ($m['orders'] ?? 0),
+            (int) ($m['qty'] ?? 0),
+            (float) ($m['sales'] ?? 0),
+            0.0
         );
     }
 
@@ -1676,6 +1699,7 @@ class YesterdayMarketplaceMetricsService
             'fbmarketplace', 'facebookmarketplace' => 'fbmarketplace',
             'tiktokshop', 'tiktok' => 'tiktok',
             'tiktok2', 'tiktokshop2' => 'tiktok2',
+            'temu3', 'temuthree' => 'temu3',
             default => $k,
         };
     }

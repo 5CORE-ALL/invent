@@ -70,56 +70,67 @@
         #google-ads-campaigns-raw-wrap .tabulator-col[aria-sort="desc"] .tabulator-col-sorter {
             opacity: 1;
         }
-        /* Normal horizontal headers (not vertical / aliexpress-style) */
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
-            writing-mode: horizontal-tb !important;
-            text-orientation: mixed !important;
-            transform: none !important;
-            white-space: normal !important;
-        }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: horizontal-tb !important;
-            text-orientation: mixed !important;
-            transform: none !important;
-            white-space: normal !important;
-            height: auto !important;
-            min-height: 0 !important;
-            display: block;
-            align-items: unset;
-            justify-content: unset;
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.25;
-            padding: 5px 3px;
-            text-align: center;
+        /* Vertical headers (AliExpress / marketplace style); campaign name stays horizontal */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
+            min-height: 80px;
+            vertical-align: bottom;
+            overflow: visible;
         }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
-            height: auto !important;
-            min-height: 34px;
+            height: 80px !important;
+            min-height: 80px;
             padding: 0;
         }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col {
-            height: auto !important;
-            min-height: 34px;
-            vertical-align: middle;
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.15;
+            padding: 4px 0;
+            text-align: center;
+            overflow: visible;
+            text-overflow: clip;
         }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
-        /* Tighter horizontal padding than Tabulator defaults */
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row .tabulator-cell {
-            padding: 3px 4px !important;
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
         }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
-        /* Sts: column was too narrow — header wrapped one letter per line; keep title on one row like other cols */
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_status"] .tabulator-col-title {
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_name"] .tabulator-col-title,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__gac_select"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            display: block;
+            white-space: nowrap !important;
+            padding: 5px 3px;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_name"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_name"] .tabulator-col-title-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__gac_select"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__gac_select"] .tabulator-col-title-holder {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
             white-space: nowrap !important;
         }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_status"] .tabulator-col-content-holder,
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_status"] .tabulator-col-title-holder {
-            white-space: nowrap !important;
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
+        /* Tighter horizontal padding than Tabulator defaults */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row .tabulator-cell {
+            padding: 3px 4px !important;
+            text-align: center !important;
         }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell .gac-raw-status-cell {
             white-space: nowrap;
@@ -437,10 +448,9 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-views-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtViewsRuleModal" title="Edit View L7 bands and Bgt Views values">BGT Vs VIEWS</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-cvr-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-prc-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-reviews-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes SBGTs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes each row’s SBGT as daily budget (chunks of 10). SBGT 0 / INV ≤ 0 pauses the campaign — $0 cannot be pushed.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
@@ -507,6 +517,14 @@
                                     <option value="NOT_ENABLED">All except Enabled</option>
                                     <option value="PAUSED">Paused</option>
                                     <option value="REMOVED">Removed</option>
+                                </select>
+                            </div>
+                            <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0" for="gac-filter-inv">INV</label>
+                                <select id="gac-filter-inv" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by inventory">
+                                    <option value="all" selected>All</option>
+                                    <option value="gt0">INV&gt;0</option>
+                                    <option value="eq0">INV=0</option>
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field d-flex align-items-end">
@@ -594,7 +612,8 @@
                         <strong>ACOS % only</strong> (no spend gate). Rows are checked
                         <strong>top to bottom</strong>; the first range that contains the
                         campaign's ACOS gets its BGT ACOS. Grid <strong>SBGT</strong> is the sum of
-                        Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews.
+                        Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC.
+                        <strong>INV ≤ 0</strong> forces SBGT to 0. SBGT 0 cannot be pushed — those campaigns are paused.
                         Use <code>9999</code> on <em>To</em> for the catch-all highest band.
                     </p>
                     <div class="table-responsive">
@@ -747,48 +766,6 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtPrcRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="gacRawBgtReviewsRuleModal" tabindex="-1" aria-labelledby="gacRawBgtReviewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawBgtReviewsRuleModalLabel">BGT Vs REVIEWS — Reviews → Bgt Reviews</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>star rating</strong> range (lowest rating among campaign SKUs).
-                        Rows are checked <strong>top to bottom</strong>.
-                        Saved in a Google-only table — not synced with Amazon.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Name</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;">Count</th>
-                                <th style="width:120px;">Bgt Reviews</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="gac-bgt-reviews-bands-body"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-reviews-add-band-btn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtReviewsRuleErr" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtReviewsRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -954,8 +931,6 @@
             const gacBgtCvrRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-cvr-rule.save'));
             const gacBgtPrcRuleGetUrl = @json(route('google.shopping.campaigns.bgt-prc-rule'));
             const gacBgtPrcRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-prc-rule.save'));
-            const gacBgtReviewsRuleGetUrl = @json(route('google.shopping.campaigns.bgt-reviews-rule'));
-            const gacBgtReviewsRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-reviews-rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
@@ -994,9 +969,6 @@
                 bgt_prc_label: true,
                 bgt_prc_price: true,
                 ovl30: true,
-                bgt_reviews_color: true,
-                bgt_reviews_label: true,
-                bgt_reviews_rating: true,
             };
             /** Toggle: L30 spend = 0 + INV &gt; 0 + Merchant Item ID check. */
             let gacRawVerifyIdActive = false;
@@ -1112,9 +1084,14 @@
                 var cvr = parseInt(row.bgt_cvr, 10);
                 var acos = parseInt(row.bgt_acos, 10);
                 var prc = parseInt(row.bgt_prc, 10);
-                var rev = parseInt(row.bgt_reviews, 10);
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC';
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0);
+                var inv = parseFloat(row && row.inventory);
+                if (isFinite(v) && v === 0 && isFinite(inv) && inv <= 0) {
+                    tip += ' · INV ≤ 0 zeros SBGT — cannot push $0, campaign will be paused';
+                } else if (isFinite(v) && v === 0) {
+                    tip += ' · SBGT 0 cannot be pushed — campaign will be paused';
+                }
                 if (trend === 'na') {
                     tip += ' · No previous day saved yet — click for daily history';
                 } else {
@@ -1189,17 +1166,6 @@
                     return tip;
                 });
             }
-            function gacRawBgtReviewsFormatter(cell) {
-                return gacRawBgtPartFormatter(cell, 'bgt_reviews_color', function(row) {
-                    var rating = parseFloat(row && row.bgt_reviews_rating);
-                    var label = String((row && row.bgt_reviews_label) || '').trim();
-                    var tip = 'Bgt Reviews from campaign star rating';
-                    if (isFinite(rating)) tip += ' · ' + rating + '★';
-                    if (label) tip += ' · ' + label;
-                    return tip;
-                });
-            }
-
             function gacRawOpenSbgtHistory(campaignId) {
                 var cid = String(campaignId || '').replace(/\D/g, '');
                 if (!cid) return;
@@ -1455,6 +1421,7 @@
                     filter_ub1: gacRawFilterParamVal('gac-filter-ub1'),
                     filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
+                    filter_inv: gacRawFilterParamVal('gac-filter-inv'),
                     filter_ctr_min: gacRawRangeInputVal('gac-filter-ctr-min'),
                     filter_ctr_max: gacRawRangeInputVal('gac-filter-ctr-max'),
                     filter_cvr_min: gacRawRangeInputVal('gac-filter-cvr-min'),
@@ -1830,12 +1797,33 @@
                     var val = obj[key];
                     var name = prefix ? prefix + '[' + key + ']' : key;
                     if (val === undefined) return;
+                    // Tabulator sort entries include a ColumnComponent — do not serialize it.
+                    if (key === 'column') return;
                     if (val !== null && typeof val === 'object') {
                         gacRawAppendQueryParams(searchParams, val, name);
                     } else {
                         searchParams.set(name, val === null ? '' : String(val));
                     }
                 });
+            }
+
+            /** Keep only field+dir so the server receives a usable sort[] payload. */
+            function gacRawSanitizeAjaxParams(params) {
+                var out = {};
+                Object.keys(params || {}).forEach(function(k) {
+                    if (k === 'sort' || k === 'sorters') return;
+                    out[k] = params[k];
+                });
+                var list = params && (params.sort || params.sorters);
+                if (Array.isArray(list) && list.length) {
+                    out.sort = list.map(function(s) {
+                        return {
+                            field: String((s && s.field) || ''),
+                            dir: (s && s.dir) === 'desc' ? 'desc' : 'asc'
+                        };
+                    }).filter(function(s) { return s.field !== ''; });
+                }
+                return out;
             }
 
             function gacRawIsRetryableLoadError(err, status) {
@@ -1857,7 +1845,7 @@
                 function once() {
                     attempts += 1;
                     var u = new URL(url, window.location.href);
-                    gacRawAppendQueryParams(u.searchParams, params || {});
+                    gacRawAppendQueryParams(u.searchParams, gacRawSanitizeAjaxParams(params || {}));
                     return fetch(u.toString(), {
                         method: method,
                         credentials: (config && config.credentials) ? config.credentials : 'same-origin',
@@ -1904,6 +1892,7 @@
                 paginationButtonCount: 12,
                 paginationInitialPage: 1,
                 sortMode: 'remote',
+                headerSortClickElement: 'header',
                 placeholder: 'No rows in google_ads_campaigns.',
                 selectableRows: true,
                 rowFormatter: function(row) {
@@ -1959,7 +1948,6 @@
                         bgt_views: 'Bgt Views',
                         bgt_cvr: 'Bgt Cvr',
                         bgt_prc: 'BGT PRC',
-                        bgt_reviews: 'Bgt Reviews',
                         sbgt: 'SBGT',
                         sbid: 'SBID',
                     };
@@ -2080,6 +2068,8 @@
                     var sortableFields = {
                         campaign_status: true,
                         campaign_name: true,
+                        inventory: true,
+                        dil: true,
                         spend: true,
                         l7_spend: true,
                         l2_spend: true,
@@ -2093,15 +2083,27 @@
                         ad_sold_L30: true,
                         ad_sales_L30: true,
                         acos_l30: true,
+                        price: true,
                         cvr_l30: true,
                         ub7: true,
                         ub2: true,
                         ub1: true,
                         bgt: true,
                         bgt_acos: true,
+                        views_l30: true,
+                        views_l7: true,
+                        bgt_views: true,
                         bgt_cvr: true,
+                        bgt_prc: true,
                         sbgt: true,
                         sbid: true,
+                    };
+                    var numericSortDesc = {
+                        inventory: true, dil: true, spend: true, l7_spend: true, l2_spend: true, l1_spend: true,
+                        metrics_clicks: true, ctr_l30: true, cpc_L30: true, cpc_L7: true, cpc_L2: true, cpc_L1: true,
+                        ad_sold_L30: true, ad_sales_L30: true, acos_l30: true, price: true, cvr_l30: true,
+                        ub7: true, ub2: true, ub1: true, bgt: true, bgt_acos: true, views_l30: true, views_l7: true,
+                        bgt_views: true, bgt_cvr: true, bgt_prc: true, sbgt: true, sbid: true
                     };
                     defs.forEach(function(col) {
                         if (col.field === '__gac_select') {
@@ -2114,6 +2116,9 @@
                         }
                         // Avoid a uniform minWidth on every column — Tabulator fits width to data unless width/minWidth is set
                         col.headerSort = Object.prototype.hasOwnProperty.call(sortableFields, col.field);
+                        if (col.headerSort && Object.prototype.hasOwnProperty.call(numericSortDesc, col.field)) {
+                            col.headerSortStartingDir = 'desc';
+                        }
                         col.hozAlign = 'center';
                         col.headerHozAlign = 'center';
                         if (col.field === 'campaign_name') {
@@ -2139,7 +2144,7 @@
                         }
                         if (col.field === 'inventory') {
                             col.title = 'INV';
-                            col.hozAlign = 'right';
+                            col.hozAlign = 'center';
                             col.headerHozAlign = 'center';
                             col.minWidth = 64;
                             col.formatter = function(c) {
@@ -2155,7 +2160,6 @@
                             col.hozAlign = 'center';
                             col.headerHozAlign = 'center';
                             col.minWidth = 60;
-                            col.headerSort = false;
                             col.formatter = function(c) {
                                 var row = c.getRow ? c.getRow().getData() : {};
                                 var inv = parseFloat(row && (row.inventory != null ? row.inventory : row.inv));
@@ -2186,7 +2190,6 @@
                             col.hozAlign = 'center';
                             col.headerHozAlign = 'center';
                             col.minWidth = 68;
-                            col.headerSort = false;
                             col.formatter = function(c) {
                                 var v = c.getValue();
                                 if (v === null || v === undefined || v === '') return '—';
@@ -2204,10 +2207,9 @@
                         if (col.field === 'price') {
                             col.title = 'Price';
                             col.headerTooltip = 'Shopify price (parent = average of children with price > 0). Same value used by BGT PRC.';
-                            col.hozAlign = 'right';
+                            col.hozAlign = 'center';
                             col.headerHozAlign = 'center';
                             col.minWidth = 72;
-                            col.headerSort = false;
                             col.formatter = function(c) {
                                 var v = parseFloat(c.getValue());
                                 if (!isFinite(v) || v <= 0) return '—';
@@ -2261,7 +2263,6 @@
                             } else if (col.field === 'bgt_views') {
                                 col.headerTooltip = 'Suggested budget from BGT Vs VIEWS — Shopify View L7';
                                 col.formatter = gacRawBgtViewsFormatter;
-                                col.headerSort = false;
                                 col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'bgt_cvr') {
                                 col.headerTooltip = 'Suggested budget from BGT Vs CVR — Google Shopping CVR L30';
@@ -2270,15 +2271,9 @@
                             } else if (col.field === 'bgt_prc') {
                                 col.headerTooltip = 'Suggested budget from BGT PRC — Shopify Price';
                                 col.formatter = gacRawBgtPrcFormatter;
-                                col.headerSort = false;
-                                col.minWidth = Math.max(col.minWidth || 0, 68);
-                            } else if (col.field === 'bgt_reviews') {
-                                col.headerTooltip = 'Suggested budget from BGT Vs REVIEWS — campaign star rating';
-                                col.formatter = gacRawBgtReviewsFormatter;
-                                col.headerSort = false;
                                 col.minWidth = Math.max(col.minWidth || 0, 68);
                             } else if (col.field === 'sbgt') {
-                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews';
+                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. INV ≤ 0 zeros SBGT. SBGT 0 cannot be pushed — Push SBGT pauses the campaign.';
                                 col.formatter = gacRawSbgtCellFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'sbid') {
@@ -2356,7 +2351,7 @@
                 },
             });
 
-            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat'].forEach(function(fid) {
+            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv'].forEach(function(fid) {
                 var fel = document.getElementById(fid);
                 if (fel) {
                     fel.addEventListener('change', gacRawReloadGridForFilters);
@@ -2819,7 +2814,7 @@
                         btn: pushSbgtBtn,
                         campaign_ids: ids,
                         chunkSize: 10,
-                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of 10 (' + sbgtChunks + ' request(s)). Each row uses the SBGT shown in the grid.',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of 10 (' + sbgtChunks + ' request(s)). Each row uses the SBGT shown in the grid. Rows with SBGT 0 (including INV ≤ 0) are paused instead — Google cannot push a $0 budget.',
                         loadingTitle: 'Pushing SBGT (budget:update-shopping)…',
                         loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s) in chunks of 10.',
                     });
@@ -3805,21 +3800,6 @@
                 addBtnId: 'gac-bgt-prc-add-band-btn', saveBtnId: 'gacRawBgtPrcRuleSaveBtn', errId: 'gacRawBgtPrcRuleErr',
                 getUrl: gacBgtPrcRuleGetUrl, saveUrl: gacBgtPrcRuleSaveUrl,
                 valueOfRow: function(row) { var n = parseFloat(row && row.bgt_prc_price); return isFinite(n) ? n : null; }
-            });
-            gacBindBgtSlabRule({
-                defaults: [
-                    { rev_from: 2.99, rev_to: 3.5, bgt: 1, label: 'Red', color: '#a00211' },
-                    { rev_from: 3.51, rev_to: 4, bgt: 2, label: 'Yellow', color: '#ffc107' },
-                    { rev_from: 4.01, rev_to: 4.5, bgt: 3, label: 'Blue', color: '#2563eb' },
-                    { rev_from: 4.51, rev_to: 5, bgt: 4, label: 'Green', color: '#28a745' }
-                ],
-                labels: ['Red', 'Yellow', 'Blue', 'Green'],
-                colors: ['#a00211', '#ffc107', '#2563eb', '#28a745'],
-                fromKey: 'rev_from', toKey: 'rev_to', step: '0.01', minBgt: 1, fillGaps: true,
-                modalId: 'gacRawBgtReviewsRuleModal', tbodyId: 'gac-bgt-reviews-bands-body',
-                addBtnId: 'gac-bgt-reviews-add-band-btn', saveBtnId: 'gacRawBgtReviewsRuleSaveBtn', errId: 'gacRawBgtReviewsRuleErr',
-                getUrl: gacBgtReviewsRuleGetUrl, saveUrl: gacBgtReviewsRuleSaveUrl,
-                valueOfRow: function(row) { var n = parseFloat(row && row.bgt_reviews_rating); return isFinite(n) ? n : null; }
             });
         });
     </script>

@@ -26,6 +26,7 @@ class AllMarketplaceChannelRegistry
             ['key' => 'doba', 'label' => 'Doba', 'short' => 'D', 'cls' => 'btn-doba', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'temu', 'label' => 'Temu 1', 'short' => 'T1', 'cls' => 'btn-temu', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'temu2', 'label' => 'Temu 2', 'short' => 'T2', 'cls' => 'btn-temu', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
+            ['key' => 'temu3', 'label' => 'Temu 3', 'short' => 'T3', 'cls' => 'btn-temu', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'walmart', 'label' => 'Walmart', 'short' => 'Wal', 'cls' => 'btn-walmart', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'shopify_pls', 'label' => 'Shopify PLS', 'short' => 'PLS', 'cls' => 'btn-shopify-pls', 'group' => 'shopify', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'wayfair', 'label' => 'Wayfair', 'short' => 'W', 'cls' => 'btn-wayfair', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],

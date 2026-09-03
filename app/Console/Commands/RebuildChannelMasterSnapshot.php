@@ -25,6 +25,7 @@ class RebuildChannelMasterSnapshot extends Command
         'eBay 3' => 'ebaythree',
         'Temu' => 'temu',
         'Temu 2' => 'temu2',
+        'Temu 3' => 'temu3',
         'Shein' => 'shein',
         'Mercari With Ship' => 'mercariwship',
         'Mercari Without Ship' => 'mercariwoship',

@@ -7,14 +7,14 @@ use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Shopify views / price / Dil% and product rating for a Google Shopping campaign name.
+ * Shopify views / price / Dil% for a Google Shopping campaign name.
  * Dil = shopify_skus.quantity (OV L30) ÷ inv × 100 — same formula as Amazon Ads.
  * Same SKU matching as the Shopping inventory column — not Amazon Ads rule data.
  */
 final class GoogleShoppingBgtSkuMetrics
 {
     /**
-     * @return array{views_l7: float, views_l30: float, price: float|null, rating: float|null, inv: float, ovl30: float, dil: float|null}
+     * @return array{views_l7: float, views_l30: float, price: float|null, inv: float, ovl30: float, dil: float|null}
      */
     public static function empty(): array
     {
@@ -22,7 +22,6 @@ final class GoogleShoppingBgtSkuMetrics
             'views_l7' => 0.0,
             'views_l30' => 0.0,
             'price' => null,
-            'rating' => null,
             'inv' => 0.0,
             'ovl30' => 0.0,
             'dil' => 0.0,
@@ -30,11 +29,11 @@ final class GoogleShoppingBgtSkuMetrics
     }
 
     /**
-     * @return \Closure(string): array{views_l7: float, views_l30: float, price: float|null, rating: float|null, inv: float, ovl30: float, dil: float|null}
+     * @return \Closure(string): array{views_l7: float, views_l30: float, price: float|null, inv: float, ovl30: float, dil: float|null}
      */
     public static function resolver(): \Closure
     {
-        $payload = Cache::remember('gads_shopping_bgt_sku_metrics_v3', 900, static function (): array {
+        $payload = Cache::remember('gads_shopping_bgt_sku_metrics_v4', 900, static function (): array {
             $allPm = ProductMaster::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
@@ -77,19 +76,16 @@ final class GoogleShoppingBgtSkuMetrics
             }
 
             $shopifyByPmSku = ShopifySku::mapByProductSkus(array_values(array_unique($childSkus)));
-            $reviewsBySku = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_values(array_unique($childSkus)));
 
             $bySku = [];
             foreach ($childSkus as $sku) {
                 $rec = $shopifyByPmSku->get($sku);
-                $rev = self::reviewForSku($reviewsBySku, $sku);
                 $inv = (float) ($rec?->inv ?? 0);
                 $ovl30 = (float) ($rec?->quantity ?? 0);
                 $bySku[preg_replace('/\s+/', ' ', strtoupper(rtrim($sku, '.')))] = [
                     'views_l7' => (float) ($rec?->views_l7 ?? 0),
                     'views_l30' => (float) ($rec?->views ?? 0),
                     'price' => self::positivePrice($rec?->price ?? null),
-                    'rating' => $rev,
                     'inv' => $inv,
                     'ovl30' => $ovl30,
                     'dil' => AmazonAdsCampaignSkuMetrics::tabulatorDil($inv, $ovl30),
@@ -104,7 +100,6 @@ final class GoogleShoppingBgtSkuMetrics
                 $ovl30 = 0.0;
                 $priceSum = 0.0;
                 $priceN = 0;
-                $minRating = null;
                 foreach ($kids as $sku) {
                     $norm = preg_replace('/\s+/', ' ', strtoupper(rtrim((string) $sku, '.')));
                     $m = $bySku[$norm] ?? null;
@@ -119,15 +114,11 @@ final class GoogleShoppingBgtSkuMetrics
                         $priceSum += (float) $m['price'];
                         $priceN++;
                     }
-                    if ($m['rating'] !== null && ($minRating === null || $m['rating'] < $minRating)) {
-                        $minRating = $m['rating'];
-                    }
                 }
                 $byFamily[$fam] = [
                     'views_l7' => $viewsL7,
                     'views_l30' => $viewsL30,
                     'price' => $priceN > 0 ? round($priceSum / $priceN, 2) : null,
-                    'rating' => $minRating,
                     'inv' => $inv,
                     'ovl30' => $ovl30,
                     'dil' => AmazonAdsCampaignSkuMetrics::tabulatorDil($inv, $ovl30),
@@ -180,21 +171,6 @@ final class GoogleShoppingBgtSkuMetrics
 
             return $memo[$norm];
         };
-    }
-
-    /**
-     * @param  array<string, array{rating: float|null, review_count: int}>  $reviewsBySku
-     */
-    private static function reviewForSku(array $reviewsBySku, string $sku): ?float
-    {
-        $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
-        $hit = $reviewsBySku[$key] ?? null;
-        if (! is_array($hit) || $hit['rating'] === null) {
-            return null;
-        }
-        $rating = (float) $hit['rating'];
-
-        return (is_finite($rating) && $rating > 0) ? $rating : null;
     }
 
     private static function positivePrice(mixed $raw): ?float

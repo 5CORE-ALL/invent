@@ -11,7 +11,6 @@ return new class extends Migration
         'google_shopping_bgt_views_rule_settings',
         'google_shopping_bgt_cvr_rule_settings',
         'google_shopping_bgt_prc_rule_settings',
-        'google_shopping_bgt_reviews_rule_settings',
     ];
 
     public function up(): void

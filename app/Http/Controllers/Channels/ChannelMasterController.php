@@ -118,6 +118,9 @@ use App\Models\Temu2DailyDataL60;
 use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2ViewData;
+use App\Models\Temu3Pricing;
+use App\Models\Temu3ViewData;
+use App\Http\Controllers\MarketPlace\Temu3Controller;
 use App\Models\TemuMetric;
 use App\Models\TemuViewData;
 use App\Models\TemuProductSheet;
@@ -176,6 +179,8 @@ class ChannelMasterController extends Controller
             'Faire' => '/faire-pricing',
             'Reverb' => '/reverb-pricing',
             'TopDawg' => '/topdawg-pricing',
+            'Temu 3' => '/temu3-decrease',
+            'Temu3' => '/temu3-decrease',
         ];
 
         $path = $paths[trim($channel)] ?? null;
@@ -418,29 +423,36 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Map / Miss (Missing L) / NMap for Temu & Temu 2 — same rules as temu_decrease / temu2_decrease
-     * badges and /map-issues: Missing L = missing='M', INV>0, REQ; Map/N Map = listed, REQ, price>0,
-     * INV>0 and temu_stock>0, tolerance < 3 units when 3% of INV < 3, else rounded % > 3.
+     * Map / Miss (Missing L) / NMap for Temu / Temu 2 / Temu 3 — same rules as
+     * temu_decrease / temu2_decrease / temu3_decrease badges and /map-issues.
+     *
+     * @param  bool|string  $channel  true = Temu 2 (legacy); false = Temu 1; or 'temu'|'temu2'|'temu3'
      */
-    private function getTemuLiveMapMissNMapFromDecreaseData(bool $isTemu2 = false): array
+    private function getTemuLiveMapMissNMapFromDecreaseData(bool|string $channel = false): array
     {
+        $channel = $this->temuMasterChannelKey($channel);
+
         try {
-            $req = Request::create($isTemu2 ? '/temu2-decrease-data' : '/temu-decrease-data', 'GET');
-            $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
-            $response = $isTemu2
-                ? $temuCtrl->getTemu2DecreaseData($req)
-                : $temuCtrl->getTemuDecreaseData($req);
+            $req = Request::create(match ($channel) {
+                'temu3' => '/temu3-decrease-data',
+                'temu2' => '/temu2-decrease-data',
+                default => '/temu-decrease-data',
+            }, 'GET');
+            if ($channel === 'temu3') {
+                $response = app(Temu3Controller::class)->getTemu3DecreaseData($req);
+            } else {
+                $temuCtrl = app(\App\Http\Controllers\MarketPlace\TemuController::class);
+                $response = $channel === 'temu2'
+                    ? $temuCtrl->getTemu2DecreaseData($req)
+                    : $temuCtrl->getTemuDecreaseData($req);
+            }
             $responseData = json_decode($response->getContent(), true);
             if (! is_array($responseData)) {
-                $ch = $isTemu2 ? 'temu2' : 'temu';
-
-                return $this->getMapAndMissCounts($ch);
+                return $this->getMapAndMissCounts($channel);
             }
             $data = $responseData['data'] ?? [];
             if (! is_array($data)) {
-                $ch = $isTemu2 ? 'temu2' : 'temu';
-
-                return $this->getMapAndMissCounts($ch);
+                return $this->getMapAndMissCounts($channel);
             }
 
             $missingC = 0;
@@ -522,11 +534,9 @@ class ChannelMasterController extends Controller
                 'cvr_pct' => $cvrPct,
             ];
 
-            // Temu 1 / Temu 2 Views/CVR must match /temu1-data and /temu2-decrease
+            // Temu 1 / Temu 2 / Temu 3 Views/CVR must match the pricing-page badges
             // (sheet views by goods_id), not a guarded/stale leftover.
-            $pageViews = $isTemu2
-                ? $this->computeTemu2ViewsLikeTemu2DecreasePage()
-                : $this->computeTemu1ViewsLikeTemu1DataPage();
+            $pageViews = $this->computeTemuViewsForMasterChannel($channel);
             if (! empty($pageViews['ok'])) {
                 $result['total_views'] = $pageViews['total_views'];
                 $result['total_sold'] = $pageViews['total_sold'];
@@ -536,11 +546,8 @@ class ChannelMasterController extends Controller
             return $result;
         } catch (\Throwable $e) {
             Log::warning('Temu live map/miss/nmap fallback: '.$e->getMessage());
-            $ch = $isTemu2 ? 'temu2' : 'temu';
-            $fallback = $this->getMapAndMissCounts($ch);
-            $pageViews = $isTemu2
-                ? $this->computeTemu2ViewsLikeTemu2DecreasePage()
-                : $this->computeTemu1ViewsLikeTemu1DataPage();
+            $fallback = $this->getMapAndMissCounts($channel);
+            $pageViews = $this->computeTemuViewsForMasterChannel($channel);
             if (! empty($pageViews['ok'])) {
                 $fallback['total_views'] = $pageViews['total_views'];
                 $fallback['total_sold'] = $pageViews['total_sold'];
@@ -807,6 +814,150 @@ class ChannelMasterController extends Controller
         }
     }
 
+    /**
+     * @param  bool|string  $channel
+     */
+    private function temuMasterChannelKey(bool|string $channel): string
+    {
+        if ($channel === true) {
+            return 'temu2';
+        }
+        if ($channel === false) {
+            return 'temu';
+        }
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $channel)));
+
+        return match ($key) {
+            'temu3', 'temuthree' => 'temu3',
+            'temu2', 'temutwo' => 'temu2',
+            default => 'temu',
+        };
+    }
+
+    /**
+     * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
+     */
+    private function computeTemuViewsForMasterChannel(string $channel): array
+    {
+        return match ($this->temuMasterChannelKey($channel)) {
+            'temu3' => $this->computeTemu3ViewsLikeTemu3DecreasePage(),
+            'temu2' => $this->computeTemu2ViewsLikeTemu2DecreasePage(),
+            default => $this->computeTemu1ViewsLikeTemu1DataPage(),
+        };
+    }
+
+    /**
+     * /temu3-decrease Views badge: product_clicks from temu3_view_data, once per goods_id.
+     * CVR = Temu 3 sheet L30 sold ÷ those views.
+     *
+     * @return array{ok: bool, total_views: int, total_sold: int, cvr_pct: float}
+     */
+    private function computeTemu3ViewsLikeTemu3DecreasePage(): array
+    {
+        $empty = ['ok' => false, 'total_views' => 0, 'total_sold' => 0, 'cvr_pct' => 0.0];
+
+        try {
+            $normalizeSku = static function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $pmSkus = ProductMaster::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->filter(fn ($s) => stripos((string) $s, 'PARENT') === false)
+                ->unique()
+                ->values();
+
+            $normalizedPm = [];
+            foreach ($pmSkus as $sku) {
+                $n = $normalizeSku($sku);
+                if ($n !== '') {
+                    $normalizedPm[$n] = (string) $sku;
+                }
+            }
+
+            $noSpaceToNormalized = [];
+            foreach (array_keys($normalizedPm) as $nk) {
+                $ns = str_replace(' ', '', $nk);
+                if ($ns !== '') {
+                    $noSpaceToNormalized[$ns] = $nk;
+                }
+            }
+
+            $gidByNorm = [];
+            if (Schema::hasTable('temu3_pricing')) {
+                foreach (Temu3Pricing::query()->select(['sku', 'goods_id'])->get() as $row) {
+                    $n = $normalizeSku($row->sku);
+                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                    if ($n !== '' && $gid && isset($normalizedPm[$n])) {
+                        $gidByNorm[$n] = $gid;
+                    }
+                }
+            }
+
+            $viewByGid = [];
+            if (Schema::hasTable('temu3_view_data')) {
+                foreach (Temu3ViewData::query()
+                    ->selectRaw('goods_id, SUM(product_clicks) as product_clicks')
+                    ->groupBy('goods_id')
+                    ->get() as $row) {
+                    $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                    if ($gid) {
+                        $viewByGid[$gid] = (int) $row->product_clicks;
+                    }
+                }
+            }
+
+            $viewsByGoodsId = [];
+            $totalViews = 0;
+            foreach ($normalizedPm as $norm => $_sku) {
+                $gid = $gidByNorm[$norm] ?? null;
+                $rowViews = $gid ? (int) ($viewByGid[$gid] ?? 0) : 0;
+                if ($gid) {
+                    $viewsByGoodsId[$gid] = $rowViews;
+                } else {
+                    $totalViews += $rowViews;
+                }
+            }
+            foreach ($viewsByGoodsId as $views) {
+                $totalViews += (int) $views;
+            }
+
+            $totalSold = 0;
+            [$apiStart, $apiEnd] = TemuShopifySalesService::temu3SheetL30Window();
+            foreach (TemuShopifySalesService::getTemu3OrdersTableRows($apiStart, $apiEnd) as $row) {
+                $raw = trim((string) ($row['contribution_sku'] ?? ''));
+                if ($raw === '') {
+                    continue;
+                }
+                $n = $normalizeSku($raw);
+                $nNoSpace = str_replace(' ', '', $n);
+                if (! isset($normalizedPm[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
+                    continue;
+                }
+                $totalSold += (int) ($row['quantity_purchased'] ?? 0);
+            }
+
+            $cvrPct = $totalViews > 0 ? round(($totalSold / $totalViews) * 100, 2) : 0.0;
+
+            return [
+                'ok' => true,
+                'total_views' => $totalViews,
+                'total_sold' => $totalSold,
+                'cvr_pct' => $cvrPct,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu 3 views (temu3-decrease source) failed: '.$e->getMessage());
+
+            return $empty;
+        }
+    }
+
     private function getDobaLiveMapMissNMapFromTabulatorData(): array
     {
         try {
@@ -996,6 +1147,44 @@ class ChannelMasterController extends Controller
             ];
         } catch (\Throwable $e) {
             Log::warning('Temu 2 tabulator sales summary failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Temu 3 L30 from uploaded Seller Center orders — same Full Price Sales as /temu3-decrease.
+     *
+     * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
+     */
+    private function getTemu3TabulatorSalesSummary(): ?array
+    {
+        try {
+            if (! Schema::hasTable('temu3_orders')) {
+                return null;
+            }
+            [$start, $end] = TemuShopifySalesService::temu3SheetL30Window();
+            $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+            if ((float) ($m['sales'] ?? 0) <= 0 && (int) ($m['qty'] ?? 0) <= 0) {
+                return null;
+            }
+
+            $sales = (float) $m['sales'];
+            $gpft = (float) $m['gpft'];
+            $cogs = (float) $m['cogs'];
+            $pft = (float) $m['pft'];
+
+            return [
+                'total_orders' => (int) ($m['orders'] ?? 0),
+                'total_quantity' => (int) ($m['qty'] ?? 0),
+                'total_revenue' => round($sales, 2),
+                'total_pft' => round($pft, 2),
+                'total_cogs' => round($cogs, 2),
+                'gpft_percent' => $sales > 0 ? round(($gpft / $sales) * 100, 2) : 0.0,
+                'groi_percent' => $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu 3 tabulator sales summary failed: '.$e->getMessage());
 
             return null;
         }
@@ -1201,6 +1390,26 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * @return array{sales: float, orders: int}
+     */
+    private function resolveTemu3L60SalesAndOrders(): array
+    {
+        try {
+            [$start, $end] = TemuShopifySalesService::temu3SheetL60Window();
+            $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+
+            return [
+                'sales' => (float) ($m['sales'] ?? 0),
+                'orders' => (int) ($m['orders'] ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Temu 3 L60 failed: '.$e->getMessage());
+
+            return ['sales' => 0.0, 'orders' => 0];
+        }
+    }
+
+    /**
      * Keep cached all-marketplace-master Temu / Temu 2 rows aligned with tabulator sales badges.
      */
     private function overlayLiveTemuMetricsOnChannelRows(array $rows): array
@@ -1208,6 +1417,8 @@ class ChannelMasterController extends Controller
         $liveByChannel = [
             'Temu' => fn () => $this->getTemuLiveSalesSummaryFromTabulator(false),
             'Temu 2' => fn () => $this->getTemuLiveSalesSummaryFromTabulator(true),
+            'Temu 3' => fn () => $this->getTemu3TabulatorSalesSummary(),
+            'Temu3' => fn () => $this->getTemu3TabulatorSalesSummary(),
         ];
 
         foreach ($rows as &$row) {
@@ -1217,8 +1428,11 @@ class ChannelMasterController extends Controller
             }
 
             $isTemu2 = $name === 'Temu 2';
+            $isTemu3 = $this->temuMasterChannelKey($name) === 'temu3';
             $liveSales = $liveByChannel[$name]();
-            $liveL60 = $this->resolveTemuL60SalesAndOrders($isTemu2);
+            $liveL60 = $isTemu3
+                ? $this->resolveTemu3L60SalesAndOrders()
+                : $this->resolveTemuL60SalesAndOrders($isTemu2);
             $l60Sales = (float) $liveL60['sales'];
 
             if ($liveSales && (float) ($liveSales['total_revenue'] ?? 0) > 0) {
@@ -1237,16 +1451,20 @@ class ChannelMasterController extends Controller
                 $row['Growth'] = round((($l30Cached - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
 
-            $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
+            $ySales = $isTemu3
+                ? $this->computeTemu3YSalesLikeAmazon()
+                : $this->computeTemuYSalesLikeAmazon($isTemu2);
             if ($ySales !== null) {
                 $this->applyLiveYSalesIfPositive($row, $ySales);
             }
-            $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
+            $l7Sales = $isTemu3
+                ? $this->computeTemu3L7SalesLikeAmazon()
+                : $this->computeTemuL7SalesLikeAmazon($isTemu2);
             if ($l7Sales !== null) {
                 $row['L7 Sales'] = $l7Sales;
             }
 
-            $mapMiss = $this->getTemuLiveMapMissNMapFromDecreaseData($isTemu2);
+            $mapMiss = $this->getTemuLiveMapMissNMapFromDecreaseData($isTemu3 ? 'temu3' : $isTemu2);
             $row['Map'] = $mapMiss['map'];
             $row['Miss'] = $mapMiss['miss'];
             $row['NMap'] = $mapMiss['nmap'];
@@ -1281,7 +1499,20 @@ class ChannelMasterController extends Controller
                 $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
             }
 
-            // Temu / Temu 2: NROI% = GROI% − Ads% (same as /temu-decrease after Ads reduce).
+            if ($isTemu3 && $liveSales) {
+                $gProfitPct = (float) ($liveSales['gpft_percent'] ?? 0);
+                $gRoi = (float) ($liveSales['groi_percent'] ?? 0);
+                $row['Gprofit%'] = round($gProfitPct, 2).'%';
+                $row['G Roi'] = round($gRoi, 2);
+                $row['Total PFT'] = round((float) ($liveSales['total_pft'] ?? 0), 2);
+                $row['cogs'] = round((float) ($liveSales['total_cogs'] ?? 0), 2);
+                $row['Total Ad Spend'] = 0;
+                $row['Ads%'] = '0%';
+                $row['TACOS %'] = '0%';
+                $row['N PFT'] = round($gProfitPct, 2).'%';
+            }
+
+            // Temu / Temu 2 / Temu 3: NROI% = GROI% − Ads% (same as /temu-decrease after Ads reduce).
             // Fixes stale cache rows that still store (PFT−Spend)/COGS.
             $adsPctForNroi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? $row['TACOS %'] ?? 0));
             $gRoi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['G Roi'] ?? 0));
@@ -1293,21 +1524,25 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast-path Temu / Temu 2 L30 + Y/L7 sales only (no map/miss tabulator rebuild).
+     * Fast-path Temu / Temu 2 / Temu 3 L30 + Y/L7 sales only (no map/miss tabulator rebuild).
      */
     private function overlayLiveTemuSalesOnChannelRows(array $rows): array
     {
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($name !== 'Temu' && $name !== 'Temu 2') {
+            $temuKey = $this->temuMasterChannelKey($name);
+            if (! in_array($name, ['Temu', 'Temu 2', 'Temu 3', 'Temu3'], true)) {
                 continue;
             }
 
             $isTemu2 = $name === 'Temu 2';
+            $isTemu3 = $temuKey === 'temu3';
             try {
-                $liveSales = $this->getTemuLiveSalesSummaryFromTabulator($isTemu2);
+                $liveSales = $isTemu3
+                    ? $this->getTemu3TabulatorSalesSummary()
+                    : $this->getTemuLiveSalesSummaryFromTabulator($isTemu2);
             } catch (\Throwable $e) {
-                Log::warning('Fast-path Temu sales overlay failed: '.$e->getMessage(), ['temu2' => $isTemu2]);
+                Log::warning('Fast-path Temu sales overlay failed: '.$e->getMessage(), ['temu' => $temuKey]);
                 $liveSales = null;
             }
 
@@ -1316,19 +1551,33 @@ class ChannelMasterController extends Controller
                 $row['L30 Sales'] = (int) round($l30Sales);
                 $row['L30 Orders'] = (int) $liveSales['total_orders'];
                 $row['Qty'] = (int) $liveSales['total_quantity'];
+                if ($isTemu3) {
+                    $gProfitPct = (float) ($liveSales['gpft_percent'] ?? 0);
+                    $gRoi = (float) ($liveSales['groi_percent'] ?? 0);
+                    $row['Gprofit%'] = round($gProfitPct, 2).'%';
+                    $row['G Roi'] = round($gRoi, 2);
+                    $row['Total PFT'] = round((float) ($liveSales['total_pft'] ?? 0), 2);
+                    $row['cogs'] = round((float) ($liveSales['total_cogs'] ?? 0), 2);
+                    $row['N PFT'] = round($gProfitPct, 2).'%';
+                    $row['N ROI'] = round($gRoi, 2);
+                }
             }
 
             try {
-                $ySales = $this->computeTemuYSalesLikeAmazon($isTemu2);
+                $ySales = $isTemu3
+                    ? $this->computeTemu3YSalesLikeAmazon()
+                    : $this->computeTemuYSalesLikeAmazon($isTemu2);
                 if ($ySales !== null) {
                     $this->applyLiveYSalesIfPositive($row, $ySales);
                 }
-                $l7Sales = $this->computeTemuL7SalesLikeAmazon($isTemu2);
+                $l7Sales = $isTemu3
+                    ? $this->computeTemu3L7SalesLikeAmazon()
+                    : $this->computeTemuL7SalesLikeAmazon($isTemu2);
                 if ($l7Sales !== null && (float) $l7Sales > 0) {
                     $row['L7 Sales'] = $l7Sales;
                 }
             } catch (\Throwable $e) {
-                Log::warning('Fast-path Temu Y/L7 overlay failed: '.$e->getMessage(), ['temu2' => $isTemu2]);
+                Log::warning('Fast-path Temu Y/L7 overlay failed: '.$e->getMessage(), ['temu' => $temuKey]);
             }
         }
         unset($row);
@@ -1891,23 +2140,15 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Grid starts from channel_master_calculated_data, then the same live
-     * Pacific-yesterday Amazon overlay the Y Sales chart last point uses.
+     * Grid values come only from channel_master_calculated_data.
+     * Marketplace page live pulls run in channel:calculate-data, not here.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function applyFastPathLiveSalesOverlays(array $rows): array
     {
-        $rows = $this->restoreSavedTableMetricsOnChannelRows($rows);
-        $rows = $this->overlayLiveAmazonYSalesOnChannelRows($rows);
-        $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
-        foreach ($rows as &$row) {
-            $row = $this->withYProfitColumns($row);
-        }
-        unset($row);
-
-        return $rows;
+        return $this->restoreSavedTableMetricsOnChannelRows($rows);
     }
 
     /**
@@ -3459,6 +3700,8 @@ class ChannelMasterController extends Controller
             'TopDawg' => fn () => $this->getTopDawgLiveMapMissNMapFromPricingData(),
             'Temu' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(false),
             'Temu 2' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData(true),
+            'Temu 3' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData('temu3'),
+            'Temu3' => fn () => $this->getTemuLiveMapMissNMapFromDecreaseData('temu3'),
             // TikTok Shop 1 — channel_master stores "Tiktok Shop"; UI may show "TikTok Shop".
             'Tiktok Shop' => fn () => $this->getTiktokLiveMapMissNMapFromPricingData(
                 Request::create('/tiktok-data-json', 'GET')
@@ -6091,6 +6334,8 @@ class ChannelMasterController extends Controller
             },
             'temu' => fn () => $this->computeTemuYSalesLikeAmazon(false),
             'temu2' => fn () => $this->computeTemuYSalesLikeAmazon(true),
+            'temu3' => fn () => $this->computeTemu3YSalesLikeAmazon(),
+            'temuthree' => fn () => $this->computeTemu3YSalesLikeAmazon(),
             'ebay' => fn () => $this->computeEbayYSalesLikeAmazon(1),
             'ebaytwo' => fn () => $this->computeEbayYSalesLikeAmazon(2),
             'ebaythree' => fn () => $this->computeEbayYSalesLikeAmazon(3),
@@ -6857,6 +7102,11 @@ class ChannelMasterController extends Controller
         if ($temu2Y !== null) {
             $yesterdaySummaries['temu2'] = $temu2Y;
         }
+        $temu3Y = $this->computeTemu3YSalesLikeAmazon();
+        if ($temu3Y !== null) {
+            $yesterdaySummaries['temu3'] = $temu3Y;
+            $yesterdaySummaries['temuthree'] = $temu3Y;
+        }
 
        
         try {
@@ -7027,6 +7277,11 @@ class ChannelMasterController extends Controller
         if ($temu2L7 !== null) {
             $l7Summaries['temu2'] = $temu2L7;
         }
+        $temu3L7 = $this->computeTemu3L7SalesLikeAmazon();
+        if ($temu3L7 !== null) {
+            $l7Summaries['temu3'] = $temu3L7;
+            $l7Summaries['temuthree'] = $temu3L7;
+        }
         try {
             $ebayL7 = $this->computeEbayL7SalesLikeAmazon(1);
             if ($ebayL7 !== null) {
@@ -7180,6 +7435,8 @@ class ChannelMasterController extends Controller
             'doba'      => 'getDobaChannelData',
             'temu'      => 'getTemuChannelData',
             'temu2'     => 'getTemu2ChannelData',
+            'temu3'     => 'getTemu3ChannelData',
+            'temuthree' => 'getTemu3ChannelData',
             'walmart'   => 'getWalmartChannelData',
             'pls'       => 'getPlsChannelData',
             'wayfair'   => 'getWayfairChannelData',
@@ -7349,7 +7606,7 @@ class ChannelMasterController extends Controller
 
                 // Temu / Temu 2: NROI% = GROI% − Ads% (matches /temu-decrease & /temu2-decrease).
                 // Other channels: NROI% = (Gross Profit − Ad Spend) / COGS × 100.
-                if (in_array($key, ['temu', 'temu2'], true)) {
+                if (in_array($key, ['temu', 'temu2', 'temu3', 'temuthree'], true)) {
                     $gRoi = (float) str_replace(['$', ',', '%'], '', $row['G Roi'] ?? 0);
                     $row['N ROI'] = round($gRoi - $adsPercentage, 2);
                 } else {
@@ -7522,6 +7779,11 @@ class ChannelMasterController extends Controller
         }
 
         return TemuShopifySalesService::computeYSalesFromTemu2Orders();
+    }
+
+    private function computeTemu3YSalesLikeAmazon(): ?float
+    {
+        return TemuShopifySalesService::computeYSalesFromTemu3Orders();
     }
 
     /**
@@ -8152,6 +8414,11 @@ class ChannelMasterController extends Controller
         return TemuShopifySalesService::computeL7SalesFromTemu2Orders();
     }
 
+    private function computeTemu3L7SalesLikeAmazon(): ?float
+    {
+        return TemuShopifySalesService::computeL7SalesFromTemu3Orders();
+    }
+
     /**
      * eBay 1 / 2 / 3 L7 Sales: seven days ending Y-Sales yesterday (same revenue rules as Y Sales).
      */
@@ -8561,6 +8828,8 @@ class ChannelMasterController extends Controller
         'doba'      => 'getDobaChannelData',
         'temu'      => 'getTemuChannelData',
         'temu2'     => 'getTemu2ChannelData',
+        'temu3'     => 'getTemu3ChannelData',
+        'temuthree' => 'getTemu3ChannelData',
         'walmart'   => 'getWalmartChannelData',
         'pls'       => 'getPlsChannelData',
         'wayfair'   => 'getWayfairChannelData',
@@ -11016,6 +11285,101 @@ class ChannelMasterController extends Controller
         return response()->json([
             'status' => 200,
             'message' => 'Temu 2 channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Temu 3 — sheet-only Full Temu Price Sales / GPFT / GROI from temu3_orders.
+     * Same L30 window and Full Price math as /temu3-decrease. No ads API (Ads% = 0).
+     */
+    public function getTemu3ChannelData(Request $request)
+    {
+        $result = [];
+
+        [$l30Start, $l30End] = TemuShopifySalesService::temu3SheetL30Window();
+        [$l60Start, $l60End] = TemuShopifySalesService::temu3SheetL60Window();
+        $l30 = TemuShopifySalesService::computeMetricsFromTemu3Orders($l30Start, $l30End);
+        $l60 = TemuShopifySalesService::computeMetricsFromTemu3Orders($l60Start, $l60End);
+
+        $l30Sales = (float) ($l30['sales'] ?? 0);
+        $l30Orders = (int) ($l30['orders'] ?? 0);
+        $totalQuantity = (int) ($l30['qty'] ?? 0);
+        $totalProfit = (float) ($l30['pft'] ?? 0);
+        $totalGpft = (float) ($l30['gpft'] ?? 0);
+        $totalCogs = (float) ($l30['cogs'] ?? 0);
+        $l60Sales = (float) ($l60['sales'] ?? 0);
+        $l60Orders = (int) ($l60['orders'] ?? 0);
+
+        $gProfitPct = $l30Sales > 0 ? round(($totalGpft / $l30Sales) * 100, 2) : 0.0;
+        $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        $gprofitL60 = $l60Sales > 0 ? round(((float) ($l60['gpft'] ?? 0) / $l60Sales) * 100, 2) : 0.0;
+        $gRoiL60 = ((float) ($l60['cogs'] ?? 0)) > 0
+            ? round(((float) ($l60['pft'] ?? 0) / (float) $l60['cogs']) * 100, 2)
+            : 0.0;
+
+        $totalAdSpend = 0.0;
+        $adsPercentage = 0.0;
+        $tacosPercentage = 0.0;
+        $nPft = $gProfitPct;
+        $nRoi = $gRoi;
+
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
+
+        $channelData = ChannelMaster::query()
+            ->whereIn('channel', ['Temu 3', 'Temu3', 'Temu Three'])
+            ->first();
+        $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData('temu3');
+
+        $result[] = [
+            'Channel '   => 'Temu 3',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Y Sales'    => $this->computeTemu3YSalesLikeAmazon() ?? 0.0,
+            'L7 Sales'   => $this->computeTemu3L7SalesLikeAmazon() ?? 0.0,
+            'Growth'     => round($growth, 2).'%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
+            'Gprofit%'   => round($gProfitPct, 2).'%',
+            'gprofitL60' => round($gprofitL60, 2).'%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPft, 2).'%',
+            'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => $totalAdSpend,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => $totalAdSpend,
+            'clicks'     => 0,
+            'Clicks'     => 0,
+            'Ad Sales'   => 0,
+            'ad_sold'    => 0,
+            'Ad Sold'    => 0,
+            'Ads CVR'    => 0,
+            'ACOS'       => 0,
+            'Ads%'       => round($adsPercentage, 2).'%',
+            'TACOS %'    => round($tacosPercentage, 2).'%',
+            'type'       => $channelData->type ?? 'B2C',
+            'W/Ads'      => $channelData->w_ads ?? 0,
+            'NR'         => $channelData->nr ?? 0,
+            'Update'     => $channelData->update ?? 0,
+            'cogs'       => round($totalCogs, 2),
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
+            'Total Views' => $mapMissCounts['total_views'] ?? 0,
+            'CVR'        => $mapMissCounts['cvr_pct'] ?? null,
+            ...$this->getChannelHealthAndReviewsStub(),
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Temu 3 channel data fetched successfully (from temu3_orders)',
             'data' => $result,
         ]);
     }
@@ -14935,6 +15299,7 @@ class ChannelMasterController extends Controller
             'tiktok2', 'tiktokshop2' => 'tiktokshop2',
             'bestbuy', 'bestbuyusa' => 'bestbuyusa',
             'facebookmarketplace', 'fbmarketplace' => 'fbmarketplace',
+            'temu3', 'temuthree' => 'temu3',
             default => $key,
         };
     }
@@ -14955,6 +15320,7 @@ class ChannelMasterController extends Controller
             'tiktokshop' => ['tiktokshop', 'tiktok'],
             'tiktokshop2' => ['tiktokshop2', 'tiktok2'],
             'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
+            'temu3' => ['temu3', 'temuthree'],
         ];
 
         return array_values(array_unique($aliases[$canonical] ?? [$canonical]));
@@ -14986,6 +15352,7 @@ class ChannelMasterController extends Controller
 
         return match ($key) {
             'ebaythree' => 'eBay 3',
+            'temu3' => 'Temu 3',
             default => trim((string) $name),
         };
     }
@@ -16204,6 +16571,7 @@ class ChannelMasterController extends Controller
                 'y_pft' => null,     // computed: Y Sales × GPFT%
                 'y_npft_amt' => null, // computed: Y Sales × NPFT%
                 'y_npft_pct' => null, // computed: NPFT% weighted by Y Sales
+                'y_groi_pct' => null, // computed: Y PFT $ ÷ yesterday COGS
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -16446,7 +16814,7 @@ class ChannelMasterController extends Controller
                             $totalPft += ($channelGprofit / 100) * $pSales;
                             $totalSales += $pSales;
                             $totalSpend += $channelAdSpend;
-                        } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct') {
+                        } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct' || $metric === 'y_groi_pct') {
                             if (array_key_exists('y_sales', $sd)) {
                                 $hasMetricData = true;
                             }
@@ -16455,8 +16823,13 @@ class ChannelMasterController extends Controller
                             if ($channelNpft == 0.0) {
                                 $channelNpft = $channelGprofit - floatval($sd['tcos_percent'] ?? 0);
                             }
-                            $rate = $metric === 'y_pft' ? $channelGprofit : $channelNpft;
-                            $totalPft += ($rate / 100) * $ySales;
+                            if ($metric === 'y_groi_pct') {
+                                $totalPft += ($channelGprofit / 100) * $ySales;
+                                $totalCogs += $this->yCogsDollars($ySales, $channelL30Sales, $channelGprofit, $channelCogs);
+                            } else {
+                                $rate = $metric === 'y_pft' ? $channelGprofit : $channelNpft;
+                                $totalPft += ($rate / 100) * $ySales;
+                            }
                             $totalSales += $ySales;
                         } elseif ($metric === 'groi' || $metric === 'nroi') {
                             $totalPft += $channelPft;
@@ -16524,6 +16897,11 @@ class ChannelMasterController extends Controller
                             continue;
                         }
                         $value = $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 1) : 0;
+                    } elseif ($metric === 'y_groi_pct') {
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'groi') {
                         // G ROI = total profit / total cogs * 100
                         $value = $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0;
@@ -16622,7 +17000,7 @@ class ChannelMasterController extends Controller
                             continue;
                         }
                         $value = round($pNpft, 1);
-                    } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct') {
+                    } elseif ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct' || $metric === 'y_groi_pct') {
                         $yVal = $this->getMetricValueFromSummaryData($channel, $metric, $summaryData, $metricMap, true);
                         if ($yVal === null) {
                             continue;
@@ -17010,6 +17388,7 @@ class ChannelMasterController extends Controller
                 'y_pft' => null,
                 'y_npft_amt' => null,
                 'y_npft_pct' => null,
+                'y_groi_pct' => null,
                 'l30_orders' => 'l30_orders',
                 'qty' => 'total_quantity',
                 'gprofit' => 'gprofit_percent',
@@ -17026,7 +17405,7 @@ class ChannelMasterController extends Controller
                 'inv_at_lp' => 'inv_at_lp',
                 'tat' => 'tat',
             ];
-            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'y_npft_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
+            $metrics = ['missing_l', 'nmap', 'l60_sales', 'l60_orders', 'l30_sales', 'y_sales', 'y_pft', 'y_npft_amt', 'l7_sales', 'p_sales', 'ad_spend', 'l30_orders', 'qty', 'gprofit', 'groi', 'ads_pct', 'pft', 'npft', 'p_npft', 'y_npft_pct', 'y_groi_pct', 'nroi', 'clicks', 'ad_sales', 'ad_sold', 'acos', 'ads_cvr', 'cvr', 'total_views', 'inv_at_lp', 'tat'];
             $out = [];
             $processedByChannel = [];
 
@@ -17440,7 +17819,7 @@ class ChannelMasterController extends Controller
             ? strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)))
             : '';
 
-        return in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'reverb', 'ebaytwo', 'ebay2'], true);
+        return in_array($normalized, ['shopify', 'shopifyb2c', 'temu', 'temu2', 'temu3', 'temuthree', 'reverb', 'ebaytwo', 'ebay2'], true);
     }
 
     /**
@@ -17528,7 +17907,7 @@ class ChannelMasterController extends Controller
                 $summaryData['total_ad_spend'] ?? 0
             );
         }
-        if ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct') {
+        if ($metric === 'y_pft' || $metric === 'y_npft_amt' || $metric === 'y_npft_pct' || $metric === 'y_groi_pct') {
             if (! array_key_exists('y_sales', $summaryData)) {
                 return null;
             }
@@ -17536,6 +17915,9 @@ class ChannelMasterController extends Controller
             $ySales = floatval($summaryData['y_sales'] ?? 0);
             if ($metric === 'y_pft') {
                 return $this->yProfitDollars($ySales, $summaryData['gprofit_percent'] ?? 0);
+            }
+            if ($metric === 'y_groi_pct') {
+                return $this->yGroiPercentFromSummary($summaryData);
             }
             $npft = floatval($summaryData['npft_percent'] ?? 0);
             if ($npft == 0.0) {
@@ -17572,14 +17954,25 @@ class ChannelMasterController extends Controller
             return $pSales > 0 ? round((($pGross - $spend) / $pSales) * 100, 1) : null;
         }
 
-        if (in_array($metric, ['y_pft', 'y_npft_amt', 'y_npft_pct'], true)) {
+        if (in_array($metric, ['y_pft', 'y_npft_amt', 'y_npft_pct', 'y_groi_pct'], true)) {
             $ySales = 0.0;
             $yPft = 0.0;
-            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['yesterday_sales', 'gprofit_pct', 'n_pft']) as $row) {
+            $yCogs = 0.0;
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['yesterday_sales', 'gprofit_pct', 'n_pft', 'l30_sales', 'cogs']) as $row) {
                 $ys = (float) ($row->yesterday_sales ?? 0);
-                $rate = $metric === 'y_pft' ? (float) ($row->gprofit_pct ?? 0) : (float) ($row->n_pft ?? 0);
+                $gp = (float) ($row->gprofit_pct ?? 0);
+                if ($metric === 'y_groi_pct') {
+                    $yPft += ($gp / 100) * $ys;
+                    $yCogs += $this->yCogsDollars($ys, (float) ($row->l30_sales ?? 0), $gp, (float) ($row->cogs ?? 0));
+                    continue;
+                }
+                $rate = $metric === 'y_pft' ? $gp : (float) ($row->n_pft ?? 0);
                 $ySales += $ys;
                 $yPft += ($rate / 100) * $ys;
+            }
+
+            if ($metric === 'y_groi_pct') {
+                return $yCogs > 0 ? round(($yPft / $yCogs) * 100, 1) : null;
             }
 
             if ($metric === 'y_npft_pct') {
@@ -17742,7 +18135,7 @@ class ChannelMasterController extends Controller
                 'amazon' => 'Amazon', 'amazonfba' => 'Amazon FBA',
                 'ebay' => 'eBay', 'ebaytwo' => 'eBay 2', 'ebaythree' => 'eBay 3',
                 'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu',
-            'temu2' => 'Temu 2', 'walmart' => 'Walmart',
+            'temu2' => 'Temu 2', 'temu3' => 'Temu 3', 'temuthree' => 'Temu 3', 'walmart' => 'Walmart',
                 'tiktokshop' => 'TikTok Shop',
                 'tiktokshop2' => 'TikTok 2',
                 'depop' => 'Depop',
@@ -17863,6 +18256,16 @@ class ChannelMasterController extends Controller
                     $day->copy()->endOfDay(),
                     $channel === 'temu2'
                 )['base_sales'];
+
+                return self::$pacificDayYSalesCache[$key];
+            }
+
+            if ($channel === 'temu3') {
+                $day = Carbon::parse($ymd, TemuShopifySalesService::PST);
+                self::$pacificDayYSalesCache[$key] = (float) TemuShopifySalesService::computeMetricsFromTemu3Orders(
+                    $day->copy()->startOfDay(),
+                    $day->copy()->endOfDay()
+                )['sales'];
 
                 return self::$pacificDayYSalesCache[$key];
             }
@@ -18008,7 +18411,7 @@ class ChannelMasterController extends Controller
 
     private function metricDotEpsilon(string $metric): float
     {
-        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'p_npft', 'y_npft_pct', 'nroi', 'ads_pct', 'acos'], true)
+        return in_array($metric, ['cvr', 'ads_cvr', 'gprofit', 'groi', 'npft', 'p_npft', 'y_npft_pct', 'y_groi_pct', 'nroi', 'ads_pct', 'acos'], true)
             ? 0.005
             : 0.01;
     }
@@ -18037,6 +18440,33 @@ class ChannelMasterController extends Controller
     private function yProfitDollars(mixed $ySales, mixed $percent): float
     {
         return round(((float) $ySales * (float) $percent) / 100, 2);
+    }
+
+    private function yCogsDollars(float $ySales, float $l30Sales, float $gprofitPercent, float $cogs): float
+    {
+        if ($ySales <= 0) {
+            return 0.0;
+        }
+        if ($l30Sales > 0 && $cogs > 0) {
+            return $cogs * ($ySales / $l30Sales);
+        }
+
+        return $ySales * max(0.0, 1.0 - ($gprofitPercent / 100.0));
+    }
+
+    /**
+     * @param  array<string, mixed>  $summaryData
+     */
+    private function yGroiPercentFromSummary(array $summaryData): float
+    {
+        $groi = floatval($summaryData['groi_percent'] ?? 0);
+        if ($groi != 0.0) {
+            return round($groi, 1);
+        }
+        $gp = floatval($summaryData['gprofit_percent'] ?? 0);
+        $cogsRatio = max(0.0, 1.0 - ($gp / 100.0));
+
+        return $cogsRatio > 0 ? round($gp / $cogsRatio, 1) : 0.0;
     }
 
     /**
@@ -18289,6 +18719,8 @@ class ChannelMasterController extends Controller
             'walmart' => 'Walmart',
             'temu' => 'Temu',
             'temu2' => 'Temu 2',
+            'temu3' => 'Temu 3',
+            'temuthree' => 'Temu 3',
             'macys' => 'Macys',
             'bestbuyusa' => 'Best Buy USA',
             'bestbuy' => 'Best Buy USA',
@@ -18977,6 +19409,7 @@ class ChannelMasterController extends Controller
             'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
             'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
             'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
+            'y_groi_pct' => $row->yesterday_sales !== null && $row->g_roi !== null ? (float) $row->g_roi : null,
             'l30_sales' => $this->savedOrLiveTemu2L30Sales($channel, $row),
             'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
             'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
@@ -19029,6 +19462,7 @@ class ChannelMasterController extends Controller
                 'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
                 'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
                 'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
+                'y_groi_pct' => $row->yesterday_sales !== null && $row->g_roi !== null ? (float) $row->g_roi : null,
                 'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
                 'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
                 'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
@@ -19084,6 +19518,7 @@ class ChannelMasterController extends Controller
             'npft' => 'l30_sales',
             'p_npft' => 'p_sales',
             'y_npft_pct' => 'y_sales',
+            'y_groi_pct' => 'y_sales',
             'ads_pct' => 'l30_sales',
             'groi' => 'l30_sales',
             'nroi' => 'l30_sales',
@@ -19476,6 +19911,7 @@ class ChannelMasterController extends Controller
 
             $this->healClosedAmazonYSalesSnapshot();
             $this->healClosedChannelYSalesSnapshot('temu2');
+            $this->healClosedChannelYSalesSnapshot('temu3');
 
             foreach ([0, 1, 7] as $dotWindow) {
                 \Cache::forget($this->channelMetricDotTrendsCacheKey($dotWindow));
@@ -19642,7 +20078,7 @@ class ChannelMasterController extends Controller
                 'amazon' => 'Amazon', 'amazonfba' => 'Amazon FBA',
                 'ebay' => 'eBay', 'ebaytwo' => 'eBay 2', 'ebaythree' => 'eBay 3',
                 'shopifyb2c' => 'Shopify B2C', 'temu' => 'Temu',
-            'temu2' => 'Temu 2', 'walmart' => 'Walmart',
+            'temu2' => 'Temu 2', 'temu3' => 'Temu 3', 'temuthree' => 'Temu 3', 'walmart' => 'Walmart',
             ];
             $metricsChannel = $metricsChannelMap[$channel] ?? null;
             // ChannelMasterSummary uses the frontend channel name directly (lowercase)

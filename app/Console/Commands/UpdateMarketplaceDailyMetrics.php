@@ -163,6 +163,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'eBay 3' => fn() => $this->calculateEbay3Metrics($date),
             'Temu' => fn() => $this->calculateTemuMetrics($date),
             'Temu 2' => fn() => $this->calculateTemu2Metrics($date),
+            'Temu 3' => fn() => $this->calculateTemu3Metrics($date),
             'Shein' => fn() => $this->calculateSheinMetrics($date),
             'Mercari With Ship' => fn() => $this->calculateMercariWithShipMetrics($date),
             'Mercari Without Ship' => fn() => $this->calculateMercariWithoutShipMetrics($date),
@@ -926,6 +927,49 @@ class UpdateMarketplaceDailyMetrics extends Command
             'ads_percentage' => round($tacosPercentage, 1),
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
+        ];
+    }
+
+    /**
+     * Temu 3: Full Temu Price L30 from temu3_orders (same window as /temu3-decrease). No ads.
+     */
+    private function calculateTemu3Metrics($date)
+    {
+        if (! Schema::hasTable('temu3_orders')) {
+            return null;
+        }
+
+        [$start, $end] = TemuShopifySalesService::temu3SheetL30Window();
+        $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+
+        if (($m['sales'] ?? 0) <= 0 && ($m['qty'] ?? 0) <= 0) {
+            return null;
+        }
+
+        $totalL30Sales = (float) $m['sales'];
+        $totalPft = (float) $m['pft'];
+        $totalGpft = (float) $m['gpft'];
+        $totalCogs = (float) $m['cogs'];
+        $pftPercentage = $totalL30Sales > 0 ? ($totalGpft / $totalL30Sales) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        return [
+            'total_orders' => (int) $m['orders'],
+            'total_quantity' => (int) $m['qty'],
+            'total_revenue' => $totalL30Sales,
+            'total_sales' => $totalL30Sales,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
+            'avg_price' => $m['qty'] > 0 ? round($totalL30Sales / $m['qty'], 2) : 0,
+            'l30_sales' => $totalL30Sales,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'tacos_percentage' => 0,
+            'ads_percentage' => 0,
+            'n_pft' => round($pftPercentage, 1),
+            'n_roi' => round($roiPercentage, 1),
         ];
     }
 

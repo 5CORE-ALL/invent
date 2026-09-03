@@ -19,6 +19,7 @@ class AllMarketplaceMasterBadgeAggregator
         $totalYSales = 0.0;
         $totalYGross = 0.0;
         $totalYNet = 0.0;
+        $totalYCogs = 0.0;
         $totalTodaySales = 0.0;
         $totalPSales = 0.0;
         $totalPGross = 0.0;
@@ -68,6 +69,7 @@ class AllMarketplaceMasterBadgeAggregator
             $totalYSales += $ySales;
             $totalYGross += ($gprofitPercent / 100) * $ySales;
             $totalYNet += ($npftPercent / 100) * $ySales;
+            $totalYCogs += self::yCogsFromParts($ySales, $l30Sales, $gprofitPercent, $cogs);
             $totalTodaySales += $todaySales;
             $totalPSales += $pSales;
             $totalPGross += ($gprofitPercent / 100) * $pSales;
@@ -106,6 +108,7 @@ class AllMarketplaceMasterBadgeAggregator
         $avgNpft = $avgGprofit - $avgAdsPercent;
         $avgPNpft = $totalPSales > 0 ? (($totalPGross - $totalAdSpend) / $totalPSales) * 100 : 0.0;
         $avgYNpft = $totalYSales > 0 ? ($totalYNet / $totalYSales) * 100 : 0.0;
+        $avgYGroi = $totalYCogs > 0 ? ($totalYGross / $totalYCogs) * 100 : 0.0;
         $netProfit = $totalPft - $totalAdSpend;
         $avgNroi = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0.0;
         $cvrUnits = 0.0;
@@ -140,6 +143,7 @@ class AllMarketplaceMasterBadgeAggregator
             'y_npft' => round($totalYNet, 2),
             'y_npft_amt' => round($totalYNet, 2),
             'y_npft_pct' => round($avgYNpft, 2),
+            'y_groi_pct' => round($avgYGroi, 2),
             'today_sales' => round($totalTodaySales, 2),
             'p_sales' => round($totalPSales, 2),
             'l30_orders' => (int) round($totalL30Orders),
@@ -170,6 +174,18 @@ class AllMarketplaceMasterBadgeAggregator
             'seller_avg_rating' => $sellerReviewsSum > 0 ? round($sellerRatingSum / $sellerReviewsSum, 1) : 0.0,
             'seller_total_reviews' => (int) round($sellerReviewsSum),
         ];
+    }
+
+    private static function yCogsFromParts(float $ySales, float $l30Sales, float $gprofitPercent, float $cogs): float
+    {
+        if ($ySales <= 0) {
+            return 0.0;
+        }
+        if ($l30Sales > 0 && $cogs > 0) {
+            return $cogs * ($ySales / $l30Sales);
+        }
+
+        return $ySales * max(0.0, 1.0 - ($gprofitPercent / 100.0));
     }
 
     /**

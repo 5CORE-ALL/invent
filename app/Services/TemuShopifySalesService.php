@@ -508,6 +508,137 @@ class TemuShopifySalesService
         return (float) self::computeMetricsFromOrders($start, $end, true)['base_sales'];
     }
 
+    /**
+     * Temu 3 sheet metrics — same Full Temu Price Sales / GPFT / GROI as /temu3-decrease.
+     *
+     * @return array{sales: float, base_sales: float, full_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeMetricsFromTemu3Orders(Carbon $startDate, Carbon $endDate): array
+    {
+        $empty = [
+            'sales' => 0.0,
+            'base_sales' => 0.0,
+            'full_sales' => 0.0,
+            'orders' => 0,
+            'qty' => 0,
+            'pft' => 0.0,
+            'gpft' => 0.0,
+            'cogs' => 0.0,
+        ];
+        if (! Schema::hasTable('temu3_orders')) {
+            return $empty;
+        }
+
+        $rows = self::getTemu3OrdersTableRows($startDate, $endDate);
+        if ($rows === []) {
+            return $empty;
+        }
+
+        $normalizeSku = static function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+            $sku = preg_replace('/\s+/', ' ', $sku);
+
+            return $sku;
+        };
+
+        $pmSet = [];
+        $noSpaceToNormalized = [];
+        foreach (ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            if (stripos((string) $sku, 'PARENT') !== false) {
+                continue;
+            }
+            $n = $normalizeSku($sku);
+            if ($n === '') {
+                continue;
+            }
+            $pmSet[$n] = true;
+            $ns = str_replace(' ', '', $n);
+            if ($ns !== '') {
+                $noSpaceToNormalized[$ns] = $n;
+            }
+        }
+
+        $margin = self::temuMarginDecimal();
+        $totalFull = 0.0;
+        $totalBase = 0.0;
+        $totalQty = 0;
+        $totalGpft = 0.0;
+        $totalGroiPft = 0.0;
+        $totalCogs = 0.0;
+        $orderSet = [];
+
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            $n = $normalizeSku($sku);
+            $nNoSpace = str_replace(' ', '', $n);
+            if (! isset($pmSet[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
+                continue;
+            }
+
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $base = (float) ($r['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
+
+            $full = self::computeFullTemuPrice($base);
+            $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
+            $lp = (float) ($r['lp'] ?? 0);
+            $ship = (float) ($r['temu_ship'] ?? 0);
+
+            $totalFull += $full * $qty;
+            $totalBase += $base * $qty;
+            $totalQty += $qty;
+            $totalGpft += ($full * $margin - $lp - $ship) * $qty;
+            $totalGroiPft += self::computeGroiProfit($rPrice, $margin, $lp, $ship) * $qty;
+            $totalCogs += $lp * $qty;
+            $orderSet[$orderId] = true;
+        }
+
+        return [
+            'sales' => round($totalFull, 2),
+            'base_sales' => round($totalBase, 2),
+            'full_sales' => round($totalFull, 2),
+            'orders' => count($orderSet),
+            'qty' => $totalQty,
+            'pft' => round($totalGroiPft, 2),
+            'gpft' => round($totalGpft, 2),
+            'cogs' => round($totalCogs, 2),
+        ];
+    }
+
+    public static function computeYSalesFromTemu3Orders(): ?float
+    {
+        if (! Schema::hasTable('temu3_orders') || ! Temu3Order::query()->exists()) {
+            return null;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+
+        return (float) self::computeMetricsFromTemu3Orders(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        )['sales'];
+    }
+
+    public static function computeL7SalesFromTemu3Orders(): ?float
+    {
+        if (! Schema::hasTable('temu3_orders') || ! Temu3Order::query()->exists()) {
+            return null;
+        }
+
+        $latestPacific = Carbon::now(self::PST);
+        $end = $latestPacific->copy()->subDay()->endOfDay();
+        $start = $latestPacific->copy()->subDay()->subDays(6)->startOfDay();
+
+        return (float) self::computeMetricsFromTemu3Orders($start, $end)['sales'];
+    }
+
     /** L7 Sales from temu_orders: seven wall-clock Pacific days ending yesterday. */
     public static function computeL7SalesFromOrders(): ?float
     {

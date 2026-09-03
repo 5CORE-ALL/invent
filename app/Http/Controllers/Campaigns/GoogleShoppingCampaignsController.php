@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Models\GoogleAdsCampaign;
 use App\Models\GoogleAdsNegativeKeyword;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -10,7 +11,6 @@ use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingBgtCvrRule;
 use App\Support\GoogleShoppingBgtParts;
 use App\Support\GoogleShoppingBgtPrcRule;
-use App\Support\GoogleShoppingBgtReviewsRule;
 use App\Support\GoogleShoppingBgtSkuMetrics;
 use App\Support\GoogleShoppingBgtViewsRule;
 use App\Support\GoogleShoppingCampaignsRawRule;
@@ -315,21 +315,6 @@ class GoogleShoppingCampaignsController extends Controller
         );
     }
 
-    public function getBgtReviewsRule(): JsonResponse
-    {
-        return $this->jsonBgtRuleGet(GoogleShoppingBgtReviewsRule::class);
-    }
-
-    public function saveBgtReviewsRule(Request $request): JsonResponse
-    {
-        return $this->jsonBgtRuleSave(
-            $request,
-            GoogleShoppingBgtReviewsRule::class,
-            'Could not save BGT Vs REVIEWS rule.',
-            'BGT Vs REVIEWS saved. Bgt Reviews on the grid will use the new Reviews bands after reload.'
-        );
-    }
-
     /**
      * @param  class-string  $class
      */
@@ -538,10 +523,12 @@ class GoogleShoppingCampaignsController extends Controller
         $fallbackBudgetIds = $this->latestBudgetIdsByCampaignId($campaignIds);
         $lines = [];
         $updated = 0;
+        $paused = 0;
         $skipped = 0;
         $errors = 0;
 
         $lines[] = 'Pushing SBGT for '.count($campaignIds).' campaign id(s) from grid (direct, no SKU matching)...';
+        $lines[] = 'SBGT 0 cannot be pushed as daily budget — those ENABLED campaigns are paused instead.';
 
         foreach ($campaignIds as $campaignId) {
             $row = $rowsById[$campaignId] ?? null;
@@ -561,6 +548,28 @@ class GoogleShoppingCampaignsController extends Controller
                 continue;
             }
 
+            $currentBudget = (float) ($row['bgt'] ?? 0);
+            $newBudget = (int) ($row['sbgt'] ?? 0);
+            $acos = round((float) ($row['acos_l30'] ?? 0), 1);
+            $inv = (int) ($row['inventory'] ?? 0);
+
+            if ($newBudget < 1) {
+                try {
+                    $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
+                    $sbidService->pauseCampaign($customerId, $campaignResourceName);
+                    GoogleAdsCampaign::where('campaign_id', $campaignId)
+                        ->update(['campaign_status' => 'PAUSED']);
+                    $reason = $inv <= 0 ? 'INV ≤ 0 zeros SBGT' : 'SBGT 0';
+                    $lines[] = "[PAUSED] {$name} ({$campaignId}): {$reason} — cannot push \$0 budget.";
+                    $paused++;
+                } catch (\Throwable $e) {
+                    $lines[] = "[ERROR] {$name} ({$campaignId}): pause failed — ".$e->getMessage();
+                    $errors++;
+                }
+
+                continue;
+            }
+
             $budgetId = $this->normalizeBudgetId($row['budget_id'] ?? null);
             if ($budgetId === '') {
                 $budgetId = $fallbackBudgetIds[$campaignId] ?? '';
@@ -571,10 +580,6 @@ class GoogleShoppingCampaignsController extends Controller
 
                 continue;
             }
-
-            $currentBudget = (float) ($row['bgt'] ?? 0);
-            $newBudget = (int) ($row['sbgt'] ?? 0);
-            $acos = round((float) ($row['acos_l30'] ?? 0), 1);
 
             try {
                 $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
@@ -590,18 +595,30 @@ class GoogleShoppingCampaignsController extends Controller
         }
 
         $lines[] = '';
-        $lines[] = "Done. Updated: {$updated}, Skipped: {$skipped}, Errors: {$errors}.";
+        $lines[] = "Done. Updated: {$updated}, Paused (SBGT 0): {$paused}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        if ($paused > 0) {
+            $this->bumpRawGridRowsCache();
+        }
 
         $output = implode("\n", $lines);
+        $okBits = [];
+        if ($updated > 0) {
+            $okBits[] = "{$updated} budget(s) updated";
+        }
+        if ($paused > 0) {
+            $okBits[] = "{$paused} paused (SBGT 0)";
+        }
 
         return response()->json([
             'ok' => $errors === 0,
             'exit_code' => $errors === 0 ? 0 : 1,
             'command' => $this->pushSbgtCommandLabel(),
             'message' => $errors === 0
-                ? "SBGT push finished — {$updated} campaign(s) updated."
+                ? 'SBGT push finished'.($okBits !== [] ? ' — '.implode(', ', $okBits).'.' : '.')
                 : "SBGT push finished with {$errors} error(s).",
             'output' => $output,
+            'paused_zero_sbgt' => $paused,
         ], $errors === 0 ? 200 : 422);
     }
 
@@ -709,17 +726,12 @@ class GoogleShoppingCampaignsController extends Controller
         $query = $this->buildRawGridBaseQuery();
         $query->whereIn('g.campaign_id', $campaignIds);
         $rawRule = GoogleShoppingCampaignsRawRule::resolvedRule();
+        $invResolver = $this->buildInventoryResolver();
         $bgtResolver = $this->shoppingBgtMetricsResolver();
         $byId = [];
 
         foreach ($query->get() as $row) {
-            $arr = json_decode(json_encode($row), true);
-            if (isset($arr['spend_window_micros'])) {
-                $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
-                unset($arr['spend_window_micros']);
-            }
-            self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
-            $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
+            $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
             $byId[(string) ($arr['campaign_id'] ?? '')] = $arr;
         }
 
@@ -823,52 +835,62 @@ class GoogleShoppingCampaignsController extends Controller
         // totals in PHP so we do not run the aggregation three times
         // (COUNT, page SELECT, summary wrap).
         $collection = $this->rememberRawGridRows($request, $query);
-        $summary = $this->summarizeRawGridRows($collection);
 
         $invResolver = $this->buildInventoryResolver();
         $bgtResolver = $this->shoppingBgtMetricsResolver();
+        $invFilter = $this->normalizeInvFilter($request->input('filter_inv'));
+        $collection = $this->filterRawGridRowsByInventory($collection, $invFilter, $invResolver);
+        $summary = $this->summarizeRawGridRows($collection);
 
-        // Verify ID: L30 spend = 0 (SQL) + INV > 0 (PHP). Inventory is not in SQL, so
-        // load the spend=0 set, filter, then paginate + verify Merchant Item IDs.
-        if ($verifyId) {
-            @ini_set('max_execution_time', '120');
-            set_time_limit(120);
-            $allCampaignIds = $collection
-                ->pluck('campaign_id')
-                ->filter(fn ($v) => $v !== null && $v !== '')
-                ->map(fn ($v) => (string) $v)
-                ->unique()
-                ->values()
-                ->all();
-            $prevSbgtMap = $this->previousSbgtMap($allCampaignIds);
+        [$sortField, $sortDir] = $this->rawGridSortFromRequest($request);
+        $needsPhpSort = $sortField !== null && $this->isPhpSortField($sortField);
 
-            $enriched = $collection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver, $bgtResolver) {
-                $arr = self::rawGridRowToArray($row);
-                if (isset($arr['spend_window_micros'])) {
-                    $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
-                    unset($arr['spend_window_micros']);
-                }
-
-                self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
-                $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
-                $this->applyRowChannelOverrides($arr);
-                $this->attachSbgtTrend($arr, $prevSbgtMap);
-                $this->attachInventoryFields($arr, $invResolver);
-
-                return $arr;
-            })->filter(static function (array $arr) {
-                return (int) ($arr['inventory'] ?? 0) > 0;
-            })->values();
+        // Verify ID or PHP-only sort fields (INV / Dil / Views / Price / Bgt Views / BGT PRC / SBGT)
+        // need hydrated rows before paginate.
+        if ($verifyId || $needsPhpSort) {
+            if ($verifyId) {
+                @ini_set('max_execution_time', '120');
+                set_time_limit(120);
+            }
+            $enriched = $collection->map(function ($row) use ($rawRule, $invResolver, $bgtResolver) {
+                return $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
+            });
+            if ($verifyId) {
+                $enriched = $enriched->filter(static function (array $arr) {
+                    return (int) ($arr['inventory'] ?? 0) > 0;
+                })->values();
+                $summary['filtered_row_count'] = $enriched->count();
+            }
+            if ($needsPhpSort) {
+                $enriched = $this->sortHydratedRawGridRows($enriched, $sortField, $sortDir);
+            }
 
             $total = $enriched->count();
             $lastPage = max(1, (int) ceil($total / $perPage));
             $page = min($page, $lastPage);
             $pageRows = $enriched->slice(($page - 1) * $perPage, $perPage)->values();
 
-            $this->attachMerchantIdVerification($pageRows);
+            $pageCampaignIds = $pageRows
+                ->pluck('campaign_id')
+                ->filter(fn ($v) => $v !== null && $v !== '')
+                ->map(fn ($v) => (string) $v)
+                ->unique()
+                ->values()
+                ->all();
+            $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
+            foreach ($pageRows as $i => $arr) {
+                $this->attachSbgtTrend($arr, $prevSbgtMap);
+                if (! $verifyId) {
+                    $arr['id_mismatch'] = false;
+                    $arr['id_alert_title'] = '';
+                }
+                $pageRows[$i] = $arr;
+            }
+            if ($verifyId) {
+                $this->attachMerchantIdVerification($pageRows);
+            }
 
             $rows = $pageRows->map(static fn (array $arr) => self::prepareRawRowForTabulator($arr))->values();
-            $summary['filtered_row_count'] = $total;
 
             return response()->json([
                 'last_page' => $lastPage,
@@ -894,17 +916,8 @@ class GoogleShoppingCampaignsController extends Controller
         $prevSbgtMap = $this->previousSbgtMap($pageCampaignIds);
 
         $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $invResolver, $bgtResolver) {
-            $arr = self::rawGridRowToArray($row);
-            if (isset($arr['spend_window_micros'])) {
-                $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
-                unset($arr['spend_window_micros']);
-            }
-
-            self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
-            $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
-            $this->applyRowChannelOverrides($arr);
+            $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
             $this->attachSbgtTrend($arr, $prevSbgtMap);
-            $this->attachInventoryFields($arr, $invResolver);
             $arr['id_mismatch'] = false;
             $arr['id_alert_title'] = '';
 
@@ -978,16 +991,11 @@ class GoogleShoppingCampaignsController extends Controller
         $rawRule = $rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule();
         $now = now();
         $count = 0;
+        $invResolver = $this->buildInventoryResolver();
         $bgtResolver = $this->shoppingBgtMetricsResolver();
 
         foreach ($this->buildRawGridBaseQuery($endYmd)->get() as $row) {
-            $arr = json_decode(json_encode($row), true);
-            if (isset($arr['spend_window_micros'])) {
-                $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
-                unset($arr['spend_window_micros']);
-            }
-            self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
-            $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
+            $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
 
             $cid = (string) ($arr['campaign_id'] ?? '');
             if ($cid === '') {
@@ -2133,21 +2141,10 @@ class GoogleShoppingCampaignsController extends Controller
         ];
 
         $applied = false;
-        $rawSort = $request->input('sort');
-        if (is_array($rawSort)) {
-            foreach ($rawSort as $entry) {
-                if (! is_array($entry)) {
-                    continue;
-                }
-                $field = is_string($entry['field'] ?? null) ? $entry['field'] : '';
-                $dirRaw = is_string($entry['dir'] ?? null) ? strtolower($entry['dir']) : 'asc';
-                $dir = $dirRaw === 'desc' ? 'desc' : 'asc';
-                if (! isset($sortMap[$field])) {
-                    continue;
-                }
-                $query->orderByRaw($sortMap[$field].' '.$dir);
-                $applied = true;
-            }
+        [$field, $dir] = $this->rawGridSortFromRequest($request);
+        if ($field !== null && isset($sortMap[$field]) && ! $this->isPhpSortField($field)) {
+            $query->orderByRaw($sortMap[$field].' '.$dir);
+            $applied = true;
         }
 
         // Deterministic tiebreaker (and default ordering when no sort is sent)
@@ -2228,7 +2225,7 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * @return \Closure(string): array{views_l7: float, views_l30: float, price: float|null, rating: float|null, inv: float, ovl30: float, dil: float|null}|null
+     * @return \Closure(string): array{views_l7: float, views_l30: float, price: float|null, inv: float, ovl30: float, dil: float|null}|null
      */
     protected function shoppingBgtMetricsResolver(): ?\Closure
     {
@@ -2241,7 +2238,7 @@ class GoogleShoppingCampaignsController extends Controller
 
     /**
      * @param  array<string, mixed>  $arr
-     * @param  \Closure(string): array{views_l7: float, views_l30: float, price: float|null, rating: float|null, inv: float, ovl30: float, dil: float|null}|null  $resolver
+     * @param  \Closure(string): array{views_l7: float, views_l30: float, price: float|null, inv: float, ovl30: float, dil: float|null}|null  $resolver
      * @param  array{sbgt: array<string, mixed>, sbid: array<string, float>}  $rawRule
      */
     protected function attachShoppingBgtParts(array &$arr, ?\Closure $resolver, array $rawRule): void
@@ -2326,6 +2323,136 @@ class GoogleShoppingCampaignsController extends Controller
         }
 
         return 'all';
+    }
+
+    private function normalizeInvFilter(mixed $value): string
+    {
+        $v = is_string($value) ? strtolower(trim($value)) : 'all';
+        if (in_array($v, ['gt0', '>0', 'pos'], true)) {
+            return 'gt0';
+        }
+        if (in_array($v, ['eq0', '=0', 'zero', '0'], true)) {
+            return 'eq0';
+        }
+
+        return 'all';
+    }
+
+    /**
+     * Inventory is Shopify (not in google_ads_campaigns), so INV filters run in PHP.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $collection
+     * @param  \Closure(string): ?int  $invResolver
+     * @return \Illuminate\Support\Collection<int, mixed>
+     */
+    private function filterRawGridRowsByInventory($collection, string $invFilter, \Closure $invResolver)
+    {
+        if ($invFilter === 'all') {
+            return $collection;
+        }
+
+        return $collection->filter(static function ($row) use ($invResolver, $invFilter) {
+            $name = is_object($row)
+                ? (string) ($row->campaign_name ?? '')
+                : (string) ($row['campaign_name'] ?? '');
+            $inv = $invResolver($name);
+            $n = $inv !== null ? (int) $inv : 0;
+
+            return $invFilter === 'gt0' ? $n > 0 : $n === 0;
+        })->values();
+    }
+
+    /**
+     * @return array{0: string|null, 1: string}
+     */
+    private function rawGridSortFromRequest(Request $request): array
+    {
+        $raw = $request->input('sort');
+        if (! is_array($raw) || $raw === []) {
+            $raw = $request->input('sorters');
+        }
+        if (! is_array($raw)) {
+            return [null, 'asc'];
+        }
+        foreach ($raw as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $field = is_string($entry['field'] ?? null) ? $entry['field'] : '';
+            if ($field === '') {
+                continue;
+            }
+            $dir = strtolower((string) ($entry['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+
+            return [$field, $dir];
+        }
+
+        return [null, 'asc'];
+    }
+
+    private function isPhpSortField(string $field): bool
+    {
+        return in_array($field, [
+            'inventory',
+            'dil',
+            'views_l30',
+            'views_l7',
+            'price',
+            'bgt_views',
+            'bgt_prc',
+            'sbgt',
+        ], true);
+    }
+
+    /**
+     * @param  \Closure(string): ?int  $invResolver
+     * @param  \Closure(string): array<string, mixed>|null  $bgtResolver
+     * @return array<string, mixed>
+     */
+    private function hydrateRawGridRow($row, array $rawRule, \Closure $invResolver, ?\Closure $bgtResolver): array
+    {
+        $arr = self::rawGridRowToArray($row);
+        if (isset($arr['spend_window_micros'])) {
+            $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
+            unset($arr['spend_window_micros']);
+        }
+        self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+        $this->attachInventoryFields($arr, $invResolver);
+        $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
+        $this->applyRowChannelOverrides($arr);
+
+        return $arr;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function sortHydratedRawGridRows($rows, string $field, string $dir)
+    {
+        $isString = in_array($field, ['campaign_status', 'campaign_name'], true);
+
+        return $rows->sort(static function ($a, $b) use ($field, $dir, $isString) {
+            $av = is_array($a) ? ($a[$field] ?? null) : ($a->{$field} ?? null);
+            $bv = is_array($b) ? ($b[$field] ?? null) : ($b->{$field} ?? null);
+            if ($isString) {
+                $cmp = strcasecmp((string) $av, (string) $bv);
+            } else {
+                $an = is_numeric($av) ? (float) $av : null;
+                $bn = is_numeric($bv) ? (float) $bv : null;
+                if ($an === null && $bn === null) {
+                    $cmp = 0;
+                } elseif ($an === null) {
+                    $cmp = -1;
+                } elseif ($bn === null) {
+                    $cmp = 1;
+                } else {
+                    $cmp = $an <=> $bn;
+                }
+            }
+
+            return $dir === 'desc' ? -$cmp : $cmp;
+        })->values();
     }
 
     /**
@@ -2599,7 +2726,7 @@ class GoogleShoppingCampaignsController extends Controller
                 $request->only([
                     'filter_ub7', 'filter_ub1', 'filter_ub2', 'filter_acos', 'filter_stat',
                     'filter_ctr_min', 'filter_ctr_max', 'filter_cvr_min', 'filter_cvr_max',
-                    'q', 'sort',
+                    'q', 'sort', 'sorters',
                 ]),
                 $request->boolean('filter_verify_id'),
             ]));
@@ -2839,7 +2966,6 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_views',
             'bgt_cvr',
             'bgt_prc',
-            'bgt_reviews',
             'sbgt',
             'sbgt_prev',
             'sbgt_prev_date',
@@ -2853,9 +2979,6 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_prc_label',
             'bgt_prc_price',
             'ovl30',
-            'bgt_reviews_color',
-            'bgt_reviews_label',
-            'bgt_reviews_rating',
             'sbid',
             'id_mismatch',
             'id_alert_title',

@@ -73,6 +73,7 @@ class ChannelTodaySalesService
             'ebaythree' => fn () => EbayChannelMetricsService::sumSalesForTimezoneDates(3, $ymd, $ymd, self::TZ),
             'temu' => fn () => $this->temu($start, $end, false),
             'temu2' => fn () => $this->temu($start, $end, true),
+            'temu3' => fn () => $this->temu3($start, $end),
             'shopify' => fn () => $this->shopifyDirect($ymd),
             'shopifyb2c' => fn () => $this->shopifyB2x(false, $start, $end, $ymd),
             'shopifyb2b' => fn () => $this->shopifyB2x(true, $start, $end, $ymd),
@@ -117,6 +118,7 @@ class ChannelTodaySalesService
         $this->copyAliases($out, 'fbmarketplace', ['facebookmarketplace']);
         $this->copyAliases($out, 'tiktokshop', ['tiktok']);
         $this->copyAliases($out, 'tiktok2', ['tiktokshop2']);
+        $this->copyAliases($out, 'temu3', ['temuthree']);
 
         return $out;
     }
@@ -177,6 +179,15 @@ class ChannelTodaySalesService
         }
 
         return (float) TemuShopifySalesService::computeMetricsFromOrders($start, $end, $isTemu2)['base_sales'];
+    }
+
+    private function temu3(Carbon $start, Carbon $end): ?float
+    {
+        if (! Schema::hasTable('temu3_orders')) {
+            return null;
+        }
+
+        return (float) TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end)['sales'];
     }
 
     private function shopifyDirect(string $ymd): ?float

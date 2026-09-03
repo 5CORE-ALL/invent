@@ -10,7 +10,7 @@ final class GoogleShoppingBgtParts
 {
     /**
      * @param  array<string, mixed>  $arr
-     * @param  array{views_l7?: float|null, views_l30?: float|null, price?: float|null, rating?: float|null, inv?: float|null, ovl30?: float|null, dil?: float|null}  $skuMetrics
+     * @param  array{views_l7?: float|null, views_l30?: float|null, price?: float|null, inv?: float|null, ovl30?: float|null, dil?: float|null}  $skuMetrics
      * @param  array{sbgt: array<string, mixed>, sbid: array<string, float>}|null  $rawRule
      */
     public static function applyToRow(array &$arr, array $skuMetrics, ?array $rawRule = null): void
@@ -34,11 +34,6 @@ final class GoogleShoppingBgtParts
             ? (float) $skuMetrics['price']
             : null;
         $hitPrc = GoogleShoppingBgtPrcRule::apply($price);
-
-        $rating = isset($skuMetrics['rating']) && is_numeric($skuMetrics['rating'])
-            ? (float) $skuMetrics['rating']
-            : null;
-        $hitRev = GoogleShoppingBgtReviewsRule::apply($rating);
 
         $arr['bgt_acos'] = $bgtAcos;
         $arr['bgt_views'] = $hitViews['bgt'];
@@ -72,18 +67,26 @@ final class GoogleShoppingBgtParts
         $arr['bgt_prc_label'] = $hitPrc['label'];
         $arr['bgt_prc_price'] = $price;
 
-        $arr['bgt_reviews'] = $hitRev['bgt'];
-        $arr['bgt_reviews_color'] = $hitRev['color'];
-        $arr['bgt_reviews_label'] = $hitRev['label'];
-        $arr['bgt_reviews_rating'] = $rating;
-
         $arr['sbgt'] = GoogleShoppingSbgt::sumFromParts(
             $arr['bgt_views'],
             $arr['bgt_cvr'],
             $arr['bgt_acos'],
-            $arr['bgt_prc'],
-            $arr['bgt_reviews']
+            $arr['bgt_prc']
         );
+        self::applyInventoryGate($arr, $inv);
+    }
+
+    /**
+     * INV ≤ 0 forces SBGT to 0 — Google cannot push a $0 daily budget.
+     */
+    public static function applyInventoryGate(array &$arr, mixed $fallbackInv = null): void
+    {
+        $inv = isset($arr['inventory']) && is_numeric($arr['inventory'])
+            ? (float) $arr['inventory']
+            : (is_numeric($fallbackInv) ? (float) $fallbackInv : null);
+        if ($inv !== null && $inv <= 0) {
+            $arr['sbgt'] = 0;
+        }
     }
 
     public static function suggestedDailyBudget(
@@ -91,17 +94,20 @@ final class GoogleShoppingBgtParts
         float $cvrL30,
         ?float $viewsL7,
         ?float $price,
-        ?float $rating,
-        ?array $rawRule = null
+        ?array $rawRule = null,
+        ?float $inv = null
     ): int {
         $row = [
             'acos_l30' => $acos,
             'cvr_l30' => $cvrL30,
         ];
+        if ($inv !== null) {
+            $row['inventory'] = $inv;
+        }
         self::applyToRow($row, [
             'views_l7' => $viewsL7,
             'price' => $price,
-            'rating' => $rating,
+            'inv' => $inv,
         ], $rawRule);
 
         $sbgt = $row['sbgt'] ?? null;

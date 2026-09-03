@@ -159,9 +159,11 @@ class UpdateShoppingBudgetCronCommand extends Command
             $bgtSkuResolver = GoogleShoppingBgtSkuMetrics::resolver();
 
             $toPush = [];
+            $toPause = [];
             $budgetDetails = [];
             $skipCounters = [
                 'zero_inventory' => 0,
+                'paused_zero_sbgt' => 0,
                 'nra_skip' => 0,
                 'no_matching_campaign' => 0,
                 'campaign_not_enabled' => 0,
@@ -288,18 +290,37 @@ class UpdateShoppingBudgetCronCommand extends Command
                 $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)->sortByDesc('date')->first();
                 $currentBudget = ($latestCampaign && $latestCampaign->budget_amount_micros) ? $latestCampaign->budget_amount_micros / 1000000 : 0;
 
-                // Daily budget = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews (same as grid SBGT)
+                // Daily budget = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC (same as grid SBGT).
+                // INV ≤ 0 forces SBGT 0 — cannot push $0, so the campaign is paused instead.
+                $inv = isset($skuMetrics['inv']) && is_numeric($skuMetrics['inv'])
+                    ? (float) $skuMetrics['inv']
+                    : 0.0;
                 $newBudget = GoogleShoppingBgtParts::suggestedDailyBudget(
                     (float) $acos,
                     $cvrL30,
                     isset($skuMetrics['views_l7']) ? (float) $skuMetrics['views_l7'] : 0.0,
                     isset($skuMetrics['price']) && is_numeric($skuMetrics['price']) ? (float) $skuMetrics['price'] : null,
-                    isset($skuMetrics['rating']) && is_numeric($skuMetrics['rating']) ? (float) $skuMetrics['rating'] : null,
-                    $rawRule
+                    $rawRule,
+                    $inv
                 );
 
-                // Track individual campaigns (for statistics)
                 $skipCounters['total_campaigns_processed']++;
+
+                if ($newBudget < 1) {
+                    if ($inv <= 0) {
+                        $skipCounters['zero_inventory']++;
+                    }
+                    $toPause[(string) $campaignId] = [
+                        'sku' => $pm->sku,
+                        'inv' => $inv,
+                        'acos' => $acos,
+                    ];
+                    if ($dryRun) {
+                        $this->info("[DRY RUN] [PARENT] Would pause SHOPPING campaign {$campaignId} (SKU: {$pm->sku}): SBGT=0 INV={$inv} (cannot push \$0)");
+                    }
+
+                    continue;
+                }
 
                 if (! isset($toPush[$budgetId])) {
                     if ($dryRun) {
@@ -319,8 +340,9 @@ class UpdateShoppingBudgetCronCommand extends Command
             }
 
             $processedCount = count($toPush);
+            $pauseCount = count($toPause);
 
-            if ($processedCount === 0) {
+            if ($processedCount === 0 && $pauseCount === 0) {
                 $this->info('Done. Would process: 0 unique SHOPPING campaign budgets.');
                 $this->printShoppingSkipStats($skipCounters, $dryRun ? 'Would process' : 'Processed');
                 $monitor->setExpected(0);
@@ -329,20 +351,42 @@ class UpdateShoppingBudgetCronCommand extends Command
             }
 
             if ($dryRun) {
-                $this->info("Done. Would process: {$processedCount} unique SHOPPING campaign budgets.");
+                $this->info("Done. Would process: {$processedCount} unique SHOPPING campaign budgets, pause {$pauseCount} with SBGT 0.");
                 $this->printShoppingSkipStats($skipCounters, 'Would process');
                 $this->warn("\n⚠️  This was a DRY RUN. No budgets were actually updated.");
                 $this->info('Run without --dry-run to perform actual updates.');
                 $monitor->mergeMeta(['dry_run' => true]);
                 $monitor->markApiConnected();
-                $monitor->setExpected($processedCount);
-                $monitor->setFetched($processedCount);
-                $monitor->setSkipped($processedCount);
+                $monitor->setExpected($processedCount + $pauseCount);
+                $monitor->setFetched($processedCount + $pauseCount);
+                $monitor->setSkipped($processedCount + $pauseCount);
 
                 return self::SUCCESS;
             }
 
             $monitor->markApiConnected();
+            foreach ($toPause as $pauseCampaignId => $pauseDetail) {
+                try {
+                    $campaignResourceName = "customers/{$customerId}/campaigns/{$pauseCampaignId}";
+                    $this->sbidService->pauseCampaign($customerId, $campaignResourceName);
+                    GoogleAdsCampaign::where('campaign_id', $pauseCampaignId)
+                        ->update(['campaign_status' => 'PAUSED']);
+                    $skipCounters['paused_zero_sbgt']++;
+                    $invNote = isset($pauseDetail['inv']) ? ' INV='.$pauseDetail['inv'] : '';
+                    $this->info("[PARENT] Paused SHOPPING campaign {$pauseCampaignId} (SKU: ".($pauseDetail['sku'] ?? '')."): SBGT=0{$invNote} (cannot push \$0)");
+                } catch (\Exception $e) {
+                    $this->error("Failed to pause SHOPPING campaign {$pauseCampaignId}: ".$e->getMessage());
+                }
+            }
+
+            if ($processedCount === 0) {
+                $this->info("Done. Paused {$skipCounters['paused_zero_sbgt']} campaign(s) with SBGT 0.");
+                $this->printShoppingSkipStats($skipCounters, 'Processed');
+                $monitor->setExpected($pauseCount);
+                $monitor->setFetched($skipCounters['paused_zero_sbgt']);
+
+                return self::SUCCESS;
+            }
             $stats = $this->updateIdMapInChunks(
                 $monitor,
                 $toPush,
@@ -405,7 +449,8 @@ class UpdateShoppingBudgetCronCommand extends Command
     private function printShoppingSkipStats(array $skipCounters, string $action): void
     {
         $this->info('Skip Statistics:');
-        $this->info("  - Zero Inventory: {$skipCounters['zero_inventory']}");
+        $this->info("  - Zero Inventory (SBGT 0): {$skipCounters['zero_inventory']}");
+        $this->info('  - Paused SBGT 0: '.($skipCounters['paused_zero_sbgt'] ?? 0));
         $this->info("  - NRA (Not Running Ads): {$skipCounters['nra_skip']}");
         $this->info("  - No Matching Campaign: {$skipCounters['no_matching_campaign']}");
         $this->info("  - Campaign Not ENABLED: {$skipCounters['campaign_not_enabled']}");

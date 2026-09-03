@@ -148,8 +148,8 @@ class CalculateChannelMasterData extends Command
                                 $this->info("  - Using {$plsPercentage}% marketplace percentage from marketplace_percentages table");
                             }
 
-                            // Temu / Temu 2: Spend from temu(_2)_campaign_reports (L30 ads upload)
-                            if ($channelName === 'Temu' || $channelName === 'Temu 2') {
+                            // Temu / Temu 2 / Temu 3: persist sheet/API totals into calculated_data
+                            if (in_array($channelName, ['Temu', 'Temu 2', 'Temu 3', 'Temu3'], true)) {
                                 $this->newLine();
                                 $this->info("Processing {$channelName} with campaign report spend:");
                                 $this->info("  - L30 Sales: " . ($channelData['L30 Sales'] ?? 'N/A'));
@@ -316,12 +316,12 @@ class CalculateChannelMasterData extends Command
     }
 
     /**
-     * Temu / Temu 2 Views come from /temu1-data and /temu2-decrease sheet data.
+     * Temu / Temu 2 / Temu 3 Views come from the decrease-page sheet data.
      * Do not carry a stale ChannelMasterViewsGuard number.
      */
     private function stabilizeChannelViews(string $channelKey, float $candidateViews, float $candidateQty): float
     {
-        if ($channelKey === 'temu' || $channelKey === 'temu2') {
+        if (in_array($channelKey, ['temu', 'temu2', 'temu3', 'temuthree'], true)) {
             return $candidateViews;
         }
 

@@ -4,8 +4,8 @@ namespace App\Support;
 
 /**
  * Grid SBGT on /google/shopping/google-shopping:
- * Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews.
- * Same sum rules as /amazon-ads/all (no Dil). Independent of Amazon settings.
+ * Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC.
+ * Same sum rules as /amazon-ads/all (no Dil, no Reviews). Independent of Amazon settings.
  */
 final class GoogleShoppingSbgt
 {
@@ -13,7 +13,7 @@ final class GoogleShoppingSbgt
      * Grid SBGT. Null parts count as 0 in the sum. All-missing → null.
      * Explicit BGT ACOS of 0 zeros the total.
      */
-    public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null): ?int
+    public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null): ?int
     {
         if (self::isExplicitZero($bgtAcos)) {
             return 0;
@@ -21,7 +21,7 @@ final class GoogleShoppingSbgt
 
         $has = false;
         $sum = 0;
-        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews] as $part) {
+        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc] as $part) {
             if ($part === null || $part === '') {
                 continue;
             }

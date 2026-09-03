@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 
     <style>
+        html, body {
+            max-width: 100%;
+            overflow-x: clip;
+        }
         body {
             font-family: 'Poppins', sans-serif;
             background-color: #f5f7fa !important;
@@ -81,16 +85,62 @@
             display: none !important;
         }
 
-        /* Freeze header + left columns inside the table viewport */
+        /* Contain width so the page never grows sideways; extra columns scroll in the table */
+        .content-page,
+        .content-page .content,
+        .content-page .container-fluid {
+            max-width: 100%;
+            overflow-x: clip;
+        }
+        .content-page .row,
+        .content-page .row > [class*="col-"],
+        .content-page .card.shadow-sm,
+        .content-page .card.shadow-sm > .card-body {
+            max-width: 100%;
+            min-width: 0;
+        }
         #marketplace-table-wrapper {
-            height: calc(100vh - 290px);
-            min-height: 360px;
+            height: auto;
             width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            overflow: visible;
         }
         #marketplace-table.tabulator {
-            height: 100%;
+            height: auto;
+            width: 100% !important;
+            max-width: 100%;
+            overflow: visible;
+        }
+        #marketplace-table.tabulator .tabulator-tableholder {
+            height: auto !important;
+            max-height: none !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        #marketplace-table.tabulator .tabulator-col.tabulator-frozen,
+        #marketplace-table.tabulator .tabulator-cell.tabulator-frozen {
+            position: sticky !important;
+            z-index: 6;
+            background-color: #fff;
+        }
+        #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
+            background-color: #e6e6e6;
+            z-index: 27;
+        }
+        #marketplace-table.tabulator .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
+            background-color: #fff;
+        }
+        #marketplace-table.tabulator .tabulator-row.tabulator-row-odd .tabulator-cell.tabulator-frozen {
+            background-color: #f4f8fc;
+        }
+        #marketplace-table.tabulator .tabulator-row.tabulator-calcs .tabulator-cell.tabulator-frozen {
+            background-color: #f8f9fa;
         }
         #marketplace-table.tabulator .tabulator-header {
+            position: sticky;
+            top: var(--tz-topbar-height, 70px);
             z-index: 24;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
         }
@@ -423,6 +473,55 @@
             cursor: pointer;
             letter-spacing: -0.02em;
         }
+        #marketplace-table .ads-page-link {
+            color: #0d6efd;
+            font-size: 10px;
+            margin-left: 4px;
+            text-decoration: none;
+            vertical-align: middle;
+        }
+        #marketplace-table .ads-page-link:hover {
+            color: #084298;
+        }
+
+        @media (max-width: 1199.98px) {
+            .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+                height: 64px;
+                font-size: 10px;
+            }
+            .tabulator .tabulator-header .tabulator-col {
+                height: 64px !important;
+            }
+            #marketplace-table.tabulator .tabulator-cell {
+                font-size: 11px;
+                padding: 4px 6px;
+            }
+            .channel-logo-thumb,
+            .channel-logo-placeholder {
+                width: 22px;
+                height: 22px;
+            }
+            #column-dropdown-list {
+                grid-template-columns: repeat(3, minmax(110px, 1fr)) !important;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            #channel-search {
+                width: 100% !important;
+            }
+            .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+                height: 52px;
+                font-size: 9px;
+            }
+            .tabulator .tabulator-header .tabulator-col {
+                height: 52px !important;
+            }
+            #column-dropdown-list {
+                grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
+                max-height: 50vh !important;
+            }
+        }
     </style>
 @endsection
 
@@ -435,6 +534,7 @@
     <div class="toast-container"></div>
 
     <div class="row">
+        <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body py-3">
 
@@ -460,7 +560,7 @@
                         </button>
                         <div class="dropdown-menu p-0" id="column-dropdown-menu"
                             aria-labelledby="columnVisibilityDropdown"
-                            style="max-height:none; overflow:visible; min-width:720px; width:max-content;">
+                            style="max-height:none; overflow:visible; min-width:min(720px, calc(100vw - 24px)); width:max-content; max-width:calc(100vw - 24px);">
                             <ul id="column-dropdown-list" class="list-unstyled mb-0 px-2 py-1"
                                 style="display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:0 0.25rem; max-height:360px; overflow-y:auto;">
                                 <!-- Populated dynamically -->
@@ -547,8 +647,11 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
                             <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y-Npft% = blended NPFT% weighted by Y Sales: sum(Y Sales × NPFT%) ÷ sum(Y Sales). Same rate used for the Y NPFT $ column.">
-                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>Y-Npft%: <span id="avg-y-npft">0.0%</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = blended NPFT% weighted by Y Sales: sum(Y Sales × NPFT%) ÷ sum(Y Sales). Same rate used for the Y NPFT $ column.">
+                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="YGroi% = yesterday blended GROI%: sum(Y Sales × GPFT%) ÷ yesterday COGS. Yesterday COGS is L30 COGS scaled by Y Sales ÷ L30 Sales (falls back to Y Sales × (1 − GPFT%)).">
+                            <span class="summary-trend-dot none" data-metric="y_groi_pct" title="Rolling history"></span>YGroi%: <span id="avg-y-groi">0.0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             <span class="summary-trend-dot none" data-metric="nroi" title="Rolling history"></span>NROI: <span id="avg-nroi">0.0%</span>
@@ -577,6 +680,7 @@
                     <div id="marketplace-table"></div>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 
@@ -1224,8 +1328,17 @@
         function yNetPftFromRow(row) {
             return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['N PFT'] || 0)) / 100;
         }
+        function yCogsFromRow(row) {
+            const ySales = parseNumber(row['Y Sales'] || 0);
+            if (!ySales) return 0;
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const cogs = parseNumber(row['cogs'] || 0);
+            if (l30 > 0 && cogs > 0) return cogs * (ySales / l30);
+            const gp = parseNumber(row['Gprofit%'] || 0);
+            return ySales * Math.max(0, 1 - gp / 100);
+        }
         var METRIC_DIFF_PCT = {
-            gprofit: 1, groi: 1, npft: 1, p_npft: 1, y_npft_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
+            gprofit: 1, groi: 1, npft: 1, p_npft: 1, y_npft_pct: 1, y_groi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
         };
 
         function formatMetricDiffText(metric, diff) {
@@ -1272,6 +1385,37 @@
             if (typeof value === 'number') return value;
             const cleaned = String(value).replace(/[^0-9.-]/g, '');
             return parseFloat(cleaned) || 0;
+        }
+
+        function channelAdsPageUrl(name) {
+            const key = String(name || '').toLowerCase().replace(/[\s\-&/,']/g, '');
+            const map = {
+                amazon: '/amazon-ads/all',
+                amazonfba: '/amazon-ads/all',
+                ebay: '/ebay/campaign-ads',
+                ebay1: '/ebay/campaign-ads',
+                ebaytwo: '/ebay2/campaign-ads',
+                ebay2: '/ebay2/campaign-ads',
+                ebaythree: '/ebay3/campaign-ads',
+                ebay3: '/ebay3/campaign-ads',
+                temu: '/temu/ads',
+                temu1: '/temu/ads',
+                temu2: '/temu2/ads',
+                shopify: '/shopify-ads-master',
+                shopifyb2c: '/shopify-ads-master',
+                tiktokshop: '/tiktok-1-ads-raw-data',
+                tiktok: '/tiktok-1-ads-raw-data',
+                tiktok1: '/tiktok-1-ads-raw-data',
+                tiktokshop1: '/tiktok-1-ads-raw-data',
+                tiktok2: '/tiktok-gmv-ads-raw-data',
+                tiktokshop2: '/tiktok-gmv-ads-raw-data',
+                walmart: '/walmart/running/ads',
+                instagramshop: '/instagram-ads',
+                fbmarketplace: '/facebook-ads',
+                facebookmarketplace: '/facebook-ads',
+                fbshop: '/facebook-ads',
+            };
+            return map[key] || '';
         }
 
         // Yesterday's date formatted in America/Los_Angeles (e.g. "Jun 14"). The current PT
@@ -1454,7 +1598,7 @@
             var lastDotPairByKey = {};
             var invertedDotMetrics = ['acos', 'ads_pct'];
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','y_npft_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','y_pft','y_npft_amt','p_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','y_npft_pct','y_groi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -1499,7 +1643,8 @@
             function colorFromDotPair(v1, v2, metric) {
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                    || metric === 'npft' || metric === 'p_npft' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                    || metric === 'npft' || metric === 'p_npft' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
+                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
                 return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
@@ -1521,6 +1666,11 @@
                         const ySales = n(row['Y Sales']);
                         if (ySales == null || ySales <= 0) return null;
                         return n(row['N PFT']);
+                    }
+                    case 'y_groi_pct': {
+                        const ySales = n(row['Y Sales']);
+                        if (ySales == null || ySales <= 0) return null;
+                        return n(row['G Roi']);
                     }
                     case 'l30_sales': return n(row['L30 Sales']);
                     case 'p_sales': {
@@ -1634,25 +1784,17 @@
                 }
             });
 
-            // Initialize Tabulator
-            function marketplaceTableHeight() {
-                const wrap = document.getElementById('marketplace-table-wrapper');
-                if (!wrap) return 400;
-                const top = wrap.getBoundingClientRect().top;
-                return Math.max(360, Math.floor(window.innerHeight - top - 12));
-            }
-            (function sizeMarketplaceTableWrap() {
-                const wrap = document.getElementById('marketplace-table-wrapper');
-                if (wrap) wrap.style.height = marketplaceTableHeight() + 'px';
-            })();
-
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
-                height: "100%",
+                height: false,
                 pagination: false,
+                responsiveLayout: window.innerWidth < 768 ? "hide" : false,
+                columnDefaults: {
+                    minWidth: 52,
+                },
                 columnCalcs: "both",
                 initialSort: [{
                     column: "L30 Sales",
@@ -1746,6 +1888,7 @@
                         title: "Img",
                         field: "logo",
                         frozen: true,
+                        responsive: 0,
                         width: 60,
                         hozAlign: "center",
                         headerSort: false,
@@ -1772,6 +1915,8 @@
                         title: "MP",
                         field: "Channel ",
                         frozen: true,
+                        responsive: 0,
+                        minWidth: 90,
                         formatter: function(cell) {
                             const channel = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -1790,6 +1935,7 @@
                         // "Blade page link" / missing_link used by the channel name).
                         title: "Channel",
                         field: "alias",
+                        responsive: 0,
                         hozAlign: "center",
                         headerTooltip: "Channel alias — click to open this channel's view.",
                         formatter: function(cell) {
@@ -1990,6 +2136,7 @@
                     {
                         title: "Sales",
                         field: "L30 Sales",
+                        responsive: 0,
                         headerTooltip: "Rolling sales per channel. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} complete Pacific days through yesterday — Seller Central Ordered product sales (ItemPrice − promo; shipping/gift/tax excluded; Canceled excluded).",
                         hozAlign: "center",
                         sorter: "number",
@@ -2119,6 +2266,7 @@
                     {
                         title: "Y Sales",
                         field: "Y Sales",
+                        responsive: 0,
                         headerTooltip: "Yesterday Pacific. Amz = Seller Central Ordered product sales for that calendar day (shipping/gift/tax excluded).",
                         hozAlign: "center",
                         sorter: "number",
@@ -2425,8 +2573,8 @@
                         headerTooltip: "Per channel: Qty ÷ Total Views — units-based (matches /temu-decrease). Reverb Views are ÷ 100 first, then CVR is recalculated. Total Views come from listing/Map snapshots (traffic to offers), not the same as ad clicks. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
-                            // Prefer server-provided CVR (Temu / Temu 2 use temu_l30 ÷ product_clicks
-                            // to match the /temu-decrease & /temu2-decrease badges exactly); fall back
+                            // Prefer server-provided CVR (Temu / Temu 2 / Temu 3 use temu_l30 ÷ product_clicks
+                            // to match the decrease-page badges exactly); fall back
                             // to Qty ÷ Total Views for channels that don't pre-compute it.
                             const aData = aRow.getData(), bData = bRow.getData();
                             const aServer = (aData['CVR'] !== undefined && aData['CVR'] !== null && aData['CVR'] !== '');
@@ -2635,14 +2783,21 @@
                     {
                         title: "Ads %",
                         field: "Ads%",
+                        responsive: 0,
+                        minWidth: 92,
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Ads% — arrow opens that channel's ads page.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const channelRaw = (rowData['Channel '] || '').trim();
                             const channel = channelRaw.toLowerCase();
                             const dotColor = getMetricDotColor(channelRaw, 'ads_pct');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="ads_pct" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            const adsUrl = channelAdsPageUrl(channelRaw);
+                            const adsArrow = adsUrl
+                                ? `<a href="${adsUrl}" target="_blank" rel="noopener noreferrer" class="ads-page-link" title="Open ${channelRaw} ads page"><i class="fas fa-arrow-up-right-from-square"></i></a>`
+                                : '';
 
                             let adsPercent = 0;
                             if (channel === 'walmart' || channel === 'topdawg' || channel ===
@@ -2661,9 +2816,13 @@
                                 style = 'color:#a00211;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${adsPercent.toFixed(1)}%</span>${chartIcon}`;
+                            return `<span style="${style}font-weight:600;">${adsPercent.toFixed(1)}%</span>${adsArrow}${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if ($(e.target).closest('.ads-page-link').length) {
+                                e.stopPropagation();
+                                return;
+                            }
                             if (e.target.classList.contains('metric-chart-icon')) {
                                 e.stopPropagation();
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
@@ -2712,7 +2871,7 @@
                         field: "N ROI",
                         hozAlign: "center",
                         // Most channels: (Gross Profit − Ad Spend) / COGS × 100.
-                        // Temu / Temu 2: GROI% − Ads% (same as /temu-decrease after Ads reduce).
+                        // Temu / Temu 2 / Temu 3: GROI% − Ads% (same as /temu-decrease after Ads reduce).
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
@@ -3931,6 +4090,8 @@
                     {
                         title: "Action",
                         field: "_action",
+                        responsive: 0,
+                        minWidth: 72,
                         hozAlign: "center",
                         headerSort: false,
                         formatter: function(cell) {
@@ -4068,11 +4229,20 @@
 
             table.on('renderComplete', function() {
                 paintMetricDots(channelKeysFromTableData());
+                bindAmmHorizontalScrollSync();
             });
 
+            function bindAmmHorizontalScrollSync() {
+                var holder = document.querySelector('#marketplace-table .tabulator-tableholder');
+                if (!holder || holder.dataset.ammScrollBound === '1') return;
+                holder.dataset.ammScrollBound = '1';
+                holder.addEventListener('scroll', function() {
+                    var header = document.querySelector('#marketplace-table .tabulator-header .tabulator-header-contents');
+                    if (header) header.scrollLeft = holder.scrollLeft;
+                }, { passive: true });
+            }
+
             $(window).on('resize.ammFreezeHeader', function() {
-                const wrap = document.getElementById('marketplace-table-wrapper');
-                if (wrap) wrap.style.height = marketplaceTableHeight() + 'px';
                 if (table && typeof table.redraw === 'function') table.redraw(true);
             });
 
@@ -4114,14 +4284,15 @@
                     reviews: 1, l60_sales: 1, l60_orders: 1
                 };
                 var weightBy = {
-                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', y_npft_pct: 'y_sales', ads_pct: 'l30_sales',
+                    gprofit: 'l30_sales', npft: 'l30_sales', p_npft: 'p_sales', y_npft_pct: 'y_sales', y_groi_pct: 'y_sales', ads_pct: 'l30_sales',
                     groi: 'l30_sales', nroi: 'l30_sales',
                     cvr: 'total_views', ads_cvr: 'clicks', acos: 'ad_sales'
                 };
                 function pairClass(v1, v2, metric) {
                     if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return 'none';
                     var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
-                        || metric === 'npft' || metric === 'p_npft' || metric === 'y_npft_pct' || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                        || metric === 'npft' || metric === 'p_npft' || metric === 'y_npft_pct' || metric === 'y_groi_pct'
+                        || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                     if (Math.abs(v2 - v1) <= eps) return 'flat';
                     var isInv = inverted.indexOf(metric) >= 0;
                     if (isInv) return v2 < v1 ? 'up' : 'down';
@@ -4185,6 +4356,7 @@
                 let totalYSales = 0;
                 let totalYGross = 0;
                 let totalYNet = 0;
+                let totalYCogs = 0;
                 let totalTodaySales = 0;
                 let totalPSales = 0;
                 let totalPGross = 0;
@@ -4239,6 +4411,7 @@
                     totalYSales += ySales;
                     totalYGross += (gprofitPercent / 100) * ySales;
                     totalYNet += (npft / 100) * ySales;
+                    totalYCogs += yCogsFromRow(row);
                     totalTodaySales += todaySales;
                     totalPSales += pSales;
                     totalPGross += (gprofitPercent / 100) * pSales;
@@ -4479,7 +4652,16 @@
                     const $el = $('#avg-y-npft');
                     $el.text(val.toFixed(1) + '%');
                     $el.closest('.badge').attr('title',
-                        'Y-Npft% = (Σ Y Sales × NPFT%) ÷ Σ Y Sales. PFT dollars use the Y Sales column. ' + val.toFixed(1) + '%');
+                        'yNprft% = (Σ Y Sales × NPFT%) ÷ Σ Y Sales. PFT dollars use the Y Sales column. ' + val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const avgYGroi = totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : 0;
+                    const val = pct1(avgYGroi);
+                    const $el = $('#avg-y-groi');
+                    $el.text(val.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title',
+                        'YGroi% = (Σ Y Sales × GPFT%) ÷ Σ yesterday COGS. Yesterday COGS is L30 COGS × (Y Sales ÷ L30 Sales). ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -5070,7 +5252,7 @@
             let currentMetricKey = ''; // metric key for channel metric mode
 
             // Channels that have daily data
-            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'temu2', 'topdawg', 'walmart'];
+            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'temu2', 'temu3', 'topdawg', 'walmart'];
             const adTypesForChannel = {
                 'amazon': ['kw', 'pt', 'hl'],
                 'amazonfba': ['kw', 'pt'],
@@ -5303,7 +5485,8 @@
                 'pft': 'Total Pft',
                 'npft': 'N PFT%',
                 'p_npft': 'P-Npft%',
-                'y_npft_pct': 'Y-Npft%',
+                'y_npft_pct': 'yNprft%',
+                'y_groi_pct': 'YGroi%',
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
                 'map': 'Map',
@@ -5668,7 +5851,7 @@
                     if (m === 'cvr' || m === 'ads_cvr') {
                         return v.toFixed(2) + '%';
                     }
-                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'y_npft_pct' || m === 'nroi') {
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);
