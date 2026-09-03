@@ -2965,6 +2965,188 @@ class AliExpressApiService
     }
 
     /**
+     * @param  list<string>  $urls
+     * @return array{success: bool, message: string, urls: list<string>}
+     */
+    public function uploadImagesToPhotobank(array $urls): array
+    {
+        $hosted = [];
+        foreach (array_slice(array_values(array_unique(array_filter(array_map('trim', $urls)))), 0, 6) as $url) {
+            if ($this->isAliExpressCdnUrl($url)) {
+                $hosted[] = $url;
+                continue;
+            }
+            $res = $this->uploadPhotobankImage($url);
+            if (empty($res['success']) || trim((string) ($res['url'] ?? '')) === '') {
+                return [
+                    'success' => false,
+                    'message' => $res['message'] ?? 'AliExpress photobank upload failed for an Image Master photo.',
+                    'urls' => [],
+                ];
+            }
+            $hosted[] = (string) $res['url'];
+        }
+
+        return [
+            'success' => $hosted !== [],
+            'message' => $hosted === [] ? 'No Image Master photos to upload.' : '',
+            'urls' => $hosted,
+        ];
+    }
+
+    /**
+     * @return array{success: bool, url?: string, message: string}
+     */
+    public function uploadPhotobankImage(string $sourceUrl): array
+    {
+        $sourceUrl = trim($sourceUrl);
+        if ($sourceUrl === '') {
+            return ['success' => false, 'message' => 'Image URL is empty.'];
+        }
+        if ($this->isAliExpressCdnUrl($sourceUrl)) {
+            return ['success' => true, 'url' => $sourceUrl, 'message' => ''];
+        }
+
+        $downloaded = $this->downloadImageBytes($sourceUrl);
+        $bytes = (string) ($downloaded['bytes'] ?? '');
+        if ($bytes === '') {
+            return ['success' => false, 'message' => $downloaded['message'] ?? 'Could not download the Image Master photo.'];
+        }
+        $fileName = (string) ($downloaded['filename'] ?? 'image.jpg');
+        $method = 'aliexpress.photobank.redefining.uploadimageforsdk';
+        $last = 'AliExpress photobank upload failed.';
+
+        $business = [
+            'file_name' => $fileName,
+            'group_id' => '0',
+        ];
+        $params = [
+            'app_key' => $this->appKey,
+            'method' => $method,
+            'access_token' => (string) $this->accessToken,
+            'sign_method' => 'sha256',
+            'timestamp' => (string) (int) round(microtime(true) * 1000),
+            'file_name' => $fileName,
+            'group_id' => '0',
+        ];
+
+        foreach ([$method, '/rest'] as $apiName) {
+            $attempt = $params;
+            $attempt['sign'] = $this->signBusinessApi($attempt, $apiName);
+            try {
+                $response = $this->httpClient()
+                    ->asMultipart()
+                    ->attach('image_bytes', $bytes, $fileName)
+                    ->post($this->restBase, $attempt);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                return [
+                    'success' => false,
+                    'message' => 'Could not reach AliExpress photobank: '.$e->getMessage(),
+                ];
+            }
+            $parsed = $this->parseHttpResponse($response, $method, 'rest');
+            $url = $this->extractPhotobankUrl($parsed);
+            if ($url !== '') {
+                return ['success' => true, 'url' => $url, 'message' => ''];
+            }
+            $last = (string) ($parsed['message'] ?? 'Photobank upload failed.');
+            if (! $this->isSignatureError($parsed)) {
+                break;
+            }
+        }
+
+        $sync = $this->callApiFlexible($method, [
+            'rest' => $business,
+            'sync' => $business,
+        ]);
+        $url = $this->extractPhotobankUrl($sync);
+        if ($url !== '') {
+            return ['success' => true, 'url' => $url, 'message' => ''];
+        }
+
+        return [
+            'success' => false,
+            'message' => trim((string) ($last ?? $sync['message'] ?? 'AliExpress photobank upload failed.')),
+        ];
+    }
+
+    public function isAliExpressCdnUrl(string $url): bool
+    {
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+
+        return $host !== '' && (str_contains($host, 'alicdn.com') || str_contains($host, 'aliexpress-media.com'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $res
+     */
+    private function extractPhotobankUrl(array $res): string
+    {
+        foreach ([$res['data'] ?? null, $res['result'] ?? null, $res] as $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+            foreach (['photobank_url', 'photobankUrl'] as $key) {
+                $url = trim((string) data_get($bucket, $key, ''));
+                if ($url === '') {
+                    $url = trim((string) data_get($bucket, 'result.'.$key, ''));
+                }
+                if ($url === '') {
+                    continue;
+                }
+                if (str_starts_with($url, '//')) {
+                    $url = 'https:'.$url;
+                }
+                if (str_starts_with($url, 'http://')) {
+                    $url = 'https://'.substr($url, 7);
+                }
+                if (preg_match('#^https?://#i', $url)) {
+                    return $url;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array{bytes: string, filename: string, message?: string}
+     */
+    private function downloadImageBytes(string $url): array
+    {
+        $url = trim($url);
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        } elseif (str_starts_with($url, '/')) {
+            $base = rtrim((string) config('app.url'), '/');
+            $url = $base !== '' ? $base.$url : $url;
+        }
+        if (! preg_match('#^https?://#i', $url)) {
+            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo is not a public URL.'];
+        }
+
+        try {
+            $response = $this->httpClient()->get($url);
+        } catch (\Throwable $e) {
+            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Could not download Image Master photo: '.$e->getMessage()];
+        }
+        if (! $response->successful()) {
+            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo returned HTTP '.$response->status().'.'];
+        }
+        $bytes = (string) $response->body();
+        if ($bytes === '' || strlen($bytes) > 3 * 1024 * 1024) {
+            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo is empty or larger than 3MB.'];
+        }
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+        $name = basename($path);
+        if ($name === '' || ! str_contains($name, '.')) {
+            $name = 'image.jpg';
+        }
+
+        return ['bytes' => $bytes, 'filename' => $name];
+    }
+
+    /**
      * @param  list<string>  $images
      * @return array{success: bool, message?: string, normalized_urls?: list<string>}
      */

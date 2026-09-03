@@ -112,9 +112,9 @@ class AliexpressListingPublishService
                     'message' => 'No price found for '.$sku.'. Set Shopify price or AliExpress Std Prc.',
                 ];
             }
-            $images = $this->productImages($product);
+            $images = $this->productImages($product, $sku);
             if ($images === []) {
-                return ['success' => false, 'message' => 'No images on product master for '.$sku.'.'];
+                return ['success' => false, 'message' => 'No images on Image Master for '.$sku.'. Add photos on Image Master, then publish again.'];
             }
             foreach ($images as $url) {
                 if (! in_array($url, $gallery, true)) {
@@ -128,6 +128,28 @@ class AliexpressListingPublishService
                 'inv' => $this->shopifyInv($sku),
                 'images' => $images,
             ];
+        }
+
+        $upload = $this->api->uploadImagesToPhotobank($gallery);
+        if (empty($upload['success']) || ($upload['urls'] ?? []) === []) {
+            return [
+                'success' => false,
+                'message' => $upload['message'] ?? 'Could not upload Image Master photos to AliExpress photobank.',
+            ];
+        }
+        $hostedBySource = [];
+        foreach (array_values($gallery) as $i => $source) {
+            if (isset($upload['urls'][$i])) {
+                $hostedBySource[$source] = $upload['urls'][$i];
+            }
+        }
+        $gallery = array_values($upload['urls']);
+        foreach ($prepared as $i => $row) {
+            $mapped = [];
+            foreach ($row['images'] as $src) {
+                $mapped[] = $hostedBySource[$src] ?? ($gallery[0] ?? $src);
+            }
+            $prepared[$i]['images'] = $mapped !== [] ? $mapped : $gallery;
         }
 
         $parentKey = trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($primary);
@@ -288,7 +310,7 @@ class AliexpressListingPublishService
                 continue;
             }
             $product = $products->get(strtolower($sku));
-            if (! $product || $this->productImages($product) === []) {
+            if (! $product || $this->productImages($product, $sku) === []) {
                 continue;
             }
             $out[] = $sku;
@@ -314,7 +336,7 @@ class AliexpressListingPublishService
             return ['id' => 0, 'path' => ''];
         }
         $title = $this->resolveTitle($product, $sku);
-        $images = $this->productImages($product);
+        $images = $this->productImages($product, $sku);
 
         return $this->resolveCategory($product, $sku, $title, $images[0] ?? '', null, null);
     }
@@ -591,34 +613,139 @@ class AliexpressListingPublishService
     }
 
     /**
+     * Image Master gallery: image1–image20, then parent, then saved AliExpress image_master_json.
+     *
      * @return list<string>
      */
-    private function productImages(ProductMaster $product): array
+    private function productImages(ProductMaster $product, string $sku = ''): array
     {
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
-            $raw = trim($raw);
-            if ($raw === '' || in_array($raw, $urls, true)) {
-                return;
+            foreach ($this->splitImageValues($raw) as $one) {
+                $url = $this->absoluteImageUrl($one);
+                if ($url === '' || in_array($url, $urls, true)) {
+                    continue;
+                }
+                $urls[] = $url;
             }
-            if (! preg_match('#^https?://#i', $raw)) {
-                return;
-            }
-            $urls[] = $raw;
         };
 
-        $push((string) ($product->main_image ?? ''));
-        $push((string) ($product->main_image_brand ?? ''));
-        for ($i = 1; $i <= 19; $i++) {
-            $push((string) ($product->{'image'.$i} ?? ''));
-        }
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['image_path', 'image', 'Image', 'main_image', 'photo'] as $key) {
-            $raw = $values[$key] ?? '';
-            $push(is_array($raw) ? (string) ($raw[0]['url'] ?? $raw[0] ?? '') : (string) $raw);
+        $this->pushImageMasterGallery($product, $push);
+
+        $childSku = $sku !== '' ? $sku : trim((string) $product->sku);
+        $parentSku = trim((string) ($product->parent ?? ''));
+        if ($parentSku !== '' && strcasecmp($parentSku, $childSku) !== 0) {
+            $parent = ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where('sku', $parentSku)
+                ->first()
+                ?: ProductMaster::query()
+                    ->whereNull('deleted_at')
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($parentSku)])
+                    ->first();
+            if ($parent) {
+                $this->pushImageMasterGallery($parent, $push);
+            }
         }
 
-        return $urls;
+        if ($childSku !== '' && Schema::hasTable('aliexpress_metric') && Schema::hasColumn('aliexpress_metric', 'image_master_json')) {
+            $raw = AliexpressMetric::query()
+                ->where('sku', $childSku)
+                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($childSku)])
+                ->value('image_master_json');
+            foreach ($this->decodeImageList($raw) as $url) {
+                $push($url);
+            }
+        }
+
+        return array_slice($urls, 0, 6);
+    }
+
+    /**
+     * @param  callable(string): void  $push
+     */
+    private function pushImageMasterGallery(ProductMaster $product, callable $push): void
+    {
+        $fromSlots = false;
+        for ($i = 1; $i <= 20; $i++) {
+            $value = trim((string) ($product->{'image'.$i} ?? ''));
+            if ($value !== '') {
+                $fromSlots = true;
+                $push($value);
+            }
+        }
+        if (! $fromSlots) {
+            $push((string) ($product->main_image ?? ''));
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitImageValues(string $raw): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+        if (str_starts_with($raw, '[') || str_starts_with($raw, '{')) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return $this->decodeImageList($decoded);
+            }
+        }
+
+        return [$raw];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function decodeImageList(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            $items = $raw;
+        } else {
+            $text = trim((string) $raw);
+            if ($text === '') {
+                return [];
+            }
+            $decoded = json_decode($text, true);
+            $items = is_array($decoded) ? $decoded : [];
+        }
+
+        $out = [];
+        foreach ($items as $item) {
+            if (is_array($item)) {
+                $item = $item['url'] ?? $item['src'] ?? $item['image'] ?? '';
+            }
+            $item = trim((string) $item);
+            if ($item !== '') {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    private function absoluteImageUrl(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        if (str_starts_with($raw, '//')) {
+            return 'https:'.$raw;
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+        $base = rtrim((string) config('app.url'), '/');
+        if ($base === '') {
+            return '';
+        }
+
+        return str_starts_with($raw, '/') ? $base.$raw : $base.'/'.ltrim($raw, '/');
     }
 
     /**
