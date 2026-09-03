@@ -3800,7 +3800,8 @@ class ReverbApiService
 
                     continue;
                 }
-                if (str_contains(mb_strtolower($path), $needle) || str_contains(mb_strtolower($id), $needle)) {
+                $hay = mb_strtolower($path.' '.(string) ($row['search'] ?? '').' '.$id);
+                if (str_contains($hay, $needle)) {
                     $matched[] = $row;
                 }
             }

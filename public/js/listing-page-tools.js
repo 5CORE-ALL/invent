@@ -224,12 +224,19 @@
         const pathEl = document.getElementById('listing-publish-reverb-category-path');
         const uuidEl = document.getElementById('listing-publish-category-uuid');
         const nameEl = document.getElementById('listing-publish-reverb-category-name');
+        const typed = nameEl && nameEl.dataset.userTyped === '1'
+            ? String(nameEl.value || '').trim()
+            : '';
+        if (typed.length >= 2) {
+            searchReverbCategories(typed);
+            return;
+        }
         const path = String((suggested && suggested.path) || '').trim();
         const id = String((suggested && suggested.id) || '').trim();
         const name = String((suggested && suggested.name) || '').trim();
         const leaf = path.split(/[>\/|]/).pop().trim();
         if (uuidEl) uuidEl.value = id;
-        if (nameEl) nameEl.value = name || leaf || '';
+        if (nameEl && !nameEl.value.trim()) nameEl.value = name || leaf || '';
         if (pathEl) {
             pathEl.textContent = path || (id
                 ? 'Reverb category matched from the product type.'
@@ -245,8 +252,16 @@
     function hideReverbCategoryResults() {
         const box = document.getElementById('listing-publish-reverb-category-results');
         if (!box) return;
-        box.hidden = true;
+        box.classList.remove('is-open');
         box.innerHTML = '';
+    }
+
+    function showReverbCategoryResults(html) {
+        const box = document.getElementById('listing-publish-reverb-category-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
     }
 
     function reverbCategorySearchUrl() {
@@ -261,15 +276,14 @@
             hideReverbCategoryResults();
             return;
         }
-        box.hidden = false;
-        box.innerHTML = '<div class="listing-publish-cat-empty">Searching Reverb categories…</div>';
+        showReverbCategoryResults('<div class="listing-publish-cat-empty">Searching Reverb categories…</div>');
         if (reverbCatXhr && reverbCatXhr.abort) reverbCatXhr.abort();
         reverbCatXhr = $.ajax({
             url: reverbCategorySearchUrl(),
             type: 'GET',
             data: {
                 q: query,
-                channel: cfg().channel || 'reverb',
+                channel: 'reverb',
                 title: query
             },
             dataType: 'json',
@@ -277,20 +291,20 @@
             success: function (res) {
                 const rows = (res && res.categories) || [];
                 if (!rows.length) {
-                    box.innerHTML = '<div class="listing-publish-cat-empty">' +
-                        escapeHtml((res && res.message) || 'No Reverb categories matched.') + '</div>';
+                    showReverbCategoryResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'No Reverb categories matched.') + '</div>');
                     return;
                 }
-                box.innerHTML = rows.map(function (row) {
+                showReverbCategoryResults(rows.map(function (row) {
                     return '<button type="button" class="listing-publish-cat-item" data-id="' +
                         escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +
                         escapeHtml(row.path || row.id || '') + '</button>';
-                }).join('');
+                }).join(''));
             },
             error: function (xhr, status) {
                 if (status === 'abort') return;
-                box.innerHTML = '<div class="listing-publish-cat-empty">' +
-                    escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>';
+                showReverbCategoryResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>');
             }
         });
     }
@@ -652,39 +666,6 @@
             openPreview(selected);
         });
 
-        $(document).off('input.listingPageTools', '#listing-publish-reverb-category-name')
-            .on('input.listingPageTools', '#listing-publish-reverb-category-name', function () {
-                const uuidEl = document.getElementById('listing-publish-category-uuid');
-                if (uuidEl) uuidEl.value = '';
-                const pathEl = document.getElementById('listing-publish-reverb-category-path');
-                const q = String(this.value || '').trim();
-                if (pathEl) {
-                    pathEl.textContent = q
-                        ? 'Searching Reverb for “' + q + '”…'
-                        : 'Type a Reverb category name, then pick one from the list.';
-                }
-                scheduleReverbCategorySearch(q);
-            });
-
-        $(document).off('focus.listingPageTools', '#listing-publish-reverb-category-name')
-            .on('focus.listingPageTools', '#listing-publish-reverb-category-name', function () {
-                const q = String(this.value || '').trim();
-                if (q.length >= 2) searchReverbCategories(q);
-            });
-
-        $(document).off('click.listingPageTools', '.listing-publish-cat-item')
-            .on('click.listingPageTools', '.listing-publish-cat-item', function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                pickReverbCategory($(this).attr('data-id'), $(this).attr('data-path'));
-            });
-
-        $(document).off('mousedown.listingPageTools.reverbCat')
-            .on('mousedown.listingPageTools.reverbCat', function (e) {
-                if (!e.target.closest || e.target.closest('.listing-publish-cat-wrap')) return;
-                hideReverbCategoryResults();
-            });
-
         $(document).off('change.listingPageTools', 'input[name="listing-publish-mode"]')
             .on('change.listingPageTools', 'input[name="listing-publish-mode"]', function () {
                 updateModalCopy();
@@ -763,7 +744,60 @@
         });
     }
 
+    function bindReverbCategorySearch() {
+        function onReverbCategoryTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const uuidEl = document.getElementById('listing-publish-category-uuid');
+            if (uuidEl) uuidEl.value = '';
+            const pathEl = document.getElementById('listing-publish-reverb-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Searching Reverb for “' + q + '”…'
+                    : 'Type a Reverb category name, then pick one from the list.';
+            }
+            scheduleReverbCategorySearch(q);
+        }
+
+        $(document).off('input.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('input.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                onReverbCategoryTyped(this);
+            });
+
+        $(document).off('keyup.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('keyup.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                onReverbCategoryTyped(this);
+            });
+
+        $(document).off('focus.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('focus.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                const q = String(this.value || '').trim();
+                if (q.length >= 2) searchReverbCategories(q);
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageTools')
+            .on('shown.bs.modal.listingPageTools', function () {
+                const nameEl = document.getElementById('listing-publish-reverb-category-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageTools', '.listing-publish-cat-item')
+            .on('click.listingPageTools', '.listing-publish-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickReverbCategory($(this).attr('data-id'), $(this).attr('data-path'));
+            });
+
+        $(document).off('mousedown.listingPageTools.reverbCat')
+            .on('mousedown.listingPageTools.reverbCat', function (e) {
+                if (!e.target.closest || e.target.closest('.listing-publish-cat-wrap')) return;
+                hideReverbCategoryResults();
+            });
+    }
+
     $(function () {
+        bindReverbCategorySearch();
         if (!cfg().tableId) return;
         waitForTable(function (table) {
             enhanceTable(table);

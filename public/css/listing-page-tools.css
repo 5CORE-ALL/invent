@@ -140,12 +140,18 @@
 .listing-publish-category input[type="text"] { margin-bottom: 2px; }
 .listing-publish-cat-wrap { position: relative; }
 .listing-publish-cat-results {
-    max-height: 220px;
+    display: none;
+    max-height: 240px;
     overflow: auto;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     background: #fff;
     margin: 4px 0 2px;
+    z-index: 1060;
+}
+.listing-publish-cat-results.is-open,
+.listing-publish-cat-results:not(:empty) {
+    display: block !important;
 }
 .listing-publish-cat-item {
     display: block;

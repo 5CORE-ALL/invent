@@ -1436,7 +1436,7 @@ class ListingManagerController extends Controller
         if ($family === 'reverb') {
             $result = app(ReverbApiService::class)->searchListingCategories($q, $title);
 
-            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+            return response()->json($result);
         }
 
         if (mb_strlen($q) < 2) {

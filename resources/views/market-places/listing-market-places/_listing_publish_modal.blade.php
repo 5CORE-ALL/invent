@@ -40,7 +40,7 @@
                                         <label for="listing-publish-reverb-category-name">Category</label>
                                         <div class="listing-publish-cat-wrap">
                                             <input type="text" id="listing-publish-reverb-category-name" class="form-control form-control-sm" placeholder="e.g. Stands" autocomplete="off">
-                                            <div id="listing-publish-reverb-category-results" class="listing-publish-cat-results" hidden></div>
+                                            <div id="listing-publish-reverb-category-results" class="listing-publish-cat-results"></div>
                                         </div>
                                         <small>Type to search Reverb categories. Click one from the list to use it.</small>
                                     </div>
