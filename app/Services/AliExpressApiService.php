@@ -157,6 +157,7 @@ class AliExpressApiService
         $categoryId = (int) ($request['aliexpress_category_id'] ?? 0);
 
         $schema = $this->getProductSchema($categoryId);
+        $request = $this->applyCategorySkuAttributes($request, $schema);
         $weightFill = $this->fillWeightFromSchema($schema, $weight, $lb);
         $baseInstance = $this->buildOneSchemaInstance($request, $weight);
         $instance = array_merge($baseInstance, $weightFill['fields']);
@@ -622,6 +623,449 @@ class AliExpressApiService
     }
 
     /**
+     * Replace invalid names like "Specification" with a SKU attribute this category allows.
+     *
+     * @param  array<string, mixed>  $request
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function applyCategorySkuAttributes(array $request, array $schema): array
+    {
+        $skus = $request['sku_info_list'] ?? [];
+        if (! is_array($skus) || $skus === []) {
+            return $request;
+        }
+        $needs = count($skus) > 1;
+        foreach ($skus as $row) {
+            if (is_array($row) && ! empty($row['sku_attributes_list'])) {
+                $needs = true;
+                break;
+            }
+        }
+        if (! $needs) {
+            return $request;
+        }
+
+        $categoryId = (int) ($request['aliexpress_category_id'] ?? 0);
+        $attrs = $this->queryCategorySkuAttributes($categoryId);
+        if ($attrs === []) {
+            $attrs = $this->skuAttributesFromSchema($schema);
+        }
+        $diff = $this->pickVariationSkuAttribute($attrs) ?? [
+            'name' => 'Color',
+            'required' => false,
+            'custom_name' => true,
+            'custom_pic' => true,
+            'values' => [],
+        ];
+
+        $toApply = [];
+        $seen = [];
+        foreach ($attrs as $attr) {
+            $key = strtolower((string) ($attr['name'] ?? ''));
+            if ($key === '' || empty($attr['required']) || isset($seen[$key])) {
+                continue;
+            }
+            $toApply[] = $attr;
+            $seen[$key] = true;
+        }
+        if (! isset($seen[strtolower((string) $diff['name'])])) {
+            array_unshift($toApply, $diff);
+        }
+
+        $used = [];
+        foreach ($skus as $i => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $desired = $this->existingSkuAttributeValue($row) ?: (string) ($row['sku_code'] ?? '');
+            $list = [];
+            foreach ($toApply as $attr) {
+                $isDiff = strcasecmp((string) $attr['name'], (string) $diff['name']) === 0;
+                $value = $isDiff
+                    ? $this->uniqueSkuAttributeValue($attr, $desired, $used)
+                    : $this->fixedSkuAttributeValue($attr);
+                if ($isDiff) {
+                    $used[] = strtolower($value);
+                }
+                $item = [
+                    'sku_attribute_name' => (string) $attr['name'],
+                    'sku_attribute_value' => $value,
+                ];
+                $image = (string) ($row['sku_attributes_list'][0]['sku_image_url'] ?? $row['sku_image_url'] ?? '');
+                if ($isDiff && $image !== '') {
+                    $item['sku_image_url'] = $image;
+                }
+                $list[] = $item;
+            }
+            $skus[$i]['sku_attributes_list'] = $list;
+        }
+        $request['sku_info_list'] = $skus;
+
+        Log::info('AliExpress publish: mapped category SKU attributes', [
+            'category_id' => $categoryId,
+            'attribute_names' => array_column($toApply, 'name'),
+            'diff_attribute' => $diff['name'],
+        ]);
+
+        return $request;
+    }
+
+    /**
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    public function queryCategorySkuAttributes(int $categoryId): array
+    {
+        if ($categoryId <= 0) {
+            return [];
+        }
+
+        $query = ['aliexpress_category_id' => $categoryId];
+        foreach ([
+            ['query_sku_attribute_info_request' => $query],
+            ['query_sku_attribute_info_request' => $this->encodeRequestPayload($query)],
+        ] as $params) {
+            $res = $this->callApiFlexible('aliexpress.solution.sku.attribute.query', [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            $parsed = $this->parseSkuAttributeQuery($res);
+            if ($parsed !== []) {
+                return $parsed;
+            }
+        }
+
+        return $this->queryChildCategorySkuAttributes($categoryId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $res
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function parseSkuAttributeQuery(array $res): array
+    {
+        $data = is_array($res['data'] ?? null) ? $res['data'] : (is_array($res['result'] ?? null) ? $res['result'] : []);
+        $data = $this->unwrapSolutionEnvelope($data);
+        $result = is_array($data['result'] ?? null) ? $data['result'] : $data;
+        $list = $result['supporting_sku_attribute_list'] ?? [];
+        if (isset($list['supported_sku_attribute_dto'])) {
+            $list = $list['supported_sku_attribute_dto'];
+        }
+        if (! is_array($list)) {
+            return [];
+        }
+        if ($list !== [] && ! isset($list[0]) && isset($list['aliexpress_sku_name'])) {
+            $list = [$list];
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim((string) ($row['aliexpress_sku_name'] ?? $row['sku_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $values = $row['aliexpress_sku_value_list'] ?? [];
+            if (isset($values['sku_value_simplified_info_dto'])) {
+                $values = $values['sku_value_simplified_info_dto'];
+            }
+            $valueNames = [];
+            foreach ((array) $values as $value) {
+                if (is_string($value) && trim($value) !== '') {
+                    $valueNames[] = trim($value);
+                } elseif (is_array($value)) {
+                    $label = trim((string) ($value['aliexpress_sku_value_name'] ?? $value['sku_value_name'] ?? ''));
+                    if ($label !== '') {
+                        $valueNames[] = $label;
+                    }
+                }
+            }
+            $out[] = [
+                'name' => $name,
+                'required' => filter_var($row['required'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_name' => filter_var($row['support_customized_name'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_pic' => filter_var($row['support_customized_picture'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'values' => $valueNames,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function queryChildCategorySkuAttributes(int $categoryId): array
+    {
+        foreach ([
+            ['param0' => $categoryId],
+            ['cate_id' => $categoryId],
+            ['leaf_category_id' => $categoryId],
+        ] as $params) {
+            $res = $this->callApiFlexible('aliexpress.category.redefining.getchildattributesresultbypostcateidandpath', [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            $parsed = $this->parseChildCategorySkuAttributes($res);
+            if ($parsed !== []) {
+                return $parsed;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $res
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function parseChildCategorySkuAttributes(array $res): array
+    {
+        $data = is_array($res['data'] ?? null) ? $res['data'] : [];
+        $data = $this->unwrapSolutionEnvelope($data);
+        $result = is_array($data['result'] ?? null) ? $data['result'] : $data;
+        $list = $result['attributes'] ?? $result['aeop_attribute_dto'] ?? $result['attribute_list'] ?? [];
+        if (isset($list['aeop_attribute_dto'])) {
+            $list = $list['aeop_attribute_dto'];
+        }
+        if (! is_array($list)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $isSku = filter_var($row['sku'] ?? $row['is_sku'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            if (! $isSku) {
+                continue;
+            }
+            $names = $row['names'] ?? [];
+            $name = trim((string) (
+                $row['name']
+                ?? (is_array($names) ? ($names['en'] ?? $names['EN'] ?? reset($names) ?: '') : '')
+            ));
+            if ($name === '') {
+                continue;
+            }
+            $valueNames = [];
+            $values = $row['values'] ?? $row['aeop_attr_value_dto'] ?? [];
+            if (isset($values['aeop_attr_value_dto'])) {
+                $values = $values['aeop_attr_value_dto'];
+            }
+            foreach ((array) $values as $value) {
+                if (! is_array($value)) {
+                    continue;
+                }
+                $labels = $value['names'] ?? [];
+                $label = trim((string) (
+                    $value['name']
+                    ?? (is_array($labels) ? ($labels['en'] ?? $labels['EN'] ?? reset($labels) ?: '') : '')
+                ));
+                if ($label !== '') {
+                    $valueNames[] = $label;
+                }
+            }
+            $out[] = [
+                'name' => $name,
+                'required' => filter_var($row['required'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_name' => filter_var($row['customized_name'] ?? $row['customizedName'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_pic' => filter_var($row['customized_pic'] ?? $row['customizedPic'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'values' => $valueNames,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function skuAttributesFromSchema(array $schema): array
+    {
+        $props = $this->findSchemaSkuAttributeProperties($schema);
+        if ($props === []) {
+            return [];
+        }
+        $out = [];
+        foreach ($props as $name => $node) {
+            if (! is_string($name) || $name === '' || ! is_array($node)) {
+                continue;
+            }
+            $enum = $node['enum'] ?? [];
+            $values = [];
+            foreach ((array) $enum as $one) {
+                if (is_scalar($one) && trim((string) $one) !== '') {
+                    $values[] = trim((string) $one);
+                }
+            }
+            $out[] = [
+                'name' => $name,
+                'required' => false,
+                'custom_name' => true,
+                'custom_pic' => true,
+                'values' => $values,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function findSchemaSkuAttributeProperties(array $schema): array
+    {
+        $stack = [$schema];
+        while ($stack !== []) {
+            $node = array_pop($stack);
+            if (! is_array($node)) {
+                continue;
+            }
+            if (isset($node['sku_attributes']['properties']) && is_array($node['sku_attributes']['properties'])) {
+                return $node['sku_attributes']['properties'];
+            }
+            if (isset($node['properties']['sku_attributes']['properties']) && is_array($node['properties']['sku_attributes']['properties'])) {
+                return $node['properties']['sku_attributes']['properties'];
+            }
+            foreach ($node as $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>  $attrs
+     * @return array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}|null
+     */
+    private function pickVariationSkuAttribute(array $attrs): ?array
+    {
+        if ($attrs === []) {
+            return null;
+        }
+        $ranked = $attrs;
+        usort($ranked, function (array $a, array $b): int {
+            return $this->skuAttributeScore($b) <=> $this->skuAttributeScore($a);
+        });
+
+        return $ranked[0];
+    }
+
+    /**
+     * @param  array{name: string, required?: bool, custom_name?: bool, custom_pic?: bool, values?: list<string>}  $attr
+     */
+    private function skuAttributeScore(array $attr): int
+    {
+        $name = strtolower((string) ($attr['name'] ?? ''));
+        $score = 0;
+        if (! empty($attr['custom_name'])) {
+            $score += 20;
+        }
+        if (! empty($attr['custom_pic'])) {
+            $score += 5;
+        }
+        if (! empty($attr['required'])) {
+            $score += 8;
+        }
+        if (in_array($name, ['color', 'colour'], true)) {
+            $score += 15;
+        } elseif (in_array($name, ['model', 'style', 'type', 'plug type'], true)) {
+            $score += 8;
+        }
+        if (str_contains($name, 'ship') || str_contains($name, 'from') || str_contains($name, 'warehouse')) {
+            $score -= 40;
+        }
+
+        return $score;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function existingSkuAttributeValue(array $row): string
+    {
+        foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $value = trim((string) ($attr['sku_attribute_value'] ?? ''));
+            if ($value !== '') {
+                return mb_substr($value, 0, 70);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array{name: string, custom_name?: bool, values?: list<string>}  $attr
+     * @param  list<string>  $used
+     */
+    private function uniqueSkuAttributeValue(array $attr, string $desired, array $used): string
+    {
+        $desired = mb_substr(trim($desired), 0, 70);
+        if ($desired === '') {
+            $desired = 'Option';
+        }
+        if (! empty($attr['custom_name'])) {
+            $value = $desired;
+            $n = 2;
+            while (in_array(strtolower($value), $used, true)) {
+                $value = mb_substr($desired.' '.$n, 0, 70);
+                $n++;
+            }
+
+            return $value;
+        }
+
+        foreach ($attr['values'] ?? [] as $value) {
+            $value = trim((string) $value);
+            if ($value !== '' && ! in_array(strtolower($value), $used, true)) {
+                if (strcasecmp($value, $desired) === 0 || stripos($desired, $value) !== false) {
+                    return $value;
+                }
+            }
+        }
+        foreach ($attr['values'] ?? [] as $value) {
+            $value = trim((string) $value);
+            if ($value !== '' && ! in_array(strtolower($value), $used, true)) {
+                return $value;
+            }
+        }
+
+        return $desired;
+    }
+
+    /**
+     * @param  array{name: string, values?: list<string>}  $attr
+     */
+    private function fixedSkuAttributeValue(array $attr): string
+    {
+        $name = strtolower((string) ($attr['name'] ?? ''));
+        $values = array_values(array_filter(array_map('strval', $attr['values'] ?? [])));
+        if (str_contains($name, 'ship') || str_contains($name, 'from') || str_contains($name, 'warehouse')) {
+            foreach (['United States', 'USA', 'US', 'China'] as $want) {
+                foreach ($values as $value) {
+                    if (strcasecmp($value, $want) === 0) {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        return $values[0] ?? 'Default';
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function extractSchemaJson(mixed $payload): array
@@ -1012,7 +1456,7 @@ class AliExpressApiService
                 if (! is_array($attr)) {
                     continue;
                 }
-                $name = trim((string) ($attr['sku_attribute_name'] ?? 'Specification'));
+                $name = trim((string) ($attr['sku_attribute_name'] ?? 'Color'));
                 if ($name === '') {
                     continue;
                 }

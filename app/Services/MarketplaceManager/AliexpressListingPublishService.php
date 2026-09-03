@@ -194,7 +194,7 @@ class AliexpressListingPublishService
             ], $this->skuPackageFields($pkg));
             if ($variation) {
                 $skuRow['sku_attributes_list'] = [[
-                    'sku_attribute_name' => 'Specification',
+                    'sku_attribute_name' => 'Color',
                     'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
                     'sku_image_url' => $row['images'][0] ?? ($gallery[0] ?? ''),
                 ]];
