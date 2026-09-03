@@ -3819,12 +3819,201 @@ class ReverbApiService
             }
         }
 
+        if ($out === [] && $q !== '') {
+            foreach ($this->scoreListingCategories($q.' '.$title) as $row) {
+                $id = (string) ($row['id'] ?? '');
+                if ($id === '' || isset($seen[$id])) {
+                    continue;
+                }
+                $seen[$id] = true;
+                $out[] = ['id' => $id, 'path' => (string) ($row['path'] ?? '')];
+                if (count($out) >= 20) {
+                    break;
+                }
+            }
+        }
+
         return [
             'success' => true,
             'categories' => $out,
             'conditions' => $this->listingConditions(),
             'message' => $out === [] ? 'No Reverb categories matched that search.' : null,
         ];
+    }
+
+    /**
+     * Pick the best Reverb leaf category for a product title / type.
+     *
+     * @return array{id: string, path: string, score: int}
+     */
+    public function suggestListingCategory(string $title, array $hints = []): array
+    {
+        $text = trim(implode(' ', array_filter(array_merge([$title], $hints), fn ($v) => trim((string) $v) !== '')));
+        $ranked = $this->scoreListingCategories($text);
+        $best = $ranked[0] ?? null;
+        if (! is_array($best) || (int) ($best['score'] ?? 0) < 12) {
+            return ['id' => '', 'path' => '', 'score' => 0];
+        }
+
+        return [
+            'id' => (string) ($best['id'] ?? ''),
+            'path' => (string) ($best['path'] ?? ''),
+            'score' => (int) ($best['score'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return list<array{id: string, path: string, score: int}>
+     */
+    private function scoreListingCategories(string $text): array
+    {
+        $flat = $this->flattenedListingCategories();
+        if ($flat === []) {
+            return [];
+        }
+
+        $text = mb_strtolower($text);
+        $text = str_replace(['celling', '5-core', '5 core', '5core'], ['ceiling', ' ', ' ', ' '], $text);
+        $phrases = $this->listingCategoryPhrases($text);
+        $words = $this->listingCategoryWords($text, $phrases);
+        if ($phrases === [] && $words === []) {
+            return [];
+        }
+
+        $ranked = [];
+        foreach ($flat as $row) {
+            $path = mb_strtolower((string) ($row['path'] ?? ''));
+            $haystack = mb_strtolower(trim((string) ($row['search'] ?? $path)));
+            $id = trim((string) ($row['id'] ?? ''));
+            if ($haystack === '' || $id === '') {
+                continue;
+            }
+            $score = 0;
+            foreach ($phrases as $phrase) {
+                $parts = preg_split('/\s+/', $phrase) ?: [];
+                $hits = 0;
+                foreach ($parts as $part) {
+                    if ($part !== '' && str_contains($haystack, $part)) {
+                        $hits++;
+                    }
+                }
+                if ($parts !== [] && $hits === count($parts)) {
+                    $score += 30 + (count($parts) * 5);
+                    $leaf = trim((string) substr($path, (int) strrpos($path, '>') + 1));
+                    if ($leaf !== '' && str_contains($leaf, $parts[0])) {
+                        $score += 10;
+                    }
+                } elseif ($hits > 0) {
+                    $score += $hits * 4;
+                }
+            }
+            foreach ($words as $word) {
+                if (str_contains($haystack, $word)) {
+                    $score += 3;
+                }
+            }
+            $score += min(4, substr_count($path, '>'));
+            if (! empty($row['listable'])) {
+                $score += 2;
+            }
+            if ($score < 12) {
+                continue;
+            }
+            $ranked[] = [
+                'id' => $id,
+                'path' => (string) ($row['path'] ?? ''),
+                'score' => $score,
+            ];
+        }
+
+        usort($ranked, function ($a, $b) {
+            $diff = ($b['score'] ?? 0) <=> ($a['score'] ?? 0);
+            if ($diff !== 0) {
+                return $diff;
+            }
+
+            return substr_count((string) ($b['path'] ?? ''), '>') <=> substr_count((string) ($a['path'] ?? ''), '>');
+        });
+
+        return $ranked;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listingCategoryPhrases(string $text): array
+    {
+        $catalog = [
+            'ceiling speaker' => ['ceiling speaker', 'in-ceiling', 'in ceiling', 'in-wall speaker', 'in wall speaker', 'flush mount speaker'],
+            'car speaker' => ['car speaker', 'car audio speaker', 'coaxial speaker'],
+            'car tweeter' => ['car tweeter', 'tweeter'],
+            'pa speaker' => ['pa speaker', 'pa speakers', 'powered speaker'],
+            'naked speaker' => ['naked speaker', 'raw speaker'],
+            'subwoofer' => ['subwoofer', 'sub woofer', 'sub-woofer'],
+            'drum microphone' => ['drum microphone', 'drum mic'],
+            'microphone' => ['microphone', ' mic ', 'mic'],
+            'drum stool' => ['drum stool', 'drum throne'],
+            'mixer' => ['mixer', 'mixing console'],
+            'projector stand' => ['projector stand'],
+            'foot pedal' => ['foot pedal', 'ft pdl'],
+            'speaker cable' => ['speaker cable', 'instrument cable', 'xlr cable'],
+            'amplifier' => ['amplifier', 'power amp'],
+            'speaker' => ['speaker', 'speakers'],
+        ];
+
+        $found = [];
+        foreach ($catalog as $canonical => $aliases) {
+            foreach ($aliases as $alias) {
+                if ($alias === 'mic') {
+                    if (preg_match('/\bmic\b/', $text)) {
+                        $found[] = $canonical;
+                        break;
+                    }
+                    continue;
+                }
+                if (str_contains($text, $alias)) {
+                    $found[] = $canonical;
+                    break;
+                }
+            }
+        }
+
+        $specificSpeaker = array_intersect($found, ['ceiling speaker', 'car speaker', 'pa speaker', 'naked speaker']);
+        if ($specificSpeaker !== []) {
+            $found = array_values(array_filter($found, fn ($phrase) => $phrase !== 'speaker'));
+        }
+
+        return array_values(array_unique($found));
+    }
+
+    /**
+     * @param  list<string>  $phrases
+     * @return list<string>
+     */
+    private function listingCategoryWords(string $text, array $phrases): array
+    {
+        $stop = [
+            'core', 'inch', 'pair', 'watt', 'watts', 'ohm', 'ohms', 'way', 'for', 'the', 'and',
+            'with', 'from', 'home', 'space', 'commercial', 'professional', 'black', 'white',
+            'pack', 'pcs', 'new', 'flush', 'mount',
+        ];
+        $used = [];
+        foreach ($phrases as $phrase) {
+            foreach (preg_split('/\s+/', $phrase) ?: [] as $part) {
+                if ($part !== '') {
+                    $used[$part] = true;
+                }
+            }
+        }
+        $words = [];
+        foreach (preg_split('/[^a-z0-9]+/', $text) ?: [] as $token) {
+            if (strlen($token) < 5 || isset($used[$token]) || in_array($token, $stop, true)) {
+                continue;
+            }
+            $words[] = $token;
+        }
+
+        return array_values(array_unique($words));
     }
 
     /**
@@ -3876,7 +4065,7 @@ class ReverbApiService
      */
     private function flattenedListingCategories(): array
     {
-        $cached = Cache::get('reverb_listing_categories_flat_v1');
+        $cached = Cache::get('reverb_listing_categories_flat_v2');
         if (is_array($cached) && $cached !== []) {
             return $cached;
         }
@@ -3897,7 +4086,7 @@ class ReverbApiService
         $out = [];
         $this->flattenReverbCategoryNodes($roots, $out, '');
         if ($out !== []) {
-            Cache::put('reverb_listing_categories_flat_v1', $out, now()->addHours(12));
+            Cache::put('reverb_listing_categories_flat_v2', $out, now()->addHours(12));
         }
 
         return $out;
@@ -3919,8 +4108,19 @@ class ReverbApiService
             if ($path === '') {
                 $path = $parentPath !== '' && $name !== '' ? $parentPath.' > '.$name : $name;
             }
+            $search = strtolower(trim(implode(' ', array_filter([
+                $path,
+                $name,
+                (string) ($node['collection_title'] ?? ''),
+                str_replace('-', ' ', (string) ($node['slug'] ?? '')),
+            ]))));
             if ($uuid !== '' && $path !== '') {
-                $out[] = ['id' => $uuid, 'path' => $path];
+                $out[] = [
+                    'id' => $uuid,
+                    'path' => $path,
+                    'search' => $search,
+                    'listable' => ! empty($node['listable']),
+                ];
             }
             $subs = $node['subcategories'] ?? $node['categories'] ?? null;
             if (! is_array($subs) && is_array($node['_embedded']['subcategories'] ?? null)) {
@@ -4027,21 +4227,20 @@ class ReverbApiService
     private function reverbApiGet(string $path): array
     {
         $token = self::getReverbBearerToken();
-        if (! $token) {
-            return [];
-        }
-
         $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
         $url = $apiBase.'/'.ltrim($path, '/');
+        $headers = [
+            'Accept' => 'application/hal+json',
+            'Accept-Version' => '3.0',
+        ];
+        if (is_string($token) && $token !== '') {
+            $headers['Authorization'] = 'Bearer '.$token;
+        }
 
         try {
             $response = Http::withoutVerifying()
                 ->timeout(45)
-                ->withHeaders([
-                    'Authorization' => 'Bearer '.$token,
-                    'Accept' => 'application/hal+json',
-                    'Accept-Version' => '3.0',
-                ])
+                ->withHeaders($headers)
                 ->get($url);
 
             if ($response->failed()) {

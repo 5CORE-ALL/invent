@@ -30,6 +30,12 @@
                                         <input type="text" id="listing-publish-category-id" class="form-control form-control-sm" placeholder="e.g. 200000345" inputmode="numeric" autocomplete="off">
                                         <small>Required if AliExpress cannot guess the category. Find it on the seller category picker, then publish again.</small>
                                     </div>
+                                    <div id="listing-publish-reverb-category" class="listing-publish-category" hidden>
+                                        <label>Suggested Reverb category</label>
+                                        <div id="listing-publish-reverb-category-path" class="listing-publish-category-path">Matching from the product type…</div>
+                                        <input type="hidden" id="listing-publish-category-uuid" value="">
+                                        <small>Chosen from the product type in the title or Product Master category.</small>
+                                    </div>
                                     <div id="listing-publish-groups"></div>
                                     <div id="listing-publish-progress"></div>
                                 </div>
