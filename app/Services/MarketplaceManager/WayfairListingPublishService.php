@@ -78,6 +78,19 @@ class WayfairListingPublishService
             return ['id' => $fromSubmission, 'path' => 'Class '.$fromSubmission.' (from a prior Wayfair submission)', 'name' => ''];
         }
 
+        $title = $product ? $this->resolveTitle($product, $sku) : $sku;
+        $fromTaxonomy = $this->api->searchTaxonomyClass($title);
+        if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
+            $name = trim((string) ($fromTaxonomy['class_name'] ?? ''));
+            $this->rememberClassId($candidates, (int) $fromTaxonomy['class_id'], $name);
+
+            return [
+                'id' => (int) $fromTaxonomy['class_id'],
+                'path' => $name !== '' ? $name.' ('.$fromTaxonomy['class_id'].')' : 'Class '.$fromTaxonomy['class_id'],
+                'name' => $name,
+            ];
+        }
+
         $default = (int) config('services.wayfair.default_class_id', 0);
         if ($default > 0) {
             return ['id' => $default, 'path' => 'Configured Wayfair class '.$default, 'name' => ''];

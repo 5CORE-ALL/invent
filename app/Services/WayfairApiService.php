@@ -2022,9 +2022,10 @@ XML;
     private function lookupClassFromSupplierCatalogItems(array $parts): ?array
     {
         $query = <<<'GRAPHQL'
-        query ($input: SupplierCatalogItemsInput!) {
-          supplierCatalogItems(input: $input) {
+        query ($page: Int!, $pageSize: Int!) {
+          supplierCatalogItems(input: { paginationOptions: { page: $page, pageSize: $pageSize } }) {
             ... on SupplierCatalogItems {
+              paginationInfo { page hasNextPage }
               catalogItems {
                 supplierPartNumber
                 class { classId className }
@@ -2033,49 +2034,102 @@ XML;
           }
         }
         GRAPHQL;
-        $filters = [
-            ['supplierPartNumbers' => array_values($parts)],
-            ['supplierPartNumber' => ['in' => array_values($parts)]],
-            null,
-        ];
+
         $urls = [
-            'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
             'https://api.wayfair.io/v1/product-catalog-api/graphql',
+            'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
         ];
         $token = $this->authenticate();
         $supplierId = (string) config('services.wayfair.supplier_id');
         foreach ($urls as $url) {
-            foreach ($filters as $filter) {
-                $pages = $filter === null ? 3 : 1;
-                for ($page = 1; $page <= $pages; $page++) {
-                    $input = [
-                        'paginationOptions' => ['page' => $page, 'pageSize' => 50],
-                    ];
-                    if (is_array($filter)) {
-                        $input['filter'] = $filter;
+            for ($page = 1; $page <= 8; $page++) {
+                $response = $this->apiHttpClient()
+                    ->withToken($token)
+                    ->withHeaders([
+                        'X-SELECTED-SUPPLIER-ID' => $supplierId,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                    ])
+                    ->post($url, [
+                        'query' => $query,
+                        'variables' => ['page' => $page, 'pageSize' => 50],
+                    ]);
+                $json = $response->json();
+                if (! empty($json['errors'])) {
+                    Log::info('Wayfair supplierCatalogItems class lookup failed', [
+                        'url' => $url,
+                        'errors' => $this->formatGraphqlErrors($json['errors'] ?? []),
+                    ]);
+                    break;
+                }
+                $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
+                $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
+                if ($hit !== null) {
+                    return $hit;
+                }
+                if (! is_array($items) || $items === [] || empty($json['data']['supplierCatalogItems']['paginationInfo']['hasNextPage'])) {
+                    break;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{class_id: int, class_name: string}|null
+     */
+    public function searchTaxonomyClass(string $title): ?array
+    {
+        $title = trim($title);
+        if (strlen($title) < 3) {
+            return null;
+        }
+        $searches = [$title];
+        $words = preg_split('/\s+/', $title) ?: [];
+        if (count($words) >= 2) {
+            $searches[] = implode(' ', array_slice($words, -3));
+            $searches[] = implode(' ', array_slice($words, -2));
+        }
+        $queries = [
+            <<<'GRAPHQL'
+            query ($search: String!) {
+              taxonomyCategories(searchTerm: $search) {
+                classId
+                className
+                name
+              }
+            }
+            GRAPHQL,
+            <<<'GRAPHQL'
+            query ($search: String!) {
+              productAddition {
+                classes(search: $search) {
+                  classId
+                  className
+                  name
+                }
+              }
+            }
+            GRAPHQL,
+        ];
+        foreach ($searches as $search) {
+            if (strlen($search) < 3) {
+                continue;
+            }
+            foreach ($queries as $query) {
+                $res = $this->productAdditionGraphql($query, ['search' => $search]);
+                $rows = $res['data']['taxonomyCategories']
+                    ?? $res['data']['productAddition']['classes']
+                    ?? [];
+                foreach (is_array($rows) ? $rows : [] as $row) {
+                    if (! is_array($row)) {
+                        continue;
                     }
-                    $response = $this->apiHttpClient()
-                        ->withToken($token)
-                        ->withHeaders([
-                            'X-SELECTED-SUPPLIER-ID' => $supplierId,
-                            'Content-Type' => 'application/json',
-                            'Accept' => 'application/json',
-                        ])
-                        ->post($url, [
-                            'query' => $query,
-                            'variables' => ['input' => $input],
-                        ]);
-                    $json = $response->json();
-                    if (! empty($json['errors'])) {
-                        break;
-                    }
-                    $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
-                    $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
-                    if ($hit !== null) {
-                        return $hit;
-                    }
-                    if (! is_array($items) || $items === []) {
-                        break;
+                    $classId = (int) ($row['classId'] ?? $row['class_id'] ?? 0);
+                    $className = trim((string) ($row['className'] ?? $row['name'] ?? ''));
+                    if ($classId > 0) {
+                        return ['class_id' => $classId, 'class_name' => $className];
                     }
                 }
             }
@@ -2103,7 +2157,7 @@ XML;
                 continue;
             }
             $part = trim((string) ($row['supplierPartNumber'] ?? $row['supplier_part_number'] ?? ''));
-            if ($want !== [] && $part !== '' && ! isset($want[$this->normalizePartNumber($part)])) {
+            if ($want !== [] && $part !== '' && ! $this->catalogPartMatchesFamily($part, $want)) {
                 continue;
             }
             $class = is_array($row['class'] ?? null) ? $row['class'] : [];
@@ -2115,6 +2169,33 @@ XML;
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, true>  $want
+     */
+    private function catalogPartMatchesFamily(string $part, array $want): bool
+    {
+        $norm = $this->normalizePartNumber($part);
+        if ($norm === '') {
+            return false;
+        }
+        if (isset($want[$norm])) {
+            return true;
+        }
+        $lettersHave = preg_replace('/\d+/', '', $norm) ?? '';
+        foreach (array_keys($want) as $need) {
+            $need = (string) $need;
+            if ($need !== '' && (str_contains($norm, $need) || str_contains($need, $norm))) {
+                return true;
+            }
+            $lettersNeed = preg_replace('/\d+/', '', $need) ?? '';
+            if ($lettersNeed !== '' && strlen($lettersNeed) >= 6 && $lettersNeed === $lettersHave) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
