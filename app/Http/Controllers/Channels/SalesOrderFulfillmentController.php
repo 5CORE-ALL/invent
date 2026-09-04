@@ -56,6 +56,9 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Sales Order Fulfillment — Tabulator of active channels from channel_master
@@ -439,15 +442,16 @@ class SalesOrderFulfillmentController extends Controller
     {
         try {
             @set_time_limit(90);
-            $includeShipped = $this->requestWantsShippedDobaOrders();
-            $grouped = $this->buildDobaWarehouseOrderRows($includeShipped);
+            $grouped = $this->buildDobaWarehouseOrderRows(true);
 
             return response()->json([
                 'success' => true,
                 'non_prepaid' => $grouped['non_prepaid'],
                 'prepaid' => $grouped['prepaid'],
+                'done' => $grouped['done'],
                 'non_prepaid_count' => count($grouped['non_prepaid']),
                 'prepaid_count' => count($grouped['prepaid']),
+                'done_count' => count($grouped['done']),
                 'open_count' => $grouped['open_count'],
                 'count' => count($grouped['non_prepaid']) + count($grouped['prepaid']),
             ]);
@@ -459,12 +463,96 @@ class SalesOrderFulfillmentController extends Controller
                 'message' => 'Failed to load Doba orders.',
                 'non_prepaid' => [],
                 'prepaid' => [],
+                'done' => [],
                 'non_prepaid_count' => 0,
                 'prepaid_count' => 0,
+                'done_count' => 0,
                 'open_count' => 0,
                 'count' => 0,
             ], 500);
         }
+    }
+
+    /**
+     * Export Doba warehouse orders (prepaid or non-prepaid) as CSV or XLSX
+     * for every matching line in the selected Eastern date range.
+     */
+    public function dobaOrdersExport(Request $request): StreamedResponse|JsonResponse
+    {
+        $type = strtolower(trim((string) $request->input('type', 'non_prepaid')));
+        if (! in_array($type, ['non_prepaid', 'prepaid', 'done'], true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid Doba export type.'], 422);
+        }
+
+        $format = strtolower(trim((string) $request->input('format', 'csv')));
+        if (in_array($format, ['xls', 'excel'], true)) {
+            $format = 'xlsx';
+        }
+        if (! in_array($format, ['csv', 'xlsx'], true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid export format.'], 422);
+        }
+
+        $rows = $this->buildDobaWarehouseExportRows($type);
+        [$from, $to] = $this->resolveOrderDateRange();
+        $fromYmd = $from->timezone($this->sofTimezone())->format('Y-m-d');
+        $toYmd = $to->timezone($this->sofTimezone())->format('Y-m-d');
+        $label = match ($type) {
+            'prepaid' => 'prepaid',
+            'done' => 'done',
+            default => 'non-prepaid',
+        };
+        $filename = 'doba-'.$label.'-orders-'.$fromYmd.'-to-'.$toYmd.'.'.($format === 'xlsx' ? 'xlsx' : 'csv');
+        $headers = ['Order ID', 'Order Date', 'Customer Name', 'Shipping Address', 'SKU', 'Quantity'];
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($headers, $rows) {
+                $out = fopen('php://output', 'w');
+                if ($out === false) {
+                    return;
+                }
+                fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+                fputcsv($out, $headers);
+                foreach ($rows as $row) {
+                    fputcsv($out, [
+                        $row['order_id'],
+                        $row['order_date'],
+                        $row['customer_name'],
+                        $row['shipping_address'],
+                        $row['sku'],
+                        $row['quantity'],
+                    ]);
+                }
+                fclose($out);
+            }, $filename, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
+
+        return response()->streamDownload(function () use ($headers, $rows) {
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Doba Orders');
+            $sheet->fromArray($headers, null, 'A1');
+            $r = 2;
+            foreach ($rows as $row) {
+                $sheet->setCellValueExplicit('A'.$r, $row['order_id'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue('B'.$r, $row['order_date']);
+                $sheet->setCellValue('C'.$r, $row['customer_name']);
+                $sheet->setCellValue('D'.$r, $row['shipping_address']);
+                $sheet->setCellValueExplicit('E'.$r, $row['sku'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue('F'.$r, $row['quantity']);
+                $r++;
+            }
+            foreach (range('A', 'F') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+            $spreadsheet->disconnectWorksheets();
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     /**
@@ -530,11 +618,11 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * @return array{non_prepaid: list<array<string, mixed>>, prepaid: list<array<string, mixed>>, open_count: int}
+     * @return array{non_prepaid: list<array<string, mixed>>, prepaid: list<array<string, mixed>>, done: list<array<string, mixed>>, open_count: int}
      */
     protected function buildDobaWarehouseOrderRows(bool $includeShipped): array
     {
-        $empty = ['non_prepaid' => [], 'prepaid' => [], 'open_count' => 0];
+        $empty = ['non_prepaid' => [], 'prepaid' => [], 'done' => [], 'open_count' => 0];
         if (! Schema::hasTable('doba_daily_data')) {
             return $empty;
         }
@@ -549,11 +637,15 @@ class SalesOrderFulfillmentController extends Controller
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%'])
             ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT IN (?, ?)", ['COMPLETED', 'DELIVERED']);
 
-        $lines = $query->orderByDesc('order_time')->get([
+        $select = [
             'id', 'order_no', 'platform_order_no', 'order_time', 'updated_at',
             'order_status', 'order_type', 'sku', 'product_name', 'quantity',
             'total_price', 'item_price', 'tracking_number', 'carrier_name',
-        ]);
+        ];
+        if (Schema::hasColumn('doba_daily_data', 'order_json')) {
+            $select[] = 'order_json';
+        }
+        $lines = $query->orderByDesc('order_time')->get($select);
 
         $shippedByOrder = [];
         if (Schema::hasTable('doba_warehouse_ships')) {
@@ -597,6 +689,7 @@ class SalesOrderFulfillmentController extends Controller
                     'amount' => null,
                     'tracking_number' => null,
                     'tracking_company' => null,
+                    'prepaid_label_url' => null,
                     'warehouse_shipped' => isset($shippedByOrder[$orderNo]),
                     'warehouse_shipped_at' => is_string($shippedByOrder[$orderNo] ?? null)
                         ? $shippedByOrder[$orderNo]
@@ -635,11 +728,18 @@ class SalesOrderFulfillmentController extends Controller
                 $row['is_prepaid'] = true;
                 $row['order_type'] = trim((string) ($line->order_type ?? ''));
             }
+            if (($row['prepaid_label_url'] ?? '') === '') {
+                $labelUrl = $this->extractDobaPrepaidLabelUrl($line->order_json ?? null);
+                if ($labelUrl !== null) {
+                    $row['prepaid_label_url'] = $labelUrl;
+                }
+            }
             unset($row);
         }
 
         $nonPrepaid = [];
         $prepaid = [];
+        $done = [];
         $openCount = 0;
         foreach ($byOrder as $row) {
             $row['sku'] = implode(', ', $row['skus']);
@@ -648,7 +748,8 @@ class SalesOrderFulfillmentController extends Controller
             if (! $row['warehouse_shipped']) {
                 $openCount++;
             }
-            if (! $includeShipped && $row['warehouse_shipped']) {
+            if ($row['warehouse_shipped']) {
+                $done[] = $row;
                 continue;
             }
             if ($row['is_prepaid']) {
@@ -661,6 +762,7 @@ class SalesOrderFulfillmentController extends Controller
         return [
             'non_prepaid' => $nonPrepaid,
             'prepaid' => $prepaid,
+            'done' => $done,
             'open_count' => $openCount,
         ];
     }
@@ -668,6 +770,158 @@ class SalesOrderFulfillmentController extends Controller
     protected function dobaOrderTypeIsPrepaid(string $orderType): bool
     {
         return strtolower(trim($orderType)) === self::DOBA_PREPAID_ORDER_TYPE;
+    }
+
+    /**
+     * One export row per Doba line item in the request date range.
+     *
+     * @return list<array{order_id: string, order_date: string, customer_name: string, shipping_address: string, sku: string, quantity: int}>
+     */
+    protected function buildDobaWarehouseExportRows(string $type): array
+    {
+        if (! Schema::hasTable('doba_daily_data')) {
+            return [];
+        }
+
+        $query = $this->scopedToLast30Days(DobaDailyData::query(), 'doba');
+        if ($query === null) {
+            return [];
+        }
+
+        $query->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%CANCEL%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%REFUND%'])
+            ->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) NOT LIKE ?", ['%VOID%']);
+
+        $columns = ['order_no', 'order_time', 'order_type', 'sku', 'quantity'];
+        foreach ([
+            'receiver_name',
+            'shipping_address1',
+            'shipping_address2',
+            'shipping_city',
+            'shipping_state',
+            'shipping_postal_code',
+            'shipping_country',
+        ] as $col) {
+            if (Schema::hasColumn('doba_daily_data', $col)) {
+                $columns[] = $col;
+            }
+        }
+
+        $shippedNos = [];
+        if ($type === 'done' && Schema::hasTable('doba_warehouse_ships')) {
+            foreach (DobaWarehouseShip::query()->where('shipped', true)->pluck('order_no') as $orderNo) {
+                $key = trim((string) $orderNo);
+                if ($key !== '') {
+                    $shippedNos[$key] = true;
+                }
+            }
+        }
+
+        $lines = $query->orderByDesc('order_time')->orderBy('order_no')->get($columns);
+        $rows = [];
+        foreach ($lines as $line) {
+            $orderNo = trim((string) ($line->order_no ?? ''));
+            if ($orderNo === '') {
+                continue;
+            }
+            $isPrepaid = $this->dobaOrderTypeIsPrepaid((string) ($line->order_type ?? ''));
+            if ($type === 'done') {
+                if (! isset($shippedNos[$orderNo])) {
+                    continue;
+                }
+            } elseif ($isPrepaid !== ($type === 'prepaid')) {
+                continue;
+            }
+
+            $rows[] = [
+                'order_id' => $orderNo,
+                'order_date' => $this->formatOrderDate($line->order_time ?? null) ?: '',
+                'customer_name' => trim((string) ($line->receiver_name ?? '')),
+                'shipping_address' => $this->formatDobaShippingAddress($line),
+                'sku' => trim((string) ($line->sku ?? '')),
+                'quantity' => max(0, (int) ($line->quantity ?? 0)),
+            ];
+        }
+
+        return $rows;
+    }
+
+    protected function formatDobaShippingAddress(object $line): string
+    {
+        $cityStateZip = trim(implode(' ', array_filter([
+            trim((string) ($line->shipping_city ?? '')),
+            trim((string) ($line->shipping_state ?? '')),
+            trim((string) ($line->shipping_postal_code ?? '')),
+        ], static fn ($part) => $part !== '')));
+
+        $parts = array_values(array_filter([
+            trim((string) ($line->shipping_address1 ?? '')),
+            trim((string) ($line->shipping_address2 ?? '')),
+            $cityStateZip,
+            trim((string) ($line->shipping_country ?? '')),
+        ], static fn ($part) => $part !== ''));
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Prepaid label download URL from Doba order_json (buyerPrepaidLabelList / shippingLabels).
+     */
+    protected function extractDobaPrepaidLabelUrl(mixed $orderJson): ?string
+    {
+        $data = is_array($orderJson) ? $orderJson : json_decode((string) $orderJson, true);
+        if (! is_array($data)) {
+            return null;
+        }
+
+        foreach (['buyerPrepaidLabelList', 'shippingLabels', 'shippingLabelList', 'shipping'] as $key) {
+            if (! isset($data[$key])) {
+                continue;
+            }
+            $found = $this->findDobaDownloadLabelUrl($data[$key]);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return $this->findDobaDownloadLabelUrl($data);
+    }
+
+    protected function findDobaDownloadLabelUrl(mixed $node, int $depth = 0): ?string
+    {
+        if ($depth > 8) {
+            return null;
+        }
+        if (is_string($node)) {
+            $url = trim($node);
+            if ($url !== '' && preg_match('#https?://(?:[a-z0-9.-]+\.)?doba\.com/\S+#i', $url, $m)) {
+                return rtrim($m[0], ')",\'>');
+            }
+
+            return null;
+        }
+        if (! is_array($node)) {
+            return null;
+        }
+
+        foreach (['url', 'labelUrl', 'label_url', 'prepaidLabelUrl', 'downloadUrl', 'fileUrl', 'link', 'labelLink'] as $key) {
+            if (! isset($node[$key])) {
+                continue;
+            }
+            $found = $this->findDobaDownloadLabelUrl($node[$key], $depth + 1);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        foreach ($node as $value) {
+            $found = $this->findDobaDownloadLabelUrl($value, $depth + 1);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     /**

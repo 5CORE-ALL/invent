@@ -729,14 +729,75 @@
             border: 1px solid #f5c2c7;
         }
         #sof-doba-nonprepaid-table .tabulator-row.sof-doba-shipped-row .tabulator-cell,
-        #sof-doba-prepaid-table .tabulator-row.sof-doba-shipped-row .tabulator-cell {
+        #sof-doba-prepaid-table .tabulator-row.sof-doba-shipped-row .tabulator-cell,
+        #sof-doba-done-table .tabulator-row.sof-doba-shipped-row .tabulator-cell {
             background: #e8f5e9;
+        }
+        .sof-doba-subnav {
+            gap: 6px;
+        }
+        .sof-doba-subnav .nav-link {
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 0.3rem 0.8rem;
+            color: #334155;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+        }
+        .sof-doba-subnav .nav-link.active {
+            color: #0f172a;
+            background: #fff;
+            border-color: #94a3b8;
+        }
+        .sof-doba-table {
+            height: calc(100vh - 430px);
+            min-height: 380px;
+        }
+        .sof-doba-label-link {
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
         }
         .sof-doba-section-title {
             font-size: 0.85rem;
             font-weight: 700;
             color: #0f172a;
             margin: 0 0 6px;
+        }
+        .sof-doba-export-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 8px 12px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .sof-doba-export-bar .sof-filter-label {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 2px;
+            line-height: 1.1;
+        }
+        .sof-doba-section-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 0 0 6px;
+        }
+        .sof-doba-section-head .sof-doba-section-title {
+            margin: 0;
+        }
+        .sof-doba-export-btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
         }
         .sof-doba-ld-select {
             appearance: auto;
@@ -1363,17 +1424,52 @@
 
                         <div class="tab-pane fade" id="sof-doba-orders-pane" role="tabpanel" aria-labelledby="sof-doba-orders-tab">
                             <p class="small text-muted mb-2">
-                                Doba warehouse queue. Use <strong>ld</strong> — hover for “label sent to dispatch”.
-                                Default is <strong>send label</strong>. Change to <strong>done</strong> after the label is sent; that row hides.
-                                <label class="ms-2 mb-0" style="font-weight:500;color:#334155;">
-                                    <input type="checkbox" id="sof-doba-include-shipped" class="form-check-input me-1">
-                                    Show done
-                                </label>
+                                Doba warehouse queue. Use <strong>ld</strong> to mark a label sent to dispatch.
+                                Open orders stay on <strong>Non-prepaid</strong> or <strong>Prepaid</strong>. After you mark <strong>done</strong>, the row moves to the Done tab.
                             </p>
-                            <div class="sof-doba-section-title">Non-prepaid <span class="badge" id="sof-doba-nonprepaid-count" style="background:#fff3cd;color:#856404;border:1px solid #ffe69c;">0</span></div>
-                            <div id="sof-doba-nonprepaid-table" style="height: calc((100vh - 480px) / 2); min-height: 220px;"></div>
-                            <div class="sof-doba-section-title mt-3">Prepaid <span class="badge" id="sof-doba-prepaid-count" style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;">0</span></div>
-                            <div id="sof-doba-prepaid-table" style="height: calc((100vh - 480px) / 2); min-height: 220px;"></div>
+                            <div class="sof-doba-export-bar">
+                                <div>
+                                    <label class="sof-filter-label" for="sof-doba-export-from">Export from (Eastern)</label>
+                                    <input type="date" id="sof-doba-export-from" class="form-control form-control-sm" style="width:150px;" title="Export from date (Eastern / EDT)">
+                                </div>
+                                <div>
+                                    <label class="sof-filter-label" for="sof-doba-export-to">Export to (Eastern)</label>
+                                    <input type="date" id="sof-doba-export-to" class="form-control form-control-sm" style="width:150px;" title="Export to date (Eastern / EDT)">
+                                </div>
+                                <span class="small text-muted mb-1">Export uses the open tab and every matching order in this range (not just the current page).</span>
+                                <div class="sof-doba-export-btns ms-auto">
+                                    <button type="button" class="btn btn-sm btn-outline-success sof-doba-export-btn" data-format="csv">Export CSV</button>
+                                    <button type="button" class="btn btn-sm btn-outline-success sof-doba-export-btn" data-format="xlsx">Export XLS</button>
+                                </div>
+                            </div>
+                            <ul class="nav nav-pills sof-doba-subnav mb-2" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="sof-doba-sub-nonprepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-nonprepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-nonprepaid-pane" aria-selected="true">
+                                        Non-prepaid <span class="badge ms-1" id="sof-doba-nonprepaid-count" style="background:#fff3cd;color:#856404;border:1px solid #ffe69c;">0</span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="sof-doba-sub-prepaid-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-prepaid-pane" type="button" role="tab" aria-controls="sof-doba-sub-prepaid-pane" aria-selected="false">
+                                        Prepaid <span class="badge ms-1" id="sof-doba-prepaid-count" style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;">0</span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="sof-doba-sub-done-tab" data-bs-toggle="tab" data-bs-target="#sof-doba-sub-done-pane" type="button" role="tab" aria-controls="sof-doba-sub-done-pane" aria-selected="false">
+                                        Done <span class="badge ms-1" id="sof-doba-done-count" style="background:#d1e7dd;color:#0f5132;border:1px solid #a3cfbb;">0</span>
+                                    </button>
+                                </li>
+                            </ul>
+                            <div class="tab-content">
+                                <div class="tab-pane fade show active" id="sof-doba-sub-nonprepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-nonprepaid-tab">
+                                    <div id="sof-doba-nonprepaid-table" class="sof-doba-table"></div>
+                                </div>
+                                <div class="tab-pane fade" id="sof-doba-sub-prepaid-pane" role="tabpanel" aria-labelledby="sof-doba-sub-prepaid-tab">
+                                    <div id="sof-doba-prepaid-table" class="sof-doba-table"></div>
+                                </div>
+                                <div class="tab-pane fade" id="sof-doba-sub-done-pane" role="tabpanel" aria-labelledby="sof-doba-sub-done-tab">
+                                    <div id="sof-doba-done-table" class="sof-doba-table"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
@@ -1750,8 +1846,10 @@
     let lossMakingTableLoading = false;
     let dobaNonprepaidTable = null;
     let dobaPrepaidTable = null;
+    let dobaDoneTable = null;
     let dobaNonprepaidRows = [];
     let dobaPrepaidRows = [];
+    let dobaDoneRows = [];
     let dobaOrdersTableLoading = false;
     let dobaOrdersOpenCount = 0;
 
@@ -1895,7 +1993,25 @@
         const toEl = document.getElementById('sof-date-to');
         if (fromEl && !fromEl.value) fromEl.value = sofDefaultDateFrom();
         if (toEl && !toEl.value) toEl.value = sofDefaultDateTo();
+        sofSyncDobaExportDatesFromPage();
         sofUpdateDateFilterHint();
+    }
+
+    function sofSyncDobaExportDatesFromPage() {
+        const p = sofDateParams();
+        const fromEl = document.getElementById('sof-doba-export-from');
+        const toEl = document.getElementById('sof-doba-export-to');
+        if (fromEl) fromEl.value = p.date_from;
+        if (toEl) toEl.value = p.date_to;
+    }
+
+    function sofDobaExportDateParams() {
+        const fromEl = document.getElementById('sof-doba-export-from');
+        const toEl = document.getElementById('sof-doba-export-to');
+        const page = sofDateParams();
+        const from = (fromEl && fromEl.value) ? fromEl.value : page.date_from;
+        const to = (toEl && toEl.value) ? toEl.value : page.date_to;
+        return { date_from: from, date_to: to, tz: SOF_TZ };
     }
 
     function sofDateParams() {
@@ -2085,7 +2201,7 @@
             ['#sof-delivered-tab', '#sof-delivered-pane', function () { return deliveredRows; }],
             ['#sof-all-order-tab', '#sof-all-order-pane', function () { return allOrderRows; }],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', function () { return lossMakingRows; }],
-            ['#sof-doba-orders-tab', '#sof-doba-orders-pane', function () { return dobaNonprepaidRows.concat(dobaPrepaidRows); }],
+            ['#sof-doba-orders-tab', '#sof-doba-orders-pane', function () { return sofActiveDobaRows(); }],
         ];
         for (let i = 0; i < pairs.length; i++) {
             if (sofOrderTabIsActive(pairs[i][0], pairs[i][1])) {
@@ -2109,6 +2225,7 @@
         if (tbl === lossMakingTable) return lossMakingRows;
         if (tbl === dobaNonprepaidTable) return dobaNonprepaidRows;
         if (tbl === dobaPrepaidTable) return dobaPrepaidRows;
+        if (tbl === dobaDoneTable) return dobaDoneRows;
         return null;
     }
 
@@ -2116,7 +2233,7 @@
         const caches = [
             pendingRows, fulfilledRows, scanDoneRows, inTransitRows,
             inReceivedRows, invoicedRows, deliveredRows, allOrderRows, lossMakingRows,
-            dobaNonprepaidRows, dobaPrepaidRows,
+            dobaNonprepaidRows, dobaPrepaidRows, dobaDoneRows,
         ];
         let best = [];
         for (let i = 0; i < caches.length; i++) {
@@ -2202,6 +2319,7 @@
         const to = ($('#sof-date-to').val() || '').trim() || sofDefaultDateTo();
         $('#sof-date-from').val(from);
         $('#sof-date-to').val(to);
+        sofSyncDobaExportDatesFromPage();
         if (from > to) {
             if (typeof Swal !== 'undefined') {
                 Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date (Eastern / EDT).' });
@@ -2214,6 +2332,47 @@
     }
 
     $('#sof-date-from, #sof-date-to').on('change', sofApplyDateFilterFromInputs);
+
+    function sofActiveDobaExportType() {
+        if (sofOrderTabIsActive('#sof-doba-sub-prepaid-tab', '#sof-doba-sub-prepaid-pane')) return 'prepaid';
+        if (sofOrderTabIsActive('#sof-doba-sub-done-tab', '#sof-doba-sub-done-pane')) return 'done';
+        return 'non_prepaid';
+    }
+
+    function sofActiveDobaRows() {
+        const type = sofActiveDobaExportType();
+        if (type === 'prepaid') return dobaPrepaidRows;
+        if (type === 'done') return dobaDoneRows;
+        return dobaNonprepaidRows;
+    }
+
+    function sofActiveDobaTable() {
+        const type = sofActiveDobaExportType();
+        if (type === 'prepaid') return dobaPrepaidTable;
+        if (type === 'done') return dobaDoneTable;
+        return dobaNonprepaidTable;
+    }
+
+    $(document).on('click', '.sof-doba-export-btn', function () {
+        const type = sofActiveDobaExportType();
+        const format = ($(this).data('format') || 'csv').toString();
+        const params = sofDobaExportDateParams();
+        if (params.date_from > params.date_to) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date (Eastern / EDT).' });
+            } else {
+                alert('From date must be on or before To date (Eastern / EDT).');
+            }
+            return;
+        }
+        const url = new URL(@json(route('sales.order.fulfillment.doba.orders.export')), window.location.origin);
+        url.searchParams.set('type', type);
+        url.searchParams.set('format', format);
+        url.searchParams.set('date_from', params.date_from);
+        url.searchParams.set('date_to', params.date_to);
+        url.searchParams.set('tz', params.tz || SOF_TZ);
+        window.location.href = url.toString();
+    });
 
     $('#sof-carrier-filter').on('change', function () {
         sofUpdateDateFilterHint();
@@ -2248,7 +2407,7 @@
             ['#sof-delivered-tab', '#sof-delivered-pane', deliveredTable],
             ['#sof-all-order-tab', '#sof-all-order-pane', allOrderTable],
             ['#sof-loss-making-tab', '#sof-loss-making-pane', lossMakingTable],
-            ['#sof-doba-orders-tab', '#sof-doba-orders-pane', dobaNonprepaidTable || dobaPrepaidTable],
+            ['#sof-doba-orders-tab', '#sof-doba-orders-pane', sofActiveDobaTable()],
         ];
     }
 
@@ -2891,7 +3050,7 @@
         [
             fulfilledTable, inTransitTable, deliveredTable, scanDoneTable,
             pendingTable, inReceivedTable, invoicedTable, allOrderTable, table,
-            dobaNonprepaidTable, dobaPrepaidTable,
+            dobaNonprepaidTable, dobaPrepaidTable, dobaDoneTable,
         ].forEach(function (t) {
             if (!t) return;
             try {
@@ -4931,15 +5090,11 @@
         sofWireOrderTable(lossMakingTable);
     }
 
-    function sofDobaIncludeShipped() {
-        const el = document.getElementById('sof-doba-include-shipped');
-        return !!(el && el.checked);
-    }
-
-    function updateDobaOrdersCounts(openCount, nonPrepaidCount, prepaidCount) {
+    function updateDobaOrdersCounts(openCount, nonPrepaidCount, prepaidCount, doneCount) {
         const open = Number(openCount || 0);
         const np = Number(nonPrepaidCount || 0);
         const pp = Number(prepaidCount || 0);
+        const done = Number(doneCount || 0);
         dobaOrdersOpenCount = open;
         const tabCount = document.getElementById('sof-doba-orders-tab-count');
         const badgeEl = document.getElementById('sof-doba-orders-total');
@@ -4947,6 +5102,7 @@
         const alertEl = document.getElementById('sof-doba-orders-pending-alert');
         const npEl = document.getElementById('sof-doba-nonprepaid-count');
         const ppEl = document.getElementById('sof-doba-prepaid-count');
+        const doneEl = document.getElementById('sof-doba-done-count');
         const triangle = ' <i class="fas fa-exclamation-triangle sof-doba-pending-alert" title="Pending labels" aria-hidden="true"></i>';
         if (tabCount) {
             tabCount.innerHTML = open.toLocaleString() + (open > 0 ? triangle : '');
@@ -4959,11 +5115,17 @@
         if (alertEl) alertEl.hidden = open <= 0;
         if (npEl) npEl.textContent = np.toLocaleString();
         if (ppEl) ppEl.textContent = pp.toLocaleString();
+        if (doneEl) doneEl.textContent = done.toLocaleString();
+    }
+
+    function refreshDobaOrderCounts() {
+        updateDobaOrdersCounts(dobaNonprepaidRows.length + dobaPrepaidRows.length, dobaNonprepaidRows.length, dobaPrepaidRows.length, dobaDoneRows.length);
     }
 
     function applyDobaOrdersFilters() {
         sofApplyOrderTableFilter(dobaNonprepaidTable, '#sof-order-search');
         sofApplyOrderTableFilter(dobaPrepaidTable, '#sof-order-search');
+        sofApplyOrderTableFilter(dobaDoneTable, '#sof-order-search');
     }
 
     function sofDobaOrderIdFormatter(cell) {
@@ -5054,24 +5216,18 @@
                 row.warehouse_shipped = !!shipped;
                 row.warehouse_shipped_at = shipped ? (row.warehouse_shipped_at || '') : null;
                 sofDobaLdTone(control, shipped);
-                if (tabRow) {
-                    try { tabRow.update(row); } catch (e) {}
-                    if (shipped) {
-                        tabRow.getElement().classList.add('sof-doba-shipped-row');
-                    } else {
-                        tabRow.getElement().classList.remove('sof-doba-shipped-row');
-                    }
+                dobaNonprepaidRows = dobaNonprepaidRows.filter(function (r) { return r.order_id !== orderNo; });
+                dobaPrepaidRows = dobaPrepaidRows.filter(function (r) { return r.order_id !== orderNo; });
+                dobaDoneRows = dobaDoneRows.filter(function (r) { return r.order_id !== orderNo; });
+                if (shipped) {
+                    dobaDoneRows.unshift(row);
+                } else if (row.is_prepaid) {
+                    dobaPrepaidRows.unshift(row);
+                } else {
+                    dobaNonprepaidRows.unshift(row);
                 }
-                if (shipped && !sofDobaIncludeShipped()) {
-                    try { tabRow.delete(); } catch (e2) {}
-                    dobaNonprepaidRows = dobaNonprepaidRows.filter(function (r) { return r.order_id !== orderNo; });
-                    dobaPrepaidRows = dobaPrepaidRows.filter(function (r) { return r.order_id !== orderNo; });
-                    dobaOrdersOpenCount = Math.max(0, dobaOrdersOpenCount - 1);
-                    updateDobaOrdersCounts(dobaOrdersOpenCount, dobaNonprepaidRows.length, dobaPrepaidRows.length);
-                } else if (!shipped) {
-                    dobaOrdersOpenCount += 1;
-                    updateDobaOrdersCounts(dobaOrdersOpenCount, dobaNonprepaidRows.length, dobaPrepaidRows.length);
-                }
+                applyDobaRowsToTables();
+                refreshDobaOrderCounts();
             },
             error: function (xhr) {
                 control.disabled = false;
@@ -5085,8 +5241,16 @@
         });
     }
 
-    function dobaOrderColumns() {
-        return [
+    function sofDobaPrepaidLabelFormatter(cell) {
+        const url = (cell.getValue() || '').toString().trim();
+        if (!url) return '<span class="sof-oc-missing">—</span>';
+        const safe = escapeHtml(url);
+        return '<a class="sof-doba-label-link" href="' + safe + '" target="_blank" rel="noopener noreferrer" title="' + safe + '">Open label</a>';
+    }
+
+    function dobaOrderColumns(opts) {
+        opts = opts || {};
+        const cols = [
             {
                 title: 'ld',
                 field: 'warehouse_shipped',
@@ -5097,14 +5261,40 @@
                 headerTooltip: 'label sent to dispatch',
                 formatter: sofDobaLdFormatter,
             },
-            {
+        ];
+        if (opts.includeType) {
+            cols.push({
+                title: 'Type',
+                field: 'is_prepaid',
+                width: 110,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: function (cell) {
+                    return cell.getValue() ? 'Prepaid' : 'Non-prepaid';
+                },
+            });
+        }
+        cols.push({
                 title: 'Order ID',
                 field: 'order_id',
                 minWidth: 120,
                 headerHozAlign: 'center',
                 sorter: sofStringSorter,
                 formatter: sofDobaOrderIdFormatter,
-            },
+            });
+        if (opts.includeLabel) {
+            cols.push({
+                title: 'Prepaid Label',
+                field: 'prepaid_label_url',
+                minWidth: 130,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerSort: false,
+                formatter: sofDobaPrepaidLabelFormatter,
+            });
+        }
+        cols.push(
             {
                 title: 'Date',
                 field: 'order_date',
@@ -5185,7 +5375,8 @@
                 sorter: sofStringSorter,
                 formatter: formatCarrierCell,
             },
-        ];
+        );
+        return cols;
     }
 
     function applyDobaRowsToTables() {
@@ -5195,11 +5386,14 @@
         if (dobaPrepaidTable) {
             try { dobaPrepaidTable.setData(dobaPrepaidRows); } catch (e2) {}
         }
+        if (dobaDoneTable) {
+            try { dobaDoneTable.setData(dobaDoneRows); } catch (e3) {}
+        }
         applyDobaOrdersFilters();
-        sofUpdateTrackingFilterCounts(dobaNonprepaidRows.concat(dobaPrepaidRows));
+        sofUpdateTrackingFilterCounts(sofActiveDobaRows());
     }
 
-    function makeDobaOrdersTable(selector, placeholder) {
+    function makeDobaOrdersTable(selector, placeholder, opts) {
         return new Tabulator(selector, Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: placeholder,
@@ -5209,7 +5403,7 @@
                     row.getElement().classList.add('sof-doba-shipped-row');
                 }
             },
-            columns: dobaOrderColumns(),
+            columns: dobaOrderColumns(opts),
         }));
     }
 
@@ -5219,17 +5413,19 @@
         $.ajax({
             url: '{{ route("sales.order.fulfillment.doba.orders.data") }}',
             type: 'GET',
-            data: Object.assign({}, sofDateParams(), { include_shipped: sofDobaIncludeShipped() ? 1 : 0 }),
+            data: sofDateParams(),
             timeout: 0,
             success: function (response) {
                 dobaOrdersTableLoading = false;
                 const ok = response && response.success;
                 dobaNonprepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.non_prepaid) ? response.non_prepaid : []);
                 dobaPrepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.prepaid) ? response.prepaid : []);
+                dobaDoneRows = sofNormalizeOrderRows(ok && Array.isArray(response.done) ? response.done : []);
                 updateDobaOrdersCounts(
                     ok && response.open_count != null ? response.open_count : (dobaNonprepaidRows.length + dobaPrepaidRows.length),
                     dobaNonprepaidRows.length,
-                    dobaPrepaidRows.length
+                    dobaPrepaidRows.length,
+                    dobaDoneRows.length
                 );
                 applyDobaRowsToTables();
             },
@@ -5237,23 +5433,31 @@
                 dobaOrdersTableLoading = false;
                 dobaNonprepaidRows = [];
                 dobaPrepaidRows = [];
-                updateDobaOrdersCounts(0, 0, 0);
+                dobaDoneRows = [];
+                updateDobaOrdersCounts(0, 0, 0, 0);
                 applyDobaRowsToTables();
             },
         });
     }
 
+    function sofRedrawDobaTables() {
+        const active = sofActiveDobaTable();
+        if (active) {
+            try { active.redraw(true); } catch (e) {}
+        }
+    }
+
     function ensureDobaOrdersTables() {
         if (!dobaNonprepaidTable) {
-            dobaNonprepaidTable = makeDobaOrdersTable('#sof-doba-nonprepaid-table', 'No non-prepaid Doba orders in this date range.');
+            dobaNonprepaidTable = makeDobaOrdersTable('#sof-doba-nonprepaid-table', 'No open non-prepaid Doba orders in this date range.');
         }
         if (!dobaPrepaidTable) {
-            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No prepaid Doba orders in this date range.');
+            dobaPrepaidTable = makeDobaOrdersTable('#sof-doba-prepaid-table', 'No open prepaid Doba orders in this date range.', { includeLabel: true });
         }
-        setTimeout(function () {
-            try { dobaNonprepaidTable.redraw(true); } catch (e) {}
-            try { dobaPrepaidTable.redraw(true); } catch (e2) {}
-        }, 50);
+        if (!dobaDoneTable) {
+            dobaDoneTable = makeDobaOrdersTable('#sof-doba-done-table', 'No done Doba orders in this date range.', { includeLabel: true, includeType: true });
+        }
+        setTimeout(sofRedrawDobaTables, 50);
         loadDobaOrdersData();
     }
 
@@ -5275,6 +5479,12 @@
     });
     document.getElementById('sof-doba-orders-tab')?.addEventListener('shown.bs.tab', function () {
         ensureDobaOrdersTables();
+    });
+    ['sof-doba-sub-nonprepaid-tab', 'sof-doba-sub-prepaid-tab', 'sof-doba-sub-done-tab'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('shown.bs.tab', function () {
+            sofRedrawDobaTables();
+            sofUpdateTrackingFilterCounts(sofActiveDobaRows());
+        });
     });
     document.getElementById('sof-pending-tab')?.addEventListener('shown.bs.tab', function () {
         ensurePendingTable();
@@ -5321,9 +5531,6 @@
     });
     document.getElementById('sof-doba-orders-badge')?.addEventListener('click', function () {
         switchToDobaOrdersTab();
-    });
-    document.getElementById('sof-doba-include-shipped')?.addEventListener('change', function () {
-        loadDobaOrdersData();
     });
     loadDobaOrdersData();
     $('#sof-search').on('keyup', function (e) {

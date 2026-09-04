@@ -581,6 +581,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-order-fulfillment/all-order-data', [SalesOrderFulfillmentController::class, 'allOrderData'])->name('sales.order.fulfillment.all.order.data');
     Route::get('/sales-order-fulfillment/loss-making-data', [SalesLossOrderController::class, 'lossMakingData'])->name('sales.order.fulfillment.loss.making.data');
     Route::get('/sales-order-fulfillment/doba-orders-data', [SalesOrderFulfillmentController::class, 'dobaOrdersData'])->name('sales.order.fulfillment.doba.orders.data');
+    Route::get('/sales-order-fulfillment/doba-orders-export', [SalesOrderFulfillmentController::class, 'dobaOrdersExport'])->name('sales.order.fulfillment.doba.orders.export');
     Route::post('/sales-order-fulfillment/doba-orders/mark-shipped', [SalesOrderFulfillmentController::class, 'markDobaOrderShipped'])->name('sales.order.fulfillment.doba.orders.mark.shipped');
     Route::post('/sales-order-fulfillment/ch-orders-link', [SalesOrderFulfillmentController::class, 'saveChOrdersLink'])->name('sales.order.fulfillment.ch.orders.link');
     Route::post('/sales-order-fulfillment/badge-link', [SalesOrderFulfillmentController::class, 'saveBadgeLink'])->name('sales.order.fulfillment.badge.link');
