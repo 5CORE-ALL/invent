@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Publish Missing L SKUs to AliExpress via solution.product.post.
+ * Publish Missing L SKUs to AliExpress: attach to a listed sibling first,
+ * then fall back to solution.product.post when no sibling exists.
  */
 class AliexpressListingPublishService
 {
@@ -149,6 +150,11 @@ class AliexpressListingPublishService
         }
 
         $parentKey = trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($primary);
+        $attached = $this->attachToListedSibling($parentKey, $publishSkus, $prepared);
+        if ($attached !== null) {
+            return $attached;
+        }
+
         $resolved = $this->resolveCategory($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId, $categoryName);
         $categoryId = (int) ($resolved['id'] ?? 0);
         if ($categoryId <= 0) {
@@ -699,6 +705,119 @@ class AliexpressListingPublishService
         }
 
         return ['Package weight' => number_format(max(0.01, $lb), 2, '.', '')];
+    }
+
+    /**
+     * Add Missing L SKUs onto an already-listed sibling so we never hit the
+     * Speakers create-schema Package weight / Screen Size[ failures.
+     *
+     * @param  list<string>  $publishSkus
+     * @param  list<array{sku: string, product: ProductMaster, price: float, inv: int, images: list<string>}>  $prepared
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}|null
+     */
+    private function attachToListedSibling(string $parentKey, array $publishSkus, array $prepared): ?array
+    {
+        $siblingId = $this->listedSiblingProductId($parentKey, $publishSkus);
+        if ($siblingId === '') {
+            return null;
+        }
+
+        $newRows = [];
+        foreach ($prepared as $row) {
+            $newRows[] = [
+                'sku_code' => $row['sku'],
+                'price' => number_format((float) $row['price'], 2, '.', ''),
+                'inventory' => max(1, (int) $row['inv']),
+                'sku_attributes_list' => [[
+                    'sku_attribute_name' => 'Color',
+                    'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
+                    'sku_image_url' => $row['images'][0] ?? '',
+                ]],
+            ];
+        }
+
+        Log::info('AliExpress publish: attaching SKUs to listed sibling', [
+            'parent' => $parentKey,
+            'sibling_product_id' => $siblingId,
+            'skus' => $publishSkus,
+        ]);
+
+        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows);
+        if (empty($attach['success'])) {
+            return [
+                'success' => false,
+                'message' => $attach['message'] ?? ('Could not add SKU to listed product '.$siblingId.'.'),
+            ];
+        }
+
+        $productId = trim((string) ($attach['product_id'] ?? $siblingId));
+        $this->persistListed($prepared, $productId);
+        $this->forgetListingCaches();
+
+        $count = count($publishSkus);
+
+        return [
+            'success' => true,
+            'message' => ($attach['message'] ?? ('Added '.$count.' SKU(s) to listed product '.$productId.'.'))
+                .' Search the seller portal for product ID '.$productId.'.',
+            'goods_id' => $productId,
+            'sku_id' => $productId,
+            'skus' => $publishSkus,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $publishSkus
+     */
+    private function listedSiblingProductId(string $parentKey, array $publishSkus): string
+    {
+        $metrics = AliexpressListingCounts::metricsByNormalizedSku();
+        $skip = [];
+        foreach ($publishSkus as $sku) {
+            $skip[strtoupper(trim((string) $sku))] = true;
+        }
+        $seed = (string) ($publishSkus[0] ?? '');
+        $bestId = '';
+        $bestScore = -1;
+        $candidates = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parentKey)
+            ->orderBy('sku')
+            ->limit(40)
+            ->pluck('sku')
+            ->all();
+        foreach ($candidates as $sku) {
+            if (isset($skip[strtoupper(trim((string) $sku))])) {
+                continue;
+            }
+            $productId = AliexpressListingCounts::productIdForSku((string) $sku, $metrics);
+            if ($productId === '') {
+                continue;
+            }
+            $score = $this->skuPrefixScore($seed, (string) $sku);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestId = $productId;
+            }
+        }
+
+        return $bestId;
+    }
+
+    private function skuPrefixScore(string $a, string $b): int
+    {
+        $a = strtoupper(trim($a));
+        $b = strtoupper(trim($b));
+        $len = min(strlen($a), strlen($b));
+        $n = 0;
+        for ($i = 0; $i < $len; $i++) {
+            if ($a[$i] !== $b[$i]) {
+                break;
+            }
+            $n++;
+        }
+
+        return $n;
     }
 
     /**

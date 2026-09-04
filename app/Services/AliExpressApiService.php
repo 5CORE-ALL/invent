@@ -1752,6 +1752,260 @@ class AliExpressApiService
     }
 
     /**
+     * Add SKUs to an already-listed product. Avoids the Speakers create-schema
+     * Package weight / Screen Size[ failures.
+     *
+     * sku_info_list on edit replaces every SKU, so existing ones are sent too.
+     *
+     * @param  array<int, array<string, mixed>>  $newSkuRows
+     * @return array{success:bool,product_id?:string,message?:string}
+     */
+    public function addSkusToExistingProduct(string $productId, array $newSkuRows): array
+    {
+        $productId = trim($productId);
+        if ($productId === '' || $newSkuRows === []) {
+            return ['success' => false, 'message' => 'No listed product or SKUs to attach.'];
+        }
+
+        $infoRes = $this->getProductInfo($productId);
+        if (empty($infoRes['success'])) {
+            return [
+                'success' => false,
+                'message' => 'Could not load listed sibling '.$productId.': '.($infoRes['message'] ?? 'unknown'),
+            ];
+        }
+
+        $existing = $this->skuInfoListFromListedProduct(is_array($infoRes['data'] ?? null) ? $infoRes['data'] : []);
+        if ($existing === []) {
+            return [
+                'success' => false,
+                'message' => 'Listed sibling '.$productId.' has no SKUs we can keep while adding the new one.',
+            ];
+        }
+
+        $have = [];
+        foreach ($existing as $row) {
+            $code = strtoupper(trim((string) ($row['sku_code'] ?? '')));
+            if ($code !== '') {
+                $have[$code] = true;
+            }
+        }
+
+        $attrName = 'Color';
+        foreach ($existing as $row) {
+            $name = trim((string) ($row['sku_attributes_list'][0]['sku_attribute_name'] ?? ''));
+            if ($name !== '') {
+                $attrName = $name;
+                break;
+            }
+        }
+
+        $added = 0;
+        foreach ($newSkuRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = strtoupper(trim((string) ($row['sku_code'] ?? '')));
+            if ($code === '' || isset($have[$code])) {
+                continue;
+            }
+            $attrs = is_array($row['sku_attributes_list'] ?? null) ? $row['sku_attributes_list'] : [];
+            if ($attrs === []) {
+                $attrs[] = [
+                    'sku_attribute_name' => $attrName,
+                    'sku_attribute_value' => mb_substr(trim((string) $row['sku_code']), 0, 70),
+                ];
+            } else {
+                $attrs[0]['sku_attribute_name'] = $attrName;
+            }
+            $existing[] = [
+                'sku_code' => trim((string) $row['sku_code']),
+                'price' => (string) ($row['price'] ?? '0'),
+                'inventory' => max(1, (int) ($row['inventory'] ?? 1)),
+                'sku_attributes_list' => $attrs,
+            ];
+            $have[$code] = true;
+            $added++;
+        }
+
+        if ($added === 0) {
+            return [
+                'success' => true,
+                'product_id' => $productId,
+                'message' => 'SKU is already on listed product '.$productId.'.',
+            ];
+        }
+
+        $edit = [
+            'product_id' => $productId,
+            'sku_info_list' => $existing,
+        ];
+        $encoded = $this->encodeRequestPayload($edit);
+        $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+            'rest' => ['edit_product_request' => $encoded],
+            'sync' => ['edit_product_request' => $encoded],
+        ]);
+        $postedId = $this->extractPostedProductId($res['data'] ?? [])
+            ?: $this->extractPostedProductId($res['result'] ?? [])
+            ?: $this->extractPostedProductId($res);
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
+                'product_id' => $postedId !== '' ? $postedId : $productId,
+                'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+            ];
+        }
+
+        $full = [
+            'product_id' => $productId,
+            'product_info' => ['sku_info_list' => $existing],
+        ];
+        $res2 = $this->callApiFlexible('aliexpress.solution.schema.product.full.update', [
+            'rest' => ['schema_full_update_request' => $this->encodeRequestPayload($full)],
+            'sync' => ['schema_full_update_request' => $this->encodeRequestPayload($full)],
+        ]);
+        $postedId2 = $this->extractPostedProductId($res2['data'] ?? [])
+            ?: $this->extractPostedProductId($res2['result'] ?? [])
+            ?: $this->extractPostedProductId($res2);
+        if (! empty($res2['success'])) {
+            return [
+                'success' => true,
+                'product_id' => $postedId2 !== '' ? $postedId2 : $productId,
+                'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.' via full update.',
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => $this->extractPostFailureMessage($res2)
+                ?: $this->extractPostFailureMessage($res)
+                ?: 'Could not add SKU to listed product '.$productId.'.',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<int, array<string, mixed>>
+     */
+    protected function skuInfoListFromListedProduct(array $info): array
+    {
+        $info = $this->normalizeApiRow($info);
+        if (isset($info['result']) && is_array($info['result']) && ! isset($info['aeop_ae_product_sku_list'])) {
+            $nested = $this->skuInfoListFromListedProduct($info['result']);
+            if ($nested !== []) {
+                return $nested;
+            }
+        }
+
+        $bags = [$info];
+        if (is_array($info['product'] ?? null)) {
+            $bags[] = $info['product'];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($bags as $bag) {
+            if (! is_array($bag)) {
+                continue;
+            }
+            $skus = $bag['aeop_ae_product_sku_list']
+                ?? $bag['aeop_ae_product_s_k_us']
+                ?? $bag['aeop_a_e_product_s_k_u_list']
+                ?? $bag['aeop_ae_product_s_k_u_s']
+                ?? $bag['aeop_ae_product_skus']
+                ?? $bag['product_sku_list']
+                ?? $bag['product_skus']
+                ?? $bag['sku_info_list']
+                ?? $bag['sku_list']
+                ?? $bag['skus']
+                ?? null;
+            if (is_string($skus)) {
+                $decoded = json_decode($skus, true);
+                $skus = is_array($decoded) ? $decoded : null;
+            }
+            if (! is_array($skus) && isset($bag[0]) && is_array($bag[0])) {
+                $skus = $bag;
+            }
+            if (! is_array($skus)) {
+                continue;
+            }
+            foreach ($this->unwrapAliExpressList($skus) as $skuRow) {
+                $skuRow = $this->normalizeApiRow($skuRow);
+                $code = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? $skuRow['seller_sku'] ?? $skuRow['cargo_number'] ?? ''));
+                if ($code === '' || isset($seen[strtoupper($code)])) {
+                    continue;
+                }
+                $price = $this->extractPriceFromRow($skuRow);
+                $stock = $this->extractStockFromRow($skuRow);
+                $item = [
+                    'sku_code' => $code,
+                    'price' => $price > 0 ? number_format($price, 2, '.', '') : (string) ($skuRow['price'] ?? $skuRow['sku_price'] ?? '0'),
+                    'inventory' => $stock !== null ? max(0, (int) $stock) : max(0, (int) ($skuRow['ipm_sku_stock'] ?? $skuRow['inventory'] ?? 0)),
+                    'sku_attributes_list' => $this->skuAttributesFromListedRow($skuRow),
+                ];
+                $skuId = trim((string) ($skuRow['id'] ?? $skuRow['sku_id'] ?? $skuRow['s_k_u_id'] ?? ''));
+                if ($skuId !== '' && ctype_digit($skuId)) {
+                    $item['id'] = $skuId;
+                }
+                $out[] = $item;
+                $seen[strtoupper($code)] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $skuRow
+     * @return array<int, array<string, string>>
+     */
+    protected function skuAttributesFromListedRow(array $skuRow): array
+    {
+        $raw = $skuRow['sku_attributes_list']
+            ?? $skuRow['aeop_s_k_u_property_list']
+            ?? $skuRow['aeop_sku_property']
+            ?? $skuRow['sku_property_list']
+            ?? [];
+        $attrs = [];
+        foreach ($this->unwrapAliExpressList($raw) as $prop) {
+            if (! is_array($prop)) {
+                continue;
+            }
+            $prop = $this->normalizeApiRow($prop);
+            $name = trim((string) ($prop['sku_attribute_name'] ?? $prop['sku_property_name'] ?? $prop['property_name'] ?? ''));
+            $value = trim((string) (
+                $prop['sku_attribute_value']
+                ?? $prop['property_value_definition_name']
+                ?? $prop['sku_property_value']
+                ?? $prop['property_value']
+                ?? ''
+            ));
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $item = [
+                'sku_attribute_name' => $name,
+                'sku_attribute_value' => $value,
+            ];
+            $image = trim((string) ($prop['sku_image_url'] ?? $prop['sku_image'] ?? $prop['image'] ?? ''));
+            if ($image !== '') {
+                $item['sku_image_url'] = $image;
+            }
+            $attrs[] = $item;
+        }
+
+        if ($attrs === []) {
+            $code = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? ''));
+            $attrs[] = [
+                'sku_attribute_name' => 'Color',
+                'sku_attribute_value' => $code !== '' ? mb_substr($code, 0, 70) : 'Default',
+            ];
+        }
+
+        return $attrs;
+    }
+
+    /**
      * Keep a listed sibling's exact weight JSON shape, swapping in this SKU's Dim/Wt values.
      *
      * @param  array<string, mixed>  $template
@@ -5036,6 +5290,25 @@ class AliExpressApiService
         }
 
         return array_values($list);
+    }
+
+    /**
+     * Unwrap AliExpress { aeop_ae_product_sku: [...] } / { aeop_sku_property: [...] } bags.
+     *
+     * @return array<int, mixed>
+     */
+    private function unwrapAliExpressList(mixed $list): array
+    {
+        if (! is_array($list)) {
+            return [];
+        }
+        foreach (['aeop_ae_product_sku', 'aeop_ae_product_s_k_u', 'aeop_sku_property', 'aeop_s_k_u_property', 'sku', 'sku_info'] as $key) {
+            if (isset($list[$key]) && is_array($list[$key])) {
+                return $this->normalizeList($list[$key]);
+            }
+        }
+
+        return $this->normalizeList($list);
     }
 
     /**
