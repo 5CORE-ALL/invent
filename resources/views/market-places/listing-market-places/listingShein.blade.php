@@ -619,7 +619,7 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal')
+                    @include('market-places.listing-market-places._listing_publish_modal', ['publishChannel' => 'shein'])
 
 
                     <div id="shein-listing-wrap">
@@ -1125,8 +1125,9 @@
             channel: 'shein',
             channelLabel: "Shein",
             previewUrl: '/listing_shein/save-status',
-            publishUrl: '/listing_shein/save-status'
+            publishUrl: '/listing_shein/save-status',
+            categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20"></script>
 @endsection

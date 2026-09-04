@@ -19,6 +19,7 @@ class ListingVariationPreviewService
         private WayfairListingPublishService $wayfair,
         private EbayListingPublishService $ebay,
         private TikTokListingPublishService $tiktok,
+        private SheinListingPublishService $shein,
     ) {
     }
 
@@ -78,6 +79,9 @@ class ListingVariationPreviewService
         if ($this->isTiktokChannel($channel) && $seedList !== []) {
             $payload['suggested_category'] = $this->tiktok->suggestCategoryForSku($seedList[0], $channel);
         }
+        if ($this->isSheinChannel($channel) && $seedList !== []) {
+            $payload['suggested_category'] = $this->shein->suggestCategoryForSku($seedList[0]);
+        }
 
         return $payload;
     }
@@ -112,6 +116,9 @@ class ListingVariationPreviewService
         }
         if ($this->isTiktokChannel($channel)) {
             return $this->tiktok->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb);
+        }
+        if ($this->isSheinChannel($channel)) {
+            return $this->shein->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb);
         }
 
         $label = $this->channelLabel($channel);
@@ -307,6 +314,11 @@ class ListingVariationPreviewService
         $parent = trim((string) ($product->parent ?? ''));
 
         return $parent !== '' ? $parent : trim((string) $product->sku);
+    }
+
+    private function isSheinChannel(string $channel): bool
+    {
+        return in_array($channel, ['shein'], true);
     }
 
     private function isTiktokChannel(string $channel): bool

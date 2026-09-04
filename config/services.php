@@ -832,6 +832,9 @@ return [
         'warehouse_code' => env('SHEIN_WAREHOUSE_CODE'),
         /** Max characters sent for productName (SHEIN uses short titles; default 80) */
         'title_max_length' => (int) env('SHEIN_TITLE_MAX_LENGTH', 80),
+        'brand_code' => env('SHEIN_BRAND_CODE'),
+        'sub_site' => env('SHEIN_SUB_SITE', 'shein-us'),
+        'currency' => env('SHEIN_CURRENCY', 'USD'),
     ],
 
     /*

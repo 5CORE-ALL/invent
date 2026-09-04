@@ -3628,5 +3628,491 @@ class SheinApiService
 
         return ['success' => false, 'count' => 0, 'possible' => false, 'message' => $last];
     }
+
+    /**
+     * Convert a public image URL to a Shein-hosted URL.
+     * POST /open-api/goods/transform-pic
+     */
+    public function transformListingImage(string $url, int $imageType = 2): ?string
+    {
+        $url = trim(str_replace(' ', '%20', $url));
+        if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            return null;
+        }
+
+        try {
+            $json = $this->sheinApiPost('/open-api/goods/transform-pic', [
+                'image_type' => $imageType,
+                'original_url' => $url,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Shein transform-pic failed', ['url' => $url, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        $info = is_array($json['info'] ?? null) ? $json['info'] : [];
+        $transformed = trim((string) ($info['transformed'] ?? $info['imageUrl'] ?? $info['image_url'] ?? ''));
+        if ($transformed === '') {
+            Log::warning('Shein transform-pic empty', [
+                'url' => $url,
+                'reason' => $info['failure_reason'] ?? $info['msg'] ?? null,
+            ]);
+
+            return null;
+        }
+
+        return $transformed;
+    }
+
+    /**
+     * Upload listing images: first is main (type 1), the rest are detail (type 2).
+     *
+     * @param  list<string>  $urls
+     * @return list<array{image_sort: int, image_type: string, image_url: string}>
+     */
+    public function uploadListingImages(array $urls): array
+    {
+        $out = [];
+        $sort = 1;
+        foreach (array_values($urls) as $i => $url) {
+            $type = $i === 0 ? 1 : 2;
+            $hosted = $this->transformListingImage((string) $url, $type);
+            if ($hosted === null) {
+                continue;
+            }
+            $out[] = [
+                'image_sort' => $sort,
+                'image_type' => (string) $type,
+                'image_url' => $hosted,
+            ];
+            $sort++;
+        }
+
+        if (count($out) === 1) {
+            $dup = $this->transformListingImage((string) ($urls[0] ?? ''), 2);
+            if ($dup !== null) {
+                $out[] = [
+                    'image_sort' => 2,
+                    'image_type' => '2',
+                    'image_url' => $dup,
+                ];
+            } else {
+                $out[] = [
+                    'image_sort' => 2,
+                    'image_type' => '2',
+                    'image_url' => $out[0]['image_url'],
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Create or edit a Shein product.
+     * POST /open-api/goods/product/publishOrEdit
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{success: bool, message: string, spu_name?: string, sku_code?: string, info?: array<string, mixed>}
+     */
+    public function publishOrEditProduct(array $payload): array
+    {
+        try {
+            $json = $this->sheinApiPost('/open-api/goods/product/publishOrEdit', $payload);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $info = is_array($json['info'] ?? null) ? $json['info'] : [];
+        $spu = $this->firstNestedString($info, [
+            'spu_name', 'spuName', 'spu', 'product_spu', 'productSpu',
+        ]);
+        $skuCode = $this->firstNestedString($info, [
+            'sku_code', 'skuCode', 'shein_sku_code', 'skc', 'skc_name',
+        ]);
+
+        return [
+            'success' => true,
+            'message' => trim((string) ($json['msg'] ?? 'Published to Shein.')),
+            'spu_name' => $spu !== '' ? $spu : null,
+            'sku_code' => $skuCode !== '' ? $skuCode : null,
+            'info' => $info,
+        ];
+    }
+
+    /**
+     * Search leaf categories from POST /open-api/goods/query-category-tree.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string, product_type_id: int}>, message?: string}
+     */
+    public function searchListingCategories(string $query, string $title = ''): array
+    {
+        $q = trim($query !== '' ? $query : $title);
+        try {
+            $leaves = $this->listingCategoryLeaves();
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Shein category tree failed: '.$e->getMessage(),
+            ];
+        }
+
+        if ($leaves === []) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Shein returned no categories. Confirm the Open API goods permission is approved.',
+            ];
+        }
+
+        if ($q === '') {
+            return ['success' => true, 'categories' => array_slice($leaves, 0, 25)];
+        }
+
+        $qLower = mb_strtolower($q);
+        $words = preg_split('/\s+/', $qLower) ?: [];
+        $scored = [];
+        foreach ($leaves as $leaf) {
+            $hay = mb_strtolower((string) ($leaf['path'] ?? ''));
+            $score = 0;
+            if ($hay !== '' && str_contains($hay, $qLower)) {
+                $score += 12;
+            }
+            foreach ($words as $word) {
+                if ($word !== '' && str_contains($hay, $word)) {
+                    $score += 2;
+                }
+            }
+            if ($score > 0) {
+                $scored[] = $leaf + ['_score' => $score];
+            }
+        }
+        usort($scored, static fn ($a, $b) => ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0));
+
+        $out = [];
+        foreach (array_slice($scored, 0, 25) as $row) {
+            unset($row['_score']);
+            $out[] = $row;
+        }
+
+        return ['success' => true, 'categories' => $out];
+    }
+
+    /**
+     * @return array{id: string, path: string, name: string, product_type_id: int}|null
+     */
+    public function findListingCategory(int $categoryId): ?array
+    {
+        if ($categoryId <= 0) {
+            return null;
+        }
+        foreach ($this->listingCategoryLeaves() as $leaf) {
+            if ((int) ($leaf['id'] ?? 0) === $categoryId) {
+                return $leaf;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Required / sale attributes for a Shein product_type_id.
+     *
+     * @return array{sale: list<array<string, mixed>>, product: list<array<string, mixed>>}
+     */
+    public function listingAttributeTemplate(int $productTypeId): array
+    {
+        $empty = ['sale' => [], 'product' => []];
+        if ($productTypeId <= 0) {
+            return $empty;
+        }
+
+        $cacheKey = 'shein_attr_template_v1:'.$productTypeId;
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && isset($cached['sale'], $cached['product'])) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            $json = $this->sheinApiPost('/open-api/goods/query-attribute-template', [
+                'product_type_id_list' => [$productTypeId],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Shein query-attribute-template failed', [
+                'product_type_id' => $productTypeId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $empty;
+        }
+
+        $rows = $json['info']['data'] ?? $json['info'] ?? [];
+        if (! is_array($rows)) {
+            return $empty;
+        }
+        $infos = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $list = $row['attribute_infos'] ?? $row['attributeInfos'] ?? null;
+            if (is_array($list)) {
+                $infos = $list;
+                break;
+            }
+        }
+
+        $sale = [];
+        $product = [];
+        foreach ($infos as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $label = (int) ($attr['attribute_label'] ?? $attr['attributeLabel'] ?? 0);
+            $mode = (int) ($attr['attribute_mode'] ?? $attr['attributeMode'] ?? 0);
+            $status = (int) ($attr['attribute_status'] ?? $attr['attributeStatus'] ?? 0);
+            if ($mode === 2) {
+                $sale[] = $attr;
+                continue;
+            }
+            if ($status === 3 || $label === 1) {
+                $product[] = $attr;
+            }
+        }
+
+        $out = ['sale' => $sale, 'product' => $product];
+        try {
+            Cache::put($cacheKey, $out, now()->addHours(12));
+        } catch (\Throwable) {
+        }
+
+        return $out;
+    }
+
+    public function listingBrandCode(?string $preferred = null): string
+    {
+        $configured = trim((string) config('services.shein.brand_code', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $brands = $this->listingBrands();
+        $needles = array_values(array_filter([
+            trim((string) $preferred),
+            trim((string) config('listing_manager.default_brand', '')),
+            '5 core',
+            '5core',
+        ], static fn ($v) => $v !== ''));
+
+        foreach ($needles as $needle) {
+            $n = mb_strtolower($needle);
+            foreach ($brands as $brand) {
+                $code = (string) ($brand['code'] ?? '');
+                $name = mb_strtolower((string) ($brand['name'] ?? ''));
+                if ($code !== '' && ($code === $needle || ($name !== '' && str_contains($name, $n)))) {
+                    return $code;
+                }
+            }
+        }
+
+        return (string) ($brands[0]['code'] ?? '');
+    }
+
+    public function listingWarehouseId(): ?string
+    {
+        $code = $this->resolveWarehouseCode();
+
+        return $code !== null && $code !== '' ? $code : null;
+    }
+
+    /**
+     * Pull category / brand / product type from a listed sibling's full-detail.
+     *
+     * @return array{category_id: int, product_type_id: int, brand_code: string, path: string}
+     */
+    public function taxonomyFromListedProduct(string $skuOrCode): array
+    {
+        $empty = ['category_id' => 0, 'product_type_id' => 0, 'brand_code' => '', 'path' => ''];
+        $skuOrCode = trim($skuOrCode);
+        if ($skuOrCode === '') {
+            return $empty;
+        }
+
+        try {
+            $details = $this->getProductDetails($skuOrCode);
+        } catch (\Throwable $e) {
+            Log::warning('Shein taxonomy lookup failed', ['sku' => $skuOrCode, 'error' => $e->getMessage()]);
+
+            return $empty;
+        }
+        if (! is_array($details)) {
+            return $empty;
+        }
+
+        $raw = is_array($details['raw_data'] ?? null) ? $details['raw_data'] : $details;
+        $categoryId = (int) $this->firstNestedString($raw, [
+            'categoryId', 'category_id', 'productCategoryId', 'product_category_id',
+        ]);
+        $productTypeId = (int) $this->firstNestedString($raw, [
+            'productTypeId', 'product_type_id',
+        ]);
+        $brand = $this->firstNestedString($raw, ['brandCode', 'brand_code']);
+        $path = trim((string) ($details['category'] ?? $this->firstNestedString($raw, [
+            'categoryName', 'category_name',
+        ])));
+
+        if ($categoryId <= 0 && $productTypeId <= 0 && $brand === '') {
+            return $empty;
+        }
+
+        return [
+            'category_id' => $categoryId,
+            'product_type_id' => $productTypeId,
+            'brand_code' => $brand,
+            'path' => $path,
+        ];
+    }
+
+    /**
+     * @return list<array{id: string, path: string, name: string, product_type_id: int}>
+     */
+    public function listingCategoryLeaves(): array
+    {
+        $cacheKey = 'shein_category_leaves_v1';
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+        }
+
+        $json = $this->sheinApiPost('/open-api/goods/query-category-tree', []);
+        $roots = $json['info']['data'] ?? $json['info'] ?? [];
+        if (! is_array($roots)) {
+            return [];
+        }
+
+        $leaves = [];
+        $walk = function ($nodes, array $path) use (&$walk, &$leaves): void {
+            if (! is_array($nodes)) {
+                return;
+            }
+            $list = isset($nodes['category_id']) || isset($nodes['categoryId']) ? [$nodes] : $nodes;
+            foreach ($list as $node) {
+                if (! is_array($node)) {
+                    continue;
+                }
+                $id = (int) ($node['category_id'] ?? $node['categoryId'] ?? 0);
+                $name = trim((string) ($node['category_name'] ?? $node['categoryName'] ?? ''));
+                $nextPath = $name !== '' ? array_merge($path, [$name]) : $path;
+                $children = $node['children'] ?? [];
+                $isLeaf = ! empty($node['last_category']) || ! empty($node['lastCategory'])
+                    || ! is_array($children) || $children === [];
+                if ($isLeaf && $id > 0) {
+                    $leaves[] = [
+                        'id' => (string) $id,
+                        'path' => implode(' > ', $nextPath),
+                        'name' => $name !== '' ? $name : ('Category '.$id),
+                        'product_type_id' => (int) ($node['product_type_id'] ?? $node['productTypeId'] ?? 0),
+                    ];
+                    continue;
+                }
+                if (is_array($children) && $children !== []) {
+                    $walk($children, $nextPath);
+                }
+            }
+        };
+        $walk($roots, []);
+
+        try {
+            Cache::put($cacheKey, $leaves, now()->addHours(12));
+        } catch (\Throwable) {
+        }
+
+        return $leaves;
+    }
+
+    /**
+     * @return list<array{code: string, name: string}>
+     */
+    public function listingBrands(): array
+    {
+        $cacheKey = 'shein_brand_list_v1';
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && $cached !== []) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            $json = $this->sheinApiPost('/open-api/goods/query-brand-list', []);
+        } catch (\Throwable $e) {
+            Log::warning('Shein query-brand-list failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        $rows = $json['info']['data'] ?? $json['info'] ?? [];
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = trim((string) ($row['brand_code'] ?? $row['brandCode'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $out[] = [
+                'code' => $code,
+                'name' => trim((string) ($row['brand_name_en'] ?? $row['brand_name'] ?? $row['brandName'] ?? $code)),
+            ];
+        }
+
+        try {
+            Cache::put($cacheKey, $out, now()->addHours(12));
+        } catch (\Throwable) {
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $haystack
+     * @param  list<string>  $keys
+     */
+    private function firstNestedString(array $haystack, array $keys): string
+    {
+        foreach ($keys as $key) {
+            if (isset($haystack[$key]) && ! is_array($haystack[$key])) {
+                $value = trim((string) $haystack[$key]);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+        foreach ($haystack as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            $hit = $this->firstNestedString($value, $keys);
+            if ($hit !== '') {
+                return $hit;
+            }
+        }
+
+        return '';
+    }
 }
 

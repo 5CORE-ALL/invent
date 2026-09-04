@@ -69,6 +69,19 @@
                                         <input type="number" id="listing-publish-tiktok-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
                                         <small>Type to search TikTok categories. Weight comes from Dim/Wt Master when present; otherwise type it.</small>
                                     </div>
+                                    <div id="listing-publish-shein-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'shein') hidden @endif>
+                                        <label>Suggested Shein category</label>
+                                        <div id="listing-publish-shein-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
+                                        <input type="hidden" id="listing-publish-shein-category-id" value="">
+                                        <label for="listing-publish-shein-category-name">Category</label>
+                                        <div class="listing-publish-cat-wrap">
+                                            <input type="text" id="listing-publish-shein-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Speakers" autocomplete="off">
+                                            <div id="listing-publish-shein-category-results" class="listing-publish-cat-results"></div>
+                                        </div>
+                                        <label for="listing-publish-shein-weight-lb">Package weight (lb)</label>
+                                        <input type="number" id="listing-publish-shein-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
+                                        <small>Type to search Shein leaf categories. Weight comes from Dim/Wt Master when present; otherwise type it.</small>
+                                    </div>
                                     <div id="listing-publish-reverb-category" class="listing-publish-category" hidden>
                                         <label>Suggested Reverb category</label>
                                         <div id="listing-publish-reverb-category-path" class="listing-publish-category-path">Matching from the product type…</div>
