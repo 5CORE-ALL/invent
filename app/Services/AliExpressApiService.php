@@ -180,7 +180,7 @@ class AliExpressApiService
                 is_array($weightFill['fields']['category_attributes'] ?? null) ? $weightFill['fields']['category_attributes'] : []
             );
         }
-        $instance = $this->ensureUsLogisticsWeightFields($instance, $weight, $lb, $weightFill['keys'], $weightFill['nodes']);
+        $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb);
 
         Log::info('AliExpress publish: schema weight fill', [
             'category_id' => $categoryId,
@@ -1592,19 +1592,44 @@ class AliExpressApiService
             return $fields;
         }
         $kind = $this->packageWeightSchemaKind($nodes);
-        $usObject = $this->usPackageWeightObject($kg, $lb, $kind);
+
+        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, $kind), $kg, $lb);
+    }
+
+    /**
+     * AliExpress US checks usLogisticsWeight.Package weight. A bare "4.00" string
+     * is treated as missing and returns CHK_BASIC_REQUIRED.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'string'): array
+    {
+        $kg = abs($kg);
+        $lb = abs($lb);
+        if ($kg <= 0 && $lb <= 0) {
+            return $fields;
+        }
+
+        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, $kind), $kg, $lb);
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     * @param  array{Package weight: float|string}|string  $usObject
+     * @return array<string, mixed>
+     */
+    private function applyLogisticsWeightShape(array $fields, mixed $usObject, float $kg, float $lb): array
+    {
         foreach (['usLogisticsWeight', 'aeLogisticsWeight', 'LogisticsWeight', 'logisticsWeight'] as $key) {
             $fields[$key] = $usObject;
         }
-        $fields['usl'] = [
-            'logisticsWeight' => $usObject,
-            'LogisticsWeight' => $usObject,
-        ];
-        $fields['Package weight'] = $usObject['Package weight'];
-        if (! isset($fields['package_weight']) || ! is_numeric($fields['package_weight']) || (float) $fields['package_weight'] <= 0) {
-            $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
+        $fields['usl'] = ['logisticsWeight' => $usObject];
+        unset($fields['Package weight']);
+        $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
+        if (is_array($usObject)) {
+            $fields = $this->copyUsWeightOntoSkus($fields, $usObject);
         }
-        $fields = $this->copyUsWeightOntoSkus($fields, $usObject);
 
         return $fields;
     }
@@ -1775,18 +1800,20 @@ class AliExpressApiService
     private function retryProductPostWithWeightShapes(array $instance, array $official, float $kg, float $lb): array
     {
         $text = number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '');
-        $pounds = $this->usPackageWeightPounds($kg, $lb);
         $stringObject = $this->usPackageWeightObject($kg, $lb, 'string');
         $numberObject = $this->usPackageWeightObject($kg, $lb, 'number');
+        $jsonString = json_encode($stringObject, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"Package weight":"'.$text.'"}';
+        $valueObject = ['Package weight' => ['value' => $text]];
         $shapes = [
-            ['usLogisticsWeight' => $stringObject, 'aeLogisticsWeight' => $stringObject, 'LogisticsWeight' => $stringObject, 'usl' => ['logisticsWeight' => $stringObject], 'Package weight' => $text],
-            ['usLogisticsWeight' => $numberObject, 'aeLogisticsWeight' => $numberObject, 'LogisticsWeight' => $numberObject, 'usl' => ['logisticsWeight' => $numberObject], 'Package weight' => $pounds],
-            ['usLogisticsWeight' => $text, 'aeLogisticsWeight' => $text, 'LogisticsWeight' => $text, 'Package weight' => $text],
+            $stringObject,
+            $numberObject,
+            $jsonString,
+            $valueObject,
         ];
         $lastMessage = '';
-        $lastInstance = $instance;
+        $lastInstance = $this->applyLogisticsWeightShape($instance, $stringObject, $kg, $lb);
         foreach ($shapes as $shape) {
-            $tryInstance = array_merge($instance, $shape);
+            $tryInstance = $this->applyLogisticsWeightShape($instance, $shape, $kg, $lb);
             $encoded = $this->encodeRequestPayload($tryInstance);
             $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
                 'rest' => ['product_instance_request' => $encoded],
@@ -1798,7 +1825,7 @@ class AliExpressApiService
             if ($productId !== '') {
                 return ['success' => true, 'product_id' => $productId, 'instance' => $tryInstance];
             }
-            $tryOfficial = array_merge($official, $shape);
+            $tryOfficial = $this->applyLogisticsWeightShape($official, $shape, $kg, $lb);
             $postRes = $this->postProductCreateWithRetry('aliexpress.solution.product.post', [
                 'post_product_request' => $this->encodeRequestPayload($tryOfficial),
             ]);
@@ -2215,12 +2242,10 @@ class AliExpressApiService
         $out = array_merge($out, $schemaWeightFields);
         $kg = $this->aliexpressWeightNumber($request);
         $lb = $this->aliexpressWeightPounds($request, $kg);
-        $out = $this->ensureUsLogisticsWeightFields($out, $kg, $lb, array_keys($schemaWeightFields), []);
+        $out = $this->forceUsLogisticsWeightObjects($out, $kg, $lb);
         // Official product.post weight is a kg string (min 0.001). Do not overwrite it with a US object.
         $out['weight'] = number_format(max(0.001, $kg), 3, '.', '');
-        if (! isset($out['package_weight']) || ! is_numeric($out['package_weight'])) {
-            $out['package_weight'] = (float) $out['weight'];
-        }
+        $out['package_weight'] = (float) $out['weight'];
 
         return $out;
     }
