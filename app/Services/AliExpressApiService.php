@@ -702,17 +702,6 @@ class AliExpressApiService
         if (! is_array($skus) || $skus === []) {
             return $request;
         }
-        $needs = count($skus) > 1;
-        foreach ($skus as $row) {
-            if (is_array($row) && ! empty($row['sku_attributes_list'])) {
-                $needs = true;
-                break;
-            }
-        }
-        if (! $needs) {
-            return $request;
-        }
-
         $categoryId = (int) ($request['aliexpress_category_id'] ?? 0);
         $attrs = $this->queryCategorySkuAttributes($categoryId);
         if ($attrs === []) {
@@ -1371,20 +1360,6 @@ class AliExpressApiService
         $fields['usl'] = $usl;
         $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
 
-        $skus = $fields['sku_info_list'] ?? [];
-        if (is_array($skus)) {
-            foreach ($skus as $i => $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $skus[$i]['usLogisticsWeight'] = $object;
-                $skus[$i]['aeLogisticsWeight'] = $object;
-                $skus[$i]['package_weight'] = $fields['package_weight'];
-                $skus[$i]['weight'] = number_format(max(0.001, $kg), 3, '.', '');
-            }
-            $fields['sku_info_list'] = $skus;
-        }
-
         return $fields;
     }
 
@@ -1597,8 +1572,12 @@ class AliExpressApiService
             if (! is_array($row)) {
                 continue;
             }
+            $skuCode = trim((string) ($row['sku_code'] ?? ''));
+            if ($skuCode === '') {
+                continue;
+            }
             $sku = [
-                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'sku_code' => $skuCode,
                 'inventory' => max(1, (int) ($row['inventory'] ?? 1)),
                 'price' => (float) ($row['price'] ?? 0),
             ];
@@ -1616,9 +1595,13 @@ class AliExpressApiService
                     'sku_image_url' => (string) ($attr['sku_image_url'] ?? ''),
                 ];
             }
-            if ($attrs !== []) {
-                $sku['sku_attributes'] = $attrs;
+            if ($attrs === []) {
+                $attrs['Color'] = [
+                    'alias' => mb_substr($skuCode, 0, 70),
+                    'sku_image_url' => (string) ($row['sku_image_url'] ?? ''),
+                ];
             }
+            $sku['sku_attributes'] = $attrs;
             $skus[] = $sku;
         }
 
@@ -1692,18 +1675,28 @@ class AliExpressApiService
             if (! is_array($row)) {
                 continue;
             }
-            $skus[] = array_intersect_key($row, array_flip([
+            $skuCode = trim((string) ($row['sku_code'] ?? ''));
+            if ($skuCode === '') {
+                continue;
+            }
+            $clean = array_intersect_key($row, array_flip([
                 'sku_code',
                 'price',
                 'inventory',
                 'sku_attributes_list',
                 'weight',
                 'package_weight',
-                'usLogisticsWeight',
-                'aeLogisticsWeight',
             ]));
+            if (empty($clean['sku_attributes_list'])) {
+                $clean['sku_attributes_list'] = [[
+                    'sku_attribute_name' => 'Color',
+                    'sku_attribute_value' => mb_substr($skuCode, 0, 70),
+                ]];
+            }
+            $skus[] = $clean;
         }
         $out['sku_info_list'] = $skus;
+        unset($schemaWeightFields['sku_info_list']);
         $out = array_merge($out, $schemaWeightFields);
         $kg = $this->aliexpressWeightNumber($request);
         $lb = $this->aliexpressWeightPounds($request, $kg);
