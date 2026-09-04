@@ -3800,7 +3800,8 @@ class ReverbApiService
 
                     continue;
                 }
-                if (str_contains(mb_strtolower($path), $needle) || str_contains(mb_strtolower($id), $needle)) {
+                $hay = mb_strtolower($path.' '.(string) ($row['search'] ?? '').' '.$id);
+                if (str_contains($hay, $needle)) {
                     $matched[] = $row;
                 }
             }
@@ -3815,10 +3816,24 @@ class ReverbApiService
             }
             $seen[$id] = true;
             $out[] = $row;
-            if (count($out) >= 60) {
-                break;
-            }
         }
+        if ($q !== '' && $out !== []) {
+            $needle = mb_strtolower($q);
+            usort($out, function ($a, $b) use ($needle) {
+                $pa = mb_strtolower((string) ($a['path'] ?? ''));
+                $pb = mb_strtolower((string) ($b['path'] ?? ''));
+                $la = trim((string) substr($pa, (int) strrpos($pa, '>') + 1));
+                $lb = trim((string) substr($pb, (int) strrpos($pb, '>') + 1));
+                $aLeaf = str_contains($la, $needle) ? 1 : 0;
+                $bLeaf = str_contains($lb, $needle) ? 1 : 0;
+                if ($aLeaf !== $bLeaf) {
+                    return $bLeaf <=> $aLeaf;
+                }
+
+                return substr_count($pb, '>') <=> substr_count($pa, '>');
+            });
+        }
+        $out = array_slice($out, 0, 60);
 
         if ($out === [] && $q !== '') {
             foreach ($this->scoreListingCategories($q.' '.$title) as $row) {
@@ -3861,6 +3876,67 @@ class ReverbApiService
             'path' => (string) ($best['path'] ?? ''),
             'score' => (int) ($best['score'] ?? 0),
         ];
+    }
+
+    /**
+     * Resolve a typed / Product Master category name to a Reverb leaf category.
+     *
+     * @return array{id: string, path: string}
+     */
+    public function resolveCategoryByName(string $name): array
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return ['id' => '', 'path' => ''];
+        }
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $name)) {
+            return ['id' => $name, 'path' => ''];
+        }
+
+        $search = $this->searchListingCategories($name);
+        $rows = is_array($search['categories'] ?? null) ? $search['categories'] : [];
+        $needle = mb_strtolower($name);
+        $best = ['id' => '', 'path' => ''];
+        $bestScore = -1;
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = trim((string) ($row['id'] ?? ''));
+            $path = trim((string) ($row['path'] ?? ''));
+            if ($id === '' || $path === '') {
+                continue;
+            }
+            $low = mb_strtolower($path);
+            $leaf = trim((string) substr($path, (int) strrpos($path, '>') + 1));
+            $leaf = trim($leaf, " \t>");
+            $score = 0;
+            if (mb_strtolower($leaf) === $needle) {
+                $score += 100;
+            } elseif (str_contains(mb_strtolower($leaf), $needle)) {
+                $score += 70;
+            } elseif (str_contains($low, $needle)) {
+                $score += 40;
+            }
+            $score += min(10, substr_count($path, '>'));
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = ['id' => $id, 'path' => $path];
+            }
+        }
+        if ($bestScore >= 40 && $best['id'] !== '') {
+            return $best;
+        }
+
+        $suggested = $this->suggestListingCategory($name, [$name]);
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', (string) ($suggested['id'] ?? ''))) {
+            return [
+                'id' => (string) $suggested['id'],
+                'path' => (string) ($suggested['path'] ?? ''),
+            ];
+        }
+
+        return $bestScore > 0 ? $best : ['id' => '', 'path' => ''];
     }
 
     /**
@@ -3959,6 +4035,11 @@ class ReverbApiService
             'foot pedal' => ['foot pedal', 'ft pdl'],
             'speaker cable' => ['speaker cable', 'instrument cable', 'xlr cable'],
             'amplifier' => ['amplifier', 'power amp'],
+            'microphone stand' => ['microphone stand', 'mic stand', 'vocal stand', 'boom stand'],
+            'keyboard stand' => ['keyboard stand'],
+            'guitar stand' => ['guitar stand'],
+            'speaker stand' => ['speaker stand'],
+            'capo' => ['capo', 'capos'],
             'speaker' => ['speaker', 'speakers'],
         ];
 
@@ -4071,16 +4152,15 @@ class ReverbApiService
             return $cached;
         }
 
-        $json = $this->reverbApiGet('/categories');
-        $roots = is_array($json['categories'] ?? null) ? $json['categories'] : [];
-        if ($roots === [] && is_array($json['_embedded']['categories'] ?? null)) {
-            $roots = $json['_embedded']['categories'];
-        }
-        if ($roots === []) {
-            $flatJson = $this->reverbApiGet('/categories/flat');
-            $roots = is_array($flatJson['categories'] ?? null) ? $flatJson['categories'] : [];
-            if ($roots === [] && is_array($flatJson['_embedded']['categories'] ?? null)) {
-                $roots = $flatJson['_embedded']['categories'];
+        $roots = [];
+        foreach (['/categories/flat', '/categories'] as $path) {
+            $json = $this->reverbApiGet($path);
+            $roots = is_array($json['categories'] ?? null) ? $json['categories'] : [];
+            if ($roots === [] && is_array($json['_embedded']['categories'] ?? null)) {
+                $roots = $json['_embedded']['categories'];
+            }
+            if ($roots !== []) {
+                break;
             }
         }
 

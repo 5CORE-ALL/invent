@@ -178,6 +178,8 @@
 
     let previewSeedSkus = [];
     let lastPreviewGroups = [];
+    let reverbCatTimer = null;
+    let reverbCatXhr = null;
 
     function selectedPublishMode() {
         const checked = document.querySelector('input[name="listing-publish-mode"]:checked');
@@ -205,6 +207,10 @@
     }
 
     function selectedCategoryName() {
+        if (isReverbChannel()) {
+            const reverbEl = document.getElementById('listing-publish-reverb-category-name');
+            if (reverbEl) return String(reverbEl.value || '').trim();
+        }
         const el = document.getElementById('listing-publish-category-name');
         return el ? String(el.value || '').trim() : '';
     }
@@ -217,13 +223,105 @@
     function applySuggestedCategory(suggested) {
         const pathEl = document.getElementById('listing-publish-reverb-category-path');
         const uuidEl = document.getElementById('listing-publish-category-uuid');
+        const nameEl = document.getElementById('listing-publish-reverb-category-name');
+        const typed = nameEl && nameEl.dataset.userTyped === '1'
+            ? String(nameEl.value || '').trim()
+            : '';
+        if (typed.length >= 2) {
+            searchReverbCategories(typed);
+            return;
+        }
         const path = String((suggested && suggested.path) || '').trim();
         const id = String((suggested && suggested.id) || '').trim();
+        const name = String((suggested && suggested.name) || '').trim();
+        const leaf = path.split(/[>\/|]/).pop().trim();
         if (uuidEl) uuidEl.value = id;
-        if (!pathEl) return;
-        pathEl.textContent = path || (id
-            ? 'Reverb category matched from the product type.'
-            : 'No Reverb category matched this product type yet. Publish will try again from the title.');
+        if (nameEl && !nameEl.value.trim()) nameEl.value = name || leaf || '';
+        if (pathEl) {
+            pathEl.textContent = path || (id
+                ? 'Reverb category matched from the product type.'
+                : (name
+                    ? 'Using the product category. Pick a Reverb match below.'
+                    : 'Type a category name to search Reverb.'));
+        }
+        const query = String((nameEl && nameEl.value) || name || leaf || '').trim();
+        if (query.length >= 2) searchReverbCategories(query);
+        else hideReverbCategoryResults();
+    }
+
+    function hideReverbCategoryResults() {
+        const box = document.getElementById('listing-publish-reverb-category-results');
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+    }
+
+    function showReverbCategoryResults(html) {
+        const box = document.getElementById('listing-publish-reverb-category-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
+    }
+
+    function reverbCategorySearchUrl() {
+        return cfg().categorySearchUrl || '/listing-manager/ebay/categories';
+    }
+
+    function searchReverbCategories(query) {
+        query = String(query || '').trim();
+        const box = document.getElementById('listing-publish-reverb-category-results');
+        if (!box || !isReverbChannel()) return;
+        if (query.length < 2) {
+            hideReverbCategoryResults();
+            return;
+        }
+        showReverbCategoryResults('<div class="listing-publish-cat-empty">Searching Reverb categories…</div>');
+        if (reverbCatXhr && reverbCatXhr.abort) reverbCatXhr.abort();
+        reverbCatXhr = $.ajax({
+            url: reverbCategorySearchUrl(),
+            type: 'GET',
+            data: {
+                q: query,
+                channel: 'reverb',
+                title: query
+            },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    showReverbCategoryResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'No Reverb categories matched.') + '</div>');
+                    return;
+                }
+                showReverbCategoryResults(rows.map(function (row) {
+                    return '<button type="button" class="listing-publish-cat-item" data-id="' +
+                        escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +
+                        escapeHtml(row.path || row.id || '') + '</button>';
+                }).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                showReverbCategoryResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Category search failed.') + '</div>');
+            }
+        });
+    }
+
+    function scheduleReverbCategorySearch(query) {
+        clearTimeout(reverbCatTimer);
+        reverbCatTimer = setTimeout(function () { searchReverbCategories(query); }, 280);
+    }
+
+    function pickReverbCategory(id, path) {
+        const uuidEl = document.getElementById('listing-publish-category-uuid');
+        const nameEl = document.getElementById('listing-publish-reverb-category-name');
+        const pathEl = document.getElementById('listing-publish-reverb-category-path');
+        if (uuidEl) uuidEl.value = String(id || '').trim();
+        if (nameEl) nameEl.value = String(path || '').trim();
+        if (pathEl) pathEl.textContent = String(path || '').trim() || 'Reverb category selected.';
+        hideReverbCategoryResults();
     }
 
     function applySuggestedAliexpressCategory(suggested) {
@@ -386,9 +484,16 @@
     function ajaxError(xhr) {
         if (!xhr) return 'Request failed.';
         if (xhr.status === 0) return 'Timed out or the connection dropped. Try again.';
-        if (xhr.responseJSON && xhr.responseJSON.message) return xhr.responseJSON.message;
+        let json = xhr.responseJSON;
+        if (!json && xhr.responseText) {
+            try { json = JSON.parse(xhr.responseText); } catch (e) { json = null; }
+        }
+        if (json && (json.message || json.error)) return String(json.message || json.error);
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
         if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
+        if (xhr.status === 502 || xhr.status === 504) return 'Publish timed out while talking to AliExpress. Try again.';
+        if (xhr.status === 500) return 'Server error during publish. Try again.';
+        if (xhr.status) return 'Request failed (HTTP ' + xhr.status + ').';
         return 'Request failed.';
     }
 
@@ -639,7 +744,60 @@
         });
     }
 
+    function bindReverbCategorySearch() {
+        function onReverbCategoryTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const uuidEl = document.getElementById('listing-publish-category-uuid');
+            if (uuidEl) uuidEl.value = '';
+            const pathEl = document.getElementById('listing-publish-reverb-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Searching Reverb for “' + q + '”…'
+                    : 'Type a Reverb category name, then pick one from the list.';
+            }
+            scheduleReverbCategorySearch(q);
+        }
+
+        $(document).off('input.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('input.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                onReverbCategoryTyped(this);
+            });
+
+        $(document).off('keyup.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('keyup.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                onReverbCategoryTyped(this);
+            });
+
+        $(document).off('focus.listingPageTools', '#listing-publish-reverb-category-name')
+            .on('focus.listingPageTools', '#listing-publish-reverb-category-name', function () {
+                const q = String(this.value || '').trim();
+                if (q.length >= 2) searchReverbCategories(q);
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageTools')
+            .on('shown.bs.modal.listingPageTools', function () {
+                const nameEl = document.getElementById('listing-publish-reverb-category-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageTools', '.listing-publish-cat-item')
+            .on('click.listingPageTools', '.listing-publish-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickReverbCategory($(this).attr('data-id'), $(this).attr('data-path'));
+            });
+
+        $(document).off('mousedown.listingPageTools.reverbCat')
+            .on('mousedown.listingPageTools.reverbCat', function (e) {
+                if (!e.target.closest || e.target.closest('.listing-publish-cat-wrap')) return;
+                hideReverbCategoryResults();
+            });
+    }
+
     $(function () {
+        bindReverbCategorySearch();
         if (!cfg().tableId) return;
         waitForTable(function (table) {
             enhanceTable(table);

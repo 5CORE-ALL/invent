@@ -31,7 +31,7 @@ class ReverbListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?string $categoryUuid = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?string $categoryUuid = null, ?string $categoryName = null): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -64,7 +64,7 @@ class ReverbListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryUuid, $categoryName);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -111,12 +111,12 @@ class ReverbListingPublishService
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Shopify), not a local/filename-only path.'];
         }
 
-        $resolved = $this->resolveCategory($product, $sku, $title, $categoryUuid);
+        $resolved = $this->resolveCategory($product, $sku, $title, $categoryUuid, $categoryName);
         $categoryUuid = (string) ($resolved['id'] ?? '');
         if ($categoryUuid === '') {
             return [
                 'success' => false,
-                'message' => 'Could not match a Reverb category for the product type of '.$sku.'. Check the title or Product Master category, then try again.',
+                'message' => 'Could not match a Reverb category for '.$sku.'. Type a Reverb category name in the publish window, or check the Product Master category.',
             ];
         }
 
@@ -291,33 +291,63 @@ class ReverbListingPublishService
     }
 
     /**
-     * @return array{id: string, path: string}
+     * @return array{id: string, path: string, name: string}
      */
     public function suggestCategoryForSku(string $sku): array
     {
         $sku = trim($sku);
         if ($sku === '') {
-            return ['id' => '', 'path' => ''];
+            return ['id' => '', 'path' => '', 'name' => ''];
         }
         $product = ProductMaster::query()
             ->whereNull('deleted_at')
             ->where('sku', $sku)
             ->first();
         if (! $product) {
-            return ['id' => '', 'path' => ''];
+            return ['id' => '', 'path' => '', 'name' => ''];
         }
 
-        return $this->resolveCategory($product, $sku, $this->resolveTitle($product, $sku));
+        $title = $this->resolveTitle($product, $sku);
+        $resolved = $this->resolveCategory($product, $sku, $title);
+        $name = $this->productCategoryLabel($product);
+        if ($name === '' && trim((string) ($resolved['path'] ?? '')) !== '') {
+            $path = (string) $resolved['path'];
+            $name = trim((string) substr($path, (int) strrpos($path, '>') + 1));
+        }
+        $resolved['name'] = $name;
+
+        return $resolved;
     }
 
     /**
      * @return array{id: string, path: string}
      */
-    private function resolveCategory(ProductMaster $product, string $sku, string $title, ?string $override = null): array
+    private function resolveCategory(ProductMaster $product, string $sku, string $title, ?string $overrideUuid = null, ?string $overrideName = null): array
     {
-        $override = trim((string) $override);
-        if ($this->looksLikeUuid($override)) {
-            return ['id' => $override, 'path' => ''];
+        $overrideUuid = trim((string) $overrideUuid);
+        if ($this->looksLikeUuid($overrideUuid)) {
+            return ['id' => $overrideUuid, 'path' => ''];
+        }
+
+        $overrideName = trim((string) $overrideName);
+        if ($this->looksLikeUuid($overrideName)) {
+            return ['id' => $overrideName, 'path' => ''];
+        }
+        if ($overrideName !== '') {
+            $typed = $this->api->resolveCategoryByName($overrideName);
+            if ($this->looksLikeUuid((string) ($typed['id'] ?? ''))) {
+                return $typed;
+            }
+        }
+
+        foreach ($this->productTypeHints($product, $sku, $title) as $hint) {
+            if ($this->looksLikeSkuCode($hint)) {
+                continue;
+            }
+            $fromProduct = $this->api->resolveCategoryByName($hint);
+            if ($this->looksLikeUuid((string) ($fromProduct['id'] ?? ''))) {
+                return $fromProduct;
+            }
         }
 
         $suggested = $this->api->suggestListingCategory($title, $this->productTypeHints($product, $sku, $title));
@@ -352,6 +382,42 @@ class ReverbListingPublishService
         }
 
         return ['id' => '', 'path' => ''];
+    }
+
+    private function productCategoryLabel(ProductMaster $product): string
+    {
+        $categoryId = (int) ($product->category_id ?? 0);
+        if ($categoryId > 0) {
+            $name = trim((string) ProductCategory::query()->where('id', $categoryId)->value('category_name'));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+        if (Schema::hasColumn('product_master', 'category')) {
+            $legacy = trim((string) ($product->getAttribute('category') ?? ''));
+            if ($legacy !== '' && ! $this->looksLikeSkuCode($legacy)) {
+                return $legacy;
+            }
+        }
+        $values = is_array($product->Values) ? $product->Values : [];
+        foreach (['type', 'Type', 'product_type', 'category', 'Category'] as $key) {
+            $raw = trim((string) ($values[$key] ?? ''));
+            if ($raw !== '' && ! $this->looksLikeSkuCode($raw)) {
+                return $raw;
+            }
+        }
+
+        return '';
+    }
+
+    private function looksLikeSkuCode(string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '' || preg_match('/[a-z]{3,}/', $value)) {
+            return false;
+        }
+
+        return (bool) preg_match('/^[A-Z0-9][A-Z0-9 ._\-]{0,32}$/', $value);
     }
 
     /**

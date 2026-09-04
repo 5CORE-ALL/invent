@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\AliexpressDataView;
@@ -150,40 +151,83 @@ class AliExpressApiService
      */
     public function postProduct(array $request): array
     {
-        $attempts = [$request];
-        if (trim((string) ($request['brand_name'] ?? '')) !== '') {
-            $withoutBrand = $request;
-            unset($withoutBrand['brand_name']);
-            $attempts[] = $withoutBrand;
+        $brand = trim((string) ($request['brand_name'] ?? '')) ?: '5 Core Inc.';
+        $request = $this->ensureAliExpressBrandAttribute($request, $brand);
+        $weight = $this->aliexpressWeightNumber($request);
+        $lb = $this->aliexpressWeightPounds($request, $weight);
+        $categoryId = (int) ($request['aliexpress_category_id'] ?? 0);
+
+        $schema = $this->getProductSchema($categoryId);
+        $request = $this->applyCategorySkuAttributes($request, $schema);
+        $weightFill = $this->fillWeightFromSchema($schema, $weight, $lb);
+        $weightFill['fields'] = $this->ensureUsLogisticsWeightFields($weightFill['fields'], $weight, $lb);
+        $baseInstance = $this->buildOneSchemaInstance($request, $weight);
+        $instance = array_merge($baseInstance, $weightFill['fields']);
+        if (isset($baseInstance['category_attributes']) || isset($weightFill['fields']['category_attributes'])) {
+            $instance['category_attributes'] = array_merge(
+                is_array($baseInstance['category_attributes'] ?? null) ? $baseInstance['category_attributes'] : [],
+                is_array($weightFill['fields']['category_attributes'] ?? null) ? $weightFill['fields']['category_attributes'] : []
+            );
+        }
+        $instance = $this->ensureUsLogisticsWeightFields($instance, $weight, $lb);
+
+        Log::info('AliExpress publish: schema weight fill', [
+            'category_id' => $categoryId,
+            'schema_ok' => $schema !== [],
+            'schema_weight_keys' => $weightFill['keys'],
+            'weight_payload' => $weightFill['fields'],
+            'weight_kg' => $weight,
+            'weight_lb' => $lb,
+            'us_package_weight_lb' => $this->formatMarketplaceWeight($weight, $lb, 'lb', 'string'),
+        ]);
+
+        $encoded = $this->encodeRequestPayload($instance);
+        $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
+            'rest' => ['product_instance_request' => $encoded],
+            'sync' => ['product_instance_request' => $encoded],
+        ]);
+        $productId = $this->extractPostedProductId($res['data'] ?? [])
+            ?: $this->extractPostedProductId($res['result'] ?? [])
+            ?: $this->extractPostedProductId($res);
+        if ($productId !== '') {
+            $res['success'] = true;
+            $res['product_id'] = $productId;
+
+            return $res;
         }
 
-        $last = ['success' => false, 'message' => 'AliExpress product post failed.'];
-        foreach ($attempts as $payload) {
-            $encoded = $this->encodeRequestPayload($payload);
-            $res = $this->callApiFlexible('aliexpress.solution.product.post', [
-                'rest' => ['post_product_request' => $encoded],
-                'sync' => ['post_product_request' => $encoded],
+        $last = [
+            'success' => false,
+            'message' => $this->extractPostFailureMessage($res),
+            'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
+        ];
+        if ($this->isTransientAliExpressError((string) $last['message'])) {
+            Log::warning('AliExpress publish: instance.post RPC timeout, trying official product.post', [
+                'category_id' => $categoryId,
+                'message' => $last['message'],
             ]);
-            $productId = $this->extractPostedProductId($res['data'] ?? [])
-                ?: $this->extractPostedProductId($res['result'] ?? [])
-                ?: $this->extractPostedProductId($res);
-            if ($productId !== '') {
-                $res['success'] = true;
-                $res['product_id'] = $productId;
-
-                return $res;
-            }
-
-            $bizError = $this->extractPostFailureMessage($res);
-            $last = [
-                'success' => false,
-                'message' => $bizError,
-                'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
-            ];
-            if (empty($res['success']) && ! $this->isRetryableProductPostError($bizError)) {
-                break;
-            }
         }
+
+        $official = $this->officialProductPostRequest($request, $weightFill['fields']);
+        $encodedPost = $this->encodeRequestPayload($official);
+        $postRes = $this->postProductCreateWithRetry('aliexpress.solution.product.post', [
+            'post_product_request' => $encodedPost,
+        ]);
+        $productId = $this->extractPostedProductId($postRes['data'] ?? [])
+            ?: $this->extractPostedProductId($postRes['result'] ?? [])
+            ?: $this->extractPostedProductId($postRes)
+            ?: (string) ($postRes['product_id'] ?? '');
+        if ($productId !== '') {
+            $postRes['success'] = true;
+            $postRes['product_id'] = $productId;
+
+            return $postRes;
+        }
+        $last = [
+            'success' => false,
+            'message' => $this->extractPostFailureMessage($postRes) ?: $last['message'],
+            'data' => $postRes['data'] ?? $postRes['result'] ?? $last['data'] ?? null,
+        ];
 
         $skuCodes = [];
         foreach ($request['sku_info_list'] ?? [] as $row) {
@@ -484,9 +528,1193 @@ class AliExpressApiService
         $m = strtolower($message);
 
         return $m === ''
-            || str_contains($m, 'brand')
             || str_contains($m, 'accepted the request')
-            || str_contains($m, 'did not return a product');
+            || str_contains($m, 'did not return a product')
+            || $this->isTransientAliExpressError($message);
+    }
+
+    private function isTransientAliExpressError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'rpc timeout')
+            || str_contains($m, 'rpc time out')
+            || str_contains($m, 'top-remote-connection-timeout')
+            || str_contains($m, 'service timeout')
+            || str_contains($m, 'timed out')
+            || str_contains($m, 'try again later')
+            || str_contains($m, 'system busy');
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     * @return array<string, mixed>
+     */
+    private function postProductCreateWithRetry(string $method, array $params): array
+    {
+        $last = [];
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            if ($attempt > 1) {
+                usleep(1_500_000);
+                Log::info('AliExpress publish: retry create after transient error', [
+                    'method' => $method,
+                    'attempt' => $attempt,
+                ]);
+            }
+            $res = $this->callApiFlexible($method, [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            $last = $res;
+            $productId = $this->extractPostedProductId($res['data'] ?? [])
+                ?: $this->extractPostedProductId($res['result'] ?? [])
+                ?: $this->extractPostedProductId($res);
+            if ($productId !== '') {
+                $res['success'] = true;
+                $res['product_id'] = $productId;
+
+                return $res;
+            }
+            if (! $this->isTransientAliExpressError($this->extractPostFailureMessage($res))) {
+                return $res;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
+     * AliExpress requires brand_name, or attribute_list with aliexpress_attribute_name_id = 2.
+     *
+     * @param  array<string, mixed>  $request
+     * @return array<string, mixed>
+     */
+    private function ensureAliExpressBrandAttribute(array $request, string $brand): array
+    {
+        $brand = trim($brand) !== '' ? trim($brand) : '5 Core Inc.';
+        $request['brand_name'] = $brand;
+        $attrs = is_array($request['attribute_list'] ?? null) ? $request['attribute_list'] : [];
+        $hasBrandId = false;
+        foreach ($attrs as $row) {
+            if (is_array($row) && (int) ($row['aliexpress_attribute_name_id'] ?? 0) === 2) {
+                $hasBrandId = true;
+                break;
+            }
+        }
+        if (! $hasBrandId) {
+            array_unshift($attrs, [
+                'aliexpress_attribute_name_id' => 2,
+                'attribute_name' => 'Brand Name',
+                'attribute_value' => $brand,
+            ]);
+        }
+        $request['attribute_list'] = $attrs;
+
+        return $request;
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     */
+    private function aliexpressWeightNumber(array $request): float
+    {
+        foreach (['aeLogisticsWeight', 'package_weight', 'weight', 'usLogisticsWeight'] as $key) {
+            $value = $request[$key] ?? null;
+            if (is_array($value)) {
+                $value = $value['value'] ?? $value['weight'] ?? $value['Package weight'] ?? $value['logisticsWeight'] ?? null;
+            }
+            if (is_numeric($value) && (float) $value > 0) {
+                return round((float) $value, 3);
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     */
+    private function aliexpressWeightPounds(array $request, float $kg): float
+    {
+        $lb = $request['weight_lb'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 3);
+        }
+
+        return $kg > 0 ? round($kg / 0.45359237, 3) : 0.0;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getProductSchema(int $categoryId): array
+    {
+        if ($categoryId <= 0) {
+            return [];
+        }
+
+        $cached = Cache::get('aliexpress.product_schema.'.$categoryId);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $last = [];
+        foreach ([
+            ['aliexpress_category_id' => $categoryId],
+            ['category_id' => $categoryId],
+        ] as $params) {
+            $res = $this->callApiFlexible('aliexpress.solution.product.schema.get', [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            $last = $res;
+            $data = is_array($res['data'] ?? null) ? $res['data'] : [];
+            $payload = $this->unwrapSolutionEnvelope($data);
+            $schema = $this->extractSchemaJson($payload);
+            if ($schema === []) {
+                $schema = $this->extractSchemaJson($res);
+            }
+            if ($schema !== []) {
+                Cache::put('aliexpress.product_schema.'.$categoryId, $schema, 1800);
+
+                return $schema;
+            }
+        }
+
+        Log::warning('AliExpress publish: schema.get returned no schema', [
+            'category_id' => $categoryId,
+            'message' => $last['message'] ?? null,
+        ]);
+
+        return [];
+    }
+
+    /**
+     * Replace invalid names like "Specification" with a SKU attribute this category allows.
+     *
+     * @param  array<string, mixed>  $request
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function applyCategorySkuAttributes(array $request, array $schema): array
+    {
+        $skus = $request['sku_info_list'] ?? [];
+        if (! is_array($skus) || $skus === []) {
+            return $request;
+        }
+        $needs = count($skus) > 1;
+        foreach ($skus as $row) {
+            if (is_array($row) && ! empty($row['sku_attributes_list'])) {
+                $needs = true;
+                break;
+            }
+        }
+        if (! $needs) {
+            return $request;
+        }
+
+        $categoryId = (int) ($request['aliexpress_category_id'] ?? 0);
+        $attrs = $this->queryCategorySkuAttributes($categoryId);
+        if ($attrs === []) {
+            $attrs = $this->skuAttributesFromSchema($schema);
+        }
+        $diff = $this->pickVariationSkuAttribute($attrs) ?? [
+            'name' => 'Color',
+            'required' => false,
+            'custom_name' => true,
+            'custom_pic' => true,
+            'values' => [],
+        ];
+
+        $toApply = [];
+        $seen = [];
+        foreach ($attrs as $attr) {
+            $key = strtolower((string) ($attr['name'] ?? ''));
+            if ($key === '' || empty($attr['required']) || isset($seen[$key])) {
+                continue;
+            }
+            $toApply[] = $attr;
+            $seen[$key] = true;
+        }
+        if (! isset($seen[strtolower((string) $diff['name'])])) {
+            array_unshift($toApply, $diff);
+        }
+
+        $used = [];
+        foreach ($skus as $i => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $desired = $this->existingSkuAttributeValue($row) ?: (string) ($row['sku_code'] ?? '');
+            $list = [];
+            foreach ($toApply as $attr) {
+                $isDiff = strcasecmp((string) $attr['name'], (string) $diff['name']) === 0;
+                $value = $isDiff
+                    ? $this->uniqueSkuAttributeValue($attr, $desired, $used)
+                    : $this->fixedSkuAttributeValue($attr);
+                if ($isDiff) {
+                    $used[] = strtolower($value);
+                }
+                $item = [
+                    'sku_attribute_name' => (string) $attr['name'],
+                    'sku_attribute_value' => $value,
+                ];
+                $image = (string) ($row['sku_attributes_list'][0]['sku_image_url'] ?? $row['sku_image_url'] ?? '');
+                if ($isDiff && $image !== '') {
+                    $item['sku_image_url'] = $image;
+                }
+                $list[] = $item;
+            }
+            $skus[$i]['sku_attributes_list'] = $list;
+        }
+        $request['sku_info_list'] = $skus;
+
+        Log::info('AliExpress publish: mapped category SKU attributes', [
+            'category_id' => $categoryId,
+            'attribute_names' => array_column($toApply, 'name'),
+            'diff_attribute' => $diff['name'],
+        ]);
+
+        return $request;
+    }
+
+    /**
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    public function queryCategorySkuAttributes(int $categoryId): array
+    {
+        if ($categoryId <= 0) {
+            return [];
+        }
+
+        $cached = Cache::get('aliexpress.sku_attributes.'.$categoryId);
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $query = ['aliexpress_category_id' => $categoryId];
+        $res = $this->callApiFlexible('aliexpress.solution.sku.attribute.query', [
+            'rest' => ['query_sku_attribute_info_request' => $query],
+            'sync' => ['query_sku_attribute_info_request' => $query],
+        ]);
+        $parsed = $this->parseSkuAttributeQuery($res);
+        if ($parsed !== []) {
+            Cache::put('aliexpress.sku_attributes.'.$categoryId, $parsed, 1800);
+
+            return $parsed;
+        }
+        if (! empty($res['network_error'])) {
+            return $this->queryChildCategorySkuAttributes($categoryId);
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $res
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function parseSkuAttributeQuery(array $res): array
+    {
+        $data = is_array($res['data'] ?? null) ? $res['data'] : (is_array($res['result'] ?? null) ? $res['result'] : []);
+        $data = $this->unwrapSolutionEnvelope($data);
+        $result = is_array($data['result'] ?? null) ? $data['result'] : $data;
+        $list = $result['supporting_sku_attribute_list'] ?? [];
+        if (isset($list['supported_sku_attribute_dto'])) {
+            $list = $list['supported_sku_attribute_dto'];
+        }
+        if (! is_array($list)) {
+            return [];
+        }
+        if ($list !== [] && ! isset($list[0]) && isset($list['aliexpress_sku_name'])) {
+            $list = [$list];
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim((string) ($row['aliexpress_sku_name'] ?? $row['sku_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $values = $row['aliexpress_sku_value_list'] ?? [];
+            if (isset($values['sku_value_simplified_info_dto'])) {
+                $values = $values['sku_value_simplified_info_dto'];
+            }
+            $valueNames = [];
+            foreach ((array) $values as $value) {
+                if (is_string($value) && trim($value) !== '') {
+                    $valueNames[] = trim($value);
+                } elseif (is_array($value)) {
+                    $label = trim((string) ($value['aliexpress_sku_value_name'] ?? $value['sku_value_name'] ?? ''));
+                    if ($label !== '') {
+                        $valueNames[] = $label;
+                    }
+                }
+            }
+            $out[] = [
+                'name' => $name,
+                'required' => filter_var($row['required'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_name' => filter_var($row['support_customized_name'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_pic' => filter_var($row['support_customized_picture'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'values' => $valueNames,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function queryChildCategorySkuAttributes(int $categoryId): array
+    {
+        foreach ([
+            ['param0' => $categoryId],
+            ['cate_id' => $categoryId],
+            ['leaf_category_id' => $categoryId],
+        ] as $params) {
+            $res = $this->callApiFlexible('aliexpress.category.redefining.getchildattributesresultbypostcateidandpath', [
+                'rest' => $params,
+                'sync' => $params,
+            ]);
+            $parsed = $this->parseChildCategorySkuAttributes($res);
+            if ($parsed !== []) {
+                return $parsed;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $res
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function parseChildCategorySkuAttributes(array $res): array
+    {
+        $data = is_array($res['data'] ?? null) ? $res['data'] : [];
+        $data = $this->unwrapSolutionEnvelope($data);
+        $result = is_array($data['result'] ?? null) ? $data['result'] : $data;
+        $list = $result['attributes'] ?? $result['aeop_attribute_dto'] ?? $result['attribute_list'] ?? [];
+        if (isset($list['aeop_attribute_dto'])) {
+            $list = $list['aeop_attribute_dto'];
+        }
+        if (! is_array($list)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $isSku = filter_var($row['sku'] ?? $row['is_sku'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            if (! $isSku) {
+                continue;
+            }
+            $names = $row['names'] ?? [];
+            $name = trim((string) (
+                $row['name']
+                ?? (is_array($names) ? ($names['en'] ?? $names['EN'] ?? reset($names) ?: '') : '')
+            ));
+            if ($name === '') {
+                continue;
+            }
+            $valueNames = [];
+            $values = $row['values'] ?? $row['aeop_attr_value_dto'] ?? [];
+            if (isset($values['aeop_attr_value_dto'])) {
+                $values = $values['aeop_attr_value_dto'];
+            }
+            foreach ((array) $values as $value) {
+                if (! is_array($value)) {
+                    continue;
+                }
+                $labels = $value['names'] ?? [];
+                $label = trim((string) (
+                    $value['name']
+                    ?? (is_array($labels) ? ($labels['en'] ?? $labels['EN'] ?? reset($labels) ?: '') : '')
+                ));
+                if ($label !== '') {
+                    $valueNames[] = $label;
+                }
+            }
+            $out[] = [
+                'name' => $name,
+                'required' => filter_var($row['required'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_name' => filter_var($row['customized_name'] ?? $row['customizedName'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'custom_pic' => filter_var($row['customized_pic'] ?? $row['customizedPic'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'values' => $valueNames,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>
+     */
+    private function skuAttributesFromSchema(array $schema): array
+    {
+        $props = $this->findSchemaSkuAttributeProperties($schema);
+        if ($props === []) {
+            return [];
+        }
+        $out = [];
+        foreach ($props as $name => $node) {
+            if (! is_string($name) || $name === '' || ! is_array($node)) {
+                continue;
+            }
+            $enum = $node['enum'] ?? [];
+            $values = [];
+            foreach ((array) $enum as $one) {
+                if (is_scalar($one) && trim((string) $one) !== '') {
+                    $values[] = trim((string) $one);
+                }
+            }
+            $out[] = [
+                'name' => $name,
+                'required' => false,
+                'custom_name' => true,
+                'custom_pic' => true,
+                'values' => $values,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function findSchemaSkuAttributeProperties(array $schema): array
+    {
+        $stack = [$schema];
+        while ($stack !== []) {
+            $node = array_pop($stack);
+            if (! is_array($node)) {
+                continue;
+            }
+            if (isset($node['sku_attributes']['properties']) && is_array($node['sku_attributes']['properties'])) {
+                return $node['sku_attributes']['properties'];
+            }
+            if (isset($node['properties']['sku_attributes']['properties']) && is_array($node['properties']['sku_attributes']['properties'])) {
+                return $node['properties']['sku_attributes']['properties'];
+            }
+            foreach ($node as $value) {
+                if (is_array($value)) {
+                    $stack[] = $value;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}>  $attrs
+     * @return array{name: string, required: bool, custom_name: bool, custom_pic: bool, values: list<string>}|null
+     */
+    private function pickVariationSkuAttribute(array $attrs): ?array
+    {
+        if ($attrs === []) {
+            return null;
+        }
+        $ranked = $attrs;
+        usort($ranked, function (array $a, array $b): int {
+            return $this->skuAttributeScore($b) <=> $this->skuAttributeScore($a);
+        });
+
+        return $ranked[0];
+    }
+
+    /**
+     * @param  array{name: string, required?: bool, custom_name?: bool, custom_pic?: bool, values?: list<string>}  $attr
+     */
+    private function skuAttributeScore(array $attr): int
+    {
+        $name = strtolower((string) ($attr['name'] ?? ''));
+        $score = 0;
+        if (! empty($attr['custom_name'])) {
+            $score += 20;
+        }
+        if (! empty($attr['custom_pic'])) {
+            $score += 5;
+        }
+        if (! empty($attr['required'])) {
+            $score += 8;
+        }
+        if (in_array($name, ['color', 'colour'], true)) {
+            $score += 15;
+        } elseif (in_array($name, ['model', 'style', 'type', 'plug type'], true)) {
+            $score += 8;
+        }
+        if (str_contains($name, 'ship') || str_contains($name, 'from') || str_contains($name, 'warehouse')) {
+            $score -= 40;
+        }
+
+        return $score;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function existingSkuAttributeValue(array $row): string
+    {
+        foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $value = trim((string) ($attr['sku_attribute_value'] ?? ''));
+            if ($value !== '') {
+                return mb_substr($value, 0, 70);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array{name: string, custom_name?: bool, values?: list<string>}  $attr
+     * @param  list<string>  $used
+     */
+    private function uniqueSkuAttributeValue(array $attr, string $desired, array $used): string
+    {
+        $desired = mb_substr(trim($desired), 0, 70);
+        if ($desired === '') {
+            $desired = 'Option';
+        }
+        if (! empty($attr['custom_name'])) {
+            $value = $desired;
+            $n = 2;
+            while (in_array(strtolower($value), $used, true)) {
+                $value = mb_substr($desired.' '.$n, 0, 70);
+                $n++;
+            }
+
+            return $value;
+        }
+
+        foreach ($attr['values'] ?? [] as $value) {
+            $value = trim((string) $value);
+            if ($value !== '' && ! in_array(strtolower($value), $used, true)) {
+                if (strcasecmp($value, $desired) === 0 || stripos($desired, $value) !== false) {
+                    return $value;
+                }
+            }
+        }
+        foreach ($attr['values'] ?? [] as $value) {
+            $value = trim((string) $value);
+            if ($value !== '' && ! in_array(strtolower($value), $used, true)) {
+                return $value;
+            }
+        }
+
+        return $desired;
+    }
+
+    /**
+     * @param  array{name: string, values?: list<string>}  $attr
+     */
+    private function fixedSkuAttributeValue(array $attr): string
+    {
+        $name = strtolower((string) ($attr['name'] ?? ''));
+        $values = array_values(array_filter(array_map('strval', $attr['values'] ?? [])));
+        if (str_contains($name, 'ship') || str_contains($name, 'from') || str_contains($name, 'warehouse')) {
+            foreach (['United States', 'USA', 'US', 'China'] as $want) {
+                foreach ($values as $value) {
+                    if (strcasecmp($value, $want) === 0) {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        return $values[0] ?? 'Default';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractSchemaJson(mixed $payload): array
+    {
+        if (is_string($payload)) {
+            $trimmed = trim($payload);
+            if ($trimmed === '' || ($trimmed[0] !== '{' && $trimmed[0] !== '[')) {
+                return [];
+            }
+            $decoded = json_decode($trimmed, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($payload)) {
+            return [];
+        }
+        foreach (['schema', 'result'] as $key) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+            $found = $this->extractSchemaJson($payload[$key]);
+            if ($found !== []) {
+                return $found;
+            }
+        }
+        if (isset($payload['properties']) && is_array($payload['properties'])) {
+            return $payload;
+        }
+
+        return [];
+    }
+
+    /**
+     * Fill schema weight properties from Dim/Wt, converting kg/lb to each field's marketplace unit.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array{keys: list<string>, fields: array<string, mixed>}
+     */
+    private function fillWeightFromSchema(array $schema, float $kg, float $lb): array
+    {
+        $props = $this->schemaPropertyMap($schema);
+        $fields = [];
+        $keys = [];
+        foreach ($props as $name => $node) {
+            if (! is_string($name) || ! is_array($node) || ! $this->isSchemaWeightProperty($name, $node)) {
+                continue;
+            }
+            $keys[] = $name;
+            $fields[$name] = $this->fillSchemaNode($node, $kg, $lb, $name);
+        }
+        $catProps = $props['category_attributes']['properties'] ?? [];
+        if (is_array($catProps) && $catProps !== []) {
+            $catFill = [];
+            foreach ($catProps as $name => $node) {
+                if (! is_string($name) || ! is_array($node) || ! $this->isSchemaWeightProperty($name, $node)) {
+                    continue;
+                }
+                $keys[] = 'category_attributes.'.$name;
+                $catFill[$name] = $this->fillSchemaNode($node, $kg, $lb, 'category_attributes.'.$name);
+                if (! isset($fields[$name])) {
+                    $fields[$name] = $catFill[$name];
+                }
+            }
+            if ($catFill !== []) {
+                $fields['category_attributes'] = array_merge(
+                    is_array($fields['category_attributes'] ?? null) ? $fields['category_attributes'] : [],
+                    $catFill
+                );
+            }
+        }
+        if ($fields === [] && ($kg > 0 || $lb > 0)) {
+            $keys = ['package_weight', 'usLogisticsWeight', 'aeLogisticsWeight'];
+            $fields = [
+                'package_weight' => $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number'),
+                'usLogisticsWeight' => [
+                    'Package weight' => $this->formatMarketplaceWeight($kg, $lb, 'lb', 'string'),
+                ],
+                'aeLogisticsWeight' => [
+                    'Package weight' => $this->formatMarketplaceWeight($kg, $lb, 'lb', 'string'),
+                ],
+            ];
+        }
+
+        return ['keys' => $keys, 'fields' => $fields];
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function schemaPropertyMap(array $schema): array
+    {
+        if (is_array($schema['properties'] ?? null) && $schema['properties'] !== []) {
+            return $schema['properties'];
+        }
+        if (is_array($schema['fields'] ?? null) && $schema['fields'] !== []) {
+            return $schema['fields'];
+        }
+        $looksLikeProps = true;
+        foreach ($schema as $value) {
+            if (! is_array($value) || (! isset($value['type']) && ! isset($value['title']) && ! isset($value['properties']))) {
+                $looksLikeProps = false;
+                break;
+            }
+        }
+
+        return $looksLikeProps ? $schema : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function isSchemaWeightProperty(string $name, array $node): bool
+    {
+        $hay = strtolower($name.' '.((string) ($node['title'] ?? '')).' '.((string) ($node['id'] ?? '')));
+        if (str_contains($hay, 'unit') && ! str_contains($hay, 'weight')) {
+            return false;
+        }
+
+        return str_contains($hay, 'weight')
+            || str_contains($hay, 'logisticsweight')
+            || $name === 'usl'
+            || $name === 'usl.logisticsWeight';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function fillSchemaNode(array $node, float $kg, float $lb, string $path = ''): mixed
+    {
+        $type = $this->schemaNodeType($node);
+        $props = is_array($node['properties'] ?? null) ? $node['properties'] : [];
+        if ($this->isUsLogisticsWeightParent($path) && $type !== 'object' && $props === []) {
+            return $this->usPackageWeightObject($kg, $lb);
+        }
+
+        if ($type === 'object' || $props !== []) {
+            $out = [];
+            $required = is_array($node['required'] ?? null) ? $node['required'] : [];
+            foreach ($props as $name => $child) {
+                if (! is_array($child)) {
+                    continue;
+                }
+                $childName = (string) $name;
+                $childPath = $path === '' ? $childName : $path.'.'.$childName;
+                $needed = $required === []
+                    || in_array($childName, $required, true)
+                    || $this->isSchemaWeightProperty($childName, $child)
+                    || $this->isSchemaUnitProperty($childName, $child);
+                if (! $needed) {
+                    continue;
+                }
+                $out[$childName] = $this->isSchemaUnitProperty($childName, $child)
+                    ? $this->schemaUnitValue($child, $childPath)
+                    : $this->fillSchemaNode($child, $kg, $lb, $childPath);
+            }
+            if ($out === [] || ($this->isUsLogisticsWeightParent($path) && ! $this->hasPackageWeightKey($out))) {
+                $out = array_merge($out, $this->usPackageWeightObject($kg, $lb));
+            }
+
+            return $out;
+        }
+
+        $unit = $this->inferWeightUnit($path, $node);
+
+        return $this->formatMarketplaceWeight($kg, $lb, $unit, $this->marketplaceWeightKind($unit, $node, $type), $node);
+    }
+
+    private function isUsLogisticsWeightParent(string $path): bool
+    {
+        $hay = strtolower($path);
+
+        return in_array($hay, ['uslogisticsweight', 'aelogisticsweight', 'usl', 'usl.logisticsweight'], true)
+            || preg_match('/(^|\.)(uslogisticsweight|aelogisticsweight)$/', $hay) === 1;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     */
+    private function hasPackageWeightKey(array $fields): bool
+    {
+        foreach ($fields as $key => $value) {
+            if (strcasecmp((string) $key, 'Package weight') === 0 && $value !== null && $value !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * US schema wants a number in pounds, not a string. Strings fail as CHK_BASIC_REQUIRED.
+     *
+     * @return array{Package weight: float}
+     */
+    private function usPackageWeightObject(float $kg, float $lb): array
+    {
+        return [
+            'Package weight' => $this->usPackageWeightPounds($kg, $lb),
+        ];
+    }
+
+    private function usPackageWeightPounds(float $kg, float $lb): float
+    {
+        $raw = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
+
+        return (float) number_format(max(0.01, $raw), 2, '.', '');
+    }
+
+    /**
+     * Put US package weight on every field AliExpress has required for this shop.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array<string, mixed>
+     */
+    private function ensureUsLogisticsWeightFields(array $fields, float $kg, float $lb): array
+    {
+        if ($kg <= 0 && $lb <= 0) {
+            return $fields;
+        }
+        $object = $this->usPackageWeightObject($kg, $lb);
+        $pounds = $object['Package weight'];
+        foreach (['usLogisticsWeight', 'aeLogisticsWeight'] as $key) {
+            $current = is_array($fields[$key] ?? null) ? $fields[$key] : [];
+            $current['Package weight'] = $pounds;
+            $fields[$key] = $current;
+        }
+        $usl = is_array($fields['usl'] ?? null) ? $fields['usl'] : [];
+        $usl['logisticsWeight'] = $object;
+        $usl['Package weight'] = $pounds;
+        $fields['usl'] = $usl;
+        $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
+
+        $skus = $fields['sku_info_list'] ?? [];
+        if (is_array($skus)) {
+            foreach ($skus as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $skus[$i]['usLogisticsWeight'] = $object;
+                $skus[$i]['aeLogisticsWeight'] = $object;
+                $skus[$i]['package_weight'] = $fields['package_weight'];
+                $skus[$i]['weight'] = number_format(max(0.001, $kg), 3, '.', '');
+            }
+            $fields['sku_info_list'] = $skus;
+        }
+
+        return $fields;
+    }
+
+    /**
+     * US package weight is a 2-decimal string. Official kg weight stays a number unless the schema says string.
+     *
+     * @param  array<string, mixed>  $node
+     */
+    private function marketplaceWeightKind(string $unit, array $node, string $type): string
+    {
+        if ($type === 'integer' || $this->schemaNodeType($node) === 'integer') {
+            return 'integer';
+        }
+        if (in_array($unit, ['lb', 'lbs', 'pound', 'pounds', 'oz', 'ounce', 'ounces'], true)) {
+            return 'string';
+        }
+        if ($type === 'string' || $this->schemaPrefersString($node)) {
+            return 'string';
+        }
+
+        return 'number';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function schemaNodeType(array $node): string
+    {
+        $type = $node['type'] ?? null;
+        if (is_array($type)) {
+            foreach ($type as $one) {
+                $one = strtolower((string) $one);
+                if (in_array($one, ['object', 'number', 'integer', 'string'], true)) {
+                    return $one;
+                }
+            }
+
+            return 'number';
+        }
+        $type = strtolower((string) $type);
+        if ($type !== '') {
+            return $type;
+        }
+
+        return isset($node['properties']) ? 'object' : 'number';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function isSchemaUnitProperty(string $name, array $node): bool
+    {
+        $hay = strtolower($name.' '.((string) ($node['title'] ?? '')));
+
+        return ($hay === 'unit' || str_contains($hay, 'unit')) && ! str_contains($hay, 'weight');
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function schemaUnitValue(array $node, string $path = ''): string
+    {
+        $preferLb = $this->inferWeightUnit($path, $node) === 'lb';
+        $enum = $node['enum'] ?? [];
+        if (is_array($enum) && $enum !== []) {
+            $picked = null;
+            foreach ($enum as $one) {
+                $raw = trim((string) $one);
+                $one = strtolower($raw);
+                if ($preferLb && in_array($one, ['lb', 'lbs', 'pound', 'pounds'], true)) {
+                    return $raw;
+                }
+                if (! $preferLb && in_array($one, ['kg', 'kilogram', 'kilograms'], true)) {
+                    return $raw;
+                }
+                $picked ??= $raw;
+            }
+
+            return (string) $picked;
+        }
+
+        return $preferLb ? 'lb' : 'kg';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function inferWeightUnit(string $path, array $node = []): string
+    {
+        $hay = strtolower(
+            $path.' '
+            .(string) ($node['title'] ?? '').' '
+            .(string) ($node['unit'] ?? '').' '
+            .(string) ($node['id'] ?? '').' '
+            .(string) ($node['description'] ?? '')
+        );
+        if (preg_match('/\b(oz|ounce|ounces)\b/', $hay)) {
+            return 'oz';
+        }
+        if (preg_match('/\b(g|gram|grams)\b/', $hay) && ! str_contains($hay, 'kg') && ! str_contains($hay, 'logistics')) {
+            return 'g';
+        }
+        if (
+            preg_match('/\b(lb|lbs|pound|pounds)\b/', $hay)
+            || str_contains($hay, 'uslogistics')
+            || str_contains($hay, 'aelogistics')
+            || str_contains($hay, 'usl.')
+            || preg_match('/\busl\b/', $hay)
+        ) {
+            return 'lb';
+        }
+
+        return 'kg';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function schemaPrefersString(array $node): bool
+    {
+        return $this->schemaNodeType($node) === 'string' || isset($node['pattern']);
+    }
+
+    /**
+     * Convert Dim/Wt kg+lb into the unit and JSON type AliExpress asks for.
+     *
+     * US logistics fields: pounds, usually a 2-decimal string ("0.60").
+     * Official package_weight / weight: kilograms (number or "0.272").
+     *
+     * @param  array<string, mixed>  $node
+     */
+    private function formatMarketplaceWeight(float $kg, float $lb, string $unit, string $kind, array $node = []): float|int|string
+    {
+        $unit = strtolower(trim($unit));
+        if (in_array($unit, ['lb', 'lbs', 'pound', 'pounds'], true)) {
+            $raw = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
+            $decimals = 2;
+            $min = 0.01;
+        } elseif (in_array($unit, ['oz', 'ounce', 'ounces'], true)) {
+            $pounds = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
+            $raw = $pounds * 16;
+            $decimals = 1;
+            $min = 0.1;
+        } elseif (in_array($unit, ['g', 'gram', 'grams'], true)) {
+            $raw = $kg * 1000;
+            $decimals = 0;
+            $min = 1;
+        } else {
+            $raw = $kg > 0 ? $kg : ($lb > 0 ? $lb * 0.45359237 : 0.0);
+            $decimals = 3;
+            $min = 0.001;
+        }
+
+        $decimals = $this->schemaWeightDecimals($node, $decimals);
+        $raw = max($min, $raw);
+        if ($kind === 'integer') {
+            return (int) max(1, (int) round($raw));
+        }
+
+        $formatted = number_format($raw, $decimals, '.', '');
+
+        return $kind === 'string' ? $formatted : (float) $formatted;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function schemaWeightDecimals(array $node, int $default): int
+    {
+        $pattern = (string) ($node['pattern'] ?? '');
+        if ($pattern !== '' && preg_match('/\\\\d\{1,(\d+)\}/', $pattern, $match)) {
+            return max(0, min(4, (int) $match[1]));
+        }
+        $multiple = $node['multipleOf'] ?? $node['multiple_of'] ?? null;
+        if (is_numeric($multiple)) {
+            $multiple = (float) $multiple;
+            if ($multiple >= 1) {
+                return 0;
+            }
+            $text = rtrim(rtrim(sprintf('%.10f', $multiple), '0'), '.');
+            $dot = strpos($text, '.');
+
+            return $dot === false ? 0 : max(0, min(4, strlen($text) - $dot - 1));
+        }
+
+        return $default;
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     * @return array<string, mixed>
+     */
+    private function buildOneSchemaInstance(array $request, float $weight): array
+    {
+        $title = trim((string) ($request['multi_language_subject_list'][0]['subject'] ?? ''));
+        $desc = $request['multi_language_description_list'][0] ?? [];
+        $html = is_array($desc)
+            ? (string) (data_get($desc, 'web_detail') ?: data_get($desc, 'html') ?: '')
+            : '';
+        if ($html !== '' && str_starts_with(trim($html), '{')) {
+            $decoded = json_decode($html, true);
+            $html = (string) (data_get($decoded, 'moduleList.0.html.content') ?: $html);
+        }
+        if (trim(strip_tags($html)) === '') {
+            $html = '<p>'.e($title !== '' ? $title : 'Product details').'</p>';
+        }
+
+        $skus = [];
+        foreach ($request['sku_info_list'] ?? [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = [
+                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'inventory' => max(1, (int) ($row['inventory'] ?? 1)),
+                'price' => (float) ($row['price'] ?? 0),
+            ];
+            $attrs = [];
+            foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+                if (! is_array($attr)) {
+                    continue;
+                }
+                $name = trim((string) ($attr['sku_attribute_name'] ?? 'Color'));
+                if ($name === '') {
+                    continue;
+                }
+                $attrs[$name] = [
+                    'alias' => mb_substr((string) ($attr['sku_attribute_value'] ?? ''), 0, 70),
+                    'sku_image_url' => (string) ($attr['sku_image_url'] ?? ''),
+                ];
+            }
+            if ($attrs !== []) {
+                $sku['sku_attributes'] = $attrs;
+            }
+            $skus[] = $sku;
+        }
+
+        return [
+            'locale' => 'en_US',
+            'category_id' => (int) ($request['aliexpress_category_id'] ?? 0),
+            'product_units_type' => (string) ($request['product_unit'] ?? '100000015'),
+            'title_multi_language_list' => [
+                ['locale' => 'en_US', 'title' => $title],
+            ],
+            'description_multi_language_list' => [[
+                'locale' => 'en_US',
+                'module_list' => [
+                    ['type' => 'html', 'html' => ['content' => $html]],
+                ],
+            ]],
+            'image_url_list' => array_values($request['main_image_urls_list'] ?? []),
+            'sku_info_list' => $skus,
+            'inventory_deduction_strategy' => (string) ($request['inventory_deduction_strategy'] ?? 'place_order_withhold'),
+            'package_weight' => $weight,
+            'package_length' => (int) ($request['package_length'] ?? 10),
+            'package_width' => (int) ($request['package_width'] ?? 10),
+            'package_height' => (int) ($request['package_height'] ?? 10),
+            'shipping_preparation_time' => max(1, (int) ($request['shipping_lead_time'] ?? 7)),
+            'shipping_template_id' => (string) ($request['freight_template_id'] ?? ''),
+            'service_template_id' => (string) ($request['service_policy_id'] ?? '0'),
+            'category_attributes' => [
+                'Brand Name' => ['value' => (string) ($request['brand_name'] ?? '5 Core Inc.')],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     * @param  array<string, mixed>  $schemaWeightFields
+     * @return array<string, mixed>
+     */
+    private function officialProductPostRequest(array $request, array $schemaWeightFields): array
+    {
+        $keep = [
+            'language',
+            'aliexpress_category_id',
+            'brand_name',
+            'multi_language_subject_list',
+            'multi_language_description_list',
+            'main_image_urls_list',
+            'sku_info_list',
+            'product_unit',
+            'inventory_deduction_strategy',
+            'shipping_lead_time',
+            'package_length',
+            'package_width',
+            'package_height',
+            'freight_template_id',
+            'service_policy_id',
+            'attribute_list',
+            'weight',
+            'package_weight',
+            'usLogisticsWeight',
+            'aeLogisticsWeight',
+            'usl',
+        ];
+        $out = [];
+        foreach ($keep as $key) {
+            if (array_key_exists($key, $request)) {
+                $out[$key] = $request[$key];
+            }
+        }
+        $skus = [];
+        foreach ($out['sku_info_list'] ?? [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $skus[] = array_intersect_key($row, array_flip([
+                'sku_code',
+                'price',
+                'inventory',
+                'sku_attributes_list',
+                'weight',
+                'package_weight',
+                'usLogisticsWeight',
+                'aeLogisticsWeight',
+            ]));
+        }
+        $out['sku_info_list'] = $skus;
+        $out = array_merge($out, $schemaWeightFields);
+        $kg = $this->aliexpressWeightNumber($request);
+        $lb = $this->aliexpressWeightPounds($request, $kg);
+        $out = $this->ensureUsLogisticsWeightFields($out, $kg, $lb);
+        // Official product.post weight is a kg string (min 0.001). Do not overwrite it with a US object.
+        $out['weight'] = number_format(max(0.001, $kg), 3, '.', '');
+        if (! isset($out['package_weight']) || ! is_numeric($out['package_weight'])) {
+            $out['package_weight'] = (float) $out['weight'];
+        }
+
+        return $out;
     }
 
     /**
@@ -746,6 +1974,8 @@ class AliExpressApiService
             || str_contains($m, 'logisticssize')
             || str_contains($m, 'uslogisticsweight')
             || str_contains($m, 'us_logistics_weight')
+            || str_contains($m, 'usl.logisticsweight')
+            || str_contains($m, 'logisticsweight')
             || str_contains($m, 'chk_basic_required');
     }
 
@@ -1150,6 +2380,66 @@ class AliExpressApiService
     }
 
     /**
+     * Business /rest file upload. The file part is omitted from the sign.
+     *
+     * @param  array<string, string>  $businessParams
+     */
+    private function callRestWithFile(string $method, array $businessParams, string $fileField, string $bytes, string $fileName): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
+        }
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.').',
+            ];
+        }
+
+        $params = [
+            'app_key' => $this->appKey,
+            'method' => $method,
+            'access_token' => (string) $this->accessToken,
+            'sign_method' => 'sha256',
+            'timestamp' => (string) (int) round(microtime(true) * 1000),
+        ];
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '' || (string) $key === $fileField) {
+                continue;
+            }
+            $params[(string) $key] = (string) $value;
+        }
+
+        $last = ['success' => false, 'message' => 'AliExpress photobank upload failed.'];
+        foreach ([$method, '/rest'] as $apiName) {
+            $attempt = $params;
+            $attempt['sign'] = $this->signBusinessApi($attempt, $apiName);
+            try {
+                $response = $this->httpClient()
+                    ->connectTimeout(10)
+                    ->timeout(40)
+                    ->asMultipart()
+                    ->attach($fileField, $bytes, $fileName)
+                    ->post($this->restBase, $attempt);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                $last = $this->networkErrorResult('Could not reach AliExpress photobank (rest).', $e);
+                continue;
+            }
+
+            $parsed = $this->parseHttpResponse($response, $method, 'rest-file');
+            $last = $parsed;
+            if ($this->extractPhotobankUrl($parsed) !== '' || ! empty($parsed['success'])) {
+                return $parsed;
+            }
+            if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
+                return $parsed;
+            }
+        }
+
+        return $last;
+    }
+
+    /**
      * AliExpress business API sign — apiName prefix + sorted key+value, HMAC-SHA256 uppercase hex.
      *
      * @param  array<string, string>  $params
@@ -1182,6 +2472,29 @@ class AliExpressApiService
         $message = strtolower((string) ($result['message'] ?? ''));
 
         return $message !== '' && (str_contains($message, 'signature') || str_contains($message, 'sign'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    private function isRetryablePhotobankError(array $result): bool
+    {
+        $message = strtolower((string) ($result['message'] ?? ''));
+        if ($message === '') {
+            return true;
+        }
+
+        return ! empty($result['invalid_json'])
+            || str_contains($message, 'invalid json')
+            || str_contains($message, 'web page')
+            || str_contains($message, 'empty response')
+            || str_contains($message, 'invalid method')
+            || str_contains($message, 'isv.invalid-method')
+            || str_contains($message, 'missing-parameter')
+            || str_contains($message, 'missing parameter')
+            || str_contains($message, 'image_bytes')
+            || str_contains($message, 'service-unavailable')
+            || str_contains($message, 'http request failed');
     }
 
     /**
@@ -1247,20 +2560,45 @@ class AliExpressApiService
         ]);
 
         if ($response->failed()) {
+            $message = 'AliExpress HTTP request failed.';
+            if (is_array($json)) {
+                $err = $json['error_response'] ?? $json;
+                if (is_array($err)) {
+                    $message = (string) ($err['sub_msg'] ?? $err['msg'] ?? $err['message'] ?? $message);
+                }
+            } elseif (is_string($body) && trim($body) !== '') {
+                $plain = trim(preg_replace('/\s+/', ' ', strip_tags($body)) ?? '');
+                if ($plain !== '') {
+                    $message = mb_substr($plain, 0, 240);
+                }
+            }
+
             return [
                 'success' => false,
                 'status' => $response->status(),
-                'message' => 'AliExpress HTTP request failed.',
+                'message' => $message,
                 'response' => $json ?: $body,
             ];
         }
 
         if (! is_array($json)) {
+            $raw = (string) $body;
+            $plain = trim(preg_replace('/\s+/', ' ', strip_tags($raw)) ?? '');
+            $looksHtml = str_contains(strtolower($raw), '<html')
+                || str_contains(strtolower($raw), '<!doctype');
+            $message = $looksHtml
+                ? 'AliExpress photobank returned a web page instead of JSON.'
+                : ($plain !== ''
+                    ? 'Invalid JSON response: '.mb_substr($plain, 0, 160)
+                    : 'AliExpress photobank returned an empty response.');
+
             return [
                 'success' => false,
                 'status' => $response->status(),
-                'message' => 'Invalid JSON response.',
-                'response' => $body,
+                'invalid_json' => true,
+                'network_error' => $looksHtml || $plain === '',
+                'message' => $message,
+                'response' => mb_substr($raw, 0, 400),
             ];
         }
 
@@ -1410,6 +2748,131 @@ class AliExpressApiService
         }
 
         return $this->parseHttpResponse($response, $method, 'sync');
+    }
+
+    /**
+     * Official IopClient file upload. Method names without "/" are signed as key+value only (no /sync prefix).
+     *
+     * @param  array<string, string>  $businessParams
+     */
+    private function callIopFileUpload(string $method, array $businessParams, string $fileField, string $bytes, string $fileName): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
+        }
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.').',
+            ];
+        }
+
+        $sysParams = [
+            'app_key' => $this->appKey,
+            'sign_method' => 'sha256',
+            'timestamp' => time().'000',
+            'method' => $method,
+            'partner_id' => $this->partnerId !== '' ? $this->partnerId : 'iop-sdk-php',
+            'simplify' => 'true',
+            'format' => 'json',
+            'session' => (string) $this->accessToken,
+        ];
+        $apiParams = [];
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '' || (string) $key === $fileField) {
+                continue;
+            }
+            $apiParams[(string) $key] = (string) $value;
+        }
+
+        $signParams = array_merge($apiParams, $sysParams);
+        ksort($signParams);
+        $stringToBeSigned = str_contains($method, '/') ? $method : '';
+        foreach ($signParams as $key => $value) {
+            $stringToBeSigned .= (string) $key.(string) $value;
+        }
+        $sysParams['sign'] = strtoupper(hash_hmac('sha256', $stringToBeSigned, $this->appSecret));
+
+        $requestUrl = rtrim($this->apiBase, '/').'?';
+        foreach ($sysParams as $key => $value) {
+            $requestUrl .= $key.'='.urlencode((string) $value).'&';
+        }
+        $requestUrl = rtrim($requestUrl, '&');
+
+        $delimiter = '-------------'.uniqid();
+        $data = '';
+        foreach ($apiParams as $name => $content) {
+            $data .= '--'.$delimiter."\r\n";
+            $data .= 'Content-Disposition: form-data; name="'.$name.'"';
+            $data .= "\r\n\r\n".$content."\r\n";
+        }
+        $data .= '--'.$delimiter."\r\n";
+        $data .= 'Content-Disposition: form-data; name="'.$fileField.'"; filename="'.$fileName."\" \r\n";
+        $data .= 'Content-Type: '.$this->imageMimeType($bytes, $fileName)."\r\n\r\n";
+        $data .= $bytes."\r\n";
+        $data .= '--'.$delimiter.'--';
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $requestUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FAILONERROR, false);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 40);
+        curl_setopt($ch, CURLOPT_USERAGENT, $sysParams['partner_id']);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: multipart/form-data; boundary='.$delimiter,
+            'Content-Length: '.strlen($data),
+        ]);
+        if ($this->resolveIpv4 && defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        }
+        if ($this->httpProxy !== null) {
+            curl_setopt($ch, CURLOPT_PROXY, $this->httpProxy);
+        }
+
+        $body = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $error = curl_error($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($body === false || $errno) {
+            return $this->networkErrorResult(
+                'Could not reach AliExpress photobank (sync).',
+                new \RuntimeException($error !== '' ? $error : 'curl error '.$errno)
+            );
+        }
+
+        $response = new \Illuminate\Http\Client\Response(
+            new \GuzzleHttp\Psr7\Response($status > 0 ? $status : 502, [], (string) $body)
+        );
+
+        return $this->parseHttpResponse($response, $method, 'iop-file');
+    }
+
+    private function imageMimeType(string $bytes, string $fileName): string
+    {
+        if (str_starts_with($bytes, "\x89PNG")) {
+            return 'image/png';
+        }
+        if (str_starts_with($bytes, 'GIF8')) {
+            return 'image/gif';
+        }
+        if (str_starts_with($bytes, "\xFF\xD8\xFF")) {
+            return 'image/jpeg';
+        }
+        $ext = strtolower((string) pathinfo($fileName, PATHINFO_EXTENSION));
+
+        return match ($ext) {
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'image/jpeg',
+        };
     }
 
     /**
@@ -2417,6 +3880,90 @@ class AliExpressApiService
     }
 
     /**
+     * TOP file upload. Binary fields are attached as multipart and omitted from the sign.
+     *
+     * @param  array<string, string>  $businessParams
+     * @return array<string, mixed>
+     */
+    private function callTopRouterWithFile(string $method, array $businessParams, string $fileField, string $bytes, string $fileName): array
+    {
+        if ($this->appKey === '' || $this->appSecret === '') {
+            return ['success' => false, 'message' => 'AliExpress app_key / app_secret are missing.'];
+        }
+        if (empty($this->accessToken)) {
+            return [
+                'success' => false,
+                'message' => $this->channelLabel.' OAuth token is missing (set '.$this->tokenEnvKey.').',
+            ];
+        }
+
+        $params = [
+            'method' => $method,
+            'app_key' => $this->appKey,
+            'session' => $this->accessToken,
+            'timestamp' => now('Asia/Shanghai')->format('Y-m-d H:i:s'),
+            'format' => 'json',
+            'v' => '2.0',
+            'sign_method' => $this->restSignMethod === 'md5' ? 'md5' : 'hmac',
+            'partner_id' => $this->partnerId !== '' ? $this->partnerId : 'invent-php',
+        ];
+        foreach ($businessParams as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $params[(string) $key] = (string) $value;
+        }
+
+        $bases = array_values(array_unique(array_filter([
+            $this->topBase,
+            'https://eco.taobao.com/router/rest',
+            'https://gw.api.taobao.com/router/rest',
+        ])));
+
+        $last = ['success' => false, 'message' => 'AliExpress photobank upload failed.'];
+        foreach ($bases as $index => $base) {
+            if ($index > 1) {
+                break;
+            }
+            $signVariants = [
+                ['sign_method' => 'hmac', 'style' => 'top'],
+                ['sign_method' => 'md5', 'style' => 'top'],
+            ];
+            foreach ($signVariants as $variant) {
+                $attempt = $params;
+                $attempt['sign_method'] = $variant['sign_method'];
+                unset($attempt['sign']);
+                $attempt['sign'] = $variant['style'] === 'sha256'
+                    ? $this->signTopSha256($attempt)
+                    : $this->signTopRestParams($attempt);
+
+                try {
+                    $response = $this->httpClient()
+                        ->connectTimeout(8)
+                        ->timeout(25)
+                        ->asMultipart()
+                        ->attach($fileField, $bytes, $fileName)
+                        ->post($base, $attempt);
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    $last = $this->networkErrorResult('Could not reach AliExpress photobank ('.$base.').', $e);
+                    continue;
+                }
+
+                $parsed = $this->parseHttpResponse($response, $method, 'top-file');
+                $last = $parsed;
+                if ($this->extractPhotobankUrl($parsed) !== '' || ! empty($parsed['success'])) {
+                    return $parsed;
+                }
+                if (! $this->isSignatureError($parsed) && empty($parsed['network_error'])) {
+                    return $parsed;
+                }
+            }
+        }
+
+        return $last;
+    }
+
+    /**
      * TOP-style sorted key+value HMAC-SHA256 (no /sync or method-name prefix).
      *
      * @param  array<string, string>  $params
@@ -2971,26 +4518,32 @@ class AliExpressApiService
     public function uploadImagesToPhotobank(array $urls): array
     {
         $hosted = [];
+        $map = [];
+        $lastFail = 'No Image Master photos to upload.';
         foreach (array_slice(array_values(array_unique(array_filter(array_map('trim', $urls)))), 0, 6) as $url) {
             if ($this->isAliExpressCdnUrl($url)) {
                 $hosted[] = $url;
+                $map[$url] = $url;
                 continue;
             }
             $res = $this->uploadPhotobankImage($url);
             if (empty($res['success']) || trim((string) ($res['url'] ?? '')) === '') {
-                return [
-                    'success' => false,
-                    'message' => $res['message'] ?? 'AliExpress photobank upload failed for an Image Master photo.',
-                    'urls' => [],
-                ];
+                $lastFail = (string) ($res['message'] ?? $lastFail);
+                Log::warning('AliExpress photobank: skipped Image Master photo', [
+                    'source' => mb_substr($url, 0, 200),
+                    'message' => $lastFail,
+                ]);
+                continue;
             }
             $hosted[] = (string) $res['url'];
+            $map[$url] = (string) $res['url'];
         }
 
         return [
             'success' => $hosted !== [],
-            'message' => $hosted === [] ? 'No Image Master photos to upload.' : '',
+            'message' => $hosted === [] ? $lastFail : '',
             'urls' => $hosted,
+            'map' => $map,
         ];
     }
 
@@ -3012,61 +4565,48 @@ class AliExpressApiService
         if ($bytes === '') {
             return ['success' => false, 'message' => $downloaded['message'] ?? 'Could not download the Image Master photo.'];
         }
-        $fileName = (string) ($downloaded['filename'] ?? 'image.jpg');
-        $method = 'aliexpress.photobank.redefining.uploadimageforsdk';
-        $last = 'AliExpress photobank upload failed.';
-
+        $prepared = $this->preparePhotobankImage($bytes, (string) ($downloaded['filename'] ?? 'image.jpg'));
+        $bytes = (string) ($prepared['bytes'] ?? '');
+        if ($bytes === '') {
+            return ['success' => false, 'message' => $prepared['message'] ?? 'Could not prepare the Image Master photo for AliExpress.'];
+        }
+        $fileName = (string) ($prepared['filename'] ?? 'image.jpg');
         $business = [
             'file_name' => $fileName,
             'group_id' => '0',
         ];
-        $params = [
-            'app_key' => $this->appKey,
-            'method' => $method,
-            'access_token' => (string) $this->accessToken,
-            'sign_method' => 'sha256',
-            'timestamp' => (string) (int) round(microtime(true) * 1000),
-            'file_name' => $fileName,
-            'group_id' => '0',
-        ];
+        $last = 'AliExpress photobank upload failed.';
 
-        foreach ([$method, '/rest'] as $apiName) {
-            $attempt = $params;
-            $attempt['sign'] = $this->signBusinessApi($attempt, $apiName);
-            try {
-                $response = $this->httpClient()
-                    ->asMultipart()
-                    ->attach('image_bytes', $bytes, $fileName)
-                    ->post($this->restBase, $attempt);
-            } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                return [
-                    'success' => false,
-                    'message' => 'Could not reach AliExpress photobank: '.$e->getMessage(),
-                ];
-            }
-            $parsed = $this->parseHttpResponse($response, $method, 'rest');
-            $url = $this->extractPhotobankUrl($parsed);
-            if ($url !== '') {
-                return ['success' => true, 'url' => $url, 'message' => ''];
-            }
-            $last = (string) ($parsed['message'] ?? 'Photobank upload failed.');
-            if (! $this->isSignatureError($parsed)) {
-                break;
+        foreach ([
+            'aliexpress.photobank.redefining.uploadimageforsdk',
+            'aliexpress.photobank.redefining.uploadimage',
+        ] as $method) {
+            foreach ([
+                fn () => $this->callIopFileUpload($method, $business, 'image_bytes', $bytes, $fileName),
+                fn () => $this->callRestWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+                fn () => $this->callTopRouterWithFile($method, $business, 'image_bytes', $bytes, $fileName),
+            ] as $sender) {
+                $parsed = $sender();
+                $url = $this->extractPhotobankUrl($parsed);
+                if ($url !== '') {
+                    return ['success' => true, 'url' => $url, 'message' => ''];
+                }
+                $last = trim((string) ($parsed['message'] ?? $last));
+                if (! $this->isSignatureError($parsed) && empty($parsed['network_error']) && ! $this->isRetryablePhotobankError($parsed)) {
+                    break 2;
+                }
             }
         }
 
-        $sync = $this->callApiFlexible($method, [
-            'rest' => $business,
-            'sync' => $business,
+        Log::warning('AliExpress photobank upload failed', [
+            'source' => mb_substr($sourceUrl, 0, 200),
+            'file' => $fileName,
+            'message' => $last,
         ]);
-        $url = $this->extractPhotobankUrl($sync);
-        if ($url !== '') {
-            return ['success' => true, 'url' => $url, 'message' => ''];
-        }
 
         return [
             'success' => false,
-            'message' => trim((string) ($last ?? $sync['message'] ?? 'AliExpress photobank upload failed.')),
+            'message' => $last !== '' ? $last : 'AliExpress photobank upload failed.',
         ];
     }
 
@@ -3082,31 +4622,42 @@ class AliExpressApiService
      */
     private function extractPhotobankUrl(array $res): string
     {
-        foreach ([$res['data'] ?? null, $res['result'] ?? null, $res] as $bucket) {
-            if (! is_array($bucket)) {
-                continue;
+        $found = '';
+        $walk = function ($node) use (&$found, &$walk): void {
+            if ($found !== '' || ! is_array($node)) {
+                return;
             }
-            foreach (['photobank_url', 'photobankUrl'] as $key) {
-                $url = trim((string) data_get($bucket, $key, ''));
-                if ($url === '') {
-                    $url = trim((string) data_get($bucket, 'result.'.$key, ''));
-                }
-                if ($url === '') {
-                    continue;
-                }
-                if (str_starts_with($url, '//')) {
-                    $url = 'https:'.$url;
-                }
-                if (str_starts_with($url, 'http://')) {
-                    $url = 'https://'.substr($url, 7);
-                }
-                if (preg_match('#^https?://#i', $url)) {
-                    return $url;
-                }
-            }
-        }
+            foreach ($node as $key => $value) {
+                $keyLower = strtolower((string) $key);
+                if (! is_array($value) && in_array($keyLower, ['photobank_url', 'photobankurl', 'file_url', 'fileurl', 'image_url', 'imageurl', 'url'], true)) {
+                    $url = trim((string) $value);
+                    if (str_starts_with($url, '//')) {
+                        $url = 'https:'.$url;
+                    }
+                    if (str_starts_with($url, 'http://')) {
+                        $url = 'https://'.substr($url, 7);
+                    }
+                    $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+                    $looksHosted = $host !== '' && (
+                        str_contains($host, 'alicdn.com')
+                        || str_contains($host, 'aliexpress-media.com')
+                        || $keyLower === 'photobank_url'
+                        || $keyLower === 'photobankurl'
+                    );
+                    if (preg_match('#^https?://#i', $url) && $looksHosted) {
+                        $found = $url;
 
-        return '';
+                        return;
+                    }
+                }
+                if (is_array($value)) {
+                    $walk($value);
+                }
+            }
+        };
+        $walk($res);
+
+        return $found;
     }
 
     /**
@@ -3125,25 +4676,213 @@ class AliExpressApiService
             return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo is not a public URL.'];
         }
 
-        try {
-            $response = $this->httpClient()->get($url);
-        } catch (\Throwable $e) {
-            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Could not download Image Master photo: '.$e->getMessage()];
+        $candidates = [$url];
+        $stripped = preg_replace('/\?.*$/', '', $url);
+        if (is_string($stripped) && $stripped !== $url) {
+            $candidates[] = $stripped;
         }
-        if (! $response->successful()) {
-            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo returned HTTP '.$response->status().'.'];
-        }
-        $bytes = (string) $response->body();
-        if ($bytes === '' || strlen($bytes) > 3 * 1024 * 1024) {
-            return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo is empty or larger than 3MB.'];
-        }
-        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
-        $name = basename($path);
-        if ($name === '' || ! str_contains($name, '.')) {
-            $name = 'image.jpg';
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        if ($host === 'cdn.shopify.com') {
+            $alt = preg_replace('#://cdn\.shopify\.com#i', '://cdn.shopifycdn.com', $url);
+            if (is_string($alt) && $alt !== $url) {
+                $candidates[] = $alt;
+            }
         }
 
-        return ['bytes' => $bytes, 'filename' => $name];
+        $last = 'Could not download the Image Master photo.';
+        foreach (array_values(array_unique($candidates)) as $try) {
+            $got = $this->httpGetImageBytes($try);
+            if (($got['bytes'] ?? '') !== '') {
+                return $got;
+            }
+            $last = (string) ($got['message'] ?? $last);
+        }
+
+        return ['bytes' => '', 'filename' => 'image.jpg', 'message' => $last];
+    }
+
+    /**
+     * @return array{bytes: string, filename: string, message?: string}
+     */
+    private function httpGetImageBytes(string $url): array
+    {
+        $headers = [
+            'User-Agent' => 'Mozilla/5.0 (compatible; 5CORE-ImageMaster/1.0)',
+            'Accept' => 'image/jpeg,image/jpg,image/png,image/gif,image/*,*/*;q=0.8',
+        ];
+        $clients = [
+            $this->httpClient(),
+            $this->imageDownloadClient($url),
+        ];
+        $last = 'Could not download the Image Master photo.';
+        foreach ($clients as $client) {
+            try {
+                $response = $client->withHeaders($headers)->get($url);
+            } catch (\Throwable $e) {
+                $last = 'Could not download Image Master photo: '.$e->getMessage();
+                continue;
+            }
+            if (! $response->successful()) {
+                $last = 'Image Master photo returned HTTP '.$response->status().'.';
+                continue;
+            }
+            $bytes = (string) $response->body();
+            if ($bytes === '') {
+                $last = 'Image Master photo is empty.';
+                continue;
+            }
+            if (strlen($bytes) > 3 * 1024 * 1024) {
+                return ['bytes' => '', 'filename' => 'image.jpg', 'message' => 'Image Master photo is larger than 3MB.'];
+            }
+            $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+            $name = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($path)) ?: 'image.jpg';
+            if (! str_contains($name, '.')) {
+                $name .= '.jpg';
+            }
+
+            return ['bytes' => $bytes, 'filename' => $name];
+        }
+
+        return ['bytes' => '', 'filename' => 'image.jpg', 'message' => $last];
+    }
+
+    /**
+     * When the server DNS cannot resolve cdn.shopify.com, use public DNS and pin the IP.
+     */
+    private function imageDownloadClient(string $url): \Illuminate\Http\Client\PendingRequest
+    {
+        $pending = $this->httpClient();
+        $curl = [];
+        if (defined('CURLOPT_DNS_SERVERS')) {
+            $curl[CURLOPT_DNS_SERVERS] = '8.8.8.8,1.1.1.1';
+        }
+        if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+            $curl[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
+        }
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+        $scheme = strtolower((string) (parse_url($url, PHP_URL_SCHEME) ?: 'https'));
+        $port = (int) (parse_url($url, PHP_URL_PORT) ?: ($scheme === 'https' ? 443 : 80));
+        $ip = $host !== '' ? $this->resolveHostWithPublicDns($host) : null;
+        if ($ip !== null && defined('CURLOPT_RESOLVE')) {
+            $curl[CURLOPT_RESOLVE] = [$host.':'.$port.':'.$ip];
+        }
+        if ($curl !== []) {
+            $pending = $pending->withOptions(['curl' => $curl]);
+        }
+
+        return $pending;
+    }
+
+    private function resolveHostWithPublicDns(string $host): ?string
+    {
+        $host = strtolower(trim($host));
+        if ($host === '' || filter_var($host, FILTER_VALIDATE_IP)) {
+            return $host !== '' ? $host : null;
+        }
+        $cacheKey = 'aliexpress.dns.'.$host;
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && filter_var($cached, FILTER_VALIDATE_IP)) {
+            return $cached;
+        }
+
+        $lookups = [
+            ['https://1.1.1.1/dns-query', ['name' => $host, 'type' => 'A']],
+            ['https://dns.google/resolve', ['name' => $host, 'type' => 'A']],
+        ];
+        foreach ($lookups as [$endpoint, $query]) {
+            try {
+                $response = Http::withoutVerifying()
+                    ->connectTimeout(5)
+                    ->timeout(10)
+                    ->withHeaders(['Accept' => 'application/dns-json'])
+                    ->get($endpoint, $query);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if (! $response->successful()) {
+                continue;
+            }
+            foreach ((array) $response->json('Answer') as $answer) {
+                if (! is_array($answer)) {
+                    continue;
+                }
+                $ip = trim((string) ($answer['data'] ?? ''));
+                $type = (int) ($answer['type'] ?? 0);
+                if ($type === 1 && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    Cache::put($cacheKey, $ip, 600);
+
+                    return $ip;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * AliExpress photobank accepts JPEG/PNG/GIF only (not WebP/AVIF).
+     *
+     * @return array{bytes: string, filename: string, message?: string}
+     */
+    private function preparePhotobankImage(string $bytes, string $fileName): array
+    {
+        if ($this->isWebpImage($bytes) || $this->isAvifImage($bytes)) {
+            $converted = $this->convertImageToJpeg($bytes);
+            if ($converted === '') {
+                return [
+                    'bytes' => '',
+                    'filename' => $fileName,
+                    'message' => 'AliExpress does not accept WebP/AVIF. Could not convert the Image Master photo to JPEG.',
+                ];
+            }
+            $bytes = $converted;
+            $fileName = preg_replace('/\.[a-z0-9]+$/i', '', $fileName) ?: 'image';
+            $fileName .= '.jpg';
+        }
+
+        if (strlen($bytes) > 3 * 1024 * 1024) {
+            return ['bytes' => '', 'filename' => $fileName, 'message' => 'Image Master photo is larger than 3MB.'];
+        }
+
+        return ['bytes' => $bytes, 'filename' => $fileName];
+    }
+
+    private function isWebpImage(string $bytes): bool
+    {
+        return strlen($bytes) >= 12
+            && str_starts_with($bytes, 'RIFF')
+            && substr($bytes, 8, 4) === 'WEBP';
+    }
+
+    private function isAvifImage(string $bytes): bool
+    {
+        $brand = strtolower(substr($bytes, 4, 12));
+
+        return strlen($bytes) >= 16 && (str_contains($brand, 'ftypavif') || str_contains($brand, 'ftypavis'));
+    }
+
+    private function convertImageToJpeg(string $bytes): string
+    {
+        if (! function_exists('imagecreatefromstring') || ! function_exists('imagejpeg')) {
+            return '';
+        }
+        $image = @imagecreatefromstring($bytes);
+        if ($image === false) {
+            return '';
+        }
+        if (function_exists('imagepalettetotruecolor') && ! imageistruecolor($image)) {
+            imagepalettetotruecolor($image);
+        }
+        if (function_exists('imagealphablending') && function_exists('imagesavealpha')) {
+            imagealphablending($image, true);
+            imagesavealpha($image, false);
+        }
+        ob_start();
+        $ok = imagejpeg($image, null, 90);
+        imagedestroy($image);
+        $jpeg = (string) ob_get_clean();
+
+        return $ok && $jpeg !== '' ? $jpeg : '';
     }
 
     /**
