@@ -24,7 +24,7 @@ class ChannelTodaySalesService
 {
     public const TZ = 'America/New_York';
 
-    public const CACHE_PREFIX = 'amm_today_sales_est_v1_';
+    public const CACHE_PREFIX = 'amm_today_sales_est_v2_';
 
     /**
      * @return array{0: Carbon, 1: Carbon, 2: string} [startOfDay, endOfDay, Y-m-d]
@@ -55,6 +55,11 @@ class ChannelTodaySalesService
             if (array_key_exists($key, $sales)) {
                 return $sales[$key];
             }
+        }
+
+        $stripped = preg_replace('/[^a-z0-9]/', '', strtolower(trim($channelName))) ?: '';
+        if ($stripped === 'shopifyb2c' && array_key_exists('shopify', $sales)) {
+            return $sales['shopify'];
         }
 
         return null;
@@ -175,6 +180,10 @@ class ChannelTodaySalesService
         $this->copyAliases($out, 'tiktokshop', ['tiktok']);
         $this->copyAliases($out, 'tiktok2', ['tiktokshop2']);
         $this->copyAliases($out, 'temu3', ['temuthree']);
+        // Shopify B2C daily table lags; if that compute was skipped, use /shopify raw.
+        if (! array_key_exists('shopifyb2c', $out) && array_key_exists('shopify', $out)) {
+            $this->copyAliases($out, 'shopify', ['shopifyb2c']);
+        }
 
         return $out;
     }
@@ -190,7 +199,6 @@ class ChannelTodaySalesService
             strtolower(str_replace([' ', '-', '&', '/'], '', $raw)),
             strtolower(str_replace([' ', '-', '&', '/', ',', "'"], '', $raw)),
         ];
-
         return array_values(array_unique(array_filter($keys, fn ($k) => $k !== '')));
     }
 
@@ -252,9 +260,7 @@ class ChannelTodaySalesService
             return null;
         }
 
-        $q = DB::table('shopify_raw_orders')
-            ->where('order_date', '>=', $ymd)
-            ->where('order_date', '<=', $ymd);
+        $q = DB::table('shopify_raw_orders')->whereDate('order_date', $ymd);
         foreach (ShopifyRawDataController::EXCLUDE_SOURCES as $term) {
             $q->whereRaw('LOWER(COALESCE(source_name,"")) NOT LIKE ?', ['%'.strtolower($term).'%'])
                 ->whereRaw('LOWER(COALESCE(tags,"")) NOT LIKE ?', ['%'.strtolower($term).'%']);
@@ -269,11 +275,11 @@ class ChannelTodaySalesService
     private function shopifyB2x(bool $isB2b, Carbon $start, Carbon $end, string $ymd): ?float
     {
         $table = $isB2b ? 'shopify_b2b_daily_data' : 'shopify_b2c_daily_data';
-        $sum = 0.0;
+        $daily = 0.0;
         if (Schema::hasTable($table)) {
-            $sum = (float) DB::table($table)
-                ->where('order_date', '>=', $start)
-                ->where('order_date', '<=', $end)
+            // DATE() so timestamp rows are not dropped when Carbon is bound as UTC.
+            $daily = (float) DB::table($table)
+                ->whereRaw('DATE(order_date) = ?', [$ymd])
                 ->where('financial_status', '!=', 'refunded')
                 ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue')
                 ->value('revenue');
@@ -281,15 +287,15 @@ class ChannelTodaySalesService
             return null;
         }
 
-        if ($sum > 0) {
-            return round($sum, 2);
+        if ($isB2b) {
+            return round($daily, 2);
         }
 
-        if (! $isB2b) {
-            return $this->shopifyDirect($ymd);
-        }
+        // shopify_b2c_daily_data is an L30/L60 snapshot and often lags intra-day.
+        // Today Sales must also use /shopify raw net_sales (same fallback as Y Sales).
+        $direct = $this->shopifyDirect($ymd);
 
-        return 0.0;
+        return round(max($daily, (float) ($direct ?? 0)), 2);
     }
 
     private function doba(Carbon $start, Carbon $end): ?float

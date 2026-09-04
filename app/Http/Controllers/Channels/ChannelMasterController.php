@@ -2176,9 +2176,16 @@ class ChannelMasterController extends Controller
         foreach ($rows as &$row) {
             $name = (string) ($row['Channel '] ?? $row['Channel'] ?? '');
             $value = $svc->valueForChannel($name, $sales);
-            if ($value !== null) {
-                $row['Today Sales'] = $value;
+            if ($value === null) {
+                continue;
             }
+            $current = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Today Sales'] ?? 0));
+            // Live $0 must not wipe a persisted Shopify B2C (or other) today total
+            // when the intra-day source has not landed yet.
+            if ($value <= 0 && $current > 0) {
+                continue;
+            }
+            $row['Today Sales'] = $value;
         }
         unset($row);
 
