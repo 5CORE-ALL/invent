@@ -321,6 +321,7 @@ class NeweggPricingController extends Controller
 
             $row = [
                 'sku'                => $sku,
+                'newegg_item_number' => $itemNo !== '' ? $itemNo : null,
                 'image'              => $image ?: null,
                 'title'              => $titleByExact[$exact] ?? $titleByNorm[$norm] ?? null,
                 'inv'                => (int) $inv,
@@ -1426,10 +1427,23 @@ class NeweggPricingController extends Controller
                 $imported += count($insert);
             }
 
+            $viewsPayload = [];
+            foreach ($aggregated as $aggRow) {
+                $pageViews = (int) ($aggRow['page_views'] ?? 0);
+                $sessions = (int) ($aggRow['sessions'] ?? 0);
+                $viewsPayload[] = [
+                    'seller_part_number' => $aggRow['seller_part_number'] ?? null,
+                    'item_number' => $aggRow['item_number'] ?? null,
+                    'views' => $pageViews > 0 ? $pageViews : $sessions,
+                    'sessions' => $sessions,
+                ];
+            }
+
             return response()->json([
                 'success' => "Imported {$imported} view rows (replaced previous upload, skipped {$skipped})",
                 'imported' => $imported,
                 'skipped' => $skipped,
+                'views' => $viewsPayload,
             ]);
         } catch (\Throwable $e) {
             Log::error('Error importing Newegg views sheet: '.$e->getMessage());
