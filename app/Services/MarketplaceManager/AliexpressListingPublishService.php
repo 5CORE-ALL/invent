@@ -647,8 +647,13 @@ class AliexpressListingPublishService
             $lb = $kg > 0 ? $kg / 0.45359237 : 0.01;
         }
 
+        $text = number_format(max(0.01, $lb), 2, '.', '');
+
         return [
-            'Package weight' => (float) number_format(max(0.01, $lb), 2, '.', ''),
+            'Package weight' => $text,
+            'package_weight' => $text,
+            'packageWeight' => $text,
+            'weight' => $text,
         ];
     }
 

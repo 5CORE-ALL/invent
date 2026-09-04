@@ -244,8 +244,10 @@ class FaireListingPublishService
             $short = substr($title, 0, 75);
         }
 
+        $productToken = (string) Str::uuid();
         $body = [
-            'idempotence_token' => (string) Str::uuid(),
+            'idempotence_token' => $productToken,
+            'idempotency_token' => $productToken,
             'name' => $title,
             'unit_multiplier' => 1,
             'minimum_order_quantity' => 1,
@@ -270,7 +272,9 @@ class FaireListingPublishService
         if (empty($res['success'])) {
             if (isset($body['images'])) {
                 unset($body['images']);
-                $body['idempotence_token'] = (string) Str::uuid();
+                $retryToken = (string) Str::uuid();
+                $body['idempotence_token'] = $retryToken;
+                $body['idempotency_token'] = $retryToken;
                 $res = $this->api->createProduct($body);
             }
         }
@@ -313,7 +317,6 @@ class FaireListingPublishService
         $created = 0;
         foreach ($prepared as $row) {
             $payload = $this->variantPayload($row, $sets, $data);
-            $payload['idempotence_token'] = (string) Str::uuid();
             $res = $this->api->createVariant($productId, $payload);
             if (empty($res['success']) && $this->isMissingOptionsError((string) ($res['message'] ?? ''))) {
                 $retry = $payload;
@@ -324,7 +327,9 @@ class FaireListingPublishService
                         'value' => $opt['value'] ?? null,
                     ], fn ($v) => $v !== null && $v !== '');
                 }, $payload['options']);
-                $retry['idempotence_token'] = (string) Str::uuid();
+                $retryToken = (string) Str::uuid();
+                $retry['idempotence_token'] = $retryToken;
+                $retry['idempotency_token'] = $retryToken;
                 $res = $this->api->createVariant($productId, $retry);
             }
             if (empty($res['success'])) {
@@ -531,8 +536,12 @@ class FaireListingPublishService
             $options[] = $opt;
         }
 
+        $token = (string) Str::uuid();
+
         return [
             'sku' => $row['sku'],
+            'idempotency_token' => $token,
+            'idempotence_token' => $token,
             'options' => $options,
             'available_quantity' => max(0, (int) $row['inv']),
             'prices' => [[

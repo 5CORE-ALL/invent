@@ -677,7 +677,7 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal')
+                    @include('market-places.listing-market-places._listing_publish_modal', ['publishChannel' => 'wayfair'])
 
 
                     <div id="wayfair-listing-wrap">
@@ -1295,5 +1295,5 @@
             publishUrl: '/listing_wayfair/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=7"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=10"></script>
 @endsection

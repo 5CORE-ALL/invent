@@ -45,7 +45,7 @@ class WayfairListingPublishService
                     ->where('parent', $parent)
                     ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
                     ->orderBy('sku')
-                    ->limit(20)
+                    ->limit(80)
                     ->pluck('sku')
                     ->all();
                 foreach ($siblings as $sibling) {
@@ -281,8 +281,24 @@ class WayfairListingPublishService
         if ($skus === [] || ! Schema::hasTable('wayfair_listing_statuses')) {
             return 0;
         }
-        $rows = WayfairListingStatus::query()->whereIn('sku', $skus)->get(['sku', 'value']);
+        $want = [];
+        foreach ($skus as $sku) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
+            if ($norm !== '') {
+                $want[$norm] = true;
+            }
+        }
+        $rows = WayfairListingStatus::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderByDesc('id')
+            ->limit(4000)
+            ->get(['sku', 'value']);
         foreach ($rows as $row) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
+            if ($want !== [] && ! isset($want[$norm])) {
+                continue;
+            }
             $id = $this->classIdFromStatusValue(is_array($row->value) ? $row->value : []);
             if ($id > 0) {
                 return $id;

@@ -610,7 +610,7 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: selectedCategoryName() ? '' : selectedCategoryId(),
+                category_id: isWayfairChannel() ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid()
             },

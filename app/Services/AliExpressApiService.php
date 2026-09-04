@@ -230,6 +230,17 @@ class AliExpressApiService
             'data' => $postRes['data'] ?? $postRes['result'] ?? $last['data'] ?? null,
         ];
 
+        if ($this->isAliExpressPackageSizeRequired((string) ($last['message'] ?? ''))) {
+            $retried = $this->retryProductPostWithWeightShapes($instance, $official, $weight, $lb);
+            if (! empty($retried['product_id'])) {
+                return $retried;
+            }
+            if (trim((string) ($retried['message'] ?? '')) !== '') {
+                $last['message'] = $retried['message'];
+            }
+            $instance = $retried['instance'] ?? $instance;
+        }
+
         $skuCodes = [];
         foreach ($request['sku_info_list'] ?? [] as $row) {
             if (is_array($row)) {
@@ -1434,14 +1445,19 @@ class AliExpressApiService
     }
 
     /**
-     * US schema wants a number in pounds, not a string. Strings fail as CHK_BASIC_REQUIRED.
+     * US overlay wants Package weight as a 2-decimal string. Numbers still fail CHK_BASIC_REQUIRED.
      *
-     * @return array{Package weight: float}
+     * @return array<string, string>
      */
     private function usPackageWeightObject(float $kg, float $lb): array
     {
+        $text = number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '');
+
         return [
-            'Package weight' => $this->usPackageWeightPounds($kg, $lb),
+            'Package weight' => $text,
+            'package_weight' => $text,
+            'packageWeight' => $text,
+            'weight' => $text,
         ];
     }
 
@@ -1468,14 +1484,14 @@ class AliExpressApiService
             return $fields;
         }
         $pounds = $this->usPackageWeightPounds($kg, $lb);
-        $aeIsObject = $this->schemaNodeIsObject($nodes, 'aeLogisticsWeight');
-        $fields['usLogisticsWeight'] = $this->usPackageWeightObject($kg, $lb);
-        $fields['aeLogisticsWeight'] = $this->normalizeLogisticsWeightValue(
-            $fields['aeLogisticsWeight'] ?? $pounds,
-            $kg,
-            $lb,
-            $aeIsObject
-        );
+        $usObject = $this->usPackageWeightObject($kg, $lb);
+        $aeIsObject = $this->schemaNodeIsObject($nodes, 'aeLogisticsWeight')
+            || $this->schemaKeysMention($schemaKeys, 'Package weight');
+        $fields['usLogisticsWeight'] = $usObject;
+        $fields['usl'] = ['logisticsWeight' => $usObject];
+        $fields['aeLogisticsWeight'] = $aeIsObject
+            ? $usObject
+            : $this->normalizeLogisticsWeightValue($fields['aeLogisticsWeight'] ?? $pounds, $kg, $lb, false);
         if (is_numeric($fields['aeLogisticsWeight'] ?? null) && (float) $fields['aeLogisticsWeight'] <= 0) {
             $fields['aeLogisticsWeight'] = $pounds;
         }
@@ -1484,6 +1500,56 @@ class AliExpressApiService
         }
 
         return $fields;
+    }
+
+    /**
+     * @param  array<string, mixed>  $instance
+     * @param  array<string, mixed>  $official
+     * @return array{success?: bool, product_id?: string, message?: string, instance?: array<string, mixed>}
+     */
+    private function retryProductPostWithWeightShapes(array $instance, array $official, float $kg, float $lb): array
+    {
+        $pounds = $this->usPackageWeightPounds($kg, $lb);
+        $text = number_format($pounds, 2, '.', '');
+        $object = $this->usPackageWeightObject($kg, $lb);
+        $shapes = [
+            ['usLogisticsWeight' => $object, 'aeLogisticsWeight' => $object, 'usl' => ['logisticsWeight' => $object]],
+            ['usLogisticsWeight' => $text, 'aeLogisticsWeight' => $pounds],
+            ['usLogisticsWeight' => ['Package weight' => $pounds], 'aeLogisticsWeight' => $pounds],
+        ];
+        $lastMessage = '';
+        $lastInstance = $instance;
+        foreach ($shapes as $shape) {
+            $tryInstance = array_merge($instance, $shape);
+            $encoded = $this->encodeRequestPayload($tryInstance);
+            $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
+                'rest' => ['product_instance_request' => $encoded],
+                'sync' => ['product_instance_request' => $encoded],
+            ]);
+            $productId = $this->extractPostedProductId($res['data'] ?? [])
+                ?: $this->extractPostedProductId($res['result'] ?? [])
+                ?: $this->extractPostedProductId($res);
+            if ($productId !== '') {
+                return ['success' => true, 'product_id' => $productId, 'instance' => $tryInstance];
+            }
+            $tryOfficial = array_merge($official, $shape);
+            $postRes = $this->postProductCreateWithRetry('aliexpress.solution.product.post', [
+                'post_product_request' => $this->encodeRequestPayload($tryOfficial),
+            ]);
+            $productId = $this->extractPostedProductId($postRes['data'] ?? [])
+                ?: $this->extractPostedProductId($postRes['result'] ?? [])
+                ?: $this->extractPostedProductId($postRes)
+                ?: (string) ($postRes['product_id'] ?? '');
+            if ($productId !== '') {
+                return ['success' => true, 'product_id' => $productId, 'instance' => $tryInstance];
+            }
+            $lastMessage = $this->extractPostFailureMessage($postRes)
+                ?: $this->extractPostFailureMessage($res)
+                ?: $lastMessage;
+            $lastInstance = $tryInstance;
+        }
+
+        return ['message' => $lastMessage, 'instance' => $lastInstance];
     }
 
     /**

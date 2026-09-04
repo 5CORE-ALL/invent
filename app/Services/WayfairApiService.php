@@ -2036,6 +2036,7 @@ XML;
         $filters = [
             ['supplierPartNumbers' => array_values($parts)],
             ['supplierPartNumber' => ['in' => array_values($parts)]],
+            null,
         ];
         $urls = [
             'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
@@ -2045,30 +2046,37 @@ XML;
         $supplierId = (string) config('services.wayfair.supplier_id');
         foreach ($urls as $url) {
             foreach ($filters as $filter) {
-                $response = $this->apiHttpClient()
-                    ->withToken($token)
-                    ->withHeaders([
-                        'X-SELECTED-SUPPLIER-ID' => $supplierId,
-                        'Content-Type' => 'application/json',
-                        'Accept' => 'application/json',
-                    ])
-                    ->post($url, [
-                        'query' => $query,
-                        'variables' => [
-                            'input' => [
-                                'filter' => $filter,
-                                'paginationOptions' => ['page' => 1, 'pageSize' => 25],
-                            ],
-                        ],
-                    ]);
-                $json = $response->json();
-                if (! empty($json['errors'])) {
-                    continue;
-                }
-                $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
-                $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
-                if ($hit !== null) {
-                    return $hit;
+                $pages = $filter === null ? 3 : 1;
+                for ($page = 1; $page <= $pages; $page++) {
+                    $input = [
+                        'paginationOptions' => ['page' => $page, 'pageSize' => 50],
+                    ];
+                    if (is_array($filter)) {
+                        $input['filter'] = $filter;
+                    }
+                    $response = $this->apiHttpClient()
+                        ->withToken($token)
+                        ->withHeaders([
+                            'X-SELECTED-SUPPLIER-ID' => $supplierId,
+                            'Content-Type' => 'application/json',
+                            'Accept' => 'application/json',
+                        ])
+                        ->post($url, [
+                            'query' => $query,
+                            'variables' => ['input' => $input],
+                        ]);
+                    $json = $response->json();
+                    if (! empty($json['errors'])) {
+                        break;
+                    }
+                    $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
+                    $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
+                    if ($hit !== null) {
+                        return $hit;
+                    }
+                    if (! is_array($items) || $items === []) {
+                        break;
+                    }
                 }
             }
         }
