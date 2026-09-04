@@ -45,7 +45,18 @@ class AmazonAdsMissingController extends Controller
             // File cache dirs may be missing mid-request after optimize:clear.
         }
 
-        return 0;
+        try {
+            $total = (new static)->computeMissingTotal();
+            try {
+                Cache::put(self::SIDEBAR_COUNT_CACHE_KEY, $total, now()->addMinutes(5));
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            return $total;
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     public static function forgetMissingTotalCache(): void

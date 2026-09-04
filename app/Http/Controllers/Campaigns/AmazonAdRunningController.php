@@ -9,7 +9,7 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use App\Models\ADVMastersData;
+use App\Support\AmazonCampaignMatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -17,11 +17,6 @@ class AmazonAdRunningController extends Controller
 {
     public function index(){
         return view('campaign.amz-ad-running');
-    }
-
-    public function getAmazonAdRunningSaveAdvMasterData(Request $request)
-    {
-        return ADVMastersData::getAmazonAdRunningSaveAdvMasterDataProceed($request);
     }
 
     public function getAmazonAdRunningData()
@@ -111,8 +106,8 @@ class AmazonAdRunningController extends Controller
             }
             $isParentRow = str_starts_with($sku, 'PARENT');
 
-            $matchedCampaignHlL30 = ADVMastersData::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
-            $matchedCampaignHlL7 = ADVMastersData::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignHlL30 = AmazonCampaignMatcher::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignHlL7 = AmazonCampaignMatcher::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
 
             if (str_starts_with($sku, 'PARENT')) {
                 $childCount = $parentSkuCounts[$parent] ?? 0;
@@ -143,10 +138,10 @@ class AmazonAdRunningController extends Controller
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData->get($pm->sku);
 
-            $matchedCampaignKwL30 = ADVMastersData::matchKwCampaign($amazonKwL30, $pm->sku, $parent ?: null, $isParentRow);
-            $matchedCampaignKwL7 = ADVMastersData::matchKwCampaign($amazonKwL7, $pm->sku, $parent ?: null, $isParentRow);
-            $matchedCampaignPtL30 = ADVMastersData::matchPtCampaign($amazonPtL30, $pm->sku, $parent ?: null, true, $isParentRow);
-            $matchedCampaignPtL7 = ADVMastersData::matchPtCampaign($amazonPtL7, $pm->sku, $parent ?: null, true, $isParentRow);
+            $matchedCampaignKwL30 = AmazonCampaignMatcher::matchKwCampaign($amazonKwL30, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignKwL7 = AmazonCampaignMatcher::matchKwCampaign($amazonKwL7, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignPtL30 = AmazonCampaignMatcher::matchPtCampaign($amazonPtL30, $pm->sku, $parent ?: null, true, $isParentRow);
+            $matchedCampaignPtL7 = AmazonCampaignMatcher::matchPtCampaign($amazonPtL7, $pm->sku, $parent ?: null, true, $isParentRow);
 
             $row = [];
             $row['parent'] = $parent;
@@ -186,8 +181,8 @@ class AmazonAdRunningController extends Controller
             $row['pt_sold_L7']   = $matchedCampaignPtL7?->unitsSoldSameSku7d ?? 0;
 
             // --- HL ---
-            $matchedCampaignHlL30 = ADVMastersData::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
-            $matchedCampaignHlL7 = ADVMastersData::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignHlL30 = AmazonCampaignMatcher::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignHlL7 = AmazonCampaignMatcher::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
             $row['hl_impr_L30'] = $matchedCampaignHlL30?->impressions ?? 0;
             $row['hl_impr_L7']  = $matchedCampaignHlL7?->impressions ?? 0;
             $row['hl_clicks_L30'] = $matchedCampaignHlL30?->clicks ?? 0;

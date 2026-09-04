@@ -72,7 +72,6 @@ use App\Http\Controllers\Channels\ApiVsSheetController;
 use App\Http\Controllers\Channels\ShippingHealthOverviewController;
 use App\Http\Controllers\Channels\CustomerCareHealthController;
 use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
-use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
@@ -412,18 +411,6 @@ Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->g
     Route::get('/files', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledgeFiles'])->name('files');
 });
 
-/** Start Cron Job Routes **/
-// Consolidated Cron Job - Runs all cron jobs in sequence (Recommended)
-Route::get('/channel/adv/master/cron/all', [ChannelAdsMasterController::class, 'runAllAdvMastersCronJobs'])->name('adv.masters.cron.all');
-
-// Individual Cron Job Routes (for backward compatibility or specific use cases)
-Route::get('/channel/adv/master/amazon/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterAmazonCronData']);
-Route::get('/adv/master/missing/amazon/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterAmazonCronMissingData']);
-Route::get('/adv/master/totalsale/amazon/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterAmazonCronTotalSaleData']);
-Route::get('/channel/adv/master/ebay/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterEbayCronData']);
-Route::get('/adv/master/missing/ebay/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterEbayCronMissingData']);
-Route::get('/adv/master/totalsale/ebay/cron', [ChannelAdsMasterController::class, 'getChannelAdvMasterEbayCronTotalSaleData']);
-/** End Cron Jobs Routes */
 Route::prefix('auth')->group(function () {
     require __DIR__.'/auth.php';
 });
@@ -877,18 +864,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
-
-    // Channel Ads Master
-    Route::get('/channel/ads/master', [ChannelAdsMasterController::class, 'channelAdsMaster'])->name('channel.ads.master');
-    Route::get('/channel/ads/data', [ChannelAdsMasterController::class, 'getAdsMasterData'])->name('channel.ads.data');
-    Route::get('/channel/adv/master', [ChannelAdsMasterController::class, 'channelAdvMaster'])->name('channel.adv.master');
-    Route::get('/amazon/adv/chart/data', [ChannelAdsMasterController::class, 'getAmazonAdvChartData'])->name('amazon.adv.chart.data');
-    Route::get('/ebay/adv/chart/data', [ChannelAdsMasterController::class, 'getEbayAdvChartData'])->name('ebay.adv.chart.data');
-    Route::get('/channel/adv/chart/data', [ChannelAdsMasterController::class, 'getChannelAdvChartData'])->name('channel.adv.chart.data');
-    Route::get('/channel/adv/clicks/chart/data', [ChannelAdsMasterController::class, 'getChannelClicksChartData'])->name('channel.adv.clicks.chart.data');
-    Route::get('/channel/adv/spend/chart/data', [ChannelAdsMasterController::class, 'getChannelSpendChartData'])->name('channel.adv.spend.chart.data');
-    Route::get('/channel/adv/adsales/chart/data', [ChannelAdsMasterController::class, 'getChannelAdSalesChartData'])->name('channel.adv.adsales.chart.data');
-    Route::get('/channel/adv/acos/chart/data', [ChannelAdsMasterController::class, 'getChannelAcosChartData'])->name('channel.adv.acos.chart.data');
 
     // Account Health Master
     // Route::get('/channel/account-health-test', [AccountHealthMasterController::class, 'test'])->name('account.health.master');
@@ -4437,7 +4412,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('channel.wise');
 
     Route::get('/overall-amazon', action: [OverallAmazonController::class, 'overallAmazon'])->name('overall.amazon');
-    Route::get('/adv-amazon/total-sales/save-data', action: [OverallAmazonController::class, 'getAmazonTotalSalesSaveData'])->name('adv-amazon.total-sales.save-data');
 
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
@@ -4571,7 +4545,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_ebaytwo/export', [ListingEbayTwoController::class, 'export'])->name('listing_ebaytwo.export');
 
     Route::get('ebayTwoAnalysis', action: [EbayTwoController::class, 'overallEbay']);
-    Route::get('/adv-ebay2/total-sale/save-data', action: [EbayTwoController::class, 'getEbay2TotsalSaleDataSave'])->name('adv-ebay2.total-sale.save-data');
     Route::get('/ebay2/view-data', [EbayTwoController::class, 'getViewEbay2Data']);
     Route::get('ebayTwoPricingCVR', [EbayTwoController::class, 'ebayTwoPricingCVR'])->name('ebayTwo.pricing.cvr');
     Route::post('/update-all-ebay2-skus', [EbayTwoController::class, 'updateAllEbay2Skus']);
@@ -4590,7 +4563,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_ebaythree/export', [ListingEbayThreeController::class, 'export'])->name('listing_ebaythree.export');
 
     Route::get('ebayThreeAnalysis', action: [EbayThreeController::class, 'overallthreeEbay']);
-    Route::get('/adv-ebay3/total-sale/save-data', action: [EbayThreeController::class, 'getEbay3TotalSaleSaveData'])->name('adv-ebay3.total-sale.save-data');
     Route::get('/ebay3/view-data', [EbayThreeController::class, 'getViewEbay3Data']);
     Route::get('ebayThreePricingCVR', [EbayThreeController::class, 'ebayThreePricingCVR'])->name('ebayThree.pricing.cvr');
     Route::post('/update-all-ebay3-skus', [EbayThreeController::class, 'updateAllEbay3Skus']);
@@ -4722,7 +4694,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-column-visibility', [EbayController::class, 'getEbayColumnVisibility'])->name('ebay.column.visibility.get');
     Route::post('/ebay-column-visibility', [EbayController::class, 'setEbayColumnVisibility'])->name('ebay.column.visibility.set');
     Route::get('/ebay-export', [EbayController::class, 'exportEbayPricingData'])->name('ebay.export');
-    Route::get('/adv-ebay/total-sales/save-data', [EbayController::class, 'getAdvEbayTotalSaveData'])->name('adv-ebay.total-sales.save-data');
     Route::post('/ebay/saveLowProfit', [EbayController::class, 'saveLowProfit']);
     Route::post('/ebay-analytics/import', [EbayController::class, 'importEbayAnalytics'])->name('ebay.analytics.import');
     Route::get('/ebay-analytics/export', [EbayController::class, 'exportEbayAnalytics'])->name('ebay.analytics.export');
@@ -4783,7 +4754,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/push-ebay2-price', [EbayTwoController::class, 'pushEbay2Price'])->name('ebay2.push.price');
     Route::post('/update-ebay2-sprice-status', [EbayTwoController::class, 'updateEbay2SpriceStatus'])->name('ebay2.update.sprice.status');
     Route::post('/update-listed-live-ebay2', [EbayTwoController::class, 'updateListedLive'])->name('ebay2.update.listed.live');
-    Route::get('/ebay2/total-sales/save-data', [EbayTwoController::class, 'getEbay2TotsalSaleDataSave'])->name('ebay2.total-sales.save-data');
     Route::post('/ebay2-analytics/import', [EbayTwoController::class, 'importEbayTwoAnalytics'])->name('ebay2.analytics.import');
     Route::get('/ebay2-analytics/export', [EbayTwoController::class, 'exportEbayTwoAnalytics'])->name('ebay2.analytics.export');
     Route::get('/ebay2-analytics/sample', [EbayTwoController::class, 'downloadSample'])->name('ebay2.analytics.sample');
@@ -5056,6 +5026,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/advertisement-master', [AdvertisementMasterController::class, 'index'])->name('advertisement.master');
     Route::get('/advertisement-master/data', [AdvertisementMasterController::class, 'data'])->name('advertisement.master.data');
     Route::get('/advertisement-master/history', [AdvertisementMasterController::class, 'history'])->name('advertisement.master.history');
+    Route::post('/advertisement-master/label', [AdvertisementMasterController::class, 'saveLabel'])->name('advertisement.master.label.save');
+    Route::post('/advertisement-master/nr', [AdvertisementMasterController::class, 'saveNrReq'])->name('advertisement.master.nr.save');
+    Route::post('/advertisement-master/row/delete', [AdvertisementMasterController::class, 'deleteRow'])->name('advertisement.master.row.delete');
     Route::get('/variations-ads', [VariationsAdsController::class, 'index'])->name('advertisement.variations.ads');
     Route::get('/variations-ads/data', [VariationsAdsController::class, 'data'])->name('advertisement.variations.ads.data');
     Route::post('/variations-ads/save', [VariationsAdsController::class, 'save'])->name('advertisement.variations.ads.save');
@@ -6228,7 +6201,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(AmazonAdRunningController::class)->group(function () {
         Route::get('/amazon/ad-running/list', 'index')->name('amazon.ad-running.list');
         Route::get('/amazon/ad-running/data', 'getAmazonAdRunningData');
-        Route::get('/adv-amazon/ad-running/save-data', 'getAmazonAdRunningSaveAdvMasterData')->name('adv-amazon.ad-running.save-data');
     });
 
     Route::controller(AmazonPinkDilAdController::class)->group(function () {
@@ -6489,13 +6461,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/ad-running/data', 'getEbayRunningAdsData');
         Route::get('/ebay/ad-running/filter', 'filterRunningAds')->name('ebay.running.ads.filter');
         Route::get('/ebay/ad-running/campaign-chart', 'getCampaignChartData')->name('ebay.running.ads.campaign-chart');
-        Route::get('/adv-ebay/ad-running/save-data', 'getEbayRunningDataSave')->name('adv-ebay.ad-running.save-data');
     });
 
     Route::controller(EbayMissingAdsController::class)->group(function () {
         Route::get('/ebay/ad-missing/list', 'index')->name('ebay.missing.ads');
         Route::get('/ebay/ad-missing/data', 'getEbayMissingAdsData');
-        Route::get('/adv-ebay/missing/save-data', 'getEbayMissingSaveData')->name('adv-ebay.missing.save-data');
         Route::post('/update-ebay-nrl-data', 'updateNrlData');
     });
 
@@ -6563,7 +6533,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(Ebay3RunningAdsController::class)->group(function () {
         Route::get('/ebay-3/ad-running/list', 'index')->name('ebay3.running.ads');
         Route::get('/ebay-3/ad-running/data', 'getEbay3RunningAdsData');
-        Route::get('/adv-ebay3/ad-running/save-data', 'getAdvEbay3AdRunningDataSave')->name('adv-ebay3.ad-running.save-data');
     });
 
     // Ebay3MissingAdsController routes removed (page /ebay-3/ad-missing/list deleted)
@@ -6676,8 +6645,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/youtube-ads/data', 'data')->name('google.youtube.ads.campaigns.data');
         Route::get('/google/shopping/youtube-ads/rule', 'getRule')->name('google.youtube.ads.campaigns.rule');
         Route::post('/google/shopping/youtube-ads/rule', 'saveRule')->name('google.youtube.ads.campaigns.rule.save');
+        Route::get('/google/shopping/youtube-ads/pause-rule', 'getPauseRule')->name('google.youtube.ads.campaigns.pause.rule');
+        Route::post('/google/shopping/youtube-ads/pause-rule', 'savePauseRule')->name('google.youtube.ads.campaigns.pause.rule.save');
+        Route::get('/google/shopping/youtube-ads/video-audit', 'getVideoAudit')->name('google.youtube.ads.campaigns.video.audit');
+        Route::post('/google/shopping/youtube-ads/video-audit', 'saveVideoAudit')->name('google.youtube.ads.campaigns.video.audit.save');
+        Route::get('/google/shopping/youtube-ads/video-ai-audit', 'getVideoAiAudit')->name('google.youtube.ads.campaigns.video.ai.audit');
+        Route::post('/google/shopping/youtube-ads/video-ai-audit', 'runVideoAiAudit')->name('google.youtube.ads.campaigns.video.ai.audit.run');
+        Route::post('/google/shopping/youtube-ads/video-ai-prompt', 'saveVideoAiPrompt')->name('google.youtube.ads.campaigns.video.ai.prompt.save');
+        Route::post('/google/shopping/youtube-ads/campaign-attr', 'saveCampaignAttr')->name('google.youtube.ads.campaigns.attr.save');
+        Route::post('/google/shopping/youtube-ads/campaign-attr-option', 'saveCampaignAttrOption')->name('google.youtube.ads.campaigns.attr.option.save');
         Route::post('/google/shopping/youtube-ads/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.youtube.ads.campaigns.push.sbgt');
-        Route::post('/google/shopping/youtube-ads/push-sbid', 'pushSbidShopping')->name('google.youtube.ads.campaigns.push.sbid');
         Route::get('/google/shopping/youtube-ads/badge-history', 'badgeHistory')->name('google.youtube.ads.campaigns.badge.history');
         Route::get('/google/shopping/youtube-ads/sbgt-history', 'sbgtHistory')->name('google.youtube.ads.campaigns.sbgt.history');
         Route::post('/google/shopping/youtube-ads/u7-distribution', 'u7Distribution')->name('google.youtube.ads.campaigns.u7.distribution');
@@ -6696,7 +6673,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/get-utilization-counts', 'getGoogleShoppingUtilizationCounts')->name('google.shopping.utilization.counts');
         Route::get('/google/shopping/get-utilization-chart-data', 'getGoogleShoppingUtilizationChartData')->name('google.shopping.utilization.chart.data');
         Route::get('/google/shopping/report', 'googleShoppingAdsReport')->name('google.shopping.report');
-        Route::get('/adv-shopify/gshopping/save-data', 'getAdvShopifyGShoppingSaveData')->name('adv-shopify.gshopping.save-data');
 
         // Chart filter routes
         Route::get('/google/shopping/chart/filter', 'filterGoogleShoppingChart')->name('google.shopping.chart.filter');

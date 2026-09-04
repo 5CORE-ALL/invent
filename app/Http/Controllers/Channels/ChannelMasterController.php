@@ -7068,9 +7068,6 @@ class ChannelMasterController extends Controller
             ];
         }
 
-        // Get clicks data from adv_masters_data table
-        $advMastersData = \App\Models\ADVMastersData::all()->keyBy('channel');
-
         $finalData = [];
         $l7Summaries = [];
 
@@ -7577,30 +7574,9 @@ class ChannelMasterController extends Controller
                 // Merge all breakdown fields into row
                 $row = array_merge($row, $metrics);
             } else {
-                // Fallback: adv_masters_data for channels without direct table support
-                $channelKey = strtoupper($channel);
-                $channelMapping = [
-                    'TIKTOKSHOP' => 'TIKTOK',
-                    'SHOPIFYB2C' => 'SHOPIFY',
-                    'SHOPIFYB2B' => 'SHOPIFY',
-                    'EBAYTWO' => 'EBAY 2',
-                    'EBAYTHREE' => 'EBAY 3',
-                    'FBMARKETPLACE' => 'FB CARAOUSEL',
-                    'FBSHOP' => 'FB VIDEO',
-                    'INSTAGRAMSHOP' => 'INSTA CARAOUSEL',
-                ];
-                $advKey = $channelMapping[$channelKey] ?? $channelKey;
-                if (isset($advMastersData[$advKey])) {
-                    $advData = $advMastersData[$advKey];
-                    $clicks = $advData->clicks ?? 0;
-                    $adSold = $advData->ad_sold ?? 0;
-                    $adSales = $advData->ad_sales ?? 0;
-                } else {
-                    $clicks = 0;
-                    $adSold = 0;
-                    $adSales = 0;
-                }
-                // Set default breakdown values for non-ad-enabled channels
+                $clicks = 0;
+                $adSold = 0;
+                $adSales = 0;
                 $row['KW Clicks'] = 0; $row['PT Clicks'] = 0; $row['HL Clicks'] = 0; $row['PMT Clicks'] = 0; $row['Shopping Clicks'] = 0; $row['SERP Clicks'] = 0;
                 $row['KW Sales'] = 0; $row['PT Sales'] = 0; $row['HL Sales'] = 0; $row['PMT Sales'] = 0; $row['Shopping Sales'] = 0; $row['SERP Sales'] = 0;
                 $row['KW Sold'] = 0; $row['PT Sold'] = 0; $row['HL Sold'] = 0; $row['PMT Sold'] = 0; $row['Shopping Sold'] = 0; $row['SERP Sold'] = 0;
@@ -7608,20 +7584,7 @@ class ChannelMasterController extends Controller
                 $row['KW CVR'] = 0; $row['PT CVR'] = 0; $row['HL CVR'] = 0; $row['PMT CVR'] = 0; $row['Shopping CVR'] = 0; $row['SERP CVR'] = 0;
             }
 
-            // Missing Ads: still from adv_masters_data (not in campaign tables)
-            $channelKey = strtoupper($channel);
-            $channelMapping = [
-                'TIKTOKSHOP' => 'TIKTOK',
-                'SHOPIFYB2C' => 'SHOPIFY',
-                'SHOPIFYB2B' => 'SHOPIFY',
-                'EBAYTWO' => 'EBAY 2',
-                'EBAYTHREE' => 'EBAY 3',
-                'FBMARKETPLACE' => 'FB CARAOUSEL',
-                'FBSHOP' => 'FB VIDEO',
-                'INSTAGRAMSHOP' => 'INSTA CARAOUSEL',
-            ];
-            $advKey = $channelMapping[$channelKey] ?? $channelKey;
-            $missingAds = isset($advMastersData[$advKey]) ? ($advMastersData[$advKey]->missing_ads ?? 0) : 0;
+            $missingAds = 0;
 
             // Calculate Ads CVR and ACOS
             $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
@@ -20001,108 +19964,12 @@ class ChannelMasterController extends Controller
                     'message' => 'Channel name is required'
                 ], 400);
             }
-            
-            // Get channel name and convert to uppercase
-            $channelUpper = strtoupper(trim($channel));
-            
-            \Log::info("Clicks breakdown requested", ['channel' => $channelUpper]);
-            
-            // Determine related channel patterns based on main channel
-            $suffixPatterns = [];
-            if ($channelUpper === 'AMAZON') {
-                $suffixPatterns = ['AMZ PT', 'AMZ KW', 'AMZ HL'];
-            } elseif ($channelUpper === 'EBAY') {
-                $suffixPatterns = ['EB KW', 'EB PMT'];
-            } elseif ($channelUpper === 'EBAY 2' || $channelUpper === 'EBAYTWO') {
-                $suffixPatterns = ['EB PMT2'];
-            } elseif ($channelUpper === 'EBAY 3' || $channelUpper === 'EBAYTHREE') {
-                $suffixPatterns = ['EB KW3', 'EB PMT3'];
-            } elseif ($channelUpper === 'WALMART') {
-                $suffixPatterns = [];
-            }
-            
-            \Log::info("Searching for patterns", ['patterns' => $suffixPatterns]);
-            
-            // Get parent channel's L30 sales for TACOS calculation
-            $parentChannel = \App\Models\ADVMastersData::where('channel', $channelUpper)->first();
-            $parentL30Sales = $parentChannel ? ($parentChannel->l30_sales ?? 0) : 0;
-            
-            \Log::info("Parent channel L30 sales", [
-                'channel' => $channelUpper,
-                'l30_sales' => $parentL30Sales
-            ]);
-            
-            // Find all related channels from adv_masters_datas table
-            $breakdown = [];
-            $total = 0;
-            
-            foreach ($suffixPatterns as $pattern) {
-                // Try both exact match and case-insensitive match
-                $relatedChannel = \App\Models\ADVMastersData::where('channel', $pattern)
-                    ->orWhereRaw('UPPER(channel) = ?', [strtoupper($pattern)])
-                    ->first();
-                
-                \Log::info("Pattern search", [
-                    'pattern' => $pattern,
-                    'found' => $relatedChannel ? 'yes' : 'no',
-                    'found_channel' => $relatedChannel ? $relatedChannel->channel : null
-                ]);
-                
-                if ($relatedChannel) {
-                    // Extract clean type name from channel pattern
-                    $type = $pattern;
-                    if (strpos($pattern, 'PMT') !== false) {
-                        $type = str_replace(['EB ', 'EB'], '', $pattern);
-                    } elseif (strpos($pattern, 'KW') !== false) {
-                        $type = str_replace(['EB ', 'EB', 'AMZ ', 'AMZ'], '', $pattern);
-                    } elseif (strpos($pattern, 'PT') !== false || strpos($pattern, 'HL') !== false) {
-                        $type = str_replace(['AMZ ', 'AMZ'], '', $pattern);
-                    }
-                    
-                    // Get values from database
-                    $clicks = $relatedChannel->clicks ?? 0;
-                    $adSold = $relatedChannel->ad_sold ?? 0;
-                    $adSales = $relatedChannel->ad_sales ?? 0;
-                    $spent = $relatedChannel->spent ?? 0;
-                    
-                    // Calculate metrics using formulas:
-                    // CVR = (ads sold / clicks) * 100
-                    $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
-                    
-                    // ACOS = (spent / ad_sales) * 100
-                    $acos = $adSales > 0 ? round(($spent / $adSales) * 100, 2) : 0;
-                    
-                    // TACOS = (spent / parent_total_sales) * 100
-                    // Use parent channel's L30 sales for all sub-channels
-                    $tacos = $parentL30Sales > 0 ? round(($spent / $parentL30Sales) * 100, 2) : 0;
-                    
-                    $breakdown[] = [
-                        'type' => $type,
-                        'channel' => $relatedChannel->channel,
-                        'spent' => $spent,
-                        'clicks' => $clicks,
-                        'ad_sales' => $adSales,
-                        'acos' => $acos,
-                        'tacos' => $tacos,
-                        'ad_sold' => $adSold,
-                        'cvr' => $cvr,
-                        'missing_ads' => $relatedChannel->missing_ads ?? 0
-                    ];
-                    $total += $clicks;
-                }
-            }
-            
-            \Log::info("Clicks breakdown results", [
-                'channel' => $channelUpper,
-                'found_count' => count($breakdown),
-                'total_clicks' => $total
-            ]);
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $breakdown,
-                'total' => $total,
-                'parent_l30_sales' => $parentL30Sales
+                'data' => [],
+                'total' => 0,
+                'parent_l30_sales' => 0
             ]);
             
         } catch (\Exception $e) {

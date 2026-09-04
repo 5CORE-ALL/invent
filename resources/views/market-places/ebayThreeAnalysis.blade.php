@@ -5844,19 +5844,6 @@
                     
                     $('#sale-total').text(metrics.totalSalesTotal.toLocaleString());
 
-                    $.ajax({
-                        url: "{{ route('adv-ebay3.total-sale.save-data') }}",
-                        method: 'GET',
-                        data: {
-                            totalSales: metrics.totalSalesTotal
-                        },
-                        success: function(response) {
-                        },
-                        error: function(xhr) {
-                        }
-                    });
-
-
                     // Calculate and display averages
                     // Calculate average PFT (old calculation for backward compatibility)
                     let pftTotalAvg = 0;

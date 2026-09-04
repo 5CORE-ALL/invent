@@ -1246,27 +1246,7 @@
                     let kwImpL7Total = calculateTotal('kw_impr_L7');
                     let pmtImpL7Total = calculateTotal('pmt_impr_L7');
 
-                    $.ajax({
-                        url: "{{ route('adv-ebay.ad-running.save-data') }}",
-                        method: 'GET',
-                        data: {
-                            spendL30Total: spendL30Total,
-                            kwSpendL30Total: kwSpendL30Total,
-                            pmtSpendL30Total:pmtSpendL30Total,
-                            clicksL30Total: clicksL30Total,
-                            kwClicksL30Total:kwClicksL30Total,
-                            pmtClicksL30Total:pmtClicksL30Total,
-                            salesL30Total : salesL30Total,
-                            kwSalesL30Total:kwSalesL30Total,
-                            pmtSalesL30Total:pmtSalesL30Total,
-                            soldL30Total:soldL30Total,
-                            kwSoldL30Total:kwSoldL30Total,
-                            pmtSoldL30Total:pmtSoldL30Total,
-                        },
-                        success: function(response) {
-                        },
-                        error: function(xhr) {
-                        }
+                    {{-- ADV Masters save-data endpoint removed --}}
                     });
 
 

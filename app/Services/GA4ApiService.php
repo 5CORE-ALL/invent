@@ -103,6 +103,7 @@ class GA4ApiService
                         ]
                     ],
                     'dimensions' => [
+                        ['name' => 'sessionGoogleAdsCampaignId'],
                         ['name' => 'sessionGoogleAdsCampaignName'],
                         ['name' => 'date'],
                         ['name' => 'eventName'], // Required to filter purchase events
@@ -150,24 +151,31 @@ class GA4ApiService
                 $totalRowsFetched += $rowsThisPage;
 
                 foreach ($rows as $row) {
-                    $campaignName = $row['dimensionValues'][0]['value'] ?? '';
-                    $date = $row['dimensionValues'][1]['value'] ?? '';
-                    $eventName = $row['dimensionValues'][2]['value'] ?? '';
+                    $campaignId = trim((string) ($row['dimensionValues'][0]['value'] ?? ''));
+                    $campaignName = trim((string) ($row['dimensionValues'][1]['value'] ?? ''));
+                    $date = self::normalizeReportDate((string) ($row['dimensionValues'][2]['value'] ?? ''));
+                    $eventName = $row['dimensionValues'][3]['value'] ?? '';
                     $revenue = floatval($row['metricValues'][0]['value'] ?? 0);
                     $eventCount = floatval($row['metricValues'][1]['value'] ?? 0);
 
-                    // Only process purchase events
-                    if ($eventName === 'purchase' && !empty($campaignName) && !empty($date)) {
-                        if (!isset($campaigns[$campaignName])) {
-                            $campaigns[$campaignName] = [];
-                        }
-                        $campaigns[$campaignName][$date] = [
-                            'campaign_name' => $campaignName,
-                            'date' => $date,
-                            'purchases' => $eventCount,
-                            'revenue' => $revenue,
-                        ];
+                    if ($eventName !== 'purchase' || $campaignName === '' || strcasecmp($campaignName, '(not set)') === 0 || $date === '') {
+                        continue;
                     }
+
+                    $bucketKey = ($campaignId !== '' && strcasecmp($campaignId, '(not set)') !== 0)
+                        ? $campaignId
+                        : $campaignName;
+
+                    if (!isset($campaigns[$bucketKey])) {
+                        $campaigns[$bucketKey] = [];
+                    }
+                    $campaigns[$bucketKey][$date] = [
+                        'campaign_id' => strcasecmp($campaignId, '(not set)') === 0 ? '' : $campaignId,
+                        'campaign_name' => $campaignName,
+                        'date' => $date,
+                        'purchases' => $eventCount,
+                        'revenue' => $revenue,
+                    ];
                 }
 
                 $offset += $pageSize;
@@ -266,11 +274,17 @@ class GA4ApiService
         $dailyData = $this->getCampaignMetricsDaily($startDate, $endDate);
         $aggregated = [];
 
-        foreach ($dailyData as $campaignName => $dates) {
+        foreach ($dailyData as $dates) {
+            $first = reset($dates) ?: [];
+            $campaignName = (string) ($first['campaign_name'] ?? '');
+            if ($campaignName === '') {
+                continue;
+            }
             $totalPurchases = array_sum(array_column($dates, 'purchases'));
             $totalRevenue = array_sum(array_column($dates, 'revenue'));
-            
+
             $aggregated[$campaignName] = [
+                'campaign_id' => (string) ($first['campaign_id'] ?? ''),
                 'campaign_name' => $campaignName,
                 'purchases' => $totalPurchases,
                 'revenue' => $totalRevenue,
@@ -278,6 +292,19 @@ class GA4ApiService
         }
 
         return $aggregated;
+    }
+
+    /**
+     * GA4 Data API returns date as YYYYMMDD. Persist as Y-m-d so DATE comparisons match Ads rows.
+     */
+    public static function normalizeReportDate(string $date): string
+    {
+        $date = trim($date);
+        if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $date, $m)) {
+            return $m[1].'-'.$m[2].'-'.$m[3];
+        }
+
+        return $date;
     }
 
     /**

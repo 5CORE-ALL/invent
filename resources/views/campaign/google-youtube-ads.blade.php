@@ -12,67 +12,341 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         #google-ads-campaigns-raw-wrap .tabulator {
-            border: 1px solid #dee2e6; border-radius: 8px; font-size: 11px;
+            border: 1px solid #dee2e6; border-radius: 8px; font-size: 11px; width: 100%;
         }
+        #google-ads-campaigns-raw-table { width: 100%; }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header {
             background: #f8f9fa; border-bottom: 1px solid #dee2e6;
         }
         #google-ads-campaigns-raw-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
-        /* Normal horizontal headers (not vertical / aliexpress-style) */
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
-            writing-mode: horizontal-tb !important;
-            text-orientation: mixed !important;
-            transform: none !important;
-            white-space: normal !important;
-        }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: horizontal-tb !important;
-            text-orientation: mixed !important;
-            transform: none !important;
-            white-space: normal !important;
-            height: auto !important;
-            min-height: 0 !important;
-            display: block;
-            align-items: unset;
-            justify-content: unset;
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.25;
-            padding: 5px 3px;
-            text-align: center;
+        /* Vertical headers (same as Google Shopping); campaign name + checkbox stay horizontal */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col {
+            height: 80px !important;
+            min-height: 80px;
+            vertical-align: bottom;
+            overflow: visible;
         }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
-            height: auto !important;
-            min-height: 34px;
+            height: 80px !important;
+            min-height: 80px;
             padding: 0;
         }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col {
-            height: auto !important;
-            min-height: 34px;
-            vertical-align: middle;
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.15;
+            padding: 4px 0;
+            text-align: center;
+            overflow: visible;
+            text-overflow: clip;
         }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
-        /* Tighter horizontal padding than Tabulator defaults */
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row .tabulator-cell {
-            padding: 3px 4px !important;
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+            padding-right: 0 !important;
         }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
-        /* Sts: column was too narrow — header wrapped one letter per line; keep title on one row like other cols */
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_status"] .tabulator-col-title {
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_name"] .tabulator-col-title,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__gac_select"] .tabulator-col-title,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_category"] .tabulator-col-title,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_audience"] .tabulator-col-title,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_landing"] .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            display: block;
+            white-space: nowrap !important;
+            padding: 5px 3px;
+        }
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_name"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_name"] .tabulator-col-title-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__gac_select"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="__gac_select"] .tabulator-col-title-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_category"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_category"] .tabulator-col-title-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_audience"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_audience"] .tabulator-col-title-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_landing"] .tabulator-col-content-holder,
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="yt_landing"] .tabulator-col-title-holder {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
             white-space: nowrap !important;
         }
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_status"] .tabulator-col-content-holder,
-        #google-ads-campaigns-raw-wrap .tabulator .tabulator-header .tabulator-col[tabulator-field="campaign_status"] .tabulator-col-title-holder {
-            white-space: nowrap !important;
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
+        /* Tighter horizontal padding than Tabulator defaults */
+        #google-ads-campaigns-raw-wrap .tabulator .tabulator-row .tabulator-cell {
+            padding: 2px 3px !important;
+            vertical-align: middle;
         }
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell .gac-raw-status-cell {
             white-space: nowrap;
+        }
+        #google-ads-campaigns-raw-wrap .gac-yt-attr {
+            width: 100%;
+            max-width: 100%;
+            height: 22px;
+            font-size: 11px;
+            line-height: 1.1;
+            padding: 0 2px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .gac-metric-tabs {
+            border-bottom: 1px solid #dee2e6;
+        }
+        .gac-metric-tabs .nav-link {
+            padding: 0.35rem 0.9rem;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+        }
+        .gac-metric-tabs .nav-link.active {
+            color: #0d6efd;
+        }
+        #google-ads-campaigns-raw-wrap .gac-audit-open {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 22px;
+            cursor: pointer;
+        }
+        #google-ads-campaigns-raw-wrap .gac-audit-icon {
+            cursor: pointer;
+            font-size: 15px;
+            pointer-events: none;
+        }
+        #google-ads-campaigns-raw-wrap .gac-audit-icon.is-empty {
+            color: #dc2626;
+        }
+        #google-ads-campaigns-raw-wrap .gac-audit-icon.is-filled {
+            color: #16a34a;
+        }
+        #google-ads-campaigns-raw-wrap .gac-audit-pct {
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            pointer-events: none;
+        }
+        #google-ads-campaigns-raw-wrap .gac-audit-pct.is-empty { color: #94a3b8; }
+        #google-ads-campaigns-raw-wrap .gac-audit-pct.is-good { color: #16a34a; }
+        #google-ads-campaigns-raw-wrap .gac-audit-pct.is-mid { color: #d97706; }
+        #google-ads-campaigns-raw-wrap .gac-audit-pct.is-bad { color: #dc2626; }
+        #gacVideoAuditModal .modal-dialog {
+            max-width: min(1080px, 96vw);
+            margin: 0.45rem auto;
+        }
+        #gacVideoAuditModal .modal-content {
+            max-height: calc(100vh - 0.9rem);
+        }
+        #gacVideoAuditModal .modal-body {
+            padding: 10px 14px 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        #gacVideoAuditModal .gac-va-report {
+            display: grid;
+            grid-template-columns: 1.2fr repeat(3, 1fr);
+            gap: 6px;
+        }
+        #gacVideoAuditModal .gac-va-stat {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 6px 8px;
+            text-align: center;
+            background: #f8fafc;
+        }
+        #gacVideoAuditModal .gac-va-stat .gac-va-num {
+            font-size: 20px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+        #gacVideoAuditModal .gac-va-stat .gac-va-lbl {
+            font-size: 10px;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 600;
+        }
+        #gacVideoAuditModal .gac-va-stat.is-score.is-good { background: #f0fdf4; border-color: #bbf7d0; }
+        #gacVideoAuditModal .gac-va-stat.is-score.is-mid { background: #fffbeb; border-color: #fde68a; }
+        #gacVideoAuditModal .gac-va-stat.is-score.is-bad { background: #fef2f2; border-color: #fecaca; }
+        #gacVideoAuditModal .gac-va-stat.is-fail .gac-va-num { color: #dc2626; }
+        #gacVideoAuditModal .gac-va-stat.is-pass .gac-va-num { color: #16a34a; }
+        #gacVideoAuditBody {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            overflow: auto;
+            min-height: 0;
+            flex: 1;
+        }
+        #gacVideoAuditModal .gac-va-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #fff;
+            order: 2;
+        }
+        #gacVideoAuditModal .gac-va-item.is-fail { order: 0; background: #fef2f2; border-color: #fecaca; }
+        #gacVideoAuditModal .gac-va-item.is-blank { order: 1; }
+        #gacVideoAuditModal .gac-va-item.is-pass { order: 3; background: #f0fdf4; border-color: #bbf7d0; }
+        #gacVideoAuditModal .gac-va-item.is-na { order: 4; background: #f8fafc; }
+        #gacVideoAuditModal .gac-va-q {
+            font-size: 12px;
+            font-weight: 650;
+            line-height: 1.25;
+            min-width: 0;
+        }
+        #gacVideoAuditModal .gac-va-ans {
+            display: inline-flex;
+            flex-shrink: 0;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        #gacVideoAuditModal .gac-va-ans label {
+            margin: 0;
+            padding: 3px 7px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            border-right: 1px solid #e5e7eb;
+        }
+        #gacVideoAuditModal .gac-va-ans label:last-child { border-right: 0; }
+        #gacVideoAuditModal .gac-va-ans input { display: none; }
+        #gacVideoAuditModal .gac-va-ans label:has(input:checked) {
+            color: #fff;
+        }
+        #gacVideoAuditModal .gac-va-ans label:has(input[value="pass"]:checked) { background: #16a34a; }
+        #gacVideoAuditModal .gac-va-ans label:has(input[value="fail"]:checked) { background: #dc2626; }
+        #gacVideoAuditModal .gac-va-ans label:has(input[value="na"]:checked) { background: #64748b; }
+        #gacVideoAuditModal .gac-va-foot {
+            display: grid;
+            grid-template-columns: 1fr minmax(220px, 34%);
+            gap: 8px;
+            align-items: start;
+        }
+        #gacVideoAuditModal .gac-va-history {
+            max-height: 88px;
+            overflow: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+        #gacVideoAuditModal .gac-va-history table { font-size: 11px; }
+        @media (max-width: 800px) {
+            #gacVideoAuditBody { grid-template-columns: 1fr; }
+            #gacVideoAuditModal .gac-va-report,
+            #gacVideoAuditModal .gac-va-foot { grid-template-columns: 1fr; }
+        }
+        /* Column visibility — 4 groups (Basics / LT / L30 / Others) */
+        #column-dropdown-menu.gac-col-vis-menu,
+        #column-dropdown-menu.gac-col-vis-menu.show {
+            min-width: min(92vw, 720px) !important;
+            width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
+        @media (max-width: 768px) {
+            #column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+            }
         }
         /* ── Pagination footer — same rules as aliexpress_pricing_view (amazon_tabulator_view style) ── */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-footer {
@@ -156,6 +430,14 @@
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-cell.acos-red {
             color: #ff2727 !important;
             font-weight: 600;
+        }
+        .gac-raw-search-input {
+            width: 200px;
+            max-width: 36vw;
+            height: 28px;
+            padding: 2px 8px;
+            font-size: 12px;
+            flex: 0 0 auto;
         }
         #gac-raw-filter-bar {
             background: #f1f5f9;
@@ -312,7 +594,16 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+                    <ul class="nav nav-tabs gac-metric-tabs mb-2" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link active" id="gac-tab-l30" data-gac-tab="l30" role="tab" aria-selected="true">L30</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link" id="gac-tab-lt" data-gac-tab="lt" role="tab" aria-selected="false">LT</button>
+                        </li>
+                    </ul>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <input type="search" id="gac-filter-search" class="form-control form-control-sm gac-raw-search-input" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
 
                         {{--
                             Badge strip — kept on one line via flex-nowrap. flex-grow-1 and
@@ -382,14 +673,21 @@
                         <button type="button" id="gac-raw-export" class="btn btn-sm btn-success gac-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                                id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Show / hide columns (saved per user)">
+                                <i class="fas fa-columns"></i>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-start gac-col-vis-menu"
+                                id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
+                            </div>
+                        </div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="gac-raw-pause-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawPauseRuleModal" title="Pause campaigns in this grid when Spend LT and ACOS LT hit a slab">Pause Rule</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Push SBGT to Youtube ads campaigns using the grid values for each selected row.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
-                        </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Push SBID to Youtube ads ad groups using the grid values for each selected row. Rows with SBID — are skipped.">
-                            <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                     </div>
                     <div id="gac-raw-filter-bar" class="mb-3">
@@ -460,9 +758,6 @@
                         <pre id="gac-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:280px;overflow:auto;"></pre>
                     </div>
                     <div id="google-ads-campaigns-raw-wrap">
-                        <div class="p-2 bg-light border rounded-top">
-                            <input type="search" id="gac-filter-search" class="form-control" placeholder="Search Campaign..." autocomplete="off" aria-label="Search by campaign name" maxlength="100">
-                        </div>
                         <div id="google-ads-campaigns-raw-table"></div>
                     </div>
                 </div>
@@ -565,63 +860,45 @@
         </div>
     </div>
 
-    <div class="modal fade" id="gacRawSbidRuleModal" tabindex="-1" aria-labelledby="gacRawSbidRuleModalLabel" aria-hidden="true">
+    <div class="modal fade" id="gacRawPauseRuleModal" tabindex="-1" aria-labelledby="gacRawPauseRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawSbidRuleModalLabel">SBID rule — 7UB% / 1UB% → suggested bid</h5>
+                    <h5 class="modal-title" id="gacRawPauseRuleModalLabel">Pause rule — Spend LT + ACOS LT</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-2">When <strong>both</strong> 7UB% and 1UB% are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. When <strong>both</strong> are <strong>below</strong> the low threshold: if CPC &lt; low-bid ceiling, SBID = CPC + flat incr; otherwise CPC × under multipliers (or fallback when no CPC). Otherwise SBID shows —.</p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUtilLow">Low threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilLow">
+                    <p class="small text-muted mb-3">
+                        Slabs are checked <strong>top to bottom</strong>. The first match
+                        that is <strong>Spend LT &gt; amount</strong> and
+                        <strong>ACOS LT &gt; %</strong> marks <strong>Sts</strong> as paused
+                        on this grid (orange dot). This does not pause the campaign in Google Ads.
+                    </p>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="gac-pause-rule-enabled">
+                        <label class="form-check-label" for="gac-pause-rule-enabled">Enable pause rule</label>
                         </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUtilHigh">High threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilHigh">
+                    <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="gac-pause-rule-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:40px;">#</th>
+                                <th>Spend LT &gt;</th>
+                                <th>ACOS LT &gt; (%)</th>
+                                <th style="width:56px;" class="text-center">Del</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gac-pause-slabs-body"></tbody>
+                    </table>
                         </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderFallback">Fallback (no CPC)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFallback">
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both below low — CPC multipliers</p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL1">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderMultL7">× L7 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL7">
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both below low — flat incr when CPC is low</p>
-                    <div class="row g-2 mb-3">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderFlatMax">If CPC &lt;</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatMax" title="When base CPC is below this, use CPC + incr instead of the multiplier">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderFlatIncr">Bid incr (+)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatIncr" title="Flat amount added to CPC when below the ceiling">
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both above high</p>
-                    <div class="row g-2">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidOverMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidOverMultL1">
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbidRuleErr" role="alert"></p>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-pause-add-slab-btn">
+                        <i class="fas fa-plus me-1"></i>Add slab
+                    </button>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawPauseRuleErr" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawSbidRuleSaveBtn">Save &amp; refresh grid</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawPauseRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
@@ -688,6 +965,171 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="gacVideoAuditModal" tabindex="-1" aria-labelledby="gacVideoAuditModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacVideoAuditModalLabel">
+                        Video audit — <span id="gacVideoAuditCampaignName" class="fw-normal text-muted"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-between align-items-center small text-muted">
+                        <span>Campaign ID: <code id="gacVideoAuditCampaignId"></code></span>
+                        <span>Fail marks a likely cause. Answer at least one item or add a note.</span>
+                    </div>
+                    <div class="gac-va-report" aria-live="polite">
+                        <div class="gac-va-stat is-score" id="gacVideoAuditScoreCard">
+                            <div class="gac-va-num" id="gacVideoAuditScore">—</div>
+                            <div class="gac-va-lbl">Pass rate</div>
+                        </div>
+                        <div class="gac-va-stat is-pass">
+                            <div class="gac-va-num" id="gacVideoAuditPassCount">0</div>
+                            <div class="gac-va-lbl">Pass</div>
+                        </div>
+                        <div class="gac-va-stat is-fail">
+                            <div class="gac-va-num" id="gacVideoAuditFailCount">0</div>
+                            <div class="gac-va-lbl">Fail</div>
+                        </div>
+                        <div class="gac-va-stat">
+                            <div class="gac-va-num" id="gacVideoAuditNaCount">0</div>
+                            <div class="gac-va-lbl">N/A</div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="gacVideoAuditCid">
+                    <input type="hidden" id="gacVideoAuditCname">
+                    <div id="gacVideoAuditBody"></div>
+                    <div class="gac-va-foot">
+                        <div>
+                            <label class="form-label small mb-1" for="gacVideoAuditComments">Notes</label>
+                            <textarea id="gacVideoAuditComments" class="form-control form-control-sm" rows="2"
+                                placeholder="What looked off, or what to change next…"></textarea>
+                        </div>
+                        <div>
+                            <div class="small text-uppercase text-muted mb-1">History</div>
+                            <p class="small text-muted mb-0 d-none" id="gacVideoAuditHistoryEmpty">No prior video audits.</p>
+                            <div class="gac-va-history d-none" id="gacVideoAuditHistoryWrap">
+                                <table class="table table-sm mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>When</th>
+                                            <th>%</th>
+                                            <th class="text-end">Fails</th>
+                                            <th>By</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gacVideoAuditHistoryBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="small text-danger mb-0 d-none" id="gacVideoAuditErr" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacVideoAuditSaveBtn">Save audit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="gacVideoAiAuditModal" tabindex="-1" aria-labelledby="gacVideoAiAuditModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacVideoAiAuditModalLabel">
+                        Audit AI — <span id="gacVideoAiAuditCampaignName" class="fw-normal text-muted"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">
+                        Gemini analyzes the YouTube video (when a URL is set) against the checkpoints and
+                        returns each failure with a reason and a next-step direction.
+                    </p>
+                    <p class="small mb-3">
+                        Campaign ID: <code id="gacVideoAiAuditCampaignId"></code>
+                        <span class="ms-2">Fails: <strong id="gacVideoAiAuditFailCount">0</strong></span>
+                        <span class="ms-2 text-muted" id="gacVideoAiAuditModel"></span>
+                    </p>
+                    <input type="hidden" id="gacVideoAiAuditCid">
+                    <input type="hidden" id="gacVideoAiAuditCname">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="gacVideoAiAuditUrl">YouTube / video URL</label>
+                        <input type="url" id="gacVideoAiAuditUrl" class="form-control form-control-sm"
+                            placeholder="https://www.youtube.com/watch?v=…">
+                    </div>
+                    <div class="mb-2">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <label class="form-label small mb-1" for="gacVideoAiAuditPrompt">AI prompt (editable)</label>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="gacVideoAiAuditPromptReset">Reset default</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="gacVideoAiAuditPromptSave">Save prompt</button>
+                            </div>
+                        </div>
+                        <textarea id="gacVideoAiAuditPrompt" class="form-control form-control-sm font-monospace" rows="7"></textarea>
+                    </div>
+                    <h6 class="small text-uppercase text-muted mb-1">Prompt history</h6>
+                    <p class="small text-muted mb-0 d-none" id="gacVideoAiPromptHistoryEmpty">No saved prompt versions yet.</p>
+                    <div class="table-responsive border rounded mb-3 d-none" id="gacVideoAiPromptHistoryWrap" style="max-height:140px;overflow:auto;">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>When</th>
+                                    <th>By</th>
+                                    <th>Prompt</th>
+                                    <th style="width:70px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="gacVideoAiPromptHistoryBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="alert alert-light border small py-2 mb-3 d-none" id="gacVideoAiAuditSummary"></div>
+                    <div class="table-responsive border rounded mb-3">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Checkpoint</th>
+                                    <th style="width:70px;">Verdict</th>
+                                    <th>Error</th>
+                                    <th>Reason</th>
+                                    <th>Direction</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gacVideoAiAuditBody">
+                                <tr><td colspan="5" class="text-muted small text-center py-3">Run AI to fill this table.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <h6 class="small text-uppercase text-muted mb-1">Analysis history</h6>
+                    <p class="small text-muted mb-0 d-none" id="gacVideoAiAuditHistoryEmpty">No prior AI audits.</p>
+                    <div class="table-responsive border rounded d-none" id="gacVideoAiAuditHistoryWrap">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>When</th>
+                                    <th>By</th>
+                                    <th>Model</th>
+                                    <th class="text-end">Fails</th>
+                                    <th>Summary</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gacVideoAiAuditHistoryBody"></tbody>
+                        </table>
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="gacVideoAiAuditErr" role="alert"></p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacVideoAiAuditRunBtn">
+                        <i class="fas fa-wand-magic-sparkles me-1"></i>Run AI audit
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -698,14 +1140,100 @@
             const dataUrl = @json(route('google.youtube.ads.campaigns.data'));
             const gacRawRuleGetUrl = @json(route('google.youtube.ads.campaigns.rule'));
             const gacRawRuleSaveUrl = @json(route('google.youtube.ads.campaigns.rule.save'));
+            const gacPauseRuleGetUrl = @json(route('google.youtube.ads.campaigns.pause.rule'));
+            const gacPauseRuleSaveUrl = @json(route('google.youtube.ads.campaigns.pause.rule.save'));
+            const gacVideoAuditGetUrl = @json(route('google.youtube.ads.campaigns.video.audit'));
+            const gacVideoAuditSaveUrl = @json(route('google.youtube.ads.campaigns.video.audit.save'));
+            const gacVideoAiAuditGetUrl = @json(route('google.youtube.ads.campaigns.video.ai.audit'));
+            const gacVideoAiAuditRunUrl = @json(route('google.youtube.ads.campaigns.video.ai.audit.run'));
+            const gacVideoAiPromptSaveUrl = @json(route('google.youtube.ads.campaigns.video.ai.prompt.save'));
             const gacRawPushSbgtUrl = @json(route('google.youtube.ads.campaigns.push.sbgt'));
-            const gacRawPushSbidUrl = @json(route('google.youtube.ads.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.youtube.ads.campaigns.badge.history'));
             const gacRawSbgtHistoryUrl = @json(route('google.youtube.ads.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.youtube.ads.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.youtube.ads.campaigns.u7.history'));
+            const gacYtAttrSaveUrl = @json(route('google.youtube.ads.campaigns.attr.save'));
+            const gacYtAttrOptionSaveUrl = @json(route('google.youtube.ads.campaigns.attr.option.save'));
             window.gacRawRule = @json($googleShoppingRule);
+            window.gacPauseRule = @json($youtubePauseRule ?? ['enabled' => true, 'slabs' => [['spend_gt' => 30, 'acos_gt' => 50]]]);
+            window.gacYtAttrOptions = @json($youtubeAttrOptions ?? null) || {
+                category: ['B2B', 'B2C'],
+                audience: ['shops', 'music schools', 'drumers', 'Guitarist', 'DJ'],
+                landing: []
+            };
+            const TABULATOR_COLUMN_CHANNEL = 'google_youtube_ads_user_{{ auth()->id() ?? 'guest' }}';
+            const TABULATOR_COLUMN_VISIBILITY_URL = @json(url('/tabulator-column-visibility'));
+            const GAC_PERMANENTLY_HIDDEN_FIELDS = {
+                id: true,
+                campaign_id: true,
+                date: true,
+                sbgt_prev: true,
+                sbgt_prev_date: true,
+                sbgt_trend: true,
+                id_mismatch: true,
+                id_alert_title: true,
+                bgt_views_color: true,
+                bgt_views_label: true,
+                bgt_cvr_color: true,
+                bgt_cvr_label: true,
+                bgt_cvr_page_cvr: true,
+                bgt_prc_color: true,
+                bgt_prc_label: true,
+                bgt_prc_price: true,
+                ovl30: true,
+                l1_spend: true,
+                sbid: true,
+                video_audit_pct: true,
+            };
+            const GAC_DEFAULT_HIDDEN_FIELDS = {
+                l7_spend: true,
+                l2_spend: true,
+                l1_spend: true,
+                cpc_L7: true,
+                cpc_L2: true,
+                cpc_L1: true,
+                ub7: true,
+                ub2: true,
+                ub1: true,
+            };
+            const COL_VIS_CATEGORY_KEYS = ['basics', 'lt', 'l30', 'others'];
+            const COL_VIS_CATEGORY_LABELS = {
+                basics: 'Basics',
+                lt: 'LT',
+                l30: 'L30',
+                others: 'Others',
+            };
+            const COL_VIS_BASICS = {
+                campaign_status: true, yt_category: true, yt_audience: true, yt_landing: true,
+                campaign_name: true, is_parent: true,
+                inventory: true, dil: true, price: true,
+            };
+            const COL_VIS_LT = {
+                spend_lt: true, views_lt: true, clicks_lt: true, ctr_lt: true,
+                cpc_lt: true, cps_lt: true, cpv_lt: true,
+                sold_lt: true, sales_lt: true, acos_lt: true, cvr_lt: true,
+            };
+            const COL_VIS_L30 = {
+                spend: true, video_views_L30: true, metrics_clicks: true, ctr_l30: true, cpc_L30: true,
+                cps_L30: true, cpv_L30: true, ad_sold_L30: true, ad_sales_L30: true,
+                acos_l30: true, cvr_l30: true,
+            };
+            const GAC_L30_METRIC_FIELDS = Object.assign({
+                l7_spend: true, l2_spend: true, l1_spend: true,
+                cpc_L7: true, cpc_L2: true, cpc_L1: true,
+            }, COL_VIS_L30);
+            const GAC_LT_METRIC_FIELDS = Object.assign({}, COL_VIS_LT);
+            var gacMetricTab = (function() {
+                try {
+                    return localStorage.getItem('gac_youtube_metric_tab') === 'lt' ? 'lt' : 'l30';
+                } catch (e) {
+                    return 'l30';
+                }
+            })();
+            let gacSavedColumnVisibility = {};
+            let gacSavedColumnVisibilityLoaded = false;
+            let gacColDropdownBuilt = false;
             let table;
             let gacRawU7PieChart = null;
             let gacRawU7PieRefreshTimer = null;
@@ -723,13 +1251,405 @@
             let gacRawReformatting = false;
             const GAC_RAW_U7_PIE_MODAL_CHART_H = 400;
 
+            function gacCsrfToken() {
+                return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            }
+
+            function gacClassifyColumn(field) {
+                var f = String(field || '');
+                if (Object.prototype.hasOwnProperty.call(COL_VIS_BASICS, f)) return 'basics';
+                if (Object.prototype.hasOwnProperty.call(COL_VIS_LT, f)) return 'lt';
+                if (Object.prototype.hasOwnProperty.call(COL_VIS_L30, f)) return 'l30';
+                return 'others';
+            }
+
+            function gacFetchColumnVisibility() {
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                    },
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(map) {
+                        gacSavedColumnVisibility = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        gacSavedColumnVisibilityLoaded = true;
+                        return gacSavedColumnVisibility;
+                    })
+                    .catch(function(err) {
+                        console.error('Error loading column visibility:', err);
+                        gacSavedColumnVisibility = {};
+                        gacSavedColumnVisibilityLoaded = true;
+                        return gacSavedColumnVisibility;
+                    });
+            }
+
+            var gacColumnVisibilityReady = gacFetchColumnVisibility();
+
+            function gacSyncGroupHeaderCheckbox(groupEl) {
+                if (!groupEl) return;
+                var headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                var itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                if (!headerCb || !itemCbs.length) return;
+                var checked = 0;
+                itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
+            function gacColumnTitle(field) {
+                var titles = {
+                    campaign_status: 'Sts',
+                    yt_category: 'Category',
+                    yt_audience: 'Audience',
+                    yt_landing: 'Landing',
+                    campaign_name: 'Campaign',
+                    is_parent: 'is_parent',
+                    inventory: 'INV',
+                    dil: 'Dil',
+                    price: 'Price',
+                    views_lt: 'LT views',
+                    spend_lt: 'Spend LT',
+                    sold_lt: 'Sold LT',
+                    sales_lt: 'Sales LT',
+                    acos_lt: 'ACOS LT',
+                    cpc_lt: 'CPC LT',
+                    cps_lt: 'CPS LT',
+                    cpv_lt: 'CPV LT',
+                    ctr_lt: 'CTR LT',
+                    clicks_lt: 'Clicks LT',
+                    cvr_lt: 'CVR LT',
+                    spend: 'Spend',
+                    video_views_L30: 'L30 Views',
+                    metrics_clicks: 'Clicks L30',
+                    ctr_l30: 'CTR',
+                    cpc_L30: 'CPC',
+                    cps_L30: 'CPS',
+                    cpv_L30: 'CPV',
+                    ad_sold_L30: 'Sold',
+                    ad_sales_L30: 'Sales',
+                    acos_l30: 'ACOS',
+                    cvr_l30: 'CVR',
+                    l7_spend: 'L7 Spend',
+                    l2_spend: 'L2 Spend',
+                    bgt: 'BGT',
+                    sbgt: 'SBGT',
+                    sbid: 'SBID',
+                    action: 'Action',
+                    video_audit_filled: 'Audit',
+                    video_audit_ai_filled: 'Audit AI',
+                };
+                if (table) {
+                    try {
+                        var col = table.getColumn(field);
+                        if (col) {
+                            var t = col.getDefinition().title;
+                            if (t && String(t).replace(/<[^>]*>/g, '').trim()) {
+                                return String(t).replace(/<[^>]*>/g, '').trim();
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+                return titles[field] || field;
+            }
+
+            function gacColumnIsVisible(field) {
+                if (!table) {
+                    return !Object.prototype.hasOwnProperty.call(GAC_DEFAULT_HIDDEN_FIELDS, field);
+                }
+                try {
+                    var col = table.getColumn(field);
+                    if (col) return col.isVisible();
+                } catch (e) { /* ignore */ }
+                if (gacSavedColumnVisibilityLoaded
+                    && Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, field)) {
+                    return gacSavedColumnVisibility[field] !== false;
+                }
+                return !Object.prototype.hasOwnProperty.call(GAC_DEFAULT_HIDDEN_FIELDS, field);
+            }
+
+            function gacCatalogFields() {
+                var seen = {};
+                var byCat = { basics: [], lt: [], l30: [], others: [] };
+                function add(field) {
+                    if (!field || field === '__gac_select' || seen[field]) return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) return;
+                    seen[field] = true;
+                    byCat[gacClassifyColumn(field)].push(field);
+                }
+                Object.keys(COL_VIS_BASICS).forEach(add);
+                Object.keys(COL_VIS_LT).forEach(add);
+                Object.keys(COL_VIS_L30).forEach(add);
+                ['l7_spend', 'l2_spend', 'bgt', 'sbgt', 'video_audit_filled', 'video_audit_ai_filled', 'action'].forEach(add);
+                if (table && typeof table.getColumns === 'function') {
+                    try {
+                        table.getColumns().forEach(function(col) {
+                            var def = col.getDefinition ? col.getDefinition() : {};
+                            add(def && def.field);
+                        });
+                    } catch (e) { /* ignore */ }
+                }
+                return byCat;
+            }
+
+            function buildColumnDropdown() {
+                var menu = document.getElementById('column-dropdown-menu');
+                if (!menu) return;
+
+                var wrap = document.createElement('div');
+                var showAll = document.createElement('a');
+                showAll.className = 'dropdown-item py-1';
+                showAll.href = '#';
+                showAll.id = 'show-all-columns-btn';
+                showAll.innerHTML = '<i class="fa fa-eye"></i> Show All';
+                wrap.appendChild(showAll);
+
+                var groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+                var byCat = gacCatalogFields();
+                var groupEls = {};
+
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    var group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+
+                    var titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    var groupCb = document.createElement('input');
+                    groupCb.type = 'checkbox';
+                    groupCb.className = 'col-vis-group-toggle';
+                    groupCb.dataset.group = cat;
+                    groupCb.title = 'Select / deselect all in ' + COL_VIS_CATEGORY_LABELS[cat];
+                    titleEl.appendChild(groupCb);
+                    titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                    group.appendChild(titleEl);
+
+                    var list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    (byCat[cat] || []).forEach(function(field) {
+                        var li = document.createElement('li');
+                        li.className = 'col-vis-item';
+                        var label = document.createElement('label');
+                        var checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = field;
+                        checkbox.className = 'col-vis-field-toggle';
+                        checkbox.dataset.group = cat;
+                        checkbox.checked = gacColumnIsVisible(field);
+                        var title = gacColumnTitle(field);
+                        label.appendChild(checkbox);
+                        label.appendChild(document.createTextNode(title));
+                        label.title = title;
+                        li.appendChild(label);
+                        list.appendChild(li);
+                    });
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    groupEls[cat] = group;
+                });
+
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    gacSyncGroupHeaderCheckbox(groupEls[cat]);
+                });
+
+                wrap.appendChild(groupsWrap);
+                menu.innerHTML = '';
+                menu.appendChild(wrap);
+                gacColDropdownBuilt = true;
+            }
+
+            function saveColumnVisibilityToServer() {
+                if (!table) return;
+                var visibility = {};
+                table.getColumns().forEach(function(col) {
+                    var field = col.getDefinition().field;
+                    if (!field || field === '__gac_select') return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) {
+                        visibility[field] = false;
+                        return;
+                    }
+                    if (gacIsInactiveMetricField(field)) {
+                        if (Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, field)) {
+                            visibility[field] = gacSavedColumnVisibility[field];
+                        }
+                        return;
+                    }
+                    visibility[field] = col.isVisible();
+                });
+                gacSavedColumnVisibility = visibility;
+                gacSavedColumnVisibilityLoaded = true;
+
+                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                    },
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        visibility: visibility,
+                    }),
+                }).catch(function(err) { console.error('Error saving column visibility:', err); });
+            }
+
+            function gacIsInactiveMetricField(field) {
+                if (gacMetricTab === 'lt') {
+                    return Object.prototype.hasOwnProperty.call(GAC_L30_METRIC_FIELDS, field);
+                }
+                return Object.prototype.hasOwnProperty.call(GAC_LT_METRIC_FIELDS, field);
+            }
+
+            function gacSyncMetricTabButtons() {
+                document.querySelectorAll('[data-gac-tab]').forEach(function(btn) {
+                    var on = btn.getAttribute('data-gac-tab') === gacMetricTab;
+                    btn.classList.toggle('active', on);
+                    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+            }
+
+            function gacApplyMetricTab() {
+                gacSyncMetricTabButtons();
+                if (!table || typeof table.getColumns !== 'function') return;
+                table.getColumns().forEach(function(col) {
+                    var field = col.getDefinition().field;
+                    if (!field || field === '__gac_select') return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) {
+                        col.hide();
+                        return;
+                    }
+                    if (gacIsInactiveMetricField(field)) {
+                        col.hide();
+                        return;
+                    }
+                    if (!Object.prototype.hasOwnProperty.call(GAC_L30_METRIC_FIELDS, field)
+                        && !Object.prototype.hasOwnProperty.call(GAC_LT_METRIC_FIELDS, field)) {
+                        return;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(GAC_DEFAULT_HIDDEN_FIELDS, field)
+                        && !(gacSavedColumnVisibilityLoaded && gacSavedColumnVisibility[field] === true)) {
+                        col.hide();
+                        return;
+                    }
+                    if (gacSavedColumnVisibilityLoaded
+                        && Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, field)
+                        && gacSavedColumnVisibility[field] === false) {
+                        col.hide();
+                        return;
+                    }
+                    col.show();
+                });
+                gacAutofitColumnsSoon();
+            }
+
+            function applyColumnVisibilityFromCache() {
+                if (!table || !gacSavedColumnVisibilityLoaded) return;
+                table.getColumns().forEach(function(col) {
+                    var field = col.getDefinition().field;
+                    if (!field || field === '__gac_select') return;
+                    if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) {
+                        col.hide();
+                        return;
+                    }
+                    if (gacIsInactiveMetricField(field)) {
+                        col.hide();
+                        return;
+                    }
+                    if (!Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, field)) return;
+                    if (gacSavedColumnVisibility[field]) {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                });
+                gacApplyMetricTab();
+            }
+
+            function gacAutofitColumns() {
+                if (!table) return;
+                try {
+                    table.redraw(true);
+                } catch (e) { /* ignore */ }
+            }
+
+            function gacComputeTableHeight() {
+                var el = document.getElementById('google-ads-campaigns-raw-table');
+                if (!el) return 650;
+                var top = el.getBoundingClientRect().top;
+                return Math.max(360, Math.floor(window.innerHeight - top - 16));
+            }
+
+            function gacFitTableHeightToPage() {
+                if (!table || gacFitTableHeightToPage._lock) return;
+                var next = gacComputeTableHeight();
+                var current = (table.element && table.element.offsetHeight) ? table.element.offsetHeight : 0;
+                if (Math.abs(current - next) < 12) return;
+                gacFitTableHeightToPage._lock = true;
+                try {
+                    table.setHeight(next);
+                } catch (e) { /* ignore */ }
+                gacFitTableHeightToPage._lock = false;
+            }
+
+            function gacAutofitRowSize() {
+                if (!table || typeof table.getRows !== 'function') return;
+                var holder = table.element ? table.element.querySelector('.tabulator-tableholder') : null;
+                if (!holder) return;
+                var rows = table.getRows();
+                var n = rows.length;
+                if (!n) return;
+                var available = holder.clientHeight;
+                if (available < 40) return;
+                var rowH = 32;
+                if (n * 32 < available) {
+                    rowH = Math.min(96, Math.max(32, Math.floor(available / n)));
+                }
+                table.options.rowHeight = rowH;
+                rows.forEach(function(row) {
+                    try {
+                        var rel = row.getElement();
+                        if (!rel) return;
+                        rel.style.height = rowH + 'px';
+                        rel.querySelectorAll('.tabulator-cell').forEach(function(cell) {
+                            cell.style.height = rowH + 'px';
+                        });
+                    } catch (e) { /* ignore */ }
+                });
+            }
+
+            function gacAutofitColumnsSoon() {
+                clearTimeout(gacAutofitColumnsSoon._t);
+                gacAutofitColumnsSoon._t = setTimeout(function() {
+                    gacFitTableHeightToPage();
+                    gacAutofitColumns();
+                    gacAutofitRowSize();
+                }, 60);
+            }
+
+            function gacEnsureColumnVisibilityUi() {
+                var finish = function() {
+                    applyColumnVisibilityFromCache();
+                    buildColumnDropdown();
+                };
+                if (gacSavedColumnVisibilityLoaded) {
+                    finish();
+                } else {
+                    gacColumnVisibilityReady.then(finish);
+                }
+            }
+
             // Action column: red alert triangle when a row's ACOS is above the
             // current average ACOS AND its Spend is over $30. Reads the live
             // gacRawAvgAcos so it re-evaluates as the badge changes.
             function gacRawActionFormatter(cell) {
                 var row = cell.getRow().getData();
-                var acos = gacRawNumber(row.acos_l30);
-                var spend = gacRawNumber(row.spend);
+                var acos = gacMetricTab === 'lt' ? gacRawNumber(row.acos_lt) : gacRawNumber(row.acos_l30);
+                var spend = gacMetricTab === 'lt' ? gacRawNumber(row.spend_lt) : gacRawNumber(row.spend);
                 if (acos > gacRawAvgAcos && spend > 30) {
                     var tip = 'ACOS ' + Math.round(acos) + '% > avg ' + Math.round(gacRawAvgAcos)
                             + '% and Spend $' + Math.round(spend) + ' > $30';
@@ -772,6 +1692,78 @@
                         + ' title="' + gacRawEscAttr(tip) + '"'
                         + ' style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + color + ';margin-left:6px;cursor:pointer;vertical-align:middle;flex-shrink:0;"></span>';
                 return '<span style="display:inline-flex;align-items:center;justify-content:center;">' + valTxt + dot + '</span>';
+            }
+
+            function gacYtAttrKind(field) {
+                if (field === 'yt_audience') return 'audience';
+                if (field === 'yt_landing') return 'landing';
+                return 'category';
+            }
+
+            function gacYtAttrOptionsFor(field) {
+                var o = window.gacYtAttrOptions || {};
+                if (field === 'yt_category') return o.category || ['B2B', 'B2C'];
+                if (field === 'yt_audience') return o.audience || [];
+                if (field === 'yt_landing') return o.landing || [];
+                return [];
+            }
+
+            function gacYtAttrSelectHtml(cell, field) {
+                var row = cell.getRow().getData() || {};
+                var cid = row.campaign_id != null ? String(row.campaign_id) : '';
+                var cur = cell.getValue() == null ? '' : String(cell.getValue());
+                var allowAdd = field !== 'yt_category';
+                var html = '<select class="gac-yt-attr" data-field="' + gacRawEscAttr(field) + '" data-cid="' + gacRawEscAttr(cid) + '">';
+                html += '<option value="">—</option>';
+                gacYtAttrOptionsFor(field).forEach(function(label) {
+                    var sel = String(label) === cur ? ' selected' : '';
+                    html += '<option value="' + gacRawEscAttr(label) + '"' + sel + '>' + gacEscHtml(label) + '</option>';
+                });
+                if (allowAdd) {
+                    html += '<option value="__add__">+ Add…</option>';
+                }
+                html += '</select>';
+                return html;
+            }
+
+            function gacYtAttrRefreshSelects() {
+                if (!table || typeof table.getRows !== 'function') return;
+                try {
+                    table.getRows().forEach(function(row) { row.reformat(); });
+                } catch (e) { /* ignore */ }
+            }
+
+            function gacYtAttrSave(cid, field, value, selectEl) {
+                fetch(gacYtAttrSaveUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ campaign_id: cid, field: field, value: value }),
+                })
+                    .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                    .then(function(out) {
+                        var b = out.body || {};
+                        if (!out.ok || !b.success) throw new Error(b.error || 'Save failed.');
+                        if (b.options) window.gacYtAttrOptions = b.options;
+                        if (table && typeof table.getRows === 'function') {
+                            table.getRows().forEach(function(row) {
+                                var d = row.getData() || {};
+                                if (String(d.campaign_id || '') !== String(cid)) return;
+                                var patch = {};
+                                patch[field] = value;
+                                row.update(patch);
+                            });
+                        }
+                    })
+                    .catch(function(e) {
+                        window.alert(e.message || 'Could not save.');
+                        if (selectEl) selectEl.value = '';
+                    });
             }
 
             function gacRawOpenSbgtHistory(campaignId) {
@@ -1291,6 +2283,71 @@
                     e.preventDefault();
                     gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
                 });
+                // Capture phase: Tabulator's boolean tickCross editor swallows
+                // bubble clicks, which blocked both Audit column cellClick handlers.
+                document.addEventListener('click', function (e) {
+                    var btn = e.target.closest ? e.target.closest('.gac-audit-open') : null;
+                    if (!btn) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var cid = btn.getAttribute('data-cid') || '';
+                    var name = btn.getAttribute('data-cname') || '';
+                    if (btn.getAttribute('data-gac-audit') === 'ai') {
+                        gacOpenVideoAiAudit({ campaign_id: cid, campaign_name: name });
+                    } else {
+                        gacOpenVideoAudit(cid, name);
+                    }
+                }, true);
+                document.addEventListener('mousedown', function (e) {
+                    var sel = e.target.closest ? e.target.closest('.gac-yt-attr') : null;
+                    if (!sel) return;
+                    e.stopPropagation();
+                }, true);
+                document.addEventListener('click', function (e) {
+                    var sel = e.target.closest ? e.target.closest('.gac-yt-attr') : null;
+                    if (!sel) return;
+                    e.stopPropagation();
+                }, true);
+                document.addEventListener('change', function (e) {
+                    var sel = e.target && e.target.classList && e.target.classList.contains('gac-yt-attr') ? e.target : null;
+                    if (!sel) return;
+                    e.stopPropagation();
+                    var field = sel.getAttribute('data-field') || '';
+                    var cid = sel.getAttribute('data-cid') || '';
+                    var value = sel.value || '';
+                    if (!cid || !field) return;
+                    if (value === '__add__') {
+                        sel.value = '';
+                        var label = window.prompt(field === 'yt_landing' ? 'Add landing option' : 'Add audience option');
+                        if (label == null) return;
+                        label = String(label).trim();
+                        if (!label) return;
+                        fetch(gacYtAttrOptionSaveUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Accept: 'application/json',
+                                'X-CSRF-TOKEN': gacCsrfToken(),
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ kind: gacYtAttrKind(field), label: label }),
+                        })
+                            .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                            .then(function(out) {
+                                var b = out.body || {};
+                                if (!out.ok || !b.success) throw new Error(b.error || 'Could not add option.');
+                                if (b.options) window.gacYtAttrOptions = b.options;
+                                gacYtAttrRefreshSelects();
+                                gacYtAttrSave(cid, field, b.label || label, sel);
+                            })
+                            .catch(function(err) {
+                                window.alert(err.message || 'Could not add option.');
+                            });
+                        return;
+                    }
+                    gacYtAttrSave(cid, field, value, sel);
+                }, true);
             })();
 
             function gacRawSetTotalBadge(text) {
@@ -1365,10 +2422,15 @@
                 ajaxParams: function() {
                     return gacRawCurrentFilterParams();
                 },
-                // Fixed height prevents Tabulator's variable-height resize loop from recursing on Windows/browser zoom.
-                height: '650px',
-                layout: 'fitData',
-                layoutColumnsOnNewData: false,
+                // Viewport-fit height; JS grows this and stretches rows to fill leftover space.
+                height: (function() {
+                    var el = document.getElementById('google-ads-campaigns-raw-table');
+                    if (!el) return 650;
+                    var top = el.getBoundingClientRect().top;
+                    return Math.max(360, Math.floor(window.innerHeight - top - 16));
+                })(),
+                layout: 'fitColumns',
+                layoutColumnsOnNewData: true,
                 pagination: true,
                 paginationMode: 'remote',
                 paginationSize: 100,
@@ -1392,24 +2454,55 @@
                             headerHozAlign: 'center',
                             width: 40,
                             minWidth: 40,
+                            widthGrow: 0,
                         });
                     }
+                    ['yt_category', 'yt_audience', 'yt_landing'].forEach(function(field) {
+                        if (!defs.some(function(d) { return d.field === field; })) {
+                            defs.push({ field: field, title: field === 'yt_category' ? 'Category' : (field === 'yt_audience' ? 'Audience' : 'Landing') });
+                        }
+                    });
+                    (function gacPlaceYtAttrCols() {
+                        var nameIdx = defs.findIndex(function(d) { return d.field === 'campaign_name'; });
+                        if (nameIdx < 0) return;
+                        ['yt_landing', 'yt_audience', 'yt_category'].forEach(function(field) {
+                            var i = defs.findIndex(function(d) { return d.field === field; });
+                            if (i < 0) return;
+                            var col = defs.splice(i, 1)[0];
+                            nameIdx = defs.findIndex(function(d) { return d.field === 'campaign_name'; });
+                            defs.splice(nameIdx, 0, col);
+                        });
+                    })();
                     var moneySpendTitles = {
                         spend: 'Spend',
                         l7_spend: 'L7 Spend',
                         l2_spend: 'L2 Spend',
                         l1_spend: 'L1 Spend',
+                        spend_lt: 'Spend LT',
                     };
                     var utilizedStyleTitles = {
-                        cpc_L30: 'CPV',
+                        views_lt: 'LT views',
+                        video_views_L30: 'L30 Views',
+                        clicks_lt: 'Clicks LT',
+                        cpc_L30: 'CPC',
+                        cpc_lt: 'CPC LT',
+                        cps_L30: 'CPS',
+                        cps_lt: 'CPS LT',
+                        cpv_L30: 'CPV',
+                        cpv_lt: 'CPV LT',
+                        cvr_lt: 'CVR LT',
                         cpc_L7: 'L7 CPV',
                         cpc_L2: 'L2 CPV',
                         cpc_L1: 'L1 CPV',
                         ad_sold_L30: 'Sold',
                         ad_sales_L30: 'Sales',
                         acos_l30: 'ACOS',
+                        sold_lt: 'Sold LT',
+                        sales_lt: 'Sales LT',
+                        acos_lt: 'ACOS LT',
                         cvr_l30: 'CVR',
                         ctr_l30: 'CTR',
+                        ctr_lt: 'CTR LT',
                         ub7: '7 UB%',
                         ub2: '2 UB%',
                         ub1: '1 UB%',
@@ -1528,15 +2621,31 @@
                     var sortableFields = {
                         campaign_name: true,
                         spend: true,
+                        spend_lt: true,
+                        views_lt: true,
+                        video_views_L30: true,
+                        clicks_lt: true,
                         l7_spend: true,
                         l2_spend: true,
                         l1_spend: true,
                         metrics_clicks: true,
+                        cpc_L30: true,
+                        cpc_lt: true,
+                        cps_L30: true,
+                        cps_lt: true,
+                        cpv_L30: true,
+                        cpv_lt: true,
                         ad_sold_L30: true,
                         ad_sales_L30: true,
                         acos_l30: true,
+                        spend_lt: true,
+                        sold_lt: true,
+                        sales_lt: true,
+                        acos_lt: true,
                         cvr_l30: true,
+                        cvr_lt: true,
                         ctr_l30: true,
+                        ctr_lt: true,
                         ub7: true,
                         ub2: true,
                         ub1: true,
@@ -1556,45 +2665,53 @@
                         col.hozAlign = 'center';
                         col.headerHozAlign = 'center';
                         if (col.field === 'campaign_name') {
-                            col.minWidth = 141;
+                            col.minWidth = 120;
+                            col.widthGrow = 4;
                             col.formatter = campaignNameFormatter;
+                        } else if (col.field === 'yt_category' || col.field === 'yt_audience' || col.field === 'yt_landing') {
+                            col.title = col.field === 'yt_category' ? 'Category' : (col.field === 'yt_audience' ? 'Audience' : 'Landing');
+                            col.headerSort = false;
+                            col.editor = false;
+                            col.editable = false;
+                            col.widthGrow = 0;
+                            col.width = col.field === 'yt_category' ? 64 : 100;
+                            col.minWidth = col.field === 'yt_category' ? 58 : 86;
+                            col.formatter = function(c) { return gacYtAttrSelectHtml(c, col.field); };
                         } else if (col.field === 'campaign_status') {
-                            col.minWidth = 44;
-                            col.width = 44;
+                            col.minWidth = 36;
+                            col.width = 36;
+                            col.widthGrow = 0;
                             col.title = 'Sts';
                             col.formatter = campaignStatusFormatter;
                         } else {
-                            col.minWidth = 50;
+                            col.minWidth = 34;
+                            col.widthGrow = 1;
                         }
-                        if (col.field === 'id' || col.field === 'campaign_id' || col.field === 'date'
-                            || col.field === 'sbgt_prev' || col.field === 'sbgt_prev_date' || col.field === 'sbgt_trend') {
+                        if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, col.field)) {
                             col.visible = false;
-                        }
-                        // L7 / L2 Spend are still computed server-side (the SQL joins them so
-                        // utilized-style enrichments — UB%, CPC, suggested SBID — still work)
-                        // but the columns are hidden from the grid per product request.
-                        // Sorting by these fields is still allowed (server whitelist unchanged)
-                        // in case future UI surfaces them.
-                        if (col.field === 'l7_spend' || col.field === 'l2_spend') {
+                        } else if (gacIsInactiveMetricField(col.field)) {
+                            col.visible = false;
+                        } else if (gacSavedColumnVisibilityLoaded
+                            && Object.prototype.hasOwnProperty.call(gacSavedColumnVisibility, col.field)) {
+                            col.visible = gacSavedColumnVisibility[col.field] !== false;
+                        } else if (Object.prototype.hasOwnProperty.call(GAC_DEFAULT_HIDDEN_FIELDS, col.field)) {
                             col.visible = false;
                         }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
                             col.title = moneySpendTitles[col.field];
                             col.formatter = moneyRoundedFormatter;
-                            col.minWidth = Math.max(col.minWidth || 0, 70);
                         }
                         if (Object.prototype.hasOwnProperty.call(utilizedStyleTitles, col.field)) {
                             col.title = utilizedStyleTitles[col.field];
-                            if (col.field === 'ad_sold_L30') {
+                            if (col.field === 'ad_sold_L30' || col.field === 'sold_lt'
+                                || col.field === 'views_lt' || col.field === 'video_views_L30'
+                                || col.field === 'clicks_lt') {
                                 col.formatter = intLocaleFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 57);
-                            } else if (col.field === 'ad_sales_L30') {
+                            } else if (col.field === 'ad_sales_L30' || col.field === 'sales_lt') {
                                 col.formatter = moneyRoundedFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 77);
-                            } else if (col.field === 'acos_l30') {
+                            } else if (col.field === 'acos_l30' || col.field === 'acos_lt') {
                                 col.formatter = acosFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 64);
-                            } else if (col.field === 'cvr_l30') {
+                            } else if (col.field === 'cvr_l30' || col.field === 'cvr_lt') {
                                 // CVR = (Sold / Clicks) * 100 — formatted with 1 decimal,
                                 // matches the toolbar CVR badge value to the percent.
                                 // Flag colour is relative to the filtered-set average CVR.
@@ -1604,8 +2721,7 @@
                                     gacRawApplyFlagColor(c.getElement(), v, gacRawAvgCvr);
                                     return v.toFixed(1) + '%';
                                 };
-                                col.minWidth = Math.max(col.minWidth || 0, 60);
-                            } else if (col.field === 'ctr_l30') {
+                            } else if (col.field === 'ctr_l30' || col.field === 'ctr_lt') {
                                 // CTR = (Clicks / Impressions) * 100 — 2 decimals. Flag colour
                                 // is relative to the filtered-set average CTR.
                                 col.formatter = function(c) {
@@ -1614,38 +2730,100 @@
                                     gacRawApplyFlagColor(c.getElement(), v, gacRawAvgCtr);
                                     return v.toFixed(2) + '%';
                                 };
-                                col.minWidth = Math.max(col.minWidth || 0, 60);
                             } else if (col.field === 'ub7' || col.field === 'ub2' || col.field === 'ub1') {
                                 col.formatter = ubUtilColorFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 57);
                             } else if (col.field === 'sbgt') {
                                 col.formatter = gacRawSbgtCellFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'sbid') {
                                 col.formatter = sbidFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 70);
                             } else if (col.field === 'bgt') {
                                 col.formatter = moneyRoundedFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 57);
-                            } else if (col.field === 'cpc_L30' || col.field === 'cpc_L7' || col.field === 'cpc_L2' || col.field === 'cpc_L1') {
-                                // CPV (cost per view) — TrueView bids are per-view, small values,
-                                // so show 3 decimals like Google Ads' "TrueView avg. CPV".
+                            } else if (col.field === 'cpc_L30' || col.field === 'cpc_lt' || col.field === 'cps_L30'
+                                || col.field === 'cps_lt' || col.field === 'cpv_L30' || col.field === 'cpv_lt'
+                                || col.field === 'cpc_L7' || col.field === 'cpc_L2' || col.field === 'cpc_L1') {
                                 col.formatter = function(c) {
                                     var v = parseFloat(c.getValue());
                                     if (!isFinite(v)) return '';
-                                    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                                    return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 };
-                                col.minWidth = Math.max(col.minWidth || 0, 70);
                             } else {
                                 col.formatter = moneyFormatter;
-                                col.minWidth = Math.max(col.minWidth || 0, 70);
                             }
                         }
                         if (col.field === 'metrics_clicks') {
-                            col.title = 'Click';
+                            col.title = 'Clicks L30';
                             col.formatter = intLocaleFormatter;
-                            col.minWidth = Math.max(col.minWidth || 0, 57);
                         }
+                        if (col.field === 'clicks_lt') {
+                            col.title = 'Clicks LT';
+                            col.formatter = intLocaleFormatter;
+                        }
+                        if (col.field === 'price') {
+                            col.title = 'Price';
+                            col.formatter = moneyRoundedFormatter;
+                        }
+                    });
+                    defs.forEach(function(col) {
+                        if (col.field !== 'video_audit_filled' && col.field !== 'video_audit_ai_filled') return;
+                        var isAi = col.field === 'video_audit_ai_filled';
+                        col.title = isAi ? 'Audit AI' : 'Audit';
+                        col.headerSort = !isAi;
+                        col.hozAlign = 'center';
+                        col.headerHozAlign = 'center';
+                        col.width = isAi ? 48 : 44;
+                        col.minWidth = isAi ? 40 : 40;
+                        col.widthGrow = 0;
+                        col.editor = false;
+                        col.editable = false;
+                        if (!isAi) {
+                            col.sorter = function(a, b, aRow, bRow) {
+                                var pa = parseInt((aRow.getData() || {}).video_audit_pct, 10);
+                                var pb = parseInt((bRow.getData() || {}).video_audit_pct, 10);
+                                if (!isFinite(pa)) pa = -1;
+                                if (!isFinite(pb)) pb = -1;
+                                return pa - pb;
+                            };
+                        }
+                        col.formatter = function(c) {
+                            var row = c.getRow().getData() || {};
+                            var filled = !!c.getValue();
+                            var cid = row.campaign_id != null ? String(row.campaign_id) : '';
+                            var name = row.campaign_name != null ? String(row.campaign_name) : '';
+                            var inner;
+                            var tip;
+                            if (isAi) {
+                                var cls = filled ? 'is-filled' : 'is-empty';
+                                tip = filled
+                                    ? 'AI video audit saved. Click to review or re-run.'
+                                    : 'No AI video audit yet. Click to analyze the video.';
+                                inner = '<i class="fas fa-search gac-audit-icon ' + cls + '" aria-hidden="true"></i>';
+                            } else {
+                                var pct = parseInt(row.video_audit_pct, 10);
+                                var hasPct = isFinite(pct);
+                                var tone = !hasPct ? 'is-empty' : (pct >= 70 ? 'is-good' : (pct >= 50 ? 'is-mid' : 'is-bad'));
+                                tip = hasPct
+                                    ? ('Audit pass rate ' + pct + '%. Click to review or update.')
+                                    : 'No video audit yet. Click to fill checkpoints.';
+                                inner = '<span class="gac-audit-pct ' + tone + '">' + (hasPct ? (pct + '%') : '—') + '</span>';
+                            }
+                            return '<span class="gac-audit-open" role="button" tabindex="0"'
+                                + ' data-gac-audit="' + (isAi ? 'ai' : 'manual') + '"'
+                                + ' data-cid="' + gacRawEscAttr(cid) + '"'
+                                + ' data-cname="' + gacRawEscAttr(name) + '"'
+                                + ' title="' + gacRawEscAttr(tip) + '"'
+                                + ' aria-label="' + gacRawEscAttr(tip) + '">'
+                                + inner
+                                + '</span>';
+                        };
+                        col.cellClick = function(e, cell) {
+                            if (e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }
+                            var row = cell.getRow().getData() || {};
+                            if (isAi) gacOpenVideoAiAudit(row);
+                            else gacOpenVideoAudit(row.campaign_id, row.campaign_name);
+                        };
                     });
                     // Action column (synthetic — no data field). Red alert when
                     // ACOS > current avg ACOS badge AND Spend > $30.
@@ -1656,8 +2834,9 @@
                             headerSort: false,
                             hozAlign: 'center',
                             headerHozAlign: 'center',
-                            width: 80,
-                            minWidth: 70,
+                            width: 36,
+                            minWidth: 34,
+                            widthGrow: 0,
                             formatter: gacRawActionFormatter,
                         });
                     }
@@ -1761,10 +2940,600 @@
 
             table.on('pageLoaded', function() {
                 gacRawRefreshTableUiSoon();
+                gacAutofitColumnsSoon();
             });
             table.on('dataLoaded', function() {
                 gacRawRefreshTableUiSoon();
+                gacEnsureColumnVisibilityUi();
+                gacApplyMetricTab();
+                gacAutofitColumnsSoon();
             });
+            table.on('renderComplete', function() {
+                gacAutofitRowSize();
+            });
+            window.addEventListener('resize', function() {
+                gacAutofitColumnsSoon();
+            });
+
+            document.querySelectorAll('[data-gac-tab]').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var next = this.getAttribute('data-gac-tab') === 'lt' ? 'lt' : 'l30';
+                    if (next === gacMetricTab) return;
+                    gacMetricTab = next;
+                    try { localStorage.setItem('gac_youtube_metric_tab', gacMetricTab); } catch (e) { /* ignore */ }
+                    gacApplyMetricTab();
+                    buildColumnDropdown();
+                    gacRawReformatActionColumn();
+                });
+            });
+            gacSyncMetricTabButtons();
+
+            var gacVideoAuditChecklist = [];
+
+            function gacEscHtml(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            function gacVideoAuditTone(pct) {
+                if (pct == null || !isFinite(pct)) return '';
+                if (pct >= 70) return 'is-good';
+                if (pct >= 50) return 'is-mid';
+                return 'is-bad';
+            }
+
+            function gacVideoAuditCollectChecks() {
+                var checks = {};
+                document.querySelectorAll('#gacVideoAuditBody input[type="radio"]:checked').forEach(function(el) {
+                    if (el.dataset.auditKey) checks[el.dataset.auditKey] = el.value;
+                });
+                return checks;
+            }
+
+            function gacVideoAuditTally(checks) {
+                var pass = 0, fail = 0, na = 0;
+                (gacVideoAuditChecklist || []).forEach(function(it) {
+                    var v = checks[it.key] || '';
+                    if (v === 'pass') pass++;
+                    else if (v === 'fail') fail++;
+                    else if (v === 'na') na++;
+                });
+                var scored = pass + fail;
+                return {
+                    pass: pass,
+                    fail: fail,
+                    na: na,
+                    pct: scored > 0 ? Math.round((pass / scored) * 100) : null,
+                };
+            }
+
+            function gacVideoAuditRefreshReport() {
+                var tally = gacVideoAuditTally(gacVideoAuditCollectChecks());
+                var scoreEl = document.getElementById('gacVideoAuditScore');
+                var card = document.getElementById('gacVideoAuditScoreCard');
+                var passEl = document.getElementById('gacVideoAuditPassCount');
+                var failEl = document.getElementById('gacVideoAuditFailCount');
+                var naEl = document.getElementById('gacVideoAuditNaCount');
+                if (scoreEl) scoreEl.textContent = tally.pct == null ? '—' : (tally.pct + '%');
+                if (card) {
+                    card.classList.remove('is-good', 'is-mid', 'is-bad');
+                    var tone = gacVideoAuditTone(tally.pct);
+                    if (tone) card.classList.add(tone);
+                }
+                if (passEl) passEl.textContent = String(tally.pass);
+                if (failEl) failEl.textContent = String(tally.fail);
+                if (naEl) naEl.textContent = String(tally.na);
+                document.querySelectorAll('#gacVideoAuditBody .gac-va-item').forEach(function(item) {
+                    var checked = item.querySelector('input[type="radio"]:checked');
+                    var v = checked ? checked.value : '';
+                    item.classList.remove('is-fail', 'is-pass', 'is-na', 'is-blank');
+                    item.classList.add(v === 'fail' ? 'is-fail' : (v === 'pass' ? 'is-pass' : (v === 'na' ? 'is-na' : 'is-blank')));
+                });
+            }
+
+            function gacRenderVideoAuditChecklist(items, answers) {
+                var box = document.getElementById('gacVideoAuditBody');
+                if (!box) return;
+                box.innerHTML = '';
+                (items || []).forEach(function(it, idx) {
+                    var key = it.key || ('q' + idx);
+                    var ans = (answers && answers[key]) ? String(answers[key]) : '';
+                    var item = document.createElement('div');
+                    item.className = 'gac-va-item ' + (ans === 'fail' ? 'is-fail' : (ans === 'pass' ? 'is-pass' : (ans === 'na' ? 'is-na' : 'is-blank')));
+                    item.innerHTML = ''
+                        + '<div class="gac-va-q" title="' + gacEscHtml(it.help || '') + '">' + gacEscHtml(it.label || key) + '</div>'
+                        + '<div class="gac-va-ans">'
+                        + '<label><input type="radio" name="gac-va-' + gacEscHtml(key) + '" value="pass" data-audit-key="' + gacEscHtml(key) + '"' + (ans === 'pass' ? ' checked' : '') + '> Pass</label>'
+                        + '<label><input type="radio" name="gac-va-' + gacEscHtml(key) + '" value="fail" data-audit-key="' + gacEscHtml(key) + '"' + (ans === 'fail' ? ' checked' : '') + '> Fail</label>'
+                        + '<label><input type="radio" name="gac-va-' + gacEscHtml(key) + '" value="na" data-audit-key="' + gacEscHtml(key) + '"' + (ans === 'na' ? ' checked' : '') + '> N/A</label>'
+                        + '</div>';
+                    box.appendChild(item);
+                });
+                box.querySelectorAll('input[type="radio"]').forEach(function(el) {
+                    el.addEventListener('change', gacVideoAuditRefreshReport);
+                });
+                gacVideoAuditRefreshReport();
+            }
+
+            function gacRenderVideoAuditHistory(rows) {
+                var body = document.getElementById('gacVideoAuditHistoryBody');
+                var empty = document.getElementById('gacVideoAuditHistoryEmpty');
+                var wrap = document.getElementById('gacVideoAuditHistoryWrap');
+                if (!body || !empty || !wrap) return;
+                body.innerHTML = '';
+                if (!rows || !rows.length) {
+                    empty.classList.remove('d-none');
+                    wrap.classList.add('d-none');
+                    return;
+                }
+                empty.classList.add('d-none');
+                wrap.classList.remove('d-none');
+                rows.forEach(function(r) {
+                    var checks = r.checks || {};
+                    var pct = r.score_pct;
+                    var tr = document.createElement('tr');
+                    tr.style.cursor = 'pointer';
+                    tr.title = 'Click to load this audit into the form';
+                    tr.innerHTML = ''
+                        + '<td>' + gacEscHtml(r.audited_at || '—') + '</td>'
+                        + '<td class="fw-semibold">' + gacEscHtml(pct == null ? '—' : (pct + '%')) + '</td>'
+                        + '<td class="text-end fw-semibold">' + gacEscHtml(r.fail_count != null ? r.fail_count : '—') + '</td>'
+                        + '<td class="text-muted">' + gacEscHtml(r.audited_by_name || '—') + '</td>';
+                    tr.addEventListener('click', function() {
+                        gacRenderVideoAuditChecklist(gacVideoAuditChecklist, checks);
+                        document.getElementById('gacVideoAuditComments').value = r.comments || '';
+                    });
+                    body.appendChild(tr);
+                });
+            }
+
+            function gacOpenVideoAudit(cid, name) {
+                cid = cid == null ? '' : String(cid);
+                name = name == null ? '' : String(name);
+                var modalEl = document.getElementById('gacVideoAuditModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                if (!cid) return;
+                var err = document.getElementById('gacVideoAuditErr');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                var cidInp = document.getElementById('gacVideoAuditCid');
+                var nameInp = document.getElementById('gacVideoAuditCname');
+                var cidLbl = document.getElementById('gacVideoAuditCampaignId');
+                var nameLbl = document.getElementById('gacVideoAuditCampaignName');
+                var comments = document.getElementById('gacVideoAuditComments');
+                var body = document.getElementById('gacVideoAuditBody');
+                if (cidInp) cidInp.value = cid;
+                if (nameInp) nameInp.value = name;
+                if (cidLbl) cidLbl.textContent = cid;
+                if (nameLbl) nameLbl.textContent = name || cid;
+                if (comments) comments.value = '';
+                if (body) {
+                    body.innerHTML = '<div class="small text-muted py-3 text-center">Loading…</div>';
+                }
+
+                fetch(gacVideoAuditGetUrl + '?campaign_id=' + encodeURIComponent(cid), {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                    .then(function(out) {
+                        var b = out.body || {};
+                        if (!out.ok || !b.success) {
+                            throw new Error(b.error || 'Failed to load audit.');
+                        }
+                        gacVideoAuditChecklist = b.checklist || [];
+                        gacRenderVideoAuditChecklist(gacVideoAuditChecklist, (b.latest && b.latest.checks) || {});
+                        document.getElementById('gacVideoAuditComments').value = (b.latest && b.latest.comments) || '';
+                        gacRenderVideoAuditHistory(b.history || []);
+                    })
+                    .catch(function(e) {
+                        if (err) {
+                            err.textContent = e.message || 'Failed to load audit.';
+                            err.classList.remove('d-none');
+                        }
+                    });
+            }
+
+            var gacVideoAuditSaveBtn = document.getElementById('gacVideoAuditSaveBtn');
+            if (gacVideoAuditSaveBtn) {
+                gacVideoAuditSaveBtn.addEventListener('click', function() {
+                    var err = document.getElementById('gacVideoAuditErr');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var cid = document.getElementById('gacVideoAuditCid').value;
+                    var cname = document.getElementById('gacVideoAuditCname').value;
+                    var checks = gacVideoAuditCollectChecks();
+                    var comments = (document.getElementById('gacVideoAuditComments').value || '').trim();
+                    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                    gacVideoAuditSaveBtn.disabled = true;
+                    fetch(gacVideoAuditSaveUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            campaign_id: cid,
+                            campaign_name: cname,
+                            checks: checks,
+                            comments: comments,
+                        }),
+                    })
+                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.success === false) {
+                                if (err) {
+                                    err.textContent = b.error || b.message || 'Save failed.';
+                                    err.classList.remove('d-none');
+                                }
+                                return;
+                            }
+                            if (table && typeof table.getRows === 'function') {
+                                table.getRows().forEach(function(row) {
+                                    var d = row.getData() || {};
+                                    if (String(d.campaign_id || '') !== String(cid)) return;
+                                    row.update({
+                                        video_audit_filled: true,
+                                        video_audit_pct: b.score_pct != null ? b.score_pct : null,
+                                    });
+                                });
+                            }
+                            var modalEl = document.getElementById('gacVideoAuditModal');
+                            if (modalEl && typeof bootstrap !== 'undefined') {
+                                var inst = bootstrap.Modal.getInstance(modalEl);
+                                if (inst) inst.hide();
+                            }
+                        })
+                        .catch(function() {
+                            if (err) {
+                                err.textContent = 'Network or server error.';
+                                err.classList.remove('d-none');
+                            }
+                        })
+                        .finally(function() { gacVideoAuditSaveBtn.disabled = false; });
+                });
+            }
+
+            var gacVideoAiDefaultPrompt = '';
+            var gacVideoAiCurrentRow = null;
+
+            function gacCsrf() {
+                return (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            }
+
+            function gacRenderVideoAiResult(result) {
+                var tbody = document.getElementById('gacVideoAiAuditBody');
+                var sumEl = document.getElementById('gacVideoAiAuditSummary');
+                var failEl = document.getElementById('gacVideoAiAuditFailCount');
+                if (!tbody) return;
+                var checks = (result && result.checks) ? result.checks : [];
+                var fails = 0;
+                tbody.innerHTML = '';
+                if (!checks.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-muted small text-center py-3">Run AI to fill this table.</td></tr>';
+                }
+                checks.forEach(function(c) {
+                    if (c.verdict === 'fail') fails++;
+                    var color = c.verdict === 'fail' ? '#dc2626' : (c.verdict === 'pass' ? '#16a34a' : '#6b7280');
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="small fw-semibold">' + gacEscHtml(c.label || c.key) + '</td>'
+                        + '<td class="small fw-bold" style="color:' + color + '">' + gacEscHtml((c.verdict || 'na').toUpperCase()) + '</td>'
+                        + '<td class="small">' + gacEscHtml(c.error || '—') + '</td>'
+                        + '<td class="small">' + gacEscHtml(c.reason || '—') + '</td>'
+                        + '<td class="small">' + gacEscHtml(c.direction || '—') + '</td>';
+                    tbody.appendChild(tr);
+                });
+                if (failEl) failEl.textContent = String(fails);
+                if (sumEl) {
+                    var summary = result && result.summary ? String(result.summary) : '';
+                    if (summary) {
+                        sumEl.textContent = summary;
+                        sumEl.classList.remove('d-none');
+                    } else {
+                        sumEl.classList.add('d-none');
+                    }
+                }
+            }
+
+            function gacRenderVideoAiPromptHistory(rows) {
+                var body = document.getElementById('gacVideoAiPromptHistoryBody');
+                var empty = document.getElementById('gacVideoAiPromptHistoryEmpty');
+                var wrap = document.getElementById('gacVideoAiPromptHistoryWrap');
+                if (!body || !empty || !wrap) return;
+                body.innerHTML = '';
+                if (!rows || !rows.length) {
+                    empty.classList.remove('d-none');
+                    wrap.classList.add('d-none');
+                    return;
+                }
+                empty.classList.add('d-none');
+                wrap.classList.remove('d-none');
+                rows.forEach(function(r) {
+                    var preview = String(r.prompt || '').replace(/\s+/g, ' ').slice(0, 90);
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="small">' + gacEscHtml(r.created_at || '—') + '</td>'
+                        + '<td class="small">' + gacEscHtml(r.saved_by_name || '—') + '</td>'
+                        + '<td class="small text-muted">' + gacEscHtml(preview) + (String(r.prompt || '').length > 90 ? '…' : '') + '</td>'
+                        + '<td><button type="button" class="btn btn-sm btn-outline-primary py-0 px-2">Use</button></td>';
+                    tr.querySelector('button').addEventListener('click', function() {
+                        document.getElementById('gacVideoAiAuditPrompt').value = r.prompt || '';
+                    });
+                    body.appendChild(tr);
+                });
+            }
+
+            function gacRenderVideoAiHistory(rows) {
+                var body = document.getElementById('gacVideoAiAuditHistoryBody');
+                var empty = document.getElementById('gacVideoAiAuditHistoryEmpty');
+                var wrap = document.getElementById('gacVideoAiAuditHistoryWrap');
+                if (!body || !empty || !wrap) return;
+                body.innerHTML = '';
+                if (!rows || !rows.length) {
+                    empty.classList.remove('d-none');
+                    wrap.classList.add('d-none');
+                    return;
+                }
+                empty.classList.add('d-none');
+                wrap.classList.remove('d-none');
+                rows.forEach(function(r) {
+                    var summary = (r.result && r.result.summary) ? String(r.result.summary) : '';
+                    var tr = document.createElement('tr');
+                    tr.style.cursor = 'pointer';
+                    tr.title = 'Click to load this AI result';
+                    tr.innerHTML = ''
+                        + '<td class="small">' + gacEscHtml(r.audited_at || '—') + '</td>'
+                        + '<td class="small">' + gacEscHtml(r.audited_by_name || '—') + '</td>'
+                        + '<td class="small">' + gacEscHtml(r.model || '—') + '</td>'
+                        + '<td class="text-end small fw-semibold">' + gacEscHtml(r.fail_count != null ? r.fail_count : '—') + '</td>'
+                        + '<td class="small text-muted">' + gacEscHtml(summary.slice(0, 120)) + (summary.length > 120 ? '…' : '') + '</td>';
+                    tr.addEventListener('click', function() {
+                        gacRenderVideoAiResult(r.result || {});
+                        if (r.video_url) document.getElementById('gacVideoAiAuditUrl').value = r.video_url;
+                        if (r.prompt_used) document.getElementById('gacVideoAiAuditPrompt').value = r.prompt_used;
+                        document.getElementById('gacVideoAiAuditModel').textContent = r.model ? ('Model: ' + r.model) : '';
+                    });
+                    body.appendChild(tr);
+                });
+            }
+
+            function gacOpenVideoAiAudit(row) {
+                row = row || {};
+                gacVideoAiCurrentRow = row;
+                var cid = String(row.campaign_id || '');
+                var name = String(row.campaign_name || '');
+                var modalEl = document.getElementById('gacVideoAiAuditModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                if (!cid) return;
+                var err = document.getElementById('gacVideoAiAuditErr');
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                var cidInp = document.getElementById('gacVideoAiAuditCid');
+                var nameInp = document.getElementById('gacVideoAiAuditCname');
+                var cidLbl = document.getElementById('gacVideoAiAuditCampaignId');
+                var nameLbl = document.getElementById('gacVideoAiAuditCampaignName');
+                var urlInp = document.getElementById('gacVideoAiAuditUrl');
+                var modelLbl = document.getElementById('gacVideoAiAuditModel');
+                var body = document.getElementById('gacVideoAiAuditBody');
+                if (cidInp) cidInp.value = cid;
+                if (nameInp) nameInp.value = name;
+                if (cidLbl) cidLbl.textContent = cid;
+                if (nameLbl) nameLbl.textContent = name || cid;
+                if (urlInp) urlInp.value = '';
+                if (modelLbl) modelLbl.textContent = '';
+                if (body) {
+                    body.innerHTML = '<tr><td colspan="5" class="text-muted small text-center py-3">Loading…</td></tr>';
+                }
+
+                fetch(gacVideoAiAuditGetUrl + '?campaign_id=' + encodeURIComponent(cid), {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                    .then(function(out) {
+                        var b = out.body || {};
+                        if (!out.ok || !b.success) throw new Error(b.error || 'Failed to load AI audit.');
+                        gacVideoAiDefaultPrompt = b.default_prompt || '';
+                        document.getElementById('gacVideoAiAuditPrompt').value = b.prompt || gacVideoAiDefaultPrompt;
+                        gacRenderVideoAiPromptHistory(b.prompt_history || []);
+                        gacRenderVideoAiHistory(b.history || []);
+                        if (b.latest && b.latest.result) {
+                            gacRenderVideoAiResult(b.latest.result);
+                            document.getElementById('gacVideoAiAuditUrl').value = b.latest.video_url || '';
+                            document.getElementById('gacVideoAiAuditModel').textContent = b.latest.model ? ('Model: ' + b.latest.model) : '';
+                        } else {
+                            gacRenderVideoAiResult({ checks: [], summary: '' });
+                        }
+                    })
+                    .catch(function(e) {
+                        if (err) {
+                            err.textContent = e.message || 'Failed to load AI audit.';
+                            err.classList.remove('d-none');
+                        }
+                    });
+            }
+
+            var gacVideoAiPromptReset = document.getElementById('gacVideoAiAuditPromptReset');
+            if (gacVideoAiPromptReset) {
+                gacVideoAiPromptReset.addEventListener('click', function() {
+                    document.getElementById('gacVideoAiAuditPrompt').value = gacVideoAiDefaultPrompt || '';
+                });
+            }
+
+            var gacVideoAiPromptSave = document.getElementById('gacVideoAiAuditPromptSave');
+            if (gacVideoAiPromptSave) {
+                gacVideoAiPromptSave.addEventListener('click', function() {
+                    var err = document.getElementById('gacVideoAiAuditErr');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var prompt = (document.getElementById('gacVideoAiAuditPrompt').value || '').trim();
+                    gacVideoAiPromptSave.disabled = true;
+                    fetch(gacVideoAiPromptSaveUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': gacCsrf(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ prompt: prompt }),
+                    })
+                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.success === false) throw new Error(b.error || 'Failed to save prompt.');
+                            document.getElementById('gacVideoAiAuditPrompt').value = b.prompt || prompt;
+                            gacRenderVideoAiPromptHistory(b.prompt_history || []);
+                        })
+                        .catch(function(e) {
+                            if (err) {
+                                err.textContent = e.message || 'Failed to save prompt.';
+                                err.classList.remove('d-none');
+                            }
+                        })
+                        .finally(function() { gacVideoAiPromptSave.disabled = false; });
+                });
+            }
+
+            var gacVideoAiRunBtn = document.getElementById('gacVideoAiAuditRunBtn');
+            if (gacVideoAiRunBtn) {
+                gacVideoAiRunBtn.addEventListener('click', function() {
+                    var err = document.getElementById('gacVideoAiAuditErr');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                    var cid = document.getElementById('gacVideoAiAuditCid').value;
+                    var row = gacVideoAiCurrentRow || {};
+                    var original = gacVideoAiRunBtn.innerHTML;
+                    gacVideoAiRunBtn.disabled = true;
+                    gacVideoAiRunBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Analyzing…';
+                    fetch(gacVideoAiAuditRunUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': gacCsrf(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            campaign_id: cid,
+                            campaign_name: document.getElementById('gacVideoAiAuditCname').value,
+                            video_url: document.getElementById('gacVideoAiAuditUrl').value,
+                            prompt: document.getElementById('gacVideoAiAuditPrompt').value,
+                            spend_lt: row.spend_lt,
+                            sales_lt: row.sales_lt,
+                            sold_lt: row.sold_lt,
+                            acos_lt: row.acos_lt,
+                            views_lt: row.views_lt,
+                            spend: row.spend,
+                            ad_sales_L30: row.ad_sales_L30,
+                            acos_l30: row.acos_l30,
+                        }),
+                    })
+                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            if (!out.ok || b.success === false) throw new Error(b.error || 'AI audit failed.');
+                            gacRenderVideoAiResult(b.result || {});
+                            document.getElementById('gacVideoAiAuditModel').textContent = b.model ? ('Model: ' + b.model) : '';
+                            gacRenderVideoAiPromptHistory(b.prompt_history || []);
+                            if (table && typeof table.getRows === 'function') {
+                                table.getRows().forEach(function(r) {
+                                    var d = r.getData() || {};
+                                    if (String(d.campaign_id || '') !== String(cid)) return;
+                                    r.update({ video_audit_ai_filled: true });
+                                });
+                            }
+                            fetch(gacVideoAiAuditGetUrl + '?campaign_id=' + encodeURIComponent(cid), {
+                                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                                credentials: 'same-origin',
+                            }).then(function(res) { return res.json(); }).then(function(body) {
+                                if (body && body.history) gacRenderVideoAiHistory(body.history);
+                            }).catch(function() {});
+                        })
+                        .catch(function(e) {
+                            if (err) {
+                                err.textContent = e.message || 'AI audit failed.';
+                                err.classList.remove('d-none');
+                            }
+                        })
+                        .finally(function() {
+                            gacVideoAiRunBtn.disabled = false;
+                            gacVideoAiRunBtn.innerHTML = original;
+                        });
+                });
+            }
+
+            var gacColMenu = document.getElementById('column-dropdown-menu');
+            if (gacColMenu) {
+                gacColMenu.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var showAll = e.target.closest('#show-all-columns-btn');
+                    if (!showAll || !table) return;
+                    e.preventDefault();
+                    table.getColumns().forEach(function(col) {
+                        var field = col.getDefinition().field;
+                        if (!field || field === '__gac_select') return;
+                        if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) return;
+                        if (gacIsInactiveMetricField(field)) return;
+                        col.show();
+                    });
+                    buildColumnDropdown();
+                    saveColumnVisibilityToServer();
+                    gacAutofitColumnsSoon();
+                });
+                gacColMenu.addEventListener('change', function(e) {
+                    if (!table || e.target.type !== 'checkbox') return;
+                    if (e.target.classList.contains('col-vis-group-toggle')) {
+                        var checked = e.target.checked;
+                        var groupEl = e.target.closest('.col-vis-group');
+                        var itemCbs = groupEl
+                            ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                            : [];
+                        itemCbs.forEach(function(cb) {
+                            cb.checked = checked;
+                            var col = table.getColumn(cb.value);
+                            if (!col) return;
+                            if (checked) col.show();
+                            else col.hide();
+                        });
+                        e.target.indeterminate = false;
+                        saveColumnVisibilityToServer();
+                        gacAutofitColumnsSoon();
+                        return;
+                    }
+                    var field = e.target.value;
+                    if (!field) return;
+                    var col = table.getColumn(field);
+                    if (!col) return;
+                    if (e.target.checked) {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                    gacSyncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                    saveColumnVisibilityToServer();
+                    gacAutofitColumnsSoon();
+                });
+            }
+
+            var gacColDropdownBtn = document.getElementById('columnVisibilityDropdown');
+            if (gacColDropdownBtn) {
+                gacColDropdownBtn.addEventListener('mousedown', function() {
+                    buildColumnDropdown();
+                });
+                gacColDropdownBtn.addEventListener('show.bs.dropdown', function() {
+                    buildColumnDropdown();
+                });
+            }
+            buildColumnDropdown();
 
             table.on('dataLoadError', function(error) {
                 console.error('google_ads_campaigns raw data load error', error);
@@ -1837,9 +3606,7 @@
                     return;
                 }
                 var sbgtB = document.getElementById('gac-raw-push-sbgt');
-                var sbidB = document.getElementById('gac-raw-push-sbid');
                 if (sbgtB) sbgtB.disabled = true;
-                if (sbidB) sbidB.disabled = true;
                 var origHtml = opts.btn.innerHTML;
                 opts.btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing…';
 
@@ -1882,7 +3649,6 @@
                     .finally(function() {
                         opts.btn.innerHTML = origHtml;
                         if (sbgtB) sbgtB.disabled = false;
-                        if (sbidB) sbidB.disabled = false;
                     });
             }
 
@@ -1967,25 +3733,6 @@
                     });
                 });
             }
-            var pushSbidBtn = document.getElementById('gac-raw-push-sbid');
-            if (pushSbidBtn) {
-                pushSbidBtn.addEventListener('click', function() {
-                    var ids = gacPushTargetCampaignIds();
-                    var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
-                    var scope = nSel > 0
-                        ? ('the ' + ids.length + ' checked row(s)')
-                        : ('all ' + ids.length + ' row(s) on this page');
-                    gacRunArtisanPush({
-                        url: gacRawPushSbidUrl,
-                        btn: pushSbidBtn,
-                        campaign_ids: ids,
-                        confirmMsg: 'Push SBID to ' + scope + '? Each row is sent to Google Ads using the SBID value shown in the grid (direct by campaign_id). Rows with SBID — are skipped.',
-                        loadingTitle: 'Pushing SBID (Youtube ads)…',
-                        loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
-                    });
-                });
-            }
-
             function gacNum(id) {
                 var el = document.getElementById(id);
                 if (!el) return NaN;
@@ -2148,29 +3895,6 @@
                         color: gacAcosSchemaStyleForBand(acosFrom, acosTo).bg,
                     };
                 });
-            }
-            function gacFillSbidForm(sbid) {
-                if (!sbid) return;
-                gacSetVal('gacSbidUtilLow', sbid.util_low);
-                gacSetVal('gacSbidUtilHigh', sbid.util_high);
-                gacSetVal('gacSbidOverMultL1', sbid.over_mult_l1);
-                gacSetVal('gacSbidUnderMultL1', sbid.under_mult_l1);
-                gacSetVal('gacSbidUnderMultL7', sbid.under_mult_l7);
-                gacSetVal('gacSbidUnderFallback', sbid.under_fallback);
-                gacSetVal('gacSbidUnderFlatMax', sbid.under_flat_max);
-                gacSetVal('gacSbidUnderFlatIncr', sbid.under_flat_incr);
-            }
-            function gacCollectSbid() {
-                return {
-                    util_low: gacNum('gacSbidUtilLow'),
-                    util_high: gacNum('gacSbidUtilHigh'),
-                    over_mult_l1: gacNum('gacSbidOverMultL1'),
-                    under_mult_l1: gacNum('gacSbidUnderMultL1'),
-                    under_mult_l7: gacNum('gacSbidUnderMultL7'),
-                    under_fallback: gacNum('gacSbidUnderFallback'),
-                    under_flat_max: gacNum('gacSbidUnderFlatMax'),
-                    under_flat_incr: gacNum('gacSbidUnderFlatIncr'),
-                };
             }
             function gacRawNumber(value) {
                 if (value === null || value === undefined || value === '') {
@@ -2623,26 +4347,152 @@
                 });
             }
 
-            var sbidModalEl = document.getElementById('gacRawSbidRuleModal');
-            if (sbidModalEl) {
-                sbidModalEl.addEventListener('show.bs.modal', function() {
-                    var sErr = document.getElementById('gacRawSbidRuleErr');
-                    if (sErr) { sErr.classList.add('d-none'); sErr.textContent = ''; }
-                    gacRefreshRuleFromServer(function() {
-                        gacFillSbidForm((window.gacRawRule && window.gacRawRule.sbid) || {});
+            var gacCurrentPauseSlabs = [];
+
+            function gacDefaultPauseSlabs() {
+                return [{ spend_gt: 30, acos_gt: 50 }];
+            }
+
+            function gacNormalizePauseSlabs(slabs) {
+                if (!Array.isArray(slabs) || !slabs.length) {
+                    return gacDefaultPauseSlabs();
+                }
+                return slabs.map(function(s) {
+                    return {
+                        spend_gt: s && s.spend_gt != null ? Number(s.spend_gt) : 0,
+                        acos_gt: s && s.acos_gt != null ? Number(s.acos_gt) : 0,
+                    };
+                });
+            }
+
+            function gacRenderPauseSlabs(slabs) {
+                var tbody = document.getElementById('gac-pause-slabs-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                slabs.forEach(function(slab, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm"'
+                        + ' value="' + (slab.spend_gt ?? '') + '" data-idx="' + i + '" data-field="spend_gt"'
+                        + ' placeholder="30"></td>'
+                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                        + ' value="' + (slab.acos_gt ?? '') + '" data-idx="' + i + '" data-field="acos_gt"'
+                        + ' placeholder="50"></td>'
+                        + '<td class="text-center">'
+                        + '<button type="button" class="btn btn-sm btn-outline-danger px-2" data-remove-idx="' + i + '"'
+                        + ' title="Delete this slab" aria-label="Delete slab">×</button></td>';
+                    tbody.appendChild(tr);
+                });
+
+                tbody.querySelectorAll('input[data-idx]').forEach(function(inp) {
+                    inp.addEventListener('input', function() {
+                        var idx = +this.dataset.idx;
+                        var fld = this.dataset.field;
+                        if (!gacCurrentPauseSlabs[idx]) return;
+                        gacCurrentPauseSlabs[idx][fld] = this.value === '' ? '' : parseFloat(this.value);
+                    });
+                });
+
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var idx = parseInt(this.getAttribute('data-remove-idx'), 10);
+                        if (!isFinite(idx) || idx < 0) return;
+                        gacCurrentPauseSlabs.splice(idx, 1);
+                        if (!gacCurrentPauseSlabs.length) {
+                            gacCurrentPauseSlabs = gacDefaultPauseSlabs();
+                        }
+                        gacRenderPauseSlabs(gacCurrentPauseSlabs);
                     });
                 });
             }
-            var sbidSaveBtn = document.getElementById('gacRawSbidRuleSaveBtn');
-            if (sbidSaveBtn) {
-                sbidSaveBtn.addEventListener('click', function() {
-                    var sErr = document.getElementById('gacRawSbidRuleErr');
-                    if (sErr) { sErr.classList.add('d-none'); sErr.textContent = ''; }
-                    var sbgtKeep = (window.gacRawRule && window.gacRawRule.sbgt) ? window.gacRawRule.sbgt : {};
-                    var payload = { sbgt: sbgtKeep, sbid: gacCollectSbid() };
+
+            function gacFillPauseRuleForm(rule) {
+                var r = rule && typeof rule === 'object' ? rule : {};
+                var enabledEl = document.getElementById('gac-pause-rule-enabled');
+                if (enabledEl) {
+                    enabledEl.checked = r.enabled !== false;
+                }
+                gacCurrentPauseSlabs = gacNormalizePauseSlabs(r.slabs);
+                gacRenderPauseSlabs(gacCurrentPauseSlabs);
+            }
+
+            function gacCollectPauseRulePayload() {
+                var enabledEl = document.getElementById('gac-pause-rule-enabled');
+                return {
+                    enabled: !!(enabledEl && enabledEl.checked),
+                    slabs: (gacCurrentPauseSlabs || []).map(function(s) {
+                        return {
+                            spend_gt: s.spend_gt === '' || s.spend_gt == null ? NaN : parseFloat(s.spend_gt),
+                            acos_gt: s.acos_gt === '' || s.acos_gt == null ? NaN : parseFloat(s.acos_gt),
+                        };
+                    }),
+                };
+            }
+
+            function gacRefreshPauseRuleFromServer(cb) {
+                fetch(gacPauseRuleGetUrl, {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                })
+                    .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                    .then(function(out) {
+                        if (out.ok && out.body && out.body.rule) {
+                            window.gacPauseRule = out.body.rule;
+                        }
+                        if (typeof cb === 'function') cb();
+                    })
+                    .catch(function() { if (typeof cb === 'function') cb(); });
+            }
+
+            var pauseAddSlabBtn = document.getElementById('gac-pause-add-slab-btn');
+            if (pauseAddSlabBtn) {
+                pauseAddSlabBtn.addEventListener('click', function() {
+                    gacCurrentPauseSlabs.push({ spend_gt: 0, acos_gt: 0 });
+                    gacRenderPauseSlabs(gacCurrentPauseSlabs);
+                });
+            }
+
+            var pauseModalEl = document.getElementById('gacRawPauseRuleModal');
+            if (pauseModalEl) {
+                pauseModalEl.addEventListener('show.bs.modal', function() {
+                    var errEl = document.getElementById('gacRawPauseRuleErr');
+                    if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+                    gacRefreshPauseRuleFromServer(function() {
+                        gacFillPauseRuleForm(window.gacPauseRule || {});
+                    });
+                });
+            }
+
+            var pauseSaveBtn = document.getElementById('gacRawPauseRuleSaveBtn');
+            if (pauseSaveBtn) {
+                pauseSaveBtn.addEventListener('click', function() {
+                    var errEl = document.getElementById('gacRawPauseRuleErr');
+                    if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
+                    var payload = gacCollectPauseRulePayload();
+                    if (!payload.slabs.length) {
+                        if (errEl) {
+                            errEl.textContent = 'Add at least one slab before saving.';
+                            errEl.classList.remove('d-none');
+                        }
+                        return;
+                    }
+                    for (var i = 0; i < payload.slabs.length; i++) {
+                        var s = payload.slabs[i];
+                        if (!isFinite(s.spend_gt) || !isFinite(s.acos_gt)) {
+                            if (errEl) {
+                                errEl.textContent = 'Every slab needs numeric Spend LT and ACOS LT values.';
+                                errEl.classList.remove('d-none');
+                            }
+                            return;
+                        }
+                    }
                     var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                    sbidSaveBtn.disabled = true;
-                    fetch(gacRawRuleSaveUrl, {
+                    pauseSaveBtn.disabled = true;
+                    fetch(gacPauseRuleSaveUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -2657,27 +4507,27 @@
                         .then(function(out) {
                             var b = out.body || {};
                             if (!out.ok) {
-                                if (sErr) {
-                                    sErr.textContent = b.message || b.error || 'Save failed.';
-                                    sErr.classList.remove('d-none');
+                                if (errEl) {
+                                    errEl.textContent = b.message || b.error || 'Save failed.';
+                                    errEl.classList.remove('d-none');
                                 }
                                 return;
                             }
-                            window.gacRawRule = b.rule || window.gacRawRule;
-                            if (typeof bootstrap !== 'undefined' && sbidModalEl) {
-                                var sInst = bootstrap.Modal.getInstance(sbidModalEl);
-                                if (sInst) sInst.hide();
+                            window.gacPauseRule = b.rule || window.gacPauseRule;
+                            if (typeof bootstrap !== 'undefined' && pauseModalEl) {
+                                var inst = bootstrap.Modal.getInstance(pauseModalEl);
+                                if (inst) inst.hide();
                             }
                             return Promise.resolve(table.setData(dataUrl));
                         })
                         .then(function() { gacRawRefreshTableUiSoon(); })
                         .catch(function() {
-                            if (sErr) {
-                                sErr.textContent = 'Network or server error.';
-                                sErr.classList.remove('d-none');
+                            if (errEl) {
+                                errEl.textContent = 'Network or server error.';
+                                errEl.classList.remove('d-none');
                             }
                         })
-                        .finally(function() { sbidSaveBtn.disabled = false; });
+                        .finally(function() { pauseSaveBtn.disabled = false; });
                 });
             }
         });

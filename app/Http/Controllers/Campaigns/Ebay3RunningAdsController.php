@@ -8,7 +8,6 @@ use App\Models\Ebay3PriorityReport;
 use App\Models\EbayThreeDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use App\Models\ADVMastersData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -17,11 +16,6 @@ class Ebay3RunningAdsController extends Controller
     public function index()
     {
         return view('campaign.ebay-three.ebay-running-ads');
-    }
-
-    public function getAdvEbay3AdRunningDataSave(Request $request)
-    {
-        return ADVMastersData::getAdvEbay3AdRunningDataSaveProceed($request);
     }
 
     public function getEbay3RunningAdsData()

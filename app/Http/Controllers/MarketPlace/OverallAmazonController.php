@@ -22,7 +22,6 @@ use App\Jobs\UpdateAmazonSPriceJob;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonProductReview;
 use App\Models\AmazonSkuDailyData;
-use App\Models\ADVMastersData;
 use App\Models\ChannelMaster;
 use App\Models\ChannelTabulatorColumnSetting;
 use Carbon\Carbon;
@@ -85,11 +84,6 @@ class OverallAmazonController extends Controller
             'amazonPercentage' => $percentage,
             'amazonAdUpdates' => $adUpdates
         ]);
-    }
-
-    public function getAmazonTotalSalesSaveData(Request $request)
-    {
-        return ADVMastersData::getAmazonTotalSalesSaveDataProceed($request);
     }
 
     public function amazonPricingCVR(Request $request)

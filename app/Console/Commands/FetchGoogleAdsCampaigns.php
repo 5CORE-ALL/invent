@@ -624,36 +624,15 @@ class FetchGoogleAdsCampaigns extends Command
             $insertedRecords = 0;
 
             // Update database with GA4 daily data
-            foreach ($ga4DailyData as $campaignName => $dailyRecords) {
-                $campaignNameUpper = strtoupper(trim($campaignName));
-                $campaignNameClean = trim($campaignName);
+            foreach ($ga4DailyData as $campaignKey => $dailyRecords) {
+                $sample = reset($dailyRecords) ?: [];
+                $campaignName = trim((string) ($sample['campaign_name'] ?? $campaignKey));
+                $ga4CampaignId = trim((string) ($sample['campaign_id'] ?? ''));
 
-                // Match the GA4 campaign to a DB campaign. Always prefer an exact
-                // (case-insensitive, trimmed) name match; only fall back to partial
-                // matching when no exact match exists. The previous version OR'd the
-                // exact and LIKE conditions together and took ->first(), so a loose
-                // partial match could win over the real campaign — assigning GA4 sales
-                // to the wrong campaign and leaving the correct one with no sales.
-                $dbCampaign = DB::table('google_ads_campaigns')
-                    ->where('advertising_channel_type', 'SHOPPING')
-                    ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
-                    ->select('campaign_id', 'campaign_name')
-                    ->distinct()
-                    ->first();
-
-                if (!$dbCampaign) {
-                    // Fallback: partial match, deterministically preferring the closest name.
-                    $dbCampaign = DB::table('google_ads_campaigns')
-                        ->where('advertising_channel_type', 'SHOPPING')
-                        ->where(function($query) use ($campaignNameUpper, $campaignNameClean) {
-                            $query->where('campaign_name', 'LIKE', '%' . $campaignNameClean . '%')
-                                  ->orWhereRaw('UPPER(TRIM(campaign_name)) LIKE ?', ['%' . $campaignNameUpper . '%']);
-                        })
-                        ->orderByRaw('CHAR_LENGTH(campaign_name) ASC')
-                        ->select('campaign_id', 'campaign_name')
-                        ->distinct()
-                        ->first();
-                }
+                // Campaign ID first so VIDEO / SEARCH / SHOPPING each get their own
+                // revenue. The previous SHOPPING-only filter skipped every YouTube
+                // campaign, so /google/shopping/youtube-ads showed $0 Sales.
+                $dbCampaign = GoogleAdsCampaign::matchFromGa4($ga4CampaignId, $campaignName);
 
                 if (!$dbCampaign) {
                     $notFound++;
@@ -666,6 +645,7 @@ class FetchGoogleAdsCampaigns extends Command
                 // matching google_ads_campaigns row may not exist. Insert one in that case
                 // (the table has a unique campaign_id+date index) so the sale isn't lost.
                 foreach ($dailyRecords as $date => $metrics) {
+                    $date = GA4ApiService::normalizeReportDate((string) $date);
                     $rowExists = DB::table('google_ads_campaigns')
                         ->where('campaign_id', $dbCampaign->campaign_id)
                         ->where('date', $date)
@@ -684,7 +664,7 @@ class FetchGoogleAdsCampaigns extends Command
                         DB::table('google_ads_campaigns')->insert([
                             'campaign_id' => $dbCampaign->campaign_id,
                             'campaign_name' => $dbCampaign->campaign_name,
-                            'advertising_channel_type' => 'SHOPPING',
+                            'advertising_channel_type' => $dbCampaign->advertising_channel_type ?? 'SHOPPING',
                             'date' => $date,
                             'ga4_actual_sold_units' => $metrics['purchases'],
                             'ga4_actual_revenue' => $metrics['revenue'],

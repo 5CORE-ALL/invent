@@ -836,6 +836,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Today Sales on /all-marketplace-master — hourly 9 AM–10 PM EST/EDT.
+        // Lightweight persist so the column does not sit at $0 while calculate-data holds its lock.
+        $schedule->command('channel:refresh-today-sales')
+            ->cron('0 9-22 * * *')
+            ->timezone('America/New_York')
+            ->name('channel-refresh-today-sales')
+            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
 

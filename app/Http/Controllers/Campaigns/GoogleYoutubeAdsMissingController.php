@@ -8,15 +8,86 @@ use App\Models\YoutubeGParent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class GoogleYoutubeAdsMissingController extends Controller
 {
+    private const SIDEBAR_COUNT_CACHE_KEY = 'google_youtube_ads_missing_sidebar_count';
+
     public function index()
     {
         return view('campaign.youtube_missing_ads');
+    }
+
+    /**
+     * Grandparents with no linked parent — same list as /google/shopping/youtube-ads/missing.
+     */
+    public static function missingTotalCount(): int
+    {
+        try {
+            $cached = Cache::get(self::SIDEBAR_COUNT_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        try {
+            $total = self::computeMissingTotal();
+            try {
+                Cache::put(self::SIDEBAR_COUNT_CACHE_KEY, $total, now()->addMinutes(5));
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            return $total;
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    public static function forgetMissingTotalCache(): void
+    {
+        try {
+            Cache::forget(self::SIDEBAR_COUNT_CACHE_KEY);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    private static function computeMissingTotal(): int
+    {
+        if (! Schema::hasTable('grandparents')) {
+            return 0;
+        }
+
+        $linked = [];
+        if (Schema::hasTable('youtube_g_parents')) {
+            foreach (YoutubeGParent::query()->get(['g_parent']) as $row) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) $row->g_parent)));
+                if ($key !== '') {
+                    $linked[$key] = true;
+                }
+            }
+        }
+
+        $missing = 0;
+        foreach (Grandparent::query()
+            ->whereNotNull('grandparent')
+            ->where('grandparent', '!=', '')
+            ->get(['grandparent']) as $row
+        ) {
+            $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) $row->grandparent)));
+            if ($key !== '' && ! isset($linked[$key])) {
+                $missing++;
+            }
+        }
+
+        return $missing;
     }
 
     /**
@@ -95,6 +166,8 @@ class GoogleYoutubeAdsMissingController extends Controller
         }
 
         $row = Grandparent::create(['grandparent' => $name]);
+        self::forgetMissingTotalCache();
+        TiktokAdsMissingController::forgetMissingTotalCache();
 
         return response()->json([
             'ok' => true,
@@ -175,6 +248,7 @@ class GoogleYoutubeAdsMissingController extends Controller
                 'user_id' => Auth::id(),
             ]
         );
+        self::forgetMissingTotalCache();
 
         return response()->json([
             'ok' => true,
@@ -204,6 +278,7 @@ class GoogleYoutubeAdsMissingController extends Controller
         $grandparent = $row?->g_parent;
         if ($row) {
             $row->delete();
+            self::forgetMissingTotalCache();
         }
 
         return response()->json([

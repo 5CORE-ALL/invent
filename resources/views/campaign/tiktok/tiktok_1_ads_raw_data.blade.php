@@ -7,20 +7,41 @@
     <style>
         .tabulator-paginator label { margin-right: 5px; }
         .tt1-badge-row {
-            flex-wrap: nowrap;
-            overflow-x: auto;
+            flex-wrap: wrap;
         }
-        #stat-tt1-ads-raw.badge,
-        .badge-tt1-ads-raw {
-            font-size: 0.95rem !important;
-            line-height: 1.2;
-            padding: 0.45rem 0.7rem !important;
-            border-radius: 0.35rem !important;
+        .tt1-stat-badge {
+            display: inline-block;
+            flex-shrink: 0;
+            color: #fff;
+            font-size: 12px;
             font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 6px;
             white-space: nowrap;
-            flex: 0 0 auto;
-            color: #111 !important;
+            line-height: 1.2;
         }
+        .tt1-stat-badge--rows   { background: #0ea5e9; }
+        .tt1-stat-badge--spend  { background: #ef4444; }
+        .tt1-stat-badge--spend-l1 { background: #f87171; color: #111; }
+        .tt1-stat-badge--clicks { background: #4c7ed8; }
+        .tt1-stat-badge--clicks-l1 { background: #60a5fa; color: #111; }
+        .tt1-stat-badge--sold   { background: #f59e0b; color: #111; }
+        .tt1-stat-badge--sold-l1 { background: #fbbf24; color: #111; }
+        .tt1-stat-badge--sales  { background: #16a34a; }
+        .tt1-stat-badge--sales-l1 { background: #22c55e; color: #111; }
+        .tt1-stat-badge--cvr    { background: #db2777; }
+        .tt1-stat-badge--cvr-l1 { background: #ec4899; color: #111; }
+        .tt1-range-btn {
+            background: #0d9488;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            line-height: 1.2;
+        }
+        .tt1-range-btn:hover { filter: brightness(1.08); color: #fff; }
         .tt1-video-title-btn {
             color: #0d6efd;
             font-size: 1.1rem;
@@ -46,35 +67,31 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center gap-2 tt1-badge-row">
-                    <span class="badge badge-tt1-ads-raw" id="stat-tt1-ads-raw"
-                          style="background-color: #7dd3fc;">Rows <span id="total-tt1-ads-raw">0</span></span>
-                    <span class="badge badge-tt1-ads-raw" id="tt1-cost-l30-badge"
-                          style="background-color: #fb923c;">Cost L30: $0.00</span>
-                    <span class="badge badge-tt1-ads-raw" id="tt1-cost-l1-badge"
-                          style="background-color: #fdba74;">Cost L1: $0.00</span>
-                    <span class="badge badge-tt1-ads-raw" id="tt1-orders-l30-badge"
-                          style="background-color: #c4b5fd;">SKU orders L30: 0</span>
-                    <span class="badge badge-tt1-ads-raw" id="tt1-orders-l1-badge"
-                          style="background-color: #ddd6fe;">SKU orders L1: 0</span>
-                    <span class="badge badge-tt1-ads-raw" id="tt1-revenue-l30-badge"
-                          style="background-color: #86efac;">Revenue L30: $0.00</span>
-                    <span class="badge badge-tt1-ads-raw" id="tt1-revenue-l1-badge"
-                          style="background-color: #bbf7d0;">Revenue L1: $0.00</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="tt1-ads-raw-csv">
+                    <span class="tt1-stat-badge tt1-stat-badge--rows">ROWS: <span id="total-tt1-ads-raw">0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--spend">COST L30: <span id="tt1-cost-l30">$0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--spend-l1">COST L1: <span id="tt1-cost-l1">$0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--clicks">CLICKS L30: <span id="tt1-clicks-l30">0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--clicks-l1">CLICKS L1: <span id="tt1-clicks-l1">0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--sold">SOLD L30: <span id="tt1-orders-l30">0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--sold-l1">SOLD L1: <span id="tt1-orders-l1">0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--sales">ADS SALES L30: <span id="tt1-revenue-l30">$0</span></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--sales-l1">ADS SALES L1: <span id="tt1-revenue-l1">$0</span></span>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="tt1-open-upload">
+                        <i class="fa-solid fa-upload me-1"></i>Upload
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="tt1-ads-raw-csv">
                         <i class="fas fa-download me-1"></i>CSV
                     </button>
                 </div>
-                <div class="d-flex align-items-center flex-wrap gap-2 mt-3 pt-2 border-top">
-                    <span class="text-muted" style="font-size: 0.85rem;">
-                        <i class="fa-solid fa-upload me-1"></i>Upload (xlsx / csv / txt). Old range is deleted first.
+                <div class="d-flex align-items-center gap-2 tt1-badge-row mt-2">
+                    <span class="tt1-stat-badge tt1-stat-badge--cvr" title="CVR = Sold ÷ Clicks × 100">
+                        CVR L30: <span id="tt1-cvr-l30">0%</span>
+                        <span id="tt1-cvr-l30-calc">(0 ÷ 0)</span>
                     </span>
-                    <input type="file" id="tt1-l1-file" accept=".xlsx,.xls,.csv,.tsv,.txt" class="d-none">
-                    <input type="file" id="tt1-l7-file" accept=".xlsx,.xls,.csv,.tsv,.txt" class="d-none">
-                    <input type="file" id="tt1-l30-file" accept=".xlsx,.xls,.csv,.tsv,.txt" class="d-none">
-                    <button type="button" id="tt1-l1-upload" class="btn btn-sm btn-primary">L1</button>
-                    <button type="button" id="tt1-l7-upload" class="btn btn-sm btn-primary">L7</button>
-                    <button type="button" id="tt1-l30-upload" class="btn btn-sm btn-primary">L30</button>
-                    <span id="tt1-upload-status" class="ms-2" style="font-size: 0.85rem;"></span>
+                    <span class="tt1-stat-badge tt1-stat-badge--cvr-l1" title="CVR = Sold ÷ Clicks × 100">
+                        CVR L1: <span id="tt1-cvr-l1">0%</span>
+                        <span id="tt1-cvr-l1-calc">(0 ÷ 0)</span>
+                    </span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -83,6 +100,33 @@
                            placeholder="Search campaign, product, video, status…">
                 </div>
                 <div id="tt1-ads-raw-table" style="height: calc(100vh - 320px);"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="tt1-upload-modal" tabindex="-1" aria-labelledby="tt1-upload-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="tt1-upload-modal-label">
+                        <i class="fa-solid fa-upload me-1"></i>Upload sheet
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <span class="text-muted" style="font-size: 0.85rem;">
+                            <i class="fa-solid fa-upload me-1"></i>Upload (xlsx / csv / txt). Old range is deleted first.
+                        </span>
+                        <input type="file" id="tt1-l1-file" accept=".xlsx,.xls,.csv,.tsv,.txt" class="d-none">
+                        <input type="file" id="tt1-l7-file" accept=".xlsx,.xls,.csv,.tsv,.txt" class="d-none">
+                        <input type="file" id="tt1-l30-file" accept=".xlsx,.xls,.csv,.tsv,.txt" class="d-none">
+                        <button type="button" id="tt1-l1-upload" class="tt1-range-btn">L1</button>
+                        <button type="button" id="tt1-l7-upload" class="tt1-range-btn">L7</button>
+                        <button type="button" id="tt1-l30-upload" class="tt1-range-btn">L30</button>
+                    </div>
+                    <div id="tt1-upload-status" class="mt-2" style="font-size: 0.85rem;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -109,13 +153,26 @@
 
     function applyTt1Sums(s) {
         const sums = s || {};
+        const clicksL30 = Number(sums.clicks_l30 || 0);
+        const clicksL1 = Number(sums.clicks_l1 || 0);
+        const ordersL30 = Number(sums.orders_l30 || 0);
+        const ordersL1 = Number(sums.orders_l1 || 0);
+        const cvrL30 = clicksL30 > 0 ? (ordersL30 / clicksL30) * 100 : 0;
+        const cvrL1 = clicksL1 > 0 ? (ordersL1 / clicksL1) * 100 : 0;
+
         $('#total-tt1-ads-raw').text(Number(sums.count || 0).toLocaleString('en-US'));
-        $('#tt1-cost-l30-badge').text('Cost L30: ' + money(sums.cost_l30));
-        $('#tt1-cost-l1-badge').text('Cost L1: ' + money(sums.cost_l1));
-        $('#tt1-orders-l30-badge').text('SKU orders L30: ' + Number(sums.orders_l30 || 0).toLocaleString('en-US'));
-        $('#tt1-orders-l1-badge').text('SKU orders L1: ' + Number(sums.orders_l1 || 0).toLocaleString('en-US'));
-        $('#tt1-revenue-l30-badge').text('Revenue L30: ' + money(sums.revenue_l30));
-        $('#tt1-revenue-l1-badge').text('Revenue L1: ' + money(sums.revenue_l1));
+        $('#tt1-cost-l30').text(money(sums.cost_l30));
+        $('#tt1-cost-l1').text(money(sums.cost_l1));
+        $('#tt1-clicks-l30').text(clicksL30.toLocaleString('en-US'));
+        $('#tt1-clicks-l1').text(clicksL1.toLocaleString('en-US'));
+        $('#tt1-orders-l30').text(ordersL30.toLocaleString('en-US'));
+        $('#tt1-orders-l1').text(ordersL1.toLocaleString('en-US'));
+        $('#tt1-revenue-l30').text(money(sums.revenue_l30));
+        $('#tt1-revenue-l1').text(money(sums.revenue_l1));
+        $('#tt1-cvr-l30').text(cvrL30.toFixed(1) + '%');
+        $('#tt1-cvr-l1').text(cvrL1.toFixed(1) + '%');
+        $('#tt1-cvr-l30-calc').text('(' + ordersL30.toLocaleString('en-US') + ' ÷ ' + clicksL30.toLocaleString('en-US') + ')');
+        $('#tt1-cvr-l1-calc').text('(' + ordersL1.toLocaleString('en-US') + ' ÷ ' + clicksL1.toLocaleString('en-US') + ')');
     }
 
     function numCol(title, field, width) {
@@ -231,6 +288,17 @@
         $('#tt1-ads-raw-csv').on('click', function() {
             table.download('csv', 'tt1_ads.csv');
         });
+
+        function showTt1UploadModal() {
+            const el = document.getElementById('tt1-upload-modal');
+            if (!el) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            } else {
+                $(el).modal('show');
+            }
+        }
+        $('#tt1-open-upload').on('click', showTt1UploadModal);
 
         function uploadTt1(fileInput, reportRange) {
             const file = fileInput.files[0];

@@ -13,7 +13,6 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayThreeListingStatus;
-use App\Models\ADVMastersData;
 use App\Models\Ebay3GeneralReport;
 use App\Models\Ebay3Metric;
 use App\Models\EbaySkuCompetitor;
@@ -1804,11 +1803,6 @@ class EbayThreeController extends Controller
             'ebayPercentage' => $ebayPercentage,
             'ebayAdUpdates' => $ebayAdUpdates
         ]);
-    }
-
-    public function getEbay3TotalSaleSaveData(Request $request)
-    {
-        return ADVMastersData::getEbay3TotalSaleSaveDataProceed($request);
     }
 
     public function ebayThreePricingCVR(Request $request)

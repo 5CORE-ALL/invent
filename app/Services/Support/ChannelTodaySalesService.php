@@ -5,6 +5,7 @@ namespace App\Services\Support;
 use App\Http\Controllers\MarketPlace\FaireController;
 use App\Http\Controllers\ShopifyRawDataController;
 use App\Models\AmazonOrder;
+use App\Models\ChannelMasterCalculatedData;
 use App\Models\FacebookMarketplaceSale;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
@@ -57,6 +58,61 @@ class ChannelTodaySalesService
         }
 
         return null;
+    }
+
+    public function forgetCache(?string $ymd = null): void
+    {
+        $ymd ??= Carbon::now(self::TZ)->toDateString();
+        Cache::forget(self::CACHE_PREFIX.$ymd);
+    }
+
+    /**
+     * Recompute Eastern-today sales, persist onto channel_master_calculated_data,
+     * and invalidate the /all-marketplace-master fast payload.
+     *
+     * @return array{date: string, updated: int, skipped: int, total: float, sales: array<string, float>}
+     */
+    public function refreshAndPersist(): array
+    {
+        [$start, $end, $ymd] = $this->todayWindow();
+        $this->forgetCache($ymd);
+        $sales = $this->computeSalesByLookupKey($start, $end, $ymd);
+        Cache::put(self::CACHE_PREFIX.$ymd, $sales, now()->addHour());
+
+        $updated = 0;
+        $skipped = 0;
+
+        if (Schema::hasTable('channel_master_calculated_data')
+            && Schema::hasColumn('channel_master_calculated_data', 'today_sales')) {
+            foreach (ChannelMasterCalculatedData::query()->cursor() as $row) {
+                $value = $this->valueForChannel((string) $row->channel, $sales);
+                if ($value === null) {
+                    $skipped++;
+
+                    continue;
+                }
+                $row->today_sales = $value;
+                $row->save();
+                $updated++;
+            }
+        }
+
+        ChannelMasterCalculatedData::bumpFastPayloadCache();
+        Cache::put(self::CACHE_PREFIX.$ymd, $sales, now()->addHour());
+
+        $total = 0.0;
+        if (Schema::hasTable('channel_master_calculated_data')
+            && Schema::hasColumn('channel_master_calculated_data', 'today_sales')) {
+            $total = round((float) ChannelMasterCalculatedData::query()->sum('today_sales'), 2);
+        }
+
+        return [
+            'date' => $ymd,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'total' => $total,
+            'sales' => $sales,
+        ];
     }
 
     /**

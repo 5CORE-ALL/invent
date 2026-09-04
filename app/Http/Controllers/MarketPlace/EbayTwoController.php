@@ -16,7 +16,6 @@ use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\Ebay2GeneralReport;
-use App\Models\ADVMastersData;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay2PriorityReport;
 use App\Models\EbayTwoListingStatus;
@@ -164,11 +163,6 @@ class EbayTwoController extends Controller
         return view("market-places.ebay2op_tabulator_view", [
             'ebayTakeHome' => MarketplacePercentage::takeHomeDecimal('EbayTwo'),
         ]);
-    }
-
-    public function getEbay2TotsalSaleDataSave(Request $request)
-    {
-        return ADVMastersData::getEbay2TotsalSaleDataSaveProceed($request);
     }
 
     public function EbayTwoPricingCVR(Request $request)

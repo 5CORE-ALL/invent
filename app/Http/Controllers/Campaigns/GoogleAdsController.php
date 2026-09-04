@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use App\Models\ADVMastersData;
 use App\Models\Shopifyb2cDataView;
 use Illuminate\Http\Request;
 use App\Services\GoogleAdsSbidService;
@@ -270,11 +269,6 @@ class GoogleAdsController extends Controller
             'orders' => collect($orders),
             'sales' => collect($sales)
         ]);
-    }
-
-    public function getAdvShopifyGShoppingSaveData(Request $request)
-    {
-        return ADVMastersData::getAdvShopifyGShoppingSaveDataProceed($request);
     }
 
     public function getGoogleShoppingAdsData(){

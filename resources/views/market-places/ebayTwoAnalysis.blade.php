@@ -5748,19 +5748,6 @@
                     
                     $('#sale-total').text(metrics.totalSalesTotal.toFixed(2));
 
-                    $.ajax({
-                        url: "{{ route('adv-ebay2.total-sale.save-data') }}",
-                        method: 'GET',
-                        data: {
-                            totalSales: metrics.totalSalesTotal
-                        },
-                        success: function(response) {
-                        },
-                        error: function(xhr) {
-                        }
-                    });
-
-
                     // Calculate and display averages
                     // Calculate average PFT (old calculation for backward compatibility)
                     let pftTotalAvg = 0;

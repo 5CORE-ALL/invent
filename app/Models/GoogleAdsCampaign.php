@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class GoogleAdsCampaign extends Model
 {
@@ -126,4 +127,56 @@ class GoogleAdsCampaign extends Model
         'ga4_actual_sold_units' => 'decimal:2',
         'ga4_actual_revenue' => 'decimal:2',
     ];
+
+    /**
+     * Resolve a GA4 purchase row to a google_ads_campaigns identity.
+     * Campaign ID first (campaign-wise), then exact name, then closest partial name.
+     * YouTube names ending " YT" prefer VIDEO so sales are not written onto a Shopping row.
+     *
+     * @return object{campaign_id: string, campaign_name: string, advertising_channel_type: string}|null
+     */
+    public static function matchFromGa4(?string $campaignId, string $campaignName): ?object
+    {
+        $campaignId = trim((string) $campaignId);
+        if ($campaignId !== '' && strcasecmp($campaignId, '(not set)') !== 0) {
+            $row = DB::table('google_ads_campaigns')
+                ->where('campaign_id', $campaignId)
+                ->select('campaign_id', 'campaign_name', 'advertising_channel_type')
+                ->distinct()
+                ->first();
+            if ($row) {
+                return $row;
+            }
+        }
+
+        $campaignNameUpper = strtoupper(trim($campaignName));
+        if ($campaignNameUpper === '' || $campaignNameUpper === '(NOT SET)') {
+            return null;
+        }
+
+        $row = DB::table('google_ads_campaigns')
+            ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
+            ->select('campaign_id', 'campaign_name', 'advertising_channel_type')
+            ->distinct()
+            ->first();
+        if ($row) {
+            return $row;
+        }
+
+        $query = DB::table('google_ads_campaigns')
+            ->where(function ($q) use ($campaignNameUpper, $campaignName) {
+                $clean = trim($campaignName);
+                $q->where('campaign_name', 'LIKE', '%'.$clean.'%')
+                    ->orWhereRaw('UPPER(TRIM(campaign_name)) LIKE ?', ['%'.$campaignNameUpper.'%']);
+            });
+
+        if (str_ends_with($campaignNameUpper, ' YT')) {
+            $query->orderByRaw("CASE WHEN advertising_channel_type = 'VIDEO' THEN 0 ELSE 1 END");
+        }
+
+        return $query->orderByRaw('CHAR_LENGTH(campaign_name) ASC')
+            ->select('campaign_id', 'campaign_name', 'advertising_channel_type')
+            ->distinct()
+            ->first();
+    }
 }

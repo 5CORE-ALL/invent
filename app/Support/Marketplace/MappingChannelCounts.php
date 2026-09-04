@@ -140,6 +140,65 @@ class MappingChannelCounts
         return 0;
     }
 
+    /**
+     * Cached Missing Mapping Titas for one channel slug (e.g. temu).
+     * Never scans marketplaces — returns 0 until master rows have been cached.
+     */
+    public static function cachedCountForSlug(string $slug): int
+    {
+        $want = self::normalize($slug);
+        if ($want === '') {
+            return 0;
+        }
+
+        try {
+            $cached = Cache::get(self::MASTER_ROWS_CACHE_KEY);
+            if (! is_array($cached)) {
+                return 0;
+            }
+            foreach ($cached as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (self::normalize((string) ($row['channel_slug'] ?? '')) === $want) {
+                    return (int) ($row['missing_mapping_titas'] ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return 0;
+    }
+
+    /**
+     * Missing Mapping Titas for one channel. Uses the master-rows cache when
+     * present; otherwise counts that channel only (no full marketplace scan).
+     */
+    public static function countForSlug(string $slug): int
+    {
+        $cached = self::cachedCountForSlug($slug);
+        try {
+            $rows = Cache::get(self::MASTER_ROWS_CACHE_KEY);
+            if (is_array($rows) && $rows !== []) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // fall through to a single-channel count
+        }
+
+        $mm = MarketplaceListingQtyMatchService::fromMapIssuesSlug(self::normalize($slug));
+        if ($mm === null) {
+            return $cached;
+        }
+
+        try {
+            return (int) app(MarketplaceListingQtyMatchService::class)->activeMismatchCount($mm, false);
+        } catch (\Throwable $e) {
+            return $cached;
+        }
+    }
+
     public static function forgetMasterCaches(): void
     {
         try {

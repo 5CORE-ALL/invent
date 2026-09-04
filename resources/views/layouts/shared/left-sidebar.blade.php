@@ -325,15 +325,6 @@
                                 <ul class="side-nav-third-level">
 
                                    
-                                    <!-- Start Nikhil Code -->
-                                    {{-- <li>
-                                        <a href="{{ route('channel.ads.master') }}">AD Masters</a>
-                                    </li> --}}
-                                    <li>
-                                        <a href="{{ route('channel.adv.master') }}">ADV Masters</a>
-                                    </li>
-
-                                    <!-- End Nikhil Code  -->
                                     <li>
                                         <a href="{{ route('opportunity.index') }}">Opportunities</a>
                                     </li>

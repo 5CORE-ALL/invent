@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\FacebookAllAdsSheet;
 use App\Models\ShopifyMetaCampaign;
+use App\Support\GoogleYoutubeCampaignSales;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -804,11 +805,17 @@ class ShopifyAdsMasterController extends Controller
                 ->selectRaw('campaign_id')
                 ->selectRaw('SUM(metrics_cost_micros) / 1000000 as spend')
                 ->selectRaw('SUM(metrics_clicks) as clicks')
-                ->selectRaw('SUM(ga4_actual_sold_units) as sold')
-                // GA4 actual revenue only — same as /google/shopping/google-shopping and
-                // /google/shopping/google-serp (no fallback to ga4_ad_sales / Google Ads
-                // conversionsValue, which can show e.g. $102 when GA4 reports $0).
-                ->selectRaw('COALESCE(SUM(ga4_actual_revenue), 0) as sales')
+                ->selectRaw(
+                    $scope === 'youtube'
+                        ? 'CASE WHEN COALESCE(SUM(ga4_actual_sold_units), 0) > 0 THEN COALESCE(SUM(ga4_actual_sold_units), 0) ELSE COALESCE(SUM(ga4_sold_units), 0) END as sold'
+                        : 'SUM(ga4_actual_sold_units) as sold'
+                )
+                ->selectRaw(
+                    $scope === 'youtube'
+                        ? 'CASE WHEN COALESCE(SUM(ga4_actual_revenue), 0) > 0 THEN COALESCE(SUM(ga4_actual_revenue), 0) ELSE COALESCE(SUM(ga4_ad_sales), 0) END as sales'
+                        : 'COALESCE(SUM(ga4_actual_revenue), 0) as sales'
+                )
+                ->selectRaw('MAX(campaign_name) as campaign_name')
                 ->groupBy('campaign_id');
 
             if ($bounds !== null) {
@@ -825,13 +832,33 @@ class ShopifyAdsMasterController extends Controller
                 $campaigns->whereRaw('UPPER(campaign_name) LIKE ?', ['% YT']);
             }
 
-            $row = DB::query()
-                ->fromSub($campaigns, 'campaigns')
-                ->selectRaw('COALESCE(SUM(spend), 0) as spend')
-                ->selectRaw('COALESCE(SUM(clicks), 0) as clicks')
-                ->selectRaw('COALESCE(SUM(sold), 0) as sold')
-                ->selectRaw('COALESCE(SUM(sales), 0) as sales')
-                ->first();
+            if ($scope === 'youtube') {
+                $spend = 0.0;
+                $clicks = 0.0;
+                $sold = 0.0;
+                $sales = 0.0;
+                foreach ($campaigns->get() as $c) {
+                    $spend += (float) ($c->spend ?? 0);
+                    $clicks += (float) ($c->clicks ?? 0);
+                    $cSold = (float) ($c->sold ?? 0);
+                    $sold += $cSold;
+                    $sales += GoogleYoutubeCampaignSales::lift((float) ($c->sales ?? 0), $cSold, (string) ($c->campaign_name ?? ''));
+                }
+                $row = (object) [
+                    'spend' => $spend,
+                    'clicks' => $clicks,
+                    'sold' => $sold,
+                    'sales' => $sales,
+                ];
+            } else {
+                $row = DB::query()
+                    ->fromSub($campaigns, 'campaigns')
+                    ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+                    ->selectRaw('COALESCE(SUM(clicks), 0) as clicks')
+                    ->selectRaw('COALESCE(SUM(sold), 0) as sold')
+                    ->selectRaw('COALESCE(SUM(sales), 0) as sales')
+                    ->first();
+            }
 
             if ($row !== null) {
                 $row->active = $this->googleAdsActiveCount($scope, $bounds);

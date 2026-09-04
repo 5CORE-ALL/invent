@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\TiktokCampaignReport;
+use App\Models\TiktokOrder;
 use App\Support\TikTokAdsSkuResolver;
 use App\Support\Tiktok1AdsRawDataTotals;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -72,5 +75,101 @@ class Tiktok1AdsRawDataController extends Controller
                 'count' => 0,
             ], 500);
         }
+    }
+
+    /**
+     * Single TikTok 1 row for /advertisement-master — L30 Cost / clicks /
+     * SKU orders / revenue from tiktok_campaign_reports, same totals as
+     * /tiktok-1-ads-raw-data.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdvertisementMasterChannelRows(): array
+    {
+        $sums = Tiktok1AdsRawDataTotals::sums();
+
+        return [
+            self::advertisementMasterMetricRow('TikTok 1', 'tiktok1', (object) [
+                'spend' => (float) ($sums['cost_l30'] ?? 0),
+                'clicks' => (int) ($sums['clicks_l30'] ?? 0),
+                'sold' => (int) ($sums['orders_l30'] ?? 0),
+                'sales' => (float) ($sums['revenue_l30'] ?? 0),
+                'active' => $this->advertisementMasterActiveCount(),
+            ]),
+        ];
+    }
+
+    /**
+     * TikTok Shop L30 store sales from tiktok_orders — same California
+     * window as Channel Master / TikTok 1.
+     */
+    public static function advertisementMasterNetSales(): float
+    {
+        try {
+            if (! TiktokOrder::tableReady()) {
+                return 0.0;
+            }
+
+            [$start, $end] = TiktokOrder::californiaDaysWindow(
+                30,
+                Carbon::yesterday(TiktokOrder::TZ)
+            );
+
+            return round(TiktokOrder::salesAmountBetween($start, $end), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master TikTok 1 net sales lookup failed: '.$e->getMessage());
+
+            return 0.0;
+        }
+    }
+
+    /**
+     * Distinct L30 campaigns that are actually delivering — Exploring or
+     * Explored. Ineligible-only campaigns (authorization / unavailable) are
+     * excluded. The sheet `status` field is exploration state, not on/off.
+     */
+    protected function advertisementMasterActiveCount(): int
+    {
+        if (! Schema::hasTable('tiktok_campaign_reports')
+            || ! Schema::hasColumn('tiktok_campaign_reports', 'campaign_id')
+            || ! Schema::hasColumn('tiktok_campaign_reports', 'status')) {
+            return 0;
+        }
+
+        return (int) DB::table('tiktok_campaign_reports')
+            ->whereRaw("UPPER(TRIM(COALESCE(report_range, ''))) = 'L30'")
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->whereRaw("UPPER(TRIM(status)) IN ('EXPLORING', 'EXPLORED')")
+            ->distinct()
+            ->count('campaign_id');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function advertisementMasterMetricRow(string $channel, string $source, ?object $row): array
+    {
+        $spend = (float) ($row->spend ?? 0);
+        $clicks = (float) ($row->clicks ?? 0);
+        $sold = (float) ($row->sold ?? 0);
+        $sales = (float) ($row->sales ?? 0);
+
+        return [
+            'channel' => $channel,
+            'source' => $source,
+            'spend' => round($spend, 2),
+            'clicks' => (int) round($clicks),
+            'sold' => (int) round($sold),
+            'sales' => round($sales, 2),
+            'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
+            'acos' => $sales > 0
+                ? round(($spend / $sales) * 100, 0)
+                : ($spend > 0 ? 100 : 0),
+            'tcos' => 0,
+            'active' => (int) ($row->active ?? 0),
+            'is_sub_row' => false,
+            'marketplace' => 'tiktok',
+        ];
     }
 }

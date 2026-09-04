@@ -1052,33 +1052,6 @@
                 let hlSalesL7Total = calculateTotal('hl_sales_L7');
 
 
-                $.ajax({
-                    url: "{{ route('adv-amazon.ad-running.save-data') }}",
-                    method: 'GET',
-                    data: {
-                        spendl30Total: spendTotal,
-                        kwSpendL30Total: kwSpendL30Total,
-                        ptSpendL30Total: ptSpendL30Total,
-                        hlSpendL30Total:hlSpendL30Total,
-                        clicksL30Total: clicksL30Total,
-                        kwClicksL30Total: kwClicksL30Total,
-                        ptClicksL30Total:ptClicksL30Total,
-                        hlClicksL30Total: hlClicksL30Total,
-                        salesL30Total : salesL30Total,
-                        kwSalesL30Total:kwSalesL30Total,
-                        ptSalesL30Total:ptSalesL30Total,
-                        hlSalesL30Total:hlSalesL30Total,
-                        soldL30Total:soldL30Total,
-                        kwSoldL30Total:kwSoldL30Total,
-                        ptSoldL30Total:ptSoldL30Total,
-                        hlSoldL30Total:hlSoldL30Total
-                    },
-                    success: function(response) {
-                    },
-                    error: function(xhr) {
-                    }
-                });
-
                 // Update SPEND totals
                 document.getElementById("spend-l30-total").innerText = spendTotal > 0 ? ` (${spendTotal.toFixed(2)})` : "";
                 document.getElementById("spend-l30-total").style.display = spendTotal > 0 ? "inline" : "none";

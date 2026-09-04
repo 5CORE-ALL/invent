@@ -225,6 +225,15 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * SQL expression for L30 Sold. Shopping/SERP stay on GA4 actual purchases.
+     * YouTube overrides to fall back to Google Ads conversions when GA4 is 0.
+     */
+    protected static function soldL30SqlExpression(): string
+    {
+        return 'COALESCE(agg.sum_ga4_actual_sold, 0)';
+    }
+
+    /**
      * PHP-side counterpart of {@see salesL30SqlExpression()} used while enriching each row
      * for the Tabulator grid. Kept in sync with the SQL so column value, sort, and ACOS
      * agree to the dollar.
@@ -236,6 +245,14 @@ class GoogleShoppingCampaignsController extends Controller
     protected static function resolveSalesL30Value(float $sumGa4ActualRevenue, float $sumGoogleAdsConversionsValue): float
     {
         return $sumGa4ActualRevenue;
+    }
+
+    /**
+     * PHP-side counterpart of {@see soldL30SqlExpression()}.
+     */
+    protected static function resolveSoldL30Value(float $sumGa4ActualSoldUnits, float $sumGoogleAdsConversions): float
+    {
+        return $sumGa4ActualSoldUnits;
     }
 
     public function getRule(): JsonResponse
@@ -1067,7 +1084,8 @@ class GoogleShoppingCampaignsController extends Controller
                 COALESCE(SUM(ga4_actual_revenue), 0) AS actual_sales,
                 COALESCE(SUM(ga4_ad_sales), 0) AS ad_sales,
                 COALESCE(SUM(metrics_clicks), 0) AS clicks,
-                COALESCE(SUM(ga4_actual_sold_units), 0) AS sold,
+                COALESCE(SUM(ga4_actual_sold_units), 0) AS actual_sold,
+                COALESCE(SUM(ga4_sold_units), 0) AS ads_sold,
                 COALESCE(SUM(CASE WHEN date = '{$endStr}' THEN COALESCE(budget_amount_micros, 0) ELSE 0 END), 0) / 1000000.0 AS bgt
             ")
             ->first();
@@ -1075,12 +1093,16 @@ class GoogleShoppingCampaignsController extends Controller
         $actual = (float) ($row->actual_sales ?? 0);
         $ads = (float) ($row->ad_sales ?? 0);
         $sales = static::resolveSalesL30Value($actual, $ads);
+        $sold = static::resolveSoldL30Value(
+            (float) ($row->actual_sold ?? 0),
+            (float) ($row->ads_sold ?? 0)
+        );
 
         return [
             'spend' => round((float) ($row->spend ?? 0), 2),
             'sales' => round($sales, 2),
             'clicks' => (float) ($row->clicks ?? 0),
-            'sold' => (float) ($row->sold ?? 0),
+            'sold' => (float) $sold,
             'bgt' => round((float) ($row->bgt ?? 0), 2),
         ];
     }
@@ -1879,7 +1901,9 @@ class GoogleShoppingCampaignsController extends Controller
             ->addSelect(DB::raw('COALESCE(agg.sum_ga4_actual, 0) as sum_ga4_actual'))
             ->addSelect(DB::raw('COALESCE(agg.sum_ga4_ads, 0) as sum_ga4_ads'))
             ->addSelect(DB::raw('COALESCE(agg.sum_ga4_actual_sold, 0) as sum_ga4_actual_sold'))
-            ->addSelect(DB::raw(static::salesL30SqlExpression().' as sales_l30_agg'));
+            ->addSelect(DB::raw('COALESCE(agg.sum_ga4_ads_sold, 0) as sum_ga4_ads_sold'))
+            ->addSelect(DB::raw(static::salesL30SqlExpression().' as sales_l30_agg'))
+            ->addSelect(DB::raw(static::soldL30SqlExpression().' as sold_l30_agg'));
 
         return $query;
     }
@@ -1916,7 +1940,8 @@ class GoogleShoppingCampaignsController extends Controller
                 SUM(CASE WHEN `date` >= ? THEN metrics_video_views ELSE 0 END) as sum_views_l1,
                 SUM(ga4_actual_revenue) as sum_ga4_actual,
                 SUM(ga4_ad_sales) as sum_ga4_ads,
-                SUM(ga4_actual_sold_units) as sum_ga4_actual_sold',
+                SUM(ga4_actual_sold_units) as sum_ga4_actual_sold,
+                SUM(ga4_sold_units) as sum_ga4_ads_sold',
                 [
                     $l7Bounds['start'], $l2Bounds['start'], $l1Bounds['start'],
                     $l7Bounds['start'], $l2Bounds['start'], $l1Bounds['start'],
@@ -1943,7 +1968,8 @@ class GoogleShoppingCampaignsController extends Controller
                 SUM(metrics_video_views) as sum_views_l1,
                 SUM(ga4_actual_revenue) as sum_ga4_actual,
                 SUM(ga4_ad_sales) as sum_ga4_ads,
-                SUM(ga4_actual_sold_units) as sum_ga4_actual_sold'
+                SUM(ga4_actual_sold_units) as sum_ga4_actual_sold,
+                SUM(ga4_sold_units) as sum_ga4_ads_sold'
             );
         }
 
@@ -1991,7 +2017,7 @@ class GoogleShoppingCampaignsController extends Controller
         // CTR / CVR min-max range filters. Expressions mirror ctr_l30 / cvr_l30 so the
         // filtered rows match the displayed (and colour-flagged) values to the percent.
         $ctrExpr = '(CASE WHEN COALESCE(agg.sum_impr_30, 0) > 0 THEN (COALESCE(agg.sum_clicks_30, 0) / COALESCE(agg.sum_impr_30, 0)) * 100.0 ELSE 0 END)';
-        $cvrExpr = '(CASE WHEN COALESCE(agg.sum_clicks_30, 0) > 0 THEN (COALESCE(agg.sum_ga4_actual_sold, 0) / COALESCE(agg.sum_clicks_30, 0)) * 100.0 ELSE 0 END)';
+        $cvrExpr = '(CASE WHEN COALESCE(agg.sum_clicks_30, 0) > 0 THEN ('.static::soldL30SqlExpression().' / COALESCE(agg.sum_clicks_30, 0)) * 100.0 ELSE 0 END)';
         $this->whereRangeBand($query, $ctrExpr, $ctrMin, $ctrMax);
         $this->whereRangeBand($query, $cvrExpr, $cvrMin, $cvrMax);
 
@@ -2087,7 +2113,7 @@ class GoogleShoppingCampaignsController extends Controller
         $spendL2 = '(COALESCE(agg.sum_micros_l2, 0) / 1000000.0)';
         $spendL1 = '(COALESCE(agg.sum_micros_l1, 0) / 1000000.0)';
         $sales = static::salesL30SqlExpression();
-        $sold = 'COALESCE(agg.sum_ga4_actual_sold, 0)';
+        $sold = static::soldL30SqlExpression();
         $clicks = 'COALESCE(agg.sum_clicks_30, 0)';
         $clicksL7 = 'COALESCE(agg.sum_clicks_l7, 0)';
         $clicksL2 = 'COALESCE(agg.sum_clicks_l2, 0)';
@@ -2106,6 +2132,9 @@ class GoogleShoppingCampaignsController extends Controller
         $cpcL7 = "(CASE WHEN {$clicksL7} > 0 THEN {$spendL7} / {$clicksL7} ELSE 0 END)";
         $cpcL2 = "(CASE WHEN {$clicksL2} > 0 THEN {$spendL2} / {$clicksL2} ELSE 0 END)";
         $cpcL1 = "(CASE WHEN {$clicksL1} > 0 THEN {$spendL1} / {$clicksL1} ELSE 0 END)";
+        $views30 = 'COALESCE(agg.sum_views_30, 0)';
+        $cpsL30 = "(CASE WHEN {$sold} > 0 THEN {$spend} / {$sold} ELSE 0 END)";
+        $cpvL30 = "(CASE WHEN {$views30} > 0 THEN {$spend} / {$views30} ELSE 0 END)";
         $ub7 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l7, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 7.0) * 100.0 ELSE 0 END)';
         $ub2 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l2, 0) / 1000000.0) / ((g.budget_amount_micros / 1000000.0) * 2.0) * 100.0 ELSE 0 END)';
         $ub1 = '(CASE WHEN COALESCE(g.budget_amount_micros, 0) > 0 THEN (COALESCE(agg.sum_micros_l1, 0) / 1000000.0) / (g.budget_amount_micros / 1000000.0) * 100.0 ELSE 0 END)';
@@ -2122,6 +2151,9 @@ class GoogleShoppingCampaignsController extends Controller
             'metrics_clicks' => 'COALESCE(agg.sum_clicks_30, 0)',
             'ctr_l30' => $ctrExpr,
             'cpc_L30' => $cpcL30,
+            'cps_L30' => $cpsL30,
+            'cpv_L30' => $cpvL30,
+            'video_views_L30' => $views30,
             'cpc_L7' => $cpcL7,
             'cpc_L2' => $cpcL2,
             'cpc_L1' => $cpcL1,
@@ -2392,7 +2424,7 @@ class GoogleShoppingCampaignsController extends Controller
 
     private function isPhpSortField(string $field): bool
     {
-        return in_array($field, [
+        $fields = [
             'inventory',
             'dil',
             'views_l30',
@@ -2401,7 +2433,28 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_views',
             'bgt_prc',
             'sbgt',
-        ], true);
+        ];
+
+        // YouTube Sales / ACOS are finalized in PHP (transaction $ or Shopify
+        // price fallback). SQL ORDER BY still uses the pre-fallback $1 Ads value,
+        // so those columns must sort after hydrate.
+        if ($this->channelKey() === 'youtube') {
+            $fields[] = 'acos_l30';
+            $fields[] = 'ad_sales_L30';
+            $fields[] = 'spend_lt';
+            $fields[] = 'sold_lt';
+            $fields[] = 'sales_lt';
+            $fields[] = 'acos_lt';
+            $fields[] = 'cpc_lt';
+            $fields[] = 'ctr_lt';
+            $fields[] = 'views_lt';
+            $fields[] = 'clicks_lt';
+            $fields[] = 'cps_lt';
+            $fields[] = 'cpv_lt';
+            $fields[] = 'cvr_lt';
+        }
+
+        return in_array($field, $fields, true);
     }
 
     /**
@@ -2416,7 +2469,7 @@ class GoogleShoppingCampaignsController extends Controller
             $arr['metrics_cost_micros'] = (int) $arr['spend_window_micros'];
             unset($arr['spend_window_micros']);
         }
-        self::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
+        static::enrichRawRowGoogleShoppingStyle($arr, $rawRule);
         $this->attachInventoryFields($arr, $invResolver);
         $this->attachShoppingBgtParts($arr, $bgtResolver, $rawRule);
         $this->applyRowChannelOverrides($arr);
@@ -2593,7 +2646,7 @@ class GoogleShoppingCampaignsController extends Controller
             $row = DB::selectOne(
                 'SELECT COUNT(*) AS row_count, COALESCE(SUM(subq.spend), 0) AS sum_spend, COALESCE(SUM(subq.sales_l30_agg), 0) AS sum_sales, '.
                 'COALESCE(SUM(subq.clicks_sum_30), 0) AS sum_clicks, COALESCE(SUM(subq.impr_sum_30), 0) AS sum_impr, '.
-                'COALESCE(SUM(subq.sum_ga4_actual_sold), 0) AS sum_sold, '.
+                'COALESCE(SUM(subq.sold_l30_agg), 0) AS sum_sold, '.
                 'SUM(CASE WHEN UPPER(TRIM(COALESCE(subq.campaign_status, ""))) = "ENABLED" THEN 1 ELSE 0 END) AS active_count, '.
                 $greenUtilCase.' '.
                 'FROM ('.$sql.') AS subq',
@@ -2659,12 +2712,12 @@ class GoogleShoppingCampaignsController extends Controller
             $arr = self::rawGridRowToArray($row);
             $count++;
             $spend = (float) ($arr['spend'] ?? 0);
-            $sales = (float) ($arr['sales_l30_agg'] ?? 0);
+            $sales = $this->adjustChannelRowSales($arr, (float) ($arr['sales_l30_agg'] ?? 0));
             $sumSpend += $spend;
             $sumSales += $sales;
             $sumClicks += (float) ($arr['clicks_sum_30'] ?? 0);
             $sumImpr += (float) ($arr['impr_sum_30'] ?? 0);
-            $sumSold += (float) ($arr['sum_ga4_actual_sold'] ?? 0);
+            $sumSold += (float) ($arr['sold_l30_agg'] ?? $arr['sum_ga4_actual_sold'] ?? 0);
             if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) === 'ENABLED') {
                 $active++;
             }
@@ -2697,6 +2750,17 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Optional channel-specific Sales adjustment after SQL aggregation.
+     * YouTube uses Shopify price × sold only when transaction value is missing.
+     *
+     * @param  array<string, mixed>  $arr
+     */
+    protected function adjustChannelRowSales(array $arr, float $sales): float
+    {
+        return $sales;
+    }
+
+    /**
      * @param  object|array<string, mixed>  $row
      * @return array<string, mixed>
      */
@@ -2718,7 +2782,7 @@ class GoogleShoppingCampaignsController extends Controller
      */
     private function rememberRawGridRows(Request $request, $query)
     {
-        $key = 'gads_raw_grid_rows_v1:'
+        $key = 'gads_raw_grid_rows_v2:'
             .$this->channelKey().':'
             .$this->rawGridRowsCacheVersion().':'
             .sha1((string) json_encode([
@@ -2800,7 +2864,33 @@ class GoogleShoppingCampaignsController extends Controller
      */
     protected function applyRowChannelOverrides(array &$arr): void
     {
-        // No-op for Shopping/SERP.
+        // CPV / CPS are YouTube-only. Enrich still computes CPV for VIDEO math,
+        // but Shopping/SERP must not emit those keys (shared column priority).
+        unset(
+            $arr['cps_L30'],
+            $arr['cpv_L30'],
+            $arr['cpv_L7'],
+            $arr['cpv_L2'],
+            $arr['cpv_L1'],
+            $arr['spend_lt'],
+            $arr['sold_lt'],
+            $arr['sales_lt'],
+            $arr['acos_lt'],
+            $arr['cpc_lt'],
+            $arr['ctr_lt'],
+            $arr['views_lt'],
+            $arr['video_views_L30'],
+            $arr['clicks_lt'],
+            $arr['cps_lt'],
+            $arr['cpv_lt'],
+            $arr['cvr_lt'],
+            $arr['video_audit_filled'],
+            $arr['video_audit_ai_filled'],
+            $arr['video_audit_pct'],
+            $arr['yt_category'],
+            $arr['yt_audience'],
+            $arr['yt_landing']
+        );
     }
 
     private static function enrichRawRowGoogleShoppingStyle(array &$arr, array $rawRule): void
@@ -2848,16 +2938,18 @@ class GoogleShoppingCampaignsController extends Controller
         $sumActual = (float) ($arr['sum_ga4_actual'] ?? 0);
         $sumAds = (float) ($arr['sum_ga4_ads'] ?? 0);
         $sumActualSold = (float) ($arr['sum_ga4_actual_sold'] ?? 0);
-        unset($arr['sum_ga4_actual'], $arr['sum_ga4_ads'], $arr['sum_ga4_actual_sold']);
+        $sumAdsSold = (float) ($arr['sum_ga4_ads_sold'] ?? 0);
+        unset($arr['sum_ga4_actual'], $arr['sum_ga4_ads'], $arr['sum_ga4_actual_sold'], $arr['sum_ga4_ads_sold']);
 
         $salesL30 = static::resolveSalesL30Value($sumActual, $sumAds);
-        $arr['ad_sold_L30'] = $sumActualSold;
+        $soldL30 = static::resolveSoldL30Value($sumActualSold, $sumAdsSold);
+        $arr['ad_sold_L30'] = $soldL30;
         $arr['ad_sales_L30'] = $salesL30;
 
         // CVR L30 — mirrors the toolbar CVR badge: (sold / clicks) * 100, 1 dp.
         // Both inputs use the same 30-day window as Sold and Clicks above so the
         // column, the badge, and the SQL sort agree to the percent.
-        $arr['cvr_l30'] = $clicks30 > 0 ? round(($sumActualSold / $clicks30) * 100.0, 1) : 0.0;
+        $arr['cvr_l30'] = $clicks30 > 0 ? round(($soldL30 / $clicks30) * 100.0, 1) : 0.0;
 
         $spendR = (int) round($spend);
         $salesR = (int) round($salesL30);
@@ -2937,25 +3029,42 @@ class GoogleShoppingCampaignsController extends Controller
             'date',
             'campaign_id',
             'campaign_status',
+            'yt_category',
+            'yt_audience',
+            'yt_landing',
             'campaign_name',
             'is_parent',
             'inventory',
             'dil',
             'spend',
+            'spend_lt',
+            'video_views_L30',
+            'views_lt',
             'l7_spend',
             'l2_spend',
             'l1_spend',
             'metrics_clicks',
+            'clicks_lt',
             'ctr_l30',
+            'ctr_lt',
             'cpc_L30',
+            'cpc_lt',
+            'cps_L30',
+            'cps_lt',
+            'cpv_L30',
+            'cpv_lt',
             'cpc_L7',
             'cpc_L2',
             'cpc_L1',
             'ad_sold_L30',
+            'sold_lt',
             'ad_sales_L30',
+            'sales_lt',
             'acos_l30',
+            'acos_lt',
             'price',
             'cvr_l30',
+            'cvr_lt',
             'ub7',
             'ub2',
             'ub1',
@@ -2980,6 +3089,9 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_prc_price',
             'ovl30',
             'sbid',
+            'video_audit_filled',
+            'video_audit_ai_filled',
+            'video_audit_pct',
             'id_mismatch',
             'id_alert_title',
         ];

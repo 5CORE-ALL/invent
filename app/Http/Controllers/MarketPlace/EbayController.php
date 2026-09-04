@@ -14,7 +14,6 @@ use App\Http\Controllers\ApiController;
 use App\Models\LmpCompetitorHistory;
 use App\Services\LmpSkuGroupService;
 use App\Models\ChannelMaster;
-use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
@@ -691,11 +690,6 @@ class EbayController extends Controller
             $message = config('app.debug') ? $e->getMessage() : 'Failed to fetch data';
             return response()->json(['error' => $message], 500);
         }
-    }
-
-    public function getAdvEbayTotalSaveData(Request $request)
-    {
-        return ADVMastersData::getAdvEbayTotalSaveDataProceed($request);
     }
 
     public function ebayPricingCVR(Request $request)
