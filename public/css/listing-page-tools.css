@@ -214,3 +214,65 @@
 .listing-publish-status.is-publish { color: #15803d; }
 .listing-publish-status.is-skip { color: #64748b; }
 #listing-publish-progress { font-size: 13px; color: #334155; min-height: 1.2em; }
+.listing-publish-status-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 42, 0.55);
+}
+.listing-publish-status-overlay[hidden] { display: none !important; }
+.listing-publish-status-card {
+    width: min(560px, 100%);
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px 28px 24px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+.listing-publish-status-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+}
+.listing-publish-status-overlay.is-loading .listing-publish-status-icon {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+.listing-publish-status-overlay.is-success .listing-publish-status-icon {
+    background: #dcfce7;
+    color: #15803d;
+}
+.listing-publish-status-overlay.is-error .listing-publish-status-icon {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+.listing-publish-status-card h3 {
+    margin: 0 0 10px;
+    font-size: 22px;
+    font-weight: 800;
+    color: #0f172a;
+}
+.listing-publish-status-message {
+    margin: 0 0 20px;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #334155;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 40vh;
+    overflow: auto;
+    text-align: left;
+}
+.listing-publish-status-overlay.is-loading .listing-publish-status-message {
+    text-align: center;
+}
+#listing-publish-status-close { min-width: 120px; }

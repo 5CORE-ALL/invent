@@ -198,33 +198,6 @@ class AliExpressApiService
             'message' => '',
             'data' => null,
         ];
-        if ($schema !== []) {
-            $encoded = $this->encodeRequestPayload($instance);
-            $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
-                'rest' => ['product_instance_request' => $encoded],
-                'sync' => ['product_instance_request' => $encoded],
-            ]);
-            $productId = $this->extractPostedProductId($res['data'] ?? [])
-                ?: $this->extractPostedProductId($res['result'] ?? [])
-                ?: $this->extractPostedProductId($res);
-            if ($productId !== '') {
-                $res['success'] = true;
-                $res['product_id'] = $productId;
-
-                return $res;
-            }
-            $last = [
-                'success' => false,
-                'message' => $this->extractPostFailureMessage($res),
-                'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
-            ];
-        }
-        if ($this->isTransientAliExpressError((string) $last['message'])) {
-            Log::warning('AliExpress publish: instance.post RPC timeout, trying official product.post', [
-                'category_id' => $categoryId,
-                'message' => $last['message'],
-            ]);
-        }
 
         $official = $this->officialProductPostRequest($request, $weightFill['fields']);
         $encodedPost = $this->encodeRequestPayload($official);
@@ -594,7 +567,7 @@ class AliExpressApiService
     private function postProductCreateWithRetry(string $method, array $params): array
     {
         $last = [];
-        for ($attempt = 1; $attempt <= 3; $attempt++) {
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
             if ($attempt > 1) {
                 usleep(1_500_000);
                 Log::info('AliExpress publish: retry create after transient error', [
@@ -1801,46 +1774,23 @@ class AliExpressApiService
     {
         $text = number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '');
         $stringObject = $this->usPackageWeightObject($kg, $lb, 'string');
-        $numberObject = $this->usPackageWeightObject($kg, $lb, 'number');
         $jsonString = json_encode($stringObject, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"Package weight":"'.$text.'"}';
-        $valueObject = ['Package weight' => ['value' => $text]];
-        $shapes = [
-            $stringObject,
-            $numberObject,
-            $jsonString,
-            $valueObject,
-        ];
         $lastMessage = '';
         $lastInstance = $this->applyLogisticsWeightShape($instance, $stringObject, $kg, $lb);
-        foreach ($shapes as $shape) {
-            $tryInstance = $this->applyLogisticsWeightShape($instance, $shape, $kg, $lb);
-            $encoded = $this->encodeRequestPayload($tryInstance);
-            $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
-                'rest' => ['product_instance_request' => $encoded],
-                'sync' => ['product_instance_request' => $encoded],
-            ]);
-            $productId = $this->extractPostedProductId($res['data'] ?? [])
-                ?: $this->extractPostedProductId($res['result'] ?? [])
-                ?: $this->extractPostedProductId($res);
-            if ($productId !== '') {
-                return ['success' => true, 'product_id' => $productId, 'instance' => $tryInstance];
-            }
-            $tryOfficial = $this->applyLogisticsWeightShape($official, $shape, $kg, $lb);
-            $postRes = $this->postProductCreateWithRetry('aliexpress.solution.product.post', [
-                'post_product_request' => $this->encodeRequestPayload($tryOfficial),
-            ]);
-            $productId = $this->extractPostedProductId($postRes['data'] ?? [])
-                ?: $this->extractPostedProductId($postRes['result'] ?? [])
-                ?: $this->extractPostedProductId($postRes)
-                ?: (string) ($postRes['product_id'] ?? '');
-            if ($productId !== '') {
-                return ['success' => true, 'product_id' => $productId, 'instance' => $tryInstance];
-            }
-            $lastMessage = $this->extractPostFailureMessage($postRes)
-                ?: $this->extractPostFailureMessage($res)
-                ?: $lastMessage;
-            $lastInstance = $tryInstance;
+        $tryOfficial = $this->applyLogisticsWeightShape($official, $jsonString, $kg, $lb);
+        $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
+            'rest' => ['post_product_request' => $this->encodeRequestPayload($tryOfficial)],
+            'sync' => ['post_product_request' => $this->encodeRequestPayload($tryOfficial)],
+        ]);
+        $productId = $this->extractPostedProductId($postRes['data'] ?? [])
+            ?: $this->extractPostedProductId($postRes['result'] ?? [])
+            ?: $this->extractPostedProductId($postRes)
+            ?: (string) ($postRes['product_id'] ?? '');
+        if ($productId !== '') {
+            return ['success' => true, 'product_id' => $productId, 'instance' => $lastInstance];
         }
+        $lastMessage = $this->extractPostFailureMessage($postRes) ?: $lastMessage;
+        $lastInstance = $this->applyLogisticsWeightShape($instance, $jsonString, $kg, $lb);
 
         return ['message' => $lastMessage, 'instance' => $lastInstance];
     }

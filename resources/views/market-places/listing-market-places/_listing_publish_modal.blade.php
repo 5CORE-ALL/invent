@@ -68,3 +68,11 @@
                             </div>
                         </div>
                     </div>
+                    <div id="listing-publish-status" class="listing-publish-status-overlay" hidden>
+                        <div class="listing-publish-status-card" role="alertdialog" aria-modal="true" aria-labelledby="listing-publish-status-title">
+                            <div id="listing-publish-status-icon" class="listing-publish-status-icon"></div>
+                            <h3 id="listing-publish-status-title">Publishing…</h3>
+                            <p id="listing-publish-status-message" class="listing-publish-status-message"></p>
+                            <button type="button" class="btn btn-primary" id="listing-publish-status-close" hidden>Close</button>
+                        </div>
+                    </div>
