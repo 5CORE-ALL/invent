@@ -763,7 +763,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v={{ @filemtime(public_path('js/temu-ads-color-rules.js')) ?: 15 }}"></script>
+    <script src="{{ asset('js/temu-ads-color-rules.js') }}?v={{ @filemtime(public_path('js/temu-ads-color-rules.js')) ?: 15 }}-pr2"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const moneyFmt = (cell) => {
@@ -1713,10 +1713,16 @@
                             }
                             return action(aRow).localeCompare(action(bRow));
                         },
-                        headerTooltip: 'Recommended Pause/Run from L7 Clicks slabs — only for ads that exist on Temu. No ad / Deleted / Not sync show a dash, not a live switch.',
+                        headerTooltip: 'NOT Temu Active/Paused. This is only a recommended Pause/Run from L7 Clicks, and only when Status is Active or Paused. No ad = no campaign on Temu.',
                         formatter: function (cell) {
+                            const data = cell.getRow().getData() || {};
+                            const status = String(data.ad_status || '').trim();
+                            const live = status === 'Paused' ? 'Inactive' : status;
+                            if (live !== 'Active' && live !== 'Inactive') {
+                                return '<span class="text-muted" title="Temu has no campaign (Status: ' + status + '). Use Create. Pause/Run is not Active.">—</span>';
+                            }
                             if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunButtonHtml !== 'function') return '';
-                            return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
+                            return TemuAdsColorRules.pauseRunButtonHtml(data);
                         },
                         cellClick: function (e, cell) {
                             e.stopPropagation();

@@ -1206,6 +1206,9 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 continue;
             }
             $v = $payload[$key];
+            if ($v === null) {
+                return [];
+            }
             if (! is_array($v)) {
                 continue;
             }
