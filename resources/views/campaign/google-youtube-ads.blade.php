@@ -689,8 +689,11 @@
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Push SBGT to Youtube ads campaigns using the grid values for each selected row.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-danger" id="gac-raw-push-pause" title="Queue matching YouTube VIDEO campaigns and open a Google Ads Script that pauses them on the live account. The Ads API cannot pause VIDEO campaigns.">
+                        <button type="button" class="btn btn-sm btn-danger" id="gac-raw-push-pause" title="Queue matching YouTube VIDEO campaigns and show a Google Ads Script that pauses them on the live account. The Ads API cannot pause VIDEO campaigns.">
                             <i class="fa fa-cloud-upload-alt"></i> Push Pause
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="gac-raw-copy-queued-script" title="Show the Google Ads Script for campaigns already queued by Push Pause.">
+                            Copy Pause Script
                         </button>
                     </div>
                     <div id="gac-raw-filter-bar" class="mb-3">
@@ -757,8 +760,15 @@
                         </div>
                     </div>
                     <div id="gac-raw-push-result" class="alert alert-secondary small d-none mt-2 mb-0 py-2" role="status" aria-live="polite">
-                        <div class="fw-semibold mb-1" id="gac-raw-push-result-title"></div>
-                        <pre id="gac-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:280px;overflow:auto;"></pre>
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-1">
+                            <div class="fw-semibold" id="gac-raw-push-result-title"></div>
+                            <button type="button" class="btn btn-sm btn-primary d-none" id="gac-raw-copy-ads-script">Copy Google Ads Script</button>
+                        </div>
+                        <pre id="gac-raw-push-result-pre" class="mb-0 small bg-white border rounded p-2" style="white-space:pre-wrap;max-height:220px;overflow:auto;"></pre>
+                        <div id="gac-raw-ads-script-wrap" class="d-none mt-2">
+                            <div class="small fw-semibold mb-1">Google Ads Script — paste into Tools → Bulk actions → Scripts, then Authorize and Run</div>
+                            <textarea id="gac-raw-ads-script-inline" class="form-control font-monospace small" rows="12" readonly></textarea>
+                        </div>
                     </div>
                     <div id="google-ads-campaigns-raw-wrap">
                         <div id="google-ads-campaigns-raw-table"></div>
@@ -1195,6 +1205,7 @@
             const gacVideoAiPromptSaveUrl = @json(route('google.youtube.ads.campaigns.video.ai.prompt.save'));
             const gacRawPushSbgtUrl = @json(route('google.youtube.ads.campaigns.push.sbgt'));
             const gacRawPushPauseUrl = @json(route('google.youtube.ads.campaigns.push.pause'));
+            const gacRawPauseScriptUrl = @json(route('google.youtube.ads.campaigns.pause.script'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.youtube.ads.campaigns.badge.history'));
             const gacRawSbgtHistoryUrl = @json(route('google.youtube.ads.campaigns.sbgt.history'));
@@ -3613,22 +3624,66 @@
                 }
                 window.prompt('Copy script:', value);
             }
-            function gacShowYtPauseScript(script, logText, message) {
-                var ta = document.getElementById('gac-yt-pause-script-text');
-                var log = document.getElementById('gac-yt-pause-script-log');
-                if (ta) ta.value = script || '';
-                if (log) log.textContent = logText || '';
-                var modalEl = document.getElementById('gacYtPauseScriptModal');
-                if (modalEl && window.bootstrap && bootstrap.Modal) {
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                }
+            function gacRevealAdsScript(script, logText, message) {
                 gacShowPushResult(message || 'Google Ads Script ready', logText, 'success');
+                var inline = document.getElementById('gac-raw-ads-script-inline');
+                var wrap = document.getElementById('gac-raw-ads-script-wrap');
+                var copyBtn = document.getElementById('gac-raw-copy-ads-script');
+                var modalTa = document.getElementById('gac-yt-pause-script-text');
+                var modalLog = document.getElementById('gac-yt-pause-script-log');
+                if (inline) inline.value = script || '';
+                if (modalTa) modalTa.value = script || '';
+                if (modalLog) modalLog.textContent = logText || '';
+                if (wrap) wrap.classList.toggle('d-none', !script);
+                if (copyBtn) copyBtn.classList.toggle('d-none', !script);
+                var modalEl = document.getElementById('gacYtPauseScriptModal');
+                if (script && modalEl && window.bootstrap && bootstrap.Modal) {
+                    try {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    } catch (e) {}
+                }
             }
             var gacCopyPauseScriptBtn = document.getElementById('gac-yt-copy-pause-script');
             if (gacCopyPauseScriptBtn) {
                 gacCopyPauseScriptBtn.addEventListener('click', function() {
-                    var ta = document.getElementById('gac-yt-pause-script-text');
+                    var ta = document.getElementById('gac-yt-pause-script-text') || document.getElementById('gac-raw-ads-script-inline');
                     gacCopyText(ta ? ta.value : '', gacCopyPauseScriptBtn);
+                });
+            }
+            var gacCopyAdsScriptBtn = document.getElementById('gac-raw-copy-ads-script');
+            if (gacCopyAdsScriptBtn) {
+                gacCopyAdsScriptBtn.addEventListener('click', function() {
+                    var ta = document.getElementById('gac-raw-ads-script-inline') || document.getElementById('gac-yt-pause-script-text');
+                    gacCopyText(ta ? ta.value : '', gacCopyAdsScriptBtn);
+                });
+            }
+            var gacCopyQueuedBtn = document.getElementById('gac-raw-copy-queued-script');
+            if (gacCopyQueuedBtn) {
+                gacCopyQueuedBtn.addEventListener('click', function() {
+                    var origHtml = gacCopyQueuedBtn.innerHTML;
+                    gacCopyQueuedBtn.disabled = true;
+                    gacCopyQueuedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Loading…';
+                    fetch(gacRawPauseScriptUrl, {
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                    })
+                        .then(function(res) { return res.json(); })
+                        .then(function(b) {
+                            if (!b || !b.ads_script) {
+                                window.alert((b && b.message) || 'No queued script. Click Push Pause first.');
+                                return;
+                            }
+                            gacRevealAdsScript(b.ads_script, b.message || '', b.message || 'Queued Google Ads Script');
+                            var ta = document.getElementById('gac-raw-ads-script-inline');
+                            gacCopyText(ta ? ta.value : b.ads_script, gacCopyQueuedBtn);
+                        })
+                        .catch(function(err) {
+                            window.alert(String(err && err.message ? err.message : err));
+                        })
+                        .finally(function() {
+                            gacCopyQueuedBtn.innerHTML = origHtml;
+                            gacCopyQueuedBtn.disabled = false;
+                        });
                 });
             }
             var gacCopyWatcherBtn = document.getElementById('gac-yt-copy-watcher-script');
@@ -3732,7 +3787,7 @@
                         }
                         var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
                         if (b.ads_script) {
-                            gacShowYtPauseScript(b.ads_script, text, b.message || title);
+                            gacRevealAdsScript(b.ads_script, text, b.message || title);
                         } else {
                             gacShowPushResult(title, text, success ? 'success' : 'error');
                         }

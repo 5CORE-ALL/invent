@@ -222,8 +222,14 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
                 array_keys($queuedScript),
                 url('/google/shopping/youtube-ads/pause-script/callback')
             );
+            GoogleYoutubeVideoPause::storeLastScript($script);
             $lines[] = '';
-            $lines[] = 'Copy the Google Ads Script from the dialog: Tools → Bulk actions → Scripts → + → paste → Authorize → Run.';
+            $lines[] = 'NEXT STEP: copy the Google Ads Script shown below this log.';
+            $lines[] = 'Google Ads → Tools → Bulk actions → Scripts → + → paste → Authorize → Run.';
+            $lines[] = '';
+            $lines[] = '----- BEGIN GOOGLE ADS SCRIPT -----';
+            $lines[] = $script;
+            $lines[] = '----- END GOOGLE ADS SCRIPT -----';
         }
 
         $lines[] = '';
@@ -250,6 +256,25 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
             'script_queued' => $queued,
             'paused_api' => $pausedApi,
         ], $ok ? 200 : 422);
+    }
+
+    public function latestPauseScript(): JsonResponse
+    {
+        $ids = GoogleYoutubeVideoPause::pendingIds();
+        $script = GoogleYoutubeVideoPause::currentScript(
+            url('/google/shopping/youtube-ads/pause-script/callback')
+        );
+
+        return response()->json([
+            'ok' => $script !== '',
+            'queued' => count($ids),
+            'ads_script' => $script,
+            'message' => $script === ''
+                ? 'No VIDEO campaigns are queued. Click Push Pause first.'
+                : (count($ids) > 0
+                    ? count($ids).' VIDEO campaign(s) queued. Copy the script and Run it in Google Ads.'
+                    : 'Showing the last generated Google Ads Script.'),
+        ]);
     }
 
     public function pauseScriptQueue(Request $request): JsonResponse

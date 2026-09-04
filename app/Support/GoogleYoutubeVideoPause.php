@@ -14,6 +14,8 @@ final class GoogleYoutubeVideoPause
 {
     public const CACHE_KEY = 'google_youtube_video_pause_queue_v1';
 
+    public const SCRIPT_CACHE_KEY = 'google_youtube_video_pause_last_script_v1';
+
     public const CACHE_TTL = 604800;
 
     public static function token(): string
@@ -68,6 +70,31 @@ final class GoogleYoutubeVideoPause
     public static function pendingIds(): array
     {
         return array_keys(self::pending());
+    }
+
+    public static function storeLastScript(string $script): void
+    {
+        Cache::put(self::SCRIPT_CACHE_KEY, $script, self::CACHE_TTL);
+    }
+
+    public static function lastScript(): string
+    {
+        $s = Cache::get(self::SCRIPT_CACHE_KEY, '');
+
+        return is_string($s) ? $s : '';
+    }
+
+    public static function currentScript(string $callbackUrl): string
+    {
+        $ids = self::pendingIds();
+        if ($ids !== []) {
+            $script = self::oneShotScript($ids, $callbackUrl);
+            self::storeLastScript($script);
+
+            return $script;
+        }
+
+        return self::lastScript();
     }
 
     /**
