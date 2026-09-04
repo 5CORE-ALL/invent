@@ -2,13 +2,13 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  eBay 1–3 / Temu 1–2: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  Other channels: 0 Sold still uses the minimum Target GROI in the table.
+  eBay 1–3: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Temu: 0 Sold still uses the minimum Target GROI in the table.
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
-    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2'], true);
+    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
     $ebaySprcDilSoldLabel = in_array($ebaySprcDilChannel, ['temu', 'temu2', 'temu3'], true) ? 'Temu L30' : 'E L30';
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
