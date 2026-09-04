@@ -55,7 +55,7 @@ class DispatchUnpushedMarketplaceShopifyImports extends Command
                     $this->line("{$slug}: none.");
                 }
                 if ($slug === 'amazon') {
-                    $inline = (int) app($class)->importUnpushedInline(5);
+                    $inline = (int) app($class)->importUnpushedInline(25);
                     if ($inline > 0) {
                         $total += $inline;
                         $this->info("{$slug}: imported {$inline} order(s) inline (queue fallback).");
