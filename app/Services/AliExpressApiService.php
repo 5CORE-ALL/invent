@@ -1810,6 +1810,7 @@ class AliExpressApiService
                 continue;
             }
             $attrs = is_array($row['sku_attributes_list'] ?? null) ? $row['sku_attributes_list'] : [];
+            $nameId = trim((string) ($existing[0]['sku_attributes_list'][0]['sku_attribute_name_id'] ?? ''));
             if ($attrs === []) {
                 $attrs[] = [
                     'sku_attribute_name' => $attrName,
@@ -1817,6 +1818,9 @@ class AliExpressApiService
                 ];
             } else {
                 $attrs[0]['sku_attribute_name'] = $attrName;
+            }
+            if ($nameId !== '') {
+                $attrs[0]['sku_attribute_name_id'] = $nameId;
             }
             $existing[] = [
                 'sku_code' => trim((string) $row['sku_code']),
@@ -1839,71 +1843,178 @@ class AliExpressApiService
         $infoData = is_array($infoRes['data'] ?? null) ? $infoRes['data'] : [];
         $listedCategory = (int) ($this->extractCategoryId($infoData) ?? 0);
         $categoryId = $listedCategory > 0 ? $listedCategory : (int) ($categoryId ?? 0);
+        $skuInfoList = $this->officialSkuInfoList($existing);
 
-        $edit = [
+        $base = [
             'product_id' => $productId,
-            'sku_info_list' => $existing,
+            'sku_info_list' => $skuInfoList,
+        ];
+        $withCategory = $base;
+        if ($categoryId > 0) {
+            $withCategory['aliexpress_category_id'] = $categoryId;
+        }
+        $withLogistics = array_merge($withCategory, $this->listedProductEditLogistics($infoData));
+
+        $last = ['success' => false, 'message' => 'Could not add SKU to listed product '.$productId.'.'];
+        foreach ([$base, $withCategory, $withLogistics] as $payload) {
+            $encoded = $this->encodeRequestPayload($payload);
+            $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+                'rest' => ['edit_product_request' => $encoded],
+                'sync' => ['edit_product_request' => $encoded],
+            ]);
+            if (! empty($res['success'])) {
+                return [
+                    'success' => true,
+                    'product_id' => $productId,
+                    'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+                ];
+            }
+            $last = $res;
+            if ($this->isAliExpressSchemaPathError((string) ($res['message'] ?? ''))) {
+                continue;
+            }
+        }
+
+        $old = [
+            'product_id' => $productId,
+            'aeop_ae_product_s_k_us' => [
+                'aeop_ae_product_sku' => $this->aeopSkuListFromOfficial($skuInfoList),
+            ],
         ];
         if ($categoryId > 0) {
-            $edit['category_id'] = $categoryId;
-            $edit['aliexpress_category_id'] = $categoryId;
+            $old['category_id'] = $categoryId;
         }
-        $encoded = $this->encodeRequestPayload($edit);
-        $editParams = ['edit_product_request' => $encoded];
-        if ($categoryId > 0) {
-            $editParams['category_id'] = (string) $categoryId;
-            $editParams['aliexpress_category_id'] = (string) $categoryId;
-        }
-        $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
-            'rest' => $editParams,
-            'sync' => $editParams,
-        ]);
-        $postedId = $this->extractPostedProductId($res['data'] ?? [])
-            ?: $this->extractPostedProductId($res['result'] ?? [])
-            ?: $this->extractPostedProductId($res);
-        if (! empty($res['success'])) {
-            return [
-                'success' => true,
-                'product_id' => $postedId !== '' ? $postedId : $productId,
-                'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
-            ];
-        }
-
-        $full = [
-            'product_id' => $productId,
-            'product_info' => ['sku_info_list' => $existing],
-        ];
-        if ($categoryId > 0) {
-            $full['category_id'] = $categoryId;
-            $full['aliexpress_category_id'] = $categoryId;
-            $full['product_info']['category_id'] = $categoryId;
-            $full['product_info']['aliexpress_category_id'] = $categoryId;
-        }
-        $fullParams = ['schema_full_update_request' => $this->encodeRequestPayload($full)];
-        if ($categoryId > 0) {
-            $fullParams['category_id'] = (string) $categoryId;
-        }
-        $res2 = $this->callApiFlexible('aliexpress.solution.schema.product.full.update', [
-            'rest' => $fullParams,
-            'sync' => $fullParams,
-        ]);
-        $postedId2 = $this->extractPostedProductId($res2['data'] ?? [])
-            ?: $this->extractPostedProductId($res2['result'] ?? [])
-            ?: $this->extractPostedProductId($res2);
-        if (! empty($res2['success'])) {
-            return [
-                'success' => true,
-                'product_id' => $postedId2 !== '' ? $postedId2 : $productId,
-                'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.' via full update.',
-            ];
+        $oldEncoded = $this->encodeRequestPayload($old);
+        foreach ([
+            'aliexpress.postproduct.redefining.editaeproduct',
+            'aliexpress.offer.product.edit',
+        ] as $method) {
+            $res = $this->callApiFlexible($method, [
+                'rest' => ['aeop_a_e_product' => $oldEncoded],
+                'sync' => ['aeop_a_e_product' => $oldEncoded],
+            ]);
+            if (! empty($res['success'])) {
+                return [
+                    'success' => true,
+                    'product_id' => $productId,
+                    'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+                ];
+            }
+            if (! $this->isAliExpressSchemaPathError((string) ($res['message'] ?? ''))) {
+                $last = $res;
+            }
         }
 
         return [
             'success' => false,
-            'message' => $this->extractPostFailureMessage($res2)
-                ?: $this->extractPostFailureMessage($res)
+            'message' => $this->extractPostFailureMessage($last)
                 ?: 'Could not add SKU to listed product '.$productId.'.',
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function officialSkuInfoList(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $attrs = [];
+            foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+                if (! is_array($attr)) {
+                    continue;
+                }
+                $item = [
+                    'sku_attribute_name' => (string) ($attr['sku_attribute_name'] ?? 'Color'),
+                    'sku_attribute_value' => (string) ($attr['sku_attribute_value'] ?? ''),
+                ];
+                $image = trim((string) ($attr['sku_image'] ?? $attr['sku_image_url'] ?? ''));
+                if ($image !== '') {
+                    $item['sku_image'] = $image;
+                }
+                foreach (['sku_attribute_name_id', 'sku_attribute_value_id'] as $idKey) {
+                    if (! empty($attr[$idKey])) {
+                        $item[$idKey] = $attr[$idKey];
+                    }
+                }
+                $attrs[] = $item;
+            }
+            $item = [
+                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'price' => (string) ($row['price'] ?? '0'),
+                'inventory' => max(0, (int) ($row['inventory'] ?? 0)),
+                'sku_attributes_list' => $attrs,
+            ];
+            if (! empty($row['id'])) {
+                $item['id'] = $row['id'];
+            }
+            $out[] = $item;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function aeopSkuListFromOfficial(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $props = [];
+            foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+                $prop = [
+                    'sku_property_name' => (string) ($attr['sku_attribute_name'] ?? 'Color'),
+                    'property_value_definition_name' => (string) ($attr['sku_attribute_value'] ?? ''),
+                ];
+                if (! empty($attr['sku_image'])) {
+                    $prop['sku_image'] = $attr['sku_image'];
+                }
+                $props[] = $prop;
+            }
+            $item = [
+                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'sku_price' => (string) ($row['price'] ?? '0'),
+                'ipm_sku_stock' => max(0, (int) ($row['inventory'] ?? 0)),
+                'aeop_s_k_u_property_list' => ['aeop_sku_property' => $props],
+            ];
+            if (! empty($row['id'])) {
+                $item['id'] = $row['id'];
+            }
+            $out[] = $item;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<string, mixed>
+     */
+    private function listedProductEditLogistics(array $info): array
+    {
+        $out = [];
+        $freight = $info['freight_template_id'] ?? $info['freightTemplateId'] ?? data_get($info, 'logistics_size.freight_template_id');
+        if ($freight !== null && $freight !== '') {
+            $out['freight_template_id'] = (int) $freight;
+        }
+        foreach (['package_length', 'package_width', 'package_height'] as $key) {
+            $value = $info[$key] ?? data_get($info, 'logistics_size.'.$key);
+            if ($value !== null && $value !== '' && (int) $value > 0) {
+                $out[$key] = (int) $value;
+            }
+        }
+        $weight = $info['weight'] ?? $info['gross_weight'] ?? data_get($info, 'logistics_size.gross_weight');
+        if ($weight !== null && $weight !== '' && is_numeric($weight)) {
+            $out['weight'] = (string) $weight;
+        }
+
+        return $out;
     }
 
     /**
@@ -2012,7 +2123,15 @@ class AliExpressApiService
             ];
             $image = trim((string) ($prop['sku_image_url'] ?? $prop['sku_image'] ?? $prop['image'] ?? ''));
             if ($image !== '') {
-                $item['sku_image_url'] = $image;
+                $item['sku_image'] = $image;
+            }
+            $nameId = trim((string) ($prop['sku_attribute_name_id'] ?? $prop['sku_property_id'] ?? $prop['property_id'] ?? ''));
+            $valueId = trim((string) ($prop['sku_attribute_value_id'] ?? $prop['property_value_id'] ?? ''));
+            if ($nameId !== '') {
+                $item['sku_attribute_name_id'] = $nameId;
+            }
+            if ($valueId !== '') {
+                $item['sku_attribute_value_id'] = $valueId;
             }
             $attrs[] = $item;
         }

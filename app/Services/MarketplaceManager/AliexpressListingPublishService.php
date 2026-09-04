@@ -731,7 +731,7 @@ class AliexpressListingPublishService
                 'sku_attributes_list' => [[
                     'sku_attribute_name' => 'Color',
                     'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
-                    'sku_image_url' => $row['images'][0] ?? '',
+                    'sku_image' => $row['images'][0] ?? '',
                 ]],
             ];
         }
