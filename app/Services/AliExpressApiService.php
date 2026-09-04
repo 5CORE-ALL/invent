@@ -1758,9 +1758,10 @@ class AliExpressApiService
      * sku_info_list on edit replaces every SKU, so existing ones are sent too.
      *
      * @param  array<int, array<string, mixed>>  $newSkuRows
+     * @param  list<string>  $imageUrls
      * @return array{success:bool,product_id?:string,message?:string}
      */
-    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null): array
+    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null, array $imageUrls = []): array
     {
         $productId = trim($productId);
         if ($productId === '' || $newSkuRows === []) {
@@ -1846,10 +1847,11 @@ class AliExpressApiService
         $skuInfoList = $this->officialSkuInfoList($existing);
 
         $deduct = $this->listedProductReduceStrategy($infoData);
+        $images = $this->editImageFields($this->mergeEditImages($imageUrls, $infoData));
         $base = array_merge([
             'product_id' => $productId,
             'sku_info_list' => $skuInfoList,
-        ], $deduct);
+        ], $deduct, $images);
         $withCategory = $base;
         if ($categoryId > 0) {
             $withCategory['aliexpress_category_id'] = $categoryId;
@@ -1859,7 +1861,7 @@ class AliExpressApiService
         $last = ['success' => false, 'message' => 'Could not add SKU to listed product '.$productId.'.'];
         foreach ([$base, $withCategory, $withLogistics] as $payload) {
             $encoded = $this->encodeRequestPayload($payload);
-            $editParams = array_merge(['edit_product_request' => $encoded], $deduct);
+            $editParams = array_merge(['edit_product_request' => $encoded], $deduct, $images);
             $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
                 'rest' => $editParams,
                 'sync' => $editParams,
@@ -1882,7 +1884,7 @@ class AliExpressApiService
             'aeop_ae_product_s_k_us' => [
                 'aeop_ae_product_sku' => $this->aeopSkuListFromOfficial($skuInfoList),
             ],
-        ], $deduct);
+        ], $deduct, $images);
         if ($categoryId > 0) {
             $old['category_id'] = $categoryId;
         }
@@ -1891,7 +1893,7 @@ class AliExpressApiService
             'aliexpress.postproduct.redefining.editaeproduct',
             'aliexpress.offer.product.edit',
         ] as $method) {
-            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct);
+            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct, $images);
             $res = $this->callApiFlexible($method, [
                 'rest' => $oldParams,
                 'sync' => $oldParams,
@@ -1993,6 +1995,102 @@ class AliExpressApiService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<string>  $preferred
+     * @param  array<string, mixed>  $info
+     * @return list<string>
+     */
+    private function mergeEditImages(array $preferred, array $info): array
+    {
+        $urls = [];
+        foreach (array_merge($preferred, $this->listedProductImages($info)) as $url) {
+            $url = trim((string) $url);
+            if ($url === '' || ! preg_match('#^https?://#i', $url) || in_array($url, $urls, true)) {
+                continue;
+            }
+            $urls[] = $url;
+            if (count($urls) >= 6) {
+                break;
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return list<string>
+     */
+    private function listedProductImages(array $info): array
+    {
+        $urls = [];
+        foreach ([
+            $info['image_u_r_ls'] ?? null,
+            $info['image_urls'] ?? null,
+            $info['image_url_list'] ?? null,
+            $info['main_image_urls_list'] ?? null,
+            $info['main_image_url'] ?? null,
+            $info['product_main_image'] ?? null,
+            $info['image_url'] ?? null,
+        ] as $raw) {
+            foreach ($this->splitEditImageValues($raw) as $url) {
+                if ($url !== '' && ! in_array($url, $urls, true)) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitEditImageValues(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            $out = [];
+            foreach ($raw as $value) {
+                $out = array_merge($out, $this->splitEditImageValues($value));
+            }
+
+            return $out;
+        }
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return [];
+        }
+        $parts = preg_split('/[;,\n|]+/', $raw) ?: [];
+        $out = [];
+        foreach ($parts as $part) {
+            $url = trim((string) $part);
+            if ($url !== '' && preg_match('#^https?://#i', $url)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return array<string, mixed>
+     */
+    private function editImageFields(array $urls): array
+    {
+        $urls = array_slice(array_values(array_filter($urls)), 0, 6);
+        if ($urls === []) {
+            return [];
+        }
+
+        return [
+            'image_u_r_ls' => implode(';', $urls),
+            'image_urls' => $urls,
+            'main_image_urls_list' => $urls,
+            'main_image_url' => $urls[0],
+        ];
     }
 
     /**

@@ -111,7 +111,7 @@ class AliexpressListingPublishService
             }
             $images = $this->productImages($product, $sku);
             if ($images === []) {
-                return ['success' => false, 'message' => 'No images on Image Master for '.$sku.'. Add photos on Image Master, then publish again.'];
+                return ['success' => false, 'message' => 'No images on Image Master or Shopify for '.$sku.'. Add photos on Image Master, then publish again.'];
             }
             foreach ($images as $url) {
                 if (! in_array($url, $gallery, true)) {
@@ -743,7 +743,17 @@ class AliexpressListingPublishService
             'category_id' => $categoryId,
         ]);
 
-        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows, $categoryId);
+        $gallery = [];
+        foreach ($prepared as $row) {
+            foreach ($row['images'] ?? [] as $url) {
+                $url = trim((string) $url);
+                if ($url !== '' && ! in_array($url, $gallery, true)) {
+                    $gallery[] = $url;
+                }
+            }
+        }
+
+        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows, $categoryId, $gallery);
         if (empty($attach['success'])) {
             return [
                 'success' => false,
@@ -1163,7 +1173,33 @@ class AliexpressListingPublishService
             }
         }
 
+        if ($urls === []) {
+            foreach ($this->shopifyImages($childSku !== '' ? $childSku : trim((string) $product->sku)) as $url) {
+                $push($url);
+            }
+        }
+
         return array_slice($urls, 0, 6);
+    }
+
+    /**
+     * Last-resort photos when Image Master is empty.
+     *
+     * @return list<string>
+     */
+    private function shopifyImages(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
+        $url = trim((string) ($shopify?->image_src ?? ''));
+        if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            return [];
+        }
+
+        return [$url];
     }
 
     /**
