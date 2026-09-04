@@ -181,6 +181,8 @@ class AliExpressApiService
             );
         }
         $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb);
+        $instance = $this->sanitizeCategoryAttributeKeys($instance);
+        unset($instance['category_attributes']);
 
         Log::info('AliExpress publish: schema weight fill', [
             'category_id' => $categoryId,
@@ -220,7 +222,11 @@ class AliExpressApiService
         ];
 
         $official = $this->officialProductPostRequest($request, $weightFill['fields']);
-        if ($this->isTransientAliExpressError((string) $last['message']) || (string) $last['message'] === '') {
+        if (
+            $this->isTransientAliExpressError((string) $last['message'])
+            || $this->isAliExpressSchemaPathError((string) $last['message'])
+            || (string) $last['message'] === ''
+        ) {
             $encodedPost = $this->encodeRequestPayload($official);
             $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
                 'rest' => ['post_product_request' => $encodedPost],
@@ -570,6 +576,46 @@ class AliExpressApiService
             || str_contains($m, 'timed out')
             || str_contains($m, 'try again later')
             || str_contains($m, 'system busy');
+    }
+
+    private function isAliExpressSchemaPathError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'not support jsonpath')
+            || str_contains($m, 'jsonpath')
+            || str_contains($m, 'screen size[');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function sanitizeCategoryAttributeKeys(array $payload): array
+    {
+        foreach (['category_attributes', 'sku_attributes'] as $bag) {
+            if (! is_array($payload[$bag] ?? null)) {
+                continue;
+            }
+            $clean = [];
+            foreach ($payload[$bag] as $name => $value) {
+                $key = $this->sanitizeSchemaName((string) $name);
+                if ($key === '' || str_contains(strtolower($key), 'screen size')) {
+                    continue;
+                }
+                $clean[$key] = is_array($value) ? $this->sanitizeCategoryAttributeKeys($value) : $value;
+            }
+            $payload[$bag] = $clean;
+        }
+        if (is_array($payload['sku_info_list'] ?? null)) {
+            foreach ($payload['sku_info_list'] as $i => $row) {
+                if (is_array($row)) {
+                    $payload['sku_info_list'][$i] = $this->sanitizeCategoryAttributeKeys($row);
+                }
+            }
+        }
+
+        return $payload;
     }
 
     /**
@@ -1415,11 +1461,22 @@ class AliExpressApiService
         foreach (['id', 'name', 'title', 'key'] as $field) {
             $value = trim((string) ($node[$field] ?? ''));
             if ($value !== '' && ! is_numeric($value)) {
-                return $value;
+                return $this->sanitizeSchemaName($value);
             }
         }
 
-        return (string) $key;
+        return $this->sanitizeSchemaName((string) $key);
+    }
+
+    /**
+     * AliExpress jsonpath breaks on names like "Screen Size[inches]".
+     */
+    private function sanitizeSchemaName(string $name): string
+    {
+        $name = preg_replace('/\s*\[[^\]]*\]?/', '', $name) ?? $name;
+        $name = str_replace(['[', ']'], '', $name);
+
+        return trim(preg_replace('/\s+/', ' ', $name) ?? $name);
     }
 
     /**
