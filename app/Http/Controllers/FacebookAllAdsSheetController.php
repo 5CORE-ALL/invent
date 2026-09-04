@@ -17,8 +17,9 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
  *
  * The page is a generic sheet importer: users upload any CSV / Excel / TSV
  * file and the rows are stored verbatim as JSON in `facebook_all_ads_sheet`.
- * The Tabulator on the front-end then renders whichever columns the upload
- * carried, without any schema change.
+ * Each upload type (Campaign / Spend / Sales) keeps only its newest batch;
+ * CH and Ad Type copy onto the new rows by Campaign ID. The Tabulator
+ * renders whichever columns the upload carried, without any schema change.
  */
 class FacebookAllAdsSheetController extends Controller
 {
@@ -2192,11 +2193,11 @@ class FacebookAllAdsSheetController extends Controller
         $batchId  = (string) Str::uuid();
         $userId   = auth()->id();
         $imported = 0;
+        $replaced = 0;
 
-        // Build a Campaign ID → ad_type carry-over map BEFORE inserting the
-        // new rows, so re-uploading any sheet preserves Ad Type tags the
-        // user previously set on rows with the same Campaign ID. Without
-        // this, every new Campaign upload silently wipes those tags.
+        // Build a Campaign ID → ad_type / ch carry-over map BEFORE inserting
+        // (and before we drop the previous batch of this type) so tags the
+        // user set on a campaign survive the replace.
         $prevAdTypeByCid = $this->buildAdTypeCarryMap();
         $prevChByCid     = $this->buildChCarryMap();
 
@@ -2239,6 +2240,14 @@ class FacebookAllAdsSheetController extends Controller
                 ]);
                 $imported++;
             }
+
+            // Keep only the newest batch of this upload type. Older
+            // Campaign / Spend / Sales files are dropped so the table
+            // matches the merged view (latest of each type).
+            if ($imported > 0) {
+                $replaced = $this->deleteOlderBatchesOfType($uploadType, $batchId);
+            }
+
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -2248,15 +2257,73 @@ class FacebookAllAdsSheetController extends Controller
             ], 500);
         }
 
+        $message = "Imported {$imported} row(s) from {$name}";
+        if ($replaced > 0) {
+            $message .= ', replaced the previous '.ucfirst($uploadType).' upload';
+        }
+
         return response()->json([
             'success'     => true,
-            'message'     => "Imported {$imported} row(s) from {$name}",
+            'message'     => $message,
             'batch_id'    => $batchId,
             'filename'    => $name,
             'upload_type' => $uploadType,
             'imported'    => $imported,
+            'replaced'    => $replaced,
             'columns'     => array_values($headers),
         ]);
+    }
+
+    /**
+     * Drop every batch of `$uploadType` except `$keepBatchId`. Used after a
+     * successful upload so Campaign / Spend / Sales each keep a single
+     * current file. Type is read from `__upload_type`, with the same
+     * header sniff as {@see latestBatchPerType()} for legacy batches.
+     */
+    private function deleteOlderBatchesOfType(string $uploadType, string $keepBatchId): int
+    {
+        $firstIds = FacebookAllAdsSheet::query()
+            ->select('import_batch_id', DB::raw('MIN(id) as first_id'))
+            ->where('import_batch_id', '!=', $keepBatchId)
+            ->groupBy('import_batch_id')
+            ->pluck('first_id', 'import_batch_id');
+
+        if ($firstIds->isEmpty()) {
+            return 0;
+        }
+
+        $firstRows = FacebookAllAdsSheet::query()
+            ->whereIn('id', $firstIds->values())
+            ->get(['id', 'row_data'])
+            ->keyBy('id');
+
+        $stale = [];
+        foreach ($firstIds as $batchId => $firstId) {
+            $rd = $firstRows[$firstId]->row_data ?? null;
+            if (! is_array($rd)) {
+                continue;
+            }
+            $type = $rd['__upload_type'] ?? null;
+            if (! $type) {
+                $headers = array_keys(array_filter(
+                    $rd,
+                    fn ($_, $k) => ! str_starts_with((string) $k, '__'),
+                    ARRAY_FILTER_USE_BOTH
+                ));
+                $type = $this->detectFormat($headers);
+            }
+            if ($type === $uploadType) {
+                $stale[] = $batchId;
+            }
+        }
+
+        if ($stale === []) {
+            return 0;
+        }
+
+        return FacebookAllAdsSheet::query()
+            ->whereIn('import_batch_id', $stale)
+            ->delete();
     }
 
     /**
