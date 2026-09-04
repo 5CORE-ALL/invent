@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AttendanceDailySummary;
 use App\Models\AttendanceSession;
 use App\Models\PayrollArrear;
 use App\Models\PayrollEmployeeSalary;
@@ -305,40 +304,54 @@ class PayrollService
     {
         $startAt = Carbon::parse($start)->startOfDay();
         $endAt = Carbon::parse($end)->endOfDay();
+        $now = now();
 
-        $fromSummaries = AttendanceDailySummary::query()
-            ->whereIn('user_id', $userIds)
-            ->whereBetween('work_date', [$start, $end])
-            ->selectRaw('user_id, SUM(active_seconds) as active_seconds, SUM(total_work_seconds) as work_seconds, SUM(CASE WHEN active_seconds > 0 OR total_work_seconds > 0 THEN 1 ELSE 0 END) as days')
-            ->groupBy('user_id')
-            ->get()
-            ->keyBy('user_id');
-
-        $fromSessions = AttendanceSession::query()
+        $sessions = AttendanceSession::query()
             ->whereIn('user_id', $userIds)
             ->where('started_at', '<=', $endAt)
             ->where(function ($q) use ($startAt) {
                 $q->whereNull('ended_at')->orWhere('ended_at', '>=', $startAt);
             })
-            ->selectRaw('user_id, SUM(total_active_seconds) as active_seconds, COUNT(DISTINCT DATE(started_at)) as days')
-            ->groupBy('user_id')
-            ->get()
-            ->keyBy('user_id');
+            ->get(['user_id', 'started_at', 'ended_at', 'total_active_seconds']);
+
+        $secondsByUser = [];
+        $daysByUser = [];
+
+        foreach ($sessions as $session) {
+            $sessionStart = Carbon::parse($session->started_at);
+            $sessionEnd = $session->ended_at ? Carbon::parse($session->ended_at) : $now;
+            if ($sessionEnd->lt($sessionStart)) {
+                continue;
+            }
+
+            $overlapStart = $sessionStart->greaterThan($startAt) ? $sessionStart->copy() : $startAt->copy();
+            $overlapEnd = $sessionEnd->lessThan($endAt) ? $sessionEnd->copy() : $endAt->copy();
+            if ($overlapEnd->lte($overlapStart)) {
+                continue;
+            }
+
+            $wallSeconds = max(1, $sessionStart->diffInSeconds($sessionEnd));
+            $overlapSeconds = $overlapStart->diffInSeconds($overlapEnd);
+            $active = max(0, (int) $session->total_active_seconds);
+            $credited = (int) round($active * min(1, $overlapSeconds / $wallSeconds));
+
+            $userId = (int) $session->user_id;
+            $secondsByUser[$userId] = ($secondsByUser[$userId] ?? 0) + $credited;
+
+            $day = $overlapStart->copy()->startOfDay();
+            $last = $overlapEnd->copy()->startOfDay();
+            while ($day->lte($last)) {
+                $daysByUser[$userId][$day->toDateString()] = true;
+                $day->addDay();
+            }
+        }
 
         $hours = [];
         foreach ($userIds as $userId) {
-            $summary = $fromSummaries->get($userId);
-            $session = $fromSessions->get($userId);
-
-            $summaryActive = (int) ($summary?->active_seconds ?? 0);
-            $summaryWork = (int) ($summary?->work_seconds ?? 0);
-            $sessionActive = (int) ($session?->active_seconds ?? 0);
-            $summarySeconds = $summaryActive > 0 ? $summaryActive : $summaryWork;
-            $seconds = max($summarySeconds, $sessionActive);
-
+            $seconds = (int) ($secondsByUser[$userId] ?? 0);
             $hours[$userId] = [
                 'hours' => $seconds > 0 ? (float) (int) round($seconds / 3600) : 0.0,
-                'days' => (int) max((int) ($summary?->days ?? 0), (int) ($session?->days ?? 0)),
+                'days' => isset($daysByUser[$userId]) ? count($daysByUser[$userId]) : 0,
             ];
         }
 

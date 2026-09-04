@@ -42,7 +42,10 @@ class AttendanceService
 
         $existing = $this->activeSession($user);
         if ($existing) {
-            return $existing;
+            if ($this->sessionIsFromToday($existing)) {
+                return $existing;
+            }
+            $this->closeStaleOpenSession($existing);
         }
 
         $policy = AttendancePolicy::resolveForUser($user);
@@ -107,6 +110,27 @@ class AttendanceService
         return $closed;
     }
 
+    protected function sessionIsFromToday(AttendanceSession $session): bool
+    {
+        $tz = 'Asia/Kolkata';
+
+        return $session->started_at
+            && $session->started_at->timezone($tz)->toDateString() === now($tz)->toDateString();
+    }
+
+    protected function closeStaleOpenSession(AttendanceSession $session): void
+    {
+        $session->update([
+            'ended_at' => $session->updated_at ?: now(),
+            'status' => 'auto_closed',
+        ]);
+
+        $user = $session->user;
+        if ($user && $session->started_at) {
+            $this->analysisService->buildDailySummary($user, $session->started_at->toDateString());
+        }
+    }
+
     public function pause(User $user): ?AttendanceSession
     {
         $session = $this->activeSession($user);
@@ -166,6 +190,17 @@ class AttendanceService
         }
 
         $session = $this->activeSession($user);
+        if ($session && ! $this->sessionIsFromToday($session)) {
+            $this->closeStaleOpenSession($session);
+            $session = $this->clockIn(
+                $user,
+                $session->work_location ?: 'wfh',
+                $session->ip_address,
+                $session->user_agent,
+                $session->attendance_device_id,
+                $session->clock_source ?: 'desktop'
+            );
+        }
         if (! $session) {
             return ['ok' => false, 'message' => 'No active session'];
         }
