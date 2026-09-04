@@ -1429,14 +1429,15 @@
                             </p>
                             <div class="sof-doba-export-bar">
                                 <div>
-                                    <label class="sof-filter-label" for="sof-doba-export-from">Export from (Eastern)</label>
-                                    <input type="date" id="sof-doba-export-from" class="form-control form-control-sm" style="width:150px;" title="Export from date (Eastern / EDT)">
+                                    <label class="sof-filter-label" for="sof-doba-export-from">From (Eastern)</label>
+                                    <input type="date" id="sof-doba-export-from" class="form-control form-control-sm" style="width:150px;" title="From date (Eastern / EDT)">
                                 </div>
                                 <div>
-                                    <label class="sof-filter-label" for="sof-doba-export-to">Export to (Eastern)</label>
-                                    <input type="date" id="sof-doba-export-to" class="form-control form-control-sm" style="width:150px;" title="Export to date (Eastern / EDT)">
+                                    <label class="sof-filter-label" for="sof-doba-export-to">To (Eastern)</label>
+                                    <input type="date" id="sof-doba-export-to" class="form-control form-control-sm" style="width:150px;" title="To date (Eastern / EDT)">
                                 </div>
-                                <span class="small text-muted mb-1">Export uses the open tab and every matching order in this range (not just the current page).</span>
+                                <button type="button" class="btn btn-sm btn-primary" id="sof-doba-search-btn">Search</button>
+                                <span class="small text-muted mb-1">Search and export both use this date range (Eastern), not just the current page.</span>
                                 <div class="sof-doba-export-btns ms-auto">
                                     <button type="button" class="btn btn-sm btn-outline-success sof-doba-export-btn" data-format="csv">Export CSV</button>
                                     <button type="button" class="btn btn-sm btn-outline-success sof-doba-export-btn" data-format="xlsx">Export XLS</button>
@@ -2352,6 +2353,16 @@
         if (type === 'done') return dobaDoneTable;
         return dobaNonprepaidTable;
     }
+
+    $(document).on('click', '#sof-doba-search-btn', function () {
+        sofApplyDobaDateSearch();
+    });
+    $('#sof-doba-export-from, #sof-doba-export-to').on('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sofApplyDobaDateSearch();
+        }
+    });
 
     $(document).on('click', '.sof-doba-export-btn', function () {
         const type = sofActiveDobaExportType();
@@ -5241,6 +5252,28 @@
         });
     }
 
+    function sofDobaShopifyOrderIdFormatter(cell) {
+        const row = cell.getRow().getData() || {};
+        const shopifyId = (row.shopify_order_id || '').toString().trim();
+        const display = shopifyId;
+        if (!display) return '<span class="sof-oc-missing">—</span>';
+        const wrap = document.createElement('span');
+        wrap.className = 'sof-order-id-wrap';
+        wrap.appendChild(document.createTextNode(display));
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'sof-order-id-copy';
+        copyBtn.title = 'Copy Shopify order id';
+        copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+        copyBtn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            copyTextToClipboard(display, copyBtn);
+        });
+        wrap.appendChild(copyBtn);
+        return wrap;
+    }
+
     function sofDobaPrepaidLabelFormatter(cell) {
         const url = (cell.getValue() || '').toString().trim();
         if (!url) return '<span class="sof-oc-missing">—</span>';
@@ -5282,6 +5315,14 @@
                 headerHozAlign: 'center',
                 sorter: sofStringSorter,
                 formatter: sofDobaOrderIdFormatter,
+            });
+        cols.push({
+                title: 'Shopify order id',
+                field: 'shopify_order_id',
+                minWidth: 140,
+                headerHozAlign: 'center',
+                sorter: sofStringSorter,
+                formatter: sofDobaShopifyOrderIdFormatter,
             });
         if (opts.includeLabel) {
             cols.push({
@@ -5407,13 +5448,26 @@
         }));
     }
 
+    function sofApplyDobaDateSearch() {
+        const params = sofDobaExportDateParams();
+        if (params.date_from > params.date_to) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date (Eastern / EDT).' });
+            } else {
+                alert('From date must be on or before To date (Eastern / EDT).');
+            }
+            return;
+        }
+        loadDobaOrdersData();
+    }
+
     function loadDobaOrdersData() {
         if (dobaOrdersTableLoading) return;
         dobaOrdersTableLoading = true;
         $.ajax({
             url: '{{ route("sales.order.fulfillment.doba.orders.data") }}',
             type: 'GET',
-            data: sofDateParams(),
+            data: sofDobaExportDateParams(),
             timeout: 0,
             success: function (response) {
                 dobaOrdersTableLoading = false;

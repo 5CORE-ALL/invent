@@ -645,6 +645,9 @@ class SalesOrderFulfillmentController extends Controller
         if (Schema::hasColumn('doba_daily_data', 'order_json')) {
             $select[] = 'order_json';
         }
+        if (Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+            $select[] = 'shopify_order_id';
+        }
         $lines = $query->orderByDesc('order_time')->get($select);
 
         $shippedByOrder = [];
@@ -690,6 +693,8 @@ class SalesOrderFulfillmentController extends Controller
                     'tracking_number' => null,
                     'tracking_company' => null,
                     'prepaid_label_url' => null,
+                    'shopify_order_id' => '',
+                    'shopify_order_number' => '',
                     'warehouse_shipped' => isset($shippedByOrder[$orderNo]),
                     'warehouse_shipped_at' => is_string($shippedByOrder[$orderNo] ?? null)
                         ? $shippedByOrder[$orderNo]
@@ -734,8 +739,14 @@ class SalesOrderFulfillmentController extends Controller
                     $row['prepaid_label_url'] = $labelUrl;
                 }
             }
+            $sid = $this->normalizeShopifyOrderIdDisplay((string) ($line->shopify_order_id ?? ''));
+            if ($sid !== '' && $sid !== $orderNo && ($row['shopify_order_id'] ?? '') === '') {
+                $row['shopify_order_id'] = $sid;
+            }
             unset($row);
         }
+
+        $this->attachDobaShopifyOrderIds($byOrder);
 
         $nonPrepaid = [];
         $prepaid = [];
@@ -885,6 +896,146 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return $this->findDobaDownloadLabelUrl($data);
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $byOrder
+     */
+    protected function attachDobaShopifyOrderIds(array &$byOrder): void
+    {
+        foreach ($byOrder as $orderNo => $row) {
+            $sid = $this->normalizeShopifyOrderIdDisplay((string) ($row['shopify_order_id'] ?? ''));
+            $byOrder[$orderNo]['shopify_order_id'] = ($sid !== '' && $sid !== $orderNo) ? $sid : '';
+        }
+
+        $lookup = $this->lookupShopifyIdsForDobaOrderNos(array_keys($byOrder));
+        foreach ($lookup as $orderNo => $info) {
+            if (! isset($byOrder[$orderNo])) {
+                continue;
+            }
+            $id = $this->normalizeShopifyOrderIdDisplay((string) ($info['id'] ?? ''));
+            if ($id !== '' && $id !== $orderNo && ($byOrder[$orderNo]['shopify_order_id'] ?? '') === '') {
+                $byOrder[$orderNo]['shopify_order_id'] = $id;
+            }
+            $number = ltrim(trim((string) ($info['number'] ?? '')), '#');
+            if ($number !== '' && $number !== $orderNo) {
+                $byOrder[$orderNo]['shopify_order_number'] = $number;
+            }
+        }
+
+        $needNumbers = [];
+        foreach ($byOrder as $row) {
+            $id = trim((string) ($row['shopify_order_id'] ?? ''));
+            if ($id !== '' && trim((string) ($row['shopify_order_number'] ?? '')) === '') {
+                $needNumbers[$id] = true;
+            }
+        }
+        if ($needNumbers !== [] && Schema::hasTable('shopify_raw_orders')) {
+            $rows = DB::table('shopify_raw_orders')
+                ->whereIn('order_id', array_keys($needNumbers))
+                ->get(['order_id', 'order_number']);
+            $byShopifyId = [];
+            foreach ($rows as $row) {
+                $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->order_id ?? ''));
+                $number = ltrim(trim((string) ($row->order_number ?? '')), '#');
+                if ($id !== '' && $number !== '') {
+                    $byShopifyId[$id] = $number;
+                }
+            }
+            foreach ($byOrder as $orderNo => $row) {
+                $id = trim((string) ($row['shopify_order_id'] ?? ''));
+                if ($id !== '' && trim((string) ($row['shopify_order_number'] ?? '')) === '' && isset($byShopifyId[$id])) {
+                    $byOrder[$orderNo]['shopify_order_number'] = $byShopifyId[$id];
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $orderNos
+     * @return array<string, array{id: string, number: string}>
+     */
+    protected function lookupShopifyIdsForDobaOrderNos(array $orderNos): array
+    {
+        $found = [];
+        $orderNos = array_values(array_filter(array_map(
+            static fn ($n) => trim((string) $n),
+            $orderNos
+        ), static fn ($n) => $n !== ''));
+        if ($orderNos === []) {
+            return [];
+        }
+
+        if (Schema::hasTable('shopify_orders') && Schema::hasColumn('shopify_orders', 'source_identifier')) {
+            $rows = DB::table('shopify_orders')
+                ->whereIn('source_identifier', $orderNos)
+                ->get(['shopify_order_id', 'source_identifier']);
+            foreach ($rows as $row) {
+                $key = trim((string) ($row->source_identifier ?? ''));
+                $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->shopify_order_id ?? ''));
+                if ($key !== '' && $id !== '' && $id !== $key) {
+                    $found[$key] = ['id' => $id, 'number' => ''];
+                }
+            }
+        }
+
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return $found;
+        }
+
+        $query = DB::table('shopify_raw_orders')->select(['order_id', 'order_number', 'tags', 'source_name']);
+        $query->where(function ($q) {
+            $q->where('source_name', 'like', '%doba%')
+                ->orWhere('tags', 'like', '%doba%')
+                ->orWhere('tags', 'like', '%Doba%');
+        });
+        if (Schema::hasColumn('shopify_raw_orders', 'order_date')) {
+            [$from, $to] = $this->resolveOrderDateRange();
+            $query->whereBetween('order_date', [
+                $from->copy()->subDays(3)->toDateString(),
+                $to->copy()->addDays(3)->toDateString(),
+            ]);
+        }
+
+        $seen = [];
+        foreach ($query->get() as $row) {
+            $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->order_id ?? ''));
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $hay = strtolower(trim((string) ($row->tags ?? '')).' '.trim((string) ($row->source_name ?? '')));
+            $number = ltrim(trim((string) ($row->order_number ?? '')), '#');
+            foreach ($orderNos as $orderNo) {
+                if (isset($found[$orderNo]['id']) && ($found[$orderNo]['number'] ?? '') !== '') {
+                    continue;
+                }
+                if ($hay !== '' && str_contains($hay, strtolower($orderNo))) {
+                    $found[$orderNo] = [
+                        'id' => $id,
+                        'number' => $number !== $orderNo ? $number : '',
+                    ];
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    protected function normalizeShopifyOrderIdDisplay(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        if (preg_match('#/Order/(\d+)#', $raw, $m) === 1) {
+            return $m[1];
+        }
+        if (preg_match('/^#?(\d+)$/', $raw, $m) === 1) {
+            return $m[1];
+        }
+
+        return $raw;
     }
 
     protected function findDobaDownloadLabelUrl(mixed $node, int $depth = 0): ?string
