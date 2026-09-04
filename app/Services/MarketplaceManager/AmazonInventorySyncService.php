@@ -64,6 +64,7 @@ class AmazonInventorySyncService
             $fetchSkus,
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
+        $shopifyQty = MarketplaceLiveInventoryRules::applyConfirmedLocalZeros($shopifyQty, $fetchSkus);
 
         $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
             $skus,
@@ -117,10 +118,13 @@ class AmazonInventorySyncService
             }
 
             // Confirmed Shopify 0 must go to Amazon as 0. Never keep leftover marketplace stock.
-            // Unconfirmed positive (live miss + stale local) is skipped so we do not oversell.
+            // Only skip unconfirmed misses when coverage is too low (avoid mass-zeroing).
             if ($shopifyStock === null && ! $coverage['ok'] && ! $exactShopifyQty) {
                 $skipped++;
                 continue;
+            }
+            if ($shopifyStock !== null && (int) $shopifyStock <= 0) {
+                $shopifyStock = 0;
             }
 
             $pushQty = $shopifyStock === null
@@ -172,11 +176,14 @@ class AmazonInventorySyncService
     {
         $settings = MarketplaceSyncSettings::getFor('amazon');
         if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            $zeros = $this->syncConfirmedZerosFromShopify(400);
+
             return [
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => 0,
-                'message' => 'Inventory/price sync disabled in Amazon settings.',
+                'updated' => (int) ($zeros['updated'] ?? 0),
+                'failed' => (int) ($zeros['failed'] ?? 0),
+                'skipped' => (int) ($zeros['skipped'] ?? 0),
+                'message' => 'Full inventory sync is Off; still flushed Shopify-zero SKUs to Amazon. '
+                    .($zeros['message'] ?? ''),
             ];
         }
 
@@ -232,11 +239,68 @@ class AmazonInventorySyncService
             ];
         }
 
+        $zeros = $this->syncConfirmedZerosFromShopify(400);
         $result = $this->syncSkusFromShopify($skus);
         $pass = app(MarketplaceMismatchInventoryPass::class)->run('amazon');
-        $result['message'] = ($result['message'] ?? '').' '.($pass['message'] ?? '');
+        $result['updated'] = (int) ($result['updated'] ?? 0) + (int) ($zeros['updated'] ?? 0);
+        $result['failed'] = (int) ($result['failed'] ?? 0) + (int) ($zeros['failed'] ?? 0);
+        $result['message'] = trim(
+            ($zeros['message'] ?? '').' '.($result['message'] ?? '').' '.($pass['message'] ?? '')
+        );
 
         return $result;
+    }
+
+    /**
+     * Safety flush: every linked Amazon SKU that is 0 on Shopify and still
+     * positive on Amazon is pushed to 0. Independent of live-coverage abort.
+     *
+     * @return array{updated: int, failed: int, skipped: int, message: string}
+     */
+    public function syncConfirmedZerosFromShopify(int $limit = 250): array
+    {
+        $empty = ['updated' => 0, 'failed' => 0, 'skipped' => 0, 'message' => 'No Amazon leftovers with Shopify 0.'];
+        if (! $this->amazonApi->isConfigured() || ! Schema::hasTable('amazon_listing_statuses')) {
+            return $empty;
+        }
+
+        $linked = AmazonListingStatusHelper::linkedSkus();
+        if ($linked === []) {
+            return $empty;
+        }
+
+        $shopify = MarketplaceLiveInventoryRules::applyConfirmedLocalZeros(
+            [],
+            $linked
+        );
+        $amazon = MarketplaceListingStockResolver::stockMapForSkus(
+            MarketplaceListingStockResolver::CHANNEL_AMAZON,
+            $linked
+        );
+
+        $zeros = [];
+        foreach ($linked as $sku) {
+            $shopifyQty = $this->resolveShopifyQty($shopify, $sku);
+            if ($shopifyQty === null || (int) $shopifyQty > 0) {
+                continue;
+            }
+            $amazonQty = $this->resolveShopifyQty($amazon, $sku);
+            if ($amazonQty === null || (int) $amazonQty <= 0) {
+                continue;
+            }
+            $zeros[] = $sku;
+            if (count($zeros) >= max(1, $limit)) {
+                break;
+            }
+        }
+
+        if ($zeros === []) {
+            return $empty;
+        }
+
+        Log::info('AmazonInventorySyncService: pushing confirmed Shopify zeros', ['count' => count($zeros)]);
+
+        return $this->syncSkusFromShopify($zeros, null, true);
     }
 
     /**

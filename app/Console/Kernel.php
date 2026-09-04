@@ -1897,6 +1897,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(12)
             ->appendOutputTo($log);
 
+        $schedule->command('amazon:sync-zero-inventory')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-zero-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncAmazonTrackingJob(true, 40))
             ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')

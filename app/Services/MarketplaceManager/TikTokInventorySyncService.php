@@ -165,14 +165,27 @@ class TikTokInventorySyncService
         );
         Log::info('TikTokInventorySyncService: Shopify coverage', $coverage);
         if (! $coverage['ok'] && ! $dryRun) {
-            Log::error('TikTokInventorySyncService: aborting — Shopify coverage too low', $coverage);
-
-            return [
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => count($skus),
-                'message' => $coverage['message'],
-            ];
+            $known = MarketplaceLiveInventoryRules::skusWithKnownQty(
+                $skus,
+                fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+            );
+            $knownMap = [];
+            foreach ($known as $sku) {
+                $knownMap[strtoupper(trim($sku))] = true;
+            }
+            $metrics = $metrics->filter(
+                static fn ($row) => isset($knownMap[strtoupper(trim((string) ($row->sku ?? ''))]))
+            )->values();
+            $skus = $metrics->pluck('sku')->unique()->values()->all();
+            Log::warning('TikTokInventorySyncService: Shopify coverage low — pushing confirmed qtys only', $coverage + ['kept' => count($skus)]);
+            if ($skus === []) {
+                return [
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => count($knownMap),
+                    'message' => $coverage['message'],
+                ];
+            }
         }
 
         $qtyPercent = max(0, min(100, (int) ($settings['inventory']['quantity_calc_percent'] ?? 100)));

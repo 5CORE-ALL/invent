@@ -54,6 +54,13 @@ class DispatchUnpushedMarketplaceShopifyImports extends Command
                 } else {
                     $this->line("{$slug}: none.");
                 }
+                if ($slug === 'amazon') {
+                    $inline = (int) app($class)->importUnpushedInline(5);
+                    if ($inline > 0) {
+                        $total += $inline;
+                        $this->info("{$slug}: imported {$inline} order(s) inline (queue fallback).");
+                    }
+                }
             } catch (\Throwable $e) {
                 $this->warn("{$slug}: ".$e->getMessage());
                 Log::warning('mm:dispatch-unpushed-shopify failed', [

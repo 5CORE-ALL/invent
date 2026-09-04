@@ -91,6 +91,9 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
                 }
                 $this->runIsolated($inv, [], $failed, $slug.':inventory');
             }
+        } else {
+            $this->info('Bonus: flush Amazon SKUs that are already 0 on Shopify…');
+            $this->runIsolated('amazon:sync-zero-inventory', ['--limit' => 400], $failed, 'amazon:zero-inventory');
         }
 
         if ($failed !== []) {

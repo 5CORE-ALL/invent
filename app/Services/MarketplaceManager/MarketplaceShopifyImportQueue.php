@@ -179,8 +179,39 @@ class MarketplaceShopifyImportQueue
     public static function prepareForDispatch(string $modelClass, string $queue, ?callable $constrain = null): int
     {
         self::markLinkedAsImported($modelClass, $constrain);
+        $released = self::releaseStuckQueued($modelClass, $queue, $constrain);
+        $released += self::releaseStaleQueuedByAge($modelClass, 20, $constrain);
 
-        return self::releaseStuckQueued($modelClass, $queue, $constrain);
+        return $released;
+    }
+
+    /**
+     * Workers that die mid-job leave import_status=queued with a reserved
+     * payload that never completes. Age-out those rows so the next pass
+     * can re-queue without waiting for the jobs table to go empty.
+     *
+     * @param  class-string  $modelClass
+     * @param  callable(Builder):void|null  $constrain
+     */
+    public static function releaseStaleQueuedByAge(string $modelClass, int $minutes = 20, ?callable $constrain = null): int
+    {
+        $table = (new $modelClass)->getTable();
+        if (! Schema::hasColumn($table, 'import_status') || ! Schema::hasColumn($table, 'updated_at')) {
+            return 0;
+        }
+
+        $query = $modelClass::query()
+            ->where('import_status', 'queued')
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->where('updated_at', '<', now()->subMinutes(max(5, $minutes)));
+
+        if ($constrain) {
+            $constrain($query);
+        }
+
+        return (int) $query->limit(4000)->update(['import_status' => 'ready']);
     }
 
     /**

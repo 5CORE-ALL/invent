@@ -39,7 +39,14 @@ class SyncInventoryToAmazon implements ShouldQueue, ShouldBeUnique
             Log::info('SyncInventoryToAmazon: completed', ['output' => trim(Artisan::output())]);
         } catch (\Throwable $e) {
             Log::error('SyncInventoryToAmazon: failed', ['error' => $e->getMessage()]);
-            throw $e;
+            try {
+                app(\App\Services\MarketplaceManager\AmazonInventorySyncService::class)
+                    ->syncConfirmedZerosFromShopify(250);
+            } catch (\Throwable $zeroError) {
+                Log::error('SyncInventoryToAmazon: zero-stock flush failed', [
+                    'error' => $zeroError->getMessage(),
+                ]);
+            }
         }
     }
 }

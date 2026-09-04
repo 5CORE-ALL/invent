@@ -26,6 +26,8 @@ class FetchMarketplaceShopifyTrackingJob implements ShouldQueue, ShouldBeUnique
 
     public int $uniqueFor = 1800;
 
+    public bool $failOnTimeout = false;
+
     public array $backoff = [20, 60, 120];
 
     public function __construct(
