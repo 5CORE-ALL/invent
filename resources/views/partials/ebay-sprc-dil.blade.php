@@ -2,11 +2,13 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  E L30 = 0 uses the minimum Target GROI in the table.
+  eBay 1–3 / Temu 1–2: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Other channels: 0 Sold still uses the minimum Target GROI in the table.
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
+    $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2'], true);
     $ebaySprcDilSoldLabel = in_array($ebaySprcDilChannel, ['temu', 'temu2', 'temu3'], true) ? 'Temu L30' : 'E L30';
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
@@ -133,7 +135,9 @@
 
 @if($ebaySprcDilPart === 'buttons' || $ebaySprcDilPart === 'all')
                     <button type="button" class="btn btn-sm" id="ebay-dil-groi-btn"
-                        title="Dil slabs → Target GROI%. {{ $ebaySprcDilSoldLabel }} = 0 uses the minimum Target GROI from the slabs.">
+                        title="{{ $ebaySprcDilZeroSoldUsesMinGroi
+                            ? 'Dil slabs → Target GROI%. '.$ebaySprcDilSoldLabel.' = 0 uses the minimum Target GROI from the slabs.'
+                            : 'Dil slabs → Target GROI%. Every INV > 0 SKU uses the Dil-matching slab.' }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -174,6 +178,7 @@
                     </div>
                     <div class="ebay-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted ebay-dg-rules">
+@if($ebaySprcDilZeroSoldUsesMinGroi)
                         <li>
                             <strong>When</strong> {{ $ebaySprcDilSoldLabel }} = 0 (0 Sold) and INV &gt; 0:
                             take the <strong>minimum Target GROI from the slabs</strong>
@@ -187,6 +192,16 @@
                             <strong>When</strong> a price is calculated (slab match or 0 Sold min GROI):
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
+@else
+                        <li>
+                            <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
+                            use that slab’s Target GROI (first match; last slab includes the To value).
+                        </li>
+                        <li>
+                            <strong>When</strong> a price is calculated from a Dil slab match:
+                            it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
+                        </li>
+@endif
                         <li>
                             <strong>When</strong> you change the first Target GROI%:
                             later rows fill as first +5, +10, … (increasing down the table).
@@ -231,6 +246,7 @@
 
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
+        const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);
         function ebayDgRulesUrl() {
             return '/channel-promo-pricing/' + encodeURIComponent(EBAY_DIL_GROI_CHANNEL) + '/dil-groi';
         }
@@ -422,7 +438,7 @@
             let label = '';
             let key = '';
             let zeroSoldMin = false;
-            if (ebayDgIsZeroSold(d)) {
+            if (EBAY_DIL_GROI_ZERO_SOLD_MIN && ebayDgIsZeroSold(d)) {
                 const minSlab = ebayDilGroiMinSlab();
                 if (!minSlab) return null;
                 groi = minSlab.groi;

@@ -4278,16 +4278,14 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. A L30 = 0 uses the minimum Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / 0.80.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). Formula: (LP × (1 + GROI%/100) + Ship) / 0.80.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             if (typeof amzDilGroiMetaForRow !== 'function') return '';
                             const meta = amzDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (meta.zeroSoldMin
-                                    ? '0 Sold A L30 → min Target GROI'
-                                    : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
                                 + ' → $' + meta.sprc.toFixed(2);

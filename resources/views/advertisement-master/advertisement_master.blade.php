@@ -525,6 +525,14 @@
                 }) + '%' + admTrendDot(cell);
             }
 
+            function tcosFormatter(cell) {
+                const row = cell.getRow().getData() || {};
+                if (!row.has_tcos) {
+                    return '<span class="text-muted">-</span>';
+                }
+                return percentFormatter(cell);
+            }
+
             function updateBadges(rows) {
                 let spend = 0, clicks = 0, sold = 0, sales = 0, active = 0, views = 0, missing = 0;
                 (admAllRows.length ? admAllRows : rows).forEach(function (r) {
@@ -606,6 +614,7 @@
                 if (mp.indexOf('ebay') === 0 || /^ebay\b/i.test(name)) return 'eBay';
                 if (mp === 'shopify' || /^shopify\b/i.test(name)) return 'Shopify';
                 if (mp === 'tiktok' || /^tiktok\b/i.test(name)) return 'TikTok';
+                if (mp.indexOf('temu') === 0 || /^temu\b/i.test(name)) return 'Temu';
                 return name || 'Other';
             }
 
@@ -627,9 +636,11 @@
                     copy.channel_group = group;
                     copy.nr_req = String(copy.nr_req || 'REQ').toUpperCase() === 'NR' ? 'NR' : 'REQ';
                     copy.acos = Number(copy.acos || 0);
+                    copy.tcos = Number(copy.tcos || 0);
                     copy.views = Number(copy.views || 0);
                     copy.t_sales = Number(copy.t_sales || 0);
                     copy.has_t_sales = !!copy.has_t_sales;
+                    copy.has_tcos = !!copy.has_tcos;
                     copy.missing_ads = Number(copy.missing_ads || 0);
                     copy.has_missing_ads = !!copy.has_missing_ads;
                     copy.is_sum_row = children.length > 0 || !!copy.is_group_total || !!copy.is_sum_row;
@@ -861,6 +872,7 @@
                     { title: 'T Sales', field: 't_sales', hozAlign: 'center', headerHozAlign: 'center', formatter: tSalesFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter },
                     { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'Tcos', field: 'tcos', hozAlign: 'center', formatter: tcosFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: '', field: '_edit', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: editFormatter, cssClass: 'adm-edit-cell', cellClick: openAdmEditFromCell },
                 ],
             });
@@ -1190,7 +1202,7 @@
                 const metric  = cell.getField();
                 const data = cell.getRow().getData() || {};
                 const channel = data.channel_key || data.channel || '__total__';
-                const labels  = { spend: 'Spend', clicks: 'Clicks', sold: 'Sold', sales: 'Ads Sales', active: 'Active', cvr: 'CVR', acos: 'ACOS', missing_ads: 'Missing' };
+                const labels  = { spend: 'Spend', clicks: 'Clicks', sold: 'Sold', sales: 'Ads Sales', active: 'Active', cvr: 'CVR', acos: 'ACOS', tcos: 'Tcos', missing_ads: 'Missing' };
                 openAdmChart(metric, labels[metric] || metric.toUpperCase(), channel);
             }
 

@@ -3943,7 +3943,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: "Suggested price from Dil → Target GROI% slabs. E L30 = 0 uses the minimum Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
+                        headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). Formula: (LP × (1 + GROI%/100) + Ship) / take-home.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -3951,9 +3951,7 @@
                             if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                             const meta = ebayDilGroiMetaForRow(rowData);
                             if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (meta.zeroSoldMin
-                                    ? '0 Sold E L30 → min Target GROI'
-                                    : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                                 + ' → ' + meta.label
                                 + ' → GROI ' + meta.groi + '%'
                                 + ' → $' + meta.sprc.toFixed(2);
@@ -3967,7 +3965,7 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when E L30 = 0). Red triangle = S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, including 0 Sold). Red triangle = S PRC ≥ LMP. Blue triangle = S PRC ≠ Price.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             let sprice = ebay2SpriceAmount(rowData);

@@ -10,6 +10,8 @@ use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleShoppingAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
+use App\Http\Controllers\Campaigns\Temu2AdsController;
+use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Controller;
@@ -21,6 +23,7 @@ use App\Models\AdvertisementMasterHiddenRow;
 use App\Models\AdvertisementMasterNrReq;
 use App\Models\AmazonOrder;
 use App\Models\ChannelMaster;
+use App\Models\MarketplaceDailyMetric;
 use App\Models\ChannelMasterCalculatedData;
 use App\Support\Marketplace\MappingChannelCounts;
 use Carbon\Carbon;
@@ -174,7 +177,9 @@ class AdvertisementMasterController extends Controller
         Ebay2CampaignAdsController $ebay2CampaignAds,
         Ebay3CampaignAdsController $ebay3CampaignAds,
         ShopifyAdsMasterController $shopifyAdsMaster,
-        Tiktok1AdsRawDataController $tiktok1Ads
+        Tiktok1AdsRawDataController $tiktok1Ads,
+        TemuAdsController $temuAds,
+        Temu2AdsController $temu2Ads
     ) {
         try {
             $amazonNetSales = $this->amazonNetSales();
@@ -183,6 +188,8 @@ class AdvertisementMasterController extends Controller
             $ebay3NetSales = Ebay3CampaignAdsController::advertisementMasterNetSales();
             $shopifyNetSales = ShopifyAdsMasterController::advertisementMasterNetSales();
             $tiktokNetSales = Tiktok1AdsRawDataController::advertisementMasterNetSales();
+            $temuNetSales = TemuAdsController::advertisementMasterNetSales();
+            $temu2NetSales = Temu2AdsController::advertisementMasterNetSales();
 
             $rows = array_merge(
                 $amazonAds->getAdvertisementMasterChannelRows(),
@@ -190,7 +197,9 @@ class AdvertisementMasterController extends Controller
                 $ebay2CampaignAds->getAdvertisementMasterChannelRows(),
                 $ebay3CampaignAds->getAdvertisementMasterChannelRows(),
                 $shopifyAdsMaster->getAdvertisementMasterChannelRows(),
-                $tiktok1Ads->getAdvertisementMasterChannelRows()
+                $tiktok1Ads->getAdvertisementMasterChannelRows(),
+                $temuAds->getAdvertisementMasterChannelRows(),
+                $temu2Ads->getAdvertisementMasterChannelRows()
             );
 
             $this->applyTcosToRows($rows, [
@@ -200,10 +209,12 @@ class AdvertisementMasterController extends Controller
                 'ebay3'  => $ebay3NetSales,
                 'shopify' => $shopifyNetSales,
                 'tiktok' => $tiktokNetSales,
+                'temu' => $temuNetSales,
+                'temu2' => $temu2NetSales,
             ]);
 
             $totalNetSales = round(
-                $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales + $tiktokNetSales,
+                $amazonNetSales + $ebayNetSales + $ebay2NetSales + $ebay3NetSales + $shopifyNetSales + $tiktokNetSales + $temuNetSales + $temu2NetSales,
                 2
             );
 
@@ -242,6 +253,7 @@ class AdvertisementMasterController extends Controller
             $this->attachNrReqs($rows);
             $this->attachViews($rows);
             $this->attachTSales($rows);
+            $this->attachAdTypeTcos($rows);
             $this->attachTotalRowAcos($rows, $prevByChannel);
             $this->attachMissingAds($rows);
             $this->attachMissingAdsTrends($rows, $prevByChannel);
@@ -261,6 +273,8 @@ class AdvertisementMasterController extends Controller
                 'ebay3_net_sales' => $ebay3NetSales,
                 'shopify_net_sales' => $shopifyNetSales,
                 'tiktok_net_sales' => $tiktokNetSales,
+                'temu_net_sales' => $temuNetSales,
+                'temu2_net_sales' => $temu2NetSales,
                 'total_net_sales' => $totalNetSales,
             ]);
         } catch (\Throwable $e) {
@@ -279,6 +293,8 @@ class AdvertisementMasterController extends Controller
                 'ebay3_net_sales' => 0,
                 'shopify_net_sales' => 0,
                 'tiktok_net_sales' => 0,
+                'temu_net_sales' => 0,
+                'temu2_net_sales' => 0,
                 'total_net_sales' => 0,
             ], 500);
         }
@@ -534,7 +550,7 @@ class AdvertisementMasterController extends Controller
             return;
         }
 
-        foreach (['eBay', 'eBay 2', 'eBay 3', 'TikTok 1'] as $key) {
+        foreach (['eBay', 'eBay 2', 'eBay 3', 'TikTok 1', 'Temu', 'Temu 2'] as $key) {
             $label = AdvertisementMasterChannelLabel::query()->where('channel_key', $key)->first();
             if (! $label) {
                 continue;
@@ -548,7 +564,7 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * Fold standalone eBay and TikTok type rows under a yellow group-total parent.
+     * Fold standalone eBay, TikTok, and Temu type rows under a yellow group-total parent.
      *
      * @param  array<int, array<string, mixed>>  $rows
      */
@@ -567,6 +583,13 @@ class AdvertisementMasterController extends Controller
             'channel_group' => 'TikTok',
             'marketplace' => 'tiktok',
             'source' => 'tiktok_group_total',
+        ]);
+        $this->wrapRowsAsGroupTotal($rows, ['Temu', 'Temu 2'], [
+            'channel' => 'Temu Total',
+            'channel_key' => 'Temu Total',
+            'channel_group' => 'Temu',
+            'marketplace' => 'temu',
+            'source' => 'temu_group_total',
         ]);
     }
 
@@ -869,6 +892,9 @@ class AdvertisementMasterController extends Controller
         if ($mp === 'tiktok') {
             return 'TikTok';
         }
+        if (str_starts_with($mp, 'temu')) {
+            return 'Temu';
+        }
 
         $base = $channelKey;
         if (str_contains($base, self::SUBROW_SEPARATOR)) {
@@ -1011,8 +1037,8 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * Amazon L30 store sales (Pacific rolling window) — same source as Channel Master
-     * and the Amazon daily sales page. Used for the S Sales badge and TCOS.
+     * Amazon L30 store sales — same figure as Active Channel / All Marketplace
+     * Master "L30 Sales" (amazon_orders Pacific window, MDM fallback).
      */
     private function amazonNetSales(): float
     {
@@ -1024,7 +1050,30 @@ class AdvertisementMasterController extends Controller
                 ->subDays(AmazonSalesController::DAILY_SALES_WINDOW_DAYS - 1)
                 ->startOfDay();
 
-            return AmazonOrder::badgeTotalSalesByOrderDate($startAmazonWindow, $endToday);
+            $fromOrders = (float) AmazonOrder::badgeTotalSalesByOrderDate($startAmazonWindow, $endToday);
+            $orderCount = (int) AmazonOrder::constrainOrderDate(
+                DB::table('amazon_orders as o')->where(function ($q) {
+                    $q->whereNull('o.status')
+                        ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
+                }),
+                $startAmazonWindow,
+                $endToday
+            )->count(DB::raw('DISTINCT o.amazon_order_id'));
+
+            if ($orderCount > 0 && $fromOrders > 0) {
+                return round($fromOrders, 2);
+            }
+
+            if (Schema::hasTable('marketplace_daily_metrics')) {
+                $row = MarketplaceDailyMetric::query()
+                    ->where('channel', 'Amazon')
+                    ->latest('date')
+                    ->first();
+
+                return round((float) ($row->total_sales ?? 0), 2);
+            }
+
+            return round($fromOrders, 2);
         } catch (\Throwable $e) {
             \Log::warning('Advertisement Master Amazon net sales lookup failed: ' . $e->getMessage());
 
@@ -1039,17 +1088,74 @@ class AdvertisementMasterController extends Controller
     private function applyTcosToRows(array &$rows, array $netSalesByMarketplace): void
     {
         foreach ($rows as &$row) {
-            $marketplace = (string) ($row['marketplace'] ?? 'amazon');
-            $netSales = (float) ($netSalesByMarketplace[$marketplace] ?? 0);
-            $spend = (float) ($row['spend'] ?? 0);
-            $row['tcos'] = Ebay2CampaignAdsController::tcosPercent(
-                $spend,
-                $netSales,
-                (float) ($row['sales'] ?? 0)
-            );
+            if ($this->isAdTypeRow($row)) {
+                $this->clearTcos($row);
+            } else {
+                $marketplace = (string) ($row['marketplace'] ?? 'amazon');
+                $this->applyTcos($row, (float) ($netSalesByMarketplace[$marketplace] ?? 0));
+            }
 
             if (! empty($row['_children']) && is_array($row['_children'])) {
                 $this->applyTcosToRows($row['_children'], $netSalesByMarketplace);
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * KW / PT / HL (and Shopify · …) are ad types, not Active Channel rows.
+     * Active Channel TCOS is one number per channel: total spend / L30 sales.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function isAdTypeRow(array $row): bool
+    {
+        foreach (['channel_key', 'channel'] as $field) {
+            $name = (string) ($row[$field] ?? '');
+            if ($name !== '' && str_contains($name, self::SUBROW_SEPARATOR)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function clearTcos(array &$row): void
+    {
+        $row['tcos'] = 0;
+        $row['has_tcos'] = false;
+    }
+
+    /**
+     * TCOS = Spend / channel L30 sales — same Ads% rule as Active Channel Master.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function applyTcos(array &$row, float $netSales): void
+    {
+        $spend = (float) ($row['spend'] ?? 0);
+        $adsSales = (float) ($row['sales'] ?? 0);
+        $row['tcos'] = Ebay2CampaignAdsController::tcosPercent($spend, $netSales, $adsSales);
+        $row['has_tcos'] = $netSales > 0 || $spend > 0;
+    }
+
+    /**
+     * Ad-type children (Amazon · KW / Shopify · …) use the parent channel's
+     * T Sales. TCOS = that row's spend ÷ those T Sales.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function attachAdTypeTcos(array &$rows): void
+    {
+        foreach ($rows as &$row) {
+            if (! empty($row['_children']) && is_array($row['_children'])) {
+                $this->attachAdTypeTcos($row['_children']);
+            }
+            if ($this->isAdTypeRow($row) && ! empty($row['has_t_sales'])) {
+                $this->applyTcos($row, (float) ($row['t_sales'] ?? 0));
             }
         }
         unset($row);
@@ -1638,7 +1744,8 @@ class AdvertisementMasterController extends Controller
 
     /**
      * Yellow total rows: ACOS = Spend / Total Sales (T Sales / AMM Sales).
-     * Type rows keep Spend / Ads Sales.
+     * Type rows keep Spend / Ads Sales. TCOS on totals uses the same
+     * store-sales denominator (Spend / T Sales).
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<string, array<string, float>>  $prevByChannel
@@ -1662,6 +1769,13 @@ class AdvertisementMasterController extends Controller
             $row['acos'] = $totalSales > 0
                 ? round(($spend / $totalSales) * 100, 1)
                 : ($spend > 0 ? 100.0 : 0.0);
+            $isAmazonChannel = ! $this->isAdTypeRow($row)
+                && strtolower((string) ($row['marketplace'] ?? '')) === 'amazon';
+            // Amazon TCOS uses Active Channel L30 (T Sales). Other wrapped
+            // totals (eBay / Temu) get TCOS from T Sales when not already set.
+            if (empty($row['has_tcos']) || $isAmazonChannel) {
+                $this->applyTcos($row, $totalSales);
+            }
 
             $channel = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
             $prev = $prevByChannel[$channel] ?? $prevByChannel[(string) ($row['channel'] ?? '')] ?? null;
@@ -1700,6 +1814,11 @@ class AdvertisementMasterController extends Controller
             \Log::warning('Advertisement Master T Sales lookup failed: '.$e->getMessage());
         }
 
+        $amazonSales = $this->amazonNetSales();
+        if ($amazonSales > 0) {
+            $map['amazon'] = $amazonSales;
+        }
+
         return $map;
     }
 
@@ -1711,21 +1830,25 @@ class AdvertisementMasterController extends Controller
     {
         $sum = 0.0;
         foreach ($rows as &$row) {
-            $childSum = 0.0;
-            $childHas = false;
+            $childChannelSum = 0.0;
+            $childHasChannelSales = false;
             if (! empty($row['_children']) && is_array($row['_children'])) {
-                $childSum = $this->attachTSalesWalk($row['_children'], $map);
+                $this->attachTSalesWalk($row['_children'], $map);
                 foreach ($row['_children'] as $child) {
-                    if (! empty($child['has_t_sales'])) {
-                        $childHas = true;
-                        break;
+                    if (empty($child['has_t_sales']) || $this->isAdTypeRow($child)) {
+                        continue;
                     }
+                    $childHasChannelSales = true;
+                    $childChannelSum += (float) ($child['t_sales'] ?? 0);
                 }
             }
 
             $own = $this->lookupRowTSales($row, $map);
-            if ($childHas) {
-                $row['t_sales'] = $childSum;
+            if ($this->isAdTypeRow($row) && $own !== null) {
+                $row['t_sales'] = $own;
+                $row['has_t_sales'] = true;
+            } elseif ($childHasChannelSales) {
+                $row['t_sales'] = $childChannelSum;
                 $row['has_t_sales'] = true;
             } elseif ($own !== null) {
                 $row['t_sales'] = $own;
@@ -1747,14 +1870,23 @@ class AdvertisementMasterController extends Controller
      */
     private function lookupRowTSales(array $row, array $map): ?float
     {
-        $fields = ['channel_key', 'channel'];
-        $key = (string) ($row['channel_key'] ?? $row['channel'] ?? '');
-        if (! str_contains($key, self::SUBROW_SEPARATOR)) {
-            $fields[] = 'channel_group';
+        $candidates = [
+            (string) ($row['channel_key'] ?? ''),
+            (string) ($row['channel'] ?? ''),
+            (string) ($row['channel_group'] ?? ''),
+            (string) ($row['marketplace'] ?? ''),
+        ];
+        if ($this->isAdTypeRow($row)) {
+            foreach (['channel_key', 'channel'] as $field) {
+                $name = (string) ($row[$field] ?? '');
+                if (str_contains($name, self::SUBROW_SEPARATOR)) {
+                    $candidates[] = trim(explode(self::SUBROW_SEPARATOR, $name, 2)[0]);
+                }
+            }
         }
 
-        foreach ($fields as $field) {
-            $norm = $this->normalizeChannelMatchKey((string) ($row[$field] ?? ''));
+        foreach ($candidates as $name) {
+            $norm = $this->normalizeChannelMatchKey($name);
             if ($norm !== '' && array_key_exists($norm, $map)) {
                 return (float) $map[$norm];
             }
@@ -1847,7 +1979,12 @@ class AdvertisementMasterController extends Controller
         $put(
             ['temu', 'temu1'],
             $safeCount(static fn () => MappingChannelCounts::countForSlug('temu')),
-            $this->temuMissingMappingHref()
+            $this->temuMissingMappingHref('temu')
+        );
+        $put(
+            ['temu2'],
+            $safeCount(static fn () => MappingChannelCounts::countForSlug('temu2')),
+            $this->temuMissingMappingHref('temu2')
         );
         $put(
             ['ebay', 'ebay1'],
@@ -1863,14 +2000,14 @@ class AdvertisementMasterController extends Controller
         return $map;
     }
 
-    private function temuMissingMappingHref(): ?string
+    private function temuMissingMappingHref(string $channel = 'temu'): ?string
     {
         try {
             if (! Route::has('map.issues.channel')) {
                 return null;
             }
 
-            return route('map.issues.channel', ['channel' => 'temu']);
+            return route('map.issues.channel', ['channel' => $channel]);
         } catch (\Throwable $e) {
             return null;
         }

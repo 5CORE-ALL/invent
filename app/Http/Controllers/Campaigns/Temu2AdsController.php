@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChannelTabulatorColumnSetting;
+use App\Models\MarketplaceDailyMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2CampaignReport;
@@ -11,10 +12,12 @@ use App\Support\TemuGoodsIdHelper;
 use App\Services\Temu2AdsApiReportService;
 use App\Services\Temu2AdsAutoPauseService;
 use App\Services\Temu2ApiService;
+use App\Services\TemuShopifySalesService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\RichText\RichText;
@@ -1448,5 +1451,110 @@ class Temu2AdsController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Single Temu 2 row for /advertisement-master — L30 spend / clicks / orders /
+     * sales from temu2_campaign_reports, same period as /temu2/ads default.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdvertisementMasterChannelRows(): array
+    {
+        $metrics = $this->advertisementMasterL30Metrics();
+
+        return [
+            self::advertisementMasterMetricRow('Temu 2', 'temu2', (object) $metrics),
+        ];
+    }
+
+    /**
+     * Temu 2 L30 store sales — same TCOS denominator as Temu 2 orders.
+     */
+    public static function advertisementMasterNetSales(): float
+    {
+        try {
+            $start = Carbon::now()->subDays(30)->startOfDay();
+            $end = Carbon::now()->endOfDay();
+            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
+            $sales = (float) ($m['sales'] ?? 0);
+            if ($sales > 0) {
+                return round($sales, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master Temu 2 net sales lookup failed: '.$e->getMessage());
+        }
+
+        try {
+            if (Schema::hasTable('marketplace_daily_metrics')) {
+                $row = MarketplaceDailyMetric::query()
+                    ->whereIn('channel', ['Temu 2', 'Temu2', 'TemuTwo'])
+                    ->latest('date')
+                    ->first();
+
+                return round((float) ($row->total_sales ?? 0), 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master Temu 2 daily-metrics sales failed: '.$e->getMessage());
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array{spend: float, clicks: int, sold: int, sales: float, active: int}
+     */
+    protected function advertisementMasterL30Metrics(): array
+    {
+        $empty = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'active' => 0];
+        if (! Schema::hasTable('temu2_campaign_reports')) {
+            return $empty;
+        }
+
+        try {
+            $q = Temu2CampaignReport::query()->where('report_range', 'L30');
+
+            return [
+                'spend' => round((float) $q->clone()->sum('spend'), 2),
+                'clicks' => (int) $q->clone()->sum('clicks'),
+                'sold' => (int) $q->clone()->sum('sub_orders'),
+                'sales' => round((float) $q->clone()->sum('base_price_sales'), 2),
+                'active' => (int) $q->clone()->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = 'active'")->count(),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master Temu 2 L30 metrics failed: '.$e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function advertisementMasterMetricRow(string $channel, string $source, ?object $row): array
+    {
+        $spend = (float) ($row->spend ?? 0);
+        $clicks = (float) ($row->clicks ?? 0);
+        $sold = (float) ($row->sold ?? 0);
+        $sales = (float) ($row->sales ?? 0);
+
+        return [
+            'channel' => $channel,
+            'channel_key' => $channel,
+            'channel_group' => 'Temu',
+            'source' => $source,
+            'spend' => round($spend, 2),
+            'clicks' => (int) round($clicks),
+            'sold' => (int) round($sold),
+            'sales' => round($sales, 2),
+            'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
+            'acos' => $sales > 0
+                ? round(($spend / $sales) * 100, 0)
+                : ($spend > 0 ? 100 : 0),
+            'tcos' => 0,
+            'active' => (int) ($row->active ?? 0),
+            'is_sub_row' => false,
+            'marketplace' => 'temu2',
+        ];
     }
 }

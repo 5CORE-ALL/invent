@@ -521,7 +521,7 @@
                         </ul>
                     </div>
                     <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                        title="Dil slabs → Target GROI%. A L30 = 0 uses the minimum Target GROI from the slabs.">
+                        title="Dil slabs → Target GROI%. Every INV &gt; 0 SKU uses the Dil-matching slab.">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
 @endif
@@ -672,16 +672,11 @@
                     <div class="amz-dg-rules-title">Rules — when each condition applies</div>
                     <ul class="small text-muted amz-dg-rules">
                         <li>
-                            <strong>When</strong> A L30 = 0 (0 Sold) and INV &gt; 0:
-                            take the <strong>minimum Target GROI from the slabs</strong>
-                            (lowest GROI% in this table — not the Dil-matching slab).
-                        </li>
-                        <li>
-                            <strong>When</strong> A L30 &gt; 0 and Dil sits in a From–To range:
+                            <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
                             use that slab’s Target GROI (first match; last slab includes the To value).
                         </li>
                         <li>
-                            <strong>When</strong> a price is calculated (slab match or 0 Sold min GROI):
+                            <strong>When</strong> a price is calculated from a Dil slab match:
                             it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
                         </li>
                         <li>
@@ -1131,40 +1126,6 @@
             if (amzPefInv(d) <= 0) return false;
             return !(amzPefAL30(d) > 0);
         }
-        function amzDilGroiCurrentList() {
-            const fromModal = ($('#amz-dil-groi-tbody tr').length)
-                ? amzDilGroiDisplayRules()
-                : [];
-            const list = (fromModal && fromModal.length)
-                ? fromModal
-                : amzNormalizeDilGroiList(amzDilGroiRules);
-            return list.length
-                ? list
-                : AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
-        }
-        /** Lowest Target GROI% among current slabs (A L30 = 0). Tie → lowest Dil From. */
-        function amzDilGroiMinSlab() {
-            const list = amzDilGroiCurrentList();
-            let best = null;
-            list.forEach(function(r) {
-                const g = Number(r.groi);
-                if (!isFinite(g)) return;
-                if (!best || g < best.groi || (g === best.groi && Number(r.min) < Number(best.min))) {
-                    best = {
-                        groi: g,
-                        label: r.label,
-                        key: r.key,
-                        min: r.min,
-                        max: r.max,
-                    };
-                }
-            });
-            return best;
-        }
-        function amzDilGroiMinTarget() {
-            const slab = amzDilGroiMinSlab();
-            return slab ? slab.groi : null;
-        }
         function amzSpriceFromTargetGroi(d, roiPct) {
             const lp = parseFloat(d.LP_productmaster) || 0;
             if (!(lp > 0)) return 0;
@@ -1519,41 +1480,25 @@
         function amzDilGroiMetaForRow(d) {
             if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return null;
             const dil = amzPefDil(d);
-            const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
-            let groi = null;
-            let label = '';
-            let key = '';
-            let zeroSoldMin = false;
-            if (zeroSold) {
-                const minSlab = amzDilGroiMinSlab();
-                if (!minSlab) return null;
-                groi = minSlab.groi;
-                label = '0 Sold · min GROI ' + minSlab.groi + '% from ' + minSlab.label;
-                key = minSlab.key || 'zero-sold-min';
-                zeroSoldMin = true;
-            } else {
-                const rule = amzDilGroiMatch(dil);
-                if (!rule) return null;
-                groi = rule.groi;
-                label = rule.label;
-                key = rule.key;
-            }
+            const rule = amzDilGroiMatch(dil);
+            if (!rule) return null;
+            const groi = rule.groi;
             const sprc = amzSpriceFromTargetGroi(d, groi);
             if (!(sprc > 0)) return null;
             return {
                 dil: dil,
-                key: key,
-                label: label,
+                key: rule.key,
+                label: rule.label,
                 groi: groi,
                 sprc: sprc,
-                zeroSoldMin: zeroSoldMin,
+                zeroSoldMin: false,
             };
         }
         function amzSprcDilForRow(d) {
             const meta = amzDilGroiMetaForRow(d);
             return meta ? meta.sprc : 0;
         }
-        /** Sprc Dil owns sold SKUs in a slab, and 0 Sold (A L30 = 0) via min Target GROI. */
+        /** Sprc Dil owns any INV > 0 SKU whose Dil matches a slab (including 0 Sold). */
         function amzDilGroiOwnsRow(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) <= 0) return false;
             const meta = amzDilGroiMetaForRow(d);
@@ -2424,7 +2369,7 @@
                     },
                 },
                 ...(typeof tDiscountsColumn === 'function' ? [Object.assign({}, tDiscountsColumn(computeAmzTDiscountsPct), {
-                    headerTooltip: 'CVR Disc + Rev Disc. 0 Sold and Sprc Dil Sales use GROI, not this %.',
+                    headerTooltip: 'CVR Disc + Rev Disc. Sprc Dil Sales use GROI, not this %.',
                 })] : []),
                 {
                     title: 'Push Prc',
@@ -2444,7 +2389,7 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: 'Push Prc: Your=Std. 0 Sold (A L30=0) → Sale=min Target GROI from Sprc Dil. Sprc Dil (sold, Dil in slab) → Sale=GROI. Other sold → Sale=Std−(CVR Disc+Rev Disc), LMP-capped to match S PRC. Sale=Biz=Min. Dot = PDT history.',
+                    headerTooltip: 'Push Prc: Your=Std. Sprc Dil (Dil in slab, including 0 Sold) → Sale=GROI. Other rows → Sale=Std−(CVR Disc+Rev Disc), LMP-capped to match S PRC. Sale=Biz=Min. Dot = PDT history.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (!amzPefIsChildRow(d)) return '';
@@ -2527,8 +2472,7 @@
          * Live rule stack for this SKU.
          * CVR Disc = CVR slab (INV=0 or CVR≤0 → 0)
          * Rev Disc = review-count slab (INV=0 or count 0 or count > max → 0)
-         * 0 Sold = A L30=0 and INV>0 → min Target GROI from Sprc Dil slabs
-         * Sprc Dil = Dil slab → GROI (sold) or min GROI (0 Sold)
+         * Sprc Dil = Dil slab → Target GROI (every INV > 0 SKU, including 0 Sold)
          */
         function computeAmzRuleStack(d) {
             const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
@@ -2556,10 +2500,6 @@
         }
         function formatAmzPushPrcDiscNote(plan) {
             const parts = [];
-            if (plan.dilGroi && plan.zeroSold) {
-                parts.push('0 Sold min GROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%');
-                return parts.length ? ' (' + parts.join(' + ') + ')' : '';
-            }
             if (plan.dilGroi) {
                 parts.push('Sprc Dil GROI ' + (plan.dilGroiGroi != null ? plan.dilGroiGroi : '') + '%'
                     + (plan.dilGroiLabel ? (' · ' + plan.dilGroiLabel) : ''));
@@ -2572,14 +2512,13 @@
         }
         /**
          * Push Prc plan per SKU:
-         *  0 Sold (A L30 = 0) → Sale = min Target GROI from Sprc Dil slabs
-         *  Sprc Dil (sold, Dil in slab) → Sale = Dil→GROI target (does not stack discounts)
-         *  Sold   → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
+         *  Sprc Dil (Dil in slab, including 0 Sold) → Sale = Dil→GROI target (does not stack discounts)
+         *  Other  → Sale = Std × (1 − (CVR Disc + Rev Disc)/100)
          *  Your = Std; Sale = Business = Min
          */
         function computeAmzTDiscountsPct(d) {
             const stack = computeAmzRuleStack(d);
-            if (stack.zeroSold || stack.dilGroi) return 0;
+            if (stack.dilGroi) return 0;
             return stack.totalDisc;
         }
         function computeAmzPushPrcPlan(d) {
@@ -3021,8 +2960,8 @@
                 'Clear S PRC and refill for ' + ready.length + ' ' + scopeLabel + ' SKU(s)?'
                 + (skippedInv ? ('\n(Skip ' + skippedInv + ' with INV = 0)') : '')
                 + '\n\nFormula (same as Push Prc, no Amazon push):\n'
-                + '0 Sold (A L30 = 0) → min Target GROI from Sprc Dil\n'
-                + 'Sold → Std × (1 − (CVR Disc + Rev Disc)/100)\n'
+                + 'Dil in slab → Target GROI from Sprc Dil (including 0 Sold)\n'
+                + 'No Dil match → Std × (1 − (CVR Disc + Rev Disc)/100)\n'
                 + 'If no rule → S PRC = Std'
             )) return;
 
@@ -3475,8 +3414,8 @@
                 'Queue Push Prc for ' + ready.length + ' selected SKU(s) in background?'
                 + (skipped ? ('\n(' + skipped + ' skipped — no Std Prc)') : '')
                 + (alreadyEqual ? ('\n(' + alreadyEqual + ' left unchanged — Price = S PRC)') : '')
-                + '\n\nEach SKU uses its own CVR Disc, Rev Disc, and Sprc Dil / 0 Sold min GROI.'
-                + '\nYour=Std; 0 Sold Sale=min Target GROI; Sold Sale=Std−(CVR Disc+Rev Disc) or Sprc Dil;'
+                + '\n\nEach SKU uses its own CVR Disc, Rev Disc, and Sprc Dil (Dil-matching slab).'
+                + '\nYour=Std; Dil in slab → Sale=GROI (including 0 Sold); else Sale=Std−(CVR Disc+Rev Disc);'
                 + '\nSale=Business=Min'
                 + '\n\nSafe to refresh — progress continues. You can select more and queue again.'
             )) return;

@@ -1329,4 +1329,109 @@ class TemuAdsController extends Controller
 
         return $out;
     }
+
+    /**
+     * Single Temu row for /advertisement-master — L30 spend / clicks / orders /
+     * sales from temu_ads_api_reports, same period as /temu/ads default.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdvertisementMasterChannelRows(): array
+    {
+        $metrics = $this->advertisementMasterL30Metrics();
+
+        return [
+            self::advertisementMasterMetricRow('Temu', 'temu', (object) $metrics),
+        ];
+    }
+
+    /**
+     * Temu L30 store sales — same TCOS denominator as /temu/ads.
+     */
+    public static function advertisementMasterNetSales(): float
+    {
+        try {
+            $start = Carbon::now()->subDays(30)->startOfDay();
+            $end = Carbon::now()->endOfDay();
+            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+            $sales = (float) ($m['sales'] ?? 0);
+            if ($sales > 0) {
+                return round($sales, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master Temu net sales lookup failed: '.$e->getMessage());
+        }
+
+        try {
+            if (Schema::hasTable('marketplace_daily_metrics')) {
+                $row = MarketplaceDailyMetric::query()
+                    ->where('channel', 'Temu')
+                    ->latest('date')
+                    ->first();
+
+                return round((float) ($row->total_sales ?? 0), 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master Temu daily-metrics sales failed: '.$e->getMessage());
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array{spend: float, clicks: int, sold: int, sales: float, active: int}
+     */
+    protected function advertisementMasterL30Metrics(): array
+    {
+        $empty = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'active' => 0];
+        if (! Schema::hasTable('temu_ads_api_reports')) {
+            return $empty;
+        }
+
+        try {
+            $q = TemuAdsApiReport::query()->where('period', 'L30');
+
+            return [
+                'spend' => round((float) $q->clone()->sum('ad_spend'), 2),
+                'clicks' => (int) $q->clone()->sum('clicks'),
+                'sold' => (int) $q->clone()->sum('order_pay_cnt'),
+                'sales' => round((float) $q->clone()->sum('order_pay_amt'), 2),
+                'active' => (int) $q->clone()->where('ad_status', 'Active')->count(),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Advertisement Master Temu L30 metrics failed: '.$e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function advertisementMasterMetricRow(string $channel, string $source, ?object $row): array
+    {
+        $spend = (float) ($row->spend ?? 0);
+        $clicks = (float) ($row->clicks ?? 0);
+        $sold = (float) ($row->sold ?? 0);
+        $sales = (float) ($row->sales ?? 0);
+
+        return [
+            'channel' => $channel,
+            'channel_key' => $channel,
+            'channel_group' => 'Temu',
+            'source' => $source,
+            'spend' => round($spend, 2),
+            'clicks' => (int) round($clicks),
+            'sold' => (int) round($sold),
+            'sales' => round($sales, 2),
+            'cvr' => $clicks > 0 ? round(($sold / $clicks) * 100, 1) : 0,
+            'acos' => $sales > 0
+                ? round(($spend / $sales) * 100, 0)
+                : ($spend > 0 ? 100 : 0),
+            'tcos' => 0,
+            'active' => (int) ($row->active ?? 0),
+            'is_sub_row' => false,
+            'marketplace' => 'temu',
+        ];
+    }
 }

@@ -4295,16 +4295,14 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "Suggested price from Dil → Target GROI% slabs. Temu L30 = 0 uses the minimum Target GROI. S PRC is back-solved so SGROI matches the target.",
+                    headerTooltip: "Suggested price from Dil → Target GROI% slabs (including 0 Sold). S PRC is back-solved so SGROI matches the target.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (meta.zeroSoldMin
-                                ? '0 Sold Temu L30 → min Target GROI'
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'))
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → GROI ' + meta.groi + '%'
                             + ' → $' + meta.sprc.toFixed(2);
@@ -4323,7 +4321,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, or min GROI when Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Dil slab GROI, including 0 Sold), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu2ParentRow === 'function' && isTemu2ParentRow(rowData)) return '';
@@ -4457,7 +4455,7 @@
                     accessorDownload: function(value, data) {
                         return temuExportSgroi(data);
                     },
-                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (or min GROI when Temu L30 = 0).",
+                    headerTooltip: "SGROI% = SPFT / LP. SPFT = (S R Price × 0.95) − Temu Ship − LP. Sprc Dil back-solves S PRC so this matches the Dil slab Target GROI (including 0 Sold).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof chPromoZeroSoldDisplayGroi === 'function') {
