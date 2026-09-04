@@ -61,7 +61,7 @@ class TemuAdsApiReportService
         }
 
         $range = $ranges[$period];
-        $sku = TemuMetric::where('goods_id', $goodsId)->value('sku');
+        $sku = $this->resolveSku($goodsId, $period);
         $fetchedAt = $this->usNow();
 
         try {
@@ -103,7 +103,6 @@ class TemuAdsApiReportService
 
             $metrics = $this->metricsFromApiResult($result);
             $row = array_merge($metrics, [
-                'sku' => $sku,
                 'start_ts' => $range['startTs'],
                 'end_ts' => $range['endTs'],
                 'raw_response' => json_encode($raw, JSON_UNESCAPED_UNICODE),
@@ -111,6 +110,9 @@ class TemuAdsApiReportService
                 'error_msg' => null,
                 'fetched_at' => $fetchedAt,
             ]);
+            if ($sku !== null && $sku !== '') {
+                $row['sku'] = $sku;
+            }
 
             if (isset($statusQuery['statuses'][$goodsId])) {
                 $row['ad_status'] = $statusQuery['statuses'][$goodsId];
@@ -131,16 +133,19 @@ class TemuAdsApiReportService
                 'error' => $e->getMessage(),
             ]);
 
+            $fail = [
+                'start_ts' => $range['startTs'],
+                'end_ts' => $range['endTs'],
+                'success' => false,
+                'error_msg' => substr($e->getMessage(), 0, 500),
+                'fetched_at' => $fetchedAt,
+            ];
+            if ($sku !== null && $sku !== '') {
+                $fail['sku'] = $sku;
+            }
             TemuAdsApiReport::updateOrCreate(
                 ['goods_id' => $goodsId, 'period' => $period],
-                [
-                    'sku' => $sku,
-                    'start_ts' => $range['startTs'],
-                    'end_ts' => $range['endTs'],
-                    'success' => false,
-                    'error_msg' => substr($e->getMessage(), 0, 500),
-                    'fetched_at' => $fetchedAt,
-                ]
+                $fail
             );
 
             return [
@@ -444,6 +449,29 @@ class TemuAdsApiReportService
         $base['adDetail'] = $adDetail;
 
         return json_encode($base, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Keep the listing SKU even when temu_metrics has no row for this goods.
+     * A null write would blank Image / Inv / Dil% on the next fetch.
+     */
+    private function resolveSku(string $goodsId, string $period): ?string
+    {
+        $sku = TemuMetric::where('goods_id', $goodsId)->value('sku');
+        $sku = is_string($sku) ? trim($sku) : '';
+        if ($sku !== '') {
+            return $sku;
+        }
+
+        $existing = TemuAdsApiReport::query()
+            ->where('goods_id', $goodsId)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderByRaw('CASE WHEN period = ? THEN 0 ELSE 1 END', [$period])
+            ->value('sku');
+        $existing = is_string($existing) ? trim($existing) : '';
+
+        return $existing !== '' ? $existing : null;
     }
 
     private function usNow(): Carbon
