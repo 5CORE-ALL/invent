@@ -17,6 +17,7 @@ class ListingVariationPreviewService
         private AliexpressListingPublishService $aliexpress,
         private ReverbListingPublishService $reverb,
         private WayfairListingPublishService $wayfair,
+        private EbayListingPublishService $ebay,
     ) {
     }
 
@@ -70,6 +71,9 @@ class ListingVariationPreviewService
         if ($channel === 'wayfair' && $seedList !== []) {
             $payload['suggested_category'] = $this->wayfair->suggestClassForSku($seedList[0]);
         }
+        if ($this->isEbayChannel($channel) && $seedList !== []) {
+            $payload['suggested_category'] = $this->ebay->suggestCategoryForSku($seedList[0], $channel);
+        }
 
         return $payload;
     }
@@ -98,6 +102,9 @@ class ListingVariationPreviewService
         }
         if ($channel === 'wayfair') {
             return $this->wayfair->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
+        }
+        if ($this->isEbayChannel($channel)) {
+            return $this->ebay->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
         }
 
         $label = $this->channelLabel($channel);
@@ -293,6 +300,15 @@ class ListingVariationPreviewService
         $parent = trim((string) ($product->parent ?? ''));
 
         return $parent !== '' ? $parent : trim((string) $product->sku);
+    }
+
+    private function isEbayChannel(string $channel): bool
+    {
+        return in_array($channel, [
+            'ebay', 'ebay1', 'ebayone',
+            'ebay2', 'ebaytwo',
+            'ebay3', 'ebaythree',
+        ], true);
     }
 
     private function channelLabel(string $channel): string

@@ -45,6 +45,17 @@
                                             <small id="listing-publish-weight-note">Looking up Dim/Wt Master…</small>
                                         </div>
                                     </div>
+                                    <div id="listing-publish-ebay-category" class="listing-publish-category" @if(!in_array($publishChannel ?? '', ['ebay', 'ebay1', 'ebayone', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree'], true)) hidden @endif>
+                                        <label>Suggested eBay category</label>
+                                        <div id="listing-publish-ebay-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
+                                        <input type="hidden" id="listing-publish-ebay-category-id" value="">
+                                        <label for="listing-publish-ebay-category-name">Category</label>
+                                        <div class="listing-publish-cat-wrap">
+                                            <input type="text" id="listing-publish-ebay-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Speakers" autocomplete="off">
+                                            <div id="listing-publish-ebay-category-results" class="listing-publish-cat-results"></div>
+                                        </div>
+                                        <small>Type to search eBay categories. If you leave this blank, we copy the category from a listed sibling or match the title.</small>
+                                    </div>
                                     <div id="listing-publish-reverb-category" class="listing-publish-category" hidden>
                                         <label>Suggested Reverb category</label>
                                         <div id="listing-publish-reverb-category-path" class="listing-publish-category-path">Matching from the product type…</div>

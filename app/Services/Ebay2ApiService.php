@@ -2985,6 +2985,14 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     /**
      * @return array{shipping: string, payment: string, return: string}
      */
+    public function policyIds(): array
+    {
+        return $this->resolvedEbay2PolicyIds();
+    }
+
+    /**
+     * @return array{shipping: string, payment: string, return: string}
+     */
     protected function resolvedEbay2PolicyIds(): array
     {
         if (is_array($this->ebay2PolicyIds)) {
