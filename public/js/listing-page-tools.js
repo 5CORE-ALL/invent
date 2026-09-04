@@ -336,7 +336,8 @@
         const pathEl = document.getElementById('listing-publish-wayfair-category-path');
         const idEl = document.getElementById('listing-publish-wayfair-class-id');
         const path = String((suggested && suggested.path) || '').trim();
-        const id = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        const rawId = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        const id = rawId === '0' ? '' : rawId;
         if (idEl && !String(idEl.value || '').trim()) idEl.value = id;
         if (!pathEl) return;
         pathEl.textContent = path || (id
@@ -610,7 +611,7 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: selectedCategoryName() ? '' : selectedCategoryId(),
+                category_id: isWayfairChannel() ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid()
             },
