@@ -632,12 +632,14 @@ class AliexpressListingPublishService
         return [
             'weight' => $kg,
             'package_weight' => (float) $kg,
+            'aeLogisticsWeight' => $this->usPackageWeightObject($pkg),
+            'usLogisticsWeight' => $this->usPackageWeightObject($pkg),
         ];
     }
 
     /**
      * @param  array<string, mixed>  $pkg
-     * @return array{Package weight: float}
+     * @return array{Package weight: string}
      */
     private function usPackageWeightObject(array $pkg): array
     {
@@ -647,14 +649,7 @@ class AliexpressListingPublishService
             $lb = $kg > 0 ? $kg / 0.45359237 : 0.01;
         }
 
-        $text = number_format(max(0.01, $lb), 2, '.', '');
-
-        return [
-            'Package weight' => $text,
-            'package_weight' => $text,
-            'packageWeight' => $text,
-            'weight' => $text,
-        ];
+        return ['Package weight' => number_format(max(0.01, $lb), 2, '.', '')];
     }
 
     private function packageSize(ProductMaster $product, string $sku = ''): array

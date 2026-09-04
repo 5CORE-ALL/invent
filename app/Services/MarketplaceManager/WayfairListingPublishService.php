@@ -53,6 +53,10 @@ class WayfairListingPublishService
                 }
             }
         }
+        foreach ($this->listedFamilySkus($sku) as $familySku) {
+            $candidates[] = $familySku;
+        }
+        $candidates = array_values(array_unique(array_filter($candidates)));
 
         $cached = $this->classIdFromListingStatuses($candidates);
         if ($cached > 0) {
@@ -78,7 +82,7 @@ class WayfairListingPublishService
             return ['id' => $fromSubmission, 'path' => 'Class '.$fromSubmission.' (from a prior Wayfair submission)', 'name' => ''];
         }
 
-        $title = $product ? $this->resolveTitle($product, $sku) : $sku;
+        $title = $this->resolveTitleForClass($product, $sku, $candidates);
         $fromTaxonomy = $this->api->searchTaxonomyClass($title);
         if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
             $name = trim((string) ($fromTaxonomy['class_name'] ?? ''));
@@ -338,6 +342,33 @@ class WayfairListingPublishService
             if ($id > 0) {
                 return $id;
             }
+        }
+        foreach (['seller_link', 'buyer_link', 'listing_url', 'url'] as $key) {
+            $id = $this->classIdFromUrl((string) ($value[$key] ?? ''));
+            if ($id > 0) {
+                return $id;
+            }
+        }
+
+        return 0;
+    }
+
+    private function classIdFromUrl(string $url): int
+    {
+        $url = trim($url);
+        if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            return 0;
+        }
+        $query = parse_url($url, PHP_URL_QUERY);
+        parse_str(is_string($query) ? $query : '', $params);
+        foreach (['classId', 'class_id', 'class', 'taxonomyCategoryId', 'taxonomy_category_id'] as $key) {
+            $id = (int) ($params[$key] ?? 0);
+            if ($id > 0) {
+                return $id;
+            }
+        }
+        if (preg_match('/(?:class|taxonomyCategory)[_-]?id=(\d+)/i', $url, $match)) {
+            return (int) $match[1];
         }
 
         return 0;
@@ -889,12 +920,134 @@ class WayfairListingPublishService
                 ->first();
     }
 
+    /**
+     * Listed Wayfair SKUs that share the same letter family (CL + 2W), even if parent differs.
+     *
+     * @return list<string>
+     */
+    private function listedFamilySkus(string $sku): array
+    {
+        $need = $this->familyTokens($sku);
+        if (count($need) < 2 || ! Schema::hasTable('wayfair_listing_statuses')) {
+            return [];
+        }
+        $out = [];
+        $rows = WayfairListingStatus::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderByDesc('id')
+            ->limit(5000)
+            ->get(['sku', 'value']);
+        foreach ($rows as $row) {
+            $value = is_array($row->value) ? $row->value : [];
+            $listed = strtolower(trim((string) ($value['listed'] ?? '')));
+            $hasLink = trim((string) ($value['seller_link'] ?? $value['buyer_link'] ?? $value['listing_id'] ?? '')) !== '';
+            if ($listed !== 'listed' && ! $hasLink) {
+                continue;
+            }
+            $other = trim((string) $row->sku);
+            if ($other === '' || ! $this->familyTokensMatch($need, $this->familyTokens($other))) {
+                continue;
+            }
+            $out[] = $other;
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function familyTokens(string $sku): array
+    {
+        $parts = preg_split('/[\s\-_]+/', strtoupper(trim($sku))) ?: [];
+        $tokens = [];
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ($part === '' || $part === 'PAIR' || $part === 'PARENT' || is_numeric($part)) {
+                continue;
+            }
+            if (preg_match('/^[A-Z]{1,6}\d*$/', $part) || preg_match('/^\d+W$/', $part)) {
+                $tokens[] = $part;
+            }
+        }
+
+        return array_values(array_unique($tokens));
+    }
+
+    /**
+     * @param  list<string>  $need
+     * @param  list<string>  $have
+     */
+    private function familyTokensMatch(array $need, array $have): bool
+    {
+        if ($need === [] || $have === []) {
+            return false;
+        }
+        foreach ($need as $token) {
+            if (! in_array($token, $have, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  list<string>  $candidateSkus
+     */
+    private function resolveTitleForClass(?ProductMaster $product, string $sku, array $candidateSkus): string
+    {
+        if ($product) {
+            $title = $this->resolveTitle($product, $sku);
+            if ($title !== '' && strcasecmp($title, $sku) !== 0 && strcasecmp($title, (string) ($product->parent ?? '')) !== 0) {
+                return $title;
+            }
+        }
+        foreach (array_slice($candidateSkus, 0, 20) as $other) {
+            $other = trim((string) $other);
+            if ($other === '' || strcasecmp($other, $sku) === 0) {
+                continue;
+            }
+            $row = $this->findProduct($other);
+            if (! $row) {
+                continue;
+            }
+            $title = $this->resolveTitle($row, $other);
+            if ($title !== '' && strcasecmp($title, $other) !== 0) {
+                return $title;
+            }
+        }
+
+        return $product ? $this->resolveTitle($product, $sku) : $sku;
+    }
+
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {
                 return $title;
+            }
+        }
+        $parent = trim((string) ($product->parent ?? ''));
+        if ($parent !== '') {
+            $parentRow = ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->where(function ($q) use ($parent) {
+                    $q->where('sku', $parent)
+                        ->orWhere('sku', 'PARENT '.$parent)
+                        ->orWhere('parent', $parent);
+                })
+                ->whereRaw('UPPER(TRIM(sku)) LIKE ?', ['PARENT%'])
+                ->first();
+            if ($parentRow) {
+                foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
+                    $title = trim((string) ($parentRow->{$field} ?? ''));
+                    if ($title !== '') {
+                        return $title;
+                    }
+                }
             }
         }
         $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);

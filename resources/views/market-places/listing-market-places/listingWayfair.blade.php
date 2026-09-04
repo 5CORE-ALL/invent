@@ -1295,5 +1295,5 @@
             publishUrl: '/listing_wayfair/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=10"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=11"></script>
 @endsection

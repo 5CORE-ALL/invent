@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -1924,16 +1925,51 @@ XML;
             return null;
         }
 
-        $fromItems = $this->lookupClassFromSupplierCatalogItems($parts);
-        if ($fromItems !== null) {
-            return $fromItems;
+        $fromWorking = $this->lookupClassFromWorkingCatalog($parts);
+        if ($fromWorking !== null) {
+            return $fromWorking;
         }
 
+        return $this->lookupClassFromSupplierCatalogItems($parts);
+    }
+
+    /**
+     * Read class from the supplier-catalog query used for listed SKUs, including nested SKU details.
+     *
+     * @param  list<string>  $parts
+     * @return array{class_id: int, class_name: string}|null
+     */
+    private function lookupClassFromWorkingCatalog(array $parts): ?array
+    {
         $queries = [
             <<<'GRAPHQL'
             query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
               supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
                 products {
+                  productId
+                  supplierPartNumber
+                  class { classId className }
+                  classId
+                  className
+                  skus {
+                    sku
+                    displaySku
+                    productDetails {
+                      class { classId className }
+                      classId
+                      className
+                      taxonomyCategoryId
+                    }
+                  }
+                }
+              }
+            }
+            GRAPHQL,
+            <<<'GRAPHQL'
+            query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+              supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+                products {
+                  productId
                   supplierPartNumber
                   class { classId className }
                   classId
@@ -1946,6 +1982,7 @@ XML;
             query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
               supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
                 products {
+                  productId
                   supplierPartNumber
                   classId
                   className
@@ -1953,29 +1990,33 @@ XML;
               }
             }
             GRAPHQL,
+            <<<'GRAPHQL'
+            query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+              supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+                products {
+                  productId
+                  supplierPartNumber
+                }
+              }
+            }
+            GRAPHQL,
         ];
 
-        $token = $this->authenticate();
-        $url = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
-        $supplierId = (int) config('services.wayfair.supplier_id');
+        $supplierId = $this->liveSupplierId();
         foreach ($queries as $query) {
             foreach (array_chunk($parts, 25) as $chunk) {
-                $response = $this->apiHttpClient()
-                    ->withToken($token)
-                    ->withHeaders([
-                        'X-SELECTED-SUPPLIER-ID' => (string) $supplierId,
-                        'Content-Type' => 'application/json',
-                        'Accept' => 'application/json',
-                    ])
-                    ->post($url, [
-                        'query' => $query,
-                        'variables' => [
-                            'supplierId' => $supplierId,
-                            'filter' => ['supplierPartNumber' => ['in' => $chunk]],
-                            'paginationOptions' => ['page' => 1, 'pageSize' => 25],
-                        ],
-                    ]);
-                $json = $response->json();
+                $json = $this->catalogGraphqlRequest(
+                    'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
+                    $query,
+                    [
+                        'supplierId' => $supplierId,
+                        'filter' => ['supplierPartNumber' => ['in' => $chunk]],
+                        'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                    ]
+                );
+                if ($this->graphqlDenied($json)) {
+                    return null;
+                }
                 if (! empty($json['errors'])) {
                     break;
                 }
@@ -1987,6 +2028,13 @@ XML;
         }
 
         return null;
+    }
+
+    private function liveSupplierId(): int
+    {
+        $configured = (int) config('services.wayfair.supplier_id', 0);
+
+        return $configured > 0 ? $configured : 2603;
     }
 
     /**
@@ -2022,54 +2070,47 @@ XML;
     private function lookupClassFromSupplierCatalogItems(array $parts): ?array
     {
         $query = <<<'GRAPHQL'
-        query ($page: Int!, $pageSize: Int!) {
-          supplierCatalogItems(input: { paginationOptions: { page: $page, pageSize: $pageSize } }) {
+        query ($input: SupplierCatalogItemsInput!) {
+          supplierCatalogItems(input: $input) {
             ... on SupplierCatalogItems {
-              paginationInfo { page hasNextPage }
               catalogItems {
                 supplierPartNumber
                 class { classId className }
               }
             }
+            ... on SupplierCatalogItemsError {
+              httpError { code message }
+              internalError { code message }
+            }
           }
         }
         GRAPHQL;
 
-        $urls = [
-            'https://api.wayfair.io/v1/product-catalog-api/graphql',
-            'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
-        ];
-        $token = $this->authenticate();
-        $supplierId = (string) config('services.wayfair.supplier_id');
-        foreach ($urls as $url) {
-            for ($page = 1; $page <= 8; $page++) {
-                $response = $this->apiHttpClient()
-                    ->withToken($token)
-                    ->withHeaders([
-                        'X-SELECTED-SUPPLIER-ID' => $supplierId,
-                        'Content-Type' => 'application/json',
-                        'Accept' => 'application/json',
-                    ])
-                    ->post($url, [
-                        'query' => $query,
-                        'variables' => ['page' => $page, 'pageSize' => 50],
-                    ]);
-                $json = $response->json();
-                if (! empty($json['errors'])) {
-                    Log::info('Wayfair supplierCatalogItems class lookup failed', [
-                        'url' => $url,
-                        'errors' => $this->formatGraphqlErrors($json['errors'] ?? []),
-                    ]);
-                    break;
-                }
-                $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
-                $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
-                if ($hit !== null) {
-                    return $hit;
-                }
-                if (! is_array($items) || $items === [] || empty($json['data']['supplierCatalogItems']['paginationInfo']['hasNextPage'])) {
-                    break;
-                }
+        foreach (array_chunk($parts, 25) as $chunk) {
+            $json = $this->catalogGraphqlRequest(
+                (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql'),
+                $query,
+                [
+                    'input' => [
+                        'filter' => ['supplierPartNumbers' => array_values($chunk)],
+                        'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                    ],
+                ]
+            );
+            if ($this->graphqlDenied($json)) {
+                return null;
+            }
+            if (! empty($json['errors'])) {
+                Log::info('Wayfair supplierCatalogItems class lookup failed', [
+                    'errors' => $this->formatGraphqlErrors($json['errors'] ?? []),
+                ]);
+
+                return null;
+            }
+            $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
+            $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
+            if ($hit !== null) {
+                return $hit;
             }
         }
 
@@ -2085,57 +2126,196 @@ XML;
         if (strlen($title) < 3) {
             return null;
         }
-        $searches = [$title];
-        $words = preg_split('/\s+/', $title) ?: [];
-        if (count($words) >= 2) {
-            $searches[] = implode(' ', array_slice($words, -3));
-            $searches[] = implode(' ', array_slice($words, -2));
+
+        $categories = $this->taxonomyCategories();
+        if ($categories === []) {
+            return null;
         }
-        $queries = [
-            <<<'GRAPHQL'
-            query ($search: String!) {
-              taxonomyCategories(searchTerm: $search) {
-                classId
-                className
-                name
-              }
-            }
-            GRAPHQL,
-            <<<'GRAPHQL'
-            query ($search: String!) {
-              productAddition {
-                classes(search: $search) {
-                  classId
-                  className
-                  name
-                }
-              }
-            }
-            GRAPHQL,
-        ];
-        foreach ($searches as $search) {
-            if (strlen($search) < 3) {
+
+        $hay = strtolower($title);
+        $best = null;
+        $bestScore = 0;
+        foreach ($categories as $row) {
+            if (! is_array($row)) {
                 continue;
             }
-            foreach ($queries as $query) {
-                $res = $this->productAdditionGraphql($query, ['search' => $search]);
-                $rows = $res['data']['taxonomyCategories']
-                    ?? $res['data']['productAddition']['classes']
-                    ?? [];
-                foreach (is_array($rows) ? $rows : [] as $row) {
-                    if (! is_array($row)) {
-                        continue;
-                    }
-                    $classId = (int) ($row['classId'] ?? $row['class_id'] ?? 0);
-                    $className = trim((string) ($row['className'] ?? $row['name'] ?? ''));
-                    if ($classId > 0) {
-                        return ['class_id' => $classId, 'class_name' => $className];
-                    }
+            $classId = (int) ($row['taxonomyCategoryId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
+            $className = trim((string) ($row['name'] ?? $row['className'] ?? ''));
+            if ($classId <= 0 || $className === '') {
+                continue;
+            }
+            $score = $this->taxonomyNameScore($hay, strtolower($className));
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = ['class_id' => $classId, 'class_name' => $className];
+            }
+        }
+        if ($best === null || $bestScore < 50) {
+            return null;
+        }
+        if (! $this->productAdditionClassExists((int) $best['class_id'])) {
+            return null;
+        }
+
+        return $best;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function taxonomyCategories(): array
+    {
+        $cached = Cache::get('wayfair.taxonomy_categories');
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $query = <<<'GRAPHQL'
+        query taxonomyCategories($marketContext: MarketContextInput!, $paginationOptions: PaginationOptions) {
+          taxonomyCategories(marketContext: $marketContext, paginationOptions: $paginationOptions) {
+            pageInfo { page pageSize hasNextPage totalPages }
+            taxonomyCategories { taxonomyCategoryId name }
+          }
+        }
+        GRAPHQL;
+        $rows = [];
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
+        for ($page = 1; $page <= 20; $page++) {
+            $json = $this->catalogGraphqlRequest($url, $query, [
+                'marketContext' => $this->marketContext(),
+                'paginationOptions' => ['page' => $page, 'pageSize' => 50],
+            ]);
+            if ($this->graphqlDenied($json) || ! empty($json['errors'])) {
+                if ($page === 1) {
+                    Cache::put('wayfair.taxonomy_categories', [], 900);
+                }
+                break;
+            }
+            $pageRows = $json['data']['taxonomyCategories']['taxonomyCategories'] ?? [];
+            foreach (is_array($pageRows) ? $pageRows : [] as $row) {
+                if (is_array($row)) {
+                    $rows[] = $row;
+                }
+            }
+            if (empty($json['data']['taxonomyCategories']['pageInfo']['hasNextPage'])) {
+                break;
+            }
+        }
+        Cache::put('wayfair.taxonomy_categories', $rows, $rows === [] ? 900 : 43200);
+
+        return $rows;
+    }
+
+    private function taxonomyNameScore(string $title, string $name): int
+    {
+        if ($name === '') {
+            return 0;
+        }
+        $score = 0;
+        if ($name === $title || str_contains($title, $name)) {
+            $score += 100 + strlen($name);
+        }
+        $words = preg_split('/\s+/', $name) ?: [];
+        $hits = 0;
+        foreach ($words as $word) {
+            if (strlen($word) >= 3 && str_contains($title, $word)) {
+                $hits++;
+            }
+        }
+        if ($words !== [] && $hits === count($words)) {
+            $score += 50 + strlen($name);
+        } elseif ($hits >= 2) {
+            $score += $hits * 8;
+        }
+        if (str_contains($title, 'speaker') && str_contains($name, 'speaker')) {
+            $score += 40;
+        }
+        if (str_contains($title, 'ceiling') && str_contains($name, 'ceiling')) {
+            $score += 30;
+        }
+        if ((str_contains($title, 'in wall') || str_contains($title, 'in-wall'))
+            && (str_contains($name, 'in wall') || str_contains($name, 'in-wall') || str_contains($name, 'inwall'))) {
+            $score += 30;
+        }
+
+        return $score;
+    }
+
+    private function productAdditionClassExists(int $classId): bool
+    {
+        if ($classId <= 0) {
+            return false;
+        }
+        $res = $this->getProductAdditionQuestions($classId);
+
+        return ($res['questions'] ?? []) !== [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     */
+    private function graphqlDenied(array $json): bool
+    {
+        $message = strtolower($this->formatGraphqlErrors(is_array($json['errors'] ?? null) ? $json['errors'] : []));
+        if ($message === '') {
+            return false;
+        }
+
+        return str_contains($message, 'access denied')
+            || str_contains($message, 'permission')
+            || str_contains($message, 'unauthorized')
+            || str_contains($message, 'deprecated');
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    private function catalogGraphqlRequest(string $url, string $query, array $variables = []): array
+    {
+        $supplierId = (string) $this->liveSupplierId();
+        $tokens = [];
+        try {
+            $tokens[] = $this->authenticate();
+        } catch (\Throwable) {
+        }
+        try {
+            $catalog = $this->getTokenForCatalog();
+            if ($catalog !== '' && ! in_array($catalog, $tokens, true)) {
+                $tokens[] = $catalog;
+            }
+        } catch (\Throwable) {
+        }
+        $last = [];
+        foreach ($tokens as $token) {
+            foreach ([true, false] as $withSupplierHeader) {
+                $headers = [
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ];
+                if ($withSupplierHeader && $supplierId !== '' && $supplierId !== '0') {
+                    $headers['X-SELECTED-SUPPLIER-ID'] = $supplierId;
+                }
+                $response = $this->apiHttpClient()
+                    ->withToken($token)
+                    ->withHeaders($headers)
+                    ->post($url, $variables === [] ? ['query' => $query] : ['query' => $query, 'variables' => $variables]);
+                $json = $response->json();
+                $json = is_array($json) ? $json : [];
+                if (empty($json['errors']) && ($json['data'] ?? null) !== null) {
+                    return $json;
+                }
+                $last = $json;
+                if ($this->graphqlDenied($json)) {
+                    continue;
+                }
+                if (! empty($json['errors'])) {
+                    return $json;
                 }
             }
         }
 
-        return null;
+        return $last;
     }
 
     /**
@@ -2160,12 +2340,40 @@ XML;
             if ($want !== [] && $part !== '' && ! $this->catalogPartMatchesFamily($part, $want)) {
                 continue;
             }
-            $class = is_array($row['class'] ?? null) ? $row['class'] : [];
-            $classId = (int) ($class['classId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
-            $className = trim((string) ($class['className'] ?? $row['className'] ?? $row['class_name'] ?? ''));
-            if ($classId > 0) {
-                return ['class_id' => $classId, 'class_name' => $className];
+            $hit = $this->classFromAssoc($row);
+            if ($hit !== null) {
+                return $hit;
             }
+            foreach (is_array($row['skus'] ?? null) ? $row['skus'] : [] as $skuRow) {
+                if (! is_array($skuRow)) {
+                    continue;
+                }
+                $hit = $this->classFromAssoc($skuRow);
+                if ($hit !== null) {
+                    return $hit;
+                }
+                $details = is_array($skuRow['productDetails'] ?? null) ? $skuRow['productDetails'] : [];
+                $hit = $this->classFromAssoc($details);
+                if ($hit !== null) {
+                    return $hit;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{class_id: int, class_name: string}|null
+     */
+    private function classFromAssoc(array $row): ?array
+    {
+        $class = is_array($row['class'] ?? null) ? $row['class'] : [];
+        $classId = (int) ($class['classId'] ?? $row['classId'] ?? $row['class_id'] ?? $row['taxonomyCategoryId'] ?? $row['taxonomy_category_id'] ?? 0);
+        $className = trim((string) ($class['className'] ?? $row['className'] ?? $row['class_name'] ?? $row['name'] ?? ''));
+        if ($classId > 0) {
+            return ['class_id' => $classId, 'class_name' => $className];
         }
 
         return null;
