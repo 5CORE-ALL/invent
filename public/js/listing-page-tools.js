@@ -196,12 +196,20 @@
         return String(cfg().channel || '').toLowerCase() === 'aliexpress';
     }
 
+    function isWayfairChannel() {
+        return String(cfg().channel || '').toLowerCase() === 'wayfair';
+    }
+
     function isReverbChannel() {
         const c = String(cfg().channel || '').toLowerCase();
         return c === 'reverb' || c === 'reverbcom';
     }
 
     function selectedCategoryId() {
+        if (isWayfairChannel()) {
+            const wf = document.getElementById('listing-publish-wayfair-class-id');
+            if (wf) return String(wf.value || '').replace(/\D+/g, '');
+        }
         const el = document.getElementById('listing-publish-category-id');
         return el ? String(el.value || '').replace(/\D+/g, '') : '';
     }
@@ -324,6 +332,18 @@
         hideReverbCategoryResults();
     }
 
+    function applySuggestedWayfairCategory(suggested) {
+        const pathEl = document.getElementById('listing-publish-wayfair-category-path');
+        const idEl = document.getElementById('listing-publish-wayfair-class-id');
+        const path = String((suggested && suggested.path) || '').trim();
+        const id = String((suggested && suggested.id) || '').replace(/\D+/g, '');
+        if (idEl && !String(idEl.value || '').trim()) idEl.value = id;
+        if (!pathEl) return;
+        pathEl.textContent = path || (id
+            ? 'Wayfair class matched from a listed sibling.'
+            : 'No class matched yet. Enter the Wayfair class ID from Partner Home or a listed sibling.');
+    }
+
     function applySuggestedAliexpressCategory(suggested) {
         const pathEl = document.getElementById('listing-publish-aliexpress-category-path');
         const idEl = document.getElementById('listing-publish-category-id');
@@ -341,10 +361,13 @@
         if (box) box.style.display = '';
         const catBox = document.getElementById('listing-publish-aliexpress-category');
         if (catBox) catBox.hidden = !isAliexpressChannel();
+        const wayfairBox = document.getElementById('listing-publish-wayfair-category');
+        if (wayfairBox) wayfairBox.hidden = !isWayfairChannel();
         const reverbBox = document.getElementById('listing-publish-reverb-category');
         if (reverbBox) reverbBox.hidden = !isReverbChannel();
         if (isReverbChannel()) applySuggestedCategory(null);
         if (isAliexpressChannel()) applySuggestedAliexpressCategory(null);
+        if (isWayfairChannel()) applySuggestedWayfairCategory(null);
         updateModalCopy();
     }
 
@@ -549,6 +572,7 @@
                 renderGroups((response && response.groups) || []);
                 if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
                 if (isAliexpressChannel()) applySuggestedAliexpressCategory(response && response.suggested_category);
+                if (isWayfairChannel()) applySuggestedWayfairCategory(response && response.suggested_category);
             },
             error: function (xhr) {
                 hideModal();

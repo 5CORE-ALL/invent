@@ -609,12 +609,7 @@ class AliexpressListingPublishService
             'weight' => $kg,
             'weight_lb' => (string) ($pkg['weight_lb'] ?? ''),
             'package_weight' => (float) $kg,
-            'usLogisticsWeight' => $usWeight,
-            'aeLogisticsWeight' => $usWeight,
-            'usl' => [
-                'logisticsWeight' => $usWeight,
-                'Package weight' => $usWeight['Package weight'],
-            ],
+            'aeLogisticsWeight' => $usWeight['Package weight'],
             'attribute_list' => [
                 [
                     'aliexpress_attribute_name_id' => 2,

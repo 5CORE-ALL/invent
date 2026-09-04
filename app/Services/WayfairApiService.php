@@ -1696,4 +1696,327 @@ XML;
             'skus' => $accepted,
         ];
     }
+
+    /**
+     * @return array{locale: string, country: string, brand: string}
+     */
+    public function marketContext(): array
+    {
+        return [
+            'locale' => (string) config('services.wayfair.locale', 'en-US'),
+            'country' => (string) config('services.wayfair.country', 'UNITED_STATES'),
+            'brand' => (string) config('services.wayfair.brand', 'WAYFAIR'),
+        ];
+    }
+
+    /**
+     * @return array{questions: list<array<string, mixed>>, message: string}
+     */
+    public function getProductAdditionQuestions(int $classId): array
+    {
+        if ($classId <= 0) {
+            return ['questions' => [], 'message' => 'Wayfair class ID is required.'];
+        }
+
+        $query = <<<'GRAPHQL'
+        query GetQuestions($request: GetProductAdditionQuestionsRequest!) {
+          productAddition {
+            questions(request: $request) {
+              id
+              parentId
+              internalName
+              displayName
+              answerType
+              isActive
+              isMultiValue
+              importanceType
+              isUnavailableEligible
+              isNotApplicableEligible
+              description
+              possibleAnswers { key value }
+              childQuestions {
+                id
+                parentId
+                internalName
+                displayName
+                answerType
+                isActive
+                isMultiValue
+                importanceType
+                isUnavailableEligible
+                isNotApplicableEligible
+                description
+                possibleAnswers { key value }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+
+        $res = $this->productAdditionGraphql($query, [
+            'request' => [
+                'classId' => $classId,
+                'supplierId' => (int) config('services.wayfair.supplier_id'),
+                'marketContext' => $this->marketContext(),
+            ],
+        ]);
+        $questions = $res['data']['productAddition']['questions'] ?? [];
+
+        return [
+            'questions' => is_array($questions) ? array_values($questions) : [],
+            'message' => (string) ($res['message'] ?? ''),
+        ];
+    }
+
+    /**
+     * @return array{id: int, name: string}|null
+     */
+    public function getManufacturerAssociation(): ?array
+    {
+        $configured = (int) config('services.wayfair.manufacturer_id', 0);
+        $query = <<<'GRAPHQL'
+        query brandAssociations($request: GetSupplierBrandsAssociationsRequest) {
+          supplierBrand {
+            brandAssociations(request: $request) {
+              brands {
+                id
+                manufacturer { id name }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+
+        $res = $this->productAdditionGraphql($query, [
+            'request' => [
+                'supplierId' => (int) config('services.wayfair.supplier_id'),
+                'marketContext' => $this->marketContext(),
+                'page' => 1,
+                'pageSize' => 25,
+            ],
+        ]);
+        $brands = $res['data']['supplierBrand']['brandAssociations']['brands'] ?? [];
+        $picked = null;
+        foreach (is_array($brands) ? $brands : [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $id = (int) ($row['manufacturer']['id'] ?? $row['id'] ?? 0);
+            $name = trim((string) ($row['manufacturer']['name'] ?? $row['name'] ?? ''));
+            if ($id <= 0) {
+                continue;
+            }
+            if ($configured > 0 && $id === $configured) {
+                return ['id' => $id, 'name' => $name !== '' ? $name : 'Manufacturer '.$id];
+            }
+            if ($picked === null || stripos($name, '5 core') !== false) {
+                $picked = ['id' => $id, 'name' => $name !== '' ? $name : 'Manufacturer '.$id];
+                if (stripos($name, '5 core') !== false) {
+                    return $picked;
+                }
+            }
+        }
+        if ($picked !== null) {
+            return $picked;
+        }
+        if ($configured > 0) {
+            return ['id' => $configured, 'name' => 'Configured manufacturer'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $request
+     * @return array{success: bool, message: string, request_ids: list<string>}
+     */
+    public function submitProductAddition(array $request): array
+    {
+        $query = <<<'GRAPHQL'
+        mutation submit($request: SubmitProductAdditionsRequest!) {
+          productAddition {
+            submit(request: $request) {
+              requestIds
+            }
+          }
+        }
+        GRAPHQL;
+
+        $res = $this->productAdditionGraphql($query, ['request' => $request]);
+        $ids = $res['data']['productAddition']['submit']['requestIds'] ?? [];
+        $requestIds = [];
+        foreach (is_array($ids) ? $ids : [] as $id) {
+            $id = trim((string) $id);
+            if ($id !== '') {
+                $requestIds[] = $id;
+            }
+        }
+        if ($requestIds !== []) {
+            return [
+                'success' => true,
+                'message' => 'Wayfair accepted '.count($requestIds).' product addition request(s).',
+                'request_ids' => $requestIds,
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => $res['message'] !== ''
+                ? $res['message']
+                : 'Wayfair product addition returned no request IDs.',
+            'request_ids' => [],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $ids
+     * @return list<array<string, mixed>>
+     */
+    public function getProductAdditionSubmissions(array $ids): array
+    {
+        $ids = array_values(array_filter(array_map('strval', $ids)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $query = <<<'GRAPHQL'
+        query submissions($request: GetProductAdditionsRequest!) {
+          productAddition {
+            submissions(request: $request) {
+              requestId
+              supplierId
+              supplierPartNumber
+              classId
+              status
+              validationStatus
+              submissionStatus
+              validationFlaws {
+                questionId
+                parentRank
+                rank
+                flawType
+                flaw
+              }
+            }
+          }
+        }
+        GRAPHQL;
+
+        $res = $this->productAdditionGraphql($query, [
+            'request' => [
+                'supplierId' => (int) config('services.wayfair.supplier_id'),
+                'ids' => $ids,
+            ],
+        ]);
+        $rows = $res['data']['productAddition']['submissions'] ?? [];
+
+        return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array{class_id: int, class_name: string}|null
+     */
+    public function lookupCatalogClassForSkus(array $skus): ?array
+    {
+        $parts = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $parts[] = $sku;
+            }
+        }
+        $parts = array_values(array_unique($parts));
+        if ($parts === []) {
+            return null;
+        }
+
+        $query = <<<'GRAPHQL'
+        query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+          supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+            products {
+              supplierPartNumber
+              class { classId className }
+            }
+          }
+        }
+        GRAPHQL;
+
+        $token = $this->authenticate();
+        $url = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
+        $supplierId = (int) config('services.wayfair.supplier_id');
+        foreach (array_chunk($parts, 25) as $chunk) {
+            $response = $this->apiHttpClient()
+                ->withToken($token)
+                ->withHeaders([
+                    'X-SELECTED-SUPPLIER-ID' => (string) $supplierId,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->post($url, [
+                    'query' => $query,
+                    'variables' => [
+                        'supplierId' => $supplierId,
+                        'filter' => ['supplierPartNumber' => ['in' => $chunk]],
+                        'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                    ],
+                ]);
+            $json = $response->json();
+            foreach ($json['data']['supplierCatalog']['products'] ?? [] as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                $class = is_array($product['class'] ?? null) ? $product['class'] : [];
+                $classId = (int) ($class['classId'] ?? $product['classId'] ?? 0);
+                $className = trim((string) ($class['className'] ?? $product['className'] ?? ''));
+                if ($classId > 0) {
+                    return ['class_id' => $classId, 'class_name' => $className];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{data: array<string, mixed>, message: string}
+     */
+    private function productAdditionGraphql(string $query, array $variables = []): array
+    {
+        $token = $this->getTokenForCatalog();
+        $supplierId = (string) config('services.wayfair.supplier_id');
+        $urls = array_values(array_unique(array_filter([
+            (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql'),
+            $this->graphqlUrl,
+        ])));
+
+        $lastMessage = 'Wayfair product addition request failed.';
+        foreach ($urls as $url) {
+            $response = $this->apiHttpClient()
+                ->withToken($token)
+                ->withHeaders([
+                    'X-SELECTED-SUPPLIER-ID' => $supplierId,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->post($url, [
+                    'query' => $query,
+                    'variables' => $variables,
+                ]);
+            $json = $response->json();
+            $json = is_array($json) ? $json : [];
+            if (! empty($json['errors'])) {
+                $lastMessage = $this->formatWayfairGraphqlErrors($json['errors']);
+                Log::warning('Wayfair product addition GraphQL error', [
+                    'url' => $url,
+                    'message' => $lastMessage,
+                ]);
+                continue;
+            }
+
+            return ['data' => is_array($json['data'] ?? null) ? $json['data'] : [], 'message' => ''];
+        }
+
+        return ['data' => [], 'message' => $lastMessage];
+    }
 }

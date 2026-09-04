@@ -16,6 +16,7 @@ class ListingVariationPreviewService
         private FaireListingPublishService $faire,
         private AliexpressListingPublishService $aliexpress,
         private ReverbListingPublishService $reverb,
+        private WayfairListingPublishService $wayfair,
     ) {
     }
 
@@ -56,6 +57,9 @@ class ListingVariationPreviewService
         if ($channel === 'aliexpress' && $seedList !== []) {
             $payload['suggested_category'] = $this->aliexpress->suggestCategoryForSku($seedList[0]);
         }
+        if ($channel === 'wayfair' && $seedList !== []) {
+            $payload['suggested_category'] = $this->wayfair->suggestClassForSku($seedList[0]);
+        }
 
         return $payload;
     }
@@ -74,13 +78,16 @@ class ListingVariationPreviewService
             return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint);
         }
         if ($channel === 'faire') {
-            return $this->faire->publishSkus($skus, $expandSiblings);
+            return $this->faire->publishSkus($skus, $expandSiblings, $mode);
         }
         if ($channel === 'aliexpress') {
             return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
         }
         if (in_array($channel, ['reverb', 'reverbcom'], true)) {
             return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName);
+        }
+        if ($channel === 'wayfair') {
+            return $this->wayfair->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
         }
 
         $label = $this->channelLabel($channel);

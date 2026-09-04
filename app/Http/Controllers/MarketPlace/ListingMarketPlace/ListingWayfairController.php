@@ -22,6 +22,10 @@ class ListingWayfairController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'wayfair';
+    }
 
     public function updatePricing(Request $request)
     {

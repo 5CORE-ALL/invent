@@ -25,6 +25,13 @@
                                             </span>
                                         </label>
                                     </div>
+                                    <div id="listing-publish-wayfair-category" class="listing-publish-category" hidden>
+                                        <label>Suggested Wayfair class</label>
+                                        <div id="listing-publish-wayfair-category-path" class="listing-publish-category-path">Matching from a listed sibling…</div>
+                                        <label for="listing-publish-wayfair-class-id">Wayfair class ID</label>
+                                        <input type="number" id="listing-publish-wayfair-class-id" class="form-control form-control-sm" placeholder="e.g. 518" min="1" step="1">
+                                        <small>Required to create a new listing. Use the class from a listed sibling, or the taxonomy class ID from Partner Home.</small>
+                                    </div>
                                     <div id="listing-publish-aliexpress-category" class="listing-publish-category" hidden>
                                         <label>Suggested AliExpress category</label>
                                         <div id="listing-publish-aliexpress-category-path" class="listing-publish-category-path">Matching from the product type…</div>

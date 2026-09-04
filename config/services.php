@@ -687,6 +687,8 @@ return [
         'connect_timeout' => (int) env('WAYFAIR_CONNECT_TIMEOUT', 30),
         'oauth_retries' => (int) env('WAYFAIR_OAUTH_RETRIES', 3),
         'supplier_id' => env('WAYFAIR_SUPPLIER_ID', '2603'),
+        'manufacturer_id' => env('WAYFAIR_MANUFACTURER_ID'),
+        'default_class_id' => env('WAYFAIR_DEFAULT_CLASS_ID'),
         // Scope for catalog/title updates. If you get "Access Denied", run: php artisan wayfair:test-scopes
         'catalog_scope' => env('WAYFAIR_CATALOG_SCOPE', ''),
         // Product Catalog API (GraphQL) for title updates - use updateMarketSpecificCatalogItems mutation
