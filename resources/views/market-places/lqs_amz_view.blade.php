@@ -184,9 +184,9 @@
 
                         {{-- Inventory filter --}}
                         <select id="amz-inv-filter" class="form-select form-select-sm" style="width:140px;">
-                            <option value="all">All Inventory</option>
+                            <option value="all" selected>All Inventory</option>
                             <option value="zero">0 Inventory</option>
-                            <option value="more" selected>More than 0</option>
+                            <option value="more">More than 0</option>
                         </select>
 
                         {{-- LQS filter --}}

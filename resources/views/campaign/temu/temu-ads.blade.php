@@ -1740,12 +1740,12 @@
                             return Math.round(dil) + '%';
                         }
                     },
-                    { title: 'Impressions', field: 'impressions', width: 120, visible: false, hozAlign: 'center', formatter: numFmt, sorter: 'number',
-                      headerTooltip: 'Impressions (Overall) — same as Temu Data Report' },
                     { title: 'Clicks 30', field: 'clicks_l30', width: 78, minWidth: 70, hozAlign: 'center', formatter: clicks30Fmt, sorter: 'number',
                       headerTooltip: 'Last 30 days clicks (Overall). Red when below 300.' },
                     { title: 'Clicks 7', field: 'clicks_l7', width: 70, minWidth: 62, hozAlign: 'center', formatter: clicksFmt, sorter: 'number',
                       headerTooltip: 'Last 7 days clicks (Overall). Red when at or above the shared L7 Clicks rule (default 70) — pause zone.' },
+                    { title: 'Impr', field: 'impressions', width: 70, minWidth: 62, hozAlign: 'center', formatter: numFmt, sorter: 'number',
+                      headerTooltip: 'Impressions (Overall) for the selected period — same as Temu Data Report. CTR = Clicks ÷ Impr.' },
                     {
                         title: 'Pause/Run',
                         field: 'pause_run',
@@ -2370,8 +2370,8 @@
                 others: 'Others',
             };
             const COL_VIS_CAT_STORAGE = 'temu_ads_col_vis_cats';
-            const LOCKED_HIDDEN_FIELDS = { impressions: true };
-            const SKIP_COLUMN_BOX_FIELDS = { _select: true, impressions: true };
+            const LOCKED_HIDDEN_FIELDS = {};
+            const SKIP_COLUMN_BOX_FIELDS = { _select: true };
 
             function isLockedHiddenField(field) {
                 return !!LOCKED_HIDDEN_FIELDS[String(field || '')];
@@ -2532,6 +2532,7 @@
                 pinAfter(valid, 'create_ad', 'inv');
                 pinAfter(valid, 'ovl30', 'create_ad');
                 pinAfter(valid, 'dil_percent', 'ovl30');
+                pinAfter(valid, 'impressions', 'clicks_l7');
                 pinAfter(valid, 'ad_status', 'pause_run');
                 applyingColumnOrder = true;
                 try {
@@ -2768,11 +2769,21 @@
                         const saved = results[0];
                         const orderResp = results[1];
                         const map = (saved && typeof saved === 'object') ? saved : {};
+                        const imprUnlockKey = 'temu_ads_impr_unlocked';
+                        let unlockedImpr = false;
+                        if (map.impressions === false && !localStorage.getItem(imprUnlockKey)) {
+                            map.impressions = true;
+                            unlockedImpr = true;
+                            try { localStorage.setItem(imprUnlockKey, '1'); } catch (e) { /* ignore */ }
+                        }
                         applyColumnVisibility(map);
                         if (orderResp && orderResp.success && Array.isArray(orderResp.order)) {
                             applyColumnOrder(orderResp.order);
                         }
                         buildColumnDropdown(map);
+                        if (unlockedImpr) {
+                            saveColumnVisibilityToServer();
+                        }
                     })
                     .catch(function (err) {
                         console.error('Error loading column visibility:', err);
