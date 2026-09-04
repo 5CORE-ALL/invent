@@ -12,6 +12,7 @@ use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
+use App\Support\Marketplace\EbaySellAccountPolicies;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
@@ -132,7 +133,7 @@ class EbayListingPublishService
         }
 
         $policies = $this->policyIds($channel);
-        $defaults = (array) config('listing_manager.ebay2_defaults', []);
+        $defaults = EbaySellAccountPolicies::defaultsForChannel($channel);
         $payload = array_merge($details, [
             'sku' => $primarySku,
             'title' => $title,
@@ -708,18 +709,19 @@ class EbayListingPublishService
      */
     private function policyIds(string $channel): array
     {
-        $defaults = (array) config('listing_manager.ebay2_defaults', []);
+        $defaults = EbaySellAccountPolicies::defaultsForChannel($channel);
         $ids = [
             'shipping' => trim((string) ($defaults['shipping_policy_id'] ?? '')),
             'payment' => trim((string) ($defaults['payment_policy_id'] ?? '')),
             'return' => trim((string) ($defaults['return_policy_id'] ?? '')),
         ];
-        if ($this->registryKey($channel) !== 'ebaytwo') {
-            return $ids;
-        }
 
         try {
-            $resolved = app(Ebay2ApiService::class)->policyIds();
+            $resolved = match ($this->registryKey($channel)) {
+                'ebay' => app(EbayApiService::class)->policyIds(),
+                'ebaythree' => app(EbayThreeApiService::class)->policyIds(),
+                default => app(Ebay2ApiService::class)->policyIds(),
+            };
             foreach (['shipping', 'payment', 'return'] as $key) {
                 if ($ids[$key] === '') {
                     $ids[$key] = trim((string) ($resolved[$key] ?? ''));

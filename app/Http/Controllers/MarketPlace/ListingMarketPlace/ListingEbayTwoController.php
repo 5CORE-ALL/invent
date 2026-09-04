@@ -18,6 +18,11 @@ class ListingEbayTwoController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'ebaytwo';
+    }
+
     public function listingEbayTwo(Request $request)
     {
         $mode = $request->query('mode');
