@@ -1760,7 +1760,7 @@ class AliExpressApiService
      * @param  array<int, array<string, mixed>>  $newSkuRows
      * @return array{success:bool,product_id?:string,message?:string}
      */
-    public function addSkusToExistingProduct(string $productId, array $newSkuRows): array
+    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null): array
     {
         $productId = trim($productId);
         if ($productId === '' || $newSkuRows === []) {
@@ -1836,14 +1836,27 @@ class AliExpressApiService
             ];
         }
 
+        $infoData = is_array($infoRes['data'] ?? null) ? $infoRes['data'] : [];
+        $listedCategory = (int) ($this->extractCategoryId($infoData) ?? 0);
+        $categoryId = $listedCategory > 0 ? $listedCategory : (int) ($categoryId ?? 0);
+
         $edit = [
             'product_id' => $productId,
             'sku_info_list' => $existing,
         ];
+        if ($categoryId > 0) {
+            $edit['category_id'] = $categoryId;
+            $edit['aliexpress_category_id'] = $categoryId;
+        }
         $encoded = $this->encodeRequestPayload($edit);
+        $editParams = ['edit_product_request' => $encoded];
+        if ($categoryId > 0) {
+            $editParams['category_id'] = (string) $categoryId;
+            $editParams['aliexpress_category_id'] = (string) $categoryId;
+        }
         $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
-            'rest' => ['edit_product_request' => $encoded],
-            'sync' => ['edit_product_request' => $encoded],
+            'rest' => $editParams,
+            'sync' => $editParams,
         ]);
         $postedId = $this->extractPostedProductId($res['data'] ?? [])
             ?: $this->extractPostedProductId($res['result'] ?? [])
@@ -1860,9 +1873,19 @@ class AliExpressApiService
             'product_id' => $productId,
             'product_info' => ['sku_info_list' => $existing],
         ];
+        if ($categoryId > 0) {
+            $full['category_id'] = $categoryId;
+            $full['aliexpress_category_id'] = $categoryId;
+            $full['product_info']['category_id'] = $categoryId;
+            $full['product_info']['aliexpress_category_id'] = $categoryId;
+        }
+        $fullParams = ['schema_full_update_request' => $this->encodeRequestPayload($full)];
+        if ($categoryId > 0) {
+            $fullParams['category_id'] = (string) $categoryId;
+        }
         $res2 = $this->callApiFlexible('aliexpress.solution.schema.product.full.update', [
-            'rest' => ['schema_full_update_request' => $this->encodeRequestPayload($full)],
-            'sync' => ['schema_full_update_request' => $this->encodeRequestPayload($full)],
+            'rest' => $fullParams,
+            'sync' => $fullParams,
         ]);
         $postedId2 = $this->extractPostedProductId($res2['data'] ?? [])
             ?: $this->extractPostedProductId($res2['result'] ?? [])

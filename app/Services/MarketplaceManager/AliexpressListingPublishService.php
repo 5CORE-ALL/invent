@@ -150,13 +150,13 @@ class AliexpressListingPublishService
         }
 
         $parentKey = trim($parentHint) !== '' ? trim($parentHint) : $this->groupKey($primary);
-        $attached = $this->attachToListedSibling($parentKey, $publishSkus, $prepared);
+        $resolved = $this->resolveCategory($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId, $categoryName);
+        $categoryId = (int) ($resolved['id'] ?? $categoryId ?? 0);
+        $attached = $this->attachToListedSibling($parentKey, $publishSkus, $prepared, $categoryId > 0 ? $categoryId : null);
         if ($attached !== null) {
             return $attached;
         }
 
-        $resolved = $this->resolveCategory($primary, $primarySku, $title, $gallery[0] ?? '', $categoryId, $categoryName);
-        $categoryId = (int) ($resolved['id'] ?? 0);
         if ($categoryId <= 0) {
             return [
                 'success' => false,
@@ -715,7 +715,7 @@ class AliexpressListingPublishService
      * @param  list<array{sku: string, product: ProductMaster, price: float, inv: int, images: list<string>}>  $prepared
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}|null
      */
-    private function attachToListedSibling(string $parentKey, array $publishSkus, array $prepared): ?array
+    private function attachToListedSibling(string $parentKey, array $publishSkus, array $prepared, ?int $categoryId = null): ?array
     {
         $siblingId = $this->listedSiblingProductId($parentKey, $publishSkus);
         if ($siblingId === '') {
@@ -740,9 +740,10 @@ class AliexpressListingPublishService
             'parent' => $parentKey,
             'sibling_product_id' => $siblingId,
             'skus' => $publishSkus,
+            'category_id' => $categoryId,
         ]);
 
-        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows);
+        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows, $categoryId);
         if (empty($attach['success'])) {
             return [
                 'success' => false,
