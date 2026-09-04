@@ -18,6 +18,7 @@ class ListingVariationPreviewService
         private ReverbListingPublishService $reverb,
         private WayfairListingPublishService $wayfair,
         private EbayListingPublishService $ebay,
+        private TikTokListingPublishService $tiktok,
     ) {
     }
 
@@ -74,6 +75,9 @@ class ListingVariationPreviewService
         if ($this->isEbayChannel($channel) && $seedList !== []) {
             $payload['suggested_category'] = $this->ebay->suggestCategoryForSku($seedList[0], $channel);
         }
+        if ($this->isTiktokChannel($channel) && $seedList !== []) {
+            $payload['suggested_category'] = $this->tiktok->suggestCategoryForSku($seedList[0], $channel);
+        }
 
         return $payload;
     }
@@ -105,6 +109,9 @@ class ListingVariationPreviewService
         }
         if ($this->isEbayChannel($channel)) {
             return $this->ebay->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
+        }
+        if ($this->isTiktokChannel($channel)) {
+            return $this->tiktok->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb);
         }
 
         $label = $this->channelLabel($channel);
@@ -300,6 +307,14 @@ class ListingVariationPreviewService
         $parent = trim((string) ($product->parent ?? ''));
 
         return $parent !== '' ? $parent : trim((string) $product->sku);
+    }
+
+    private function isTiktokChannel(string $channel): bool
+    {
+        return in_array($channel, [
+            'tiktok', 'tiktokshop', 'tiktok1',
+            'tiktok2', 'tiktokshop2', 'tiktoktwo',
+        ], true);
     }
 
     private function isEbayChannel(string $channel): bool
