@@ -689,6 +689,9 @@
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Push SBGT to Youtube ads campaigns using the grid values for each selected row.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
+                        <button type="button" class="btn btn-sm btn-danger" id="gac-raw-push-pause" title="Pause matching YouTube campaigns in Google Ads using the Pause Rule (Spend LT + ACOS LT slabs).">
+                            <i class="fa fa-cloud-upload-alt"></i> Push Pause
+                        </button>
                     </div>
                     <div id="gac-raw-filter-bar" class="mb-3">
                         <div class="d-flex flex-wrap align-items-end gap-3 gap-md-4">
@@ -869,10 +872,11 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
-                        Slabs are checked <strong>top to bottom</strong>. The first match
-                        that is <strong>Spend LT &gt; amount</strong> and
-                        <strong>ACOS LT &gt; %</strong> marks <strong>Sts</strong> as paused
-                        on this grid (orange dot). This does not pause the campaign in Google Ads.
+                        Slabs are checked <strong>top to bottom</strong>. After you save,
+                        use <strong>Push Pause</strong> to pause matching
+                        <strong>ENABLED</strong> campaigns in Google Ads
+                        when <strong>Spend LT &gt; amount</strong> and
+                        <strong>ACOS LT &gt; %</strong>. Sts then shows the real Google Ads status.
                     </p>
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="gac-pause-rule-enabled">
@@ -1148,6 +1152,7 @@
             const gacVideoAiAuditRunUrl = @json(route('google.youtube.ads.campaigns.video.ai.audit.run'));
             const gacVideoAiPromptSaveUrl = @json(route('google.youtube.ads.campaigns.video.ai.prompt.save'));
             const gacRawPushSbgtUrl = @json(route('google.youtube.ads.campaigns.push.sbgt'));
+            const gacRawPushPauseUrl = @json(route('google.youtube.ads.campaigns.push.pause'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.youtube.ads.campaigns.badge.history'));
             const gacRawSbgtHistoryUrl = @json(route('google.youtube.ads.campaigns.sbgt.history'));
@@ -3606,7 +3611,9 @@
                     return;
                 }
                 var sbgtB = document.getElementById('gac-raw-push-sbgt');
+                var pauseB = document.getElementById('gac-raw-push-pause');
                 if (sbgtB) sbgtB.disabled = true;
+                if (pauseB) pauseB.disabled = true;
                 var origHtml = opts.btn.innerHTML;
                 opts.btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Pushing…';
 
@@ -3649,6 +3656,7 @@
                     .finally(function() {
                         opts.btn.innerHTML = origHtml;
                         if (sbgtB) sbgtB.disabled = false;
+                        if (pauseB) pauseB.disabled = false;
                     });
             }
 
@@ -3730,6 +3738,24 @@
                         confirmMsg: 'Push SBGT to ' + scope + '? Each row is sent to Google Ads using the SBGT value shown in the grid (direct by campaign_id).',
                         loadingTitle: 'Pushing SBGT (Youtube ads)…',
                         loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
+                    });
+                });
+            }
+            var pushPauseBtn = document.getElementById('gac-raw-push-pause');
+            if (pushPauseBtn) {
+                pushPauseBtn.addEventListener('click', function() {
+                    var ids = gacPushTargetCampaignIds();
+                    var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
+                    var scope = nSel > 0
+                        ? ('the ' + ids.length + ' checked row(s)')
+                        : ('all ' + ids.length + ' row(s) on this page');
+                    gacRunArtisanPush({
+                        url: gacRawPushPauseUrl,
+                        btn: pushPauseBtn,
+                        campaign_ids: ids,
+                        confirmMsg: 'Pause matching campaigns in Google Ads for ' + scope + '? Only ENABLED rows that hit the Pause Rule (Spend LT + ACOS LT) are paused on the live account.',
+                        loadingTitle: 'Pushing Pause to Google Ads…',
+                        loadingDetail: 'Pausing matching campaigns for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
                     });
                 });
             }

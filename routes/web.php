@@ -6656,6 +6656,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/youtube-ads/campaign-attr', 'saveCampaignAttr')->name('google.youtube.ads.campaigns.attr.save');
         Route::post('/google/shopping/youtube-ads/campaign-attr-option', 'saveCampaignAttrOption')->name('google.youtube.ads.campaigns.attr.option.save');
         Route::post('/google/shopping/youtube-ads/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.youtube.ads.campaigns.push.sbgt');
+        Route::post('/google/shopping/youtube-ads/push-pause', 'pushPauseRule')->name('google.youtube.ads.campaigns.push.pause');
         Route::get('/google/shopping/youtube-ads/badge-history', 'badgeHistory')->name('google.youtube.ads.campaigns.badge.history');
         Route::get('/google/shopping/youtube-ads/sbgt-history', 'sbgtHistory')->name('google.youtube.ads.campaigns.sbgt.history');
         Route::post('/google/shopping/youtube-ads/u7-distribution', 'u7Distribution')->name('google.youtube.ads.campaigns.u7.distribution');

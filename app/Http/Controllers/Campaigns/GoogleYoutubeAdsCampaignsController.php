@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Campaigns;
 
+use App\Models\GoogleAdsCampaign;
 use App\Models\GoogleYoutubeVideoAiAudit;
 use App\Models\GoogleYoutubeVideoAudit;
+use App\Services\GoogleAdsSbidService;
 use App\Support\GoogleShoppingCampaignsRawRule;
 use App\Support\GoogleYoutubeCampaignAttrs;
 use App\Support\GoogleYoutubeCampaignSales;
@@ -76,6 +78,138 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
             'rule' => GoogleYoutubePauseRule::resolved(),
             'status' => 200,
         ]);
+    }
+
+    public function pushPauseRule(Request $request): JsonResponse
+    {
+        $raw = $request->input('campaign_ids');
+        $ids = [];
+        if (is_array($raw)) {
+            foreach ($raw as $id) {
+                if (! is_scalar($id)) {
+                    continue;
+                }
+                $d = preg_replace('/\D/', '', (string) $id);
+                if ($d !== '' && strlen($d) <= 32) {
+                    $ids[$d] = true;
+                }
+                if (count($ids) >= 1000) {
+                    break;
+                }
+            }
+        }
+        $campaignIds = array_keys($ids);
+        if ($campaignIds === []) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-pause-youtube',
+                'message' => 'No campaign_ids to process. Load a page with data, or select rows with the checkboxes.',
+                'output' => '',
+            ], 422);
+        }
+
+        $rule = GoogleYoutubePauseRule::resolved();
+        if (empty($rule['enabled'])) {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-pause-youtube',
+                'message' => 'Pause rule is disabled. Enable it in Pause Rule first.',
+                'output' => '',
+            ], 422);
+        }
+
+        $customerId = preg_replace('/\D/', '', (string) config('services.google_ads.login_customer_id'));
+        if ($customerId === '') {
+            return response()->json([
+                'ok' => false,
+                'exit_code' => 1,
+                'command' => 'push-pause-youtube',
+                'message' => 'Google Ads customer ID is not configured.',
+                'output' => '',
+            ], 500);
+        }
+
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $lines = [];
+        $paused = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $lines[] = 'Pushing Pause Rule to Google Ads for '.count($campaignIds).' campaign id(s)...';
+        $lines[] = 'ENABLED campaigns that match a Spend LT + ACOS LT slab are paused on Google Ads.';
+
+        foreach ($campaignIds as $campaignId) {
+            $row = $rowsById[$campaignId] ?? null;
+            if ($row === null) {
+                $lines[] = "[SKIP] {$campaignId}: not found in grid data.";
+                $skipped++;
+
+                continue;
+            }
+
+            $name = (string) ($row['campaign_name'] ?? $campaignId);
+            $status = strtoupper(trim((string) ($row['campaign_status'] ?? '')));
+            $spendLt = (float) ($row['spend_lt'] ?? 0);
+            $acosLt = (float) ($row['acos_lt'] ?? 0);
+
+            if ($status === 'PAUSED') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): already PAUSED in Google Ads.";
+                $skipped++;
+
+                continue;
+            }
+            if ($status !== 'ENABLED') {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): status is {$status}, not ENABLED.";
+                $skipped++;
+
+                continue;
+            }
+            if (! GoogleYoutubePauseRule::shouldPause($spendLt, $acosLt, $rule)) {
+                $lines[] = "[SKIP] {$name} ({$campaignId}): Spend LT {$spendLt} / ACOS LT {$acosLt} does not match a slab.";
+                $skipped++;
+
+                continue;
+            }
+
+            try {
+                $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
+                $sbidService->pauseCampaign($customerId, $campaignResourceName);
+                GoogleAdsCampaign::where('campaign_id', $campaignId)
+                    ->update(['campaign_status' => 'PAUSED']);
+                $lines[] = "[PAUSED] {$name} ({$campaignId}): Spend LT {$spendLt}, ACOS LT {$acosLt} — paused in Google Ads.";
+                $paused++;
+            } catch (\Throwable $e) {
+                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                $errors++;
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = "Done. Paused in Google Ads: {$paused}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        if ($paused > 0) {
+            $this->bumpRawGridRowsCache();
+        }
+
+        $output = implode("\n", $lines);
+
+        return response()->json([
+            'ok' => $errors === 0,
+            'exit_code' => $errors === 0 ? 0 : 1,
+            'command' => 'push-pause-youtube',
+            'message' => $errors === 0
+                ? "Pause push finished — {$paused} campaign(s) paused in Google Ads."
+                : "Pause push finished with {$errors} error(s).",
+            'output' => $output,
+        ], $errors === 0 ? 200 : 422);
     }
 
     public function saveCampaignAttr(Request $request): JsonResponse
@@ -445,14 +579,6 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
         $arr['yt_category'] = (string) ($attrs['category'] ?? '');
         $arr['yt_audience'] = (string) ($attrs['audience'] ?? '');
         $arr['yt_landing'] = (string) ($attrs['landing'] ?? '');
-
-        $status = strtoupper(trim((string) ($arr['campaign_status'] ?? '')));
-        if ($status === 'ENABLED' && GoogleYoutubePauseRule::shouldPause(
-            (float) ($arr['spend_lt'] ?? 0),
-            (float) ($arr['acos_lt'] ?? 0)
-        )) {
-            $arr['campaign_status'] = 'PAUSED';
-        }
 
         // UB% stays in enrich for SBID; do not show 7/2/1 UB% on this grid.
         unset(
