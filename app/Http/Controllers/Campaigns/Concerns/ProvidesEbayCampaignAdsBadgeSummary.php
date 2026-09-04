@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Campaigns\Concerns;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 trait ProvidesEbayCampaignAdsBadgeSummary
 {
@@ -46,7 +48,66 @@ trait ProvidesEbayCampaignAdsBadgeSummary
             'acos' => $acos,
             'tcos' => $tcos,
             'net_sales' => $netSales,
+            'cbid_null' => $this->cbidNullInStockCount(),
+            'missing_ads' => $this->cbidNullInStockCount(),
         ]);
+    }
+
+    /**
+     * Missing ads: not in a campaign, in stock, SKU matched, price set,
+     * and the listing is not already enrolled in another campaign row.
+     */
+    public static function missingAdsTotalCount(): int
+    {
+        return (new static)->cbidNullInStockCount();
+    }
+
+    /**
+     * Missing ads: not in a campaign, in stock, SKU matched, price set,
+     * and the listing is not already enrolled in another campaign row.
+     */
+    protected function missingAdsCountFor(string $adsTable, string $metricsTable): int
+    {
+        if (! Schema::hasTable($adsTable)
+            || ! Schema::hasTable($metricsTable)
+            || ! Schema::hasTable('shopify_skus')) {
+            return 0;
+        }
+
+        $skuExpr = Schema::hasColumn($adsTable, 'sku')
+            ? 'COALESCE(em.sku, ca.sku)'
+            : 'em.sku';
+        $priceExpr = Schema::hasColumn($adsTable, 'price')
+            ? 'COALESCE(em.ebay_price, ca.price)'
+            : 'em.ebay_price';
+
+        return (int) DB::table($adsTable.' as ca')
+            ->leftJoin($metricsTable.' as em', 'em.item_id', '=', 'ca.listing_id')
+            ->where(function ($q) {
+                $q->whereNull('ca.campaign_id')->orWhere('ca.campaign_id', '');
+            })
+            ->whereNotExists(function ($q) use ($adsTable) {
+                $q->select(DB::raw(1))
+                    ->from($adsTable.' as x')
+                    ->whereColumn('x.listing_id', 'ca.listing_id')
+                    ->whereNotNull('x.campaign_id')
+                    ->where('x.campaign_id', '!=', '');
+            })
+            ->whereRaw("{$skuExpr} IS NOT NULL")
+            ->whereRaw("{$skuExpr} != ''")
+            ->whereRaw("{$priceExpr} > 0")
+            ->whereRaw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = {$skuExpr} LIMIT 1) > 0")
+            ->distinct()
+            ->count('ca.listing_id');
+    }
+
+    /**
+     * Missing ads: not in a campaign, in stock, SKU matched, price set.
+     * Override per marketplace when the ads table differs.
+     */
+    protected function cbidNullInStockCount(): int
+    {
+        return 0;
     }
 
     /**

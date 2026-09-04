@@ -528,10 +528,9 @@
             function updateBadges(rows) {
                 let spend = 0, clicks = 0, sold = 0, sales = 0, active = 0, views = 0, missing = 0;
                 (admAllRows.length ? admAllRows : rows).forEach(function (r) {
-                    if (r && r.is_sub_row) return;
-                    if (r && r.has_missing_ads && r.missing_ads_href) {
-                        missing += Number(r.missing_ads || 0);
-                    }
+                    if (!r || !r.has_missing_ads || !r.missing_ads_href) return;
+                    if (r.is_group_total || r.is_sum_row) return;
+                    missing += Number(r.missing_ads || 0);
                 });
                 rows.forEach(function (r) {
                     if (r && r.is_sub_row) return;

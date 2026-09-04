@@ -1849,6 +1849,16 @@ class AdvertisementMasterController extends Controller
             $safeCount(static fn () => MappingChannelCounts::countForSlug('temu')),
             $this->temuMissingMappingHref()
         );
+        $put(
+            ['ebay', 'ebay1'],
+            $safeCount(static fn () => EbayCampaignAdsController::missingAdsTotalCount()),
+            $this->namedHref('ebay.campaign.ads')
+        );
+        $put(
+            ['ebay2'],
+            $safeCount(static fn () => Ebay2CampaignAdsController::missingAdsTotalCount()),
+            $this->namedHref('ebay2.campaign.ads')
+        );
 
         return $map;
     }
@@ -1914,6 +1924,12 @@ class AdvertisementMasterController extends Controller
      */
     private function lookupMissingAdsSource(array $row, array $sources): ?array
     {
+        // Group totals (eBay Total) must not inherit the eBay 1 source from
+        // stripping "Total". They roll up child counts instead.
+        if (! empty($row['is_group_total']) || ! empty($row['is_sum_row'])) {
+            return null;
+        }
+
         foreach (['channel_key', 'channel'] as $field) {
             $norm = $this->normalizeChannelMatchKey((string) ($row[$field] ?? ''));
             if ($norm !== '' && isset($sources[$norm])) {

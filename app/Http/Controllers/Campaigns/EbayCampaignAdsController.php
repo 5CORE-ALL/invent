@@ -749,6 +749,14 @@ class EbayCampaignAdsController extends Controller
         ];
     }
 
+    /**
+     * Missing ads: listing is not in any campaign, has a SKU match, a price, and inv > 0.
+     */
+    protected function cbidNullInStockCount(): int
+    {
+        return $this->missingAdsCountFor('ebay_campaign_ads', 'ebay_metrics');
+    }
+
     public function getData(Request $request)
     {
         $query = DB::table('ebay_campaign_ads as ca')
@@ -756,17 +764,17 @@ class EbayCampaignAdsController extends Controller
             ->select(
                 'ca.*',
                 // Use SKU from ebay_metrics if matched, fallback to listing_id
-                DB::raw("COALESCE(em.sku, ca.listing_id) as resolved_sku"),
-                DB::raw("CASE WHEN em.sku IS NOT NULL THEN 1 ELSE 0 END as sku_matched"),
-                'em.ebay_price as metric_price',
+                DB::raw("COALESCE(em.sku, ca.sku, ca.listing_id) as resolved_sku"),
+                DB::raw("CASE WHEN COALESCE(em.sku, ca.sku) IS NOT NULL AND COALESCE(em.sku, ca.sku) != '' THEN 1 ELSE 0 END as sku_matched"),
+                DB::raw("COALESCE(em.ebay_price, ca.price) as metric_price"),
                 'em.views',
                 'em.l7_views',
                 'em.ebay_l30',
                 // Dilution inputs (from shopify_skus, matched by sku). Correlated subqueries
                 // avoid row multiplication and keep every ad row visible even when unmatched.
                 // DIL = (quantity / inv) * 100  — quantity = L30 sold, inv = stock on hand.
-                DB::raw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = em.sku LIMIT 1) as shopify_inv"),
-                DB::raw("(SELECT ss.quantity FROM shopify_skus ss WHERE ss.sku = em.sku LIMIT 1) as shopify_qty")
+                DB::raw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = COALESCE(em.sku, ca.sku) LIMIT 1) as shopify_inv"),
+                DB::raw("(SELECT ss.quantity FROM shopify_skus ss WHERE ss.sku = COALESCE(em.sku, ca.sku) LIMIT 1) as shopify_qty")
             );
 
         if ($request->filled('funding_strategy')) {

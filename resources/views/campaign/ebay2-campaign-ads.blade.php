@@ -35,6 +35,7 @@
         'badgePrefix' => 'eca2',
         'badgesUrl' => route('ebay2.campaign.ads.badges'),
         'storeSalesTitle' => 'eBay 2 L30 store sales',
+        'showCbidNullBadge' => true,
     ])
 
     {{-- Filters --}}
@@ -54,7 +55,7 @@
                 </div>
                 <div class="col-auto">
                     <select id="status-filter" class="form-select form-select-sm">
-                        <option value="">All Status</option>
+                        <option value="" selected>All Status</option>
                         <option value="RUNNING">RUNNING</option>
                         <option value="PAUSED">PAUSED</option>
                         <option value="ENDED">ENDED</option>
@@ -303,6 +304,7 @@ function loadData() {
                     if (!allLoadedListingIds.includes(lid)) selectedIds.delete(lid);
                 });
                 table.replaceData(resp.data);
+                applyCbidNullFilter();
                 updateSelectedCount();
                 syncSelectAllHeader();
             } else {
@@ -317,11 +319,51 @@ function loadData() {
         });
 }
 
+function listingHasCampaign(listingId) {
+    if (listingId == null || listingId === '') return false;
+    const lid = String(listingId);
+    if (typeof table === 'undefined' || !table) return false;
+    return (table.getData() || []).some(function (r) {
+        const cid = r && r.campaign_id;
+        return String(r && r.listing_id) === lid && cid != null && cid !== '' && cid !== 'null';
+    });
+}
+
+function isMissingAd(row) {
+    const inv = parseFloat(row && row.shopify_inv) || 0;
+    const price = parseFloat(row && row.metric_price);
+    const skuMatched = row && (row.sku_matched == 1 || row.sku_matched === true);
+    const campaignId = row && row.campaign_id;
+    const noCampaign = campaignId == null || campaignId === '' || campaignId === 'null';
+    if (!noCampaign || inv <= 0 || !skuMatched || !isFinite(price) || price <= 0) {
+        return false;
+    }
+    return !listingHasCampaign(row.listing_id);
+}
+
+let cbidNullFilterOn = false;
+
+function applyCbidNullFilter() {
+    if (!table) return;
+    if (cbidNullFilterOn) {
+        table.setFilter(function (data) { return isMissingAd(data); });
+    } else {
+        table.clearFilter();
+    }
+    const wrap = document.getElementById('eca2-badge-cbidnull-wrap');
+    if (wrap) {
+        wrap.classList.toggle('is-on', cbidNullFilterOn);
+        wrap.setAttribute('aria-pressed', cbidNullFilterOn ? 'true' : 'false');
+    }
+}
+
 function clearFilters() {
     $('#search-input').val('');
     $('#funding-filter').val('');
     $('#status-filter').val('');
     $('#promote-filter').val('');
+    cbidNullFilterOn = false;
+    applyCbidNullFilter();
     loadData();
 }
 
@@ -554,6 +596,26 @@ $(document).ready(function () {
 
     // Dropdowns — auto load on change
     $('#funding-filter, #status-filter, #promote-filter').on('change', loadData);
+
+    const cbidWrap = document.getElementById('eca2-badge-cbidnull-wrap');
+    if (cbidWrap) {
+        cbidWrap.addEventListener('click', function () {
+            cbidNullFilterOn = !cbidNullFilterOn;
+            if (cbidNullFilterOn) {
+                $('#status-filter').val('');
+                $('#funding-filter').val('');
+            } else {
+                $('#status-filter').val('');
+            }
+            loadData();
+        });
+        cbidWrap.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                cbidWrap.click();
+            }
+        });
+    }
 
     loadData();
 });

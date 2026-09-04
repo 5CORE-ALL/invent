@@ -15,6 +15,13 @@
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--acos">ACOS: <span id="{{ $badgePrefix }}-badge-acos">0%</span></span>
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--tcos">TCOS: <span id="{{ $badgePrefix }}-badge-tcos">0%</span></span>
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--ssales" title="{{ $storeSalesTitle }}">S SALES: <span id="{{ $badgePrefix }}-badge-ssales">$0</span></span>
+            @if (! empty($showCbidNullBadge))
+            <span class="ebay-ca-stat-badge ebay-ca-stat-badge--cbidnull ebay-ca-stat-badge-link" id="{{ $badgePrefix }}-badge-cbidnull-wrap"
+                  role="button" tabindex="0" aria-pressed="false"
+                  title="Missing ads: not in any campaign, inventory &gt; 0, SKU matched, and price is set. Click to show only those rows.">
+                MISSING: <span id="{{ $badgePrefix }}-badge-cbidnull">0</span>
+            </span>
+            @endif
         </div>
     </div>
 </div>
@@ -39,6 +46,10 @@
     .ebay-ca-stat-badge--acos   { background: #ea580c; }
     .ebay-ca-stat-badge--tcos   { background: #7c3aed; }
     .ebay-ca-stat-badge--ssales { background: #0d9488; }
+    .ebay-ca-stat-badge--cbidnull { background: #dc2626; }
+    .ebay-ca-stat-badge-link { cursor: pointer; user-select: none; }
+    .ebay-ca-stat-badge-link:hover { filter: brightness(1.08); }
+    .ebay-ca-stat-badge-link.is-on { outline: 2px solid #111827; outline-offset: 2px; }
 </style>
 
 <script>
@@ -68,6 +79,10 @@
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                 }));
+                const cbidEl = $('#' + prefix + '-badge-cbidnull');
+                if (cbidEl.length) {
+                    cbidEl.text(Math.round(Number(m.missing_ads || m.cbid_null || 0)).toLocaleString());
+                }
             })
             .fail(function () {
                 $('#' + prefix + '-badge-spend').text('—');
