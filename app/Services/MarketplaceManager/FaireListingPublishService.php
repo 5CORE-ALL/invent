@@ -26,7 +26,7 @@ class FaireListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation'): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -102,9 +102,10 @@ class FaireListingPublishService
             ];
         }
 
-        $existingProductId = $this->existingParentProductId($primary);
+        $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
+        $existingProductId = $mode === 'variation' ? $this->existingParentProductId($primary) : '';
         if ($existingProductId !== '') {
-            $result = $this->addVariantsToProduct($existingProductId, $prepared);
+            $result = $this->addVariantsToProduct($existingProductId, $prepared, $title, $primary);
         } else {
             $result = $this->createProduct($title, $primary, $prepared);
         }
@@ -291,22 +292,32 @@ class FaireListingPublishService
      * @param  list<array{sku: string, product: ProductMaster, price: float, images: list<string>, inv: int}>  $prepared
      * @return array{success: bool, message: string, goods_id?: string}
      */
-    private function addVariantsToProduct(string $productId, array $prepared): array
+    private function addVariantsToProduct(string $productId, array $prepared, string $title, ProductMaster $primary): array
     {
-        $optionName = 'Variation';
         $info = $this->api->getProductInfo($productId);
-        if (! empty($info['success']) && is_array($info['data'] ?? null)) {
-            $sets = $info['data']['variant_option_sets'] ?? $info['data']['options'] ?? [];
-            if (is_array($sets) && isset($sets[0]['name']) && trim((string) $sets[0]['name']) !== '') {
-                $optionName = trim((string) $sets[0]['name']);
-            }
+        $data = (! empty($info['success']) && is_array($info['data'] ?? null)) ? $info['data'] : [];
+        $sets = $this->optionSetsFromProduct($data);
+        if ($sets === []) {
+            return $this->createProduct($title, $primary, $prepared);
         }
 
         $created = 0;
         foreach ($prepared as $row) {
-            $payload = $this->variantPayload($row, $optionName);
+            $payload = $this->variantPayload($row, $sets, $data);
             $payload['idempotence_token'] = (string) Str::uuid();
             $res = $this->api->createVariant($productId, $payload);
+            if (empty($res['success']) && $this->isMissingOptionsError((string) ($res['message'] ?? ''))) {
+                $retry = $payload;
+                unset($retry['options']);
+                $retry['options'] = array_map(static function (array $opt) {
+                    return array_filter([
+                        'name' => $opt['name'] ?? null,
+                        'value' => $opt['value'] ?? null,
+                    ], fn ($v) => $v !== null && $v !== '');
+                }, $payload['options']);
+                $retry['idempotence_token'] = (string) Str::uuid();
+                $res = $this->api->createVariant($productId, $retry);
+            }
             if (empty($res['success'])) {
                 return [
                     'success' => false,
@@ -325,19 +336,195 @@ class FaireListingPublishService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return list<array{name: string, id?: string}>
+     */
+    private function optionSetsFromProduct(array $data): array
+    {
+        $sets = [];
+        foreach ([$data['variant_option_sets'] ?? [], $data['options'] ?? []] as $bag) {
+            if (! is_array($bag)) {
+                continue;
+            }
+            foreach ($bag as $key => $row) {
+                if (is_string($row) && ! is_numeric($key)) {
+                    $name = trim((string) $key);
+                    if ($name !== '' && ! $this->hasOptionSet($sets, $name)) {
+                        $sets[] = ['name' => $name];
+                    }
+                    continue;
+                }
+                if (! is_array($row)) {
+                    continue;
+                }
+                $name = trim((string) ($row['name'] ?? $row['option_name'] ?? $row['display_name'] ?? ''));
+                if ($name === '' && ! is_numeric($key)) {
+                    $name = trim((string) $key);
+                }
+                if ($name === '') {
+                    continue;
+                }
+                $set = ['name' => $name];
+                $id = trim((string) ($row['id'] ?? $row['option_id'] ?? $row['variant_option_set_id'] ?? ''));
+                if ($id !== '') {
+                    $set['id'] = $id;
+                }
+                if (! $this->hasOptionSet($sets, $name)) {
+                    $sets[] = $set;
+                }
+            }
+        }
+
+        $variants = $data['variants'] ?? $data['product_variants'] ?? [];
+        if (is_array($variants)) {
+            foreach ($variants as $variant) {
+                if (! is_array($variant)) {
+                    continue;
+                }
+                foreach ($variant['options'] ?? [] as $opt) {
+                    if (! is_array($opt)) {
+                        continue;
+                    }
+                    $name = trim((string) ($opt['name'] ?? $opt['option_name'] ?? ''));
+                    if ($name === '' || $this->hasOptionSet($sets, $name)) {
+                        continue;
+                    }
+                    $set = ['name' => $name];
+                    $id = trim((string) ($opt['id'] ?? $opt['option_id'] ?? ''));
+                    if ($id !== '') {
+                        $set['id'] = $id;
+                    }
+                    $sets[] = $set;
+                }
+            }
+        }
+
+        return $sets;
+    }
+
+    /**
+     * @param  list<array{name: string, id?: string}>  $sets
+     */
+    private function hasOptionSet(array $sets, string $name): bool
+    {
+        foreach ($sets as $set) {
+            if (strcasecmp((string) ($set['name'] ?? ''), $name) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, string>
+     */
+    private function firstVariantOptionValues(array $data): array
+    {
+        $variants = $data['variants'] ?? $data['product_variants'] ?? [];
+        if (! is_array($variants)) {
+            return [];
+        }
+        foreach ($variants as $variant) {
+            if (! is_array($variant) || ! is_array($variant['options'] ?? null)) {
+                continue;
+            }
+            $out = [];
+            foreach ($variant['options'] as $opt) {
+                if (! is_array($opt)) {
+                    continue;
+                }
+                $name = trim((string) ($opt['name'] ?? $opt['option_name'] ?? ''));
+                $value = trim((string) ($opt['value'] ?? $opt['option_value'] ?? ''));
+                if ($name !== '' && $value !== '') {
+                    $out[$name] = $value;
+                }
+            }
+            if ($out !== []) {
+                return $out;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<array{name: string, id?: string}>  $sets
+     * @return list<string>
+     */
+    private function existingOptionValuesForSet(array $data, string $name): array
+    {
+        $out = [];
+        foreach ($data['variant_option_sets'] ?? [] as $row) {
+            if (! is_array($row) || strcasecmp((string) ($row['name'] ?? ''), $name) !== 0) {
+                continue;
+            }
+            foreach ($row['values'] ?? [] as $value) {
+                $value = is_array($value) ? trim((string) ($value['value'] ?? $value['name'] ?? '')) : trim((string) $value);
+                if ($value !== '') {
+                    $out[] = $value;
+                }
+            }
+        }
+        foreach ($data['variants'] ?? $data['product_variants'] ?? [] as $variant) {
+            if (! is_array($variant)) {
+                continue;
+            }
+            foreach ($variant['options'] ?? [] as $opt) {
+                if (! is_array($opt) || strcasecmp((string) ($opt['name'] ?? ''), $name) !== 0) {
+                    continue;
+                }
+                $value = trim((string) ($opt['value'] ?? ''));
+                if ($value !== '' && ! in_array($value, $out, true)) {
+                    $out[] = $value;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array{sku: string, product: ProductMaster, price: float, images: list<string>, inv: int}  $row
+     * @param  list<array{name: string, id?: string}>|string  $optionSets
+     * @param  array<string, mixed>  $productData
      * @return array<string, mixed>
      */
-    private function variantPayload(array $row, string $optionName = 'Variation'): array
+    private function variantPayload(array $row, array|string $optionSets = 'Variation', array $productData = []): array
     {
         $wholesaleMinor = (int) round($row['price'] * 100);
         $retailMinor = (int) round($this->resolveRetailPrice($row['sku'], $row['product'], $row['price']) * 100);
+        $sets = is_string($optionSets)
+            ? [['name' => $optionSets]]
+            : $optionSets;
+        if ($sets === []) {
+            $sets = [['name' => 'Variation']];
+        }
+        $copied = $this->firstVariantOptionValues($productData);
+        $primaryName = (string) ($sets[0]['name'] ?? 'Variation');
+        $used = $this->existingOptionValuesForSet($productData, $primaryName);
+        $primaryValue = $this->optionValueForSku($row['sku'], $used);
+
+        $options = [];
+        foreach ($sets as $index => $set) {
+            $name = trim((string) ($set['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $value = $index === 0
+                ? $primaryValue
+                : (string) ($copied[$name] ?? $primaryValue);
+            $opt = ['name' => $name, 'value' => $value];
+            if (trim((string) ($set['id'] ?? '')) !== '') {
+                $opt['id'] = trim((string) $set['id']);
+            }
+            $options[] = $opt;
+        }
 
         return [
             'sku' => $row['sku'],
-            'options' => [
-                ['name' => $optionName, 'value' => $row['sku']],
-            ],
+            'options' => $options,
             'available_quantity' => max(0, (int) $row['inv']),
             'prices' => [[
                 'geo_constraint' => ['country' => 'USA'],
@@ -345,6 +532,47 @@ class FaireListingPublishService
                 'retail_price' => ['amount_minor' => $retailMinor, 'currency' => 'USD'],
             ]],
         ];
+    }
+
+    /**
+     * @param  list<string>  $used
+     */
+    private function optionValueForSku(string $sku, array $used = []): string
+    {
+        $sku = trim($sku);
+        $looksLikeSku = false;
+        foreach ($used as $value) {
+            if (stripos($value, 'KS ') !== false || preg_match('/\s/', $value)) {
+                $looksLikeSku = true;
+                break;
+            }
+        }
+        if ($looksLikeSku || $used === []) {
+            $candidate = $sku;
+        } else {
+            $parts = preg_split('/\s+/', $sku) ?: [];
+            $tail = (string) end($parts);
+            $map = [
+                'GEAR' => 'Gear', 'PINK' => 'Pink', 'WH' => 'White', 'WHT' => 'White',
+                'GLD' => 'Gold', 'GOLD' => 'Gold', 'BLK' => 'Black', 'RED' => 'Red',
+                'BLU' => 'Blue', 'BLUE' => 'Blue',
+            ];
+            $candidate = $map[strtoupper($tail)] ?? (ucwords(strtolower($tail)) ?: $sku);
+        }
+        $base = $candidate;
+        $n = 2;
+        while (in_array($candidate, $used, true)) {
+            $candidate = $base.' '.$n;
+            $n++;
+        }
+
+        return $candidate;
+    }
+
+    private function isMissingOptionsError(string $message): bool
+    {
+        return str_contains(strtolower($message), 'must have options')
+            || str_contains(strtolower($message), 'options');
     }
 
     /**
