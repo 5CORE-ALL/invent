@@ -37,7 +37,7 @@ class ListingPublishCommonController extends Controller
     public function publish(Request $request, ListingVariationPreviewService $preview)
     {
         if (function_exists('set_time_limit')) {
-            @set_time_limit(180);
+            @set_time_limit(300);
         }
 
         $channel = strtolower(trim((string) $request->input('channel', '')));

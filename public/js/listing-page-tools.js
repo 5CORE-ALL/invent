@@ -30,17 +30,55 @@
     }
 
     function notify(type, message) {
-        if (typeof showNotification === 'function') {
-            showNotification(type, message);
-            return;
-        }
-        const el = document.createElement('div');
-        el.className = 'position-fixed bottom-0 end-0 p-3';
-        el.style.zIndex = '1080';
-        el.innerHTML = '<div class="alert alert-' + type + ' alert-dismissible fade show">' + escapeHtml(message) +
-            '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+        showPublishStatus(type === 'danger' ? 'error' : 'success', message);
+    }
+
+    function ensurePublishStatusOverlay() {
+        let el = document.getElementById('listing-publish-status');
+        if (el) return el;
+        el = document.createElement('div');
+        el.id = 'listing-publish-status';
+        el.className = 'listing-publish-status-overlay';
+        el.hidden = true;
+        el.innerHTML = '<div class="listing-publish-status-card" role="alertdialog" aria-modal="true">' +
+            '<div id="listing-publish-status-icon" class="listing-publish-status-icon"></div>' +
+            '<h3 id="listing-publish-status-title">Publishing…</h3>' +
+            '<p id="listing-publish-status-message" class="listing-publish-status-message"></p>' +
+            '<button type="button" class="btn btn-primary" id="listing-publish-status-close" hidden>Close</button>' +
+            '</div>';
         document.body.appendChild(el);
-        setTimeout(function () { el.remove(); }, type === 'danger' ? 8000 : 3500);
+        return el;
+    }
+
+    function hidePublishStatus() {
+        const el = document.getElementById('listing-publish-status');
+        if (!el) return;
+        el.hidden = true;
+        el.classList.remove('is-loading', 'is-success', 'is-error');
+    }
+
+    function showPublishStatus(state, message, title) {
+        const el = ensurePublishStatusOverlay();
+        const icon = document.getElementById('listing-publish-status-icon');
+        const titleEl = document.getElementById('listing-publish-status-title');
+        const msgEl = document.getElementById('listing-publish-status-message');
+        const closeBtn = document.getElementById('listing-publish-status-close');
+        el.classList.remove('is-loading', 'is-success', 'is-error');
+        el.classList.add(state === 'error' ? 'is-error' : (state === 'success' ? 'is-success' : 'is-loading'));
+        if (icon) {
+            icon.innerHTML = state === 'loading'
+                ? '<i class="fas fa-spinner fa-spin"></i>'
+                : (state === 'success' ? '<i class="fas fa-check"></i>' : '<i class="fas fa-exclamation-triangle"></i>');
+        }
+        if (titleEl) {
+            titleEl.textContent = title || (state === 'loading' ? 'Publishing…' : (state === 'success' ? 'Published' : 'Publish failed'));
+        }
+        if (msgEl) msgEl.textContent = String(message || '');
+        if (closeBtn) closeBtn.hidden = state === 'loading';
+        if (el.parentNode !== document.body) {
+            document.body.appendChild(el);
+        }
+        el.hidden = false;
     }
 
     function findTable() {
@@ -556,6 +594,9 @@
 
     function ajaxError(xhr) {
         if (!xhr) return 'Request failed.';
+        if (xhr.statusText === 'timeout') {
+            return 'AliExpress took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
+        }
         if (xhr.status === 0) return 'Timed out or the connection dropped. Try again.';
         let json = xhr.responseJSON;
         if (!json && xhr.responseText) {
@@ -564,7 +605,9 @@
         if (json && (json.message || json.error)) return String(json.message || json.error);
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
         if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
-        if (xhr.status === 502 || xhr.status === 504) return 'Publish timed out while talking to AliExpress. Try again.';
+        if (xhr.status === 502 || xhr.status === 504) {
+            return 'AliExpress took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
+        }
         if (xhr.status === 500) return 'Server error during publish. Try again.';
         if (xhr.status) return 'Request failed (HTTP ' + xhr.status + ').';
         return 'Request failed.';
@@ -670,7 +713,7 @@
                 weight_lb: isAliexpressChannel() ? selectedWeightLb() : ''
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
-            timeout: 180000
+            timeout: 300000
         });
     }
 
@@ -806,6 +849,7 @@
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Publishing');
             $('#listingPublishModal .btn-close, #listingPublishModal [data-bs-dismiss="modal"]').prop('disabled', true);
             $('#listing-publish-mode-box input').prop('disabled', true);
+            showPublishStatus('loading', 'Publishing ' + groups[0].parent + ' (1/' + groups.length + ')…');
             let index = 0;
             const ok = [];
             const fail = [];
@@ -814,15 +858,22 @@
                     $btn.prop('disabled', false).html(originalHtml);
                     $('#listingPublishModal .btn-close, #listingPublishModal [data-bs-dismiss="modal"]').prop('disabled', false);
                     $('#listing-publish-mode-box input').prop('disabled', false);
-                    if (ok.length) notify('success', ok.join(' '));
-                    if (fail.length) notify('danger', fail.join(' '));
-                    if (ok.length && !fail.length) hideModal();
+                    const progress = document.getElementById('listing-publish-progress');
+                    if (progress) progress.textContent = '';
+                    if (fail.length) {
+                        showPublishStatus('error', (ok.length ? ok.join('\n') + '\n\n' : '') + fail.join('\n'));
+                    } else {
+                        showPublishStatus('success', ok.join('\n') || 'Published.');
+                        hideModal();
+                    }
                     return;
                 }
                 const group = groups[index];
                 index += 1;
                 const progress = document.getElementById('listing-publish-progress');
-                if (progress) progress.textContent = 'Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…';
+                const label = 'Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…';
+                if (progress) progress.textContent = label;
+                showPublishStatus('loading', label);
                 publishGroup(group.skus, group.parent).done(function (response) {
                     const goodsId = String((response && response.goods_id) || '').trim();
                     const listedSkus = (response && response.skus) || group.skus;
@@ -892,6 +943,10 @@
 
     $(function () {
         bindReverbCategorySearch();
+        $(document).off('click.listingPageTools', '#listing-publish-status-close')
+            .on('click.listingPageTools', '#listing-publish-status-close', function () {
+                hidePublishStatus();
+            });
         if (!cfg().tableId) return;
         waitForTable(function (table) {
             enhanceTable(table);
