@@ -689,7 +689,7 @@
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Push SBGT to Youtube ads campaigns using the grid values for each selected row.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-danger" id="gac-raw-push-pause" title="Pause matching YouTube campaigns in Google Ads using the Pause Rule (Spend LT + ACOS LT slabs).">
+                        <button type="button" class="btn btn-sm btn-danger" id="gac-raw-push-pause" title="Queue matching YouTube VIDEO campaigns and open a Google Ads Script that pauses them on the live account. The Ads API cannot pause VIDEO campaigns.">
                             <i class="fa fa-cloud-upload-alt"></i> Push Pause
                         </button>
                     </div>
@@ -873,10 +873,13 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">
                         Slabs are checked <strong>top to bottom</strong>. After you save,
-                        use <strong>Push Pause</strong> to pause matching
-                        <strong>ENABLED</strong> campaigns in Google Ads
+                        use <strong>Push Pause</strong> for matching
+                        <strong>ENABLED</strong> campaigns
                         when <strong>Spend LT &gt; amount</strong> and
-                        <strong>ACOS LT &gt; %</strong>. Sts then shows the real Google Ads status.
+                        <strong>ACOS LT &gt; %</strong>.
+                        Google blocks pausing YouTube <strong>VIDEO</strong> campaigns through the Ads API,
+                        so Push Pause prepares a <strong>Google Ads Script</strong> — paste it under
+                        Tools → Bulk actions → Scripts and click Run.
                     </p>
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="gac-pause-rule-enabled">
@@ -899,10 +902,49 @@
                         <i class="fas fa-plus me-1"></i>Add slab
                     </button>
                     <p class="small text-danger mb-0 mt-2 d-none" id="gacRawPauseRuleErr" role="alert"></p>
+                    <details class="mt-3">
+                        <summary class="small fw-semibold">Optional: hourly watcher script (install once)</summary>
+                        <p class="small text-muted mb-2 mt-2">
+                            Save this as a second script and set a hourly schedule.
+                            After Push Pause, it pulls the queued IDs and pauses them without pasting a new script each time.
+                        </p>
+                        <textarea id="gac-yt-pause-watcher-script" class="form-control font-monospace small" rows="8" readonly>{{ $youtubePauseWatcherScript ?? '' }}</textarea>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="gac-yt-copy-watcher-script">Copy watcher script</button>
+                    </details>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="gacRawPauseRuleSaveBtn">Save &amp; refresh grid</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="gacYtPauseScriptModal" tabindex="-1" aria-labelledby="gacYtPauseScriptModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="gacYtPauseScriptModalLabel">Pause YouTube campaigns in Google Ads</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small mb-2">
+                        Google Ads API cannot pause <strong>VIDEO</strong> campaigns
+                        (<code>MUTATE_NOT_ALLOWED</code>). Run this script on the live account:
+                    </p>
+                    <ol class="small mb-3 ps-3">
+                        <li>Open <a href="https://ads.google.com/aw/bulk/scripts" target="_blank" rel="noopener">Google Ads → Tools → Bulk actions → Scripts</a></li>
+                        <li>Click <strong>+</strong>, paste the script, save</li>
+                        <li>Authorize, then click <strong>Run</strong></li>
+                        <li>Come back here and click <strong>Pull Data</strong> (or Refresh) so Sts matches Google Ads</li>
+                    </ol>
+                    <textarea id="gac-yt-pause-script-text" class="form-control font-monospace small" rows="14" readonly></textarea>
+                    <pre id="gac-yt-pause-script-log" class="small bg-light border rounded p-2 mt-2 mb-0" style="white-space:pre-wrap;max-height:160px;overflow:auto;"></pre>
+                </div>
+                <div class="modal-footer py-2">
+                    <a class="btn btn-sm btn-outline-secondary" href="https://ads.google.com/aw/bulk/scripts" target="_blank" rel="noopener">Open Scripts</a>
+                    <button type="button" class="btn btn-sm btn-primary" id="gac-yt-copy-pause-script">Copy script</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -3553,6 +3595,50 @@
                 table.download('csv', 'google_ads_campaigns_page.csv');
             });
 
+            function gacCopyText(text, btn) {
+                var value = String(text || '');
+                if (!value) return;
+                var done = function() {
+                    if (!btn) return;
+                    var orig = btn.getAttribute('data-orig-label') || btn.textContent;
+                    btn.setAttribute('data-orig-label', orig);
+                    btn.textContent = 'Copied';
+                    setTimeout(function() { btn.textContent = orig; }, 1600);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value).then(done).catch(function() {
+                        window.prompt('Copy script:', value);
+                    });
+                    return;
+                }
+                window.prompt('Copy script:', value);
+            }
+            function gacShowYtPauseScript(script, logText, message) {
+                var ta = document.getElementById('gac-yt-pause-script-text');
+                var log = document.getElementById('gac-yt-pause-script-log');
+                if (ta) ta.value = script || '';
+                if (log) log.textContent = logText || '';
+                var modalEl = document.getElementById('gacYtPauseScriptModal');
+                if (modalEl && window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                }
+                gacShowPushResult(message || 'Google Ads Script ready', logText, 'success');
+            }
+            var gacCopyPauseScriptBtn = document.getElementById('gac-yt-copy-pause-script');
+            if (gacCopyPauseScriptBtn) {
+                gacCopyPauseScriptBtn.addEventListener('click', function() {
+                    var ta = document.getElementById('gac-yt-pause-script-text');
+                    gacCopyText(ta ? ta.value : '', gacCopyPauseScriptBtn);
+                });
+            }
+            var gacCopyWatcherBtn = document.getElementById('gac-yt-copy-watcher-script');
+            if (gacCopyWatcherBtn) {
+                gacCopyWatcherBtn.addEventListener('click', function() {
+                    var ta = document.getElementById('gac-yt-pause-watcher-script');
+                    gacCopyText(ta ? ta.value : '', gacCopyWatcherBtn);
+                });
+            }
+
             function gacShowPushResult(title, body, variant) {
                 var wrap = document.getElementById('gac-raw-push-result');
                 var tEl = document.getElementById('gac-raw-push-result-title');
@@ -3645,7 +3731,11 @@
                             title += ' (exit ' + b.exit_code + ')';
                         }
                         var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
-                        gacShowPushResult(title, text, success ? 'success' : 'error');
+                        if (b.ads_script) {
+                            gacShowYtPauseScript(b.ads_script, text, b.message || title);
+                        } else {
+                            gacShowPushResult(title, text, success ? 'success' : 'error');
+                        }
                         if (success && table) {
                             Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
                         }
@@ -3753,9 +3843,9 @@
                         url: gacRawPushPauseUrl,
                         btn: pushPauseBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Pause matching campaigns in Google Ads for ' + scope + '? Only ENABLED rows that hit the Pause Rule (Spend LT + ACOS LT) are paused on the live account.',
-                        loadingTitle: 'Pushing Pause to Google Ads…',
-                        loadingDetail: 'Pausing matching campaigns for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
+                        confirmMsg: 'Prepare Pause for ' + scope + '? ENABLED rows that hit the Pause Rule are queued. YouTube VIDEO campaigns must be paused with the Google Ads Script that opens next (the Ads API cannot pause VIDEO).',
+                        loadingTitle: 'Preparing Pause…',
+                        loadingDetail: 'Matching ' + ids.length + ' campaign id(s) to the Pause Rule. VIDEO campaigns will be queued for a Google Ads Script.',
                     });
                 });
             }

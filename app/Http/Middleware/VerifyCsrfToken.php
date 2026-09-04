@@ -15,5 +15,7 @@ class VerifyCsrfToken extends Middleware
         'listing-master/amz-data/import',
         'mock-push-ebay-price',   // Local mock for eBay microservice testing (no browser session)
         'attendance/desktop-api/*',
+        'google/shopping/youtube-ads/pause-script/queue',
+        'google/shopping/youtube-ads/pause-script/callback',
     ];
 }

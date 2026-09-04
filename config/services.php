@@ -251,6 +251,7 @@ return [
         'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET'),
         'refresh_token' => env('GOOGLE_ADS_REFRESH_TOKEN'),
         'login_customer_id' => env('GOOGLE_ADS_LOGIN_CUSTOMER_ID'),
+        'youtube_pause_script_token' => env('GOOGLE_YOUTUBE_PAUSE_SCRIPT_TOKEN', ''),
     ],
 
     /*

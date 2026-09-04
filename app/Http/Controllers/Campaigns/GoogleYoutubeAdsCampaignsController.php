@@ -10,6 +10,7 @@ use App\Support\GoogleShoppingCampaignsRawRule;
 use App\Support\GoogleYoutubeCampaignAttrs;
 use App\Support\GoogleYoutubeCampaignSales;
 use App\Support\GoogleYoutubePauseRule;
+use App\Support\GoogleYoutubeVideoPause;
 use App\Support\GoogleYoutubeVideoAiAudit as YoutubeVideoAiAudit;
 use App\Support\GoogleYoutubeVideoAuditChecklist;
 use Carbon\Carbon;
@@ -41,10 +42,14 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
      */
     public function index()
     {
+        $queueUrl = url('/google/shopping/youtube-ads/pause-script/queue?token='.GoogleYoutubeVideoPause::token());
+        $callbackUrl = url('/google/shopping/youtube-ads/pause-script/callback');
+
         return view('campaign.google-youtube-ads', [
             'googleShoppingRule' => GoogleShoppingCampaignsRawRule::resolvedRule(),
             'youtubePauseRule' => GoogleYoutubePauseRule::resolved(),
             'youtubeAttrOptions' => GoogleYoutubeCampaignAttrs::options(),
+            'youtubePauseWatcherScript' => GoogleYoutubeVideoPause::watcherScript($queueUrl, $callbackUrl),
         ]);
     }
 
@@ -138,13 +143,16 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
         /** @var GoogleAdsSbidService $sbidService */
         $sbidService = app(GoogleAdsSbidService::class);
         $rowsById = $this->enrichedRowsForCampaignIds($campaignIds);
+        $channelById = GoogleYoutubeVideoPause::channelTypesByCampaignId($campaignIds);
         $lines = [];
-        $paused = 0;
+        $pausedApi = 0;
+        $queuedScript = [];
         $skipped = 0;
         $errors = 0;
 
-        $lines[] = 'Pushing Pause Rule to Google Ads for '.count($campaignIds).' campaign id(s)...';
-        $lines[] = 'ENABLED campaigns that match a Spend LT + ACOS LT slab are paused on Google Ads.';
+        $lines[] = 'Pushing Pause Rule for '.count($campaignIds).' campaign id(s)...';
+        $lines[] = 'ENABLED campaigns that match a Spend LT + ACOS LT slab are paused.';
+        $lines[] = 'YouTube VIDEO campaigns cannot be paused through the Google Ads API (MUTATE_NOT_ALLOWED). Those are queued for a Google Ads Script.';
 
         foreach ($campaignIds as $campaignId) {
             $row = $rowsById[$campaignId] ?? null;
@@ -179,37 +187,132 @@ class GoogleYoutubeAdsCampaignsController extends GoogleShoppingCampaignsControl
                 continue;
             }
 
+            $channel = $channelById[$campaignId] ?? '';
+            if (GoogleYoutubeVideoPause::isVideoChannel($channel)) {
+                $queuedScript[$campaignId] = $name;
+                $lines[] = "[SCRIPT] {$name} ({$campaignId}): VIDEO — queued for Google Ads Script.";
+
+                continue;
+            }
+
             try {
                 $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
                 $sbidService->pauseCampaign($customerId, $campaignResourceName);
                 GoogleAdsCampaign::where('campaign_id', $campaignId)
                     ->update(['campaign_status' => 'PAUSED']);
-                $lines[] = "[PAUSED] {$name} ({$campaignId}): Spend LT {$spendLt}, ACOS LT {$acosLt} — paused in Google Ads.";
-                $paused++;
+                $lines[] = "[PAUSED] {$name} ({$campaignId}): Spend LT {$spendLt}, ACOS LT {$acosLt} — paused via API.";
+                $pausedApi++;
             } catch (\Throwable $e) {
-                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$e->getMessage();
+                if (GoogleYoutubeVideoPause::isVideoMutateBlocked($e)) {
+                    $queuedScript[$campaignId] = $name;
+                    $lines[] = "[SCRIPT] {$name} ({$campaignId}): API blocked VIDEO mutate — queued for script.";
+
+                    continue;
+                }
+                $lines[] = "[ERROR] {$name} ({$campaignId}): ".$this->shortGoogleAdsError($e);
                 $errors++;
             }
         }
 
-        $lines[] = '';
-        $lines[] = "Done. Paused in Google Ads: {$paused}, Skipped: {$skipped}, Errors: {$errors}.";
+        $script = '';
+        $queued = count($queuedScript);
+        if ($queuedScript !== []) {
+            GoogleYoutubeVideoPause::enqueue($queuedScript);
+            $script = GoogleYoutubeVideoPause::oneShotScript(
+                array_keys($queuedScript),
+                url('/google/shopping/youtube-ads/pause-script/callback')
+            );
+            $lines[] = '';
+            $lines[] = 'Copy the Google Ads Script from the dialog: Tools → Bulk actions → Scripts → + → paste → Authorize → Run.';
+        }
 
-        if ($paused > 0) {
+        $lines[] = '';
+        $lines[] = "Done. Paused via API: {$pausedApi}, Script queued: {$queued}, Skipped: {$skipped}, Errors: {$errors}.";
+
+        if ($pausedApi > 0) {
             $this->bumpRawGridRowsCache();
         }
 
-        $output = implode("\n", $lines);
+        $ok = $errors === 0;
+        $message = $queued > 0
+            ? "Pause push ready — {$queued} VIDEO campaign(s) need the Google Ads Script (API cannot pause VIDEO)."
+            : ($ok
+                ? "Pause push finished — {$pausedApi} campaign(s) paused in Google Ads."
+                : "Pause push finished with {$errors} error(s).");
 
         return response()->json([
-            'ok' => $errors === 0,
-            'exit_code' => $errors === 0 ? 0 : 1,
+            'ok' => $ok,
+            'exit_code' => $ok ? 0 : 1,
             'command' => 'push-pause-youtube',
-            'message' => $errors === 0
-                ? "Pause push finished — {$paused} campaign(s) paused in Google Ads."
-                : "Pause push finished with {$errors} error(s).",
-            'output' => $output,
-        ], $errors === 0 ? 200 : 422);
+            'message' => $message,
+            'output' => implode("\n", $lines),
+            'ads_script' => $script,
+            'script_queued' => $queued,
+            'paused_api' => $pausedApi,
+        ], $ok ? 200 : 422);
+    }
+
+    public function pauseScriptQueue(Request $request): JsonResponse
+    {
+        if (! GoogleYoutubeVideoPause::tokenMatches(
+            (string) $request->query('token', $request->input('token', ''))
+        )) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        return response()->json([
+            'campaign_ids' => GoogleYoutubeVideoPause::pendingIds(),
+        ]);
+    }
+
+    public function pauseScriptCallback(Request $request): JsonResponse
+    {
+        if (! GoogleYoutubeVideoPause::tokenMatches(
+            (string) $request->input('token', $request->query('token', ''))
+        )) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $raw = $request->input('paused_ids', []);
+        $ids = [];
+        if (is_array($raw)) {
+            foreach ($raw as $id) {
+                if (! is_scalar($id)) {
+                    continue;
+                }
+                $d = preg_replace('/\D/', '', (string) $id);
+                if ($d !== '') {
+                    $ids[] = $d;
+                }
+            }
+        }
+        $marked = GoogleYoutubeVideoPause::markPaused($ids);
+        if ($marked > 0) {
+            $this->bumpRawGridRowsCache();
+        }
+
+        return response()->json([
+            'ok' => true,
+            'marked' => $marked,
+        ]);
+    }
+
+    private function shortGoogleAdsError(\Throwable $e): string
+    {
+        $msg = trim($e->getMessage());
+        if (preg_match('/"message"\s*:\s*"([^"]+)"/', $msg, $m)) {
+            $inner = $m[1];
+            if (str_contains($msg, 'MUTATE_NOT_ALLOWED')) {
+                return $inner.' (VIDEO campaigns cannot be mutated via the Google Ads API)';
+            }
+
+            return $inner;
+        }
+        if (strlen($msg) > 240) {
+            return substr($msg, 0, 237).'...';
+        }
+
+        return $msg;
     }
 
     public function saveCampaignAttr(Request $request): JsonResponse

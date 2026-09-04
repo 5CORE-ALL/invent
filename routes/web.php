@@ -367,6 +367,12 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/help-desk-faqs/{help_desk_faq}', [\App\Http\Controllers\HelpDeskFaqController::class, 'destroy'])->name('help-desk-faqs.destroy');
 });
 
+// Google Ads Scripts poll this to pause YouTube VIDEO campaigns (API cannot mutate VIDEO).
+Route::controller(GoogleYoutubeAdsCampaignsController::class)->group(function () {
+    Route::get('/google/shopping/youtube-ads/pause-script/queue', 'pauseScriptQueue')->name('google.youtube.ads.campaigns.pause.script.queue');
+    Route::post('/google/shopping/youtube-ads/pause-script/callback', 'pauseScriptCallback')->name('google.youtube.ads.campaigns.pause.script.callback');
+});
+
 // Supplier Portal — public (no login). Share /supplier-portal with suppliers.
 Route::get('/supplier-portal', [\App\Http\Controllers\SupplierPortalController::class, 'index'])->name('supplier-portal.index');
 Route::get('/supplier-portal/download/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'download'])->name('supplier-portal.download');
