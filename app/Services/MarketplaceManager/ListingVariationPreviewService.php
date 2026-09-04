@@ -56,6 +56,16 @@ class ListingVariationPreviewService
         }
         if ($channel === 'aliexpress' && $seedList !== []) {
             $payload['suggested_category'] = $this->aliexpress->suggestCategoryForSku($seedList[0]);
+            $previewSkus = $seedList;
+            foreach ($groups as $group) {
+                foreach (($group['children'] ?? []) as $child) {
+                    $sku = trim((string) ($child['sku'] ?? ''));
+                    if ($sku !== '') {
+                        $previewSkus[] = $sku;
+                    }
+                }
+            }
+            $payload['suggested_package'] = $this->aliexpress->suggestPackageForSkus($previewSkus);
         }
         if ($channel === 'wayfair' && $seedList !== []) {
             $payload['suggested_category'] = $this->wayfair->suggestClassForSku($seedList[0]);
@@ -68,7 +78,7 @@ class ListingVariationPreviewService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null): array
+    public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null): array
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
@@ -81,7 +91,7 @@ class ListingVariationPreviewService
             return $this->faire->publishSkus($skus, $expandSiblings, $mode);
         }
         if ($channel === 'aliexpress') {
-            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName);
+            return $this->aliexpress->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId, $categoryName, $weightLb, $weightKg);
         }
         if (in_array($channel, ['reverb', 'reverbcom'], true)) {
             return $this->reverb->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryUuid, $categoryName);

@@ -39,6 +39,11 @@
                                         <label for="listing-publish-category-name">Or type a category name</label>
                                         <input type="text" id="listing-publish-category-name" class="form-control form-control-sm" placeholder="e.g. Guitar Capos" autocomplete="off">
                                         <small>Use the category name, like other marketplaces. You do not need a category ID.</small>
+                                        <div id="listing-publish-aliexpress-weight" class="listing-publish-weight-row">
+                                            <label for="listing-publish-weight-lb">Package weight (lb)</label>
+                                            <input type="number" id="listing-publish-weight-lb" class="form-control form-control-sm" placeholder="e.g. 3.35" min="0.01" step="0.01">
+                                            <small id="listing-publish-weight-note">Looking up Dim/Wt Master…</small>
+                                        </div>
                                     </div>
                                     <div id="listing-publish-reverb-category" class="listing-publish-category" hidden>
                                         <label>Suggested Reverb category</label>

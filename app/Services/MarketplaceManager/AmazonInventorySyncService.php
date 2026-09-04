@@ -65,6 +65,12 @@ class AmazonInventorySyncService
             fn (array $need) => $this->fetchLiveShopifyQuantities($need, $shopifyConfig)
         );
 
+        $coverage = MarketplaceLiveInventoryRules::shopifyLiveCoverageReport(
+            $skus,
+            fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+        );
+        Log::info('AmazonInventorySyncService: Shopify live coverage', $coverage);
+
         if ($exactShopifyQty) {
             foreach (MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($fetchSkus) as $key => $qty) {
                 $shopifyQty[$key] = (int) $qty;
@@ -108,6 +114,13 @@ class AmazonInventorySyncService
                     === ShopifySku::normalizeSkuForShopifyLookup($sku)) {
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
+            }
+
+            // Confirmed Shopify 0 must go to Amazon as 0. Never keep leftover marketplace stock.
+            // Unconfirmed positive (live miss + stale local) is skipped so we do not oversell.
+            if ($shopifyStock === null && ! $coverage['ok'] && ! $exactShopifyQty) {
+                $skipped++;
+                continue;
             }
 
             $pushQty = $shopifyStock === null
@@ -280,17 +293,18 @@ class AmazonInventorySyncService
             $live = [];
         }
 
-        // Fallback to local Shopify SoT used by mismatch UI when Admin API misses/fails.
+        // Local fallback only for confirmed zeros. A stale positive must not keep Amazon in stock
+        // after Shopify is already 0 and the Admin API missed the SKU.
         $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
         foreach ($skus as $sku) {
             if ($this->resolveShopifyQty($live, $sku) !== null) {
                 continue;
             }
             $qty = $this->resolveShopifyQty($local, $sku);
-            if ($qty === null) {
+            if ($qty === null || (int) $qty > 0) {
                 continue;
             }
-            $live[strtoupper(trim($sku))] = $qty;
+            $live[strtoupper(trim($sku))] = 0;
         }
 
         return $live;

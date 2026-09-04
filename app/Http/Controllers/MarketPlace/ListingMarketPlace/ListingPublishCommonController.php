@@ -65,6 +65,8 @@ class ListingPublishCommonController extends Controller
         if (! preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $categoryUuid)) {
             $categoryUuid = '';
         }
+        $weightLb = $this->positiveFloatFromRequest($request, 'weight_lb', 'package_weight_lb');
+        $weightKg = $this->positiveFloatFromRequest($request, 'weight_kg', 'package_weight_kg');
 
         try {
             $result = $preview->publishSkus(
@@ -75,7 +77,9 @@ class ListingPublishCommonController extends Controller
                 $parentHint,
                 $categoryId > 0 ? $categoryId : null,
                 $categoryUuid !== '' ? $categoryUuid : null,
-                $categoryName !== '' ? $categoryName : null
+                $categoryName !== '' ? $categoryName : null,
+                $weightLb,
+                $weightKg
             );
         } catch (\Throwable $e) {
             return response()->json([
@@ -137,5 +141,27 @@ class ListingPublishCommonController extends Controller
         }
 
         return $out;
+    }
+
+    private function positiveFloatFromRequest(Request $request, string ...$keys): ?float
+    {
+        foreach ($keys as $key) {
+            $raw = $request->input($key);
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            if (is_string($raw)) {
+                $raw = trim(str_replace(',', '', $raw));
+            }
+            if (! is_numeric($raw)) {
+                continue;
+            }
+            $n = (float) $raw;
+            if ($n > 0) {
+                return $n;
+            }
+        }
+
+        return null;
     }
 }

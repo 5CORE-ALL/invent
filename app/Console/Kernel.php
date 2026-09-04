@@ -525,7 +525,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->appendOutputTo($log);
 
-        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 2))
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 7))
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-sync-orders')
@@ -2448,13 +2448,21 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
-        // Run inline — runInBackground() would sit on the default queue and never dispatch mm-* imports.
+        // Must run inline — runInBackground() sits on the default queue and never dispatches mm-* imports.
         $schedule->command('mm:dispatch-unpushed-shopify')
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('mm-dispatch-unpushed-shopify')
             ->withoutOverlapping(40)
-            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Daily catch-up: fetch → Shopify import (no dupes) → auto-fulfill → channel tracking.
+        // Per-marketplace try/catch inside the command so one channel cannot stop the rest.
+        $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory')
+            ->dailyAt('06:30')
+            ->timezone('Asia/Kolkata')
+            ->name('mm-daily-orders-tracking')
+            ->withoutOverlapping(180)
             ->appendOutputTo($log);
 
      

@@ -27,7 +27,7 @@ class AliexpressListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null): array
     {
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
@@ -59,7 +59,7 @@ class AliexpressListingPublishService
             $listed = [];
             $lastId = null;
             foreach ($publishSkus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $categoryId, $categoryName, $weightLb, $weightKg);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -176,10 +176,11 @@ class AliexpressListingPublishService
                 }
             }
         }
+        $pkg = $this->applyManualWeight($pkg, $weightLb, $weightKg);
         if (empty($pkg['has_weight'])) {
             return [
                 'success' => false,
-                'message' => $primarySku.': Package weight is missing on Dim/Wt Master. Add Itm wt GW (or kg) on /dim-wt-master, then publish again.',
+                'message' => $primarySku.': Package weight is missing. Type it in pounds on the publish modal, or add Itm wt GW on /dim-wt-master.',
             ];
         }
         $subject = mb_substr($title, 0, 128);
@@ -353,6 +354,50 @@ class AliexpressListingPublishService
         $images = $this->productImages($product, $sku);
 
         return $this->resolveCategory($product, $sku, $title, $images[0] ?? '', null, null);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array{has_weight: bool, weight_lb: string, weight_kg: string, source: string}
+     */
+    public function suggestPackageForSkus(array $skus): array
+    {
+        $empty = ['has_weight' => false, 'weight_lb' => '', 'weight_kg' => '', 'source' => ''];
+        foreach ($skus as $sku) {
+            $one = $this->suggestPackageForSku((string) $sku);
+            if (! empty($one['has_weight'])) {
+                return $one;
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @return array{has_weight: bool, weight_lb: string, weight_kg: string, source: string}
+     */
+    public function suggestPackageForSku(string $sku): array
+    {
+        $sku = trim($sku);
+        $empty = ['has_weight' => false, 'weight_lb' => '', 'weight_kg' => '', 'source' => ''];
+        if ($sku === '') {
+            return $empty;
+        }
+        $product = $this->findProductLoose($sku);
+        if (! $product) {
+            return $empty;
+        }
+        $pkg = $this->packageSize($product, $sku);
+        if (empty($pkg['has_weight'])) {
+            return $empty;
+        }
+
+        return [
+            'has_weight' => true,
+            'weight_lb' => (string) ($pkg['weight_lb'] ?? ''),
+            'weight_kg' => (string) ($pkg['weight'] ?? ''),
+            'source' => 'dim_wt_master',
+        ];
     }
 
     /**
@@ -692,6 +737,31 @@ class AliexpressListingPublishService
         }
 
         return [];
+    }
+
+    /**
+     * @param  array{length?: int, width?: int, height?: int, weight?: string, weight_lb?: string, has_weight?: bool}  $pkg
+     * @return array{length?: int, width?: int, height?: int, weight: string, weight_lb: string, has_weight: bool}
+     */
+    private function applyManualWeight(array $pkg, ?float $weightLb, ?float $weightKg): array
+    {
+        $lb = $weightLb !== null && $weightLb > 0 ? $weightLb : null;
+        $kg = $weightKg !== null && $weightKg > 0 ? $weightKg : null;
+        if ($lb === null && $kg === null) {
+            return $pkg;
+        }
+        if ($lb === null) {
+            $lb = $kg / 0.45359237;
+        }
+        if ($kg === null) {
+            $kg = $lb * 0.45359237;
+        }
+
+        $pkg['weight'] = number_format(max(0.001, min(500, $kg)), 3, '.', '');
+        $pkg['weight_lb'] = number_format(max(0.001, $lb), 3, '.', '');
+        $pkg['has_weight'] = true;
+
+        return $pkg;
     }
 
     private function packageSize(ProductMaster $product, string $sku = ''): array
