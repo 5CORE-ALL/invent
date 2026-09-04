@@ -227,15 +227,21 @@ class NeweggInventorySyncService
         );
         Log::info('NeweggInventorySyncService: Shopify live coverage', $coverage);
         if (! $coverage['ok'] && ($settings['inventory']['inventory_sync'] ?? false) && ! $dryRun) {
-            Log::error('NeweggInventorySyncService: aborting inventory push — Shopify live coverage too low', $coverage);
-
-            return [
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => count($skus),
-                'price_updated' => 0,
-                'message' => $coverage['message'],
-            ];
+            $known = MarketplaceLiveInventoryRules::skusWithKnownQty(
+                $skus,
+                fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+            );
+            Log::warning('NeweggInventorySyncService: Shopify coverage low — pushing confirmed qtys only', $coverage + ['kept' => count($known)]);
+            if ($known === []) {
+                return [
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => count($skus),
+                    'price_updated' => 0,
+                    'message' => $coverage['message'],
+                ];
+            }
+            $skus = $known;
         }
 
         $shopifyDetails = ($settings['pricing']['price_sync'] ?? false)

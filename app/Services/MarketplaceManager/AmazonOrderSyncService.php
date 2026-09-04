@@ -140,6 +140,10 @@ class AmazonOrderSyncService
             AmazonOrder::class,
             MarketplaceManagerRegistry::queueFor('amazon')
         );
+        MarketplaceShopifyImportQueue::prepareForDispatch(
+            AmazonOrder::class,
+            MarketplaceManagerRegistry::listingsQueueFor('amazon')
+        );
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('amazon', $settings);
         $cutoff = AmazonOrder::shopifyImportCutoff()->timezone('UTC');
@@ -150,7 +154,11 @@ class AmazonOrderSyncService
             })
             ->where(function ($q) {
                 $q->whereNull('import_status')
-                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES);
+                    ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES)
+                    ->orWhere(function ($queued) {
+                        $queued->where('import_status', 'queued')
+                            ->where('updated_at', '<', now()->subMinutes(2));
+                    });
             })
             ->where(function ($q) {
                 $q->whereNull('fulfillment_channel')
@@ -177,6 +185,9 @@ class AmazonOrderSyncService
 
         $seen = [];
         $dispatched = 0;
+        $imported = 0;
+        $inlineLimit = 40;
+        $push = app(AmazonOrderPushService::class);
         foreach ($orders as $order) {
             $amazonId = trim((string) ($order->amazon_order_id ?? ''));
             if ($amazonId !== '') {
@@ -212,10 +223,28 @@ class AmazonOrderSyncService
                 continue;
             }
 
+            if ($imported < $inlineLimit) {
+                try {
+                    $shopifyId = $push->importToShopify($order);
+                    if ($shopifyId) {
+                        $imported++;
+                        continue;
+                    }
+                    if ($push->lastSkipStatus) {
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('AmazonOrderSyncService: inline import failed', [
+                        'id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             try {
                 MarketplaceShopifyImportQueue::push(
                     new ImportAmazonOrderToShopify((int) $order->id),
-                    MarketplaceManagerRegistry::queueFor('amazon')
+                    MarketplaceManagerRegistry::listingsQueueFor('amazon')
                 );
                 $order->update(['import_status' => 'queued']);
                 $dispatched++;
@@ -227,7 +256,66 @@ class AmazonOrderSyncService
             }
         }
 
-        return $dispatched;
+        if ($imported > 0) {
+            Log::info('AmazonOrderSyncService: imported Amazon orders inline', [
+                'imported' => $imported,
+                'queued' => $dispatched,
+            ]);
+        }
+
+        return $imported + $dispatched;
+    }
+
+    /**
+     * If mm-amazon workers are down or unique-locked, still create the newest
+     * FBM Shopify copies here (duplicate-guarded) so daily sync cannot stall.
+     */
+    public function importUnpushedInline(int $limit = 5): int
+    {
+        $limit = max(1, min(40, $limit));
+        $cutoff = AmazonOrder::shopifyImportCutoff()->timezone('UTC');
+        $orders = AmazonOrder::query()
+            ->where(function ($q) {
+                $q->whereNull('shopify_order_id')->orWhere('shopify_order_id', '');
+            })
+            ->where(function ($q) {
+                $q->whereIn('import_status', ['ready', 'import_failed', 'failed'])
+                    ->orWhere(function ($queued) {
+                        $queued->where('import_status', 'queued')
+                            ->where('updated_at', '<', now()->subMinutes(2));
+                    });
+            })
+            ->where(function ($q) {
+                $q->whereNull('fulfillment_channel')
+                    ->orWhere('fulfillment_channel', '!=', 'AFN');
+            })
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhereNotIn('status', ['Canceled', 'Cancelled', 'Pending']);
+            })
+            ->where('order_date', '>=', $cutoff)
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get();
+
+        $push = app(AmazonOrderPushService::class);
+        $imported = 0;
+        foreach ($orders as $order) {
+            try {
+                $id = $push->importToShopify($order);
+                if ($id) {
+                    $imported++;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('AmazonOrderSyncService: inline import failed', [
+                    'id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $imported;
     }
 
     /**

@@ -354,6 +354,67 @@ final class MarketplaceLiveInventoryRules
     }
 
     /**
+     * Overlay confirmed local Shopify zeros onto a live qty map.
+     * A stale Admin-API miss must not leave marketplace stock when shopify_skus is 0.
+     *
+     * @param  array<string, int>  $liveQty
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    public static function applyConfirmedLocalZeros(array $liveQty, array $skus): array
+    {
+        $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $upper = strtoupper($sku);
+            if (array_key_exists($upper, $liveQty) || array_key_exists($sku, $liveQty)) {
+                continue;
+            }
+            $localQty = $local[$upper] ?? $local[$sku] ?? null;
+            $norm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($localQty === null && $norm !== '') {
+                $localQty = $local[$norm] ?? null;
+            }
+            if ($localQty === null || (int) $localQty > 0) {
+                continue;
+            }
+            $liveQty[$upper] = 0;
+        }
+
+        return $liveQty;
+    }
+
+    /**
+     * SKUs whose live/local qty is known (including 0). Used when coverage is
+     * too low to mass-update unknowns, but confirmed zeros must still push.
+     *
+     * @param  list<string>  $skus
+     * @param  callable(string): (?int)  $resolveQty
+     * @return list<string>
+     */
+    public static function skusWithKnownQty(array $skus, callable $resolveQty): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || isset($seen[strtoupper($sku)])) {
+                continue;
+            }
+            if ($resolveQty($sku) === null) {
+                continue;
+            }
+            $seen[strtoupper($sku)] = true;
+            $out[] = $sku;
+        }
+
+        return $out;
+    }
+
+    /**
      * Guard against mass-zero pushes when Shopify live fetch fails.
      * If too few requested SKUs resolve to a live qty, abort the full sync instead
      * of treating every miss as Shopify OOS (qty 0).

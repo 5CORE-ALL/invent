@@ -166,7 +166,7 @@ class AliExpressApiService
             $lb
         );
         if ($listedWeight !== []) {
-            $weightFill['fields'] = array_merge($listedWeight, $weightFill['fields']);
+            $weightFill['fields'] = array_merge($weightFill['fields'], $listedWeight);
             if ($weightFill['keys'] === []) {
                 $weightFill['keys'] = array_keys($listedWeight);
             }
@@ -181,6 +181,8 @@ class AliExpressApiService
             );
         }
         $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb);
+        $instance = $this->sanitizeCategoryAttributeKeys($instance);
+        unset($instance['category_attributes']);
 
         Log::info('AliExpress publish: schema weight fill', [
             'category_id' => $categoryId,
@@ -199,10 +201,31 @@ class AliExpressApiService
             'data' => null,
         ];
 
+        $encodedInstance = $this->encodeRequestPayload($instance);
+        $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
+            'rest' => ['product_instance_request' => $encodedInstance],
+            'sync' => ['product_instance_request' => $encodedInstance],
+        ]);
+        $productId = $this->extractPostedProductId($res['data'] ?? [])
+            ?: $this->extractPostedProductId($res['result'] ?? [])
+            ?: $this->extractPostedProductId($res);
+        if ($productId !== '') {
+            $res['success'] = true;
+            $res['product_id'] = $productId;
+
+            return $res;
+        }
+        $last = [
+            'success' => false,
+            'message' => $this->extractPostFailureMessage($res),
+            'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
+        ];
+
         $official = $this->officialProductPostRequest($request, $weightFill['fields']);
         $encodedPost = $this->encodeRequestPayload($official);
-        $postRes = $this->postProductCreateWithRetry('aliexpress.solution.product.post', [
-            'post_product_request' => $encodedPost,
+        $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
+            'rest' => ['post_product_request' => $encodedPost],
+            'sync' => ['post_product_request' => $encodedPost],
         ]);
         $productId = $this->extractPostedProductId($postRes['data'] ?? [])
             ?: $this->extractPostedProductId($postRes['result'] ?? [])
@@ -219,17 +242,6 @@ class AliExpressApiService
             'message' => $this->extractPostFailureMessage($postRes) ?: $last['message'],
             'data' => $postRes['data'] ?? $postRes['result'] ?? $last['data'] ?? null,
         ];
-
-        if ($this->isAliExpressPackageSizeRequired((string) ($last['message'] ?? ''))) {
-            $retried = $this->retryProductPostWithWeightShapes($instance, $official, $weight, $lb);
-            if (! empty($retried['product_id'])) {
-                return $retried;
-            }
-            if (trim((string) ($retried['message'] ?? '')) !== '') {
-                $last['message'] = $retried['message'];
-            }
-            $instance = $retried['instance'] ?? $instance;
-        }
 
         $skuCodes = [];
         foreach ($request['sku_info_list'] ?? [] as $row) {
@@ -252,8 +264,8 @@ class AliExpressApiService
                 $schemaHint[] = ($node['path'] ?? '').':'.($node['type'] ?? '?');
             }
             $last['message'] = trim((string) $last['message'])
-                .' Sent usLogisticsWeight='.json_encode($instance['usLogisticsWeight'] ?? null)
-                .' aeLogisticsWeight='.json_encode($instance['aeLogisticsWeight'] ?? null)
+                .' Sent usLogisticsWeight='.json_encode($instance['usLogisticsWeight'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                .' aeLogisticsWeight='.json_encode($instance['aeLogisticsWeight'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 .' package_weight='.json_encode($instance['package_weight'] ?? null)
                 .' schema='.($schemaHint !== [] ? implode(',', $schemaHint) : implode(',', $weightFill['keys']));
         }
@@ -558,6 +570,46 @@ class AliExpressApiService
             || str_contains($m, 'timed out')
             || str_contains($m, 'try again later')
             || str_contains($m, 'system busy');
+    }
+
+    private function isAliExpressSchemaPathError(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'not support jsonpath')
+            || str_contains($m, 'jsonpath')
+            || str_contains($m, 'screen size[');
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function sanitizeCategoryAttributeKeys(array $payload): array
+    {
+        foreach (['category_attributes', 'sku_attributes'] as $bag) {
+            if (! is_array($payload[$bag] ?? null)) {
+                continue;
+            }
+            $clean = [];
+            foreach ($payload[$bag] as $name => $value) {
+                $key = $this->sanitizeSchemaName((string) $name);
+                if ($key === '' || str_contains(strtolower($key), 'screen size')) {
+                    continue;
+                }
+                $clean[$key] = is_array($value) ? $this->sanitizeCategoryAttributeKeys($value) : $value;
+            }
+            $payload[$bag] = $clean;
+        }
+        if (is_array($payload['sku_info_list'] ?? null)) {
+            foreach ($payload['sku_info_list'] as $i => $row) {
+                if (is_array($row)) {
+                    $payload['sku_info_list'][$i] = $this->sanitizeCategoryAttributeKeys($row);
+                }
+            }
+        }
+
+        return $payload;
     }
 
     /**
@@ -1403,11 +1455,22 @@ class AliExpressApiService
         foreach (['id', 'name', 'title', 'key'] as $field) {
             $value = trim((string) ($node[$field] ?? ''));
             if ($value !== '' && ! is_numeric($value)) {
-                return $value;
+                return $this->sanitizeSchemaName($value);
             }
         }
 
-        return (string) $key;
+        return $this->sanitizeSchemaName((string) $key);
+    }
+
+    /**
+     * AliExpress jsonpath breaks on names like "Screen Size[inches]".
+     */
+    private function sanitizeSchemaName(string $name): string
+    {
+        $name = preg_replace('/\s*\[[^\]]*\]?/', '', $name) ?? $name;
+        $name = str_replace(['[', ']'], '', $name);
+
+        return trim(preg_replace('/\s+/', ' ', $name) ?? $name);
     }
 
     /**
@@ -1515,7 +1578,15 @@ class AliExpressApiService
     private function hasPackageWeightKey(array $fields): bool
     {
         foreach ($fields as $key => $value) {
-            if (strcasecmp((string) $key, 'Package weight') === 0 && $value !== null && $value !== '') {
+            if (strcasecmp((string) $key, 'Package weight') !== 0) {
+                continue;
+            }
+            if (is_array($value)) {
+                $inner = $value['value'] ?? $value['Package weight'] ?? $value['weight'] ?? null;
+
+                return $inner !== null && $inner !== '';
+            }
+            if ($value !== null && $value !== '') {
                 return true;
             }
         }
@@ -1527,19 +1598,23 @@ class AliExpressApiService
      * US overlay wants only {"Package weight":"3.35"}. Extra keys fail schema checks
      * and AliExpress then reports Package weight as CHK_BASIC_REQUIRED.
      *
-     * @return array{Package weight: float|string}
+     * @return array{Package weight: array{value: string}|float|string}
      */
-    private function usPackageWeightObject(float $kg, float $lb, string $kind = 'string'): array
+    private function usPackageWeightObject(float $kg, float $lb, string $kind = 'value'): array
     {
         $pounds = $this->usPackageWeightPounds($kg, $lb);
+        $text = number_format($pounds, 2, '.', '');
         if ($kind === 'integer') {
             return ['Package weight' => (int) max(1, round($pounds))];
         }
         if ($kind === 'number') {
             return ['Package weight' => $pounds];
         }
+        if ($kind === 'string') {
+            return ['Package weight' => $text];
+        }
 
-        return ['Package weight' => number_format($pounds, 2, '.', '')];
+        return ['Package weight' => ['value' => $text]];
     }
 
     private function usPackageWeightPounds(float $kg, float $lb): float
@@ -1564,9 +1639,7 @@ class AliExpressApiService
         if ($kg <= 0 && $lb <= 0) {
             return $fields;
         }
-        $kind = $this->packageWeightSchemaKind($nodes);
-
-        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, $kind), $kg, $lb);
+        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, 'value'), $kg, $lb);
     }
 
     /**
@@ -1576,7 +1649,7 @@ class AliExpressApiService
      * @param  array<string, mixed>  $fields
      * @return array<string, mixed>
      */
-    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'string'): array
+    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'value'): array
     {
         $kg = abs($kg);
         $lb = abs($lb);
@@ -1594,17 +1667,42 @@ class AliExpressApiService
      */
     private function applyLogisticsWeightShape(array $fields, mixed $usObject, float $kg, float $lb): array
     {
-        foreach (['usLogisticsWeight', 'aeLogisticsWeight', 'LogisticsWeight', 'logisticsWeight'] as $key) {
-            $fields[$key] = $usObject;
+        $object = is_array($usObject) ? $usObject : $this->usPackageWeightObject($kg, $lb);
+        if (! $this->hasPackageWeightKey($object)) {
+            $object = array_merge($this->usPackageWeightObject($kg, $lb), $object);
         }
-        $fields['usl'] = ['logisticsWeight' => $usObject];
+        foreach (['usLogisticsWeight', 'aeLogisticsWeight', 'LogisticsWeight', 'logisticsWeight'] as $key) {
+            $fields[$key] = $this->mergePackageWeightObject($fields[$key] ?? null, $object);
+        }
+        $usl = is_array($fields['usl'] ?? null) ? $fields['usl'] : [];
+        $usl['logisticsWeight'] = $this->mergePackageWeightObject($usl['logisticsWeight'] ?? null, $object);
+        $fields['usl'] = $usl;
         unset($fields['Package weight']);
         $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
-        if (is_array($usObject)) {
-            $fields = $this->copyUsWeightOntoSkus($fields, $usObject);
-        }
+        $fields = $this->copyUsWeightOntoSkus($fields, $object);
 
         return $fields;
+    }
+
+    /**
+     * Keep extra keys from a listed sibling / schema object and only set Package weight.
+     */
+    private function mergePackageWeightObject(mixed $current, array $object): array
+    {
+        if (is_string($current)) {
+            $trim = trim($current);
+            if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
+                $decoded = json_decode($trim, true);
+                $current = is_array($decoded) ? $decoded : null;
+            } else {
+                $current = null;
+            }
+        }
+        if (! is_array($current)) {
+            return $object;
+        }
+
+        return array_merge($current, $object);
     }
 
     /**
@@ -1651,6 +1749,427 @@ class AliExpressApiService
         }
 
         return false;
+    }
+
+    /**
+     * Add SKUs to an already-listed product. Avoids the Speakers create-schema
+     * Package weight / Screen Size[ failures.
+     *
+     * sku_info_list on edit replaces every SKU, so existing ones are sent too.
+     *
+     * @param  array<int, array<string, mixed>>  $newSkuRows
+     * @return array{success:bool,product_id?:string,message?:string}
+     */
+    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null): array
+    {
+        $productId = trim($productId);
+        if ($productId === '' || $newSkuRows === []) {
+            return ['success' => false, 'message' => 'No listed product or SKUs to attach.'];
+        }
+
+        $infoRes = $this->getProductInfo($productId);
+        if (empty($infoRes['success'])) {
+            return [
+                'success' => false,
+                'message' => 'Could not load listed sibling '.$productId.': '.($infoRes['message'] ?? 'unknown'),
+            ];
+        }
+
+        $existing = $this->skuInfoListFromListedProduct(is_array($infoRes['data'] ?? null) ? $infoRes['data'] : []);
+        if ($existing === []) {
+            return [
+                'success' => false,
+                'message' => 'Listed sibling '.$productId.' has no SKUs we can keep while adding the new one.',
+            ];
+        }
+
+        $have = [];
+        foreach ($existing as $row) {
+            $code = strtoupper(trim((string) ($row['sku_code'] ?? '')));
+            if ($code !== '') {
+                $have[$code] = true;
+            }
+        }
+
+        $attrName = 'Color';
+        foreach ($existing as $row) {
+            $name = trim((string) ($row['sku_attributes_list'][0]['sku_attribute_name'] ?? ''));
+            if ($name !== '') {
+                $attrName = $name;
+                break;
+            }
+        }
+
+        $added = 0;
+        foreach ($newSkuRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = strtoupper(trim((string) ($row['sku_code'] ?? '')));
+            if ($code === '' || isset($have[$code])) {
+                continue;
+            }
+            $attrs = is_array($row['sku_attributes_list'] ?? null) ? $row['sku_attributes_list'] : [];
+            $nameId = trim((string) ($existing[0]['sku_attributes_list'][0]['sku_attribute_name_id'] ?? ''));
+            if ($attrs === []) {
+                $attrs[] = [
+                    'sku_attribute_name' => $attrName,
+                    'sku_attribute_value' => mb_substr(trim((string) $row['sku_code']), 0, 70),
+                ];
+            } else {
+                $attrs[0]['sku_attribute_name'] = $attrName;
+            }
+            if ($nameId !== '') {
+                $attrs[0]['sku_attribute_name_id'] = $nameId;
+            }
+            $existing[] = [
+                'sku_code' => trim((string) $row['sku_code']),
+                'price' => (string) ($row['price'] ?? '0'),
+                'inventory' => max(1, (int) ($row['inventory'] ?? 1)),
+                'sku_attributes_list' => $attrs,
+            ];
+            $have[$code] = true;
+            $added++;
+        }
+
+        if ($added === 0) {
+            return [
+                'success' => true,
+                'product_id' => $productId,
+                'message' => 'SKU is already on listed product '.$productId.'.',
+            ];
+        }
+
+        $infoData = is_array($infoRes['data'] ?? null) ? $infoRes['data'] : [];
+        $listedCategory = (int) ($this->extractCategoryId($infoData) ?? 0);
+        $categoryId = $listedCategory > 0 ? $listedCategory : (int) ($categoryId ?? 0);
+        $skuInfoList = $this->officialSkuInfoList($existing);
+
+        $deduct = $this->listedProductReduceStrategy($infoData);
+        $base = array_merge([
+            'product_id' => $productId,
+            'sku_info_list' => $skuInfoList,
+        ], $deduct);
+        $withCategory = $base;
+        if ($categoryId > 0) {
+            $withCategory['aliexpress_category_id'] = $categoryId;
+        }
+        $withLogistics = array_merge($withCategory, $this->listedProductEditLogistics($infoData));
+
+        $last = ['success' => false, 'message' => 'Could not add SKU to listed product '.$productId.'.'];
+        foreach ([$base, $withCategory, $withLogistics] as $payload) {
+            $encoded = $this->encodeRequestPayload($payload);
+            $editParams = array_merge(['edit_product_request' => $encoded], $deduct);
+            $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+                'rest' => $editParams,
+                'sync' => $editParams,
+            ]);
+            if (! empty($res['success'])) {
+                return [
+                    'success' => true,
+                    'product_id' => $productId,
+                    'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+                ];
+            }
+            $last = $res;
+            if ($this->isAliExpressSchemaPathError((string) ($res['message'] ?? ''))) {
+                continue;
+            }
+        }
+
+        $old = array_merge([
+            'product_id' => $productId,
+            'aeop_ae_product_s_k_us' => [
+                'aeop_ae_product_sku' => $this->aeopSkuListFromOfficial($skuInfoList),
+            ],
+        ], $deduct);
+        if ($categoryId > 0) {
+            $old['category_id'] = $categoryId;
+        }
+        $oldEncoded = $this->encodeRequestPayload($old);
+        foreach ([
+            'aliexpress.postproduct.redefining.editaeproduct',
+            'aliexpress.offer.product.edit',
+        ] as $method) {
+            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct);
+            $res = $this->callApiFlexible($method, [
+                'rest' => $oldParams,
+                'sync' => $oldParams,
+            ]);
+            if (! empty($res['success'])) {
+                return [
+                    'success' => true,
+                    'product_id' => $productId,
+                    'message' => 'Added '.$added.' SKU(s) to listed product '.$productId.'.',
+                ];
+            }
+            if (! $this->isAliExpressSchemaPathError((string) ($res['message'] ?? ''))) {
+                $last = $res;
+            }
+        }
+
+        return [
+            'success' => false,
+            'message' => $this->extractPostFailureMessage($last)
+                ?: 'Could not add SKU to listed product '.$productId.'.',
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function officialSkuInfoList(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $attrs = [];
+            foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+                if (! is_array($attr)) {
+                    continue;
+                }
+                $item = [
+                    'sku_attribute_name' => (string) ($attr['sku_attribute_name'] ?? 'Color'),
+                    'sku_attribute_value' => (string) ($attr['sku_attribute_value'] ?? ''),
+                ];
+                $image = trim((string) ($attr['sku_image'] ?? $attr['sku_image_url'] ?? ''));
+                if ($image !== '') {
+                    $item['sku_image'] = $image;
+                }
+                foreach (['sku_attribute_name_id', 'sku_attribute_value_id'] as $idKey) {
+                    if (! empty($attr[$idKey])) {
+                        $item[$idKey] = $attr[$idKey];
+                    }
+                }
+                $attrs[] = $item;
+            }
+            $item = [
+                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'price' => (string) ($row['price'] ?? '0'),
+                'inventory' => max(0, (int) ($row['inventory'] ?? 0)),
+                'sku_attributes_list' => $attrs,
+            ];
+            if (! empty($row['id'])) {
+                $item['id'] = $row['id'];
+            }
+            $out[] = $item;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function aeopSkuListFromOfficial(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $props = [];
+            foreach ($row['sku_attributes_list'] ?? [] as $attr) {
+                $prop = [
+                    'sku_property_name' => (string) ($attr['sku_attribute_name'] ?? 'Color'),
+                    'property_value_definition_name' => (string) ($attr['sku_attribute_value'] ?? ''),
+                ];
+                if (! empty($attr['sku_image'])) {
+                    $prop['sku_image'] = $attr['sku_image'];
+                }
+                $props[] = $prop;
+            }
+            $item = [
+                'sku_code' => (string) ($row['sku_code'] ?? ''),
+                'sku_price' => (string) ($row['price'] ?? '0'),
+                'ipm_sku_stock' => max(0, (int) ($row['inventory'] ?? 0)),
+                'aeop_s_k_u_property_list' => ['aeop_sku_property' => $props],
+            ];
+            if (! empty($row['id'])) {
+                $item['id'] = $row['id'];
+            }
+            $out[] = $item;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<string, string>
+     */
+    private function listedProductReduceStrategy(array $info): array
+    {
+        $value = trim((string) (
+            $info['reduce_strategy']
+            ?? $info['inventory_deduction_strategy']
+            ?? $info['inventoryDeductionStrategy']
+            ?? config('services.aliexpress.inventory_deduction_strategy', 'place_order_withhold')
+        ));
+        if ($value === '') {
+            $value = 'place_order_withhold';
+        }
+
+        return [
+            'reduce_strategy' => $value,
+            'inventory_deduction_strategy' => $value,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<string, mixed>
+     */
+    private function listedProductEditLogistics(array $info): array
+    {
+        $out = [];
+        $freight = $info['freight_template_id'] ?? $info['freightTemplateId'] ?? data_get($info, 'logistics_size.freight_template_id');
+        if ($freight !== null && $freight !== '') {
+            $out['freight_template_id'] = (int) $freight;
+        }
+        foreach (['package_length', 'package_width', 'package_height'] as $key) {
+            $value = $info[$key] ?? data_get($info, 'logistics_size.'.$key);
+            if ($value !== null && $value !== '' && (int) $value > 0) {
+                $out[$key] = (int) $value;
+            }
+        }
+        $weight = $info['weight'] ?? $info['gross_weight'] ?? data_get($info, 'logistics_size.gross_weight');
+        if ($weight !== null && $weight !== '' && is_numeric($weight)) {
+            $out['weight'] = (string) $weight;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<int, array<string, mixed>>
+     */
+    protected function skuInfoListFromListedProduct(array $info): array
+    {
+        $info = $this->normalizeApiRow($info);
+        if (isset($info['result']) && is_array($info['result']) && ! isset($info['aeop_ae_product_sku_list'])) {
+            $nested = $this->skuInfoListFromListedProduct($info['result']);
+            if ($nested !== []) {
+                return $nested;
+            }
+        }
+
+        $bags = [$info];
+        if (is_array($info['product'] ?? null)) {
+            $bags[] = $info['product'];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($bags as $bag) {
+            if (! is_array($bag)) {
+                continue;
+            }
+            $skus = $bag['aeop_ae_product_sku_list']
+                ?? $bag['aeop_ae_product_s_k_us']
+                ?? $bag['aeop_a_e_product_s_k_u_list']
+                ?? $bag['aeop_ae_product_s_k_u_s']
+                ?? $bag['aeop_ae_product_skus']
+                ?? $bag['product_sku_list']
+                ?? $bag['product_skus']
+                ?? $bag['sku_info_list']
+                ?? $bag['sku_list']
+                ?? $bag['skus']
+                ?? null;
+            if (is_string($skus)) {
+                $decoded = json_decode($skus, true);
+                $skus = is_array($decoded) ? $decoded : null;
+            }
+            if (! is_array($skus) && isset($bag[0]) && is_array($bag[0])) {
+                $skus = $bag;
+            }
+            if (! is_array($skus)) {
+                continue;
+            }
+            foreach ($this->unwrapAliExpressList($skus) as $skuRow) {
+                $skuRow = $this->normalizeApiRow($skuRow);
+                $code = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? $skuRow['seller_sku'] ?? $skuRow['cargo_number'] ?? ''));
+                if ($code === '' || isset($seen[strtoupper($code)])) {
+                    continue;
+                }
+                $price = $this->extractPriceFromRow($skuRow);
+                $stock = $this->extractStockFromRow($skuRow);
+                $item = [
+                    'sku_code' => $code,
+                    'price' => $price > 0 ? number_format($price, 2, '.', '') : (string) ($skuRow['price'] ?? $skuRow['sku_price'] ?? '0'),
+                    'inventory' => $stock !== null ? max(0, (int) $stock) : max(0, (int) ($skuRow['ipm_sku_stock'] ?? $skuRow['inventory'] ?? 0)),
+                    'sku_attributes_list' => $this->skuAttributesFromListedRow($skuRow),
+                ];
+                $skuId = trim((string) ($skuRow['id'] ?? $skuRow['sku_id'] ?? $skuRow['s_k_u_id'] ?? ''));
+                if ($skuId !== '' && ctype_digit($skuId)) {
+                    $item['id'] = $skuId;
+                }
+                $out[] = $item;
+                $seen[strtoupper($code)] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $skuRow
+     * @return array<int, array<string, string>>
+     */
+    protected function skuAttributesFromListedRow(array $skuRow): array
+    {
+        $raw = $skuRow['sku_attributes_list']
+            ?? $skuRow['aeop_s_k_u_property_list']
+            ?? $skuRow['aeop_sku_property']
+            ?? $skuRow['sku_property_list']
+            ?? [];
+        $attrs = [];
+        foreach ($this->unwrapAliExpressList($raw) as $prop) {
+            if (! is_array($prop)) {
+                continue;
+            }
+            $prop = $this->normalizeApiRow($prop);
+            $name = trim((string) ($prop['sku_attribute_name'] ?? $prop['sku_property_name'] ?? $prop['property_name'] ?? ''));
+            $value = trim((string) (
+                $prop['sku_attribute_value']
+                ?? $prop['property_value_definition_name']
+                ?? $prop['sku_property_value']
+                ?? $prop['property_value']
+                ?? ''
+            ));
+            if ($name === '' || $value === '') {
+                continue;
+            }
+            $item = [
+                'sku_attribute_name' => $name,
+                'sku_attribute_value' => $value,
+            ];
+            $image = trim((string) ($prop['sku_image_url'] ?? $prop['sku_image'] ?? $prop['image'] ?? ''));
+            if ($image !== '') {
+                $item['sku_image'] = $image;
+            }
+            $nameId = trim((string) ($prop['sku_attribute_name_id'] ?? $prop['sku_property_id'] ?? $prop['property_id'] ?? ''));
+            $valueId = trim((string) ($prop['sku_attribute_value_id'] ?? $prop['property_value_id'] ?? ''));
+            if ($nameId !== '') {
+                $item['sku_attribute_name_id'] = $nameId;
+            }
+            if ($valueId !== '') {
+                $item['sku_attribute_value_id'] = $valueId;
+            }
+            $attrs[] = $item;
+        }
+
+        if ($attrs === []) {
+            $code = trim((string) ($skuRow['sku_code'] ?? $skuRow['sku'] ?? ''));
+            $attrs[] = [
+                'sku_attribute_name' => 'Color',
+                'sku_attribute_value' => $code !== '' ? mb_substr($code, 0, 70) : 'Default',
+            ];
+        }
+
+        return $attrs;
     }
 
     /**
@@ -2118,6 +2637,9 @@ class AliExpressApiService
             'shipping_preparation_time' => max(1, (int) ($request['shipping_lead_time'] ?? 7)),
             'shipping_template_id' => (string) ($request['freight_template_id'] ?? ''),
             'service_template_id' => (string) ($request['service_policy_id'] ?? '0'),
+            'brand_name' => (string) ($request['brand_name'] ?? '5 Core Inc.'),
+            'usLogisticsWeight' => $usWeight,
+            'aeLogisticsWeight' => $usWeight,
             'category_attributes' => [
                 'Brand Name' => ['value' => (string) ($request['brand_name'] ?? '5 Core Inc.')],
             ],
@@ -4935,6 +5457,25 @@ class AliExpressApiService
         }
 
         return array_values($list);
+    }
+
+    /**
+     * Unwrap AliExpress { aeop_ae_product_sku: [...] } / { aeop_sku_property: [...] } bags.
+     *
+     * @return array<int, mixed>
+     */
+    private function unwrapAliExpressList(mixed $list): array
+    {
+        if (! is_array($list)) {
+            return [];
+        }
+        foreach (['aeop_ae_product_sku', 'aeop_ae_product_s_k_u', 'aeop_sku_property', 'aeop_s_k_u_property', 'sku', 'sku_info'] as $key) {
+            if (isset($list[$key]) && is_array($list[$key])) {
+                return $this->normalizeList($list[$key]);
+            }
+        }
+
+        return $this->normalizeList($list);
     }
 
     /**

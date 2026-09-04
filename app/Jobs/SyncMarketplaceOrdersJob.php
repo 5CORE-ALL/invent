@@ -30,6 +30,8 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
 
     public int $uniqueFor = 1800;
 
+    public bool $failOnTimeout = false;
+
     public array $backoff = [30, 120, 300];
 
     public function __construct(
@@ -104,18 +106,32 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 'marketplace' => $slug,
                 'output' => trim(Artisan::output()),
             ]);
-
-            // After order fetch/import, backfill addresses then fulfill Shopify + push tracking.
-            $this->queueAddressSyncIfEnabled($slug);
-            $this->queueTrackingSync($slug);
         } catch (\Throwable $e) {
             Log::error('SyncMarketplaceOrdersJob: failed', [
                 'marketplace' => $slug,
                 'error' => $e->getMessage(),
             ]);
             // Do not rethrow: ShouldBeUnique would keep the lock and skip the next cycle.
-            $this->queueAddressSyncIfEnabled($slug);
-            $this->queueTrackingSync($slug);
+        }
+
+        // Fetch timeout / SP-API errors must not skip Shopify import for this channel.
+        $this->dispatchUnpushedImports($slug);
+        $this->queueAddressSyncIfEnabled($slug);
+        $this->queueTrackingSync($slug);
+    }
+
+    protected function dispatchUnpushedImports(string $slug): void
+    {
+        try {
+            Artisan::call('mm:dispatch-unpushed-shopify', [
+                '--marketplace' => $slug,
+                '--passes' => 2,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('SyncMarketplaceOrdersJob: could not dispatch unpushed Shopify imports', [
+                'marketplace' => $slug,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

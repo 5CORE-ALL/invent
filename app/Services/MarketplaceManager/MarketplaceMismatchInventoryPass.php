@@ -43,7 +43,20 @@ final class MarketplaceMismatchInventoryPass
         }
 
         $settings = MarketplaceSyncSettings::getFor($channel);
+        if ($channel === 'amazon') {
+            $zeros = app(AmazonInventorySyncService::class)->syncConfirmedZerosFromShopify(250);
+            if ((int) ($zeros['updated'] ?? 0) > 0) {
+                $empty['updated'] = (int) $zeros['updated'];
+                $empty['failed'] = (int) ($zeros['failed'] ?? 0);
+                $empty['skipped'] = (int) ($zeros['skipped'] ?? 0);
+                $empty['message'] = (string) ($zeros['message'] ?? 'Pushed Shopify-zero SKUs to Amazon.');
+            }
+        }
         if (! ($settings['inventory']['inventory_sync'] ?? false)) {
+            if ($channel === 'amazon' && (int) ($empty['updated'] ?? 0) > 0) {
+                return $empty;
+            }
+
             return array_merge($empty, ['message' => 'Mismatch pass skipped (inventory sync off).']);
         }
 

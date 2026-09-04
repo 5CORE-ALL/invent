@@ -29,7 +29,7 @@ class ImportAmazonOrderToShopify implements ShouldQueue, ShouldBeUnique
     public function __construct(
         protected int $amazonOrderId
     ) {
-        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::queueFor('amazon'));
+        $this->onQueue(\App\Services\MarketplaceManager\MarketplaceManagerRegistry::listingsQueueFor('amazon'));
     }
 
     public function uniqueId(): string

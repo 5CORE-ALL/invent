@@ -368,15 +368,21 @@ class Ebay2InventorySyncService
         );
         Log::info('Ebay2InventorySyncService: Shopify live coverage', $coverage);
         if (! $coverage['ok'] && ($settings['inventory']['inventory_sync'] ?? false) && ! $dryRun) {
-            Log::error('Ebay2InventorySyncService: aborting inventory push — Shopify live coverage too low', $coverage);
-
-            return $finish([
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => count($skus),
-                'price_updated' => 0,
-                'message' => $coverage['message'],
-            ]);
+            $known = MarketplaceLiveInventoryRules::skusWithKnownQty(
+                $skus,
+                fn (string $sku) => $this->resolveShopifyQty($shopifyQty, $sku)
+            );
+            Log::warning('Ebay2InventorySyncService: Shopify coverage low — pushing confirmed qtys only', $coverage + ['kept' => count($known)]);
+            if ($known === []) {
+                return $finish([
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => count($skus),
+                    'price_updated' => 0,
+                    'message' => $coverage['message'],
+                ]);
+            }
+            $skus = $known;
         }
 
         $shopifyDetails = ($settings['pricing']['price_sync'] ?? false)
