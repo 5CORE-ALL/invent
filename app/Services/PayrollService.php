@@ -147,10 +147,19 @@ class PayrollService
             return [];
         }
 
-        $userIds = $users->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $newLogger = $split['new_start']
-            ? $this->builtLoggerHoursForRange($userIds, $split['new_start'], $split['new_end'])
-            : [];
+        $newLogger = [];
+        if ($split['new_start']) {
+            $users->groupBy(fn ($user) => $this->loggerTimezoneForUser($user))
+                ->each(function ($group, $timezone) use ($split, &$newLogger) {
+                    $ids = $group->pluck('id')->map(fn ($id) => (int) $id)->all();
+                    $newLogger += $this->builtLoggerHoursForRange(
+                        $ids,
+                        $split['new_start'],
+                        $split['new_end'],
+                        $timezone
+                    );
+                });
+        }
 
         $teamLoggerService = new TeamLoggerService();
         $teamFirst = $teamLoggerService->fetchByDateRange($split['team_start'], $split['team_end'], true);
@@ -263,7 +272,20 @@ class PayrollService
             return [];
         }
 
-        return $this->builtLoggerHoursForRange($userIds, $start, $end);
+        $hours = [];
+        User::query()->whereIn('id', $userIds)->get()->groupBy(fn (User $user) => $user->workdayTimezone())
+            ->each(function ($group, $timezone) use ($start, $end, &$hours) {
+                $ids = $group->pluck('id')->map(fn ($id) => (int) $id)->all();
+                $hours += $this->builtLoggerHoursForRange($ids, $start, $end, $timezone);
+            });
+
+        foreach ($userIds as $userId) {
+            if (! isset($hours[$userId])) {
+                $hours[$userId] = ['hours' => 0.0, 'days' => 0];
+            }
+        }
+
+        return $hours;
     }
 
     /**
@@ -296,15 +318,21 @@ class PayrollService
         ];
     }
 
+    protected function loggerTimezoneForUser($user): string
+    {
+        return $user instanceof User ? $user->workdayTimezone() : 'Asia/Kolkata';
+    }
+
     /**
      * @param  array<int, int>  $userIds
      * @return array<int, array{hours: float, days: int}>
      */
-    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end): array
+    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end, ?string $timezone = null): array
     {
-        $startAt = Carbon::parse($start)->startOfDay();
-        $endAt = Carbon::parse($end)->endOfDay();
-        $now = now();
+        $tz = $timezone ?: config('app.timezone', 'America/Los_Angeles');
+        $startAt = Carbon::parse($start, $tz)->startOfDay();
+        $endAt = Carbon::parse($end, $tz)->endOfDay();
+        $now = now($tz);
 
         $sessions = AttendanceSession::query()
             ->whereIn('user_id', $userIds)
@@ -318,8 +346,8 @@ class PayrollService
         $daysByUser = [];
 
         foreach ($sessions as $session) {
-            $sessionStart = Carbon::parse($session->started_at);
-            $sessionEnd = $session->ended_at ? Carbon::parse($session->ended_at) : $now;
+            $sessionStart = Carbon::parse($session->started_at)->timezone($tz);
+            $sessionEnd = $session->ended_at ? Carbon::parse($session->ended_at)->timezone($tz) : $now->copy();
             if ($sessionEnd->lt($sessionStart)) {
                 continue;
             }
@@ -338,8 +366,8 @@ class PayrollService
             $userId = (int) $session->user_id;
             $secondsByUser[$userId] = ($secondsByUser[$userId] ?? 0) + $credited;
 
-            $day = $overlapStart->copy()->startOfDay();
-            $last = $overlapEnd->copy()->startOfDay();
+            $day = $overlapStart->copy()->timezone($tz)->startOfDay();
+            $last = $overlapEnd->copy()->timezone($tz)->startOfDay();
             while ($day->lte($last)) {
                 $daysByUser[$userId][$day->toDateString()] = true;
                 $day->addDay();
