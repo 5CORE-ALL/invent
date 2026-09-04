@@ -184,7 +184,6 @@ class AliexpressListingPublishService
         }
         $subject = mb_substr($title, 0, 128);
         $description = $this->resolveDescription($primary, $subject);
-        $variation = count($prepared) > 1;
         $skuInfoList = [];
         foreach ($prepared as $row) {
             $skuRow = array_merge([
@@ -192,13 +191,11 @@ class AliexpressListingPublishService
                 'price' => number_format((float) $row['price'], 2, '.', ''),
                 'inventory' => max(1, (int) $row['inv']),
             ], $this->skuPackageFields($pkg));
-            if ($variation) {
-                $skuRow['sku_attributes_list'] = [[
-                    'sku_attribute_name' => 'Color',
-                    'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
-                    'sku_image_url' => $row['images'][0] ?? ($gallery[0] ?? ''),
-                ]];
-            }
+            $skuRow['sku_attributes_list'] = [[
+                'sku_attribute_name' => 'Color',
+                'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
+                'sku_image_url' => $row['images'][0] ?? ($gallery[0] ?? ''),
+            ]];
             $skuInfoList[] = $skuRow;
         }
 
@@ -635,13 +632,10 @@ class AliexpressListingPublishService
     private function skuPackageFields(array $pkg): array
     {
         $kg = (string) $pkg['weight'];
-        $usWeight = $this->usPackageWeightObject($pkg);
 
         return [
             'weight' => $kg,
             'package_weight' => (float) $kg,
-            'usLogisticsWeight' => $usWeight,
-            'aeLogisticsWeight' => $usWeight,
         ];
     }
 

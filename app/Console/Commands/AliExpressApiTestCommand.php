@@ -8,10 +8,11 @@ use Illuminate\Console\Command;
 class AliExpressApiTestCommand extends Command
 {
     protected $signature = 'aliexpress:test
-                            {action=list : list|edit|debug-list}
+                            {action=list : list|edit|debug-list|schema|product}
                             {--page=1 : Page for list}
                             {--page-size=5 : Page size for list}
-                            {--product-id= : Product ID for edit}
+                            {--product-id= : Product ID for edit or product}
+                            {--category-id=518 : Category ID for schema}
                             {--title= : New title for edit}';
 
     protected $description = 'Test AliExpress REST API (solution product list / edit)';
@@ -62,7 +63,30 @@ class AliExpressApiTestCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->error('Unknown action. Use: list, edit, debug-list');
+        if ($action === 'schema') {
+            $categoryId = (int) $this->option('category-id');
+            $this->info("Calling getProductSchema({$categoryId})...");
+            $schema = $aliExpress->getProductSchema($categoryId);
+            $this->line(json_encode($aliExpress->debugSchemaWeightNodes($schema), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return $schema !== [] ? self::SUCCESS : self::FAILURE;
+        }
+
+        if ($action === 'product') {
+            $pid = (string) $this->option('product-id');
+            if ($pid === '') {
+                $this->error('Provide --product-id');
+
+                return self::FAILURE;
+            }
+            $this->info("Calling getProductInfo({$pid})...");
+            $out = $aliExpress->getProductInfo($pid);
+            $this->line(json_encode($aliExpress->debugProductWeightFields($out), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return ! empty($out['success']) ? self::SUCCESS : self::FAILURE;
+        }
+
+        $this->error('Unknown action. Use: list, edit, debug-list, schema, product');
 
         return self::FAILURE;
     }
