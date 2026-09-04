@@ -92,6 +92,18 @@
             position: relative;
             z-index: 5;
         }
+        /* Keep Tabulator's own scroller — page/window scroll must not resize the grid. */
+        #newegg-table-wrapper {
+            overflow: hidden;
+        }
+        #newegg-pricing-table {
+            overflow: hidden;
+        }
+        /* Always reserve the vertical scrollbar so the first scroll does not
+           change width and force Tabulator to rebuild the grid. */
+        #newegg-pricing-table .tabulator-tableholder {
+            overflow-y: scroll !important;
+        }
         .newegg-sprice-amz-lbl {
             color: #0d6efd;
             font-weight: 800;
@@ -253,14 +265,14 @@
                             <i class="fas fa-sliders-h"></i> Price Mode
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="sprice-mode-btn">
-                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="">
+                            <li><a class="dropdown-item sprice-mode-item" href="javascript:void(0)" data-mode="">
                                 <i class="fas fa-times text-muted me-1"></i> Off</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="decrease">
+                            <li><a class="dropdown-item sprice-mode-item" href="javascript:void(0)" data-mode="decrease">
                                 <i class="fas fa-arrow-down text-warning me-1"></i> Decrease</a></li>
-                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="increase">
+                            <li><a class="dropdown-item sprice-mode-item" href="javascript:void(0)" data-mode="increase">
                                 <i class="fas fa-arrow-up text-success me-1"></i> Increase</a></li>
-                            <li><a class="dropdown-item sprice-mode-item" href="#" data-mode="same"
+                            <li><a class="dropdown-item sprice-mode-item" href="javascript:void(0)" data-mode="same"
                                 title="Apply ONE price to every selected SKU">
                                 <i class="fas fa-equals text-info me-1"></i> Same Price</a></li>
                         </ul>
@@ -318,8 +330,8 @@
                         </button>
                     </div>
                 </div>
-                <div id="newegg-table-wrapper" style="height: calc(100vh - 200px); min-height: 480px; display: flex; flex-direction: column;">
-                    <div id="newegg-pricing-table" style="flex: 1; min-height: 480px; width: 100%;"></div>
+                <div id="newegg-table-wrapper" style="height: calc(100vh - 280px); min-height: 480px; max-height: calc(100vh - 280px); display: flex; flex-direction: column; overflow: hidden;">
+                    <div id="newegg-pricing-table" style="flex: 1; min-height: 0; width: 100%; overflow: hidden;"></div>
                 </div>
             </div>
         </div>
@@ -372,7 +384,7 @@
                             <strong><i class="fa fa-plus-circle" id="neCompFormHeaderIcon"></i> <span id="neCompFormHeaderText">Add New Competitor</span></strong>
                         </div>
                         <div class="card-body">
-                            <form id="neAddCompetitorForm" class="row g-3">
+                            <form id="neAddCompetitorForm" class="row g-3" action="javascript:void(0)" method="post" onsubmit="return false;">
                                 <input type="hidden" id="neEditCompId" value="">
                                 <div class="col-md-2">
                                     <label class="form-label"><strong>SKU</strong></label>
@@ -399,7 +411,7 @@
                                     <input type="url" class="form-control" id="neAddCompLink" placeholder="https://www.newegg.com/...">
                                 </div>
                                 <div class="col-md-1 d-flex align-items-end flex-wrap gap-1">
-                                    <button type="submit" class="btn btn-success" id="neCompSubmitBtn" style="background:#F06C00;border-color:#F06C00;">
+                                    <button type="button" class="btn btn-success" id="neCompSubmitBtn" style="background:#F06C00;border-color:#F06C00;">
                                         <i class="fa fa-plus"></i> <span id="neCompSubmitBtnText">Add</span>
                                     </button>
                                     <button type="button" class="btn btn-secondary" id="neCompClearBtn">
@@ -454,7 +466,7 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="uploadViewsForm" action="{{ route('newegg.pricing.upload.views') }}" method="POST" enctype="multipart/form-data">
+                    <form id="uploadViewsForm" action="{{ route('newegg.pricing.upload.views') }}" method="POST" enctype="multipart/form-data" onsubmit="return false;">
                         @csrf
                         <div class="mb-3">
                             <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Seller Portal sheet</label>
@@ -476,7 +488,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadViewsForm" class="btn btn-primary">
+                    <button type="button" class="btn btn-primary" id="upload-views-submit-btn">
                         <i class="fa fa-upload me-1"></i>Upload
                     </button>
                 </div>
@@ -870,8 +882,75 @@
             </div>`;
         }
 
-        function applyAffectedLinkedSkuRows() {
-            if (table) table.replaceData();
+        function neSkuKeyExact(sku) {
+            return String(sku || '').replace(/[\u00A0\u202F\u2007]/g, ' ').trim().toUpperCase().replace(/\s+/g, ' ');
+        }
+        function neSkuKeyNorm(sku) {
+            return String(sku || '').replace(/[\u00A0\u202F\u2007]/g, ' ').toUpperCase().replace(/[^A-Z0-9.]/g, '');
+        }
+        function neCaptureTableView() {
+            let scrollTop = 0, scrollLeft = 0, page = 1;
+            try {
+                const holder = document.querySelector('#newegg-pricing-table .tabulator-tableholder');
+                if (holder) {
+                    scrollTop = holder.scrollTop;
+                    scrollLeft = holder.scrollLeft;
+                }
+                if (table && typeof table.getPage === 'function') page = table.getPage() || 1;
+            } catch (e) { /* ignore */ }
+            return { scrollTop: scrollTop, scrollLeft: scrollLeft, page: page };
+        }
+        function neRestoreTableView(state) {
+            if (!state) return;
+            const restore = function() {
+                try {
+                    if (table && state.page && typeof table.setPage === 'function' && table.getPage() !== state.page) {
+                        table.setPage(state.page);
+                    }
+                } catch (e) { /* ignore */ }
+                try {
+                    const holder = document.querySelector('#newegg-pricing-table .tabulator-tableholder');
+                    if (holder) {
+                        holder.scrollTop = state.scrollTop;
+                        holder.scrollLeft = state.scrollLeft;
+                    }
+                } catch (e) { /* ignore */ }
+            };
+            requestAnimationFrame(function() { requestAnimationFrame(restore); });
+        }
+        function nePatchLinkedSkuList(sku, mutator) {
+            if (!table || !sku) return;
+            const rows = table.searchRows('sku', '=', sku);
+            rows.forEach(function(row) {
+                const d = row.getData() || {};
+                let skus = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus.slice() : [];
+                row.update({ linked_lmp_skus: mutator(skus, d) });
+            });
+        }
+        function nePatchRowLmpFromList(sku) {
+            if (!table || !sku) return;
+            const rows = table.searchRows('sku', '=', sku);
+            if (!rows.length) return;
+            const list = Array.isArray(neCurrentLmpList) ? neCurrentLmpList : [];
+            let l1 = (window.LmpIgnore && LmpIgnore.l1) ? LmpIgnore.l1(list) : null;
+            if (l1 === null) {
+                list.forEach(function(c) {
+                    if (c && c.ignored) return;
+                    const landed = (parseFloat(c.price) || 0) + (parseFloat(c.shipping_cost) || 0);
+                    if (landed > 0 && (l1 === null || landed < l1)) l1 = landed;
+                });
+            }
+            const lowest = list.find(function(c) {
+                if (!c || c.ignored) return false;
+                const landed = (parseFloat(c.price) || 0) + (parseFloat(c.shipping_cost) || 0);
+                return l1 != null && Math.abs(landed - l1) < 0.01;
+            });
+            rows[0].update({
+                lmp_price: l1,
+                lmp_base_price: lowest ? (parseFloat(lowest.price) || l1) : l1,
+                lmp_shipping: lowest ? (parseFloat(lowest.shipping_cost) || 0) : 0,
+                lmp_entries_total: list.length,
+            });
         }
 
         function removeLinkedSkuFromRow(rowData, linkedSku) {
@@ -885,7 +964,13 @@
                 body: JSON.stringify({ sku: sku, linked_sku: target }),
             }).then(r => r.json()).then(function (response) {
                 if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
-                applyAffectedLinkedSkuRows();
+                const source = String(sku || '').trim();
+                nePatchLinkedSkuList(source, function(skus) {
+                    return skus.filter(function(s) { return String(s || '').trim().toUpperCase() !== target.toUpperCase(); });
+                });
+                nePatchLinkedSkuList(target, function(skus) {
+                    return skus.filter(function(s) { return String(s || '').trim().toUpperCase() !== source.toUpperCase(); });
+                });
             }).catch(function (err) { alert(err.message || 'Could not remove linked SKU.'); });
         }
 
@@ -974,7 +1059,16 @@
                 if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
                 linkedSkuModalSelectedSkus = new Set();
                 linkedSkuModal?.hide();
-                applyAffectedLinkedSkuRows();
+                uniqueSkus.forEach(function(s) {
+                    nePatchLinkedSkuList(s, function(skus) {
+                        const seen = new Set(skus.map(function(x) { return String(x || '').trim().toUpperCase(); }));
+                        uniqueSkus.forEach(function(u) {
+                            const norm = String(u || '').trim().toUpperCase();
+                            if (norm && !seen.has(norm)) { skus.push(String(u).trim()); seen.add(norm); }
+                        });
+                        return skus;
+                    });
+                });
             }).catch(function (err) { alert(err.message || 'Could not link SKU(s).'); })
             .finally(function () { if (btn) { btn.disabled = false; btn.innerHTML = original; } });
         }
@@ -1178,6 +1272,7 @@
                 html = '<div class="small text-muted mb-2">L1 (lowest non-ignored): <strong>$' + Number(l1Price).toFixed(2) + '</strong></div>' + html;
             }
             $('#neLmpDataList').html(html);
+            nePatchRowLmpFromList(neCurrentLmpSku);
         }
         LmpIgnore.bind({
             modal: '#neLmpModal',
@@ -1197,6 +1292,13 @@
 
             table = new Tabulator("#newegg-pricing-table", {
                 ajaxURL: "/newegg-pricing-data",
+                ajaxConfig: {
+                    method: "GET",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
+                    }
+                },
                 ajaxSorting: false,
                 sortMode: "local",
                 filterMode: "local",
@@ -1204,7 +1306,7 @@
                 headerSortClickElement: "icon",
                 columnDefaults: { headerSort: true, headerSortStartingDir: "desc" },
                 height: "100%",
-                layout: "fitData",
+                layout: "fitDataStretch",
                 responsiveLayout: false,
                 pagination: true,
                 paginationMode: "local",
@@ -1375,11 +1477,11 @@
                             const linkedSkusAttr = escapeHtmlAttr(JSON.stringify(linkedSkus));
 
                             if (!lmpPrice && totalCompetitors === 0) {
-                                return `<a href="#" class="view-ne-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;"
+                                return `<button type="button" class="view-ne-lmp-competitors btn btn-link p-0" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color:#6c757d;text-decoration:none;font-size:11px;cursor:pointer;line-height:1;"
                                     title="No competitors — click to add one">
                                     <i class="fa fa-plus-circle"></i> Add
-                                </a>`;
+                                </button>`;
                             }
 
                             const currentPrice = parseFloat(rowData.price || 0);
@@ -1395,10 +1497,10 @@
                                 html += `<span style="color:${priceColor};font-weight:700;font-size:14px;"${shipTip}>$${lmpPrice.toFixed(2)}</span>`;
                             }
                             if (totalCompetitors > 0) {
-                                html += `<a href="#" class="view-ne-lmp-competitors" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
-                                    style="color:#F06C00;text-decoration:none;font-size:11px;cursor:pointer;">
+                                html += `<button type="button" class="view-ne-lmp-competitors btn btn-link p-0" data-sku="${skuAttr}" data-linked-skus="${linkedSkusAttr}"
+                                    style="color:#F06C00;text-decoration:none;font-size:11px;cursor:pointer;line-height:1;">
                                     <i class="fa fa-eye"></i> View ${totalCompetitors}
-                                </a>`;
+                                </button>`;
                             }
                             html += '</div>';
                             return html;
@@ -1639,6 +1741,49 @@
                     { title: "Currency", field: "currency", visible: false, sorter: "string" }
                 ]
             });
+            window.table = table;
+            (function preserveNeweggScrollOnRedraw() {
+                if (!table || table._neRedrawWrapped) return;
+                table._neRedrawWrapped = true;
+                const origRedraw = table.redraw.bind(table);
+                let guard = false;
+                let ignoreForceUntil = Date.now() + 8000;
+                function lockHeight() {
+                    const wrap = document.getElementById('newegg-table-wrapper');
+                    if (!wrap || !table || typeof table.setHeight !== 'function') return;
+                    const h = wrap.clientHeight;
+                    if (h > 200) table.setHeight(h);
+                }
+                table.redraw = function(force) {
+                    if (guard) return origRedraw(false);
+                    if (force && Date.now() < ignoreForceUntil) {
+                        return origRedraw(false);
+                    }
+                    const state = neCaptureTableView();
+                    guard = true;
+                    try {
+                        const result = origRedraw(!!force);
+                        neRestoreTableView(state);
+                        return result;
+                    } finally {
+                        guard = false;
+                    }
+                };
+                table.on('tableBuilt', function() {
+                    lockHeight();
+                    const holder = document.querySelector('#newegg-pricing-table .tabulator-tableholder');
+                    if (holder && !holder._neScrollGuard) {
+                        holder._neScrollGuard = true;
+                        holder.addEventListener('scroll', function() {
+                            ignoreForceUntil = Date.now() + 1500;
+                        }, { passive: true });
+                    }
+                });
+                window.addEventListener('resize', function() {
+                    ignoreForceUntil = Date.now() + 300;
+                    lockHeight();
+                });
+            })();
 
             (function bindNeweggHeaderSort() {
                 const root = document.getElementById('newegg-pricing-table');
@@ -1799,7 +1944,10 @@
 
             // Combined filter: SKU/Title search + INV / N Stock / NR / Status / PFT / ROI / DIL
             // dropdowns + sold / triangle badges.
-            function applyNeFilters() {
+            function applyNeFilters(opts) {
+                opts = opts || {};
+                const keepView = !!opts.keepView;
+                const state = keepView ? neCaptureTableView() : null;
                 const search = ($('#sku-search').val() || '').trim().toLowerCase();
                 table.setFilter(function(row) {
                     if (search) {
@@ -1850,8 +1998,13 @@
                     return true;
                 });
                 updateBadgeStyles();
+                if (keepView) neRestoreTableView(state);
                 setTimeout(updateSummary, 100);
             }
+
+            $('.ne-toolbar-row').on('wheel', 'select', function(e) {
+                e.preventDefault();
+            });
 
             function setNeBadgeActive($el, active) {
                 $el.toggleClass('border border-3 border-dark', !!active);
@@ -2602,7 +2755,14 @@
                 buildColumnDropdown();
             });
             table.on('dataLoaded', function() {
-                applyNeFilters();
+                const searchOn = !!($('#sku-search').val() || '').trim();
+                const filtered = searchOn
+                    || inventoryFilter !== 'all' || nStockFilter !== 'all' || l30Filter !== 'all'
+                    || nrFilter !== 'all' || statusFilter !== 'all' || pftFilter !== 'all'
+                    || roiFilter !== 'all' || dilFilter !== 'all' || cvrFilter !== 'all'
+                    || neZeroSoldActive || neMoreSoldActive
+                    || blueTriangleFilterActive || amzTriangleFilterActive;
+                if (filtered) applyNeFilters({ keepView: true });
                 updateSummary();
             });
             table.on('dataProcessed', updateSummary);
@@ -2631,11 +2791,53 @@
                 table.download("csv", "newegg_pricing.csv");
             });
 
-            $('#uploadViewsForm').on('submit', function(e) {
-                e.preventDefault();
-                const form = this;
+            function applyViewsUploadToTable(viewsRows) {
+                if (!table) return;
+                const list = Array.isArray(viewsRows) ? viewsRows : [];
+                const byExact = {};
+                const byNorm = {};
+                const byItem = {};
+                list.forEach(function(v) {
+                    if (!v) return;
+                    const exact = neSkuKeyExact(v.seller_part_number);
+                    const norm = neSkuKeyNorm(v.seller_part_number);
+                    const item = String(v.item_number || '').trim().toUpperCase();
+                    if (exact) byExact[exact] = v;
+                    if (norm) byNorm[norm] = v;
+                    if (item) byItem[item] = v;
+                });
+                const blocked = typeof table.blockRedraw === 'function';
+                if (blocked) table.blockRedraw();
+                try {
+                    table.getRows().forEach(function(row) {
+                        const d = row.getData() || {};
+                        const exact = neSkuKeyExact(d.sku);
+                        const norm = neSkuKeyNorm(d.sku);
+                        const item = String(d.newegg_item_number || '').trim().toUpperCase();
+                        const hit = (exact && byExact[exact]) || (norm && byNorm[norm]) || (item && byItem[item]) || null;
+                        const views = hit ? (parseInt(hit.views, 10) || 0) : 0;
+                        const sessions = hit ? (parseInt(hit.sessions, 10) || 0) : 0;
+                        const l30 = parseInt(d.l30, 10) || 0;
+                        const cvr = views > 0 ? Math.round((l30 / views) * 10000) / 100 : 0;
+                        if ((parseInt(d.views, 10) || 0) === views && (parseFloat(d.cvr) || 0) === cvr) return;
+                        row.update({ views: views, sessions: sessions, cvr: cvr });
+                    });
+                } finally {
+                    if (blocked) table.restoreRedraw();
+                }
+                if (typeof updateSummary === 'function') updateSummary();
+            }
+
+            function uploadNeweggViewsSheet() {
+                const form = document.getElementById('uploadViewsForm');
+                if (!form) return;
+                const fileInput = form.querySelector('input[name="views_file"]');
+                if (!fileInput || !fileInput.files || !fileInput.files.length) {
+                    showToast('Choose a Views sheet first', 'error');
+                    return;
+                }
                 const formData = new FormData(form);
-                const $btn = $('button[form="uploadViewsForm"]');
+                const $btn = $('#upload-views-submit-btn');
                 const original = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading...');
                 $.ajax({
@@ -2644,11 +2846,12 @@
                     data: formData,
                     processData: false,
                     contentType: false,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                     success: function(res) {
                         showToast(res.success || 'Views uploaded.', 'success');
                         $('#uploadViewsModal').modal('hide');
                         form.reset();
-                        table.setData();
+                        applyViewsUploadToTable(res && res.views);
                     },
                     error: function(xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Error uploading Views sheet';
@@ -2658,6 +2861,19 @@
                         $btn.prop('disabled', false).html(original);
                     }
                 });
+            }
+
+            const uploadViewsForm = document.getElementById('uploadViewsForm');
+            if (uploadViewsForm) {
+                uploadViewsForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uploadNeweggViewsSheet();
+                }, true);
+            }
+            $('#upload-views-submit-btn').on('click', function(e) {
+                e.preventDefault();
+                uploadNeweggViewsSheet();
             });
 
             // LMP column: View N / + Add
@@ -2674,8 +2890,7 @@
                 neLoadCompetitorsModal(sku, linkedSkus);
             });
 
-            $('#neAddCompetitorForm').on('submit', function(e) {
-                e.preventDefault();
+            function saveNeLmpCompetitor() {
                 const editId = neEditCompetitorId || $('#neEditCompId').val();
                 const isEdit = !!editId;
                 const payload = {
@@ -2696,17 +2911,20 @@
                     alert('Item # and Price are required.');
                     return;
                 }
+                const $btn = $('#neCompSubmitBtn');
+                const orig = $btn.html();
+                $btn.prop('disabled', true);
                 $.ajax({
                     url: isEdit
                         ? '{{ route('newegg.competitors.update') }}'
                         : '{{ route('newegg.competitors.add') }}',
                     method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
                     data: payload,
                     success: function(resp) {
                         if (resp.success) {
                             neResetCompetitorForm(neCurrentLmpSku);
                             neLoadCompetitorsModal(neCurrentLmpSku, neCurrentLinkedLmpSkus);
-                            if (table) table.replaceData();
                         } else {
                             alert(resp.error || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor'));
                         }
@@ -2715,8 +2933,24 @@
                         const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
                             || (isEdit ? 'Failed to update competitor' : 'Failed to add competitor');
                         alert(msg);
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(orig);
                     }
                 });
+            }
+
+            const neAddForm = document.getElementById('neAddCompetitorForm');
+            if (neAddForm) {
+                neAddForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    saveNeLmpCompetitor();
+                }, true);
+            }
+            $('#neCompSubmitBtn').on('click', function(e) {
+                e.preventDefault();
+                saveNeLmpCompetitor();
             });
 
             $('#neCompClearBtn').on('click', function() {
@@ -2748,7 +2982,6 @@
                         if (resp.success) {
                             neResetCompetitorForm(neCurrentLmpSku);
                             neLoadCompetitorsModal(neCurrentLmpSku, neCurrentLinkedLmpSkus);
-                            if (table) table.replaceData();
                         } else {
                             alert(resp.error || 'Failed to delete');
                         }
