@@ -1009,9 +1009,11 @@
                         statusCounts[s] = (statusCounts[s] || 0) + 1;
                     }
                     if (rowMatchesQuery(row, q, 'pause_run')) {
-                        pauseTotal++;
-                        const a = rowPauseRunAction(row) || 'pause';
-                        pauseCounts[a] = (pauseCounts[a] || 0) + 1;
+                        const a = rowPauseRunAction(row);
+                        if (a === 'pause' || a === 'run') {
+                            pauseTotal++;
+                            pauseCounts[a] = (pauseCounts[a] || 0) + 1;
+                        }
                     }
                     if (rowMatchesQuery(row, q, 'inv')) {
                         invTotal++;
@@ -1711,7 +1713,7 @@
                             }
                             return action(aRow).localeCompare(action(bRow));
                         },
-                        headerTooltip: 'Pause/Run from the current L7 Clicks slabs. Changing the rule updates these switches immediately. Click a switch to push to Temu.',
+                        headerTooltip: 'Recommended Pause/Run from L7 Clicks slabs — only for ads that exist on Temu. No ad / Deleted / Not sync show a dash, not a live switch.',
                         formatter: function (cell) {
                             if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunButtonHtml !== 'function') return '';
                             return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});

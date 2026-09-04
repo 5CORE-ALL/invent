@@ -662,7 +662,16 @@
         });
     }
 
+    function rowHasLiveAd(row) {
+        var s = String((row && row.ad_status) || '').trim();
+        if (s === 'Paused') s = 'Inactive';
+        return s === 'Active' || s === 'Inactive';
+    }
+
     function computedPauseRunAction(row) {
+        if (!rowHasLiveAd(row)) {
+            return '';
+        }
         if (rules.pauseRunInvZero && rowInv(row) <= 0) {
             return 'pause';
         }
@@ -674,10 +683,15 @@
     }
 
     function pauseRunButtonHtml(row) {
-        var action = pauseRunAction(row || {});
-        var goodsId = String((row && row.goods_id) || '');
+        row = row || {};
+        if (!rowHasLiveAd(row)) {
+            var status = String(row.ad_status || 'No ad');
+            return '<span class="text-muted" title="' + escapeAttr(status + ' on Temu — Pause/Run only applies to an existing campaign. Use Create if Status is No ad.') + '">—</span>';
+        }
+        var action = pauseRunAction(row);
+        var goodsId = String(row.goods_id || '');
         return '<button type="button" class="temu-pause-run-btn is-' + action + '" data-goods-id="' + goodsId +
-            '" data-action="' + action + '" title="' + (action === 'pause' ? 'Pause' : 'Run') + ' — click to ' +
+            '" data-action="' + action + '" title="' + (action === 'pause' ? 'Pause' : 'Run') + ' — recommended from L7 Clicks. Click to ' +
             (action === 'pause' ? 'run' : 'pause') + ' this ad on Temu">' +
             '<span class="temu-pause-run-knob"></span></button>';
     }
@@ -995,6 +1009,7 @@
         displayAcosPercent: displayAcosPercent,
         roasRuleSummaryText: roasRuleSummaryText,
         bindRoasRuleSummary: bindRoasRuleSummary,
+        rowHasLiveAd: rowHasLiveAd,
         pauseRunButtonHtml: pauseRunButtonHtml,
         pauseRunResultHtml: pauseRunResultHtml,
         pauseRunHistoryTitle: pauseRunHistoryTitle,

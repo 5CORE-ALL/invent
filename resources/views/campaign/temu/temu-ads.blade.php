@@ -321,7 +321,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Temu Ads (API)',
-        'sub_title' => 'Matches Temu Data Report Overall (Last 30 days includes today, US Pacific)',
+        'sub_title' => 'L30 matches Temu Ads “Last 30 days” (US Pacific, includes today). Impr / CTR follow the selected period. Snapshot — click Fetch to refresh.',
     ])
 
     <div class="row">
@@ -336,6 +336,7 @@
                                 <option value="L30" data-label="L30" selected>L30</option>
                                 <option value="L60" data-label="L60">L60</option>
                             </select>
+                            <span id="period-range-label" class="small text-muted fw-semibold" title="Same calendar window as Temu Seller Center (US Pacific)"></span>
                             <input type="text" id="search-goods-id" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID" style="width: 170px;">
                             <input type="text" id="search-sku" class="form-control form-control-sm pricing-filter-item"
@@ -867,12 +868,13 @@
                         : Number(v);
                     return Number(shown).toFixed(0) + '%';
                 }
-                if (field === 'ctr' && el) {
+                if ((field === 'ctr' || field === 'ctr_l7') && el) {
                     const n = Number(v);
                     if (isFinite(n) && n < currentAvgCtr) {
                         el.style.color = '#dc3545';
                         el.style.fontWeight = '700';
                     }
+                    return Number(v).toFixed(2) + '%';
                 }
                 return Number(v).toFixed(1) + '%';
             };
@@ -919,6 +921,19 @@
                 if (!m[4]) return day;
                 return day + ' ' + m[4] + ':' + m[5];
             };
+
+            const PERIOD_RANGES = @json($periodRanges ?? []);
+
+            function paintPeriodRangeLabel() {
+                const el = document.getElementById('period-range-label');
+                if (!el) return;
+                const period = document.getElementById('period-filter').value;
+                const label = PERIOD_RANGES[period] || '';
+                el.textContent = label;
+                el.title = label
+                    ? ('Temu Seller Center ' + period + ': ' + label + ' (US Pacific)')
+                    : 'Select L7 / L30 / L60 to see the Temu date window';
+            }
 
             function dataUrl() {
                 const period = document.getElementById('period-filter').value;
@@ -1035,9 +1050,11 @@
                         statusCounts[s] = (statusCounts[s] || 0) + 1;
                     }
                     if (rowMatchesQuery(row, q, 'pause_run')) {
-                        pauseTotal++;
-                        const a = rowPauseRunAction(row) || 'pause';
-                        pauseCounts[a] = (pauseCounts[a] || 0) + 1;
+                        const a = rowPauseRunAction(row);
+                        if (a === 'pause' || a === 'run') {
+                            pauseTotal++;
+                            pauseCounts[a] = (pauseCounts[a] || 0) + 1;
+                        }
                     }
                     if (rowMatchesQuery(row, q, 'inv')) {
                         invTotal++;
@@ -1745,7 +1762,7 @@
                     { title: 'Clicks 7', field: 'clicks_l7', width: 70, minWidth: 62, hozAlign: 'center', formatter: clicksFmt, sorter: 'number',
                       headerTooltip: 'Last 7 days clicks (Overall). Red when at or above the shared L7 Clicks rule (default 70) — pause zone.' },
                     { title: 'Impr', field: 'impressions', width: 70, minWidth: 62, hozAlign: 'center', formatter: numFmt, sorter: 'number',
-                      headerTooltip: 'Impressions (Overall) for the selected period — same as Temu Data Report. CTR = Clicks ÷ Impr.' },
+                      headerTooltip: 'Impressions (Overall) for the selected period — L30 = Temu Ads Last 30 days. CTR = period Clicks ÷ Impr.' },
                     {
                         title: 'Pause/Run',
                         field: 'pause_run',
@@ -1762,7 +1779,7 @@
                             }
                             return action(aRow).localeCompare(action(bRow));
                         },
-                        headerTooltip: 'Pause/Run from the current L7 Clicks slabs. Changing the rule updates these switches immediately. Click a switch to push to Temu.',
+                        headerTooltip: 'Recommended Pause/Run from L7 Clicks slabs — only for ads that exist on Temu. No ad / Deleted / Not sync show a dash, not a live switch.',
                         formatter: function (cell) {
                             if (!window.TemuAdsColorRules || typeof TemuAdsColorRules.pauseRunButtonHtml !== 'function') return '';
                             return TemuAdsColorRules.pauseRunButtonHtml(cell.getRow().getData() || {});
@@ -1810,8 +1827,8 @@
                             return TemuAdsColorRules.pauseRunResultHtml(cell.getRow().getData() || {});
                         }
                     },
-                    { title: 'CTR', field: 'ctr', width: 56, minWidth: 50, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
-                      headerTooltip: 'CTR (Overall)' },
+                    { title: 'CTR', field: 'ctr', width: 62, minWidth: 56, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
+                      headerTooltip: 'CTR (Overall) for the selected period = period Clicks ÷ Impr. L30 = Temu Ads Last 30 days.' },
                     { title: 'CVR', field: 'cvr', width: 56, minWidth: 50, hozAlign: 'center', formatter: pctFmt, sorter: 'number',
                       headerTooltip: 'CVR (Overall) = Orders ÷ Clicks' },
                     { title: 'Cart', field: 'cart_cnt', width: 56, minWidth: 50, hozAlign: 'center', formatter: numFmt, sorter: 'number' },
@@ -2390,7 +2407,7 @@
             function classifyTemuAdsColumn(field) {
                 const f = String(field || '');
                 if (/^(sku|inv|image_path|ad_status|create_ad|ovl30|dil_percent|goods_id|period)$/.test(f)) return 'basic';
-                if (/^(impressions|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|t_roas|roas|acos)$/.test(f)) {
+                if (/^(impressions|impressions_l7|clicks_l30|clicks_l7|pause_run|pause_run_ok|ctr|ctr_l7|cvr|cart_cnt|order_pay_cnt|order_pay_amt|ad_spend|spend_l1|t_roas|roas|acos)$/.test(f)) {
                     return 'ads';
                 }
                 return 'others';
@@ -2856,8 +2873,10 @@
             }
 
             document.getElementById('period-filter').addEventListener('change', function () {
+                paintPeriodRangeLabel();
                 table.setData(dataUrl());
             });
+            paintPeriodRangeLabel();
 
             function applySearchFilters() {
                 const q = currentFilterQuery();
@@ -3203,9 +3222,14 @@
 
             document.getElementById('refresh-btn').addEventListener('click', function () {
                 const period = document.getElementById('period-filter').value || 'L30';
+                const goodsId = (document.getElementById('search-goods-id').value || '').trim();
                 const status = document.getElementById('fetch-status');
                 const btn = this;
-                let fetchMsg = 'Fetch Temu ads API reports for ' + period + ' for all goods?\nThis may take several minutes.';
+                const scope = goodsId ? ('goods ' + goodsId) : 'all goods';
+                let fetchMsg = 'Fetch Temu ads API reports for ' + period + ' for ' + scope + '?';
+                if (!goodsId) {
+                    fetchMsg += '\nThis may take several minutes.';
+                }
                 if (period === 'L7') {
                     fetchMsg += '\n\nAuto Cron will push only ads whose Active/Pause status changes from the click limit.';
                 }
@@ -3216,27 +3240,41 @@
                 status.innerHTML = '<div class="alert alert-info py-2 mb-0"><i class="fas fa-spinner fa-spin me-1"></i> Fetching ' + period + ' from Temu API…</div>';
                 btn.disabled = true;
 
-                $.ajax({
-                    url: '{{ route("temu.ads.refresh") }}',
-                    method: 'POST',
-                    data: { period: period, _token: '{{ csrf_token() }}' },
-                    timeout: 0,
-                    success: function (response) {
-                        if (response.success) {
-                            status.innerHTML = '<div class="alert alert-success py-2 mb-0">' + (response.message || 'Done') + '</div>';
+                function postFetch(fetchPeriod, extraGoodsId) {
+                    return $.ajax({
+                        url: '{{ route("temu.ads.refresh") }}',
+                        method: 'POST',
+                        data: {
+                            period: fetchPeriod,
+                            goods_id: extraGoodsId || '',
+                            _token: '{{ csrf_token() }}',
+                        },
+                        timeout: 0,
+                    });
+                }
+
+                const fetches = [postFetch(period, goodsId)];
+                if (goodsId && period !== 'L7') {
+                    fetches.push(postFetch('L7', goodsId));
+                }
+
+                $.when.apply($, fetches)
+                    .done(function () {
+                        const first = fetches.length === 1 ? arguments[0] : arguments[0][0];
+                        if (first && first.success) {
+                            status.innerHTML = '<div class="alert alert-success py-2 mb-0">' + (first.message || 'Done') + '</div>';
                             table.setData(dataUrl());
                         } else {
-                            status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + (response.message || 'Failed') + '</div>';
+                            status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + ((first && first.message) || 'Failed') + '</div>';
                         }
-                    },
-                    error: function (xhr) {
+                    })
+                    .fail(function (xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Fetch failed (timeout or server error). Try: php artisan temu:fetch-ads-api-reports --period=' + period;
                         status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + '</div>';
-                    },
-                    complete: function () {
+                    })
+                    .always(function () {
                         btn.disabled = false;
-                    }
-                });
+                    });
             });
         });
     </script>

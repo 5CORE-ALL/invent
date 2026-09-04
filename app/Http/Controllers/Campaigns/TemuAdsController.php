@@ -24,9 +24,11 @@ use Illuminate\Support\Facades\Schema;
  */
 class TemuAdsController extends Controller
 {
-    public function index()
+    public function index(TemuApiService $temuApi)
     {
-        return view('campaign.temu.temu-ads');
+        return view('campaign.temu.temu-ads', [
+            'periodRanges' => $this->periodRangeLabels($temuApi->adsPeriodRanges()),
+        ]);
     }
 
     /**
@@ -67,7 +69,7 @@ class TemuAdsController extends Controller
         $l7ClicksByGoods = TemuAdsApiReport::query()
             ->where('period', 'L7')
             ->whereNotNull('goods_id')
-            ->get(['goods_id', 'clicks'])
+            ->get(['goods_id', 'clicks', 'impressions'])
             ->keyBy(fn (TemuAdsApiReport $r) => (string) $r->goods_id);
 
         $l30ClicksByGoods = TemuAdsApiReport::query()
@@ -116,6 +118,9 @@ class TemuAdsController extends Controller
             $clicksL7 = $r->period === 'L7'
                 ? $clicks
                 : (int) (optional($l7Row)->clicks ?? 0);
+            $impressionsL7 = $r->period === 'L7'
+                ? (int) ($r->impressions ?? 0)
+                : (int) (optional($l7Row)->impressions ?? 0);
             $clicksL30 = $r->period === 'L30'
                 ? $clicks
                 : (int) (optional($l30Row)->clicks ?? 0);
@@ -140,10 +145,12 @@ class TemuAdsController extends Controller
                 'dil_percent' => $dilPercent,
                 'period' => $r->period,
                 'impressions' => $r->impressions,
+                'impressions_l7' => $impressionsL7,
                 'clicks' => $r->clicks,
                 'clicks_l7' => $clicksL7,
                 'clicks_l30' => $clicksL30,
                 'ctr' => $r->ctr,
+                'ctr_l7' => $impressionsL7 > 0 ? round($clicksL7 / $impressionsL7 * 100, 4) : 0.0,
                 'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
                 'cart_cnt' => $r->cart_cnt,
                 'order_pay_cnt' => $r->order_pay_cnt,
@@ -906,6 +913,17 @@ class TemuAdsController extends Controller
 
         $goodsId = trim((string) $request->input('goods_id'));
         $action = (string) $request->input('action');
+        $report = TemuAdsApiReport::query()->where('goods_id', $goodsId)->first();
+        $liveStatus = $report ? $report->displayAdStatus() : 'Not sync';
+        if (! in_array($liveStatus, ['Active', 'Inactive', 'Paused'], true)) {
+            return response()->json([
+                'success' => false,
+                'action' => $action,
+                'ad_status' => $liveStatus,
+                'message' => "Cannot {$action}: Temu has no campaign for goods {$goodsId} ({$liveStatus}). Use Create first.",
+            ], 422);
+        }
+
         $result = $action === 'run'
             ? $temuApi->resumeAd($goodsId)
             : $temuApi->pauseAd($goodsId);
@@ -1115,11 +1133,14 @@ class TemuAdsController extends Controller
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
-            $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0));
-            if ($action === 'run') {
-                $runN++;
-            } else {
-                $pauseN++;
+            $status = (string) ($row['ad_status'] ?? '');
+            if (in_array($status, ['Active', 'Inactive', 'Paused'], true)) {
+                $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0));
+                if ($action === 'run') {
+                    $runN++;
+                } else {
+                    $pauseN++;
+                }
             }
         }
 
@@ -1289,5 +1310,23 @@ class TemuAdsController extends Controller
         }
 
         return $clicksL7 < 70 ? 'run' : 'pause';
+    }
+
+    /**
+     * Same calendar windows as Temu Seller Center Last 7 / Last 30 (US Pacific).
+     *
+     * @param  array<string, array{startTs: int, endTs: int}>  $ranges
+     * @return array<string, string>
+     */
+    private function periodRangeLabels(array $ranges): array
+    {
+        $out = [];
+        foreach ($ranges as $key => $range) {
+            $start = Carbon::createFromTimestamp((int) floor(((int) $range['startTs']) / 1000), 'America/Los_Angeles');
+            $end = Carbon::createFromTimestamp((int) floor(((int) $range['endTs']) / 1000), 'America/Los_Angeles');
+            $out[$key] = $start->format('m/d/Y').' - '.$end->format('m/d/Y');
+        }
+
+        return $out;
     }
 }
