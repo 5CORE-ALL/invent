@@ -753,7 +753,17 @@ class AliexpressListingPublishService
             }
         }
 
-        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows, $categoryId, $gallery);
+        $title = '';
+        foreach ($prepared as $row) {
+            if (! empty($row['product'])) {
+                $title = $this->resolveTitle($row['product'], (string) $row['sku']);
+                if ($title !== '') {
+                    break;
+                }
+            }
+        }
+
+        $attach = $this->api->addSkusToExistingProduct($siblingId, $newRows, $categoryId, $gallery, $title);
         if (empty($attach['success'])) {
             return [
                 'success' => false,

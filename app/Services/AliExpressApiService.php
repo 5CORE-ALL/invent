@@ -1761,7 +1761,7 @@ class AliExpressApiService
      * @param  list<string>  $imageUrls
      * @return array{success:bool,product_id?:string,message?:string}
      */
-    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null, array $imageUrls = []): array
+    public function addSkusToExistingProduct(string $productId, array $newSkuRows, ?int $categoryId = null, array $imageUrls = [], string $title = ''): array
     {
         $productId = trim($productId);
         if ($productId === '' || $newSkuRows === []) {
@@ -1848,10 +1848,11 @@ class AliExpressApiService
 
         $deduct = $this->listedProductReduceStrategy($infoData);
         $images = $this->editImageFields($this->mergeEditImages($imageUrls, $infoData));
+        $subjects = $this->editSubjectFields($infoData, $title);
         $base = array_merge([
             'product_id' => $productId,
             'sku_info_list' => $skuInfoList,
-        ], $deduct, $images);
+        ], $deduct, $images, $subjects);
         $withCategory = $base;
         if ($categoryId > 0) {
             $withCategory['aliexpress_category_id'] = $categoryId;
@@ -1861,7 +1862,7 @@ class AliExpressApiService
         $last = ['success' => false, 'message' => 'Could not add SKU to listed product '.$productId.'.'];
         foreach ([$base, $withCategory, $withLogistics] as $payload) {
             $encoded = $this->encodeRequestPayload($payload);
-            $editParams = array_merge(['edit_product_request' => $encoded], $deduct, $images);
+            $editParams = array_merge(['edit_product_request' => $encoded], $deduct, $images, $subjects);
             $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
                 'rest' => $editParams,
                 'sync' => $editParams,
@@ -1884,7 +1885,7 @@ class AliExpressApiService
             'aeop_ae_product_s_k_us' => [
                 'aeop_ae_product_sku' => $this->aeopSkuListFromOfficial($skuInfoList),
             ],
-        ], $deduct, $images);
+        ], $deduct, $images, $subjects);
         if ($categoryId > 0) {
             $old['category_id'] = $categoryId;
         }
@@ -1893,7 +1894,7 @@ class AliExpressApiService
             'aliexpress.postproduct.redefining.editaeproduct',
             'aliexpress.offer.product.edit',
         ] as $method) {
-            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct, $images);
+            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct, $images, $subjects);
             $res = $this->callApiFlexible($method, [
                 'rest' => $oldParams,
                 'sync' => $oldParams,
@@ -1995,6 +1996,54 @@ class AliExpressApiService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<string, mixed>
+     */
+    private function editSubjectFields(array $info, string $fallbackTitle): array
+    {
+        $title = trim((string) ($this->extractProductName($info) ?? ''));
+        if ($title === '') {
+            foreach ([$info['multi_language_subject_list'] ?? null, $info['subject_list'] ?? null] as $list) {
+                foreach ($this->normalizeList($list) as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $title = trim((string) ($row['subject'] ?? $row['value'] ?? $row['title'] ?? ''));
+                    if ($title !== '') {
+                        break 2;
+                    }
+                }
+            }
+        }
+        if ($title === '') {
+            $title = trim($fallbackTitle);
+        }
+        $title = mb_substr($title, 0, 128);
+        if ($title === '') {
+            return [];
+        }
+
+        $subjectList = $info['subject_list'] ?? null;
+        if (! is_array($subjectList) || $subjectList === []) {
+            $subjectList = $info['multi_language_subject_list'] ?? null;
+        }
+        if (! is_array($subjectList) || $subjectList === []) {
+            $subjectList = [
+                ['language' => 'en', 'subject' => $title],
+                ['locale' => 'en', 'value' => $title],
+            ];
+        }
+
+        return [
+            'subject' => $title,
+            'subject_list' => $subjectList,
+            'multi_language_subject_list' => [
+                ['language' => 'en', 'subject' => $title],
+            ],
+        ];
     }
 
     /**
