@@ -720,7 +720,7 @@ class AdvertisementMasterController extends Controller
         $set = [];
         $walk = function (array $list) use (&$walk, &$set): void {
             foreach ($list as $row) {
-                foreach (['channel_key', 'channel', 'channel_group'] as $field) {
+                foreach (['channel_key', 'channel', 'channel_group', 'marketplace'] as $field) {
                     $norm = $this->normalizeChannelMatchKey((string) ($row[$field] ?? ''));
                     if ($norm !== '') {
                         $set[$norm] = true;
@@ -1800,10 +1800,29 @@ class AdvertisementMasterController extends Controller
             }
         };
 
+        $amazonMissingHref = $this->namedHref('amazon.ads.missing');
+        $amazonMissing = [];
+        try {
+            $amazonMissing = AmazonAdsMissingController::missingCountsByType();
+        } catch (\Throwable $e) {
+            $amazonMissing = ['PT' => 0, 'KW' => 0];
+        }
+        $amazonMissingPt = (int) ($amazonMissing['PT'] ?? 0);
+        $amazonMissingKw = (int) ($amazonMissing['KW'] ?? 0);
         $put(
             ['amazon'],
-            $safeCount(static fn () => AmazonAdsMissingController::missingTotalCount()),
-            $this->namedHref('amazon.ads.missing')
+            $amazonMissingPt + $amazonMissingKw,
+            $amazonMissingHref
+        );
+        $put(
+            ['amazonkw', 'amzkw'],
+            $amazonMissingKw,
+            $amazonMissingHref
+        );
+        $put(
+            ['amazonpt', 'amzpt'],
+            $amazonMissingPt,
+            $amazonMissingHref
         );
         $put(
             ['shopifygoogleshopping'],

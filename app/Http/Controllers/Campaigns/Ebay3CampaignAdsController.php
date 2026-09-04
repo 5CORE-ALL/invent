@@ -863,6 +863,7 @@ class Ebay3CampaignAdsController extends Controller
 
         return [
             'channel'     => $channel,
+            'channel_key' => $channel,
             'source'      => $source,
             'spend'       => round($spend, 2),
             'clicks'      => (int) round($clicks),

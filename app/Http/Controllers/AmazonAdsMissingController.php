@@ -25,6 +25,8 @@ class AmazonAdsMissingController extends Controller
 
     private const SIDEBAR_COUNT_CACHE_KEY = 'amazon_ads_missing_sidebar_count';
 
+    private const SIDEBAR_COUNTS_CACHE_KEY = 'amazon_ads_missing_sidebar_counts';
+
     public function index()
     {
         return view('amazon_ads.amz_ads_missing');
@@ -36,32 +38,47 @@ class AmazonAdsMissingController extends Controller
      */
     public static function missingTotalCount(): int
     {
+        $counts = self::missingCountsByType();
+
+        return (int) $counts['PT'] + (int) $counts['KW'];
+    }
+
+    /**
+     * @return array{PT: int, KW: int}
+     */
+    public static function missingCountsByType(): array
+    {
+        $empty = ['PT' => 0, 'KW' => 0];
+
         try {
-            $cached = Cache::get(self::SIDEBAR_COUNT_CACHE_KEY);
-            if ($cached !== null) {
-                return (int) $cached;
+            $cached = Cache::get(self::SIDEBAR_COUNTS_CACHE_KEY);
+            if (is_array($cached) && isset($cached['PT'], $cached['KW'])) {
+                return ['PT' => (int) $cached['PT'], 'KW' => (int) $cached['KW']];
             }
         } catch (\Throwable $e) {
             // File cache dirs may be missing mid-request after optimize:clear.
         }
 
         try {
-            $total = (new static)->computeMissingTotal();
+            $counts = (new static)->computeMissingCountsByType();
+            $total = (int) $counts['PT'] + (int) $counts['KW'];
             try {
+                Cache::put(self::SIDEBAR_COUNTS_CACHE_KEY, $counts, now()->addMinutes(5));
                 Cache::put(self::SIDEBAR_COUNT_CACHE_KEY, $total, now()->addMinutes(5));
             } catch (\Throwable $e) {
                 // ignore
             }
 
-            return $total;
+            return $counts;
         } catch (\Throwable $e) {
-            return 0;
+            return $empty;
         }
     }
 
     public static function forgetMissingTotalCache(): void
     {
         Cache::forget(self::SIDEBAR_COUNT_CACHE_KEY);
+        Cache::forget(self::SIDEBAR_COUNTS_CACHE_KEY);
     }
 
     /**
@@ -1068,8 +1085,19 @@ PROMPT;
      */
     private function computeMissingTotal(): int
     {
+        $counts = $this->computeMissingCountsByType();
+
+        return (int) $counts['PT'] + (int) $counts['KW'];
+    }
+
+    /**
+     * @return array{PT: int, KW: int}
+     */
+    private function computeMissingCountsByType(): array
+    {
+        $counts = ['PT' => 0, 'KW' => 0];
         if (! Schema::hasTable('product_master')) {
-            return 0;
+            return $counts;
         }
 
         $rows = DB::table('product_master')
@@ -1102,21 +1130,20 @@ PROMPT;
                 return $links->pluck('type')->map(fn ($t) => (string) $t)->unique()->all();
             });
 
-        $total = 0;
         foreach ($parents as $parentKey => $parent) {
             if ((int) round($inventoryByParent[$parentKey] ?? 0) <= 0) {
                 continue;
             }
             $types = $linkedTypesBySku->get('PARENT '.$parent, []);
             if (! in_array('PT', $types, true)) {
-                $total++;
+                $counts['PT']++;
             }
             if (! in_array('KW', $types, true)) {
-                $total++;
+                $counts['KW']++;
             }
         }
 
-        return $total;
+        return $counts;
     }
 
     /**

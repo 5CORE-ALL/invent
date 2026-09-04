@@ -528,6 +528,7 @@
             function updateBadges(rows) {
                 let spend = 0, clicks = 0, sold = 0, sales = 0, active = 0, views = 0, missing = 0;
                 (admAllRows.length ? admAllRows : rows).forEach(function (r) {
+                    if (r && r.is_sub_row) return;
                     if (r && r.has_missing_ads && r.missing_ads_href) {
                         missing += Number(r.missing_ads || 0);
                     }
@@ -647,9 +648,74 @@
                 return flat;
             }
 
+            function admCampaignTypeLabel(row, name) {
+                const group = String((row && row.channel_group) || '').trim();
+                let label = String(name == null ? '' : name).trim();
+                if (group && label.indexOf(group + ' · ') === 0) {
+                    label = label.slice(group.length + 3).trim();
+                }
+                return label || String(name == null ? '' : name);
+            }
+
+            function admFilterKind() {
+                return String((document.getElementById('adm-filter-kind') || {}).value || '').trim();
+            }
+
             function groupFormatter(cell) {
                 const name = cell.getValue() || '';
+                const row = cell.getRow().getData() || {};
+                if (admFilterKind() !== 'types' && row.is_sub_row && !row.is_sum_row) {
+                    return '';
+                }
                 return '<span style="font-weight:600;color:#1e3a8a;">' + admEsc(name) + '</span>';
+            }
+
+            function admGroupedSorter(a, b, aRow, bRow, column, dir) {
+                const da = (aRow && aRow.getData) ? (aRow.getData() || {}) : {};
+                const db = (bRow && bRow.getData) ? (bRow.getData() || {}) : {};
+                const ga = String(da.channel_group || '').toLowerCase();
+                const gb = String(db.channel_group || '').toLowerCase();
+                if (ga !== gb) {
+                    const cmp = ga.localeCompare(gb);
+                    return dir === 'desc' ? -cmp : cmp;
+                }
+                const sa = da.is_sum_row ? 0 : 1;
+                const sb = db.is_sum_row ? 0 : 1;
+                if (sa !== sb) {
+                    const cmp = sa - sb;
+                    return dir === 'desc' ? -cmp : cmp;
+                }
+                const va = Number(a) || 0;
+                const vb = Number(b) || 0;
+                if (va !== vb) return va - vb;
+                return String(da.channel || '').localeCompare(String(db.channel || ''));
+            }
+
+            function sortAdmRows(rows) {
+                const groups = {};
+                const order = [];
+                (rows || []).forEach(function (r) {
+                    const g = String((r && r.channel_group) || '');
+                    if (!groups[g]) {
+                        groups[g] = [];
+                        order.push(g);
+                    }
+                    groups[g].push(r);
+                });
+                order.sort(function (a, b) {
+                    return a.localeCompare(b);
+                });
+                const flat = [];
+                order.forEach(function (g) {
+                    groups[g].sort(function (a, b) {
+                        const sa = a.is_sum_row ? 0 : 1;
+                        const sb = b.is_sum_row ? 0 : 1;
+                        if (sa !== sb) return sa - sb;
+                        return String(a.channel || '').localeCompare(String(b.channel || ''));
+                    });
+                    Array.prototype.push.apply(flat, groups[g]);
+                });
+                return flat;
             }
 
             function admTypeIcon(kind, title) {
@@ -696,7 +762,7 @@
                 const isChild = !!row.is_sub_row;
                 const weight = isChild ? 'font-weight:500;' : 'font-weight:600;';
                 const style = weight + 'color:#1e3a8a;';
-                const label = admFormatTypeLabel(name);
+                const label = admFormatTypeLabel(admCampaignTypeLabel(row, name));
                 if (url) {
                     return '<a href="' + url + '" target="_blank" style="color:#1e3a8a;text-decoration:none;' + style + '">' + label + '</a>';
                 }
@@ -751,7 +817,7 @@
                         showAdmError((response && response.message) || 'Failed to load Advertisement Master data.');
                         return [];
                     }
-                    const rows = flattenAdmRows(response.data || []);
+                    const rows = sortAdmRows(flattenAdmRows(response.data || []));
                     admAllRows = rows;
                     admSSales = Number(response.total_net_sales || 0);
                     const ssEl = document.getElementById('adm-badge-ssales');
@@ -764,9 +830,6 @@
                     updateBadges(rows);
                     buildAdmChannelOptions(rows);
                     fillAdmChannelFilter(rows);
-                    rows.sort(function (a, b) {
-                        return Number(b.acos || 0) - Number(a.acos || 0);
-                    });
                     setTimeout(applyAdmFilters, 0);
                     return rows;
                 },
@@ -775,7 +838,7 @@
                 },
                 layout: 'fitColumns',
                 headerSort: true,
-                initialSort: [{ column: 'acos', dir: 'desc' }],
+                initialSort: [{ column: 'channel_group', dir: 'asc' }],
                 rowFormatter: function (row) {
                     const data = row.getData() || {};
                     const el = row.getElement();
@@ -786,19 +849,19 @@
                     }
                 },
                 columns: [
-                    { title: 'Channel', field: 'channel_group', minWidth: 90, width: 100, hozAlign: 'left', headerSort: true, formatter: groupFormatter },
-                    { title: 'Type', field: 'channel', minWidth: 150, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, formatter: channelFormatter },
+                    { title: 'Channel', field: 'channel_group', minWidth: 90, width: 100, hozAlign: 'left', headerSort: true, sorter: admGroupedSorter, formatter: groupFormatter },
+                    { title: 'Type', field: 'channel', minWidth: 150, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, sorter: admGroupedSorter, formatter: channelFormatter },
                     { title: 'R/N', field: 'nr_req', width: 64, minWidth: 64, hozAlign: 'center', headerHozAlign: 'center', headerSort: false, formatter: rnFormatter, cssClass: 'adm-rn-cell' },
-                    { title: 'Missing', field: 'missing_ads', width: 110, minWidth: 100, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, headerSortStartingDir: 'desc', titleFormatter: missingAdsTitleFormatter, formatter: missingAdsFormatter, cssClass: 'adm-metric-cell', cellClick: missingAdsCellClick },
-                    { title: 'ACTIVE', field: 'active', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'SPEND', field: 'spend', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'CLICKS', field: 'clicks', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'VIEWS', field: 'views', hozAlign: 'center', headerHozAlign: 'center', formatter: viewsFormatter, headerSort: true, headerSortStartingDir: 'desc' },
-                    { title: 'SOLD', field: 'sold', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'ADS SALES', field: 'sales', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'T Sales', field: 't_sales', hozAlign: 'center', headerHozAlign: 'center', formatter: tSalesFormatter, headerSort: true, headerSortStartingDir: 'desc' },
-                    { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: 'number', cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'Missing', field: 'missing_ads', width: 110, minWidth: 100, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, titleFormatter: missingAdsTitleFormatter, formatter: missingAdsFormatter, cssClass: 'adm-metric-cell', cellClick: missingAdsCellClick },
+                    { title: 'ACTIVE', field: 'active', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'SPEND', field: 'spend', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'CLICKS', field: 'clicks', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'VIEWS', field: 'views', hozAlign: 'center', headerHozAlign: 'center', formatter: viewsFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter },
+                    { title: 'SOLD', field: 'sold', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'ADS SALES', field: 'sales', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'T Sales', field: 't_sales', hozAlign: 'center', headerHozAlign: 'center', formatter: tSalesFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter },
+                    { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
                     { title: '', field: '_edit', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: editFormatter, cssClass: 'adm-edit-cell', cellClick: openAdmEditFromCell },
                 ],
             });
@@ -834,6 +897,7 @@
                 const rn = (rnRaw === 'REQ' || rnRaw === 'NR') ? rnRaw : '';
                 if (!kind && !channel && !typeQ && !rn) {
                     table.clearFilter();
+                    table.redraw(true);
                     return;
                 }
                 table.setFilter(function (data) {
@@ -844,6 +908,7 @@
                     if (rn && String(data.nr_req || 'REQ').toUpperCase() !== rn) return false;
                     return true;
                 });
+                table.redraw(true);
             }
 
             document.getElementById('adm-filter-kind').addEventListener('change', applyAdmFilters);
