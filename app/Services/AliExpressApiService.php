@@ -169,6 +169,7 @@ class AliExpressApiService
                 is_array($weightFill['fields']['category_attributes'] ?? null) ? $weightFill['fields']['category_attributes'] : []
             );
         }
+        $instance = $this->ensureUsLogisticsWeightFields($instance, $weight, $lb);
 
         Log::info('AliExpress publish: schema weight fill', [
             'category_id' => $categoryId,
@@ -1328,17 +1329,26 @@ class AliExpressApiService
     }
 
     /**
-     * @return array{Package weight: string}
+     * US schema wants a number in pounds, not a string. Strings fail as CHK_BASIC_REQUIRED.
+     *
+     * @return array{Package weight: float}
      */
     private function usPackageWeightObject(float $kg, float $lb): array
     {
         return [
-            'Package weight' => $this->formatMarketplaceWeight($kg, $lb, 'lb', 'string'),
+            'Package weight' => $this->usPackageWeightPounds($kg, $lb),
         ];
     }
 
+    private function usPackageWeightPounds(float $kg, float $lb): float
+    {
+        $raw = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
+
+        return (float) number_format(max(0.01, $raw), 2, '.', '');
+    }
+
     /**
-     * AliExpress US always validates usLogisticsWeight.Package weight as a nested field.
+     * Put US package weight on every field AliExpress has required for this shop.
      *
      * @param  array<string, mixed>  $fields
      * @return array<string, mixed>
@@ -1349,15 +1359,30 @@ class AliExpressApiService
             return $fields;
         }
         $object = $this->usPackageWeightObject($kg, $lb);
+        $pounds = $object['Package weight'];
         foreach (['usLogisticsWeight', 'aeLogisticsWeight'] as $key) {
-            $current = $fields[$key] ?? null;
-            if (is_array($current)) {
-                $fields[$key] = $this->hasPackageWeightKey($current)
-                    ? $current
-                    : array_merge($current, $object);
-            } else {
-                $fields[$key] = $object;
+            $current = is_array($fields[$key] ?? null) ? $fields[$key] : [];
+            $current['Package weight'] = $pounds;
+            $fields[$key] = $current;
+        }
+        $usl = is_array($fields['usl'] ?? null) ? $fields['usl'] : [];
+        $usl['logisticsWeight'] = $object;
+        $usl['Package weight'] = $pounds;
+        $fields['usl'] = $usl;
+        $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
+
+        $skus = $fields['sku_info_list'] ?? [];
+        if (is_array($skus)) {
+            foreach ($skus as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $skus[$i]['usLogisticsWeight'] = $object;
+                $skus[$i]['aeLogisticsWeight'] = $object;
+                $skus[$i]['package_weight'] = $fields['package_weight'];
+                $skus[$i]['weight'] = number_format(max(0.001, $kg), 3, '.', '');
             }
+            $fields['sku_info_list'] = $skus;
         }
 
         return $fields;
@@ -1652,6 +1677,9 @@ class AliExpressApiService
             'attribute_list',
             'weight',
             'package_weight',
+            'usLogisticsWeight',
+            'aeLogisticsWeight',
+            'usl',
         ];
         $out = [];
         foreach ($keep as $key) {
@@ -1671,6 +1699,8 @@ class AliExpressApiService
                 'sku_attributes_list',
                 'weight',
                 'package_weight',
+                'usLogisticsWeight',
+                'aeLogisticsWeight',
             ]));
         }
         $out['sku_info_list'] = $skus;
