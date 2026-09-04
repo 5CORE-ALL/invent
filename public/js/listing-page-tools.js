@@ -357,6 +357,52 @@
             : 'No category matched yet. Type a category name below, or publish and we will try from the title.');
     }
 
+    function selectedWeightLb() {
+        const el = document.getElementById('listing-publish-weight-lb');
+        const raw = el ? String(el.value || '').replace(',', '.').trim() : '';
+        const n = parseFloat(raw);
+        return n > 0 ? String(n) : '';
+    }
+
+    function resetAliexpressWeightInput() {
+        const input = document.getElementById('listing-publish-weight-lb');
+        const row = document.getElementById('listing-publish-aliexpress-weight');
+        const note = document.getElementById('listing-publish-weight-note');
+        if (input) {
+            input.value = '';
+            delete input.dataset.userTyped;
+        }
+        if (row) row.classList.remove('is-missing');
+        if (note) note.textContent = 'Looking up Dim/Wt Master…';
+    }
+
+    function applySuggestedAliexpressPackage(pkg) {
+        const row = document.getElementById('listing-publish-aliexpress-weight');
+        const input = document.getElementById('listing-publish-weight-lb');
+        const note = document.getElementById('listing-publish-weight-note');
+        if (row) row.hidden = !isAliexpressChannel();
+        if (!isAliexpressChannel()) return;
+        const typed = input && input.dataset.userTyped === '1'
+            ? String(input.value || '').trim()
+            : '';
+        const lb = String((pkg && (pkg.weight_lb || pkg.weightLb)) || '').trim();
+        const has = !!(pkg && pkg.has_weight && lb);
+        if (input && typed === '') {
+            input.value = has ? lb : '';
+        }
+        const current = selectedWeightLb();
+        if (row) row.classList.toggle('is-missing', !current);
+        if (note) {
+            if (current && (typed !== '' || has)) {
+                note.textContent = has && typed === ''
+                    ? 'From Dim/Wt Master. You can change it before publishing.'
+                    : 'Using the weight you typed. AliExpress US Package weight is in pounds.';
+            } else {
+                note.textContent = 'Not on Dim/Wt Master. Type the shipping weight in pounds.';
+            }
+        }
+    }
+
     function applyPublishModeUi() {
         const box = document.getElementById('listing-publish-mode-box');
         if (box) box.style.display = '';
@@ -367,7 +413,10 @@
         const reverbBox = document.getElementById('listing-publish-reverb-category');
         if (reverbBox) reverbBox.hidden = !isReverbChannel();
         if (isReverbChannel()) applySuggestedCategory(null);
-        if (isAliexpressChannel()) applySuggestedAliexpressCategory(null);
+        if (isAliexpressChannel()) {
+            applySuggestedAliexpressCategory(null);
+            applySuggestedAliexpressPackage(null);
+        }
         if (isWayfairChannel()) applySuggestedWayfairCategory(null);
         updateModalCopy();
     }
@@ -547,6 +596,7 @@
             return;
         }
         previewSeedSkus = unique.slice();
+        resetAliexpressWeightInput();
         applyPublishModeUi();
         const box = document.getElementById('listing-publish-groups');
         if (box) box.innerHTML = '<p class="text-muted mb-0">Loading listing preview…</p>';
@@ -572,7 +622,10 @@
             success: function (response) {
                 renderGroups((response && response.groups) || []);
                 if (isReverbChannel()) applySuggestedCategory(response && response.suggested_category);
-                if (isAliexpressChannel()) applySuggestedAliexpressCategory(response && response.suggested_category);
+                if (isAliexpressChannel()) {
+                    applySuggestedAliexpressCategory(response && response.suggested_category);
+                    applySuggestedAliexpressPackage(response && response.suggested_package);
+                }
                 if (isWayfairChannel()) applySuggestedWayfairCategory(response && response.suggested_category);
             },
             error: function (xhr) {
@@ -613,7 +666,8 @@
                 parent: parent || '',
                 category_id: isWayfairChannel() ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
-                category_uuid: selectedCategoryUuid()
+                category_uuid: selectedCategoryUuid(),
+                weight_lb: isAliexpressChannel() ? selectedWeightLb() : ''
             },
             headers: { 'X-CSRF-TOKEN': csrf() },
             timeout: 180000
@@ -703,6 +757,15 @@
                 }
             });
 
+        $(document).off('input.listingPageTools', '#listing-publish-weight-lb')
+            .on('input.listingPageTools', '#listing-publish-weight-lb', function () {
+                this.dataset.userTyped = '1';
+                applySuggestedAliexpressPackage({
+                    has_weight: !!selectedWeightLb(),
+                    weight_lb: selectedWeightLb()
+                });
+            });
+
         $(document).off('change.listingPageTools', '.listing-publish-sku-check')
             .on('change.listingPageTools', '.listing-publish-sku-check', function () {
                 const $group = $(this).closest('.listing-publish-group');
@@ -731,6 +794,12 @@
             const groups = groupsForPublish();
             if (!groups.length) {
                 notify('danger', 'No Missing L children selected to publish.');
+                return;
+            }
+            if (isAliexpressChannel() && !selectedWeightLb()) {
+                notify('danger', 'Enter package weight in pounds. Dim/Wt Master has no weight for this SKU.');
+                const weightEl = document.getElementById('listing-publish-weight-lb');
+                if (weightEl) weightEl.focus();
                 return;
             }
             const originalHtml = $btn.html();
