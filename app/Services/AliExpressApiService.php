@@ -160,7 +160,7 @@ class AliExpressApiService
         $schema = $this->getProductSchema($categoryId);
         $request = $this->applyCategorySkuAttributes($request, $schema);
         $weightFill = $this->fillWeightFromSchema($schema, $weight, $lb);
-        $weightFill['fields'] = $this->ensureUsLogisticsWeightFields($weightFill['fields'], $weight, $lb, $weightFill['keys']);
+        $weightFill['fields'] = $this->ensureUsLogisticsWeightFields($weightFill['fields'], $weight, $lb, $weightFill['keys'], $weightFill['nodes']);
         $baseInstance = $this->buildOneSchemaInstance($request, $weight);
         $instance = array_merge($baseInstance, $weightFill['fields']);
         if (isset($baseInstance['category_attributes']) || isset($weightFill['fields']['category_attributes'])) {
@@ -169,7 +169,7 @@ class AliExpressApiService
                 is_array($weightFill['fields']['category_attributes'] ?? null) ? $weightFill['fields']['category_attributes'] : []
             );
         }
-        $instance = $this->ensureUsLogisticsWeightFields($instance, $weight, $lb, $weightFill['keys']);
+        $instance = $this->ensureUsLogisticsWeightFields($instance, $weight, $lb, $weightFill['keys'], $weightFill['nodes']);
 
         Log::info('AliExpress publish: schema weight fill', [
             'category_id' => $categoryId,
@@ -246,9 +246,14 @@ class AliExpressApiService
         }
 
         if (str_contains(strtolower((string) ($last['message'] ?? '')), 'package weight')) {
-            $last['message'] = trim((string) $last['message']).' Sent usLogisticsWeight='
-                .json_encode($instance['usLogisticsWeight'] ?? $weightFill['fields']['usLogisticsWeight'] ?? null)
-                .' schema='.implode(',', $weightFill['keys']);
+            $schemaHint = [];
+            foreach ($weightFill['nodes'] as $node) {
+                $schemaHint[] = ($node['path'] ?? '').':'.($node['type'] ?? '?');
+            }
+            $last['message'] = trim((string) $last['message'])
+                .' Sent aeLogisticsWeight='.json_encode($instance['aeLogisticsWeight'] ?? null)
+                .' package_weight='.json_encode($instance['package_weight'] ?? null)
+                .' schema='.($schemaHint !== [] ? implode(',', $schemaHint) : implode(',', $weightFill['keys']));
         }
 
         return $last;
@@ -625,14 +630,15 @@ class AliExpressApiService
      */
     private function aliexpressWeightNumber(array $request): float
     {
-        foreach (['aeLogisticsWeight', 'package_weight', 'weight', 'usLogisticsWeight'] as $key) {
+        foreach (['package_weight', 'weight'] as $key) {
             $value = $request[$key] ?? null;
-            if (is_array($value)) {
-                $value = $value['value'] ?? $value['weight'] ?? $value['Package weight'] ?? $value['logisticsWeight'] ?? null;
-            }
             if (is_numeric($value) && (float) $value > 0) {
                 return round((float) $value, 3);
             }
+        }
+        $lb = $this->aliexpressWeightPounds($request, 0.0);
+        if ($lb > 0) {
+            return round($lb * 0.45359237, 3);
         }
 
         return 0.0;
@@ -646,6 +652,15 @@ class AliExpressApiService
         $lb = $request['weight_lb'] ?? null;
         if (is_numeric($lb) && (float) $lb > 0) {
             return round((float) $lb, 3);
+        }
+        foreach (['usLogisticsWeight', 'aeLogisticsWeight'] as $key) {
+            $value = $request[$key] ?? null;
+            if (is_array($value)) {
+                $value = $value['Package weight'] ?? $value['weight'] ?? $value['value'] ?? null;
+            }
+            if (is_numeric($value) && (float) $value > 0) {
+                return round((float) $value, 3);
+            }
         }
 
         return $kg > 0 ? round($kg / 0.45359237, 3) : 0.0;
@@ -1189,10 +1204,10 @@ class AliExpressApiService
             $this->setNestedField($fields, $hit['path'], $this->fillSchemaNode($hit['node'], $kg, $lb, $hit['path']));
         }
         if ($fields === [] && ($kg > 0 || $lb > 0)) {
-            $keys = ['package_weight', 'usLogisticsWeight'];
+            $keys = ['package_weight', 'aeLogisticsWeight'];
             $fields = [
                 'package_weight' => $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number'),
-                'usLogisticsWeight' => $this->usPackageWeightObject($kg, $lb),
+                'aeLogisticsWeight' => $this->usPackageWeightPounds($kg, $lb),
             ];
         }
 
@@ -1359,8 +1374,8 @@ class AliExpressApiService
     {
         $type = $this->schemaNodeType($node);
         $props = is_array($node['properties'] ?? null) ? $node['properties'] : [];
-        if ($this->isUsLogisticsWeightParent($path) && $type !== 'object' && $props === []) {
-            return $this->usPackageWeightObject($kg, $lb);
+        if ($props === [] && is_array($node['fields'] ?? null)) {
+            $props = $node['fields'];
         }
 
         if ($type === 'object' || $props !== []) {
@@ -1370,7 +1385,7 @@ class AliExpressApiService
                 if (! is_array($child)) {
                     continue;
                 }
-                $childName = (string) $name;
+                $childName = $this->schemaPropertyName($name, $child);
                 $childPath = $path === '' ? $childName : $path.'.'.$childName;
                 $needed = $required === []
                     || in_array($childName, $required, true)
@@ -1437,33 +1452,77 @@ class AliExpressApiService
     }
 
     /**
-     * Keep only schema weight paths, and guarantee usLogisticsWeight.Package weight when that node exists.
+     * Fill schema weight paths. Leaf US fields are a pounds number; objects keep Package weight.
      *
      * @param  array<string, mixed>  $fields
      * @param  list<string>  $schemaKeys
+     * @param  list<array<string, mixed>>  $nodes
      * @return array<string, mixed>
      */
-    private function ensureUsLogisticsWeightFields(array $fields, float $kg, float $lb, array $schemaKeys = []): array
+    private function ensureUsLogisticsWeightFields(array $fields, float $kg, float $lb, array $schemaKeys = [], array $nodes = []): array
     {
         if ($kg <= 0 && $lb <= 0) {
             return $fields;
         }
-        $mentionsUs = $schemaKeys === []
-            || $this->schemaKeysMention($schemaKeys, 'usLogisticsWeight')
-            || $this->schemaKeysMention($schemaKeys, 'Package weight');
-        if ($mentionsUs) {
-            $current = is_array($fields['usLogisticsWeight'] ?? null) ? $fields['usLogisticsWeight'] : [];
-            $fields['usLogisticsWeight'] = array_merge($current, $this->usPackageWeightObject($kg, $lb));
+        if ($this->schemaKeysMention($schemaKeys, 'aeLogisticsWeight') || array_key_exists('aeLogisticsWeight', $fields)) {
+            $fields['aeLogisticsWeight'] = $this->normalizeLogisticsWeightValue(
+                $fields['aeLogisticsWeight'] ?? null,
+                $kg,
+                $lb,
+                $this->schemaNodeIsObject($nodes, 'aeLogisticsWeight')
+            );
         }
-        if ($this->schemaKeysMention($schemaKeys, 'aeLogisticsWeight')) {
-            $current = is_array($fields['aeLogisticsWeight'] ?? null) ? $fields['aeLogisticsWeight'] : [];
-            $fields['aeLogisticsWeight'] = array_merge($current, $this->usPackageWeightObject($kg, $lb));
+        if ($this->schemaKeysMention($schemaKeys, 'usLogisticsWeight')) {
+            $fields['usLogisticsWeight'] = $this->normalizeLogisticsWeightValue(
+                $fields['usLogisticsWeight'] ?? null,
+                $kg,
+                $lb,
+                $this->schemaNodeIsObject($nodes, 'usLogisticsWeight')
+                    || $this->schemaKeysMention($schemaKeys, 'Package weight')
+            );
         }
-        if (! isset($fields['package_weight'])) {
+        if (! isset($fields['package_weight']) || ! is_numeric($fields['package_weight'])) {
             $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
         }
 
         return $fields;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $nodes
+     */
+    private function schemaNodeIsObject(array $nodes, string $path): bool
+    {
+        foreach ($nodes as $node) {
+            if (strcasecmp((string) ($node['path'] ?? ''), $path) !== 0) {
+                continue;
+            }
+
+            return ($node['type'] ?? '') === 'object'
+                || (is_array($node['property_keys'] ?? null) && $node['property_keys'] !== []);
+        }
+
+        return false;
+    }
+
+    private function normalizeLogisticsWeightValue(mixed $current, float $kg, float $lb, bool $asObject): mixed
+    {
+        if ($asObject) {
+            $current = is_array($current) ? $current : [];
+
+            return array_merge($current, $this->usPackageWeightObject($kg, $lb));
+        }
+        if (is_array($current)) {
+            $current = $current['Package weight'] ?? $current['weight'] ?? $current['value'] ?? null;
+        }
+        if (is_numeric($current) && (float) $current > 0) {
+            return (float) number_format((float) $current, 2, '.', '');
+        }
+        if (is_string($current) && is_numeric(trim($current)) && (float) $current > 0) {
+            return $current;
+        }
+
+        return $this->usPackageWeightPounds($kg, $lb);
     }
 
     /**
@@ -1818,7 +1877,7 @@ class AliExpressApiService
         $out = array_merge($out, $schemaWeightFields);
         $kg = $this->aliexpressWeightNumber($request);
         $lb = $this->aliexpressWeightPounds($request, $kg);
-        $out = $this->ensureUsLogisticsWeightFields($out, $kg, $lb, array_keys($schemaWeightFields));
+        $out = $this->ensureUsLogisticsWeightFields($out, $kg, $lb, array_keys($schemaWeightFields), []);
         // Official product.post weight is a kg string (min 0.001). Do not overwrite it with a US object.
         $out['weight'] = number_format(max(0.001, $kg), 3, '.', '');
         if (! isset($out['package_weight']) || ! is_numeric($out['package_weight'])) {
