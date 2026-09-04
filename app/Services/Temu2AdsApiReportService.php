@@ -61,7 +61,7 @@ class Temu2AdsApiReportService
         }
 
         $range = $ranges[$period];
-        $sku = Temu2Metric::where('goods_id', $goodsId)->value('sku');
+        $sku = $this->resolveSku($goodsId, $period);
 
         try {
             $result = $this->temuApiService->fetchAdsData(
@@ -248,8 +248,7 @@ class Temu2AdsApiReportService
         $clicks = (int) ($metrics['clicks'] ?? 0);
         $orders = (int) ($metrics['order_pay_cnt'] ?? 0);
 
-        return [
-            'sku' => $sku,
+        $row = [
             'spend' => $metrics['ad_spend'] ?? null,
             'base_price_sales' => $metrics['order_pay_amt'] ?? null,
             'roas' => $metrics['roas'] ?? null,
@@ -261,6 +260,35 @@ class Temu2AdsApiReportService
             'cvr' => $clicks > 0 ? round($orders / $clicks * 100, 2) : 0,
             'add_to_cart_number' => $metrics['cart_cnt'] ?? null,
         ];
+        $sku = is_string($sku) ? trim($sku) : '';
+        if ($sku !== '') {
+            $row['sku'] = $sku;
+        }
+
+        return $row;
+    }
+
+    /**
+     * Keep the listing SKU even when temu2_metrics has no row for this goods.
+     * A null write would blank Image / Inv / Dil% on the next fetch.
+     */
+    private function resolveSku(string $goodsId, string $period): ?string
+    {
+        $sku = Temu2Metric::where('goods_id', $goodsId)->value('sku');
+        $sku = is_string($sku) ? trim($sku) : '';
+        if ($sku !== '') {
+            return $sku;
+        }
+
+        $existing = Temu2CampaignReport::query()
+            ->where('goods_id', $goodsId)
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderByRaw('CASE WHEN report_range = ? THEN 0 ELSE 1 END', [$period])
+            ->value('sku');
+        $existing = is_string($existing) ? trim($existing) : '';
+
+        return $existing !== '' ? $existing : null;
     }
 
     /**

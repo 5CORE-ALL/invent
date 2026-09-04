@@ -663,8 +663,9 @@
     }
 
     function rowHasLiveAd(row) {
-        var s = String((row && row.ad_status) || '').trim();
+        var s = String((row && (row.ad_status || row.status)) || '').trim();
         if (s === 'Paused') s = 'Inactive';
+        if (s === 'Not Created') s = 'No ad';
         return s === 'Active' || s === 'Inactive';
     }
 
@@ -685,7 +686,7 @@
     function pauseRunButtonHtml(row) {
         row = row || {};
         if (!rowHasLiveAd(row)) {
-            var status = String(row.ad_status || 'No ad');
+            var status = String(row.ad_status || row.status || 'No ad');
             return '<span class="text-muted" title="' + escapeAttr(status + ' on Temu — Pause/Run only applies to an existing campaign. Use Create if Status is No ad.') + '">—</span>';
         }
         var action = pauseRunAction(row);

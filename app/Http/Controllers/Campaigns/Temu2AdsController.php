@@ -11,6 +11,7 @@ use App\Support\TemuGoodsIdHelper;
 use App\Services\Temu2AdsApiReportService;
 use App\Services\Temu2AdsAutoPauseService;
 use App\Services\Temu2ApiService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -24,9 +25,11 @@ use Illuminate\Support\Facades\Log;
  */
 class Temu2AdsController extends Controller
 {
-    public function index()
+    public function index(Temu2ApiService $temuApi)
     {
-        return view('campaign.temu2.temu2-ads');
+        return view('campaign.temu2.temu2-ads', [
+            'periodRanges' => $this->periodRangeLabels($temuApi->adsPeriodRanges()),
+        ]);
     }
 
     /**
@@ -789,6 +792,17 @@ class Temu2AdsController extends Controller
 
         $goodsId = trim((string) $request->input('goods_id'));
         $action = (string) $request->input('action');
+        $report = Temu2CampaignReport::query()->where('goods_id', $goodsId)->first();
+        $liveStatus = $report ? $report->displayAdStatus() : 'No ad';
+        if (! in_array($liveStatus, ['Active', 'Inactive', 'Paused'], true)) {
+            return response()->json([
+                'success' => false,
+                'action' => $action,
+                'ad_status' => $liveStatus,
+                'message' => "Cannot {$action}: Temu has no campaign for goods {$goodsId} ({$liveStatus}). Use Create first.",
+            ], 422);
+        }
+
         $result = $action === 'run'
             ? $temuApi->resumeAd($goodsId)
             : $temuApi->pauseAd($goodsId);
@@ -958,11 +972,14 @@ class Temu2AdsController extends Controller
             if (($row['ad_status'] ?? '') === 'No ad') {
                 $createN++;
             }
-            $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0));
-            if ($action === 'run') {
-                $runN++;
-            } else {
-                $pauseN++;
+            $status = (string) ($row['ad_status'] ?? '');
+            if (in_array($status, ['Active', 'Inactive', 'Paused'], true)) {
+                $action = $this->actionFromPauseRunSlabs((int) ($row['clicks_l7'] ?? 0), (int) ($row['inv'] ?? 0));
+                if ($action === 'run') {
+                    $runN++;
+                } else {
+                    $pauseN++;
+                }
             }
         }
 
@@ -1413,5 +1430,23 @@ class Temu2AdsController extends Controller
         fclose($handle);
 
         return [$headers, $dataRows];
+    }
+
+    /**
+     * Same calendar windows as Temu Seller Center Last 7 / Last 30 (US Pacific).
+     *
+     * @param  array<string, array{startTs: int, endTs: int}>  $ranges
+     * @return array<string, string>
+     */
+    private function periodRangeLabels(array $ranges): array
+    {
+        $out = [];
+        foreach ($ranges as $key => $range) {
+            $start = Carbon::createFromTimestamp((int) floor(((int) $range['startTs']) / 1000), 'America/Los_Angeles');
+            $end = Carbon::createFromTimestamp((int) floor(((int) $range['endTs']) / 1000), 'America/Los_Angeles');
+            $out[$key] = $start->format('m/d/Y').' - '.$end->format('m/d/Y');
+        }
+
+        return $out;
     }
 }
