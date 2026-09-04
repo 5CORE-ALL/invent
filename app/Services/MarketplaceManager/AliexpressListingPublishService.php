@@ -219,6 +219,10 @@ class AliexpressListingPublishService
             'service_policy_id' => (int) config('services.aliexpress.service_policy_id', 0),
         ];
         $request = array_merge($request, $this->productPackageFields($pkg));
+        $listedWeight = $this->listedWeightTemplate($parentKey, $publishSkus);
+        if ($listedWeight !== []) {
+            $request['listed_weight_template'] = $listedWeight;
+        }
 
         Log::info('AliExpress publish: posting from category schema', [
             'parent' => $parentKey,
@@ -650,6 +654,44 @@ class AliexpressListingPublishService
         }
 
         return ['Package weight' => number_format(max(0.01, $lb), 2, '.', '')];
+    }
+
+    /**
+     * @param  list<string>  $publishSkus
+     * @return array<string, mixed>
+     */
+    private function listedWeightTemplate(string $parentKey, array $publishSkus): array
+    {
+        $metrics = AliexpressListingCounts::metricsByNormalizedSku();
+        $candidates = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parentKey)
+            ->orderBy('sku')
+            ->limit(40)
+            ->pluck('sku')
+            ->all();
+        foreach (array_merge($publishSkus, $candidates) as $sku) {
+            $productId = AliexpressListingCounts::productIdForSku((string) $sku, $metrics);
+            if ($productId === '') {
+                continue;
+            }
+            $info = $this->api->getProductInfo($productId);
+            if (empty($info['success'])) {
+                continue;
+            }
+            $fields = $this->api->weightFieldsFromListedProduct(is_array($info['data'] ?? null) ? $info['data'] : []);
+            if ($fields !== []) {
+                Log::info('AliExpress publish: cloned weight shape from listed sibling', [
+                    'sku' => $sku,
+                    'product_id' => $productId,
+                    'keys' => array_keys($fields),
+                ]);
+
+                return $fields;
+            }
+        }
+
+        return [];
     }
 
     private function packageSize(ProductMaster $product, string $sku = ''): array
