@@ -1845,10 +1845,11 @@ class AliExpressApiService
         $categoryId = $listedCategory > 0 ? $listedCategory : (int) ($categoryId ?? 0);
         $skuInfoList = $this->officialSkuInfoList($existing);
 
-        $base = [
+        $deduct = $this->listedProductReduceStrategy($infoData);
+        $base = array_merge([
             'product_id' => $productId,
             'sku_info_list' => $skuInfoList,
-        ];
+        ], $deduct);
         $withCategory = $base;
         if ($categoryId > 0) {
             $withCategory['aliexpress_category_id'] = $categoryId;
@@ -1858,9 +1859,10 @@ class AliExpressApiService
         $last = ['success' => false, 'message' => 'Could not add SKU to listed product '.$productId.'.'];
         foreach ([$base, $withCategory, $withLogistics] as $payload) {
             $encoded = $this->encodeRequestPayload($payload);
+            $editParams = array_merge(['edit_product_request' => $encoded], $deduct);
             $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
-                'rest' => ['edit_product_request' => $encoded],
-                'sync' => ['edit_product_request' => $encoded],
+                'rest' => $editParams,
+                'sync' => $editParams,
             ]);
             if (! empty($res['success'])) {
                 return [
@@ -1875,12 +1877,12 @@ class AliExpressApiService
             }
         }
 
-        $old = [
+        $old = array_merge([
             'product_id' => $productId,
             'aeop_ae_product_s_k_us' => [
                 'aeop_ae_product_sku' => $this->aeopSkuListFromOfficial($skuInfoList),
             ],
-        ];
+        ], $deduct);
         if ($categoryId > 0) {
             $old['category_id'] = $categoryId;
         }
@@ -1889,9 +1891,10 @@ class AliExpressApiService
             'aliexpress.postproduct.redefining.editaeproduct',
             'aliexpress.offer.product.edit',
         ] as $method) {
+            $oldParams = array_merge(['aeop_a_e_product' => $oldEncoded], $deduct);
             $res = $this->callApiFlexible($method, [
-                'rest' => ['aeop_a_e_product' => $oldEncoded],
-                'sync' => ['aeop_a_e_product' => $oldEncoded],
+                'rest' => $oldParams,
+                'sync' => $oldParams,
             ]);
             if (! empty($res['success'])) {
                 return [
@@ -1990,6 +1993,28 @@ class AliExpressApiService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $info
+     * @return array<string, string>
+     */
+    private function listedProductReduceStrategy(array $info): array
+    {
+        $value = trim((string) (
+            $info['reduce_strategy']
+            ?? $info['inventory_deduction_strategy']
+            ?? $info['inventoryDeductionStrategy']
+            ?? config('services.aliexpress.inventory_deduction_strategy', 'place_order_withhold')
+        ));
+        if ($value === '') {
+            $value = 'place_order_withhold';
+        }
+
+        return [
+            'reduce_strategy' => $value,
+            'inventory_deduction_strategy' => $value,
+        ];
     }
 
     /**
