@@ -251,7 +251,8 @@ class AliExpressApiService
                 $schemaHint[] = ($node['path'] ?? '').':'.($node['type'] ?? '?');
             }
             $last['message'] = trim((string) $last['message'])
-                .' Sent aeLogisticsWeight='.json_encode($instance['aeLogisticsWeight'] ?? null)
+                .' Sent usLogisticsWeight='.json_encode($instance['usLogisticsWeight'] ?? null)
+                .' aeLogisticsWeight='.json_encode($instance['aeLogisticsWeight'] ?? null)
                 .' package_weight='.json_encode($instance['package_weight'] ?? null)
                 .' schema='.($schemaHint !== [] ? implode(',', $schemaHint) : implode(',', $weightFill['keys']));
         }
@@ -1448,7 +1449,7 @@ class AliExpressApiService
     {
         $raw = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
 
-        return (float) number_format(max(0.01, $raw), 2, '.', '');
+        return (float) number_format(max(0.01, abs($raw)), 2, '.', '');
     }
 
     /**
@@ -1461,27 +1462,24 @@ class AliExpressApiService
      */
     private function ensureUsLogisticsWeightFields(array $fields, float $kg, float $lb, array $schemaKeys = [], array $nodes = []): array
     {
+        $kg = abs($kg);
+        $lb = abs($lb);
         if ($kg <= 0 && $lb <= 0) {
             return $fields;
         }
-        if ($this->schemaKeysMention($schemaKeys, 'aeLogisticsWeight') || array_key_exists('aeLogisticsWeight', $fields)) {
-            $fields['aeLogisticsWeight'] = $this->normalizeLogisticsWeightValue(
-                $fields['aeLogisticsWeight'] ?? null,
-                $kg,
-                $lb,
-                $this->schemaNodeIsObject($nodes, 'aeLogisticsWeight')
-            );
+        $pounds = $this->usPackageWeightPounds($kg, $lb);
+        $aeIsObject = $this->schemaNodeIsObject($nodes, 'aeLogisticsWeight');
+        $fields['usLogisticsWeight'] = $this->usPackageWeightObject($kg, $lb);
+        $fields['aeLogisticsWeight'] = $this->normalizeLogisticsWeightValue(
+            $fields['aeLogisticsWeight'] ?? $pounds,
+            $kg,
+            $lb,
+            $aeIsObject
+        );
+        if (is_numeric($fields['aeLogisticsWeight'] ?? null) && (float) $fields['aeLogisticsWeight'] <= 0) {
+            $fields['aeLogisticsWeight'] = $pounds;
         }
-        if ($this->schemaKeysMention($schemaKeys, 'usLogisticsWeight')) {
-            $fields['usLogisticsWeight'] = $this->normalizeLogisticsWeightValue(
-                $fields['usLogisticsWeight'] ?? null,
-                $kg,
-                $lb,
-                $this->schemaNodeIsObject($nodes, 'usLogisticsWeight')
-                    || $this->schemaKeysMention($schemaKeys, 'Package weight')
-            );
-        }
-        if (! isset($fields['package_weight']) || ! is_numeric($fields['package_weight'])) {
+        if (! isset($fields['package_weight']) || ! is_numeric($fields['package_weight']) || (float) $fields['package_weight'] <= 0) {
             $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
         }
 
@@ -1671,6 +1669,8 @@ class AliExpressApiService
     private function formatMarketplaceWeight(float $kg, float $lb, string $unit, string $kind, array $node = []): float|int|string
     {
         $unit = strtolower(trim($unit));
+        $kg = abs($kg);
+        $lb = abs($lb);
         if (in_array($unit, ['lb', 'lbs', 'pound', 'pounds'], true)) {
             $raw = $lb > 0 ? $lb : ($kg > 0 ? $kg / 0.45359237 : 0.0);
             $decimals = 2;

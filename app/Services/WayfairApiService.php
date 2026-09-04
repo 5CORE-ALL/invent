@@ -1919,59 +1919,190 @@ XML;
      */
     public function lookupCatalogClassForSkus(array $skus): ?array
     {
-        $parts = [];
-        foreach ($skus as $sku) {
-            $sku = trim((string) $sku);
-            if ($sku !== '') {
-                $parts[] = $sku;
-            }
-        }
-        $parts = array_values(array_unique($parts));
+        $parts = $this->catalogPartNumberVariants($skus);
         if ($parts === []) {
             return null;
         }
 
-        $query = <<<'GRAPHQL'
-        query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
-          supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
-            products {
-              supplierPartNumber
-              class { classId className }
-            }
-          }
+        $fromItems = $this->lookupClassFromSupplierCatalogItems($parts);
+        if ($fromItems !== null) {
+            return $fromItems;
         }
-        GRAPHQL;
+
+        $queries = [
+            <<<'GRAPHQL'
+            query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+              supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+                products {
+                  supplierPartNumber
+                  class { classId className }
+                  classId
+                  className
+                }
+              }
+            }
+            GRAPHQL,
+            <<<'GRAPHQL'
+            query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+              supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+                products {
+                  supplierPartNumber
+                  classId
+                  className
+                }
+              }
+            }
+            GRAPHQL,
+        ];
 
         $token = $this->authenticate();
         $url = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
         $supplierId = (int) config('services.wayfair.supplier_id');
-        foreach (array_chunk($parts, 25) as $chunk) {
-            $response = $this->apiHttpClient()
-                ->withToken($token)
-                ->withHeaders([
-                    'X-SELECTED-SUPPLIER-ID' => (string) $supplierId,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ])
-                ->post($url, [
-                    'query' => $query,
-                    'variables' => [
-                        'supplierId' => $supplierId,
-                        'filter' => ['supplierPartNumber' => ['in' => $chunk]],
-                        'paginationOptions' => ['page' => 1, 'pageSize' => 25],
-                    ],
-                ]);
-            $json = $response->json();
-            foreach ($json['data']['supplierCatalog']['products'] ?? [] as $product) {
-                if (! is_array($product)) {
+        foreach ($queries as $query) {
+            foreach (array_chunk($parts, 25) as $chunk) {
+                $response = $this->apiHttpClient()
+                    ->withToken($token)
+                    ->withHeaders([
+                        'X-SELECTED-SUPPLIER-ID' => (string) $supplierId,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                    ])
+                    ->post($url, [
+                        'query' => $query,
+                        'variables' => [
+                            'supplierId' => $supplierId,
+                            'filter' => ['supplierPartNumber' => ['in' => $chunk]],
+                            'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                        ],
+                    ]);
+                $json = $response->json();
+                if (! empty($json['errors'])) {
+                    break;
+                }
+                $hit = $this->classFromCatalogRows($json['data']['supplierCatalog']['products'] ?? [], $parts);
+                if ($hit !== null) {
+                    return $hit;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<string>
+     */
+    private function catalogPartNumberVariants(array $skus): array
+    {
+        $parts = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $parts[] = $sku;
+            $upper = $this->normalizePartNumber($sku);
+            if ($upper !== '' && $upper !== $sku) {
+                $parts[] = $upper;
+            }
+            $compact = preg_replace('/\s+/', '', $sku);
+            if (is_string($compact) && $compact !== '' && $compact !== $sku) {
+                $parts[] = $compact;
+            }
+        }
+
+        return array_values(array_unique($parts));
+    }
+
+    /**
+     * @param  list<string>  $parts
+     * @return array{class_id: int, class_name: string}|null
+     */
+    private function lookupClassFromSupplierCatalogItems(array $parts): ?array
+    {
+        $query = <<<'GRAPHQL'
+        query ($input: SupplierCatalogItemsInput!) {
+          supplierCatalogItems(input: $input) {
+            ... on SupplierCatalogItems {
+              catalogItems {
+                supplierPartNumber
+                class { classId className }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+        $filters = [
+            ['supplierPartNumbers' => array_values($parts)],
+            ['supplierPartNumber' => ['in' => array_values($parts)]],
+        ];
+        $urls = [
+            'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
+            'https://api.wayfair.io/v1/product-catalog-api/graphql',
+        ];
+        $token = $this->authenticate();
+        $supplierId = (string) config('services.wayfair.supplier_id');
+        foreach ($urls as $url) {
+            foreach ($filters as $filter) {
+                $response = $this->apiHttpClient()
+                    ->withToken($token)
+                    ->withHeaders([
+                        'X-SELECTED-SUPPLIER-ID' => $supplierId,
+                        'Content-Type' => 'application/json',
+                        'Accept' => 'application/json',
+                    ])
+                    ->post($url, [
+                        'query' => $query,
+                        'variables' => [
+                            'input' => [
+                                'filter' => $filter,
+                                'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                            ],
+                        ],
+                    ]);
+                $json = $response->json();
+                if (! empty($json['errors'])) {
                     continue;
                 }
-                $class = is_array($product['class'] ?? null) ? $product['class'] : [];
-                $classId = (int) ($class['classId'] ?? $product['classId'] ?? 0);
-                $className = trim((string) ($class['className'] ?? $product['className'] ?? ''));
-                if ($classId > 0) {
-                    return ['class_id' => $classId, 'class_name' => $className];
+                $items = $json['data']['supplierCatalogItems']['catalogItems'] ?? [];
+                $hit = $this->classFromCatalogRows(is_array($items) ? $items : [], $parts);
+                if ($hit !== null) {
+                    return $hit;
                 }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<mixed>  $rows
+     * @param  list<string>  $parts
+     * @return array{class_id: int, class_name: string}|null
+     */
+    private function classFromCatalogRows(array $rows, array $parts): ?array
+    {
+        $want = [];
+        foreach ($parts as $part) {
+            $norm = $this->normalizePartNumber((string) $part);
+            if ($norm !== '') {
+                $want[$norm] = true;
+            }
+        }
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $part = trim((string) ($row['supplierPartNumber'] ?? $row['supplier_part_number'] ?? ''));
+            if ($want !== [] && $part !== '' && ! isset($want[$this->normalizePartNumber($part)])) {
+                continue;
+            }
+            $class = is_array($row['class'] ?? null) ? $row['class'] : [];
+            $classId = (int) ($class['classId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
+            $className = trim((string) ($class['className'] ?? $row['className'] ?? $row['class_name'] ?? ''));
+            if ($classId > 0) {
+                return ['class_id' => $classId, 'class_name' => $className];
             }
         }
 

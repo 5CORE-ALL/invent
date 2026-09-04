@@ -209,9 +209,12 @@ class FaireListingPublishService
      * @param  list<array{sku: string, product: ProductMaster, price: float, images: list<string>, inv: int}>  $prepared
      * @return array{success: bool, message: string, goods_id?: string}
      */
-    private function createProduct(string $title, ProductMaster $primary, array $prepared): array
+    private function createProduct(string $title, ProductMaster $primary, array $prepared, string $taxonomyFromProductId = '', ?array $taxonomyOverride = null): array
     {
-        $taxonomy = $this->resolveTaxonomyType();
+        $taxonomy = $taxonomyOverride;
+        if ($taxonomy === null || trim((string) ($taxonomy['id'] ?? '')) === '') {
+            $taxonomy = $this->resolveTaxonomyType($taxonomyFromProductId);
+        }
         if ($taxonomy === null) {
             return [
                 'success' => false,
@@ -298,7 +301,13 @@ class FaireListingPublishService
         $data = (! empty($info['success']) && is_array($info['data'] ?? null)) ? $info['data'] : [];
         $sets = $this->optionSetsFromProduct($data);
         if ($sets === []) {
-            return $this->createProduct($title, $primary, $prepared);
+            return $this->createProduct(
+                $title,
+                $primary,
+                $prepared,
+                $productId,
+                $this->taxonomyFromProductData($data)
+            );
         }
 
         $created = 0;
@@ -620,39 +629,155 @@ class FaireListingPublishService
             ->all();
 
         if ($siblingSkus === []) {
-            return '';
+            $siblingSkus = [trim((string) $primary->sku)];
         }
 
-        $metric = FaireMetric::query()
-            ->whereIn('sku', $siblingSkus)
-            ->whereNotNull('product_id')
-            ->where('product_id', '!=', '')
-            ->orderByDesc('id')
-            ->first();
+        return $this->faireProductIdFromSkus($siblingSkus);
+    }
 
-        return $metric ? trim((string) $metric->product_id) : '';
+    /**
+     * @param  list<string>  $skus
+     */
+    private function faireProductIdFromSkus(array $skus): string
+    {
+        $metrics = FaireMetric::query()
+            ->whereIn('sku', $skus)
+            ->orderByDesc('id')
+            ->get(['sku', 'product_id']);
+        foreach ($metrics as $metric) {
+            $id = $this->normalizeFaireProductId((string) ($metric->product_id ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
+        }
+
+        if (Schema::hasTable('faire_listing_statuses')) {
+            $rows = FaireListingStatus::query()->whereIn('sku', $skus)->get(['sku', 'value']);
+            foreach ($rows as $row) {
+                $value = is_array($row->value) ? $row->value : [];
+                foreach (['product_id', 'listing_id', 'buyer_link', 'seller_link'] as $key) {
+                    $id = $this->normalizeFaireProductId((string) ($value[$key] ?? ''));
+                    if ($id !== '') {
+                        return $id;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function normalizeFaireProductId(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        if (preg_match('/(p_[a-z0-9]+)/i', $raw, $match)) {
+            return $match[1];
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{id: string}|null
+     */
+    private function taxonomyFromProductData(array $data): ?array
+    {
+        foreach ([
+            $data['taxonomy_type'] ?? null,
+            $data['taxonomyType'] ?? null,
+            $data['taxonomy_type_id'] ?? null,
+            $data['taxonomyTypeId'] ?? null,
+            $data['taxonomy'] ?? null,
+            data_get($data, 'taxonomy.id'),
+            data_get($data, 'taxonomy_type.id'),
+            data_get($data, 'product.taxonomy_type'),
+            data_get($data, 'product.taxonomy_type.id'),
+        ] as $taxonomy) {
+            if (is_string($taxonomy) && trim($taxonomy) !== '') {
+                return ['id' => trim($taxonomy)];
+            }
+            if (is_array($taxonomy)) {
+                $id = trim((string) ($taxonomy['id'] ?? $taxonomy['taxonomy_type_id'] ?? $taxonomy['taxonomyTypeId'] ?? ''));
+                if ($id !== '') {
+                    return ['id' => $id];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
      * @return array{id: string}|null
      */
-    private function resolveTaxonomyType(): ?array
+    private function resolveTaxonomyType(string $fromProductId = ''): ?array
     {
         $configured = trim((string) config('services.faire.taxonomy_type_id', ''));
         if ($configured !== '') {
             return ['id' => $configured];
         }
 
-        $existingId = FaireMetric::query()
+        $ids = [];
+        $fromProductId = $this->normalizeFaireProductId($fromProductId);
+        if ($fromProductId !== '') {
+            $ids[] = $fromProductId;
+        }
+        $any = FaireMetric::query()
             ->whereNotNull('product_id')
             ->where('product_id', '!=', '')
             ->orderByDesc('id')
-            ->value('product_id');
-        if ($existingId) {
-            $info = $this->api->getProductInfo((string) $existingId);
-            $taxonomy = $info['data']['taxonomy_type'] ?? null;
-            if (is_array($taxonomy) && trim((string) ($taxonomy['id'] ?? '')) !== '') {
-                return ['id' => trim((string) $taxonomy['id'])];
+            ->limit(8)
+            ->pluck('product_id')
+            ->all();
+        foreach ($any as $id) {
+            $id = $this->normalizeFaireProductId((string) $id);
+            if ($id !== '' && ! in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+        if (Schema::hasTable('faire_listing_statuses')) {
+            foreach (FaireListingStatus::query()->orderByDesc('id')->limit(20)->get(['value']) as $row) {
+                $value = is_array($row->value) ? $row->value : [];
+                foreach (['product_id', 'listing_id', 'buyer_link'] as $key) {
+                    $id = $this->normalizeFaireProductId((string) ($value[$key] ?? ''));
+                    if ($id !== '' && ! in_array($id, $ids, true)) {
+                        $ids[] = $id;
+                    }
+                }
+            }
+        }
+
+        foreach (array_slice($ids, 0, 8) as $existingId) {
+            $info = $this->api->getProductInfo($existingId);
+            $taxonomy = $this->taxonomyFromProductData(is_array($info['data'] ?? null) ? $info['data'] : []);
+            if ($taxonomy !== null) {
+                return $taxonomy;
+            }
+        }
+
+        $list = $this->api->getProducts(['limit' => 10, 'page' => 1]);
+        $products = $list['json']['products'] ?? $list['json']['items'] ?? [];
+        if (is_array($products)) {
+            foreach ($products as $product) {
+                if (! is_array($product)) {
+                    continue;
+                }
+                $taxonomy = $this->taxonomyFromProductData($product);
+                if ($taxonomy !== null) {
+                    return $taxonomy;
+                }
+                $listedId = $this->normalizeFaireProductId((string) ($product['id'] ?? ''));
+                if ($listedId !== '' && ! in_array($listedId, $ids, true)) {
+                    $info = $this->api->getProductInfo($listedId);
+                    $taxonomy = $this->taxonomyFromProductData(is_array($info['data'] ?? null) ? $info['data'] : []);
+                    if ($taxonomy !== null) {
+                        return $taxonomy;
+                    }
+                }
             }
         }
 

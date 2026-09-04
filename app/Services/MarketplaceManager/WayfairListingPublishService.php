@@ -54,15 +54,28 @@ class WayfairListingPublishService
             }
         }
 
+        $cached = $this->classIdFromListingStatuses($candidates);
+        if ($cached > 0) {
+            return ['id' => $cached, 'path' => 'Class '.$cached.' (from a listed sibling)', 'name' => ''];
+        }
+
         $hit = $this->api->lookupCatalogClassForSkus($candidates);
         if ($hit && ($hit['class_id'] ?? 0) > 0) {
             $name = trim((string) ($hit['class_name'] ?? ''));
+            $this->rememberClassId($candidates, (int) $hit['class_id'], $name);
 
             return [
                 'id' => (int) $hit['class_id'],
                 'path' => $name !== '' ? $name.' ('.$hit['class_id'].')' : 'Class '.$hit['class_id'],
                 'name' => $name,
             ];
+        }
+
+        $fromSubmission = $this->classIdFromProductAdditionSubmissions($candidates);
+        if ($fromSubmission > 0) {
+            $this->rememberClassId($candidates, $fromSubmission);
+
+            return ['id' => $fromSubmission, 'path' => 'Class '.$fromSubmission.' (from a prior Wayfair submission)', 'name' => ''];
         }
 
         $default = (int) config('services.wayfair.default_class_id', 0);
@@ -222,7 +235,7 @@ class WayfairListingPublishService
 
         $requestId = (string) ($requestIds[0] ?? '');
         try {
-            $this->persistListed($prepared, $requestId);
+            $this->persistListed($prepared, $requestId, $resolvedClass);
             $this->pushInventoryAndPrice($prepared);
         } catch (\Throwable $e) {
             Log::warning('Wayfair persist listed failed', ['error' => $e->getMessage()]);
@@ -251,9 +264,121 @@ class WayfairListingPublishService
         if ($name !== '' && preg_match('/(\d{2,})/', $name, $match)) {
             return (int) $match[1];
         }
+        $fromStatus = $this->classIdFromListingStatuses($skus);
+        if ($fromStatus > 0) {
+            return $fromStatus;
+        }
         $suggested = $this->suggestClassForSku($skus[0] ?? '');
 
         return (int) ($suggested['id'] ?? 0);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    private function classIdFromListingStatuses(array $skus): int
+    {
+        if ($skus === [] || ! Schema::hasTable('wayfair_listing_statuses')) {
+            return 0;
+        }
+        $rows = WayfairListingStatus::query()->whereIn('sku', $skus)->get(['sku', 'value']);
+        foreach ($rows as $row) {
+            $id = $this->classIdFromStatusValue(is_array($row->value) ? $row->value : []);
+            if ($id > 0) {
+                return $id;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     */
+    private function classIdFromStatusValue(array $value): int
+    {
+        foreach (['class_id', 'wayfair_class_id', 'classId', 'taxonomy_category_id', 'taxonomyCategoryId'] as $key) {
+            $id = (int) ($value[$key] ?? 0);
+            if ($id > 0) {
+                return $id;
+            }
+        }
+        $class = $value['class'] ?? null;
+        if (is_array($class)) {
+            $id = (int) ($class['class_id'] ?? $class['classId'] ?? 0);
+            if ($id > 0) {
+                return $id;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    private function classIdFromProductAdditionSubmissions(array $skus): int
+    {
+        if ($skus === [] || ! Schema::hasTable('wayfair_listing_statuses')) {
+            return 0;
+        }
+        $ids = [];
+        $rows = WayfairListingStatus::query()->whereIn('sku', $skus)->get(['sku', 'value']);
+        foreach ($rows as $row) {
+            $value = is_array($row->value) ? $row->value : [];
+            foreach (['wayfair_request_id', 'listing_id', 'request_id'] as $key) {
+                $id = trim((string) ($value[$key] ?? ''));
+                if ($id !== '' && ! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+        }
+        if ($ids === []) {
+            return 0;
+        }
+        try {
+            foreach ($this->api->getProductAdditionSubmissions(array_slice($ids, 0, 10)) as $row) {
+                $classId = (int) ($row['classId'] ?? $row['class_id'] ?? 0);
+                if ($classId > 0) {
+                    return $classId;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    private function rememberClassId(array $skus, int $classId, string $className = ''): void
+    {
+        if ($classId <= 0 || ! Schema::hasTable('wayfair_listing_statuses')) {
+            return;
+        }
+        foreach (array_slice($skus, 0, 8) as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $row = WayfairListingStatus::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->orderByDesc('id')
+                ->first();
+            $value = ($row && is_array($row->value)) ? $row->value : [];
+            if ((int) ($value['class_id'] ?? 0) === $classId) {
+                continue;
+            }
+            $value['class_id'] = $classId;
+            if ($className !== '') {
+                $value['class_name'] = $className;
+            }
+            try {
+                WayfairListingStatus::upsertBySku($sku, $value);
+            } catch (\Throwable) {
+            }
+        }
     }
 
     /**
@@ -557,7 +682,7 @@ class WayfairListingPublishService
     /**
      * @param  list<array{sku: string, price: ?float, inv: int}>  $prepared
      */
-    private function persistListed(array $prepared, string $requestId): void
+    private function persistListed(array $prepared, string $requestId, int $classId = 0): void
     {
         foreach ($prepared as $row) {
             $sku = trim((string) $row['sku']);
@@ -576,6 +701,9 @@ class WayfairListingPublishService
             if ($requestId !== '') {
                 $existing['listing_id'] = $requestId;
                 $existing['wayfair_request_id'] = $requestId;
+            }
+            if ($classId > 0) {
+                $existing['class_id'] = $classId;
             }
             WayfairListingStatus::upsertBySku($sku, $existing);
 

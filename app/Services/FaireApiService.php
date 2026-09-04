@@ -232,15 +232,56 @@ class FaireApiService
             if (empty($res['ok']) || ! is_array($res['json'])) {
                 continue;
             }
-            $types = $res['json']['taxonomy_types'] ?? $res['json']['types'] ?? $res['json'];
-            if (! is_array($types)) {
+            $types = $this->extractTaxonomyTypes($res['json']);
+            if ($types === []) {
                 continue;
             }
 
-            return ['success' => true, 'types' => array_values($types)];
+            return ['success' => true, 'types' => $types];
         }
 
         return ['success' => false, 'types' => [], 'message' => 'Could not load Faire taxonomy types.'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $json
+     * @return list<array{id: string}>
+     */
+    private function extractTaxonomyTypes(array $json): array
+    {
+        $out = [];
+        $seen = [];
+        $walk = function ($node) use (&$walk, &$out, &$seen): void {
+            if (! is_array($node)) {
+                return;
+            }
+            $id = trim((string) ($node['id'] ?? $node['taxonomy_type_id'] ?? $node['taxonomyTypeId'] ?? ''));
+            $looksLikeType = $id !== '' && (
+                isset($node['name'])
+                || isset($node['display_name'])
+                || str_contains(strtolower($id), 'taxonomy')
+                || preg_match('/^[a-z0-9_-]{8,}$/i', $id)
+            );
+            if ($looksLikeType && ! isset($seen[$id])) {
+                $seen[$id] = true;
+                $out[] = ['id' => $id];
+            }
+            foreach ($node as $child) {
+                if (is_array($child)) {
+                    $walk($child);
+                }
+            }
+        };
+        foreach (['taxonomy_types', 'taxonomyTypes', 'types', 'data'] as $key) {
+            if (isset($json[$key]) && is_array($json[$key])) {
+                $walk($json[$key]);
+            }
+        }
+        if ($out === []) {
+            $walk($json);
+        }
+
+        return $out;
     }
 
     /**
