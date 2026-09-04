@@ -6766,30 +6766,36 @@ class ChannelMasterController extends Controller
             }
 
             // Only Active channel_master rows (same as live getViewChannelData).
-            // Prevents archived/deleted channels from lingering in calculated_data.
-            $activeChannelNames = ChannelMaster::query()
+            // Match by snapshot key so "EbayThree" (channel_master) still finds
+            // calculated_data stored as "eBay 3" after the display-name rename.
+            $activeChannelKeys = ChannelMaster::query()
                 ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
                 ->pluck('channel')
                 ->filter()
+                ->map(fn ($name) => $this->allMarketplaceSnapshotKey((string) $name))
                 ->unique()
                 ->values()
                 ->all();
             
             // Get data from pre-calculated table
             $query = \App\Models\ChannelMasterCalculatedData::query()
-                ->whereIn('channel', $activeChannelNames)
                 ->orderBy('l30_sales', 'desc');
             
             if ($section && in_array($section, ['B2C', 'B2B', 'Dropship'])) {
                 $query->where('type', $section);
             }
 
+            $channels = $query->get()->filter(function ($channel) use ($activeChannelKeys) {
+                return in_array(
+                    $this->allMarketplaceSnapshotKey((string) $channel->channel),
+                    $activeChannelKeys,
+                    true
+                );
+            })->values();
+
+            $total = $channels->count();
             if ($paginate) {
-                $total = $query->count();
-                $channels = $query->skip(($page - 1) * $size)->take($size)->get();
-            } else {
-                $channels = $query->get();
-                $total = $channels->count();
+                $channels = $channels->slice(($page - 1) * $size, $size)->values();
             }
 
             // Build channel-name -> logo / seller_link maps from channel_master so the
@@ -7165,6 +7171,7 @@ class ChannelMasterController extends Controller
             $ebay3Y = $this->computeEbayYSalesLikeAmazon(3);
             if ($ebay3Y !== null) {
                 $yesterdaySummaries['ebaythree'] = $ebay3Y;
+                $yesterdaySummaries['ebay3'] = $ebay3Y;
             }
         } catch (\Throwable $e) {
             Log::warning('eBay 3 Y Sales calculation failed: ' . $e->getMessage());
@@ -7338,6 +7345,7 @@ class ChannelMasterController extends Controller
             $ebay3L7 = $this->computeEbayL7SalesLikeAmazon(3);
             if ($ebay3L7 !== null) {
                 $l7Summaries['ebaythree'] = $ebay3L7;
+                $l7Summaries['ebay3'] = $ebay3L7;
             }
         } catch (\Throwable $e) {
             Log::warning('eBay 3 L7 Sales calculation failed: ' . $e->getMessage());
@@ -7464,6 +7472,7 @@ class ChannelMasterController extends Controller
             'ebay'      => 'getEbayChannelData',
             'ebaytwo'   => 'getEbaytwoChannelData',
             'ebaythree' => 'getEbaythreeChannelData',
+            'ebay3'     => 'getEbaythreeChannelData',
             'macys'     => 'getMacysChannelData',
             'bestbuyusa'=> 'getBestbuyUsaChannelData',
             'newegg'    => 'getNeweggChannelData',
@@ -7552,8 +7561,8 @@ class ChannelMasterController extends Controller
                 'Account health' => null,
             ];
 
-            // Normalize channel name for lookup
-            $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
+            // Normalize channel name for lookup ("eBay 3" / "EbayThree" → ebaythree)
+            $key = $this->allMarketplaceSnapshotKey($channel);
 
             try {
             if (isset($controllerMap[$key]) && method_exists($this, $controllerMap[$key])) {
@@ -7661,8 +7670,8 @@ class ChannelMasterController extends Controller
             }
 
             // Attach Yesterday Sales (same source as dot chart — channel_master_daily_data)
-            // Key must match saveChannelDailySummaries: lowercase, no spaces/dashes/&/slashes
-            $channelLookup = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row['Channel '] ?? $channel))));
+            // Snapshot key so "eBay 3" matches yesterdaySummaries['ebaythree'].
+            $channelLookup = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $channel));
             $row['Y Sales'] = round($yesterdaySummaries[$channelLookup] ?? 0, 2);
             $row['Today Sales'] = round(
                 app(ChannelTodaySalesService::class)->valueForChannel(
@@ -8845,6 +8854,7 @@ class ChannelMasterController extends Controller
         'ebay'      => 'getEbayChannelData',
         'ebaytwo'   => 'getEbaytwoChannelData',
         'ebaythree' => 'getEbaythreeChannelData',
+        'ebay3'     => 'getEbaythreeChannelData',
         'macys'     => 'getMacysChannelData',
         'bestbuyusa'=> 'getBestbuyUsaChannelData',
         'newegg'    => 'getNeweggChannelData',
@@ -8903,7 +8913,7 @@ class ChannelMasterController extends Controller
             'Account health' => null,
         ];
 
-        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
+        $key = $this->allMarketplaceSnapshotKey($channel);
 
         if (isset($controllerMap[$key]) && method_exists($this, $controllerMap[$key])) {
             $method = $controllerMap[$key];
@@ -17079,13 +17089,8 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            $chartData = $this->collapseTrailingEqualChartPoints(
-                $chartData,
-                $this->metricDotEpsilon($metric)
-            );
-
             // Table (channel_master_calculated_data / the grid cell) is the source.
-            // History stays on daily snapshots; the last point must equal the table.
+            // Pin first so collapse cannot drop yesterday and write the table onto D−2.
             if (! empty($chartData)) {
                 if ($isAll && $metric !== 'cvr') {
                     $badgeValue = $request->input('badge_value');
@@ -17113,6 +17118,11 @@ class ChannelMasterController extends Controller
                     );
                 }
             }
+
+            $chartData = $this->collapseTrailingEqualChartPoints(
+                $chartData,
+                $this->metricDotEpsilon($metric)
+            );
 
             // Extra lookback for L7 rolling should not appear on the X-axis.
             if ($useL7Window && $days > 0 && count($chartData) > $days) {
@@ -17247,7 +17257,8 @@ class ChannelMasterController extends Controller
     {
         // v9: last graph point + table dot v2 = saved table row.
         // v11: All badges keep the blended pair; eBay 3 included from calculated_data.
-        return 'amm_dot_trends_v13_w'.$window;
+        // v14: Amazon / Temu 2 last point follows the table cell, not live orders.
+        return 'amm_dot_trends_v14_w'.$window;
     }
 
     /**
@@ -18321,7 +18332,12 @@ class ChannelMasterController extends Controller
 
         $tz = 'America/Los_Angeles';
         $now = now($tz);
-        foreach ($chartData as &$pt) {
+        $lastIdx = array_key_last($chartData);
+        foreach ($chartData as $idx => &$pt) {
+            // Last point is pinned to the table cell — do not replace it with live orders.
+            if ($idx === $lastIdx) {
+                continue;
+            }
             $label = trim((string) ($pt['date'] ?? ''));
             if ($label === '') {
                 continue;
@@ -19387,19 +19403,6 @@ class ChannelMasterController extends Controller
             return $chartData;
         }
 
-        // Stale calculated_data.yesterday_sales (copied sheet days) must not
-        // overwrite the live Pacific-yesterday overlay for Amazon / Temu 2.
-        $channelKey = $this->allMarketplaceSnapshotKey($channel);
-        if ($metric === 'y_sales' && in_array($channelKey, ['amazon', 'temu2'], true)) {
-            $closed = now('America/Los_Angeles')->subDay()->toDateString();
-            $live = $this->realPacificDayYSales($channelKey, $closed);
-            if ($live !== null) {
-                $chartData[$lastIdx]['value'] = round((float) $live, 2);
-
-                return $chartData;
-            }
-        }
-
         $chartData[$lastIdx]['value'] = round((float) $tableRef, 2);
 
         return $chartData;
@@ -19434,7 +19437,7 @@ class ChannelMasterController extends Controller
             'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
             'y_npft_pct' => $row->n_pft !== null ? (float) $row->n_pft : null,
             'y_groi_pct' => $row->yesterday_sales !== null && $row->g_roi !== null ? (float) $row->g_roi : null,
-            'l30_sales' => $this->savedOrLiveTemu2L30Sales($channel, $row),
+            'l30_sales' => $row->l30_sales !== null ? (float) $row->l30_sales : null,
             'l60_sales' => $row->l60_sales !== null ? (float) $row->l60_sales : null,
             'ad_spend' => $row->total_ad_spend !== null ? (float) $row->total_ad_spend : null,
             'total_views' => $views > 0 ? $views : null,
@@ -19684,19 +19687,6 @@ class ChannelMasterController extends Controller
         }
 
         return $out;
-    }
-
-    private function savedOrLiveTemu2L30Sales(string $channel, $row): ?float
-    {
-        if ($this->allMarketplaceSnapshotKey($channel) === 'temu2') {
-            $live = $this->getTemu2TabulatorSalesSummary();
-            $rev = (float) ($live['total_revenue'] ?? 0);
-            if ($rev > 0) {
-                return $rev;
-            }
-        }
-
-        return $row->l30_sales !== null ? (float) $row->l30_sales : null;
     }
 
     /**

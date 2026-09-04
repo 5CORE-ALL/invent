@@ -42,10 +42,7 @@ class AttendanceService
 
         $existing = $this->activeSession($user);
         if ($existing) {
-            if ($this->sessionIsFromToday($existing, $user)) {
-                return $existing;
-            }
-            $this->closeStaleOpenSession($existing);
+            return $existing;
         }
 
         $policy = AttendancePolicy::resolveForUser($user);
@@ -99,7 +96,7 @@ class AttendanceService
             ]);
             $closed[] = $session->fresh() ?: $session;
             if ($session->started_at) {
-                $dates[$this->workdayDate($user, $session->started_at)] = true;
+                $dates[$session->started_at->toDateString()] = true;
             }
         }
 
@@ -108,37 +105,6 @@ class AttendanceService
         }
 
         return $closed;
-    }
-
-    protected function workdayTimezone(?User $user): string
-    {
-        return $user instanceof User ? $user->workdayTimezone() : 'Asia/Kolkata';
-    }
-
-    protected function workdayDate(?User $user, $at): string
-    {
-        return Carbon::parse($at)->timezone($this->workdayTimezone($user))->toDateString();
-    }
-
-    protected function sessionIsFromToday(AttendanceSession $session, ?User $user = null): bool
-    {
-        $tz = $this->workdayTimezone($user ?? $session->user);
-
-        return $session->started_at
-            && $session->started_at->timezone($tz)->toDateString() === now($tz)->toDateString();
-    }
-
-    protected function closeStaleOpenSession(AttendanceSession $session): void
-    {
-        $session->update([
-            'ended_at' => $session->updated_at ?: now(),
-            'status' => 'auto_closed',
-        ]);
-
-        $user = $session->user;
-        if ($user && $session->started_at) {
-            $this->analysisService->buildDailySummary($user, $this->workdayDate($user, $session->started_at));
-        }
     }
 
     public function pause(User $user): ?AttendanceSession
@@ -200,17 +166,6 @@ class AttendanceService
         }
 
         $session = $this->activeSession($user);
-        if ($session && ! $this->sessionIsFromToday($session, $user)) {
-            $this->closeStaleOpenSession($session);
-            $session = $this->clockIn(
-                $user,
-                $session->work_location ?: 'wfh',
-                $session->ip_address,
-                $session->user_agent,
-                $session->attendance_device_id,
-                $session->clock_source ?: 'desktop'
-            );
-        }
         if (! $session) {
             return ['ok' => false, 'message' => 'No active session'];
         }
@@ -387,7 +342,7 @@ class AttendanceService
             $session->increment('missed_heartbeat_count');
             $user = $session->user;
             if ($user) {
-                $this->analysisService->buildDailySummary($user, $this->workdayDate($user, $session->started_at));
+                $this->analysisService->buildDailySummary($user, $session->started_at->toDateString());
             }
             $closed++;
         }

@@ -102,20 +102,6 @@ class User extends Authenticatable
         return $this->salaryRegion() === 'china';
     }
 
-    /**
-     * Workday calendar for logger hours and attendance day rollover.
-     * China staff work China morning (CST); app time is America/Los_Angeles so
-     * those sessions appear as the previous evening in PT.
-     */
-    public function workdayTimezone(): string
-    {
-        return match ($this->salaryRegion()) {
-            'china' => 'Asia/Shanghai',
-            'usa' => 'America/Los_Angeles',
-            default => 'Asia/Kolkata',
-        };
-    }
-
     /** Whether this user belongs on the Salary → USA tab. */
     public function isUsaSalaryRegion(): bool
     {

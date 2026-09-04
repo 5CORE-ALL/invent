@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AttendanceDailySummary;
 use App\Models\AttendanceSession;
 use App\Models\PayrollArrear;
 use App\Models\PayrollEmployeeSalary;
@@ -147,19 +148,10 @@ class PayrollService
             return [];
         }
 
-        $newLogger = [];
-        if ($split['new_start']) {
-            $users->groupBy(fn ($user) => $this->loggerTimezoneForUser($user))
-                ->each(function ($group, $timezone) use ($split, &$newLogger) {
-                    $ids = $group->pluck('id')->map(fn ($id) => (int) $id)->all();
-                    $newLogger += $this->builtLoggerHoursForRange(
-                        $ids,
-                        $split['new_start'],
-                        $split['new_end'],
-                        $timezone
-                    );
-                });
-        }
+        $userIds = $users->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $newLogger = $split['new_start']
+            ? $this->builtLoggerHoursForRange($userIds, $split['new_start'], $split['new_end'])
+            : [];
 
         $teamLoggerService = new TeamLoggerService();
         $teamFirst = $teamLoggerService->fetchByDateRange($split['team_start'], $split['team_end'], true);
@@ -272,20 +264,7 @@ class PayrollService
             return [];
         }
 
-        $hours = [];
-        User::query()->whereIn('id', $userIds)->get()->groupBy(fn (User $user) => $user->workdayTimezone())
-            ->each(function ($group, $timezone) use ($start, $end, &$hours) {
-                $ids = $group->pluck('id')->map(fn ($id) => (int) $id)->all();
-                $hours += $this->builtLoggerHoursForRange($ids, $start, $end, $timezone);
-            });
-
-        foreach ($userIds as $userId) {
-            if (! isset($hours[$userId])) {
-                $hours[$userId] = ['hours' => 0.0, 'days' => 0];
-            }
-        }
-
-        return $hours;
+        return $this->builtLoggerHoursForRange($userIds, $start, $end);
     }
 
     /**
@@ -318,68 +297,48 @@ class PayrollService
         ];
     }
 
-    protected function loggerTimezoneForUser($user): string
-    {
-        return $user instanceof User ? $user->workdayTimezone() : 'Asia/Kolkata';
-    }
-
     /**
      * @param  array<int, int>  $userIds
      * @return array<int, array{hours: float, days: int}>
      */
-    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end, ?string $timezone = null): array
+    protected function builtLoggerHoursForRange(array $userIds, string $start, string $end): array
     {
-        $tz = $timezone ?: config('app.timezone', 'America/Los_Angeles');
-        $startAt = Carbon::parse($start, $tz)->startOfDay();
-        $endAt = Carbon::parse($end, $tz)->endOfDay();
-        $now = now($tz);
+        $startAt = Carbon::parse($start)->startOfDay();
+        $endAt = Carbon::parse($end)->endOfDay();
 
-        $sessions = AttendanceSession::query()
+        $fromSummaries = AttendanceDailySummary::query()
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('work_date', [$start, $end])
+            ->selectRaw('user_id, SUM(active_seconds) as active_seconds, SUM(total_work_seconds) as work_seconds, SUM(CASE WHEN active_seconds > 0 OR total_work_seconds > 0 THEN 1 ELSE 0 END) as days')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
+        $fromSessions = AttendanceSession::query()
             ->whereIn('user_id', $userIds)
             ->where('started_at', '<=', $endAt)
             ->where(function ($q) use ($startAt) {
                 $q->whereNull('ended_at')->orWhere('ended_at', '>=', $startAt);
             })
-            ->get(['user_id', 'started_at', 'ended_at', 'total_active_seconds']);
-
-        $secondsByUser = [];
-        $daysByUser = [];
-
-        foreach ($sessions as $session) {
-            $sessionStart = Carbon::parse($session->started_at)->timezone($tz);
-            $sessionEnd = $session->ended_at ? Carbon::parse($session->ended_at)->timezone($tz) : $now->copy();
-            if ($sessionEnd->lt($sessionStart)) {
-                continue;
-            }
-
-            $overlapStart = $sessionStart->greaterThan($startAt) ? $sessionStart->copy() : $startAt->copy();
-            $overlapEnd = $sessionEnd->lessThan($endAt) ? $sessionEnd->copy() : $endAt->copy();
-            if ($overlapEnd->lte($overlapStart)) {
-                continue;
-            }
-
-            $wallSeconds = max(1, $sessionStart->diffInSeconds($sessionEnd));
-            $overlapSeconds = $overlapStart->diffInSeconds($overlapEnd);
-            $active = max(0, (int) $session->total_active_seconds);
-            $credited = (int) round($active * min(1, $overlapSeconds / $wallSeconds));
-
-            $userId = (int) $session->user_id;
-            $secondsByUser[$userId] = ($secondsByUser[$userId] ?? 0) + $credited;
-
-            $day = $overlapStart->copy()->timezone($tz)->startOfDay();
-            $last = $overlapEnd->copy()->timezone($tz)->startOfDay();
-            while ($day->lte($last)) {
-                $daysByUser[$userId][$day->toDateString()] = true;
-                $day->addDay();
-            }
-        }
+            ->selectRaw('user_id, SUM(total_active_seconds) as active_seconds, COUNT(DISTINCT DATE(started_at)) as days')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
 
         $hours = [];
         foreach ($userIds as $userId) {
-            $seconds = (int) ($secondsByUser[$userId] ?? 0);
+            $summary = $fromSummaries->get($userId);
+            $session = $fromSessions->get($userId);
+
+            $summaryActive = (int) ($summary?->active_seconds ?? 0);
+            $summaryWork = (int) ($summary?->work_seconds ?? 0);
+            $sessionActive = (int) ($session?->active_seconds ?? 0);
+            $summarySeconds = $summaryActive > 0 ? $summaryActive : $summaryWork;
+            $seconds = max($summarySeconds, $sessionActive);
+
             $hours[$userId] = [
                 'hours' => $seconds > 0 ? (float) (int) round($seconds / 3600) : 0.0,
-                'days' => isset($daysByUser[$userId]) ? count($daysByUser[$userId]) : 0,
+                'days' => (int) max((int) ($summary?->days ?? 0), (int) ($session?->days ?? 0)),
             ];
         }
 
