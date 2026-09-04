@@ -8,6 +8,7 @@ use App\Models\AliexpressListingStatus;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\AliexpressListingCounts;
+use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -41,7 +42,7 @@ class ListingAliexpressController extends Controller
         $productMasters = ProductMaster::whereNull('deleted_at')->get();
         $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $shopifyData = ListingCountsEngine::shopifyMap($skus);
 
         // Links only — NRL/REQ + Listed are automated (same pattern as /listing-ebaytwo)
         $statusData = AliexpressListingStatus::whereIn('sku', $skus)
@@ -52,11 +53,7 @@ class ListingAliexpressController extends Controller
             });
 
         // NRL column — same source as aliexpress-pricing (AliexpressDataView.value.NRL)
-        $nrValues = AliexpressDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
+        $nrValues = ListingCountsEngine::loadNrValues(AliexpressDataView::class, $skus);
 
         // Listed = real aliexpress_metric.product_id OR sku in aliexpress_pricing_prices
         $metricsByNorm = AliexpressListingCounts::metricsByNormalizedSku();
@@ -65,10 +62,10 @@ class ListingAliexpressController extends Controller
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $metricsByNorm, $pricingByNorm) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
-            $skuUpper = strtoupper(trim($childSku));
 
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
+            $shopify = ListingCountsEngine::shopifyRow($shopifyData, $childSku);
+            $item->INV = ListingCountsEngine::shopifyInv($shopify);
+            $item->L30 = $shopify?->quantity ?? 0;
 
             $item->buyer_link = null;
             $item->seller_link = null;
@@ -82,7 +79,7 @@ class ListingAliexpressController extends Controller
             }
 
             $item->nr_req = AliexpressListingCounts::nrReqFromDataView(
-                $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
+                ListingCountsEngine::lookupNrValue($nrValues, $childSku)
             );
 
             $resolved = AliexpressListingCounts::resolveListed($childSku, $metricsByNorm, $pricingByNorm);
