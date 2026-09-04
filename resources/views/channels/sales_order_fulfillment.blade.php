@@ -1852,6 +1852,7 @@
     let dobaPrepaidRows = [];
     let dobaDoneRows = [];
     let dobaOrdersTableLoading = false;
+    let dobaOrdersXhr = null;
     let dobaOrdersOpenCount = 0;
 
     function escapeHtml(str) {
@@ -5448,6 +5449,14 @@
         }));
     }
 
+    function sofSetDobaSearchBusy(busy) {
+        const btn = document.getElementById('sof-doba-search-btn');
+        if (!btn) return;
+        if (!btn.dataset.origLabel) btn.dataset.origLabel = btn.textContent || 'Search';
+        btn.disabled = !!busy;
+        btn.textContent = busy ? 'Searching…' : btn.dataset.origLabel;
+    }
+
     function sofApplyDobaDateSearch() {
         const params = sofDobaExportDateParams();
         if (params.date_from > params.date_to) {
@@ -5458,19 +5467,24 @@
             }
             return;
         }
-        loadDobaOrdersData();
+        loadDobaOrdersData(true);
     }
 
-    function loadDobaOrdersData() {
-        if (dobaOrdersTableLoading) return;
+    function loadDobaOrdersData(force) {
+        if (dobaOrdersXhr && typeof dobaOrdersXhr.abort === 'function') {
+            try { dobaOrdersXhr.abort(); } catch (e) {}
+            dobaOrdersXhr = null;
+            dobaOrdersTableLoading = false;
+        }
+        if (dobaOrdersTableLoading && !force) return;
         dobaOrdersTableLoading = true;
-        $.ajax({
+        sofSetDobaSearchBusy(true);
+        dobaOrdersXhr = $.ajax({
             url: '{{ route("sales.order.fulfillment.doba.orders.data") }}',
             type: 'GET',
             data: sofDobaExportDateParams(),
             timeout: 0,
             success: function (response) {
-                dobaOrdersTableLoading = false;
                 const ok = response && response.success;
                 dobaNonprepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.non_prepaid) ? response.non_prepaid : []);
                 dobaPrepaidRows = sofNormalizeOrderRows(ok && Array.isArray(response.prepaid) ? response.prepaid : []);
@@ -5483,13 +5497,19 @@
                 );
                 applyDobaRowsToTables();
             },
-            error: function () {
-                dobaOrdersTableLoading = false;
+            error: function (xhr, status) {
+                if (status === 'abort') return;
                 dobaNonprepaidRows = [];
                 dobaPrepaidRows = [];
                 dobaDoneRows = [];
                 updateDobaOrdersCounts(0, 0, 0, 0);
                 applyDobaRowsToTables();
+            },
+            complete: function (xhr, status) {
+                if (status === 'abort') return;
+                dobaOrdersTableLoading = false;
+                dobaOrdersXhr = null;
+                sofSetDobaSearchBusy(false);
             },
         });
     }

@@ -909,6 +909,13 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         $lookup = $this->lookupShopifyIdsForDobaOrderNos(array_keys($byOrder));
+        foreach ($this->lookupShopifyIdsFromDobaRawOrders($byOrder) as $orderNo => $info) {
+            if (! isset($lookup[$orderNo]['id']) || ($lookup[$orderNo]['id'] ?? '') === '') {
+                $lookup[$orderNo] = $info;
+            } elseif (($lookup[$orderNo]['number'] ?? '') === '' && ($info['number'] ?? '') !== '') {
+                $lookup[$orderNo]['number'] = $info['number'];
+            }
+        }
         foreach ($lookup as $orderNo => $info) {
             if (! isset($byOrder[$orderNo])) {
                 continue;
@@ -965,6 +972,7 @@ class SalesOrderFulfillmentController extends Controller
         if ($orderNos === []) {
             return [];
         }
+        $wanted = array_fill_keys($orderNos, true);
 
         if (Schema::hasTable('shopify_orders') && Schema::hasColumn('shopify_orders', 'source_identifier')) {
             $rows = DB::table('shopify_orders')
@@ -979,47 +987,236 @@ class SalesOrderFulfillmentController extends Controller
             }
         }
 
-        if (! Schema::hasTable('shopify_raw_orders')) {
+        if (! Schema::hasTable('shopify_orders') || ! Schema::hasColumn('shopify_orders', 'raw_payload')) {
             return $found;
         }
 
-        $query = DB::table('shopify_raw_orders')->select(['order_id', 'order_number', 'tags', 'source_name']);
-        $query->where(function ($q) {
-            $q->where('source_name', 'like', '%doba%')
-                ->orWhere('tags', 'like', '%doba%')
-                ->orWhere('tags', 'like', '%Doba%');
-        });
-        if (Schema::hasColumn('shopify_raw_orders', 'order_date')) {
-            [$from, $to] = $this->resolveOrderDateRange();
-            $query->whereBetween('order_date', [
-                $from->copy()->subDays(3)->toDateString(),
-                $to->copy()->addDays(3)->toDateString(),
-            ]);
+        $rows = collect();
+        try {
+            $rows = DB::table('shopify_orders')
+                ->select([
+                    'shopify_order_id',
+                    DB::raw("JSON_EXTRACT(raw_payload, '$.note_attributes') as note_attributes"),
+                    DB::raw("JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.name')) as shopify_name"),
+                    DB::raw("JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.id')) as payload_id"),
+                ])
+                ->where(function ($q) {
+                    $q->where('raw_payload', 'like', '%Doba Order%')
+                        ->orWhere('raw_payload', 'like', '%doba order%');
+                })
+                ->get();
+        } catch (\Throwable) {
+            $rows = DB::table('shopify_orders')
+                ->select(['shopify_order_id', 'raw_payload'])
+                ->where(function ($q) {
+                    $q->where('raw_payload', 'like', '%Doba Order%')
+                        ->orWhere('raw_payload', 'like', '%doba order%');
+                })
+                ->get();
         }
 
-        $seen = [];
-        foreach ($query->get() as $row) {
-            $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->order_id ?? ''));
-            if ($id === '' || isset($seen[$id])) {
+        foreach ($rows as $row) {
+            $name = (string) ($row->shopify_name ?? '');
+            $payloadId = (string) ($row->payload_id ?? '');
+            $attrs = $row->note_attributes ?? null;
+            if ($attrs === null && isset($row->raw_payload)) {
+                $payload = json_decode((string) $row->raw_payload, true);
+                $attrs = is_array($payload) ? ($payload['note_attributes'] ?? null) : null;
+                $name = is_array($payload) ? (string) ($payload['name'] ?? $payload['order_number'] ?? '') : $name;
+                $payloadId = is_array($payload) ? (string) ($payload['id'] ?? '') : $payloadId;
+            }
+
+            $dobaNo = $this->dobaOrderNoFromShopifyNoteAttributes($attrs);
+            if ($dobaNo === null || ! isset($wanted[$dobaNo]) || isset($found[$dobaNo]['id'])) {
                 continue;
             }
-            $seen[$id] = true;
-            $hay = strtolower(trim((string) ($row->tags ?? '')).' '.trim((string) ($row->source_name ?? '')));
-            $number = ltrim(trim((string) ($row->order_number ?? '')), '#');
-            foreach ($orderNos as $orderNo) {
-                if (isset($found[$orderNo]['id']) && ($found[$orderNo]['number'] ?? '') !== '') {
-                    continue;
-                }
-                if ($hay !== '' && str_contains($hay, strtolower($orderNo))) {
-                    $found[$orderNo] = [
-                        'id' => $id,
-                        'number' => $number !== $orderNo ? $number : '',
-                    ];
-                }
+
+            $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->shopify_order_id ?: $payloadId));
+            $number = ltrim(trim($name), '#');
+            if ($id !== '' && $id !== $dobaNo) {
+                $found[$dobaNo] = [
+                    'id' => $id,
+                    'number' => ($number !== '' && $number !== $dobaNo) ? $number : '',
+                ];
             }
         }
 
         return $found;
+    }
+
+    /**
+     * Match open Doba warehouse rows to Shopify via the Doba sales-channel
+     * rows in shopify_raw_orders (SKU + calendar date). Used because CRM
+     * shopify_orders note-attributes are often stale.
+     *
+     * @param  array<string, array<string, mixed>>  $byOrder
+     * @return array<string, array{id: string, number: string}>
+     */
+    protected function lookupShopifyIdsFromDobaRawOrders(array $byOrder): array
+    {
+        if (! Schema::hasTable('shopify_raw_orders')) {
+            return [];
+        }
+
+        $skus = [];
+        $dates = [];
+        $missing = [];
+        foreach ($byOrder as $orderNo => $row) {
+            if (trim((string) ($row['shopify_order_id'] ?? '')) !== '') {
+                continue;
+            }
+            $missing[] = $orderNo;
+            foreach ($this->dobaRowSkus($row) as $sku) {
+                $skus[$sku] = true;
+            }
+            $day = $this->dobaRowCalendarDate($row);
+            if ($day !== null) {
+                $dates[$day] = true;
+            }
+        }
+        if ($missing === [] || $skus === [] || $dates === []) {
+            return [];
+        }
+
+        ksort($dates);
+        $dayList = array_keys($dates);
+        $from = date('Y-m-d', strtotime($dayList[0].' -1 day'));
+        $to = date('Y-m-d', strtotime($dayList[array_key_last($dayList)].' +1 day'));
+
+        $raw = DB::table('shopify_raw_orders')
+            ->select(['order_id', 'order_number', 'sku', 'order_date'])
+            ->where(function ($q) {
+                $q->where('source_name', '145019994113')
+                    ->orWhere('source_name', 'like', '%doba%')
+                    ->orWhere('tags', 'like', '%doba%')
+                    ->orWhere('tags', 'like', '%Doba%');
+            })
+            ->whereIn('sku', array_keys($skus))
+            ->whereBetween('order_date', [$from, $to])
+            ->get();
+
+        $bySkuDate = [];
+        $idNumber = [];
+        foreach ($raw as $row) {
+            $sku = $this->normalizeDobaSkuKey((string) ($row->sku ?? ''));
+            $day = substr((string) ($row->order_date ?? ''), 0, 10);
+            $id = $this->normalizeShopifyOrderIdDisplay((string) ($row->order_id ?? ''));
+            if ($sku === '' || $day === '' || $id === '') {
+                continue;
+            }
+            $bySkuDate[$sku.'|'.$day][$id] = true;
+            $number = ltrim(trim((string) ($row->order_number ?? '')), '#');
+            if ($number !== '') {
+                $idNumber[$id] = $number;
+            }
+        }
+
+        $found = [];
+        $usedIds = [];
+        foreach ($missing as $orderNo) {
+            $row = $byOrder[$orderNo] ?? [];
+            $day = $this->dobaRowCalendarDate($row);
+            $orderSkus = $this->dobaRowSkus($row);
+            if ($day === null || $orderSkus === []) {
+                continue;
+            }
+            $candidates = null;
+            foreach ($orderSkus as $sku) {
+                $ids = array_keys($bySkuDate[$sku.'|'.$day] ?? []);
+                if ($ids === []) {
+                    $prev = date('Y-m-d', strtotime($day.' -1 day'));
+                    $next = date('Y-m-d', strtotime($day.' +1 day'));
+                    $ids = array_keys(array_merge(
+                        $bySkuDate[$sku.'|'.$prev] ?? [],
+                        $bySkuDate[$sku.'|'.$next] ?? []
+                    ));
+                }
+                $candidates = $candidates === null
+                    ? $ids
+                    : array_values(array_intersect($candidates, $ids));
+            }
+            $candidates = array_values(array_unique($candidates ?? []));
+            $candidates = array_values(array_filter($candidates, static fn ($id) => ! isset($usedIds[$id])));
+            if (count($candidates) !== 1) {
+                continue;
+            }
+            $id = $candidates[0];
+            $usedIds[$id] = true;
+            $found[$orderNo] = [
+                'id' => $id,
+                'number' => $idNumber[$id] ?? '',
+            ];
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    protected function dobaRowSkus(array $row): array
+    {
+        $skus = [];
+        if (! empty($row['skus']) && is_array($row['skus'])) {
+            $skus = $row['skus'];
+        } elseif (trim((string) ($row['sku'] ?? '')) !== '') {
+            $skus = preg_split('/\s*,\s*/', (string) $row['sku']) ?: [];
+        }
+        $out = [];
+        foreach ($skus as $sku) {
+            $key = $this->normalizeDobaSkuKey((string) $sku);
+            if ($key !== '') {
+                $out[] = $key;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    protected function dobaRowCalendarDate(array $row): ?string
+    {
+        $raw = trim((string) ($row['order_date'] ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $raw, $m) === 1) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    protected function normalizeDobaSkuKey(string $sku): string
+    {
+        return strtoupper(trim($sku));
+    }
+
+    protected function dobaOrderNoFromShopifyNoteAttributes(mixed $attrs): ?string
+    {
+        if (is_string($attrs)) {
+            $attrs = json_decode($attrs, true);
+        }
+        if (! is_array($attrs)) {
+            return null;
+        }
+
+        foreach ($attrs as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower(trim((string) ($attr['name'] ?? $attr['key'] ?? '')));
+            $name = rtrim($name, '.');
+            if (! in_array($name, ['doba order no', 'doba order number', 'doba_order_no'], true)) {
+                continue;
+            }
+            $value = trim((string) ($attr['value'] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     protected function normalizeShopifyOrderIdDisplay(string $raw): string
