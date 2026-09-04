@@ -1491,17 +1491,49 @@ class AliExpressApiService
             return $out;
         }
 
+        if ($this->isPackageWeightLeaf($path)) {
+            return $this->packageWeightLeafValue($node, $kg, $lb);
+        }
+
         $unit = $this->inferWeightUnit($path, $node);
 
         return $this->formatMarketplaceWeight($kg, $lb, $unit, $this->marketplaceWeightKind($unit, $node, $type), $node);
+    }
+
+    private function isPackageWeightLeaf(string $path): bool
+    {
+        $name = strtolower((string) last(explode('.', $path)));
+
+        return $name === 'package weight'
+            || ($name === 'package_weight' && str_contains(strtolower($path), 'logistics'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function packageWeightLeafValue(array $node, float $kg, float $lb): float|string
+    {
+        $pounds = $this->usPackageWeightPounds($kg, $lb);
+        $type = $this->schemaNodeType($node);
+        if ($type === 'integer') {
+            return (int) max(1, round($pounds));
+        }
+        if ($type === 'number') {
+            return $pounds;
+        }
+
+        return number_format($pounds, 2, '.', '');
     }
 
     private function isUsLogisticsWeightParent(string $path): bool
     {
         $hay = strtolower($path);
 
-        return in_array($hay, ['uslogisticsweight', 'aelogisticsweight', 'usl', 'usl.logisticsweight'], true)
-            || preg_match('/(^|\.)(uslogisticsweight|aelogisticsweight)$/', $hay) === 1;
+        return str_contains($hay, 'uslogisticsweight')
+            || str_contains($hay, 'aelogisticsweight')
+            || str_contains($hay, 'logisticsweight')
+            || $hay === 'usl'
+            || str_ends_with($hay, '.usl');
     }
 
     /**
@@ -1522,11 +1554,19 @@ class AliExpressApiService
      * US overlay wants only {"Package weight":"3.35"}. Extra keys fail schema checks
      * and AliExpress then reports Package weight as CHK_BASIC_REQUIRED.
      *
-     * @return array{Package weight: string}
+     * @return array{Package weight: float|string}
      */
-    private function usPackageWeightObject(float $kg, float $lb): array
+    private function usPackageWeightObject(float $kg, float $lb, string $kind = 'string'): array
     {
-        return ['Package weight' => number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '')];
+        $pounds = $this->usPackageWeightPounds($kg, $lb);
+        if ($kind === 'integer') {
+            return ['Package weight' => (int) max(1, round($pounds))];
+        }
+        if ($kind === 'number') {
+            return ['Package weight' => $pounds];
+        }
+
+        return ['Package weight' => number_format($pounds, 2, '.', '')];
     }
 
     private function usPackageWeightPounds(float $kg, float $lb): float
@@ -1551,25 +1591,44 @@ class AliExpressApiService
         if ($kg <= 0 && $lb <= 0) {
             return $fields;
         }
-        $usObject = $this->usPackageWeightObject($kg, $lb);
-        if (! $this->hasValidLogisticsWeight($fields['usLogisticsWeight'] ?? null)) {
-            $fields['usLogisticsWeight'] = $usObject;
+        $kind = $this->packageWeightSchemaKind($nodes);
+        $usObject = $this->usPackageWeightObject($kg, $lb, $kind);
+        foreach (['usLogisticsWeight', 'aeLogisticsWeight', 'LogisticsWeight', 'logisticsWeight'] as $key) {
+            $fields[$key] = $usObject;
         }
-        if (! $this->hasValidLogisticsWeight($fields['aeLogisticsWeight'] ?? null)) {
-            $fields['aeLogisticsWeight'] = $usObject;
-        }
-        if (! $this->hasValidLogisticsWeight($fields['usl'] ?? null)) {
-            $fields['usl'] = ['logisticsWeight' => $fields['usLogisticsWeight'] ?? $usObject];
-        }
-        if (! $this->hasValidLogisticsWeight($fields['Package weight'] ?? null)) {
-            $fields['Package weight'] = $usObject['Package weight'];
-        }
+        $fields['usl'] = [
+            'logisticsWeight' => $usObject,
+            'LogisticsWeight' => $usObject,
+        ];
+        $fields['Package weight'] = $usObject['Package weight'];
         if (! isset($fields['package_weight']) || ! is_numeric($fields['package_weight']) || (float) $fields['package_weight'] <= 0) {
             $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
         }
-        $fields = $this->copyUsWeightOntoSkus($fields, is_array($fields['aeLogisticsWeight'] ?? null) ? $fields['aeLogisticsWeight'] : $usObject);
+        $fields = $this->copyUsWeightOntoSkus($fields, $usObject);
 
         return $fields;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $nodes
+     */
+    private function packageWeightSchemaKind(array $nodes): string
+    {
+        foreach ($nodes as $node) {
+            $path = strtolower((string) ($node['path'] ?? ''));
+            $type = strtolower((string) ($node['type'] ?? ''));
+            if ($type === '' || ! str_contains($path, 'package weight')) {
+                continue;
+            }
+            if ($type === 'number' || $type === 'integer') {
+                return $type;
+            }
+            if ($type === 'string') {
+                return 'string';
+            }
+        }
+
+        return 'string';
     }
 
     private function hasValidLogisticsWeight(mixed $value): bool
@@ -1716,12 +1775,13 @@ class AliExpressApiService
     private function retryProductPostWithWeightShapes(array $instance, array $official, float $kg, float $lb): array
     {
         $text = number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '');
-        $kgText = number_format(max(0.001, abs($kg)), 3, '.', '');
-        $object = $this->usPackageWeightObject($kg, $lb);
+        $pounds = $this->usPackageWeightPounds($kg, $lb);
+        $stringObject = $this->usPackageWeightObject($kg, $lb, 'string');
+        $numberObject = $this->usPackageWeightObject($kg, $lb, 'number');
         $shapes = [
-            ['usLogisticsWeight' => $object, 'aeLogisticsWeight' => $object, 'usl' => ['logisticsWeight' => $object], 'Package weight' => $text],
-            ['usLogisticsWeight' => $text, 'aeLogisticsWeight' => $text, 'Package weight' => $text],
-            ['usLogisticsWeight' => ['Package weight' => $kgText], 'aeLogisticsWeight' => ['Package weight' => $kgText]],
+            ['usLogisticsWeight' => $stringObject, 'aeLogisticsWeight' => $stringObject, 'LogisticsWeight' => $stringObject, 'usl' => ['logisticsWeight' => $stringObject], 'Package weight' => $text],
+            ['usLogisticsWeight' => $numberObject, 'aeLogisticsWeight' => $numberObject, 'LogisticsWeight' => $numberObject, 'usl' => ['logisticsWeight' => $numberObject], 'Package weight' => $pounds],
+            ['usLogisticsWeight' => $text, 'aeLogisticsWeight' => $text, 'LogisticsWeight' => $text, 'Package weight' => $text],
         ];
         $lastMessage = '';
         $lastInstance = $instance;
