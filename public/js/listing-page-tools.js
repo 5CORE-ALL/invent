@@ -1060,8 +1060,9 @@
 
     function ajaxError(xhr) {
         if (!xhr) return 'Request failed.';
+        const marketplace = String(cfg().channelLabel || 'The marketplace').trim() || 'The marketplace';
         if (xhr.statusText === 'timeout') {
-            return 'AliExpress took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
+            return marketplace + ' took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
         }
         if (xhr.status === 0) return 'Timed out or the connection dropped. Try again.';
         let json = xhr.responseJSON;
@@ -1072,7 +1073,7 @@
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
         if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
         if (xhr.status === 502 || xhr.status === 504) {
-            return 'AliExpress took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
+            return marketplace + ' took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
         }
         if (xhr.status === 500) return 'Server error during publish. Try again.';
         if (xhr.status) return 'Request failed (HTTP ' + xhr.status + ').';
