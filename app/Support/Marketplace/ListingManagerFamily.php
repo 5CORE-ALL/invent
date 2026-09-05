@@ -13,31 +13,126 @@ class ListingManagerFamily
     /**
      * @return array{
      *   parent: string,
+     *   parent_label: string,
+     *   parent_sku: string|null,
      *   skus: list<string>,
      *   children: list<array{sku: string, parent: string, is_current: bool, variation_label: string}>
      * }
      */
     public static function forSku(string $sku): array
     {
-        $sku = trim($sku);
-        $parent = self::parentKey($sku);
-        $skus = self::siblingSkus($parent, $sku);
+        return self::forParent(self::parentKey($sku), $sku);
+    }
+
+    /**
+     * Family for a chosen Product Master parent group.
+     *
+     * @return array{
+     *   parent: string,
+     *   parent_label: string,
+     *   parent_sku: string|null,
+     *   skus: list<string>,
+     *   children: list<array{sku: string, parent: string, is_current: bool, variation_label: string}>
+     * }
+     */
+    public static function forParent(string $parent, string $currentSku = ''): array
+    {
+        $parent = self::normalizeParentKey($parent);
+        $currentSku = trim($currentSku);
+        if ($parent === '' && $currentSku !== '') {
+            $parent = self::parentKey($currentSku);
+        }
+        $skus = self::siblingSkus($parent, $currentSku);
+        if ($currentSku !== '' && ! self::isParentSku($currentSku)) {
+            $found = false;
+            foreach ($skus as $child) {
+                if (strcasecmp($child, $currentSku) === 0) {
+                    $found = true;
+                    break;
+                }
+            }
+            if (! $found) {
+                array_unshift($skus, $currentSku);
+            }
+        }
 
         $children = [];
         foreach ($skus as $child) {
             $children[] = [
                 'sku' => $child,
                 'parent' => $parent,
-                'is_current' => strcasecmp($child, $sku) === 0,
+                'is_current' => $currentSku !== '' && strcasecmp($child, $currentSku) === 0,
                 'variation_label' => self::variationLabel($child, $parent),
             ];
         }
 
         return [
             'parent' => $parent,
+            'parent_label' => $parent !== '' ? $parent : ($currentSku !== '' ? self::stripParentPrefix($currentSku) : ''),
+            'parent_sku' => $parent !== '' ? self::parentRowSkuFromKey($parent) : self::parentRowSku($currentSku),
             'skus' => $skus,
             'children' => $children,
         ];
+    }
+
+    public static function normalizeParentKey(string $parent): string
+    {
+        return self::stripParentPrefix(trim($parent));
+    }
+
+    /**
+     * Distinct Product Master parent groups for the variation picker.
+     *
+     * @return list<array{id: string, name: string, parent_sku: string, child_count: int}>
+     */
+    public static function parentGroups(string $q = '', int $limit = 400): array
+    {
+        if (! Schema::hasTable('product_master')) {
+            return [];
+        }
+
+        $query = DB::table('product_master')
+            ->whereNotNull('parent')
+            ->whereRaw("TRIM(parent) != ''");
+        if (Schema::hasColumn('product_master', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+        $q = trim($q);
+        if ($q !== '') {
+            $like = '%'.$q.'%';
+            $query->where(function ($w) use ($like) {
+                $w->where('parent', 'like', $like)
+                    ->orWhere('sku', 'like', $like);
+            });
+        }
+
+        $rows = $query->select('parent', 'sku')->orderBy('parent')->limit(8000)->get();
+        $groups = [];
+        foreach ($rows as $row) {
+            $key = self::normalizeParentKey((string) ($row->parent ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            $sku = trim((string) ($row->sku ?? ''));
+            if (! isset($groups[$key])) {
+                $groups[$key] = [
+                    'id' => $key,
+                    'name' => $key,
+                    'parent_sku' => 'PARENT '.$key,
+                    'child_count' => 0,
+                ];
+            }
+            if (self::isParentSku($sku)) {
+                $groups[$key]['parent_sku'] = $sku;
+            } elseif ($sku !== '') {
+                $groups[$key]['child_count']++;
+            }
+        }
+
+        $out = array_values($groups);
+        usort($out, static fn ($a, $b) => strcasecmp((string) $a['name'], (string) $b['name']));
+
+        return array_slice($out, 0, max(1, $limit));
     }
 
     public static function isParentSku(string $sku): bool
@@ -79,7 +174,12 @@ class ListingManagerFamily
      */
     public static function parentRowSku(string $sku): ?string
     {
-        $parent = self::parentKey($sku);
+        return self::parentRowSkuFromKey(self::parentKey($sku));
+    }
+
+    public static function parentRowSkuFromKey(string $parent): ?string
+    {
+        $parent = self::normalizeParentKey($parent);
         if ($parent === '' || ! Schema::hasTable('product_master')) {
             return null;
         }

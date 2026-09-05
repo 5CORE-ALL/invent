@@ -167,7 +167,7 @@ class Temu2ListingPublishService
      * @param  list<string>  $skus
      * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, skus?: list<string>}
      */
-    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = ''): array
+    public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $preferredCatId = null): array
     {
         $skus = $this->uniqueTrimmedSkus($skus);
         if ($skus === []) {
@@ -212,7 +212,7 @@ class Temu2ListingPublishService
             $listed = [];
             $lastGoods = null;
             foreach ($skus as $sku) {
-                $one = $this->publishSkus([$sku], false, 'single', $parentHint);
+                $one = $this->publishSkus([$sku], false, 'single', $parentHint, $preferredCatId);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -301,7 +301,7 @@ class Temu2ListingPublishService
         }
         $hostedImages = array_slice($hostedImages, 0, self::MAX_IMAGES);
 
-        $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0]);
+        $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0], $preferredCatId);
         if ($catId === null) {
             return ['success' => false, 'message' => 'Could not resolve a Temu leaf category. Set '.$this->pricingTable().'.category_id or check category recommend API access.'];
         }
@@ -1863,8 +1863,212 @@ class Temu2ListingPublishService
         return '';
     }
 
-    private function resolveCatId(string $sku, string $title, string $imageUrl): ?int
+    /**
+     * Search Temu leaf categories from the recommend API, local pricing, and cached cat names.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, suggested?: bool}>, message?: string|null}
+     */
+    public function searchListingCategories(string $query, string $title = '', string $imageUrl = ''): array
     {
+        $query = trim($query);
+        $title = trim($title);
+        $keyword = $query !== '' ? $query : $title;
+        if ($keyword === '') {
+            return ['success' => true, 'categories' => []];
+        }
+
+        $categories = [];
+        $seen = [];
+        $push = static function (string $id, string $path, bool $suggested = false) use (&$categories, &$seen): void {
+            $id = preg_replace('/\D+/', '', $id) ?? '';
+            if ($id === '' || isset($seen[$id])) {
+                return;
+            }
+            $seen[$id] = true;
+            $categories[] = [
+                'id' => $id,
+                'path' => trim($path) !== '' ? trim($path).' (ID '.$id.')' : ('Temu category '.$id),
+                'suggested' => $suggested,
+            ];
+        };
+
+        if ($this->api->isConfigured()) {
+            $body = [
+                'type' => 'bg.local.goods.category.recommend',
+                'goodsName' => mb_substr($keyword, 0, 200),
+                'language' => 'en',
+            ];
+            if (trim($imageUrl) !== '') {
+                $body['imageUrl'] = trim($imageUrl);
+            }
+            $data = $this->temuCallBody($body, 35);
+            foreach ($this->parseRecommendCategories(is_array($data['result'] ?? null) ? $data['result'] : []) as $row) {
+                $push((string) ($row['id'] ?? ''), (string) ($row['path'] ?? ''), true);
+            }
+
+            $names = $this->cachedCategoryNameMap();
+            foreach ($categories as $i => $row) {
+                $named = $names[$row['id']] ?? $this->localCategoryNameForId($row['id']);
+                if ($named !== '' && (str_starts_with($row['path'], 'Temu category ') || str_contains($row['path'], '(ID '.$row['id'].')'))) {
+                    $categories[$i]['path'] = $named.' (ID '.$row['id'].')';
+                }
+            }
+            if (mb_strlen($keyword) >= 2) {
+                $needle = mb_strtolower($keyword);
+                foreach ($names as $id => $path) {
+                    if (str_contains(mb_strtolower($path), $needle)) {
+                        $push((string) $id, $path, false);
+                    }
+                }
+            }
+        }
+
+        foreach ($this->localCategorySuggestions($keyword) as $row) {
+            $push((string) ($row['id'] ?? ''), (string) ($row['path'] ?? ''), ! empty($row['suggested']));
+        }
+
+        usort($categories, static fn ($a, $b) => ((int) empty($a['suggested'])) <=> ((int) empty($b['suggested'])));
+
+        if ($categories === [] && ! $this->api->isConfigured()) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => $this->shopLabel().' API is not connected. '.$this->credentialsHelp(),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'categories' => array_slice($categories, 0, 40),
+            'message' => $categories === []
+                ? 'Temu returned no matching leaf categories. Try a shorter keyword (e.g. light stand, speaker).'
+                : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return list<array{id: string, path: string}>
+     */
+    protected function parseRecommendCategories(array $result): array
+    {
+        $out = [];
+        $add = static function ($id, $path) use (&$out): void {
+            $id = preg_replace('/\D+/', '', (string) $id) ?? '';
+            if ($id === '') {
+                return;
+            }
+            $out[] = ['id' => $id, 'path' => trim((string) $path)];
+        };
+
+        $add($result['catId'] ?? $result['cat_id'] ?? '', $result['catPath'] ?? $result['categoryPath'] ?? $result['catName'] ?? $result['categoryName'] ?? '');
+        foreach (['recommendCatList', 'categoryList', 'catList', 'recommendList', 'goodsCatsList'] as $key) {
+            if (! is_array($result[$key] ?? null)) {
+                continue;
+            }
+            foreach ($result[$key] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $add(
+                    $row['catId'] ?? $row['cat_id'] ?? '',
+                    $row['catPath'] ?? $row['categoryPath'] ?? $row['catName'] ?? $row['cat_name'] ?? $row['categoryName'] ?? ''
+                );
+            }
+        }
+        $list = $result['catIdList'] ?? [];
+        if (is_array($list) && $list !== []) {
+            $leaf = end($list);
+            $add($leaf, '');
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    /**
+     * Cached Temu category names only. Never hits cats.get during search.
+     *
+     * @return array<string, string>
+     */
+    protected function cachedCategoryNameMap(): array
+    {
+        $cached = Cache::get($this->shopConfigKey().'_listing_cat_name_map_v1');
+
+        return is_array($cached) ? $cached : [];
+    }
+
+    protected function localCategoryNameForId(string $id): string
+    {
+        $id = preg_replace('/\D+/', '', $id) ?? '';
+        if ($id === '' || ! Schema::hasTable($this->pricingTable())) {
+            return '';
+        }
+        try {
+            return trim((string) $this->pricingClass()::query()
+                ->where('category_id', $id)
+                ->orWhere('category_id', (int) $id)
+                ->value('category'));
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * @return list<array{id: string, path: string, suggested?: bool}>
+     */
+    protected function localCategorySuggestions(string $keyword): array
+    {
+        $keyword = trim($keyword);
+        if ($keyword === '' || ! Schema::hasTable($this->pricingTable())) {
+            return [];
+        }
+
+        try {
+            $query = $this->pricingClass()::query()
+                ->whereNotNull('category_id')
+                ->where('category_id', '!=', '')
+                ->where(function ($outer) use ($keyword) {
+                    $outer->where('category', 'like', '%'.$keyword.'%')
+                        ->orWhere('category_id', 'like', '%'.$keyword.'%')
+                        ->orWhere('product_name', 'like', '%'.$keyword.'%');
+                })
+                ->select('category_id', 'category')
+                ->distinct()
+                ->limit(25);
+
+            $out = [];
+            $seen = [];
+            foreach ($query->get() as $row) {
+                $id = preg_replace('/\D+/', '', (string) ($row->category_id ?? '')) ?? '';
+                if ($id === '' || isset($seen[$id])) {
+                    continue;
+                }
+                $seen[$id] = true;
+                $name = trim((string) ($row->category ?? ''));
+                $out[] = [
+                    'id' => $id,
+                    'path' => $name !== '' ? $name : ('Temu category '.$id),
+                    'suggested' => true,
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::debug('Temu category local suggestions skipped', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function resolveCatId(string $sku, string $title, string $imageUrl, ?int $preferred = null): ?int
+    {
+        if ($preferred !== null && $preferred >= 1000) {
+            return $preferred;
+        }
+
         if (Schema::hasTable($this->pricingTable())) {
             $raw = $this->pricingClass()::query()->where('sku', $sku)->value('category_id');
             $id = (int) preg_replace('/\D+/', '', (string) $raw);

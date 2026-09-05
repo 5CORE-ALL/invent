@@ -95,10 +95,10 @@ class ListingVariationPreviewService
     {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
-            return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint);
+            return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
         }
         if (in_array($channel, ['temu', 'temu1'], true)) {
-            return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint);
+            return $this->temu->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
         }
         if ($channel === 'faire') {
             return $this->faire->publishSkus($skus, $expandSiblings, $mode);

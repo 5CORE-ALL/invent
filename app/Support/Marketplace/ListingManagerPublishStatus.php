@@ -443,6 +443,7 @@ class ListingManagerPublishStatus
             'private_listing' => false,
             'publish_mode' => 'single',
             'variation_skus' => [],
+            'parent_group' => '',
             'product_type' => '',
         ], $details, [
             'brand' => $brand,
@@ -503,6 +504,7 @@ class ListingManagerPublishStatus
             static fn ($sku) => trim((string) $sku),
             $variationSkus
         ))));
+        $merged['parent_group'] = ListingManagerFamily::normalizeParentKey((string) ($merged['parent_group'] ?? ''));
 
         return $merged;
     }

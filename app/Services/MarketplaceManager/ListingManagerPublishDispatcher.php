@@ -42,7 +42,7 @@ class ListingManagerPublishDispatcher
                 $key,
                 false,
                 $mode,
-                '',
+                trim((string) ($details['parent_group'] ?? '')),
                 $categoryId,
                 $categoryUuid,
                 $categoryName,
@@ -158,7 +158,9 @@ class ListingManagerPublishDispatcher
     private function publishEbay(string $key, ListingManagerChannelDraft $draft, array $details): array
     {
         $variations = $this->variationPayload($draft, $details);
-        $parentSku = ListingManagerFamily::parentRowSku((string) $draft->seller_sku)
+        $parentGroup = ListingManagerFamily::normalizeParentKey((string) ($details['parent_group'] ?? ''));
+        $parentSku = ($parentGroup !== '' ? ListingManagerFamily::parentRowSkuFromKey($parentGroup) : null)
+            ?: ListingManagerFamily::parentRowSku((string) $draft->seller_sku)
             ?: (ListingManagerFamily::isParentSku((string) $draft->seller_sku)
                 ? trim((string) $draft->seller_sku)
                 : '');
@@ -271,7 +273,10 @@ class ListingManagerPublishDispatcher
             return [];
         }
 
-        $family = ListingManagerFamily::forSku((string) $draft->seller_sku);
+        $parentGroup = ListingManagerFamily::normalizeParentKey((string) ($details['parent_group'] ?? ''));
+        $family = $parentGroup !== ''
+            ? ListingManagerFamily::forParent($parentGroup, (string) $draft->seller_sku)
+            : ListingManagerFamily::forSku((string) $draft->seller_sku);
         $bySku = [];
         foreach ($family['children'] as $child) {
             $bySku[strtoupper((string) $child['sku'])] = $child;
@@ -336,7 +341,10 @@ class ListingManagerPublishDispatcher
     private function publishSkusForMode(ListingManagerChannelDraft $draft, array $details): array
     {
         $sku = trim((string) $draft->seller_sku);
-        $family = ListingManagerFamily::forSku($sku);
+        $parentGroup = ListingManagerFamily::normalizeParentKey((string) ($details['parent_group'] ?? ''));
+        $family = $parentGroup !== ''
+            ? ListingManagerFamily::forParent($parentGroup, $sku)
+            : ListingManagerFamily::forSku($sku);
         $allowed = [];
         foreach ($family['skus'] as $familySku) {
             $familySku = trim((string) $familySku);

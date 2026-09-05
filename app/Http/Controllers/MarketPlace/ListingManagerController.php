@@ -15,6 +15,8 @@ use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
 use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
+use App\Services\MarketplaceManager\Temu2ListingPublishService;
+use App\Services\MarketplaceManager\TemuListingPublishService;
 use App\Services\ShopifyApiService;
 use App\Services\ShopifyCatalogSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -896,9 +898,39 @@ class ListingManagerController extends Controller
     /**
      * @return list<array<string, mixed>>
      */
-    private function variationRowsForSku(string $sku): array
+    public function parentGroups(Request $request)
     {
-        $family = ListingManagerFamily::forSku($sku);
+        $q = trim((string) $request->input('q', ''));
+
+        return response()->json([
+            'success' => true,
+            'groups' => ListingManagerFamily::parentGroups($q),
+        ]);
+    }
+
+    public function familyByParent(Request $request)
+    {
+        $parent = trim((string) $request->input('parent', ''));
+        $sku = trim((string) $request->input('sku', ''));
+        if ($parent === '') {
+            return response()->json(['success' => false, 'message' => 'Parent group is required.'], 422);
+        }
+
+        $family = ListingManagerFamily::forParent($parent, $sku);
+
+        return response()->json([
+            'success' => true,
+            'family' => $family,
+            'variations' => $this->variationRowsForSku($sku !== '' ? $sku : (string) ($family['skus'][0] ?? ''), $family['parent'] ?? $parent),
+        ]);
+    }
+
+    private function variationRowsForSku(string $sku, ?string $parent = null): array
+    {
+        $parent = trim((string) $parent);
+        $family = $parent !== ''
+            ? ListingManagerFamily::forParent($parent, $sku)
+            : ListingManagerFamily::forSku($sku);
         $rows = [];
         foreach ($family['children'] as $child) {
             $childSku = (string) $child['sku'];
@@ -1812,6 +1844,16 @@ class ListingManagerController extends Controller
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
 
+        if ($family === 'temu') {
+            $key = ListingChannelCounts::normalize($channel);
+            $svc = in_array($key, ['temu2', 'temutwo'], true)
+                ? app(Temu2ListingPublishService::class)
+                : app(TemuListingPublishService::class);
+            $result = $svc->searchListingCategories($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
         if (mb_strlen($q) < 2) {
             return response()->json(['success' => true, 'categories' => []]);
         }
@@ -2414,7 +2456,10 @@ class ListingManagerController extends Controller
             ),
             (string) $draft->seller_sku
         );
-        $family = ListingManagerFamily::forSku((string) $draft->seller_sku);
+        $parentGroup = trim((string) ($details['parent_group'] ?? ''));
+        $family = $parentGroup !== ''
+            ? ListingManagerFamily::forParent($parentGroup, (string) $draft->seller_sku)
+            : ListingManagerFamily::forSku((string) $draft->seller_sku);
         $copied = 0;
         $created = 0;
 
@@ -2434,7 +2479,7 @@ class ListingManagerController extends Controller
             $siblingDetails['image_url'] = $details['image_url'] ?? $siblingDetails['image_url'];
             $siblingDetails['brand'] = $details['brand'] ?? $siblingDetails['brand'];
             $siblingDetails['manufacturer'] = $details['manufacturer'] ?? $siblingDetails['manufacturer'];
-            foreach (['primary_category_id', 'primary_category_path', 'secondary_category_id', 'shipping_policy_id', 'payment_policy_id', 'return_policy_id', 'condition', 'location_city', 'location_country', 'location_postal_code'] as $keep) {
+            foreach (['primary_category_id', 'primary_category_path', 'secondary_category_id', 'shipping_policy_id', 'payment_policy_id', 'return_policy_id', 'condition', 'location_city', 'location_country', 'location_postal_code', 'parent_group', 'publish_mode'] as $keep) {
                 if (trim((string) ($details[$keep] ?? '')) !== '') {
                     $siblingDetails[$keep] = $details[$keep];
                 }
@@ -2874,12 +2919,18 @@ class ListingManagerController extends Controller
         if ($full) {
             $payload['listing_details'] = $details;
             try {
-                $payload['family'] = ListingManagerFamily::forSku((string) $d->seller_sku);
-                $payload['variations'] = $this->variationRowsForSku((string) $d->seller_sku);
+                $parentGroup = trim((string) ($details['parent_group'] ?? ''));
+                $family = $parentGroup !== ''
+                    ? ListingManagerFamily::forParent($parentGroup, (string) $d->seller_sku)
+                    : ListingManagerFamily::forSku((string) $d->seller_sku);
+                $payload['family'] = $family;
+                $payload['variations'] = $this->variationRowsForSku((string) $d->seller_sku, $family['parent'] ?? $parentGroup);
             } catch (\Throwable $e) {
                 Log::warning('ListingManager serializeDraft family: '.$e->getMessage(), ['id' => $d->id]);
                 $payload['family'] = [
                     'parent' => (string) $d->seller_sku,
+                    'parent_label' => (string) $d->seller_sku,
+                    'parent_sku' => null,
                     'children' => [],
                     'skus' => [(string) $d->seller_sku],
                 ];
