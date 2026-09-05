@@ -322,7 +322,7 @@
             return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
         }
         function ebayDgUsesClearThenApply() {
-            return ebayDgIsTiktok() || ebayDgIsShopifyB2c() || ebayDgIsDoba();
+            return ebayDgIsTiktok() || ebayDgIsShopifyB2c() || ebayDgIsDoba() || ebayDgIsDobaWithoutship();
         }
         function ebayDgIsBestbuy() {
             return EBAY_DIL_GROI_CHANNEL === 'bestbuy';
@@ -1084,11 +1084,11 @@
                         ? DEFAULT_TIKTOK_MARGIN_FACTOR
                         : 0.8));
             const lp = Number(d && d.LP_productmaster) || 0;
-            const ship = Number(d && d.Ship_productmaster) || 0;
+            const ship = ebayDgExcludeShip() ? 0 : (Number(d && d.Ship_productmaster) || 0);
             const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 10000) / 100 : 0;
             const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 10000) / 100 : 0;
             const patch = { SGPFT: sgpft, SPFT: sgpft, SROI: sroi, sgpft: sgpft, sroi: sroi, spft: sgpft };
-            if (ebayDgIsDoba()) {
+            if (ebayDgIsDoba() || ebayDgIsDobaWithoutship()) {
                 patch.s_self_pick = Math.max(0, ebayDgRound2(sprice - ship));
             }
             return patch;
@@ -1115,7 +1115,7 @@
             return 0;
         }
         /**
-         * TikTok / TikTok 2 / Shopify B2C / Doba: wipe every stored S PRC and save 0,
+         * TikTok / TikTok 2 / Shopify B2C / Doba / Doba Pickup: wipe every stored S PRC and save 0,
          * then insert the Dil / 0 Sold / CVR discount (not the LMP Diff).
          */
         async function ebayTiktokClearThenApplyAllRules() {

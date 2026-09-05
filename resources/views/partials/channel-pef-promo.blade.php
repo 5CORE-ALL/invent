@@ -3402,7 +3402,7 @@
                 return false;
             }
             // TikTok / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
-            if (chPromoIsTiktokPromoChannel() || chPromoIsDobaPromoChannel()) {
+            if (chPromoIsTiktokPromoChannel() || chPromoIsDobaPromoChannel() || chPromoIsDobaWithoutshipPromoChannel()) {
                 return false;
             }
             if (!d) return true;
