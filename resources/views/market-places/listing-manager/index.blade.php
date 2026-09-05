@@ -545,12 +545,12 @@
                             <i class="fas fa-database me-1"></i>Load from Product Master
                         </button>
                     </div>
-                    <p class="lc-help" id="lc-identifier-help">Product identifiers from Product Master.</p>
+                    <p class="lc-help" id="lc-identifier-help">Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New / Brand New.</p>
                     <div class="row g-3">
                         <div class="col-md-6" data-id-field="sku"><label class="form-label">SKU</label><input id="lc-sku" class="form-control" readonly></div>
                         <div class="col-md-6" data-id-field="asin"><label class="form-label" id="lc-asin-label">ASIN / Source</label><input id="lc-asin" class="form-control" readonly></div>
-                        <div class="col-md-6" data-id-field="brand"><label class="form-label">Brand</label><input id="lc-brand-id" class="form-control" placeholder="5 Core Inc"></div>
-                        <div class="col-md-6" data-id-field="manufacturer"><label class="form-label">Manufacturer</label><input id="lc-manufacturer" class="form-control" placeholder="5 Core Inc"></div>
+                        <div class="col-md-6" data-id-field="brand"><label class="form-label">Brand</label><input id="lc-brand-id" class="form-control" placeholder="5 Core Inc." readonly></div>
+                        <div class="col-md-6" data-id-field="manufacturer"><label class="form-label">Manufacturer</label><input id="lc-manufacturer" class="form-control" placeholder="5 Core Inc." readonly></div>
                         <div class="col-md-6" data-id-field="upc"><label class="form-label">UPC</label><input id="lc-upc" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6" data-id-field="ean"><label class="form-label">EAN</label><input id="lc-ean" class="form-control" placeholder="Optional"></div>
                         <div class="col-md-6" data-id-field="isbn"><label class="form-label">ISBN</label><input id="lc-isbn" class="form-control" placeholder="Optional"></div>
@@ -802,11 +802,11 @@
                         <div class="row g-2 mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">Make <span class="lc-req">*</span></label>
-                                <input type="text" id="lc-reverb-make" class="form-control" placeholder="e.g. 5 Core">
+                                <input type="text" id="lc-reverb-make" class="form-control" placeholder="5 Core Inc." readonly>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Model <span class="lc-req">*</span></label>
-                                <input type="text" id="lc-reverb-model" class="form-control" placeholder="SKU or model name">
+                                <input type="text" id="lc-reverb-model" class="form-control" placeholder="SKU" readonly>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Finish</label>
@@ -841,9 +841,9 @@
                     </div>
 
                     <div class="lc-section-title lc-ebay-only">Required Item Specifics</div>
-                    <div class="lc-specific-row lc-ebay-only"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core Inc"></div>
-                    <div class="lc-specific-row lc-ebay-only"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc"></div>
-                    <div class="lc-specific-row lc-ebay-only"><span>MPN</span><input id="lc-mpn" class="form-control" placeholder="SKU"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Brand</span><input id="lc-brand" class="form-control" placeholder="5 Core Inc." readonly></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc." readonly></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>MPN</span><input id="lc-mpn" class="form-control" placeholder="SKU" readonly></div>
                     <div class="lc-specific-row lc-ebay-only"><span>UPC</span><input id="lc-upc-specific" class="form-control" placeholder="From CP Master"></div>
                     <div class="lc-section-title mt-3 lc-ebay-only">Recommended Item Specifics</div>
                     <div class="lc-specific-row lc-ebay-only"><span>Speaker Size</span><input id="lc-spec-speaker" class="form-control"></div>
@@ -860,7 +860,7 @@
                     <p class="lc-help" id="lc-policies-help"></p>
                     <div class="mb-3">
                         <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="package">
-                            <i class="fas fa-box me-1"></i>Load Package from Product Master
+                            <i class="fas fa-box me-1"></i>Load Package from Dim/Wt Master
                         </button>
                     </div>
                     <p class="lc-italic-note lc-ebay-only">If a listing includes Business Policies information, the Shipping and Payment &amp; Returns sections will be disabled.</p>
@@ -903,7 +903,7 @@
                         <input id="lc-location-postal" class="form-control" placeholder="Zip / Postal" value="43311">
                     </div>
 
-                    <div class="lc-section-title">Package Dimensions <span class="text-muted fw-normal small">(from Product Master)</span></div>
+                    <div class="lc-section-title">Package Dimensions <span class="text-muted fw-normal small">(from Dim/Wt Master)</span></div>
                     <div class="row g-2 mb-3">
                         <div class="col-md-4"><input id="lc-pkg-l" class="form-control" placeholder="Length (in)"></div>
                         <div class="col-md-4"><input id="lc-pkg-w" class="form-control" placeholder="Width (in)"></div>
@@ -2037,9 +2037,9 @@
             $('#lc-category-path-input').val($('#lc-category-path-visible').val() || '');
         }
         const images = editorImages.slice();
-        const brand = ($('#lc-brand').val() || $('#lc-brand-id').val() || '').trim() || '5 Core Inc.';
-        const manufacturer = ($('#lc-manufacturer').val() || $('#lc-manufacturer-specific').val() || '').trim() || '5 Core Inc.';
-        const mpn = ($('#lc-mpn').val() || '').trim() || ($('#lc-sku').val() || '').trim();
+        const brand = '5 Core Inc.';
+        const manufacturer = '5 Core Inc.';
+        const mpn = ($('#lc-sku').val() || '').trim();
         const upc = ($('#lc-upc').val() || $('#lc-upc-specific').val() || '').trim();
         const specifics = {
             Brand: brand,
@@ -2052,7 +2052,7 @@
         };
         return {
             description: getDescriptionValue(),
-            condition: $('#lc-condition').val() || '',
+            condition: 'New',
             condition_description: $('#lc-condition-desc').val() || '',
             brand,
             manufacturer,
@@ -2086,13 +2086,13 @@
             auto_relist: $('#lc-auto-relist').is(':checked'),
             private_listing: $('#lc-private-listing').is(':checked'),
             warehouse_id: $('#lc-warehouse-id').val() || '',
-            make: $('#lc-reverb-make').val() || '',
-            model: $('#lc-reverb-model').val() || '',
+            make: '5 Core Inc.',
+            model: ($('#lc-sku').val() || '').trim(),
             finish: $('#lc-reverb-finish').val() || '',
             year: $('#lc-reverb-year').val() || '',
             condition_name: $('#lc-reverb-condition').val()
-                ? String($('#lc-reverb-condition option:selected').data('name') || $('#lc-reverb-condition option:selected').text() || '').trim()
-                : '',
+                ? String($('#lc-reverb-condition option:selected').data('name') || $('#lc-reverb-condition option:selected').text() || '').trim() || 'Brand New'
+                : 'Brand New',
             condition_uuid: $('#lc-reverb-condition').val() || '',
             category_uuid: $('#lc-category-id').val() || '',
             category_name: $('#lc-category-path-input').val() || '',
@@ -2130,15 +2130,16 @@
             $('#lc-bullets').val(res.bullets.join('\n'));
         }
         if (res.upc) $('#lc-upc, #lc-upc-specific').val(res.upc);
-        if (res.brand) $('#lc-brand, #lc-brand-id').val(res.brand);
-        if (res.manufacturer) $('#lc-manufacturer, #lc-manufacturer-specific').val(res.manufacturer);
+        $('#lc-brand, #lc-brand-id').val('5 Core Inc.');
+        $('#lc-manufacturer, #lc-manufacturer-specific').val('5 Core Inc.');
+        $('#lc-mpn').val(($('#lc-sku').val() || '').trim());
+        $('#lc-reverb-make').val('5 Core Inc.');
+        $('#lc-reverb-model').val(($('#lc-sku').val() || '').trim());
         if (res.price != null && res.price !== '') $('#lc-price').val(res.price);
         if (res.quantity != null && res.quantity !== '') $('#lc-qty').val(res.quantity);
-        if (res.make) $('#lc-reverb-make').val(res.make);
-        if (res.model) $('#lc-reverb-model').val(res.model);
         if (res.finish) $('#lc-reverb-finish').val(res.finish);
         if (res.year) $('#lc-reverb-year').val(res.year);
-        if (res.condition_name) fillReverbConditions([], res.condition_name);
+        fillReverbConditions([], res.condition_name || 'Brand New');
         if (res.shipping_profile_id) $('#lc-reverb-shipping-profile').val(res.shipping_profile_id);
         if (res.package_length != null) $('#lc-pkg-l').val(res.package_length);
         if (res.package_width != null) $('#lc-pkg-w').val(res.package_width);
@@ -2369,7 +2370,7 @@
             timeout: 25000,
             success: function (res) {
                 if (family === 'reverb' && Array.isArray(res.conditions)) {
-                    fillReverbConditions(res.conditions);
+                    fillReverbConditions(res.conditions, 'Brand New');
                 }
                 const rows = res.categories || [];
                 if (!rows.length) {
@@ -2488,15 +2489,15 @@
         $('#lc-category-id').val(d.primary_category_id || d.category_uuid || '');
         $('#lc-category-path-input').val(d.primary_category_path || d.category_name || d.category || '');
         $('#lc-secondary-category-id').val(d.secondary_category_id || '');
-        $('#lc-condition').val(d.condition || 'New');
+        $('#lc-condition').val('New');
         $('#lc-condition-desc').val(d.condition_description || '');
         $('#lc-duration').val(d.duration || 'GTC');
         $(`input[name="lc-format"][value="${d.listing_format || 'FixedPriceItem'}"]`).prop('checked', true);
         $('#lc-private-listing').prop('checked', !!d.private_listing);
         const specs = d.item_specifics || {};
-        $('#lc-brand, #lc-brand-id').val(d.brand || specs.Brand || defaultBrand);
-        $('#lc-manufacturer, #lc-manufacturer-specific').val(d.manufacturer || specs.Manufacturer || defaultManufacturer);
-        $('#lc-mpn').val(d.mpn || specs.MPN || sku);
+        $('#lc-brand, #lc-brand-id').val(defaultBrand);
+        $('#lc-manufacturer, #lc-manufacturer-specific').val(defaultManufacturer);
+        $('#lc-mpn').val(sku);
         $('#lc-brand, #lc-brand-id').off('input.brandSync').on('input.brandSync', function () {
             $('#lc-brand, #lc-brand-id').not(this).val($(this).val());
         });
@@ -2528,8 +2529,8 @@
         if (d.category_uuid && !$('#lc-category-id').val()) {
             $('#lc-category-id').val(d.category_uuid);
         }
-        $('#lc-reverb-make').val(d.make || '');
-        $('#lc-reverb-model').val(d.model || '');
+        $('#lc-reverb-make').val(defaultBrand);
+        $('#lc-reverb-model').val(sku);
         $('#lc-reverb-finish').val(d.finish || '');
         $('#lc-reverb-year').val(d.year || '');
         $('#lc-upc-does-not-apply').prop('checked', !!d.upc_does_not_apply);
@@ -2543,9 +2544,7 @@
         $('#lc-reverb-shipping-rates').val(Array.isArray(d.shipping_rates) && d.shipping_rates.length
             ? JSON.stringify(d.shipping_rates, null, 2)
             : (typeof d.shipping_rates === 'string' ? d.shipping_rates : ''));
-        if (d.condition_uuid || d.condition_name) {
-            fillReverbConditions([], d.condition_uuid || d.condition_name);
-        }
+        fillReverbConditions([], d.condition_uuid || d.condition_name || 'Brand New');
         const finish = function () {
             $('#lc-editor-loading').hide();
             $('#lc-editor-body').show();

@@ -51,10 +51,10 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from eBay',
                 'pricing_title' => 'Pricing',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'eBay identifiers including UPC, EAN, ISBN, and ePID.',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New.',
                 'images_help' => 'Load photos from Image Master. First image is Primary.',
                 'category_help' => 'Search and select an eBay leaf category, then set condition and item specifics.',
-                'policies_help' => 'Shipping, payment, and return policies must exist on the linked eBay account.',
+                'policies_help' => 'Shipping, payment, and return policies must exist on the linked eBay account. Package size and weight come from Dim/Wt Master.',
             ],
             'tiktok' => [
                 'tabs' => [
@@ -73,10 +73,10 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from TikTok Shop',
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'TikTok Shop uses SKU, brand, manufacturer, and UPC. eBay fields such as ePID are not used.',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New.',
                 'images_help' => 'TikTok Shop needs at least one Image Master photo. First image is the main photo.',
                 'category_help' => 'Search TikTok categories by keyword (same as Seller Center). Pick a leaf path such as Phones & Electronics - Audio & Video - Speakers.',
-                'policies_help' => 'Package weight is required. Warehouse ID is optional when your shop already has a default warehouse.',
+                'policies_help' => 'Package size and weight come from Dim/Wt Master. Warehouse ID is optional when your shop already has a default warehouse.',
             ],
             'temu' => [
                 'tabs' => [
@@ -95,10 +95,10 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from Temu',
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'Temu uses SKU, brand, manufacturer, and UPC. eBay business policies are not used.',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New.',
                 'images_help' => 'Temu needs at least one Image Master photo. First image is the main photo.',
                 'category_help' => 'Enter the Temu leaf category ID. Required before publish.',
-                'policies_help' => 'Package weight and dimensions come from Product Master and are required for Temu.',
+                'policies_help' => 'Package weight and dimensions come from Dim/Wt Master and are required for Temu.',
             ],
             'reverb' => [
                 'tabs' => [
@@ -117,10 +117,10 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from Reverb',
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'Reverb uses SKU, brand, and UPC. Set make, model, and category on the Reverb Details tab.',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model is the SKU. Condition is Brand New.',
                 'images_help' => 'Load photos from Image Master. Reverb recommends at least 11 photos. First image is Primary.',
-                'category_help' => 'Search Reverb categories and select a leaf path. Also set make, model, finish, year, and condition.',
-                'policies_help' => 'Set a Reverb shipping profile, shipping rates, or local pickup. Package size and weight come from Product Master.',
+                'category_help' => 'Search Reverb categories and select a leaf path. Make is 5 Core Inc., model is the SKU, and condition is Brand New.',
+                'policies_help' => 'Set a Reverb shipping profile, shipping rates, or local pickup. Package size and weight come from Dim/Wt Master.',
             ],
             'faire' => [
                 'tabs' => [
@@ -137,7 +137,7 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from Faire',
                 'pricing_title' => 'Wholesale Price',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'Faire listings use SKU, brand, and UPC from Product Master.',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU.',
                 'images_help' => 'Load photos from Image Master. First image is Primary.',
                 'category_help' => '',
                 'policies_help' => '',
@@ -158,7 +158,7 @@ class ListingManagerEditorProfile
                 'header_import' => 'Import from Channel',
                 'pricing_title' => 'Price & Stock',
                 'title_heading' => 'Title & Description',
-                'identifier_help' => 'Product identifiers from Product Master.',
+                'identifier_help' => 'Brand is always 5 Core Inc. Model/MPN is the SKU. Condition is New.',
                 'images_help' => 'Load photos from Image Master. First image is Primary.',
                 'category_help' => 'Enter the marketplace category ID or name.',
                 'policies_help' => '',
