@@ -2150,6 +2150,19 @@ class ListingManagerController extends Controller
                 : ListingManagerImageStore::sourceUrlsForSku((string) $draft->seller_sku)
         );
 
+        $requestMode = strtolower(trim((string) $request->input('mode', $request->input('publish_mode', ''))));
+        if ($requestMode !== '') {
+            $details['publish_mode'] = $requestMode === 'variation' ? 'variation' : 'single';
+        }
+        if ($request->has('variation_skus')) {
+            $skus = $request->input('variation_skus', []);
+            $details['variation_skus'] = is_array($skus)
+                ? array_values(array_filter(array_map(static fn ($sku) => trim((string) $sku), $skus)))
+                : [];
+        }
+        $draft->listing_details = $details;
+        $draft->save();
+
         $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $details);
 
         if (! ($result['success'] ?? false)) {

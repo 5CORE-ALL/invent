@@ -154,7 +154,7 @@
         .lc-editor-modal .modal-title { font-size: 1rem; font-weight: 700; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .lc-editor-modal .modal-body { overflow: auto; flex: 1; padding: 0; }
         .lc-editor-modal .modal-footer {
-            border-top: 1px solid var(--lc-border); padding: .75rem 1rem; display: flex; justify-content: space-between; gap: .5rem; flex-shrink: 0;
+            border-top: 1px solid var(--lc-border); padding: .75rem 1rem; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: .5rem; flex-shrink: 0;
         }
         .lc-banner { padding: .55rem .85rem; font-size: .8rem; border-bottom: 1px solid transparent; }
         .lc-banner-danger { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
@@ -393,6 +393,51 @@
         .lm-var-current { background: #eef5ff; }
         .lm-var-label { display: inline-block; background: #e8f1ff; color: #2b56b3; border-radius: 999px; padding: .1rem .5rem; font-size: .72rem; font-weight: 700; }
         .lm-family-bar { display: flex; justify-content: space-between; gap: .75rem; align-items: center; flex-wrap: wrap; margin-bottom: .85rem; }
+        .listing-publish-mode {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 0 0 14px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            font-size: 13px;
+            color: #0f172a;
+        }
+        .listing-publish-mode-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 0;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .listing-publish-mode-card:has(input:checked) {
+            border-color: #0d6efd;
+            background: #eff6ff;
+            box-shadow: 0 0 0 1px #0d6efd;
+        }
+        .listing-publish-mode-card strong { display: block; font-size: 13px; color: #0f172a; }
+        .listing-publish-mode-card em {
+            display: block;
+            font-style: normal;
+            font-weight: 400;
+            font-size: 12px;
+            color: #475569;
+            margin-top: 2px;
+        }
+        .listing-publish-mode input { margin-top: 3px; flex: 0 0 auto; }
+        .lm-publish-mode-footer { width: 100%; margin-bottom: .35rem; }
+        .lm-var-include { width: 72px; text-align: center; }
+        .lm-family-single .lm-var-include,
+        .lm-family-single .lc-var-sku { display: none; }
+        @media (max-width: 640px) {
+            .listing-publish-mode { grid-template-columns: 1fr; }
+        }
     </style>
 @endsection
 
@@ -562,15 +607,31 @@
                 <div class="lc-pane" data-pane="variations">
                     <div class="lm-family-bar">
                         <div>
-                            <div class="lc-section-title mb-0">Parent variations</div>
-                            <p class="lc-help mb-0">Siblings share <code id="lc-family-parent">—</code> from Product Master. Publish lists them as one variation family.</p>
+                            <div class="lc-section-title mb-0">How do you want to list?</div>
+                            <p class="lc-help mb-0" id="lc-family-help">Siblings share <code id="lc-family-parent">—</code> from Product Master. Choose single or variation before you publish.</p>
                         </div>
                         <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lc-copy-siblings-btn">
                             <i class="fas fa-copy me-1"></i>Copy listing details to siblings
                         </button>
                     </div>
-                    <table class="lm-list-table">
-                        <thead><tr><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead>
+                    <div class="listing-publish-mode" id="lc-publish-mode-box" role="radiogroup" aria-label="How do you want to list?">
+                        <label class="listing-publish-mode-card">
+                            <input type="radio" name="lc-publish-mode" value="single" checked>
+                            <span>
+                                <strong>Single listing</strong>
+                                <em>This SKU becomes its own listing. Siblings are not grouped.</em>
+                            </span>
+                        </label>
+                        <label class="listing-publish-mode-card">
+                            <input type="radio" name="lc-publish-mode" value="variation">
+                            <span>
+                                <strong>Variation listing</strong>
+                                <em>One listing with the SKUs you check. Suggested siblings start unchecked.</em>
+                            </span>
+                        </label>
+                    </div>
+                    <table class="lm-list-table" id="lc-family-table">
+                        <thead><tr><th class="lm-var-include">Include</th><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead>
                         <tbody id="lc-family-rows"></tbody>
                     </table>
                 </div>
@@ -955,14 +1016,32 @@
                 </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-lc btn-lc-danger" id="lc-delete-btn">Delete</button>
-                <div class="d-flex gap-2 ms-auto align-items-center">
-                    <button type="button" class="btn-lc btn-lc-primary" id="lc-publish-btn" disabled>
-                        <i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish
-                    </button>
-                    <button type="button" class="btn-lc btn-lc-ghost" id="lc-save-close-btn" disabled>Save &amp; Close</button>
-                    <button type="button" class="btn-lc btn-lc-ghost" id="lc-save-btn" disabled>Save Changes</button>
+            <div class="modal-footer flex-column align-items-stretch">
+                <div class="listing-publish-mode lm-publish-mode-footer" id="lc-publish-mode-footer" role="radiogroup" aria-label="How do you want to list?">
+                    <label class="listing-publish-mode-card">
+                        <input type="radio" name="lc-publish-mode-footer" value="single" checked>
+                        <span>
+                            <strong>Single listing</strong>
+                            <em>Publish this SKU by itself.</em>
+                        </span>
+                    </label>
+                    <label class="listing-publish-mode-card">
+                        <input type="radio" name="lc-publish-mode-footer" value="variation">
+                        <span>
+                            <strong>Variation listing</strong>
+                            <em>One listing with the SKUs checked on Variations.</em>
+                        </span>
+                    </label>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <button type="button" class="btn-lc btn-lc-danger" id="lc-delete-btn">Delete</button>
+                    <div class="d-flex gap-2 ms-auto align-items-center">
+                        <button type="button" class="btn-lc btn-lc-primary" id="lc-publish-btn" disabled>
+                            <i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish
+                        </button>
+                        <button type="button" class="btn-lc btn-lc-ghost" id="lc-save-close-btn" disabled>Save &amp; Close</button>
+                        <button type="button" class="btn-lc btn-lc-ghost" id="lc-save-btn" disabled>Save Changes</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2112,7 +2191,72 @@
             bullet_3: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[2] || '',
             bullet_4: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[3] || '',
             bullet_5: ($('#lc-bullets').val() || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)[4] || '',
+            publish_mode: selectedPublishMode(),
+            variation_skus: selectedVariationSkus(),
         };
+    }
+
+    function selectedPublishMode() {
+        const checked = document.querySelector('input[name="lc-publish-mode"]:checked')
+            || document.querySelector('input[name="lc-publish-mode-footer"]:checked');
+        return String((checked && checked.value) || 'single').toLowerCase() === 'variation' ? 'variation' : 'single';
+    }
+
+    function setPublishMode(mode) {
+        mode = mode === 'variation' ? 'variation' : 'single';
+        $('input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]').each(function () {
+            this.checked = this.value === mode;
+        });
+        updatePublishModeUi();
+    }
+
+    function selectedVariationSkus() {
+        const currentSku = String($('#lc-sku').val() || (currentDraft && currentDraft.sku) || '').trim();
+        const picked = [];
+        const seen = {};
+        $('#lc-family-rows input.lc-var-sku:checked').each(function () {
+            const sku = String($(this).val() || '').trim();
+            const key = sku.toUpperCase();
+            if (!sku || seen[key]) return;
+            seen[key] = true;
+            picked.push(sku);
+        });
+        if (currentSku && !seen[currentSku.toUpperCase()]) {
+            picked.unshift(currentSku);
+        }
+        return picked.length ? picked : (currentSku ? [currentSku] : []);
+    }
+
+    function updatePublishModeUi() {
+        const listed = !!(currentDraft && currentDraft.status === 'listed');
+        const canVary = canPublishVariation();
+        let mode = selectedPublishMode();
+        if (!canVary && mode === 'variation') {
+            $('input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]').each(function () {
+                this.checked = this.value === 'single';
+            });
+            mode = 'single';
+        }
+        const isVariation = mode === 'variation';
+        $('#lc-family-table').toggleClass('lm-family-single', !isVariation);
+        $('input[name="lc-publish-mode"][value="variation"], input[name="lc-publish-mode-footer"][value="variation"]')
+            .prop('disabled', listed || !canVary);
+        const parent = String($('#lc-family-parent').text() || '—').trim() || '—';
+        if (isVariation) {
+            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. Check the SKUs to include. This draft SKU stays on the listing.');
+        } else {
+            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. Single listing publishes only this SKU.');
+        }
+    }
+
+    function canPublishVariation() {
+        const channelKey = String((currentDraft && currentDraft.channel) || '').toLowerCase();
+        if (/amazon|amzfba|\bamz\b/.test(channelKey)) return false;
+        const family = (currentDraft && currentDraft.family) || {};
+        const kids = (currentDraft && currentDraft.variations && currentDraft.variations.length)
+            ? currentDraft.variations
+            : (family.children || []);
+        return kids.length > 1;
     }
 
     function applyMasterPayload(res) {
@@ -2276,6 +2420,14 @@
 
         const ready = !Object.values(err).some(a => a.length);
         const listed = serverDraft && serverDraft.status === 'listed';
+        const channelKey = String((serverDraft && serverDraft.channel) || '').toLowerCase();
+        const amazonOnly = /amazon|amzfba|\bamz\b/.test(channelKey);
+        if (amazonOnly && selectedPublishMode() === 'variation') {
+            setPublishMode('single');
+        }
+        $('input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]').prop('disabled', !!listed);
+        $('input[name="lc-publish-mode"][value="variation"], input[name="lc-publish-mode-footer"][value="variation"]')
+            .prop('disabled', !!listed || amazonOnly);
         $('#lc-publish-btn, #lc-save-close-btn, #lc-save-btn').prop('disabled', !!listed);
         if (!ready) $('#lc-publish-btn').prop('disabled', true);
         if (listed) {
@@ -2525,6 +2677,7 @@
         $('#lc-pkg-oz').val(d.package_weight_oz ?? '');
         $('#lc-vat').val(d.vat_percent || '');
         $('#lc-auto-relist').prop('checked', !!d.auto_relist);
+        setPublishMode(d.publish_mode === 'variation' ? 'variation' : 'single');
         $('#lc-warehouse-id').val(d.warehouse_id || '');
         $('#lc-category-id-visible').val(d.primary_category_id || d.category_uuid || '');
         $('#lc-category-path-visible').val(d.primary_category_path || d.category_name || d.category || '');
@@ -2606,14 +2759,32 @@
         const family = (draft && draft.family) || {};
         const kids = (draft && draft.variations && draft.variations.length) ? draft.variations : (family.children || []);
         $('#lc-family-parent').text(family.parent || (draft && draft.sku) || '—');
-        $('#lc-family-rows').html(kids.length ? kids.map(v => `<tr class="${v.is_current ? 'lm-var-current' : ''}">
-            <td>${escapeHtml(v.sku || '')}</td>
+        const currentSku = String((draft && draft.sku) || $('#lc-sku').val() || '').trim();
+        const existing = [];
+        $('#lc-family-rows input.lc-var-sku:checked').each(function () { existing.push(String($(this).val() || '').trim()); });
+        const saved = Array.isArray(draft && draft.listing_details && draft.listing_details.variation_skus)
+            ? draft.listing_details.variation_skus.map(s => String(s || '').trim()).filter(Boolean)
+            : [];
+        const picked = {};
+        (existing.length ? existing : saved).forEach(function (sku) {
+            if (sku) picked[sku.toUpperCase()] = true;
+        });
+        if (currentSku) picked[currentSku.toUpperCase()] = true;
+        $('#lc-family-rows').html(kids.length ? kids.map(v => {
+            const sku = String(v.sku || '').trim();
+            const isCurrent = !!v.is_current || (currentSku && sku.toUpperCase() === currentSku.toUpperCase());
+            const checked = isCurrent || !!picked[sku.toUpperCase()];
+            return `<tr class="${isCurrent ? 'lm-var-current' : ''}">
+            <td class="lm-var-include"><input type="checkbox" class="form-check-input lc-var-sku" value="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${isCurrent ? 'disabled' : ''}></td>
+            <td>${escapeHtml(sku)}</td>
             <td><span class="lm-var-label">${escapeHtml(v.variation_label || '')}</span></td>
             <td>${escapeHtml(v.title || '')}</td>
             <td>${escapeHtml(v.asin || '—')}</td>
             <td>${v.quantity != null ? escapeHtml(String(v.quantity)) : '—'}</td>
             <td>${money(v.price)}</td>
-        </tr>`).join('') : '<tr><td colspan="6" class="text-muted">This SKU has no siblings on the same Product Master parent.</td></tr>');
+        </tr>`;
+        }).join('') : '<tr><td colspan="7" class="text-muted">This SKU has no siblings on the same Product Master parent.</td></tr>');
+        updatePublishModeUi();
     }
 
     function copyDraftToSiblings(id) {
@@ -2670,6 +2841,10 @@
             return $.ajax({
                 url: "{{ url('/listing-manager/drafts') }}/" + id + '/publish',
                 method: 'POST',
+                data: {
+                    mode: selectedPublishMode(),
+                    variation_skus: selectedVariationSkus(),
+                },
             });
         }).then(function (res) {
             toast(res.message || 'Published.', 'success');
@@ -3701,6 +3876,13 @@
             });
         });
         $('#lc-publish-btn').on('click', publishDraft);
+        $(document).on('change', 'input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]', function () {
+            setPublishMode($(this).val());
+            dirty = true;
+        });
+        $(document).on('change', '#lc-family-rows input.lc-var-sku', function () {
+            dirty = true;
+        });
         $('#lc-copy-siblings-btn').on('click', function () {
             copyDraftToSiblings($('#lc-draft-id').val());
         });

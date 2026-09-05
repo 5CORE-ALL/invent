@@ -422,6 +422,8 @@ class ListingManagerPublishStatus
             'best_offer' => false,
             'auto_relist' => false,
             'private_listing' => false,
+            'publish_mode' => 'single',
+            'variation_skus' => [],
         ], $details, [
             'brand' => $brand,
             'manufacturer' => $manufacturer,
@@ -470,6 +472,17 @@ class ListingManagerPublishStatus
                 ? array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $videos) ?: [])))
                 : [];
         }
+        $merged['publish_mode'] = strtolower(trim((string) ($merged['publish_mode'] ?? 'single'))) === 'variation'
+            ? 'variation'
+            : 'single';
+        $variationSkus = $merged['variation_skus'] ?? [];
+        if (! is_array($variationSkus)) {
+            $variationSkus = [];
+        }
+        $merged['variation_skus'] = array_values(array_unique(array_filter(array_map(
+            static fn ($sku) => trim((string) $sku),
+            $variationSkus
+        ))));
 
         return $merged;
     }
