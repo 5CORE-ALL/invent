@@ -534,30 +534,7 @@ class TemuShopifySalesService
             return $empty;
         }
 
-        $normalizeSku = static function ($sku) {
-            $sku = strtoupper(trim((string) $sku));
-            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-            $sku = preg_replace('/\s+/', ' ', $sku);
-
-            return $sku;
-        };
-
-        $pmSet = [];
-        $noSpaceToNormalized = [];
-        foreach (ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
-            if (stripos((string) $sku, 'PARENT') !== false) {
-                continue;
-            }
-            $n = $normalizeSku($sku);
-            if ($n === '') {
-                continue;
-            }
-            $pmSet[$n] = true;
-            $ns = str_replace(' ', '', $n);
-            if ($ns !== '') {
-                $noSpaceToNormalized[$ns] = $n;
-            }
-        }
+        [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
 
         $margin = self::temuMarginDecimal();
         $totalFull = 0.0;
@@ -574,7 +551,7 @@ class TemuShopifySalesService
             if ($sku === '' || $orderId === '') {
                 continue;
             }
-            $n = $normalizeSku($sku);
+            $n = self::normalizeTemu3Sku($sku);
             $nNoSpace = str_replace(' ', '', $n);
             if (! isset($pmSet[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
                 continue;
@@ -610,6 +587,124 @@ class TemuShopifySalesService
             'gpft' => round($totalGpft, 2),
             'cogs' => round($totalCogs, 2),
         ];
+    }
+
+    public static function normalizeTemu3Sku(string $sku): string
+    {
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+        $sku = preg_replace('/\s+/', ' ', $sku);
+
+        return (string) $sku;
+    }
+
+    /**
+     * Per Pacific-day Full Temu Price sales from temu3_orders (same SKU filter as L30).
+     *
+     * @return array<string, array{sales: float, base_sales: float, qty: int, orders: int}>
+     */
+    public static function temu3DailySalesByDate(Carbon $startDate, Carbon $endDate): array
+    {
+        $out = [];
+        if (! Schema::hasTable('temu3_orders')) {
+            return $out;
+        }
+
+        [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
+        foreach (self::getTemu3OrdersTableRows($startDate, $endDate) as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $base = (float) ($r['base_price_total'] ?? 0);
+            if ($sku === '' || $qty <= 0 || $base <= 0) {
+                continue;
+            }
+            $n = self::normalizeTemu3Sku($sku);
+            $nNoSpace = str_replace(' ', '', $n);
+            if (! isset($pmSet[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
+                continue;
+            }
+            $d = substr((string) ($r['created_at'] ?? ''), 0, 10);
+            if ($d === '') {
+                continue;
+            }
+            if (! isset($out[$d])) {
+                $out[$d] = ['sales' => 0.0, 'base_sales' => 0.0, 'qty' => 0, 'oids' => []];
+            }
+            $out[$d]['sales'] += self::computeFullTemuPrice($base) * $qty;
+            $out[$d]['base_sales'] += $base * $qty;
+            $out[$d]['qty'] += $qty;
+            $oid = trim((string) ($r['order_id'] ?? ''));
+            if ($oid !== '') {
+                $out[$d]['oids'][$oid] = true;
+            }
+        }
+
+        $flat = [];
+        foreach ($out as $d => $row) {
+            $flat[$d] = [
+                'sales' => round((float) $row['sales'], 2),
+                'base_sales' => round((float) $row['base_sales'], 2),
+                'qty' => (int) $row['qty'],
+                'orders' => count($row['oids']),
+            ];
+        }
+        ksort($flat);
+
+        return $flat;
+    }
+
+    /**
+     * Rolling window series, one point per calendar day from $chartStart through $chartEnd.
+     *
+     * @param  array<string, array{sales?: float}|float>  $byDay
+     * @return list<array{date: string, value: float}>
+     */
+    public static function rollingSalesSeries(array $byDay, Carbon $chartStart, Carbon $chartEnd, int $windowDays): array
+    {
+        $out = [];
+        $cursor = $chartStart->copy()->startOfDay();
+        $end = $chartEnd->copy()->startOfDay();
+        $windowDays = max(1, $windowDays);
+        while ($cursor->lte($end)) {
+            $sum = 0.0;
+            for ($i = 0; $i < $windowDays; $i++) {
+                $d = $cursor->copy()->subDays($i)->toDateString();
+                $cell = $byDay[$d] ?? 0;
+                $sum += is_array($cell) ? (float) ($cell['sales'] ?? 0) : (float) $cell;
+            }
+            $out[] = [
+                'date' => $cursor->format('M d'),
+                'value' => round($sum, 2),
+            ];
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{0: array<string, true>, 1: array<string, string>}
+     */
+    private static function temu3ProductMasterSkuSets(): array
+    {
+        $pmSet = [];
+        $noSpaceToNormalized = [];
+        foreach (ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            if (stripos((string) $sku, 'PARENT') !== false) {
+                continue;
+            }
+            $n = self::normalizeTemu3Sku((string) $sku);
+            if ($n === '') {
+                continue;
+            }
+            $pmSet[$n] = true;
+            $ns = str_replace(' ', '', $n);
+            if ($ns !== '') {
+                $noSpaceToNormalized[$ns] = $n;
+            }
+        }
+
+        return [$pmSet, $noSpaceToNormalized];
     }
 
     public static function computeYSalesFromTemu3Orders(): ?float
