@@ -1301,6 +1301,7 @@
             shopify_b2c: {
                 label: 'Shopify B2C',
                 saveSpriceUrl: '/shopify/save-sprice',
+                saveSpriceBatchUrl: '/shopify/save-sprice',
                 pushPriceUrl: '/push-shopify-b2c-price',
                 priceField: 'Price',
                 cvrField: 'CVR%',

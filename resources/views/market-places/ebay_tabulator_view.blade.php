@@ -885,7 +885,7 @@
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Red triangle: Price &gt; LMP. Click to show only those rows. Click again to clear.">
+                            title="Red triangle: Price &gt; LMP and INV &gt; 0. Click to show only those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-lmp-missing-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
@@ -2473,6 +2473,15 @@
             const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').toUpperCase();
             return sku.indexOf('PARENT') !== -1;
         }
+        /** Red triangle: INV > 0 and Price > LMP. Same rule for badge, filter, and Price cell. */
+        function ebay1HasRedTriangle(data) {
+            if (!data || ebayIsParentRowData(data)) return false;
+            const inv = parseFloat(data.INV) || 0;
+            if (!(inv > 0)) return false;
+            const price = parseFloat(data['eBay Price']) || 0;
+            const lmp = ebayEffectiveLmp(data);
+            return price > 0 && lmp > 0 && price > lmp;
+        }
 
         /**
          * Child rows on the *current pagination page* only (Amazon-style).
@@ -3248,16 +3257,6 @@
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
-            function ebay1HasRedTriangle(data) {
-                if (window.PriceGtLmpBadge && typeof PriceGtLmpBadge.hasRedTriangle === 'function') {
-                    return PriceGtLmpBadge.hasRedTriangle(data, 'eBay Price', ebayEffectiveLmp);
-                }
-                if (ebay1IsAlertParentRow(data)) return false;
-                if (!((parseFloat(data['INV']) || 0) > 0)) return false;
-                const price = parseFloat(data['eBay Price']) || 0;
-                const lmp = ebayEffectiveLmp(data);
-                return price > 0 && lmp > 0 && price > lmp;
-            }
             function syncEbay1TriangleBadgeState() {
                 $('#ebay1-blue-triangle-badge').css({
                     outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -3297,6 +3296,7 @@
                     lmpMissingFilterActive = false;
                     priceLt80LmpFilterActive = false;
                     endedListingFilterActive = false;
+                    $('#inventory-filter').val('more');
                 }
                 applyFilters();
             });
@@ -4530,7 +4530,8 @@
                                 : (parseFloat(rowData['lmp_price'] || 0) || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
-                            const overLmp = lmpPrice > 0 && value > lmpPrice;
+                            const inv = parseFloat(rowData.INV) || 0;
+                            const overLmp = inv > 0 && lmpPrice > 0 && value > lmpPrice;
                             const redTri = overLmp
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
                                     + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
@@ -5682,11 +5683,7 @@
                     table.addFilter(function(data) {
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
                             return true;
-                        const price = parseFloat(data['eBay Price']) || 0;
-                        const lmp = (typeof ebayEffectiveLmp === 'function')
-                            ? ebayEffectiveLmp(data)
-                            : (parseFloat(data.lmp_price) || 0);
-                        return price > 0 && lmp > 0 && price > lmp;
+                        return ebay1HasRedTriangle(data);
                     });
                 }
 
@@ -7154,7 +7151,9 @@
                     LmpMissingBadge.update('#ebay1-lmp-missing-badge', allTableData, 'ebay');
                 }
                 if (window.PriceGtLmpBadge) {
-                    PriceGtLmpBadge.update('#ebay1-red-triangle-badge', allTableData, 'ebay', 'eBay Price', ebayEffectiveLmp);
+                    const redN = allTableData.filter(ebay1HasRedTriangle).length;
+                    PriceGtLmpBadge.paint('#ebay1-red-triangle-badge', redN);
+                    PriceGtLmpBadge.report('ebay', redN);
                 }
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#ebay1-purple-triangle-badge', allTableData, 'ebay', 'eBay Price');

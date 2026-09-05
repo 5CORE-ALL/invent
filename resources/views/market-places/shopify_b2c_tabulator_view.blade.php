@@ -492,6 +492,7 @@
             line-height: 1;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
     @include('partials.lazy-chart-js')
@@ -717,7 +718,8 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- CVR Disc / 0 Sold — Prmt% / Dil vs PRMT removed --}}
+                    {{-- Sprc Dil (same Dil → Target GROI as /tiktok-2-pricing) + CVR Disc / 0 Sold --}}
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2c'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
@@ -844,6 +846,7 @@
     </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2c'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shopify_b2c'])
 
     <div class="modal fade p-0" id="shopifyB2cMetricChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
@@ -1327,7 +1330,7 @@
         return f === true || f === 1 || f === '1' || f === 'true';
     }
 
-    /** S PRC to show / push. Live CVR Disc / 0-sold / Std rule wins. Sugg Amz keeps A Price. */
+    /** S PRC to show / push. Sprc Dil wins (same as /tiktok-2-pricing), then CVR Disc / 0-sold / Std. Sugg Amz keeps A Price. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
@@ -2844,7 +2847,7 @@
             });
         }
 
-        // Clear SPRICE for selected SKUs
+        // Clear SPRICE for selected SKUs, save 0, then refill Sprc Dil (same as TikTok).
         function clearSpriceForSelected() {
             if (selectedSkus.size === 0) {
                 showToast('Please select SKUs first', 'error');
@@ -2855,43 +2858,56 @@
                 return;
             }
 
-            let clearedCount = 0;
-            const updates = [];
-
-            // Get all rows and filter by selected SKUs
+            const items = [];
             table.getRows().forEach(row => {
                 const rowData = row.getData();
                 const sku = rowData['(Child) sku'];
-                
-                if (selectedSkus.has(sku)) {
-                    // Clear SPRICE in table
+                if (!selectedSkus.has(sku)) return;
+                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                else {
                     row.update({
                         SPRICE: 0,
                         SGPFT: 0,
                         SPFT: 0,
                         SROI: 0,
                         has_custom_sprice: false,
-                        AMZ_SUGG_APPLIED: false
                     });
-                    
-                    // Store update for backend saving
-                    updates.push({
-                        sku: sku,
-                        sprice: 0,
-                        amz_sugg: 0
-                    });
-                    
-                    clearedCount++;
                 }
+                row.update({ AMZ_SUGG_APPLIED: false });
+                items.push({ row: row, sku: sku });
             });
 
-            // Save to backend if there are updates
-            if (updates.length > 0) {
-                saveSpriceUpdates(updates);
-            }
+            if (!items.length) return;
 
-            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
-            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+            const zeros = items.map(function(i) { return { sku: i.sku, sprice: 0, amz_sugg: 0 }; });
+            $.ajax({
+                url: '/shopify/save-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { updates: zeros }
+            }).always(function() {
+                const fills = [];
+                items.forEach(function(item) {
+                    const d = item.row.getData() || {};
+                    let price = (typeof ebayTiktokRuleDiscount === 'function')
+                        ? ebayTiktokRuleDiscount(d)
+                        : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                    if (!(price > 0)) return;
+                    if (typeof chPromoSpricePatch === 'function') {
+                        item.row.update(Object.assign({}, chPromoSpricePatch(price), { SPRICE_STATUS: 'applied' }));
+                    } else {
+                        item.row.update({ SPRICE: price, has_custom_sprice: true, SPRICE_STATUS: 'applied' });
+                    }
+                    fills.push({ sku: item.sku, sprice: price, amz_sugg: 0 });
+                });
+                if (fills.length) {
+                    saveSpriceUpdates(fills, { clearFirst: false });
+                    showToast('S PRC cleared, then Sprc Dil saved on ' + fills.length + ' SKU(s)', 'success');
+                } else {
+                    showToast('SPRICE cleared for ' + items.length + ' SKU(s)', 'success');
+                }
+                if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
+            });
         }
 
         // SAVE SPRICE to database with retry
@@ -2966,6 +2982,7 @@
         };
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
         // Initialize Tabulator
@@ -3083,6 +3100,7 @@
                     field: "DIL%",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "OV L30 / INV × 100. Same Dil Sprc Dil uses.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const INV = parseFloat(rowData.INV) || 0;
@@ -3506,6 +3524,35 @@
                 },
                 ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                 {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as /tiktok-2-pricing). Dil-matching when B2C L30 > 0; 0 Sold (B2C L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
@@ -3514,7 +3561,7 @@
                         return !isShopifyB2cParentRow(cell.getRow().getData());
                     },
                     sorter: "number",
-                    headerTooltip: "If CVR Disc / 0 Sold / Std rules apply, S PRC is cleared first, then the rule price is written and saved. Sold: S PRC = Std × (1 − CVR Disc%/100). 0 Sold (B2C L30 = 0, INV > 0) uses Temu’s rule: min Target GROI from the 0 Sold slabs, or Min ROI% if that is higher. Below A Price is raised to Amz. Sugg Amz keeps A Price. Click edits the shown rule price. Outer GROI/GPFT/PFT/NROI + Diff preview until Push. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
+                    headerTooltip: "S PRC from Sprc Dil when Dil matches and B2C L30 > 0; 0 Sold uses the lowest Target GROI. Otherwise CVR Disc / 0 Sold / Std. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Below A Price is raised to Amz. Sugg Amz keeps A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {

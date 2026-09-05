@@ -21,6 +21,7 @@
         'doba', 'doba_withoutship' => 'Doba L30',
         'aliexpress', 'shein', 'faire' => 'AL30',
         'tiktok', 'tiktok2' => 'TT L30',
+        'shopify_b2c' => 'B2C L30',
         'bestbuy' => 'BB L30',
         'newegg' => 'L30',
         default => 'E L30',
@@ -42,6 +43,7 @@
         'faire' => 'Faire',
         'tiktok' => 'TikTok',
         'tiktok2' => 'TikTok 2',
+        'shopify_b2c' => 'Shopify B2C',
         'bestbuy' => 'Best Buy',
         'newegg' => 'Newegg',
         default => 'eBay',
@@ -316,6 +318,12 @@
         function ebayDgIsTiktok() {
             return EBAY_DIL_GROI_CHANNEL === 'tiktok' || EBAY_DIL_GROI_CHANNEL === 'tiktok2';
         }
+        function ebayDgIsShopifyB2c() {
+            return EBAY_DIL_GROI_CHANNEL === 'shopify_b2c';
+        }
+        function ebayDgUsesClearThenApply() {
+            return ebayDgIsTiktok() || ebayDgIsShopifyB2c();
+        }
         function ebayDgIsBestbuy() {
             return EBAY_DIL_GROI_CHANNEL === 'bestbuy';
         }
@@ -325,7 +333,8 @@
         function ebayDgUsesSkuDil() {
             return ebayDgIsMacys() || ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsReverb()
                 || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsAliexpress() || ebayDgIsShein()
-                || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsBestbuy() || ebayDgIsNewegg();
+                || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsShopifyB2c()
+                || ebayDgIsBestbuy() || ebayDgIsNewegg();
         }
         function ebayDgAutoApplies() {
             return true;
@@ -1022,17 +1031,36 @@
         }
         async function ebayTiktokSaveSpriceChunks(updates, extra) {
             extra = extra || {};
-            if (!updates.length || typeof saveChannelSpriceBatch !== 'function') return;
+            if (!updates.length) return;
+            const payload = ebayDgIsShopifyB2c()
+                ? updates.map(function(u) { return Object.assign({ amz_sugg: 0 }, u); })
+                : updates;
             const size = 200;
-            for (let i = 0; i < updates.length; i += size) {
-                await saveChannelSpriceBatch(updates.slice(i, i + size), extra);
+            for (let i = 0; i < payload.length; i += size) {
+                const chunk = payload.slice(i, i + size);
+                if (typeof saveChannelSpriceBatch === 'function'
+                    && typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
+                    await saveChannelSpriceBatch(chunk, extra);
+                } else {
+                    await $.ajax({
+                        url: '/shopify/save-sprice',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': ebayDgCsrf(),
+                            'Accept': 'application/json',
+                        },
+                        data: { updates: chunk, _token: ebayDgCsrf(), skip_push: 1 },
+                    });
+                }
             }
         }
         function ebayTiktokMetricsPatch(d, sprice) {
             const margin = Number(d && d.percentage)
-                || (typeof DEFAULT_TIKTOK_MARGIN_FACTOR === 'number' && DEFAULT_TIKTOK_MARGIN_FACTOR > 0
-                    ? DEFAULT_TIKTOK_MARGIN_FACTOR
-                    : 0.8);
+                || (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0
+                    ? CHANNEL_PROMO_TAKEHOME
+                    : ((typeof DEFAULT_TIKTOK_MARGIN_FACTOR === 'number' && DEFAULT_TIKTOK_MARGIN_FACTOR > 0)
+                        ? DEFAULT_TIKTOK_MARGIN_FACTOR
+                        : 0.8));
             const lp = Number(d && d.LP_productmaster) || 0;
             const ship = Number(d && d.Ship_productmaster) || 0;
             const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 10000) / 100 : 0;
@@ -1041,16 +1069,28 @@
         }
         function ebayTiktokRuleDiscount(d) {
             const meta = ebayDilGroiMetaForRow(d);
-            if (meta && meta.sprc > 0) return ebayDgRound2(meta.sprc);
+            if (meta && meta.sprc > 0) {
+                let price = ebayDgRound2(meta.sprc);
+                if (ebayDgIsShopifyB2c() && typeof chPromoFinalSpriceToSave === 'function') {
+                    price = chPromoFinalSpriceToSave(d, price);
+                }
+                return price > 0 ? ebayDgRound2(price) : 0;
+            }
             if (typeof chPromoSpriceFromStdTPromo === 'function') {
                 const cvr = Number(chPromoSpriceFromStdTPromo(d, { skip_lmp_cap: true })) || 0;
-                if (cvr > 0) return ebayDgRound2(cvr);
+                if (cvr > 0) {
+                    let price = ebayDgRound2(cvr);
+                    if (ebayDgIsShopifyB2c() && typeof chPromoFinalSpriceToSave === 'function') {
+                        price = chPromoFinalSpriceToSave(d, price);
+                    }
+                    return price > 0 ? ebayDgRound2(price) : 0;
+                }
             }
             return 0;
         }
         /**
-         * TikTok / TikTok 2: wipe every stored S PRC, then insert the Dil / 0 Sold / CVR discount
-         * (not the LMP Diff). Same clear-then-save as Temu / eBay rule apply.
+         * TikTok / TikTok 2 / Shopify B2C: wipe every stored S PRC and save 0,
+         * then insert the Dil / 0 Sold / CVR discount (not the LMP Diff).
          */
         async function ebayTiktokClearThenApplyAllRules() {
             const items = [];
@@ -1072,6 +1112,9 @@
                         chPromoWipeSpriceRow(item.row);
                     } else if (item.row && typeof item.row.update === 'function') {
                         item.row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
+                    }
+                    if (ebayDgIsShopifyB2c() && item.row && typeof item.row.update === 'function') {
+                        item.row.update({ AMZ_SUGG_APPLIED: false });
                     }
                 });
             } finally {
@@ -1141,7 +1184,7 @@
             }
             ebayDgApplyBusy = true;
             try {
-                if (ebayDgIsTiktok()) {
+                if (ebayDgUsesClearThenApply()) {
                     return await ebayTiktokClearThenApplyAllRules();
                 }
                 const jobs = [];
