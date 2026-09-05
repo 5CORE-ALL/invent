@@ -2122,7 +2122,7 @@ XML;
      *
      * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>, message?: string}
      */
-    public function searchListingClasses(string $query, string $title = ''): array
+    public function searchListingClasses(string $query, string $title = '', bool $fallbackToCatalog = false): array
     {
         $q = trim($query !== '' ? $query : $title);
         if (mb_strlen($q) > 40) {
@@ -2130,18 +2130,28 @@ XML;
                 if (mb_strlen($hint) > 40) {
                     continue;
                 }
-                $found = $this->searchListingClasses($hint, $hint);
+                $found = $this->searchListingClasses($hint, $hint, $fallbackToCatalog);
                 if (($found['categories'] ?? []) !== []) {
                     return $found;
                 }
             }
         }
         $categories = $this->taxonomyCategories();
+        if ($categories === [] && preg_match('/^\d{2,}$/', $q)) {
+            return [
+                'success' => true,
+                'categories' => [[
+                    'id' => $q,
+                    'path' => 'Class '.$q,
+                    'name' => 'Class '.$q,
+                ]],
+            ];
+        }
         if ($categories === []) {
             return [
                 'success' => false,
                 'categories' => [],
-                'message' => 'Wayfair taxonomy is empty. Confirm catalog API access, or type a class ID from Partner Home.',
+                'message' => 'Wayfair class list is empty. Type a numeric class ID from Partner Home, or Publish to copy the class from a listed sibling.',
             ];
         }
 
@@ -2214,6 +2224,26 @@ XML;
         foreach (array_slice($scored, 0, 25) as $row) {
             unset($row['_score']);
             $out[] = $row;
+        }
+        if ($out === [] && $fallbackToCatalog) {
+            foreach ($categories as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = (int) ($row['taxonomyCategoryId'] ?? $row['classId'] ?? $row['class_id'] ?? 0);
+                $name = trim((string) ($row['name'] ?? $row['className'] ?? ''));
+                if ($id <= 0) {
+                    continue;
+                }
+                $out[] = [
+                    'id' => (string) $id,
+                    'path' => ($name !== '' ? $name : 'Class '.$id).' ('.$id.')',
+                    'name' => $name !== '' ? $name : ('Class '.$id),
+                ];
+                if (count($out) >= 25) {
+                    break;
+                }
+            }
         }
 
         return ['success' => true, 'categories' => $out];
@@ -2317,10 +2347,26 @@ XML;
     private function taxonomyCategories(): array
     {
         $cached = Cache::get('wayfair.taxonomy_categories');
-        if (is_array($cached)) {
+        if (is_array($cached) && $cached !== []) {
             return $cached;
         }
 
+        $rows = $this->fetchTaxonomyCategoryPages();
+        if ($rows === []) {
+            $rows = $this->catalogClassDirectory();
+        }
+        if ($rows !== []) {
+            Cache::put('wayfair.taxonomy_categories', $rows, 43200);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchTaxonomyCategoryPages(): array
+    {
         $query = <<<'GRAPHQL'
         query taxonomyCategories($marketContext: MarketContextInput!, $paginationOptions: PaginationOptions) {
           taxonomyCategories(marketContext: $marketContext, paginationOptions: $paginationOptions) {
@@ -2337,9 +2383,10 @@ XML;
                 'paginationOptions' => ['page' => $page, 'pageSize' => 50],
             ]);
             if ($this->graphqlDenied($json) || ! empty($json['errors'])) {
-                if ($page === 1) {
-                    Cache::put('wayfair.taxonomy_categories', [], 900);
-                }
+                Log::info('Wayfair taxonomyCategories failed', [
+                    'page' => $page,
+                    'errors' => $json['errors'] ?? null,
+                ]);
                 break;
             }
             $pageRows = $json['data']['taxonomyCategories']['taxonomyCategories'] ?? [];
@@ -2352,9 +2399,242 @@ XML;
                 break;
             }
         }
-        Cache::put('wayfair.taxonomy_categories', $rows, $rows === [] ? 900 : 43200);
 
         return $rows;
+    }
+
+    /**
+     * Classes already used on this supplier's listed catalog — works when taxonomy API is empty.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function catalogClassDirectory(): array
+    {
+        $cached = Cache::get('wayfair.catalog_class_directory');
+        if (is_array($cached) && $cached !== []) {
+            return $cached;
+        }
+
+        $byId = $this->listingStatusClassDirectory();
+        $listed = $this->listedWayfairPartNumbers();
+        if ($listed !== []) {
+            $byId += $this->classesFromSupplierCatalogParts($listed);
+        }
+        if ($byId === []) {
+            $byId = $this->paginatedSupplierCatalogClasses();
+        }
+
+        $rows = array_values($byId);
+        if ($rows !== []) {
+            Cache::put('wayfair.catalog_class_directory', $rows, 21600);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function listingStatusClassDirectory(): array
+    {
+        if (! Schema::hasTable('wayfair_listing_statuses')) {
+            return [];
+        }
+
+        $byId = [];
+        $rows = DB::table('wayfair_listing_statuses')
+            ->select('sku', 'value')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderByDesc('id')
+            ->limit(4000)
+            ->get();
+        foreach ($rows as $row) {
+            $value = $row->value ?? null;
+            if (is_string($value)) {
+                $decoded = json_decode($value, true);
+                $value = is_array($decoded) ? $decoded : [];
+            }
+            if (! is_array($value)) {
+                continue;
+            }
+            $hit = $this->classFromAssoc($value);
+            if ($hit === null) {
+                continue;
+            }
+            $byId[$hit['class_id']] = $this->classDirectoryRow($hit);
+        }
+
+        return $byId;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listedWayfairPartNumbers(): array
+    {
+        if (! Schema::hasTable('wayfair_listing_statuses')) {
+            return [];
+        }
+
+        $skus = DB::table('wayfair_listing_statuses')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->orderByDesc('id')
+            ->limit(250)
+            ->pluck('sku')
+            ->all();
+
+        return $this->catalogPartNumberVariants(array_map('strval', $skus));
+    }
+
+    /**
+     * @param  list<string>  $parts
+     * @return array<int, array<string, mixed>>
+     */
+    private function classesFromSupplierCatalogParts(array $parts): array
+    {
+        $query = <<<'GRAPHQL'
+        query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
+          supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
+            products {
+              supplierPartNumber
+              class { classId className }
+              classId
+              className
+              skus {
+                sku
+                displaySku
+                productDetails {
+                  class { classId className }
+                  classId
+                  className
+                  taxonomyCategoryId
+                }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+        $byId = [];
+        foreach (array_chunk($parts, 25) as $chunk) {
+            $json = $this->catalogGraphqlRequest(
+                'https://api.wayfair.io/v1/supplier-catalog-api/graphql',
+                $query,
+                [
+                    'supplierId' => $this->liveSupplierId(),
+                    'filter' => ['supplierPartNumber' => ['in' => $chunk]],
+                    'paginationOptions' => ['page' => 1, 'pageSize' => 25],
+                ]
+            );
+            if ($this->graphqlDenied($json) || ! empty($json['errors'])) {
+                Log::info('Wayfair catalog class directory (SKU filter) failed', [
+                    'errors' => $json['errors'] ?? null,
+                ]);
+                break;
+            }
+            $byId += $this->collectClassesFromCatalogProducts($json['data']['supplierCatalog']['products'] ?? []);
+        }
+
+        return $byId;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function paginatedSupplierCatalogClasses(): array
+    {
+        $query = <<<'GRAPHQL'
+        query ($supplierId: Int!, $paginationOptions: PaginationOptions) {
+          supplierCatalog(supplierId: $supplierId, paginationOptions: $paginationOptions) {
+            products {
+              class { classId className }
+              classId
+              className
+              skus {
+                productDetails {
+                  class { classId className }
+                  classId
+                  className
+                  taxonomyCategoryId
+                }
+              }
+            }
+          }
+        }
+        GRAPHQL;
+        $byId = [];
+        $url = 'https://api.wayfair.io/v1/supplier-catalog-api/graphql';
+        for ($page = 1; $page <= 15; $page++) {
+            $json = $this->catalogGraphqlRequest($url, $query, [
+                'supplierId' => $this->liveSupplierId(),
+                'paginationOptions' => ['page' => $page, 'pageSize' => 50],
+            ]);
+            if ($this->graphqlDenied($json) || ! empty($json['errors'])) {
+                Log::info('Wayfair catalog class directory failed', [
+                    'page' => $page,
+                    'errors' => $json['errors'] ?? null,
+                ]);
+                break;
+            }
+            $products = $json['data']['supplierCatalog']['products'] ?? [];
+            $byId += $this->collectClassesFromCatalogProducts(is_array($products) ? $products : []);
+            if (! is_array($products) || count($products) < 50) {
+                break;
+            }
+        }
+
+        return $byId;
+    }
+
+    /**
+     * @param  list<mixed>  $products
+     * @return array<int, array<string, mixed>>
+     */
+    private function collectClassesFromCatalogProducts(array $products): array
+    {
+        $byId = [];
+        foreach ($products as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $hit = $this->classFromAssoc($row);
+            if ($hit !== null) {
+                $byId[$hit['class_id']] = $this->classDirectoryRow($hit);
+            }
+            foreach (is_array($row['skus'] ?? null) ? $row['skus'] : [] as $skuRow) {
+                if (! is_array($skuRow)) {
+                    continue;
+                }
+                $hit = $this->classFromAssoc($skuRow);
+                if ($hit !== null) {
+                    $byId[$hit['class_id']] = $this->classDirectoryRow($hit);
+                }
+                $details = is_array($skuRow['productDetails'] ?? null) ? $skuRow['productDetails'] : [];
+                $hit = $this->classFromAssoc($details);
+                if ($hit !== null) {
+                    $byId[$hit['class_id']] = $this->classDirectoryRow($hit);
+                }
+            }
+        }
+
+        return $byId;
+    }
+
+    /**
+     * @param  array{class_id: int, class_name: string}  $hit
+     * @return array<string, mixed>
+     */
+    private function classDirectoryRow(array $hit): array
+    {
+        $name = trim((string) ($hit['class_name'] ?? ''));
+
+        return [
+            'taxonomyCategoryId' => $hit['class_id'],
+            'classId' => $hit['class_id'],
+            'name' => $name !== '' ? $name : ('Class '.$hit['class_id']),
+            'className' => $name,
+        ];
     }
 
     private function taxonomyNameScore(string $title, string $name): int
@@ -2388,7 +2668,7 @@ XML;
             && (str_contains($name, 'in wall') || str_contains($name, 'in-wall') || str_contains($name, 'inwall'))) {
             $score += 30;
         }
-        foreach (['folder', 'stand', 'capo', 'guitar', 'microphone', 'mixer', 'amp', 'pedal', 'cable'] as $word) {
+        foreach (['folder', 'stand', 'capo', 'guitar', 'microphone', 'mixer', 'amp', 'pedal', 'cable', 'stool', 'throne'] as $word) {
             if (str_contains($title, $word) && str_contains($name, $word)) {
                 $score += 35;
             }

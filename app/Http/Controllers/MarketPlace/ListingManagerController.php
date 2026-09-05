@@ -1448,7 +1448,7 @@ class ListingManagerController extends Controller
         }
 
         if ($family === 'wayfair') {
-            $result = app(WayfairApiService::class)->searchListingClasses($q, $title);
+            $result = app(WayfairApiService::class)->searchListingClasses($q, $title, true);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }
