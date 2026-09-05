@@ -40,7 +40,9 @@ class NeweggPricingController extends Controller
         $factor     = $margin > 0 ? $margin / 100 : 0.80;
 
         // 1) Fetch ALL SKUs from product master (base row set — same as Reverb/Amazon pages).
-        $productMasterRows = ProductMaster::all();
+        // Skip description / extra image columns — they make /newegg-pricing-data huge.
+        $productMasterRows = ProductMaster::query()
+            ->get(['sku', 'Values', 'main_image', 'image1']);
         $skus = $productMasterRows->pluck('sku')->filter()->values()->all();
 
         // 2) Shopify data (INV + overall L30) keyed by the exact PM SKU.
@@ -49,7 +51,15 @@ class NeweggPricingController extends Controller
         // 3) Newegg pricing — exact SKU first, then normalized (keep "." so 1.5FT ≠ 15FT).
         $neweggByExact = [];
         $neweggByNorm = [];
-        foreach (NeweggPricing::all() as $p) {
+        foreach (NeweggPricing::query()->select([
+            'seller_part_number',
+            'newegg_item_number',
+            'selling_price',
+            'map',
+            'available_quantity',
+            'currency',
+            'active',
+        ])->get() as $p) {
             $exact = $this->exactSkuKey($p->seller_part_number);
             $norm = $this->normalizeSkuKey($p->seller_part_number);
             if ($exact !== '' && ! isset($neweggByExact[$exact])) {
@@ -90,7 +100,14 @@ class NeweggPricingController extends Controller
         $viewsByNorm = [];
         $viewsByItem = [];
         if (Schema::hasTable('newegg_listing_views')) {
-            foreach (NeweggListingView::all() as $viewRow) {
+            foreach (NeweggListingView::query()->select([
+                'seller_part_number',
+                'item_number',
+                'page_views',
+                'sessions',
+                'units_sold',
+                'unit_session_pct',
+            ])->get() as $viewRow) {
                 $exact = $this->exactSkuKey((string) ($viewRow->seller_part_number ?? ''));
                 $norm = $this->normalizeSkuKey((string) ($viewRow->seller_part_number ?? ''));
                 $itemNo = strtoupper(trim((string) ($viewRow->item_number ?? '')));
@@ -147,10 +164,11 @@ class NeweggPricingController extends Controller
         // 7) Amazon live selling price keyed by uppercased SKU (same source the
         //    Purchasing-Power / Macys / etc. pages use for the "A Price" column).
         $amazonBySku = AmazonDatasheet::whereIn('sku', $skus)
-            ->get()
+            ->get(['sku', 'price'])
             ->keyBy(fn ($r) => strtoupper((string) $r->sku));
 
-        $promoMap = app(ChannelPromoPricingService::class)->mapForSkus('newegg', $skus);
+        $promoService = app(ChannelPromoPricingService::class);
+        $promoMap = $promoService->mapForSkus('newegg', $skus);
 
         // Std Prc — amazon_data_view.STANDARD_PRICE (same shared store as /amazon-tabulator-view)
         $amazonStandardPrices = [];
@@ -364,26 +382,9 @@ class NeweggPricingController extends Controller
                 'lmp_product_id'     => $lowestLmp->product_id ?? null,
                 'lmp_title'          => $lowestLmp->product_title ?? null,
                 'lmp_seller'         => $lowestLmp->seller_name ?? null,
-                'lmp_entries'        => $mergedLmpEntries
-                    ->map(function ($entry) {
-                        return [
-                            'id' => $entry->id,
-                            'product_id' => $entry->product_id ?? null,
-                            'price' => is_numeric($entry->price) ? (float) $entry->price : null,
-                            'shipping_cost' => is_numeric($entry->shipping_cost ?? null) ? (float) $entry->shipping_cost : 0,
-                            'link' => $entry->product_link ?? null,
-                            'product_link' => $entry->product_link ?? null,
-                            'title' => $entry->product_title ?? null,
-                            'product_title' => $entry->product_title ?? null,
-                            'image' => $entry->image ?? null,
-                            'seller_name' => $entry->seller_name ?? null,
-                            'marketplace' => $entry->marketplace ?? 'newegg',
-                        ];
-                    })
-                    ->toArray(),
                 'lmp_entries_total'  => $mergedLmpEntries->count(),
             ];
-            $data[] = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $sku);
+            $data[] = $promoService->applyToRow($row, $promoMap, (string) $sku);
         }
 
         // Tabulator 6 expects a JSON array (same as /tiktok-pricing). ajaxResponse
@@ -485,6 +486,22 @@ class NeweggPricingController extends Controller
             $errors     = [];
             $results    = [];
 
+            $bulkSkus = [];
+            foreach ($updates as $u) {
+                $sku = trim((string) ($u['sku'] ?? ''));
+                if ($sku !== '') {
+                    $bulkSkus[$sku] = true;
+                }
+            }
+            $pmBySku = ProductMaster::query()
+                ->whereIn('sku', array_keys($bulkSkus))
+                ->get(['sku', 'Values'])
+                ->keyBy(fn ($row) => (string) $row->sku);
+            $dvBySku = NeweggDataView::query()
+                ->whereIn('sku', array_keys($bulkSkus))
+                ->get()
+                ->keyBy('sku');
+
             foreach ($updates as $u) {
                 $sku = $u['sku'] ?? null;
                 if (!$sku) {
@@ -493,10 +510,10 @@ class NeweggPricingController extends Controller
                 }
 
                 try {
-                    $pm = ProductMaster::where('sku', $sku)->first();
+                    $pm = $pmBySku->get((string) $sku);
                     [$lp, $ship] = $this->extractCosts($pm);
 
-                    $dv     = NeweggDataView::firstOrNew(['sku' => $sku]);
+                    $dv = $dvBySku->get($sku) ?: new NeweggDataView(['sku' => $sku]);
                     $values = is_array($dv->value) ? $dv->value : [];
 
                     $hasTargetRoi  = array_key_exists('target_roi', $u) && $u['target_roi'] !== null && $u['target_roi'] !== '';

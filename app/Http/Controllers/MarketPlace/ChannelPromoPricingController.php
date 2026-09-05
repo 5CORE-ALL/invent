@@ -1265,8 +1265,6 @@ class ChannelPromoPricingController extends Controller
             'prmt'
         );
 
-        $this->queueShopifyB2cRuleSpriceApply();
-
         return response()->json(['success' => true, 'channel' => $channel, 'shared' => true, 'rules' => $rules]);
     }
 
@@ -1313,11 +1311,18 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
-        return $this->loadRules(
+        $resp = $this->loadRules(
             $channel.'_zero_sold_prc',
             self::sharedZeroSoldPrcDefaults(),
             'groi'
         );
+        if (! self::channelUsesZeroSoldMinRoi($channel)) {
+            return $resp;
+        }
+        $data = $resp->getData(true);
+        $data['min_roi'] = $this->loadZeroSoldMinRoi($channel);
+
+        return response()->json($data);
     }
 
     public function saveZeroSoldPrcRules(Request $request, string $channel): JsonResponse
@@ -1339,11 +1344,20 @@ class ChannelPromoPricingController extends Controller
             'groi'
         );
 
-        if ($channel === 'shopify_b2c') {
-            $this->queueShopifyB2cRuleSpriceApply();
+        $minRoi = null;
+        if (self::channelUsesZeroSoldMinRoi($channel)) {
+            $minRoi = $this->persistZeroSoldMinRoi($channel, $request->input('min_roi'));
+            if ($channel === 'shopify_b2c') {
+                $this->queueShopifyB2cRuleSpriceApply();
+            }
         }
 
-        return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
+        $payload = ['success' => true, 'channel' => $channel, 'rules' => $rules];
+        if ($minRoi !== null) {
+            $payload['min_roi'] = $minRoi;
+        }
+
+        return response()->json($payload);
     }
 
     public function dilSgroiRules(Request $request, string $channel): JsonResponse
@@ -1899,6 +1913,61 @@ class ChannelPromoPricingController extends Controller
             'is_default' => $matched === 0,
             'rules' => $rules,
         ]);
+    }
+
+    /** @return list<string> */
+    public static function zeroSoldMinRoiChannels(): array
+    {
+        return ['shopify_b2c'];
+    }
+
+    public static function channelUsesZeroSoldMinRoi(string $channel): bool
+    {
+        return in_array($channel, self::zeroSoldMinRoiChannels(), true);
+    }
+
+    public static function zeroSoldMinRoiStore(string $channel): string
+    {
+        $channel = $channel === 'macy' ? 'macys' : $channel;
+
+        return $channel.'_zero_sold_min_roi';
+    }
+
+    public static function zeroSoldMinRoiFromStore(string $channel): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', self::zeroSoldMinRoiStore($channel))
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : [];
+        $raw = $saved['min_roi'] ?? null;
+
+        return is_numeric($raw) ? max(0.0, (float) $raw) : 0.0;
+    }
+
+    public static function shopifyB2cZeroSoldMinRoiStore(): string
+    {
+        return self::zeroSoldMinRoiStore('shopify_b2c');
+    }
+
+    public static function shopifyB2cZeroSoldMinRoiFromStore(): float
+    {
+        return self::zeroSoldMinRoiFromStore('shopify_b2c');
+    }
+
+    private function loadZeroSoldMinRoi(string $channel): float
+    {
+        return self::zeroSoldMinRoiFromStore($channel);
+    }
+
+    private function persistZeroSoldMinRoi(string $channel, mixed $raw): float
+    {
+        $minRoi = is_numeric($raw) ? max(0.0, round((float) $raw, 2)) : 0.0;
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => self::zeroSoldMinRoiStore($channel)],
+            ['visibility' => ['min_roi' => $minRoi], 'column_order' => ['min_roi']]
+        );
+
+        return $minRoi;
     }
 
     /** Recalc + save Shopify B2C S PRC in the background (page does not need to stay open). */

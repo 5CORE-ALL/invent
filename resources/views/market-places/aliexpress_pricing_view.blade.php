@@ -144,6 +144,7 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'aliexpress'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'aliexpress'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#aeLmpModal'])
     </style>
 @endsection
@@ -350,6 +351,7 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success" title="Export CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'aliexpress'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'aliexpress'])
                         <a href="{{ route('aliexpress.lmp') }}" class="btn btn-sm btn-outline-info">
                             <i class="fas fa-table"></i> LMP sheet
@@ -564,6 +566,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'aliexpress'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'aliexpress'])
 @endsection
 
 @section('script-bottom')
@@ -575,6 +578,7 @@
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'aliexpress'])
         let summaryDataCache = [];
         let aeLmpModalSku = '';
 
@@ -1833,28 +1837,6 @@
                         }
                     },
                     {
-                        title: "CVR",
-                        field: "cvr",
-                        sorter: "number",
-                        hozAlign: "center",
-                        width: 60,
-                        headerTooltip: "AliExpress L30 CVR = AE orders ÷ AE views (from AliExpress API)",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            let cvr = parseFloat(cell.getValue());
-                            if (!Number.isFinite(cvr) || cvr <= 0) {
-                                const views = parseFloat(d.views) || 0;
-                                const orders = parseFloat(d.output_order) || 0;
-                                cvr = views > 0 ? (orders / views) * 100 : 0;
-                            }
-                            let color = '#a00211';
-                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                            else if (cvr > 13) color = '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(cvr)}%</span>`;
-                        }
-                    },
-                    {
                         title: "Dil",
                         field: "dil_percent",
                         sorter: "number",
@@ -2085,12 +2067,41 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof aeIsParentRow === 'function' && aeIsParentRow(rowData)) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    {
                         title: "Sprice",
                         field: "sprice",
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "Rule price (0-sold = Target GROI% / marketplace_percentages, no LMP cap). Sold rows: Std − PRMT − cvr%, then LMP-capped. Always shows the $. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Price (only when below LMP).",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2182,7 +2193,7 @@
                     {
                         title: "SGROI",
                         field: "sroi",
-                        headerTooltip: "Sold (AL30 > 0): Dil vs Target SGROI sets S PRC so this equals the Dil slab target. 0 Sold uses Dil color → Target GROI%. LMP cap on sold rows can lower the shown %.",
+                        headerTooltip: "SGROI from Sprc Dil S PRC. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI. LMP cap on sold rows can lower the shown %.",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2237,6 +2248,9 @@
                             window.chPromoAutofitColumns(table);
                         }
                         return;
+                    }
+                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                        ebayScheduleSprcDilAutoApply();
                     }
                     setTimeout(function() {
                         try {

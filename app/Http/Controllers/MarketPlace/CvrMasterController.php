@@ -7761,6 +7761,8 @@ class CvrMasterController extends Controller
                 $response = $this->pushToMacy($sku, $price);
             } elseif ($marketplace === 'ppower' || $marketplace === 'purchasingpower' || $marketplace === 'purchase') {
                 $response = $this->pushToPurchasingPower($sku, $price);
+            } elseif ($marketplace === 'wayfair') {
+                $response = $this->pushToWayfair($sku, $price);
             } elseif ($marketplace === 'topdawg') {
                 $response = $this->pushToTopDawg($sku, $price);
             } elseif ($marketplace === 'faire') {
@@ -7804,7 +7806,7 @@ class CvrMasterController extends Controller
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Wayfair, Reverb, TopDawg, Faire, Temu, Temu2, TikTok, TikTok 2, FBA."
                 ], 400);
             }
 
@@ -8768,6 +8770,43 @@ class CvrMasterController extends Controller
             $this->savePricePushStatus($sku, 'ppower', 'error', $price);
             Log::error('CVR Master - Purchasing Power push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Purchasing Power API error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Push price to Wayfair via the pricing feed API.
+     */
+    private function pushToWayfair($sku, $price)
+    {
+        try {
+            $result = app(\App\Services\WayfairApiService::class)->updatePrice($sku, $price);
+            $failed = is_array($result) && (
+                ! empty($result['error'])
+                || ! empty($result['errors'])
+                || (isset($result['success']) && $result['success'] === false)
+            );
+            if (! $failed) {
+                $this->savePricePushStatus($sku, 'wayfair', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => is_array($result)
+                        ? (string) ($result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Wayfair for SKU: $sku"))
+                        : ("Price $" . number_format($price, 2) . " pushed to Wayfair for SKU: $sku"),
+                    'result' => $result,
+                ]);
+            }
+            $this->savePricePushStatus($sku, 'wayfair', 'error', $price);
+            $message = is_array($result)
+                ? (string) (($result['message'] ?? null) ?: ($result['error'] ?? 'Failed to push price to Wayfair'))
+                : 'Failed to push price to Wayfair';
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'wayfair', 'error', $price);
+            Log::error('CVR Master - Wayfair push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Wayfair API error: ' . $e->getMessage()], 500);
         }
     }
 

@@ -23,6 +23,7 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { padding-right: 0px !important; }
         .tabulator-paginator label { margin-right: 5px; }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'purchasing_power'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'purchasing_power'])
     </style>
 @endsection
 
@@ -134,6 +135,7 @@
                         title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
                         <i class="fas fa-sliders-h"></i> Rule
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'purchasing_power'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'purchasing_power'])
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
@@ -321,11 +323,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'purchasing_power'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'purchasing_power'])
 @endsection
 
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'purchasing_power'])
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
@@ -1338,9 +1342,38 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: 'Sprc Dil',
+                    field: 'SPRC_DIL',
+                    hozAlign: 'center',
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: 'S PRC from Dil → Target GROI% slabs. 0 Sold (PP L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used.',
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (ppIsParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', editor: 'number',
                     editorParams: { min: 0, step: 0.01 }, sorter: 'number', width: 92,
-                    headerTooltip: 'S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    headerTooltip: 'S PRC from Sprc Dil. Dil-matching Target GROI when PP L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -1801,6 +1834,9 @@
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
             setTimeout(function() { applyFilters(); updateSummary(); }, 100);
+            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                ebayScheduleSprcDilAutoApply();
+            }
         });
         table.on('renderComplete', function() { setTimeout(function() { updateSummary(); }, 100); });
 

@@ -260,6 +260,7 @@
             color: #0a58ca !important;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'doba'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'doba'])
     </style>
 @endsection
 
@@ -455,6 +456,7 @@
                             title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'doba'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'doba'])
                     <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
                         <i class="fas fa-upload"></i> Push to Doba
@@ -581,6 +583,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'doba'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'doba'])
 @endsection
 
 @section('script-bottom')
@@ -650,6 +653,7 @@
             return sku.includes('PARENT');
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba'])
         function dobaRowSpriceForAlert(data) {
             let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
             if (typeof chPromoLiveSprice === 'function' && !isDobaParentRow(data)) {
@@ -2341,6 +2345,35 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (Doba L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (isDobaParentRow(rowData)) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    {
                         title: "SPRICE",
                         field: "sprice",
                         width: 92,
@@ -2351,7 +2384,7 @@
                             min: 0,
                             step: 0.01
                         },
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when Doba L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) return '';
@@ -3157,9 +3190,17 @@
                     // children, which fires dataLoaded again. Without this guard allTableData would
                     // be overwritten by that subset and later filters would run against only
                     // those rows, leaving the table stuck on the expanded group.
-                    if (window.ParentExpand && ParentExpand.isExpanded()) return;
+                    if (window.ParentExpand && ParentExpand.isExpanded()) {
+                        if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                            ebayScheduleSprcDilAutoApply();
+                        }
+                        return;
+                    }
                     allTableData = data;
                     if (window.ParentExpand) ParentExpand.captureDataset(data);
+                }
+                if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                    ebayScheduleSprcDilAutoApply();
                 }
                 setTimeout(() => {
                     updateSummary();

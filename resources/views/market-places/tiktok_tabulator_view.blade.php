@@ -323,6 +323,9 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => $tiktokPromoChannel])
+        @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => $tiktokPromoChannel])
+        @endif
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#ttLmpModal'])
     </style>
 @endsection
@@ -464,6 +467,9 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         PRc
                     </button>
+                    @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => $tiktokPromoChannel])
+                    @endif
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => $tiktokPromoChannel])
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
@@ -1015,6 +1021,9 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => $tiktokPromoChannel])
+    @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => $tiktokPromoChannel])
+    @endif
 
 @endsection
 
@@ -1054,6 +1063,9 @@
         const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit', 'TT Ship'];
         let table = null;
         let allTableData = [];
+        @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => $tiktokPromoChannel])
+        @endif
         let blueTriangleFilterActive = false;
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
@@ -3926,6 +3938,37 @@
                         width: 70
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
+                    @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
+                    {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (TT L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin. CVR% still fills S PRC when Dil does not match a slab.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof ttIsParentRow === 'function' && ttIsParentRow(rowData)) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    @endif
                     {
                         title: "SPRICE",
                         field: "SPRICE",
@@ -3936,7 +3979,11 @@
                             step: 0.01
                         },
                         sorter: "number",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
+                        headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
+                            "S PRC from Sprc Dil when Dil matches and TT L30 > 0; 0 Sold uses the lowest Target GROI. Otherwise Std × (1 − CVR%/100). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
+                        @else
+                            "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price."
+                        @endif,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
@@ -5676,9 +5723,17 @@
                     // children, which fires dataLoaded again. Without this guard allTableData would
                     // be overwritten by that subset and later filters would run against only
                     // those rows, leaving the table stuck on the expanded group.
-                    if (window.ParentExpand && ParentExpand.isExpanded()) return;
+                    if (window.ParentExpand && ParentExpand.isExpanded()) {
+                        if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                            ebayScheduleSprcDilAutoApply();
+                        }
+                        return;
+                    }
                     allTableData = data;
                     if (window.ParentExpand) ParentExpand.captureDataset(data);
+                }
+                if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                    ebayScheduleSprcDilAutoApply();
                 }
                 function afterLoad() {
                     setTimeout(function() {

@@ -2,20 +2,47 @@
   Sprc Dil — same Dil → Target GROI slabs as Amazon.
   Store: {channel}_dil_vs_groi via /channel-promo-pricing/{channel}/dil-groi.
   Dil = listing Dil (Σ OV L30 ÷ Σ INV), same as the Dil column.
-  eBay 1–3: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
-  Temu: 0 Sold still uses the minimum Target GROI in the table.
+  Amazon / eBay 1–3: every INV > 0 SKU uses the Dil-matching slab (including 0 Sold).
+  Every other Sprc Dil page: Dil-matching when sold > 0; 0 Sold uses the minimum Target GROI in the table.
 --}}
 @php
     $ebaySprcDilPart = $ebaySprcDilPart ?? 'all';
     $ebaySprcDilChannel = $ebaySprcDilChannel ?? 'ebay1';
     $ebaySprcDilZeroSoldUsesMinGroi = !in_array($ebaySprcDilChannel, ['ebay1', 'ebay2', 'ebay3'], true);
-    $ebaySprcDilSoldLabel = in_array($ebaySprcDilChannel, ['temu', 'temu2', 'temu3'], true) ? 'Temu L30' : 'E L30';
+    $ebaySprcDilHideCvrPie = in_array($ebaySprcDilChannel, ['macys', 'macy', 'purchasing_power', 'wayfair', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'bestbuy', 'newegg'], true);
+    $ebaySprcDilExcludeShip = in_array($ebaySprcDilChannel, ['purchasing_power', 'wayfair', 'doba_withoutship', 'faire'], true);
+    $ebaySprcDilSoldLabel = match ($ebaySprcDilChannel) {
+        'temu', 'temu2', 'temu3' => 'Temu L30',
+        'macys', 'macy' => 'MC L30',
+        'purchasing_power' => 'PP L30',
+        'wayfair' => 'A L30',
+        'reverb' => 'RV L30',
+        'doba', 'doba_withoutship' => 'Doba L30',
+        'aliexpress', 'shein', 'faire' => 'AL30',
+        'tiktok', 'tiktok2' => 'TT L30',
+        'bestbuy' => 'BB L30',
+        'newegg' => 'L30',
+        default => 'E L30',
+    };
     $ebaySprcDilPageLabel = match ($ebaySprcDilChannel) {
         'temu' => 'Temu',
         'temu2' => 'Temu 2',
         'temu3' => 'Temu 3',
         'ebay2' => 'eBay 2',
         'ebay3' => 'eBay 3',
+        'macys', 'macy' => 'Macys',
+        'purchasing_power' => 'Purchasing Power',
+        'wayfair' => 'Wayfair',
+        'reverb' => 'Reverb',
+        'doba' => 'Doba',
+        'doba_withoutship' => 'Doba Pickup',
+        'aliexpress' => 'AliExpress',
+        'shein' => 'Shein',
+        'faire' => 'Faire',
+        'tiktok' => 'TikTok',
+        'tiktok2' => 'TikTok 2',
+        'bestbuy' => 'Best Buy',
+        'newegg' => 'Newegg',
         default => 'eBay',
     };
 @endphp
@@ -160,12 +187,14 @@
                             </div>
                             <div class="ebay-dg-pie-legend" id="ebay-dg-dil-legend"></div>
                         </div>
+                        @unless(!empty($ebaySprcDilHideCvrPie))
                         <div class="ebay-dg-pie-wrap">
                             <div class="ebay-dg-pie-canvas-wrap">
                                 <canvas id="ebay-dg-cvr-pie"></canvas>
                             </div>
                             <div class="ebay-dg-pie-legend" id="ebay-dg-cvr-legend"></div>
                         </div>
+                        @endunless
                     </div>
                     <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -190,7 +219,8 @@
                         </li>
                         <li>
                             <strong>When</strong> a price is calculated (slab match or 0 Sold min GROI):
-                            it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
+                            it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
+                            (page close OK).
                         </li>
 @else
                         <li>
@@ -199,7 +229,14 @@
                         </li>
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
-                            it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
+                            it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
+                            (page close OK).
+                        </li>
+@endif
+@if(!empty($ebaySprcDilExcludeShip))
+                        <li>
+                            <strong>When</strong> S PRC is calculated:
+                            <code>S PRC = (LP × (1 + GROI%/100)) / margin</code> (Ship not used).
                         </li>
 @endif
                         <li>
@@ -247,6 +284,54 @@
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);
+        const EBAY_DIL_GROI_HIDE_CVR_PIE = @json(!empty($ebaySprcDilHideCvrPie));
+        function ebayDgIsMacys() {
+            return EBAY_DIL_GROI_CHANNEL === 'macys' || EBAY_DIL_GROI_CHANNEL === 'macy';
+        }
+        function ebayDgIsPurchasingPower() {
+            return EBAY_DIL_GROI_CHANNEL === 'purchasing_power';
+        }
+        function ebayDgIsWayfair() {
+            return EBAY_DIL_GROI_CHANNEL === 'wayfair';
+        }
+        function ebayDgIsReverb() {
+            return EBAY_DIL_GROI_CHANNEL === 'reverb';
+        }
+        function ebayDgIsDoba() {
+            return EBAY_DIL_GROI_CHANNEL === 'doba';
+        }
+        function ebayDgIsDobaWithoutship() {
+            return EBAY_DIL_GROI_CHANNEL === 'doba_withoutship';
+        }
+        function ebayDgIsAliexpress() {
+            return EBAY_DIL_GROI_CHANNEL === 'aliexpress';
+        }
+        function ebayDgIsShein() {
+            return EBAY_DIL_GROI_CHANNEL === 'shein';
+        }
+        function ebayDgIsFaire() {
+            return EBAY_DIL_GROI_CHANNEL === 'faire';
+        }
+        function ebayDgIsTiktok() {
+            return EBAY_DIL_GROI_CHANNEL === 'tiktok' || EBAY_DIL_GROI_CHANNEL === 'tiktok2';
+        }
+        function ebayDgIsBestbuy() {
+            return EBAY_DIL_GROI_CHANNEL === 'bestbuy';
+        }
+        function ebayDgIsNewegg() {
+            return EBAY_DIL_GROI_CHANNEL === 'newegg';
+        }
+        function ebayDgUsesSkuDil() {
+            return ebayDgIsMacys() || ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsReverb()
+                || ebayDgIsDoba() || ebayDgIsDobaWithoutship() || ebayDgIsAliexpress() || ebayDgIsShein()
+                || ebayDgIsFaire() || ebayDgIsTiktok() || ebayDgIsBestbuy() || ebayDgIsNewegg();
+        }
+        function ebayDgAutoApplies() {
+            return ebayDgUsesSkuDil();
+        }
+        function ebayDgExcludeShip() {
+            return ebayDgIsPurchasingPower() || ebayDgIsWayfair() || ebayDgIsDobaWithoutship() || ebayDgIsFaire();
+        }
         function ebayDgRulesUrl() {
             return '/channel-promo-pricing/' + encodeURIComponent(EBAY_DIL_GROI_CHANNEL) + '/dil-groi';
         }
@@ -310,6 +395,7 @@
             return Number(d && d.INV) || 0;
         }
         function ebayDgDil(d) {
+            if (ebayDgUsesSkuDil() && typeof chPromoDil === 'function') return chPromoDil(d);
             if (typeof chPromoListingDil === 'function') return chPromoListingDil(d);
             if (typeof chPromoDil === 'function') return chPromoDil(d);
             const inv = ebayDgInv(d);
@@ -421,7 +507,7 @@
             }
             const lp = parseFloat(d && d.LP_productmaster) || 0;
             if (!(lp > 0)) return 0;
-            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            const ship = ebayDgExcludeShip() ? 0 : (parseFloat(d && d.Ship_productmaster) || 0);
             const margin = (typeof CHANNEL_PROMO_TAKEHOME === 'number' && CHANNEL_PROMO_TAKEHOME > 0)
                 ? CHANNEL_PROMO_TAKEHOME
                 : ((typeof EBAY_TAKEHOME !== 'undefined' && Number(EBAY_TAKEHOME) > 0) ? Number(EBAY_TAKEHOME)
@@ -702,6 +788,19 @@
                 if (dilLegend) dilLegend.innerHTML = ebayDgPieLegendHtml('Dil', dilSlices, dilCounts, 'dil');
                 ebayDgDrawPie('ebay-dg-dil-pie', 'dil', dilSlices, dilCounts);
 
+                if (EBAY_DIL_GROI_HIDE_CVR_PIE) {
+                    $('#ebay-dil-groi-tbody tr').each(function(i) {
+                        const r = rules[i];
+                        const $cell = $(this).find('.ebay-dg-count');
+                        $cell.find('.ebay-dg-count-n').text(r ? (dilCounts[r.key] || 0) : 0);
+                        $cell.find('.ebay-dg-hist-dot').remove();
+                        if (r) {
+                            $cell.append(' ' + ebayDgHistDotHtml('dil', r.key, ebayDgSlabColor(i), r.label));
+                        }
+                    });
+                    return;
+                }
+
                 const cvrCounts = ebayDilGroiCollectCvrCounts();
                 ebayDgCvrLiveCounts = cvrCounts;
                 ebayDgSnapLocal(ebayDgHistKey('cvr'), cvrCounts);
@@ -834,59 +933,172 @@
             if (typeof table === 'undefined' || !table) return;
             try { table.redraw(true); } catch (e) { /* ignore */ }
         }
-        async function ebayApplySprcDilToTable() {
-            const jobs = [];
-            const walk = function(row, d) {
-                const meta = ebayDilGroiMetaForRow(d);
-                if (!meta || !(meta.sprc > 0)) return;
-                const sku = (typeof chPromoSku === 'function')
-                    ? chPromoSku(d)
-                    : String((d && d['(Child) sku']) || '').trim();
-                if (!sku) return;
-                let price = meta.sprc;
-                if (typeof chPromoFinalSpriceToSave === 'function') {
-                    price = chPromoFinalSpriceToSave(d, price);
-                } else if (typeof chPromoCapSpriceToLmp === 'function') {
-                    price = chPromoCapSpriceToLmp(d, price);
-                }
-                if (!(price > 0)) return;
-                jobs.push({ row: row, sku: sku, price: price });
+        let ebayDgAutoApplyTimer = null;
+        let ebayDgAutoApplyWaits = 0;
+        let ebayDgApplyBusy = false;
+        let ebayDgApplyPending = false;
+        function ebaySprcDilRowAdapter(d) {
+            if (typeof chPromoDilPrmtRowAdapter === 'function') return chPromoDilPrmtRowAdapter(d);
+            return {
+                getData: function() { return d; },
+                update: function(patch) { Object.assign(d, patch || {}); },
+                reformat: function() {},
             };
-            if (typeof chPromoEachTableRow === 'function') {
-                chPromoEachTableRow(walk);
-            }
-            if (!jobs.length) return 0;
-            const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
-            if (blocked) table.blockRedraw();
+        }
+        function ebaySprcDilCatalogRows() {
             try {
-                jobs.forEach(function(job) {
-                    if (typeof chPromoSpricePatch === 'function') {
-                        job.row.update(Object.assign({}, chPromoSpricePatch(job.price), { SPRICE_STATUS: 'applied' }));
-                    } else {
-                        job.row.update({ SPRICE: job.price, sprice: job.price, has_custom_sprice: true });
-                    }
-                });
-            } finally {
-                if (blocked) table.restoreRedraw();
+                if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) {
+                    return window.allTableData;
+                }
+            } catch (e) { /* ignore */ }
+            try {
+                if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
+                    return allTableData;
+                }
+            } catch (e) { /* TDZ before let allTableData */ }
+            return [];
+        }
+        function ebaySprcDilEachCatalogRow(fn) {
+            const seen = new Set();
+            function consider(row, d) {
+                const sku = (typeof chPromoSku === 'function')
+                    ? String(chPromoSku(d) || '').trim().toUpperCase()
+                    : String((d && d['(Child) sku']) || '').trim().toUpperCase();
+                if (!sku || seen.has(sku)) return;
+                seen.add(sku);
+                fn(row, d, sku);
             }
-            if (typeof saveChannelSprice === 'function') {
-                const run = function(job) {
-                    return saveChannelSprice(job.sku, job.price, true, {
-                        row: job.row,
-                        skip_push: true,
-                        queue_push: false,
+            if (typeof chPromoEachTableRow === 'function') {
+                chPromoEachTableRow(function(row, d) { consider(row, d); });
+            }
+            ebaySprcDilCatalogRows().forEach(function(d) {
+                if (!d) return;
+                consider(ebaySprcDilRowAdapter(d), d);
+            });
+        }
+        function ebayScheduleSprcDilAutoApply() {
+            if (!ebayDgAutoApplies()) return;
+            clearTimeout(ebayDgAutoApplyTimer);
+            ebayDgAutoApplyTimer = setTimeout(function() {
+                if (typeof table === 'undefined' || !table) {
+                    if (ebayDgAutoApplyWaits++ < 40) ebayScheduleSprcDilAutoApply();
+                    return;
+                }
+                const n = (typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
+                if (!(n > 0) && !ebaySprcDilCatalogRows().length) {
+                    if (ebayDgAutoApplyWaits++ < 40) ebayScheduleSprcDilAutoApply();
+                    return;
+                }
+                ebayDgAutoApplyWaits = 0;
+                Promise.resolve(ebayApplySprcDilToTable()).catch(function() { /* retry on next change */ });
+            }, 400);
+        }
+        window.ebayScheduleSprcDilAutoApply = ebayScheduleSprcDilAutoApply;
+        async function ebayApplySprcDilToTable() {
+            if (ebayDgApplyBusy) {
+                ebayDgApplyPending = true;
+                return 0;
+            }
+            ebayDgApplyBusy = true;
+            try {
+                const jobs = [];
+                const nearly = typeof chPromoNearlyEqual === 'function'
+                    ? chPromoNearlyEqual
+                    : function(a, b) { return Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.005; };
+                const livePushOn = typeof chPromoPageReloadPushAllowed === 'function'
+                    && chPromoPageReloadPushAllowed();
+                ebaySprcDilEachCatalogRow(function(row, d) {
+                    const meta = ebayDilGroiMetaForRow(d);
+                    if (!meta || !(meta.sprc > 0)) return;
+                    const sku = (typeof chPromoSku === 'function')
+                        ? chPromoSku(d)
+                        : String((d && d['(Child) sku']) || '').trim();
+                    if (!sku) return;
+                    let price = meta.sprc;
+                    if (typeof chPromoFinalSpriceToSave === 'function') {
+                        price = chPromoFinalSpriceToSave(d, price);
+                    } else if (typeof chPromoCapSpriceToLmp === 'function') {
+                        price = chPromoCapSpriceToLmp(d, price);
+                    }
+                    if (!(price > 0)) return;
+                    const current = typeof chPromoGetSprice === 'function'
+                        ? chPromoGetSprice(d)
+                        : (Number(d && d.SPRICE) || 0);
+                    const live = typeof chPromoPrice === 'function'
+                        ? chPromoPrice(d)
+                        : (Number(d && (d['MC Price'] != null ? d['MC Price'] : d.price)) || 0);
+                    const ended = typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d);
+                    const needsFill = !nearly(current, price);
+                    const needsPush = !!(livePushOn && !ended && !(live > 0 && nearly(price, live)));
+                    if (!needsFill && !needsPush) return;
+                    jobs.push({ row: row, sku: sku, price: price, needsFill: needsFill, needsPush: needsPush });
+                });
+                if (!jobs.length) return 0;
+                const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
+                if (blocked) table.blockRedraw();
+                try {
+                    jobs.forEach(function(job) {
+                        if (!job.row || typeof job.row.update !== 'function') return;
+                        const status = job.needsPush ? 'queued' : 'applied';
+                        if (typeof chPromoSpricePatch === 'function') {
+                            job.row.update(Object.assign({}, chPromoSpricePatch(job.price), { SPRICE_STATUS: status }));
+                        } else {
+                            job.row.update({ SPRICE: job.price, sprice: job.price, has_custom_sprice: true, SPRICE_STATUS: status });
+                        }
                     });
-                };
-                if (typeof chPromoMapLimit === 'function') {
-                    await chPromoMapLimit(jobs, 6, run);
-                } else {
-                    for (let i = 0; i < jobs.length; i++) {
-                        await Promise.resolve(run(jobs[i]));
+                } finally {
+                    if (blocked) table.restoreRedraw();
+                }
+                const toSave = jobs.filter(function(j) { return j.needsFill; })
+                    .map(function(j) { return { sku: j.sku, sprice: j.price }; });
+                if (toSave.length && typeof saveChannelSpriceBatch === 'function'
+                    && typeof chPromoCfg !== 'undefined' && chPromoCfg.saveSpriceBatchUrl) {
+                    await saveChannelSpriceBatch(toSave, { skip_push: true, queue_push: false });
+                } else if (toSave.length && typeof saveChannelSprice === 'function') {
+                    const run = function(job) {
+                        return saveChannelSprice(job.sku, job.price, true, {
+                            row: job.row,
+                            skip_push: true,
+                            queue_push: false,
+                        });
+                    };
+                    const saveJobs = jobs.filter(function(j) { return j.needsFill; });
+                    if (typeof chPromoMapLimit === 'function') {
+                        await chPromoMapLimit(saveJobs, 6, run);
+                    } else {
+                        for (let i = 0; i < saveJobs.length; i++) {
+                            await Promise.resolve(run(saveJobs[i]));
+                        }
                     }
                 }
+                const toQueue = jobs.filter(function(j) { return j.needsPush; });
+                if (toQueue.length) {
+                    if (typeof chPromoIsTemuPromoChannel === 'function' && chPromoIsTemuPromoChannel()
+                        && typeof enqueueTemuListingPushAfterSave === 'function') {
+                        toQueue.forEach(function(j) {
+                            enqueueTemuListingPushAfterSave(j.sku, j.price, j.row);
+                        });
+                    } else if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                        toQueue.forEach(function(j) {
+                            enqueueChannelPushSpriceAfterSave(j.sku, j.price, j.row);
+                        });
+                    } else if (typeof enqueueChannelPushSprice === 'function') {
+                        enqueueChannelPushSprice(
+                            toQueue.map(function(j) { return { sku: j.sku, price: j.price }; }),
+                            { silent: true }
+                        );
+                    }
+                    ebayDgToast('success', 'S PRC queued: ' + toQueue.length + ' SKU(s) — page close OK');
+                }
+                redrawEbaySprcDilColumn();
+                return jobs.length;
+            } finally {
+                ebayDgApplyBusy = false;
+                if (ebayDgApplyPending) {
+                    ebayDgApplyPending = false;
+                    ebayScheduleSprcDilAutoApply();
+                }
             }
-            redrawEbaySprcDilColumn();
-            return jobs.length;
         }
         async function loadEbayDilGroiRules() {
             if (!$('#ebay-dil-groi-tbody tr').length) renderEbayDilGroiModalTable();
@@ -905,6 +1117,7 @@
                 if (fromServer.length) ebayDilGroiRules = fromServer;
                 renderEbayDilGroiModalTable();
                 redrawEbaySprcDilColumn();
+                ebayScheduleSprcDilAutoApply();
                 $('#ebay-dil-groi-status').text(
                     fromServer.length && !(res && res.is_default)
                         ? 'Loaded saved Dil → GROI slabs from API.'
@@ -915,6 +1128,7 @@
                 const reason = (e && e.responseJSON && e.responseJSON.message)
                     || (e && e.status ? ('HTTP ' + e.status) : 'network error');
                 $('#ebay-dil-groi-status').text('Could not load saved rules from API (' + reason + ') — using defaults.');
+                ebayScheduleSprcDilAutoApply();
             }
         }
         function saveEbayDilGroiRules() {
@@ -935,7 +1149,7 @@
                     renderEbayDilGroiModalTable();
                 }
                 const n = await ebayApplySprcDilToTable();
-                $('#ebay-dil-groi-status').text('Saved via API and applied. S PRC written on ' + n + ' SKU(s).');
+                $('#ebay-dil-groi-status').text('Saved via API. S PRC applied and queued on ' + n + ' SKU(s).');
                 return res;
             });
         }
@@ -981,6 +1195,7 @@
                     else readEbayDilGroiRulesFromModal();
                     renderEbayDilGroiCounts();
                     redrawEbaySprcDilColumn();
+                    ebayScheduleSprcDilAutoApply();
                 });
             $('#ebayDilGroiModal').off('shown.bs.modal.ebaydg').on('shown.bs.modal.ebaydg', function() {
                 setTimeout(function() { renderEbayDilGroiPies(); }, 50);

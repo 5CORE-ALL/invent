@@ -362,10 +362,6 @@ class MacyController extends Controller
             }
             $row['STANDARD_PRICE'] = $stdPrc;
 
-            // CVR% = MC L30 ÷ OV L30 (same as CVR% filter on this page)
-            $ovL30 = (float) ($row['L30'] ?? 0);
-            $mcL30 = (float) ($row['MC L30'] ?? 0);
-            $row['CVR%'] = $ovL30 > 0 ? round(($mcL30 / $ovL30) * 100, 2) : 0;
             $row = app(ChannelPromoPricingService::class)->applyToRow($row, $promoMap, (string) $pm->sku);
 
             $allLmpEntries = collect();

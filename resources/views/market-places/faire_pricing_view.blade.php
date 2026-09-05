@@ -104,6 +104,7 @@
             scrollbar-width: thin;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'faire'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'faire'])
         #fr-summary-stats .fr-filter-badge.active-filter {
             box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.45);
             outline: 2px solid #0d6efd;
@@ -239,6 +240,7 @@
                             title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship">
                             <i class="fas fa-sliders-h"></i> Rule
                         </button>
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'faire'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'faire'])
                         <button type="button" id="fr-push-to-faire-btn" class="btn btn-sm btn-primary pricing-filter-item" style="display: none;"
                             title="Push SPRICE for selected SKUs to Faire (or all with SPRICE if none selected)">
@@ -477,6 +479,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'faire'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'faire'])
 
     <div class="modal fade" id="uploadFaireViewsModal" tabindex="-1">
         <div class="modal-dialog">
@@ -525,6 +528,7 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'faire'])
         let table = null;
         let allTableData = [];
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'faire'])
         let summaryDataCache = [];
         let frZeroSoldActive = false;
         let frMoreSoldActive = false;
@@ -550,6 +554,14 @@
         function frRuleSprice(row, extra) {
             extra = extra || {};
             if (!row || frIsParentRow(row)) return 0;
+            if (typeof chPromoLiveSprice === 'function') {
+                const live = Number(chPromoLiveSprice(row));
+                if (live > 0) return +live.toFixed(2);
+            }
+            if (typeof ebaySprcDilForRow === 'function') {
+                const sprcDil = Number(ebaySprcDilForRow(row));
+                if (sprcDil > 0) return +sprcDil.toFixed(2);
+            }
             if (typeof chPromoZeroSoldRuleSprice === 'function') {
                 const zeroSold = Number(chPromoZeroSoldRuleSprice(row));
                 if (zeroSold > 0) return +zeroSold.toFixed(2);
@@ -2382,9 +2394,38 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
+                        title: 'Sprc Dil',
+                        field: 'SPRC_DIL',
+                        hozAlign: 'center',
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: 'S PRC from Dil → Target GROI% slabs (same as Amazon). 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100)) / margin (Ship not used). CVR% still fills S PRC when Dil does not match a slab.',
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof frIsParentRow === 'function' && frIsParentRow(rowData)) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editor: 'number', editorParams: { min: 0, step: 0.01 },
-                        headerTooltip: 'Same as /temu1-data without caps: 0 Sold Dil→Target GROI%, else Std × (1 − (PRMT% + CVR%)/100). No eBay, Amazon, or LMP cap. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'S PRC from Sprc Dil when Dil matches (or 0 Sold min GROI). Otherwise Std × (1 − CVR%/100). Ship not used. No LMP cap. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -2489,6 +2530,9 @@
                     if (!allTableData.length && Array.isArray(data)) {
                         allTableData = data;
                         if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+                    }
+                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                        ebayScheduleSprcDilAutoApply();
                     }
                     frResetSkuColHoverWidth();
                     frRemoveImagePreview();

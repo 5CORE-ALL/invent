@@ -161,6 +161,7 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shein'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'shein'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#sheinLmpModal'])
     </style>
 @endsection
@@ -270,6 +271,7 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export">
                             <i class="fas fa-file-excel"></i>
                         </button>
+                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shein'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shein'])
 
                         {{-- Target ROI% (compact — same UX as /ebay2-tabulator-view) --}}
@@ -537,6 +539,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shein'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shein'])
 @endsection
 
 @section('script-bottom')
@@ -548,6 +551,7 @@
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shein'])
         let summaryDataCache = [];
         // Sales / GPFT / GROI from /shein-tabulator API orders (product_price × qty) — not special_offer
         let salesPageTotals = null;
@@ -1719,22 +1723,6 @@
                         }
                     },
                     {
-                        title: "CVR",
-                        field: "cvr",
-                        sorter: "number",
-                        hozAlign: "center",
-                        width: 60,
-                        headerTooltip: "Shein CVR = Sh L30 ÷ Views × 100",
-                        formatter: function(cell) {
-                            const cvr = parseFloat(cell.getValue()) || 0;
-                            let color = '#a00211';
-                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                            else if (cvr > 13) color = '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${Math.round(cvr)}%</span>`;
-                        }
-                    },
-                    {
                         title: "Dil",
                         field: "dil_percent",
                         sorter: "number",
@@ -1992,12 +1980,41 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (AL30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData && rowData.is_parent) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    {
                         title: "Sprice",
                         field: "sprice",
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "Same as AliExpress Analytics. 0-sold = Target GROI% / 0.80, else Std − PRMT − cvr%, then LMP-capped. Red $ + red triangle = capped at LMP. Blue triangle = S PRC ≠ Sp. Price (only when below LMP).",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when AL30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2083,6 +2100,9 @@
                     // Honor the dropdown defaults on first load (e.g. INV "More than 0")
                     // so the table doesn't render every row before the user touches a filter.
                     applyFilters();
+                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                        ebayScheduleSprcDilAutoApply();
+                    }
                     setTimeout(function() {
                         try { sheinPersistVisibleSprices(); } catch (e) { /* ignore */ }
                     }, 400);

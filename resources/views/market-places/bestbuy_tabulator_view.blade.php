@@ -71,6 +71,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'bestbuy'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
@@ -202,6 +203,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'bestbuy'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'bestbuy'])
 
                     <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
@@ -435,12 +437,16 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'bestbuy'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'bestbuy'])
 @endsection
 
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
+    let table = null;
+    let allTableData = [];
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'bestbuy'])
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
     /** Same as Temu / Macys / eBay: |INV − BB INV| ≤ this counts as MAP, not a mapping issue. */
     const BB_INV_MAP_TOLERANCE = 3;
@@ -451,8 +457,6 @@
         return bestbuyInvMappingDiff(ourInv, bbInv) > BB_INV_MAP_TOLERANCE;
     }
 
-    let table = null;
-    let allTableData = [];
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
@@ -2148,10 +2152,39 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (BB L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (typeof isBestbuyParentRow === 'function' && isBestbuyParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ BB Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when BB L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ BB Price. Red text = S PRC ≥ LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2702,6 +2735,9 @@
             if (window.ParentExpand && ParentExpand.isExpanded()) return;
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                ebayScheduleSprcDilAutoApply();
+            }
             setTimeout(function() {
                 applyFilters();
                 updateSummary();

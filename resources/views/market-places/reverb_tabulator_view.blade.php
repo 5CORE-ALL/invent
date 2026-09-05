@@ -280,6 +280,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'reverb'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
@@ -768,7 +769,8 @@
                         </ul>
                     </div>
 
-                    {{-- Dil vs PRMT / CVR vs CPN --}}
+                    {{-- Sprc Dil (Amazon Dil-matching) + CVR vs CPN --}}
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'reverb'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
                     <div class="btn-group flex-shrink-0">
@@ -1027,6 +1029,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'reverb'])
 
     <div class="modal fade" id="reverbZeroSoldPrcModal" tabindex="-1" aria-labelledby="reverbZeroSoldPrcModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-md">
@@ -1186,6 +1189,7 @@
     let samePriceModeActive = false;
     let selectedSkus = new Set();
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'reverb'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function reverbPrmtPctOf(d) {
@@ -4256,10 +4260,39 @@
                 },
                 ...(typeof reverbChannelPromoColumns === 'function' ? reverbChannelPromoColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as Amazon). 0 Sold (RV L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isReverbParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
+                {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Sprc Dil (Amazon Dil slabs). Dil-matching when RV L30 > 0; 0 Sold uses the lowest Target GROI. CVR% still applies when there is no Dil slab match. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -6050,6 +6083,9 @@
                 updateSummary();
                 loadReverbDailyTotalsBadges();
             }, 100);
+            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                ebayScheduleSprcDilAutoApply();
+            }
         });
 
         // Badges only — Ads% is SSR (Amazon pattern); do not refetch Ads on every paint

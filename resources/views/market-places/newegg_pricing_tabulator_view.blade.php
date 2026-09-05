@@ -113,6 +113,7 @@
             cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'newegg'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'newegg'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#neLmpModal'])
     </style>
 @endsection
@@ -256,6 +257,7 @@
                         data-bs-target="#uploadViewsModal" title="Upload Newegg Views sheet (replaces previous upload)">
                         <i class="fa fa-upload"></i> Views
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'newegg'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'newegg'])
 
                     <div class="dropdown d-inline-block flex-shrink-0" id="sprice-mode-dropdown">
@@ -457,6 +459,7 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'newegg'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'newegg'])
 
     <div class="modal fade" id="uploadViewsModal" tabindex="-1">
         <div class="modal-dialog">
@@ -502,6 +505,8 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'newegg'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
+        let allTableData = [];
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'newegg'])
         let decreaseModeActive  = false;
         let increaseModeActive  = false;
         let samePriceModeActive = false;
@@ -717,15 +722,11 @@
 
         function neDisplayedSpriceRaw(data) {
             if (!data) return 0;
-            let value = parseFloat(data.sprice || data.SPRICE) || 0;
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                const calc = chPromoSpriceFromStdTPromo(data, { skip_amz_floor: true });
-                if (calc > 0) value = calc;
-            } else if (typeof chPromoLiveSprice === 'function') {
+            if (typeof chPromoLiveSprice === 'function') {
                 const calc = chPromoLiveSprice(data);
-                if (calc > 0) value = calc;
+                if (calc > 0) return calc;
             }
-            return value;
+            return parseFloat(data.sprice || data.SPRICE) || 0;
         }
 
         function nePriceBeforeAmzFloor(data) {
@@ -1315,11 +1316,13 @@
                 paginationCounter: "rows",
                 placeholder: "No Data Available",
                 ajaxResponse: function(url, params, response) {
-                    if (Array.isArray(response)) return response;
-                    if (response && Array.isArray(response.data)) return response.data;
-                    if (response && response.data && Array.isArray(response.data.data)) return response.data.data;
-                    console.warn('Newegg pricing: unexpected ajax payload', response);
-                    return [];
+                    let rows = [];
+                    if (Array.isArray(response)) rows = response;
+                    else if (response && Array.isArray(response.data)) rows = response.data;
+                    else if (response && response.data && Array.isArray(response.data.data)) rows = response.data.data;
+                    else console.warn('Newegg pricing: unexpected ajax payload', response);
+                    allTableData = rows;
+                    return rows;
                 },
                 ajaxError: function(error) {
                     const msg = (error && error.statusText) ? error.statusText : 'Failed to load Newegg pricing data';
@@ -1394,17 +1397,6 @@
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue()) || 0;
                             return v > 0 ? `<span style="font-weight:700;">${v.toLocaleString()}</span>` : '0';
-                        }
-                    },
-                    { title: "CVR", field: "cvr", hozAlign: "center", sorter: "number", width: 65,
-                        headerTooltip: "CVR = L30 ÷ Views × 100",
-                        formatter: function(cell) {
-                            const cvr = parseFloat(cell.getValue()) || 0;
-                            let color = '#a00211';
-                            if (cvr > 4 && cvr <= 7) color = '#ffc107';
-                            else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                            else if (cvr > 13) color = '#e83e8c';
-                            return `<span style="color:${color};font-weight:600;">${cvr.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -1603,6 +1595,35 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
+                        title: "Sprc Dil",
+                        field: "SPRC_DIL",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                return (typeof ebaySprcDilForRow === 'function')
+                                    ? (ebaySprcDilForRow(row) || 0)
+                                    : 0;
+                            };
+                            return val(aRow.getData()) - val(bRow.getData());
+                        },
+                        headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (typeof chPromoIsParentRow === 'function' && chPromoIsParentRow(rowData)) return '';
+                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                            const meta = ebayDilGroiMetaForRow(rowData);
+                            if (!meta || !(meta.sprc > 0)) return '';
+                            const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                                + ' → ' + meta.label
+                                + ' → GROI ' + meta.groi + '%'
+                                + ' → $' + meta.sprc.toFixed(2);
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                                + meta.sprc.toFixed(2) + '</span>';
+                        },
+                        width: 78
+                    },
+                    {
                         title: "SPrice", field: "sprice", hozAlign: "right", headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
                             const ad = aRow && aRow.getData ? aRow.getData() : {};
@@ -1611,7 +1632,7 @@
                         },
                         editor: "number", editorParams: { min: 0, step: 0.01 },
                         cssClass: "editable-cell",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
+                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Below A Price is raised to Amz. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             let value = nePriceBeforeAmzFloor(d);
@@ -2754,7 +2775,11 @@
                 applyColumnVisibilityFromServer();
                 buildColumnDropdown();
             });
-            table.on('dataLoaded', function() {
+            table.on('dataLoaded', function(data) {
+                if (!allTableData.length && Array.isArray(data)) allTableData = data;
+                if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                    ebayScheduleSprcDilAutoApply();
+                }
                 const searchOn = !!($('#sku-search').val() || '').trim();
                 const filtered = searchOn
                     || inventoryFilter !== 'all' || nStockFilter !== 'all' || l30Filter !== 'all'

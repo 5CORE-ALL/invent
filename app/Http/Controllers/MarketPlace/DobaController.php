@@ -749,40 +749,64 @@ class DobaController extends Controller
 
     /**
      * Shared persistence for both SPRICE save endpoints. The model class
-     * decides which table the row lives in.
+     * decides which table the row lives in. Accepts a single sku/sprice
+     * or an updates[] batch (Sprc Dil auto-apply).
      *
      * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
      */
     private function persistSpriceRow(Request $request, string $modelClass)
     {
-        $sku = $request->input('sku');
-        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent', 's_self_pick', 'push_status']);
+        $updates = [];
+        if ($request->has('updates') && is_array($request->input('updates'))) {
+            $updates = $request->input('updates');
+        } else {
+            $sku = $request->input('sku');
+            $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent', 's_self_pick', 'push_status']);
+            if ($sku && array_key_exists('sprice', $spriceData)) {
+                $updates = [array_merge(['sku' => $sku], $spriceData)];
+            }
+        }
 
-        if (!$sku || !isset($spriceData['sprice'])) {
+        if ($updates === []) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
-        $dataView = $modelClass::firstOrNew(['sku' => $sku]);
+        $saved = 0;
+        foreach ($updates as $update) {
+            if (! is_array($update)) {
+                continue;
+            }
+            $sku = $update['sku'] ?? null;
+            if (! $sku || ! array_key_exists('sprice', $update)) {
+                continue;
+            }
 
-        // Decode value column safely
-        $existing = is_array($dataView->value)
-            ? $dataView->value
-            : (json_decode($dataView->value, true) ?: []);
+            $dataView = $modelClass::firstOrNew(['sku' => $sku]);
+            $existing = is_array($dataView->value)
+                ? $dataView->value
+                : (json_decode($dataView->value, true) ?: []);
 
-        // Merge new sprice data
-        $merged = array_merge($existing, [
-            'SPRICE' => $spriceData['sprice'],
-            'SPFT' => $spriceData['spft_percent'],
-            'SROI' => $spriceData['sroi_percent'],
-            'S_SELF_PICK' => $spriceData['s_self_pick'] ?? null,
-            'PUSH_STATUS' => $spriceData['push_status'] ?? null,
-            'PUSH_STATUS_UPDATED_AT' => isset($spriceData['push_status']) ? now()->format('Y-m-d H:i:s') : ($existing['PUSH_STATUS_UPDATED_AT'] ?? null),
-        ]);
+            $merged = array_merge($existing, [
+                'SPRICE' => $update['sprice'],
+                'SPFT' => $update['spft_percent'] ?? $update['SPFT'] ?? null,
+                'SROI' => $update['sroi_percent'] ?? $update['SROI'] ?? null,
+                'S_SELF_PICK' => $update['s_self_pick'] ?? $update['S_SELF_PICK'] ?? null,
+                'PUSH_STATUS' => $update['push_status'] ?? $update['PUSH_STATUS'] ?? null,
+                'PUSH_STATUS_UPDATED_AT' => (isset($update['push_status']) || isset($update['PUSH_STATUS']))
+                    ? now()->format('Y-m-d H:i:s')
+                    : ($existing['PUSH_STATUS_UPDATED_AT'] ?? null),
+            ]);
 
-        $dataView->value = $merged;
-        $dataView->save();
+            $dataView->value = $merged;
+            $dataView->save();
+            $saved++;
+        }
 
-        return response()->json(['message' => 'Data saved successfully.']);
+        if ($saved === 0) {
+            return response()->json(['error' => 'SKU and sprice are required.'], 400);
+        }
+
+        return response()->json(['message' => 'Data saved successfully.', 'updated' => $saved]);
     }
 
     /**

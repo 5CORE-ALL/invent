@@ -851,7 +851,8 @@ class BestBuyPricingController extends Controller
             $pricePushFailed = 0;
             $pricePushErrors = [];
             $singlePushResult = null;
-            foreach ($pricePushQueue as $pushItem) {
+            $skipPush = $request->boolean('skip_push');
+            foreach ($skipPush ? [] : $pricePushQueue as $pushItem) {
                 $pushResult = $this->pushPriceToBestBuy($pushItem['sku'], (float) $pushItem['sprice']);
                 if (count($pricePushQueue) === 1) {
                     $singlePushResult = $pushResult;

@@ -388,6 +388,7 @@ class ChannelPushSpriceRunner
             'tiktok2' => 'tiktok2',
             'topdawg' => 'topdawg',
             'purchasing_power' => 'purchasingpower',
+            'wayfair' => 'wayfair',
             'faire' => 'faire',
             'pls' => 'pls',
             'aliexpress' => 'aliexpress',

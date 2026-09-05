@@ -16,13 +16,12 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Page-less Dil / PRMT / CVR Disc / 0 Sold → S PRC, same idea as amazon:dil-prmt-auto-push.
- * Writes shopifyb2c_data_view SPRICE + PEF_PRMT_PCT + PEF_CPN_PCT even if /shopify-b2c-pricing is closed.
+ * Page-less CVR Disc / 0 Sold → S PRC (Prmt% / Dil vs PRMT is not used on Shopify B2C).
+ * Writes shopifyb2c_data_view SPRICE + PEF_CPN_PCT even if /shopify-b2c-pricing is closed.
  */
 class ShopifyB2cRuleSpriceApplyService
 {
     public function __construct(
-        private readonly PefDilPrmtAutoApplyService $dilPrmtRules,
         private readonly PefCvrCpnAutoApplyService $cvrCpnRules
     ) {}
 
@@ -33,15 +32,15 @@ class ShopifyB2cRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
-        $dilRules = $this->dilPrmtRules->loadRules();
         $cvrRules = $this->loadCvrRules();
         $zeroRules = $this->loadZeroSoldRules();
+        $zeroMinRoi = ChannelPromoPricingController::shopifyB2cZeroSoldMinRoiFromStore();
         $margin = MarketplacePercentage::takeHomeForPromoChannel('shopify_b2c');
         if (! ($margin > 0)) {
             $margin = 0.95;
         }
 
-        $this->log($logger, 'Loaded Dil slabs='.count($dilRules).' CVR slabs='.count($cvrRules).' 0-sold='.count($zeroRules));
+        $this->log($logger, 'Loaded CVR slabs='.count($cvrRules).' 0-sold='.count($zeroRules).' min-roi='.$zeroMinRoi);
 
         $stats = [
             'candidates' => 0,
@@ -77,9 +76,9 @@ class ShopifyB2cRuleSpriceApplyService
                 })
                 ->orderBy('id')
                 ->chunkById(150, function ($rows) use (
-                    $dilRules,
                     $cvrRules,
                     $zeroRules,
+                    $zeroMinRoi,
                     $margin,
                     $dryRun,
                     $limit,
@@ -99,7 +98,7 @@ class ShopifyB2cRuleSpriceApplyService
                             return false;
                         }
                         try {
-                            $computed = $this->computeTarget($row, $dilRules, $cvrRules, $zeroRules, $margin);
+                            $computed = $this->computeTarget($row, $cvrRules, $zeroRules, $zeroMinRoi, $margin);
                             if ($computed === null) {
                                 $stats['skipped']++;
                                 continue;
@@ -241,24 +240,23 @@ class ShopifyB2cRuleSpriceApplyService
 
     /**
      * @param  array<string, mixed>  $row
-     * @param  list<array{key:string,label:string,prmt:float}>  $dilRules
      * @param  list<array{key:string,label:string,cpn:float}>  $cvrRules
      * @param  array{red:float,green:float,pink:float}  $zeroRules
      * @return array{sprice:float,prmt:float,cpn:float}|null
      */
-    protected function computeTarget(array $row, array $dilRules, array $cvrRules, array $zeroRules, float $margin): ?array
+    protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
         $cvr = (float) ($row['cvr'] ?? 0);
         $sold = (float) ($row['b2c_l30'] ?? 0);
         $zeroSold = $sold <= 0;
-        $prmt = $inv > 0 && ! $zeroSold ? $this->dilPrmtRules->prmtForDil($dil, $dilRules) : 0.0;
+        $prmt = 0.0;
         $cpn = $inv > 0 ? $this->cvrCpnRules->cpnForCvr($cvr, $cvrRules) : 0.0;
 
         $sprice = 0.0;
         if ($zeroSold) {
-            $groi = $this->zeroSoldGroi($dil, $zeroRules);
+            $groi = $this->zeroSoldGroi($dil, $zeroRules, $zeroMinRoi);
             $lp = (float) ($row['lp'] ?? 0);
             if ($lp > 0 && $margin > 0 && $groi !== null) {
                 $sprice = round(($lp * (1 + $groi / 100) + (float) ($row['ship'] ?? 0)) / $margin, 2);
@@ -398,16 +396,25 @@ class ShopifyB2cRuleSpriceApplyService
     }
 
     /** @param  array{red:float,green:float,pink:float}  $zeroRules */
-    protected function zeroSoldGroi(float $dil, array $zeroRules): ?float
+    protected function zeroSoldGroi(float $dil, array $zeroRules, float $minRoi = 0.0): ?float
     {
-        if ($dil < 25) {
-            return $zeroRules['red'];
+    {
+        $minGroi = null;
+        foreach (['red', 'green', 'pink'] as $key) {
+            if (! isset($zeroRules[$key]) || ! is_numeric($zeroRules[$key])) {
+                continue;
+            }
+            $g = (float) $zeroRules[$key];
+            if ($minGroi === null || $g < $minGroi) {
+                $minGroi = $g;
+            }
         }
-        if ($dil < 50) {
-            return $zeroRules['green'];
+        $target = $minGroi;
+        if ($minRoi > 0 && ($target === null || $minRoi > $target)) {
+            $target = $minRoi;
         }
 
-        return $zeroRules['pink'];
+        return $target;
     }
 
     protected function decodeValue(mixed $value): array

@@ -71,6 +71,7 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'macys'])
+        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'macys'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
@@ -114,7 +115,6 @@
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ MC Price. Click to show only those rows. Click again to clear.">
                         <i class="fas fa-exclamation-triangle"></i> 0</span>
-                    <span class="badge fs-6 p-2" id="zero-sold-rule-badge" style="background-color: #4f46e5; color: white; font-weight: bold; cursor: pointer;" title="0 Sold Rule — apply Amazon Price to S PRC for MC L30 = 0. Selected SKUs if checked; otherwise all visible. Skips INV = 0 and missing A Price.">0 Sold Rule: 0</span>
                     <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
                     <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz: 0</span>
                     <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amz">&gt; Amz: 0</span>
@@ -135,28 +135,17 @@
                         <option value="NR">NR</option>
                     </select>
 
-                    <div class="d-flex gap-1" style="width: auto;" title="CVR = MC L30 ÷ OV L30">
-                        <select id="gpft-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">GPFT%</option>
-                            <option value="negative">Negative</option>
-                            <option value="0-10">0-10%</option>
-                            <option value="10-20">10-20%</option>
-                            <option value="20-30">20-30%</option>
-                            <option value="30-40">30-40%</option>
-                            <option value="40-50">40-50%</option>
-                            <option value="50plus">Above 50%</option>
-                        </select>
-                        <select id="cvr-filter" class="form-select form-select-sm"
-                            style="width: auto; display: inline-block;">
-                            <option value="all">CVR%</option>
-                            <option value="0-0">0%</option>
-                            <option value="0-3">0-3%</option>
-                            <option value="3-7">3-7%</option>
-                            <option value="7-13">7-13%</option>
-                            <option value="13plus">13%+</option>
-                        </select>
-                    </div>
+                    <select id="gpft-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">GPFT%</option>
+                        <option value="negative">Negative</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
+                        <option value="40-50">40-50%</option>
+                        <option value="50plus">Above 50%</option>
+                    </select>
 
                     {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c-pricing).
                          Backed by `MC L30`:
@@ -208,6 +197,7 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
+                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'macys'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'macys'])
 
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
@@ -411,11 +401,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'macys'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'macys'])
 @endsection
 
 @section('script-bottom')
 <script>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
+    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'macys'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
@@ -930,14 +922,6 @@
             applySuggestAmazonPrice();
         });
 
-        $('#zero-sold-rule-badge').on('click', function() {
-            if (typeof saveAndApplyChPromoZeroSoldAmazon === 'function') {
-                saveAndApplyChPromoZeroSoldAmazon({ push: false });
-                return;
-            }
-            applyZeroSoldAmazonToSprice();
-        });
-
         // Clear SPRICE button
         $('#clear-sprice-btn').on('click', function() {
             clearSpriceForSelected();
@@ -1166,53 +1150,6 @@
                 SROI: sroi,
                 has_custom_sprice: true,
             };
-        }
-
-        // 0 Sold Rule — copy Amazon Price onto S PRC for MC L30 = 0.
-        function applyZeroSoldAmazonToSprice() {
-            if (!table) {
-                showToast('Load data first', 'error');
-                return;
-            }
-
-            const selected = selectedSkus.size > 0;
-            const rows = (table.getRows(selected ? undefined : 'active') || []).filter(function(row) {
-                const d = row.getData() || {};
-                if (isMacysParentRow(d)) return false;
-                const sku = String(d['(Child) sku'] || d.sku || '').trim();
-                if (!sku) return false;
-                if (selected && !selectedSkus.has(sku)) return false;
-                if ((parseFloat(d['MC L30']) || 0) > 0) return false;
-                if ((parseFloat(d.INV) || 0) <= 0) return false;
-                return (parseFloat(d['A Price']) || 0) > 0;
-            });
-
-            if (!rows.length) {
-                showToast(selected
-                    ? 'No selected 0 Sold SKUs with Amazon Price (INV > 0)'
-                    : 'No visible 0 Sold SKUs with Amazon Price (INV > 0)', 'error');
-                return;
-            }
-
-            const scope = selected ? 'selected' : 'visible';
-            if (!confirm('0 Sold Rule: apply Amazon Price to S PRC for ' + rows.length + ' ' + scope + ' 0 Sold SKU(s)?')) {
-                return;
-            }
-
-            const updates = [];
-            rows.forEach(function(row) {
-                const d = row.getData() || {};
-                const sku = String(d['(Child) sku'] || d.sku || '').trim();
-                const amazonPrice = parseFloat(d['A Price']) || 0;
-                if (!sku || amazonPrice <= 0) return;
-                row.update(macysAmazonToSpricePatch(d, amazonPrice));
-                updates.push({ sku: sku, sprice: amazonPrice });
-            });
-
-            if (updates.length) {
-                saveSpriceUpdates(updates, { skip_push: true });
-            }
-            showToast('0 Sold Rule: Amazon Price → S PRC on ' + updates.length + ' SKU(s)', 'success');
         }
 
         // Apply Amazon suggested price
@@ -2446,14 +2383,41 @@
                         return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
                     }
                 },
-                // PRMT % / CPN % — macys_promo_pricing
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
-
+                {
+                    title: "Sprc Dil",
+                    field: "SPRC_DIL",
+                    hozAlign: "center",
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const val = function(row) {
+                            return (typeof ebaySprcDilForRow === 'function')
+                                ? (ebaySprcDilForRow(row) || 0)
+                                : 0;
+                        };
+                        return val(aRow.getData()) - val(bRow.getData());
+                    },
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs. 0 Sold (MC L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isMacysParentRow(rowData)) return '';
+                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
+                        const meta = ebayDilGroiMetaForRow(rowData);
+                        if (!meta || !(meta.sprc > 0)) return '';
+                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                            + ' → ' + meta.label
+                            + ' → GROI ' + meta.groi + '%'
+                            + ' → $' + meta.sprc.toFixed(2);
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
+                            + meta.sprc.toFixed(2) + '</span>';
+                    },
+                    width: 78
+                },
                 {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
+                    headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when MC L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ MC Price. Red text = S PRC > LMP.",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -2681,7 +2645,6 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
-            const cvrFilter = $('#cvr-filter').val();
             const roiFilter = $('#roi-filter').val();
             const dilFilter = $('#dil-filter').val();
 
@@ -2713,21 +2676,6 @@
                     table.addFilter("GPFT%", ">=", min);
                     table.addFilter("GPFT%", "<", max);
                 }
-            }
-
-            if (cvrFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const ov = parseFloat(data['L30']) || 0;
-                    const sold = parseFloat(data['MC L30']) || 0;
-                    const cvrPercent = ov > 0 ? (sold / ov) * 100 : 0;
-                    const cvrRounded = Math.round(cvrPercent * 100) / 100;
-                    if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
-                    if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
-                    if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
-                    if (cvrFilter === '13plus') return cvrRounded > 13;
-                    return true;
-                });
             }
 
             // ROI filter
@@ -2866,7 +2814,7 @@
             applyFilters();
         });
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #dil-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 
@@ -2880,7 +2828,6 @@
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
             let missingCount = 0, mappingCount = 0;
             let lessAmzCount = 0, moreAmzCount = 0;
-            let zeroSoldRuleCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -2918,9 +2865,6 @@
 
                 if (mcL30 === 0) {
                     zeroSoldCount++;
-                    if (inv > 0 && amazonPrice > 0) {
-                        zeroSoldRuleCount++;
-                    }
                 } else if (mcL30 > 0) {
                     moreSoldCount++;
                 }
@@ -2980,7 +2924,6 @@
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncMacysTriangleBadgeState === 'function') syncMacysTriangleBadgeState();
-            $('#zero-sold-rule-badge').text(`0 Sold Rule: ${zeroSoldRuleCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount.toLocaleString()}`);
             $('#avg-dil-badge').text(`DIL%: ${Math.round(avgDil * 100)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
@@ -3093,6 +3036,9 @@
             setTimeout(function() {
                 applyFilters();
             }, 100);
+            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                ebayScheduleSprcDilAutoApply();
+            }
         });
 
         table.on('renderComplete', function() {

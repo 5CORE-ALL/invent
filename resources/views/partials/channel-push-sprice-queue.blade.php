@@ -74,7 +74,7 @@
                 reverb: 1, macys: 1, macy: 1, bestbuy: 1, walmart: 1,
                 temu: 1, temu2: 1, doba: 1, doba_withoutship: 1,
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
-                faire: 1, pls: 1, newegg: 1,
+                faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_PULL_DELAY_MS = 0;

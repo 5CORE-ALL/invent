@@ -717,7 +717,7 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Dil vs PRMT / CVR Disc — same slabs + apply as /amazon-tabulator-view --}}
+                    {{-- CVR Disc / 0 Sold — Prmt% / Dil vs PRMT removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
@@ -1327,7 +1327,7 @@
         return f === true || f === 1 || f === '1' || f === 'true';
     }
 
-    /** S PRC to show / push. Live Dil/PRMT/0-sold/Std rule wins (Amazon). Sugg Amz keeps A Price. */
+    /** S PRC to show / push. Live CVR Disc / 0-sold / Std rule wins. Sugg Amz keeps A Price. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
@@ -3514,7 +3514,7 @@
                         return !isShopifyB2cParentRow(cell.getRow().getData());
                     },
                     sorter: "number",
-                    headerTooltip: "Same as Amazon: if Dil / PRMT / CVR Disc / 0 Sold / Std rules apply, S PRC is cleared first, then the rule price is written and saved (no leftover overwrite). S PRC = Std × (1 − (PRMT% + CVR Disc%)/100), or 0 Sold → Target GROI. Below A Price is raised to Amz. Sugg Amz keeps A Price. Click edits the shown rule price. Outer GROI/GPFT/PFT/NROI + Diff preview until Push. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
+                    headerTooltip: "If CVR Disc / 0 Sold / Std rules apply, S PRC is cleared first, then the rule price is written and saved. Sold: S PRC = Std × (1 − CVR Disc%/100). 0 Sold (B2C L30 = 0, INV > 0) uses Temu’s rule: min Target GROI from the 0 Sold slabs, or Min ROI% if that is higher. Below A Price is raised to Amz. Sugg Amz keeps A Price. Click edits the shown rule price. Outer GROI/GPFT/PFT/NROI + Diff preview until Push. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
