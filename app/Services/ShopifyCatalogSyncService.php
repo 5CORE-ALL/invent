@@ -50,7 +50,7 @@ class ShopifyCatalogSyncService
         while ($hasMore) {
             $queryParams = [
                 'limit' => 250,
-                'fields' => 'id,title,handle,status,body_html,vendor,product_type,variants',
+                'fields' => 'id,title,handle,status,body_html,vendor,product_type,variants,image,images',
             ];
             if ($pageInfo) {
                 $queryParams['page_info'] = $pageInfo;
@@ -96,20 +96,30 @@ class ShopifyCatalogSyncService
 
                 $seenProductIds[$pid] = true;
 
+                $imageUrl = $this->firstProductImageUrl($product);
+                $productPayload = [
+                    'title' => $product['title'] ?? null,
+                    'handle' => $product['handle'] ?? null,
+                    'status' => $product['status'] ?? null,
+                    'body_html' => $product['body_html'] ?? null,
+                    'vendor' => $product['vendor'] ?? null,
+                    'product_type' => $product['product_type'] ?? null,
+                    'synced_at' => $now,
+                ];
+                if (Schema::hasColumn('shopify_catalog_products', 'image_src') && $imageUrl !== '') {
+                    $productPayload['image_src'] = $imageUrl;
+                }
+                $imageUrls = $this->productImageUrls($product);
+                if (Schema::hasColumn('shopify_catalog_products', 'image_urls') && $imageUrls !== []) {
+                    $productPayload['image_urls'] = json_encode($imageUrls);
+                }
+
                 $productRow = ShopifyCatalogProduct::updateOrCreate(
                     [
                         'store' => $store,
                         'shopify_id' => $pid,
                     ],
-                    [
-                        'title' => $product['title'] ?? null,
-                        'handle' => $product['handle'] ?? null,
-                        'status' => $product['status'] ?? null,
-                        'body_html' => $product['body_html'] ?? null,
-                        'vendor' => $product['vendor'] ?? null,
-                        'product_type' => $product['product_type'] ?? null,
-                        'synced_at' => $now,
-                    ]
+                    $productPayload
                 );
                 $productCount++;
 
@@ -141,20 +151,24 @@ class ShopifyCatalogSyncService
 
                     // Shared live store: keep shopify_skus qty in sync for marketplace listings (one sync for all MPs).
                     $sku = isset($variant['sku']) ? trim((string) $variant['sku']) : '';
-                    if ($store === 'main' && $sku !== '' && array_key_exists('inventory_quantity', $variant)) {
-                        $qty = (int) $variant['inventory_quantity'];
+                    if ($store === 'main' && $sku !== '' && stripos($sku, 'PARENT') === false) {
+                        $qty = (int) ($variant['inventory_quantity'] ?? 0);
+                        $skuPayload = [
+                            'variant_id' => (string) $vid,
+                            'available_to_sell' => $qty,
+                            'inv' => $qty,
+                            'on_hand' => $qty,
+                            'product_title' => $product['title'] ?? null,
+                            'variant_title' => $variant['title'] ?? null,
+                            'price' => isset($variant['price']) ? (float) $variant['price'] : null,
+                            'updated_at' => $now,
+                        ];
+                        if ($imageUrl !== '') {
+                            $skuPayload['image_src'] = $imageUrl;
+                        }
                         ShopifySku::query()->updateOrCreate(
                             ['sku' => $sku],
-                            [
-                                'variant_id' => (string) $vid,
-                                'available_to_sell' => $qty,
-                                'inv' => $qty,
-                                'on_hand' => $qty,
-                                'product_title' => $product['title'] ?? null,
-                                'variant_title' => $variant['title'] ?? null,
-                                'price' => isset($variant['price']) ? (float) $variant['price'] : null,
-                                'updated_at' => $now,
-                            ]
+                            $skuPayload
                         );
                     }
                 }
@@ -425,5 +439,40 @@ class ShopifyCatalogSyncService
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    private function firstProductImageUrl(array $product): string
+    {
+        $urls = $this->productImageUrls($product);
+
+        return $urls[0] ?? '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     * @return list<string>
+     */
+    private function productImageUrls(array $product): array
+    {
+        $out = [];
+        $push = static function ($url) use (&$out): void {
+            $url = trim((string) $url);
+            if ($url === '') {
+                return;
+            }
+            $url = strtok($url, '?') ?: $url;
+            if (! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        };
+        $push($product['image']['src'] ?? null);
+        foreach ($product['images'] ?? [] as $image) {
+            $push(is_array($image) ? ($image['src'] ?? null) : $image);
+        }
+
+        return $out;
     }
 }

@@ -411,6 +411,7 @@
         <div class="lm-actions" id="lm-header-actions-products">
             <button type="button" class="btn-lc btn-lc-ghost" id="lm-manage-channels-btn"><i class="fas fa-store me-1"></i>Add Marketplaces</button>
             <button type="button" class="btn-lc btn-lc-primary" id="lm-import-amazon-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Amz</button>
+            <button type="button" class="btn-lc btn-lc-primary" id="lm-import-shopify-btn"><i class="fas fa-cloud-download-alt me-1"></i>Import from Shopify</button>
         </div>
         <div class="lm-actions d-none" id="lm-header-actions-drafts">
             <button type="button" class="btn-lc btn-lc-primary" id="lm-quick-list-btn"><i class="fas fa-bolt me-1"></i><span id="lm-quick-list-label">Quick/Auto List</span></button>
@@ -2691,7 +2692,7 @@
         table = new Tabulator('#lm-products-table', {
             layout: 'fitColumns',
             height: Math.max(360, window.innerHeight - 280),
-            placeholder: 'No listings found. Click Import from Amz.',
+            placeholder: 'No listings found. Click Import from Amz or Import from Shopify.',
             selectableRows: true,
             pagination: true,
             paginationSize: 100,
@@ -2903,6 +2904,7 @@
             $.ajax({
                 url: "{{ route('listing.manager.import') }}",
                 method: 'POST',
+                timeout: 0,
                 success: function (res) {
                     toast(res.message || 'Import complete.', res.success ? 'success' : 'error');
                     loadProductTypes();
@@ -2910,6 +2912,24 @@
                 },
                 error: xhr => toast(xhr.responseJSON?.message || 'Import failed.', 'error'),
                 complete: () => $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt me-1"></i>Import from Amz'),
+            });
+        });
+
+        $('#lm-import-shopify-btn').on('click', function () {
+            const $btn = $(this);
+            if (!confirm('Import all Shopify products? This may take a few minutes.')) return;
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Importing…');
+            $.ajax({
+                url: "{{ route('listing.manager.import.shopify') }}",
+                method: 'POST',
+                timeout: 0,
+                success: function (res) {
+                    toast(res.message || 'Import complete.', res.success ? 'success' : 'error');
+                    loadProductTypes();
+                    loadTable();
+                },
+                error: xhr => toast(xhr.responseJSON?.message || 'Shopify import failed.', 'error'),
+                complete: () => $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt me-1"></i>Import from Shopify'),
             });
         });
 
