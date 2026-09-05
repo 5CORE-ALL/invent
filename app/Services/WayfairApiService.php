@@ -1729,6 +1729,12 @@ XML;
             return ['questions' => [], 'message' => 'Wayfair class ID is required.'];
         }
 
+        $cacheKey = 'wayfair.product_addition_questions.'.$classId;
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && ($cached['questions'] ?? []) !== []) {
+            return $cached;
+        }
+
         $query = <<<'GRAPHQL'
         query GetQuestions($request: GetProductAdditionQuestionsRequest!) {
           productAddition {
@@ -1772,11 +1778,15 @@ XML;
             ],
         ]);
         $questions = $res['data']['productAddition']['questions'] ?? [];
-
-        return [
+        $out = [
             'questions' => is_array($questions) ? array_values($questions) : [],
             'message' => (string) ($res['message'] ?? ''),
         ];
+        if ($out['questions'] !== []) {
+            Cache::put($cacheKey, $out, 21600);
+        }
+
+        return $out;
     }
 
     /**
@@ -1785,6 +1795,15 @@ XML;
     public function getManufacturerAssociation(): ?array
     {
         $configured = (int) config('services.wayfair.manufacturer_id', 0);
+        if ($configured > 0) {
+            return ['id' => $configured, 'name' => 'Configured manufacturer'];
+        }
+
+        $cached = Cache::get('wayfair.manufacturer_association');
+        if (is_array($cached) && (int) ($cached['id'] ?? 0) > 0) {
+            return $cached;
+        }
+
         $query = <<<'GRAPHQL'
         query brandAssociations($request: GetSupplierBrandsAssociationsRequest) {
           supplierBrand {
@@ -1817,21 +1836,19 @@ XML;
             if ($id <= 0) {
                 continue;
             }
-            if ($configured > 0 && $id === $configured) {
-                return ['id' => $id, 'name' => $name !== '' ? $name : 'Manufacturer '.$id];
-            }
             if ($picked === null || stripos($name, '5 core') !== false) {
                 $picked = ['id' => $id, 'name' => $name !== '' ? $name : 'Manufacturer '.$id];
                 if (stripos($name, '5 core') !== false) {
+                    Cache::put('wayfair.manufacturer_association', $picked, 43200);
+
                     return $picked;
                 }
             }
         }
         if ($picked !== null) {
+            Cache::put('wayfair.manufacturer_association', $picked, 43200);
+
             return $picked;
-        }
-        if ($configured > 0) {
-            return ['id' => $configured, 'name' => 'Configured manufacturer'];
         }
 
         return null;
@@ -1984,28 +2001,6 @@ XML;
                   class { classId className }
                   classId
                   className
-                }
-              }
-            }
-            GRAPHQL,
-            <<<'GRAPHQL'
-            query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
-              supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
-                products {
-                  productId
-                  supplierPartNumber
-                  classId
-                  className
-                }
-              }
-            }
-            GRAPHQL,
-            <<<'GRAPHQL'
-            query ($supplierId: Int!, $filter: ProductFilter, $paginationOptions: PaginationOptions) {
-              supplierCatalog(supplierId: $supplierId, filter: $filter, paginationOptions: $paginationOptions) {
-                products {
-                  productId
-                  supplierPartNumber
                 }
               }
             }
@@ -2871,14 +2866,11 @@ XML;
     {
         $token = $this->getTokenForCatalog();
         $supplierId = (string) config('services.wayfair.supplier_id');
-        $urls = array_values(array_unique(array_filter([
-            (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql'),
-            $this->graphqlUrl,
-        ])));
+        $url = (string) config('services.wayfair.product_catalog_graphql_url', 'https://api.wayfair.io/v1/product-catalog-api/graphql');
 
-        $lastMessage = 'Wayfair product addition request failed.';
-        foreach ($urls as $url) {
-            $response = $this->apiHttpClient()
+        try {
+            $response = $this->lookupHttpClient()
+                ->timeout(25)
                 ->withToken($token)
                 ->withHeaders([
                     'X-SELECTED-SUPPLIER-ID' => $supplierId,
@@ -2889,20 +2881,27 @@ XML;
                     'query' => $query,
                     'variables' => $variables,
                 ]);
-            $json = $response->json();
-            $json = is_array($json) ? $json : [];
-            if (! empty($json['errors'])) {
-                $lastMessage = $this->formatWayfairGraphqlErrors($json['errors']);
-                Log::warning('Wayfair product addition GraphQL error', [
-                    'url' => $url,
-                    'message' => $lastMessage,
-                ]);
-                continue;
-            }
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair product addition GraphQL timeout', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
 
-            return ['data' => is_array($json['data'] ?? null) ? $json['data'] : [], 'message' => ''];
+            return ['data' => [], 'message' => 'Wayfair product addition timed out. Refresh Missing L — the listing may already be created.'];
         }
 
-        return ['data' => [], 'message' => $lastMessage];
+        $json = $response->json();
+        $json = is_array($json) ? $json : [];
+        if (! empty($json['errors'])) {
+            $lastMessage = $this->formatWayfairGraphqlErrors($json['errors']);
+            Log::warning('Wayfair product addition GraphQL error', [
+                'url' => $url,
+                'message' => $lastMessage,
+            ]);
+
+            return ['data' => [], 'message' => $lastMessage];
+        }
+
+        return ['data' => is_array($json['data'] ?? null) ? $json['data'] : [], 'message' => ''];
     }
 }

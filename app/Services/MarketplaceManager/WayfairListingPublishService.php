@@ -64,8 +64,12 @@ class WayfairListingPublishService
             return ['id' => $cached, 'path' => 'Class '.$cached.' (from a listed sibling)', 'name' => ''];
         }
 
-        $catalogSkus = array_values(array_unique(array_merge([$sku], $this->listedFamilySkus($sku))));
-        $hit = $this->api->lookupCatalogClassForSkus(array_slice($catalogSkus, 0, 20));
+        $catalogSkus = array_values(array_unique(array_merge(
+            [$sku],
+            $this->listedFamilySkus($sku),
+            array_slice($candidates, 0, 12)
+        )));
+        $hit = $this->api->lookupCatalogClassForSkus(array_slice($catalogSkus, 0, 12));
         if ($hit && ($hit['class_id'] ?? 0) > 0) {
             $name = trim((string) ($hit['class_name'] ?? ''));
             $this->rememberClassId($candidates, (int) $hit['class_id'], $name);
@@ -77,29 +81,8 @@ class WayfairListingPublishService
             ];
         }
 
-        $fromSubmission = $this->classIdFromProductAdditionSubmissions($candidates);
-        if ($fromSubmission > 0) {
-            $this->rememberClassId($candidates, $fromSubmission);
-
-            return ['id' => $fromSubmission, 'path' => 'Class '.$fromSubmission.' (from a prior Wayfair submission)', 'name' => ''];
-        }
-
         $title = $this->resolveTitleForClass($product, $sku, $candidates);
         $parent = trim((string) ($product->parent ?? ''));
-        foreach ($this->api->classSearchHints($title, $sku, $parent) as $hint) {
-            $fromTaxonomy = $this->api->searchTaxonomyClass($hint);
-            if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
-                $name = trim((string) ($fromTaxonomy['class_name'] ?? ''));
-                $this->rememberClassId($candidates, (int) $fromTaxonomy['class_id'], $name);
-
-                return [
-                    'id' => (int) $fromTaxonomy['class_id'],
-                    'path' => $name !== '' ? $name.' ('.$fromTaxonomy['class_id'].')' : 'Class '.$fromTaxonomy['class_id'],
-                    'name' => $name,
-                ];
-            }
-        }
-
         $default = (int) config('services.wayfair.default_class_id', 0);
         if ($default > 0) {
             return ['id' => $default, 'path' => 'Configured Wayfair class '.$default, 'name' => ''];
@@ -121,6 +104,10 @@ class WayfairListingPublishService
      */
     public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $classId = null, ?string $className = null): array
     {
+        if (function_exists('ignore_user_abort')) {
+            @ignore_user_abort(true);
+        }
+
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
             return ['success' => false, 'message' => 'SKU is required.'];
@@ -253,19 +240,9 @@ class WayfairListingPublishService
         }
 
         $requestIds = $res['request_ids'] ?? [];
-        $pollMessage = $this->pollSubmissionFlaws($requestIds);
-        if ($pollMessage !== '') {
-            return [
-                'success' => false,
-                'message' => $pollMessage,
-                'goods_id' => $requestIds[0] ?? null,
-            ];
-        }
-
         $requestId = (string) ($requestIds[0] ?? '');
         try {
             $this->persistListed($prepared, $requestId, $resolvedClass);
-            $this->pushInventoryAndPrice($prepared);
         } catch (\Throwable $e) {
             Log::warning('Wayfair persist listed failed', ['error' => $e->getMessage()]);
         }
@@ -299,27 +276,6 @@ class WayfairListingPublishService
         $suggested = $this->suggestClassForSku($skus[0] ?? '');
         if ((int) ($suggested['id'] ?? 0) > 0) {
             return (int) $suggested['id'];
-        }
-        $searchParts = [$name];
-        foreach ($skus as $sku) {
-            $product = $this->findProduct($sku);
-            $searchParts[] = $sku;
-            $searchParts[] = $product ? $this->resolveTitle($product, $sku) : '';
-            $searchParts[] = $product ? trim((string) ($product->parent ?? '')) : '';
-        }
-        foreach ($this->api->classSearchHints(...$searchParts) as $hint) {
-            try {
-                $fromName = $this->api->searchListingClasses($hint, $hint);
-                $picked = (int) ($fromName['categories'][0]['id'] ?? 0);
-                if ($picked > 0) {
-                    return $picked;
-                }
-            } catch (\Throwable) {
-            }
-            $fromTaxonomy = $this->api->searchTaxonomyClass($hint);
-            if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
-                return (int) $fromTaxonomy['class_id'];
-            }
         }
 
         return 0;
@@ -1011,6 +967,21 @@ class WayfairListingPublishService
     }
 
     /**
+     * @param  list<string>  $tokens
+     * @return list<string>
+     */
+    private function familyCoreTokens(array $tokens): array
+    {
+        $skip = [
+            'BLK', 'BLACK', 'BLU', 'BLUE', 'GR', 'GRN', 'GREEN', 'PNK', 'PINK',
+            'ORG', 'ORANGE', 'RED', 'WHT', 'WH', 'WHITE', 'BK', 'GN', 'YL',
+            'GOLD', 'SLV', 'SILVER', 'HD', 'TRI',
+        ];
+
+        return array_values(array_filter($tokens, static fn ($token) => ! in_array($token, $skip, true)));
+    }
+
+    /**
      * @param  list<string>  $need
      * @param  list<string>  $have
      */
@@ -1024,6 +995,15 @@ class WayfairListingPublishService
         }
         if (count($need) >= 2 && count($have) >= 2 && $need[0] === $have[0] && $need[1] === $have[1]) {
             return true;
+        }
+        $coreNeed = $this->familyCoreTokens($need);
+        $coreHave = $this->familyCoreTokens($have);
+        if ($coreNeed !== [] && $coreHave !== []) {
+            $shorter = count($coreNeed) <= count($coreHave) ? $coreNeed : $coreHave;
+            $longer = count($coreNeed) <= count($coreHave) ? $coreHave : $coreNeed;
+            if (array_diff($shorter, $longer) === []) {
+                return true;
+            }
         }
         foreach ($need as $token) {
             if (! in_array($token, $have, true)) {
