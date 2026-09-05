@@ -90,7 +90,7 @@
     <a href="{{ route('crm.shopify.customers.index') }}"
        class="nav-link @if ($active === 'customers') active @endif"
        @if ($active === 'customers') aria-current="page" @endif>
-        B2B Customers
+        All
     </a>
     <a href="{{ route('crm.shopify.others.index') }}"
        class="nav-link @if ($active === 'others') active @endif"

@@ -451,23 +451,23 @@
                     <ul class="side-nav-second-level">
                         <li>
                             <a href="{{ route('crm.follow-ups.index') }}">
-                                <i class="ri-calendar-check-line me-2"></i>Follow-ups
+                                <i class="ri-calendar-check-line me-2"></i>CRM Follow-ups
                             </a>
                         </li>
                         <li>
                             <a href="{{ route('crm.shopify.customers.index') }}">
-                                <i class="ri-store-2-line me-2"></i>Shopify customers
+                                <i class="ri-store-2-line me-2"></i>CRM Shopify customers
                             </a>
                         </li>
                         <li>
                             <a href="{{ route('crm.shopify.orders.index') }}">
-                                <i class="ri-shopping-bag-3-line me-2"></i>Shopify orders
+                                <i class="ri-shopping-bag-3-line me-2"></i>CRM Shopify orders
                             </a>
                         </li>
                         <li>
                             <a href="{{ route('google-maps-data-extractor.index') }}"
                                 class="{{ request()->routeIs('google-maps-data-extractor.*') ? 'active' : '' }}">
-                                <i class="ri-map-pin-line me-2"></i>Data Extractor
+                                <i class="ri-map-pin-line me-2"></i>CRM Data Extractor
                             </a>
                         </li>
                     </ul>

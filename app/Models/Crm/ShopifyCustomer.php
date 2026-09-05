@@ -24,12 +24,20 @@ class ShopifyCustomer extends Model
         'classification_overridden',
         'classified_at',
         'last_synced_at',
+        'whatsapp_available',
+        'whatsapp_phone',
+        'whatsapp_checked_at',
+        'website',
+        'facebook',
+        'instagram',
     ];
 
     protected $casts = [
         'raw_payload' => 'array',
         'classification_overridden' => 'boolean',
         'classified_at' => 'datetime',
+        'whatsapp_available' => 'boolean',
+        'whatsapp_checked_at' => 'datetime',
         'last_synced_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

@@ -70,4 +70,28 @@ interface ShopifyServiceInterface
      * @throws \InvalidArgumentException When no CRM customer can be resolved
      */
     public function ensureCrmCustomerForShopifyRecord(ShopifyCustomer $shopifyCustomer): Customer;
+
+    /**
+     * Add tags to a Shopify customer (merged with existing tags) and persist the result.
+     *
+     * @param  array<int, string>  $tags
+     */
+    public function addTagsToShopifyCustomer(ShopifyCustomer $record, array $tags): ShopifyCustomer;
+
+    /**
+     * Remove tags from a Shopify customer and persist the result.
+     *
+     * @param  array<int, string>  $tags
+     */
+    public function removeTagsFromShopifyCustomer(ShopifyCustomer $record, array $tags): ShopifyCustomer;
+
+    /**
+     * Replace one tag with another on a Shopify customer (no-op if the source tag is absent).
+     */
+    public function mergeCustomerTag(ShopifyCustomer $record, string $from, string $to): ShopifyCustomer;
+
+    /**
+     * Delete a Shopify customer remotely when configured, then remove the local row.
+     */
+    public function deleteShopifyCustomer(ShopifyCustomer $record): void;
 }

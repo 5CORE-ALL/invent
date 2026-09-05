@@ -40,7 +40,14 @@ Route::middleware(['auth'])
         Route::get('shopify/customers', [ShopifyController::class, 'shopifyCustomersIndex'])->name('shopify.customers.index');
         Route::get('shopify/customers/data', [ShopifyController::class, 'shopifyCustomersData'])->name('shopify.customers.data');
         Route::get('shopify/customers/tags', [ShopifyController::class, 'shopifyCustomerTags'])->name('shopify.customers.tags');
+        Route::post('shopify/customers/tags', [ShopifyController::class, 'addShopifyCustomerTags'])->name('shopify.customers.tags.add');
+        Route::post('shopify/customers/tags/delete', [ShopifyController::class, 'deleteShopifyCustomerTags'])->name('shopify.customers.tags.delete');
+        Route::post('shopify/customers/tags/merge', [ShopifyController::class, 'mergeShopifyCustomerTags'])->name('shopify.customers.tags.merge');
+        Route::post('shopify/customers/whatsapp-check', [ShopifyController::class, 'checkShopifyCustomerWhatsApp'])->name('shopify.customers.whatsapp.check');
         Route::post('shopify/customers', [ShopifyController::class, 'storeShopifyCustomer'])->name('shopify.customers.store');
+        Route::post('shopify/customers/update', [ShopifyController::class, 'updateShopifyCustomers'])->name('shopify.customers.update');
+        Route::post('shopify/customers/social', [ShopifyController::class, 'updateShopifyCustomerSocial'])->name('shopify.customers.social');
+        Route::post('shopify/customers/delete', [ShopifyController::class, 'deleteShopifyCustomers'])->name('shopify.customers.delete');
         Route::post('shopify/customers/import', [ShopifyController::class, 'importShopifyCustomers'])->name('shopify.customers.import');
         Route::post('shopify/customers/{shopify_customer}/follow-ups', [ShopifyController::class, 'storeCustomerFollowUp'])
             ->name('shopify.customers.follow-ups.store');

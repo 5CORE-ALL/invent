@@ -1113,6 +1113,16 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(5)
             ->appendOutputTo($log);
 
+        // CRM Shopify customers — Last synced on /crm/shopify/customers.
+        // Do not wrap in $ist(); Eastern midnight is the required daily run.
+        $schedule->command('shopify:sync-customers')
+            ->dailyAt('00:00')
+            ->timezone('America/New_York')
+            ->name('crm-shopify-sync-customers-est')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
    
         $taskTz = config('tasks.business_timezone', 'America/Los_Angeles');
 

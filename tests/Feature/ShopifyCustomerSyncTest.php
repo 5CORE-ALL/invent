@@ -8,6 +8,7 @@ use App\Models\Crm\ShopifyOrder;
 use App\Models\User;
 use App\Services\Crm\Contracts\ShopifyServiceInterface;
 use App\Services\Crm\ShopifyCustomerClassifier;
+use App\Services\Crm\WhatsAppAvailabilityService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
@@ -41,6 +42,71 @@ class ShopifyCustomerSyncTest extends TestCase
         $user = User::query()->first();
 
         return $user ?? User::factory()->create();
+    }
+
+    private function createTypedShopifyCustomer(
+        int $shopifyCustomerId,
+        string $email,
+        string $customerType,
+        ?string $marketplaceChannel = null,
+        string $tags = '',
+        ?string $phone = null
+    ): ShopifyCustomer {
+        $attributes = [
+            'shopify_customer_id' => $shopifyCustomerId,
+            'email' => $email,
+            'first_name' => 'Test',
+            'last_name' => 'Customer',
+            'phone' => $phone,
+            'sync_status' => 'synced',
+            'customer_type' => $customerType,
+            'marketplace_channel' => $marketplaceChannel,
+            'last_synced_at' => now(),
+            'raw_payload' => $this->sampleApiCustomer([
+                'id' => $shopifyCustomerId,
+                'email' => $email,
+                'tags' => $tags,
+            ]),
+        ];
+
+        $existing = ShopifyCustomer::query()->where('shopify_customer_id', $shopifyCustomerId)->first();
+        if ($existing) {
+            $existing->fill($attributes)->save();
+
+            return $existing;
+        }
+
+        $customer = new ShopifyCustomer($attributes);
+        $customer->incrementing = false;
+        $customer->id = $shopifyCustomerId;
+        $customer->save();
+
+        return $customer;
+    }
+
+    private function createShopifyOrder(
+        int $shopifyOrderId,
+        int $shopifyCustomerId,
+        float $totalPrice,
+        int $lineItemsCount
+    ): ShopifyOrder {
+        $order = new ShopifyOrder([
+            'shopify_order_id' => $shopifyOrderId,
+            'shopify_customer_id' => $shopifyCustomerId,
+            'total_price' => $totalPrice,
+            'line_items_count' => $lineItemsCount,
+            'currency' => 'USD',
+            'order_status' => 'paid',
+            'order_date' => now(),
+            'raw_payload' => [
+                'line_items' => [['quantity' => $lineItemsCount]],
+            ],
+        ]);
+        $order->incrementing = false;
+        $order->id = $shopifyOrderId;
+        $order->save();
+
+        return $order;
     }
 
     /** Sample Shopify REST customer object (same shape as real API response). */
@@ -233,6 +299,52 @@ class ShopifyCustomerSyncTest extends TestCase
         $seededRow = collect($data)->firstWhere('email', 'tagged@example.com');
         $this->assertNotNull($seededRow);
         $this->assertSame(['VIP', 'wholesale'], $seededRow['tags']);
+    }
+
+    public function test_customers_data_includes_orders_qty_and_revenue(): void
+    {
+        $withOrders = $this->createTypedShopifyCustomer(
+            9_900_000_290,
+            'metrics.orders@example.com',
+            'wholesale'
+        );
+        $payload = is_array($withOrders->raw_payload) ? $withOrders->raw_payload : [];
+        $payload['orders_count'] = 99;
+        $payload['total_spent'] = '1.00';
+        $withOrders->forceFill(['raw_payload' => $payload])->save();
+
+        $this->createShopifyOrder(9_900_010_290, (int) $withOrders->shopify_customer_id, 100, 3);
+        $this->createShopifyOrder(9_900_010_291, (int) $withOrders->shopify_customer_id, 50.50, 2);
+
+        $payloadOnly = $this->createTypedShopifyCustomer(
+            9_900_000_292,
+            'metrics.payload@example.com',
+            'wholesale'
+        );
+        $payloadOnlyData = is_array($payloadOnly->raw_payload) ? $payloadOnly->raw_payload : [];
+        $payloadOnlyData['orders_count'] = 3;
+        $payloadOnlyData['total_spent'] = '299.00';
+        $payloadOnly->forceFill(['raw_payload' => $payloadOnlyData])->save();
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data').'?customer_type=wholesale&per_page=100&q=metrics.&sort_by=revenue&sort_dir=desc');
+        $response->assertOk()->assertJsonPath('meta.sort_by', 'revenue');
+
+        $rows = collect($response->json('data'));
+        $withOrdersRow = $rows->firstWhere('email', 'metrics.orders@example.com');
+        $payloadRow = $rows->firstWhere('email', 'metrics.payload@example.com');
+
+        $this->assertNotNull($withOrdersRow);
+        $this->assertSame(2, $withOrdersRow['orders_count']);
+        $this->assertSame(5, $withOrdersRow['qty']);
+        $this->assertEquals(150.5, $withOrdersRow['revenue']);
+
+        $this->assertNotNull($payloadRow);
+        $this->assertSame(3, $payloadRow['orders_count']);
+        $this->assertSame(0, $payloadRow['qty']);
+        $this->assertEquals(299.0, $payloadRow['revenue']);
+        $this->assertSame('metrics.payload@example.com', $rows->value('email'));
     }
 
     /**
@@ -474,40 +586,11 @@ class ShopifyCustomerSyncTest extends TestCase
         $this->assertSame('order_source', $record->classification_source);
     }
 
-    public function test_main_customer_data_excludes_marketplace_by_default(): void
+    public function test_main_customer_data_defaults_to_all_b2b(): void
     {
-        ShopifyCustomer::query()->create([
-            'shopify_customer_id' => 9_900_000_108,
-            'email' => 'direct.customer@example.com',
-            'first_name' => 'Direct',
-            'last_name' => 'Customer',
-            'phone' => null,
-            'sync_status' => 'synced',
-            'customer_type' => 'direct',
-            'last_synced_at' => now(),
-            'raw_payload' => $this->sampleApiCustomer([
-                'id' => 9_900_000_108,
-                'email' => 'direct.customer@example.com',
-                'tags' => '',
-            ]),
-        ]);
-
-        ShopifyCustomer::query()->create([
-            'shopify_customer_id' => 9_900_000_109,
-            'email' => 'marketplace.customer@marketplace.amazon.com',
-            'first_name' => 'Marketplace',
-            'last_name' => 'Customer',
-            'phone' => null,
-            'sync_status' => 'synced',
-            'customer_type' => 'marketplace',
-            'marketplace_channel' => 'amazon',
-            'last_synced_at' => now(),
-            'raw_payload' => $this->sampleApiCustomer([
-                'id' => 9_900_000_109,
-                'email' => 'marketplace.customer@marketplace.amazon.com',
-                'tags' => '',
-            ]),
-        ]);
+        $this->createTypedShopifyCustomer(9_900_000_108, 'direct.customer@example.com', 'direct');
+        $this->createTypedShopifyCustomer(9_900_000_109, 'marketplace.customer@marketplace.amazon.com', 'marketplace', 'amazon');
+        $this->createTypedShopifyCustomer(9_900_000_112, 'wholesale.customer@example.com', 'wholesale');
 
         $this->actingAs($this->actingUser());
 
@@ -515,8 +598,400 @@ class ShopifyCustomerSyncTest extends TestCase
         $response->assertOk();
 
         $emails = collect($response->json('data'))->pluck('email');
-        $this->assertContains('direct.customer@example.com', $emails);
+        $this->assertContains('wholesale.customer@example.com', $emails);
+        $this->assertNotContains('direct.customer@example.com', $emails);
         $this->assertNotContains('marketplace.customer@marketplace.amazon.com', $emails);
+    }
+
+    public function test_customers_data_all_includes_every_type(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_200, 'all.direct@example.com', 'direct');
+        $this->createTypedShopifyCustomer(9_900_000_201, 'all.marketplace@example.com', 'marketplace', 'amazon');
+        $this->createTypedShopifyCustomer(9_900_000_202, 'all.wholesale@example.com', 'wholesale');
+        $this->createTypedShopifyCustomer(9_900_000_203, 'all.dropshipper@example.com', 'dropshipper');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data') . '?customer_type=all&per_page=100');
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('all.direct@example.com', $emails);
+        $this->assertContains('all.marketplace@example.com', $emails);
+        $this->assertContains('all.wholesale@example.com', $emails);
+        $this->assertContains('all.dropshipper@example.com', $emails);
+    }
+
+    public function test_customers_data_b2c_filters_direct_customers(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_210, 'b2c.direct@example.com', 'direct');
+        $this->createTypedShopifyCustomer(9_900_000_211, 'b2c.wholesale@example.com', 'wholesale');
+        $this->createTypedShopifyCustomer(9_900_000_212, 'b2c.marketplace@example.com', 'marketplace', 'amazon');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data') . '?customer_type=b2c&per_page=100');
+        $response->assertOk();
+
+        $rows = collect($response->json('data'));
+        $emails = $rows->pluck('email');
+        $this->assertContains('b2c.direct@example.com', $emails);
+        $this->assertNotContains('b2c.wholesale@example.com', $emails);
+        $this->assertNotContains('b2c.marketplace@example.com', $emails);
+        $this->assertTrue($rows->every(fn ($row) => ($row['customer_type'] ?? null) === 'direct'));
+    }
+
+    public function test_customers_data_marketplace_type_filter(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_230, 'type.marketplace@example.com', 'marketplace', 'amazon');
+        $this->createTypedShopifyCustomer(9_900_000_231, 'type.wholesale@example.com', 'wholesale');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data') . '?customer_type=marketplace&per_page=100');
+        $response->assertOk();
+
+        $rows = collect($response->json('data'));
+        $emails = $rows->pluck('email');
+        $this->assertContains('type.marketplace@example.com', $emails);
+        $this->assertNotContains('type.wholesale@example.com', $emails);
+        $this->assertTrue($rows->every(fn ($row) => ($row['customer_type'] ?? null) === 'marketplace'));
+    }
+
+    public function test_customers_data_includes_address_from_default_address(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_220, 'address.column@example.com', 'wholesale');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data') . '?q=address.column%40example.com');
+        $response->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('email', 'address.column@example.com');
+        $this->assertNotNull($row);
+        $this->assertSame('123 Main St, New York', $row['address']);
+    }
+
+    public function test_customers_data_filters_by_multiple_tags(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_240, 'tags.shop@example.com', 'wholesale', null, 'Shop, extra');
+        $this->createTypedShopifyCustomer(9_900_000_241, 'tags.vip@example.com', 'wholesale', null, 'VIP');
+        $this->createTypedShopifyCustomer(9_900_000_242, 'tags.login@example.com', 'wholesale', null, 'Login with Shop');
+        $this->createTypedShopifyCustomer(9_900_000_243, 'tags.other@example.com', 'wholesale', null, 'other');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data', [
+            'tags' => ['Shop', 'VIP'],
+            'per_page' => 100,
+        ]));
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('tags.shop@example.com', $emails);
+        $this->assertContains('tags.vip@example.com', $emails);
+        $this->assertNotContains('tags.login@example.com', $emails);
+        $this->assertNotContains('tags.other@example.com', $emails);
+    }
+
+    public function test_customers_data_filters_email_duplicates(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_280, 'dup.email.one@example.com', 'wholesale');
+        $two = $this->createTypedShopifyCustomer(9_900_000_281, 'dup.email.two@example.com', 'wholesale');
+        $this->createTypedShopifyCustomer(9_900_000_282, 'dup.email.unique@example.com', 'wholesale');
+        $one->forceFill(['email' => 'shared.dup@example.com'])->save();
+        $two->forceFill(['email' => 'shared.dup@example.com'])->save();
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data', [
+            'customer_type' => 'all',
+            'duplicate_by' => 'email',
+            'q' => 'shared.dup@example.com',
+            'per_page' => 100,
+        ]));
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('shared.dup@example.com', $emails);
+        $this->assertGreaterThanOrEqual(2, $emails->filter(fn ($email) => $email === 'shared.dup@example.com')->count());
+        $this->assertNotContains('dup.email.unique@example.com', $emails);
+    }
+
+    public function test_customers_data_filters_phone_duplicates(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_283, 'dup.phone.one@example.com', 'wholesale', null, '', '+1 (787) 667-1861');
+        $this->createTypedShopifyCustomer(9_900_000_284, 'dup.phone.two@example.com', 'wholesale', null, '', '17876671861');
+        $this->createTypedShopifyCustomer(9_900_000_285, 'dup.phone.unique@example.com', 'wholesale', null, '', '+50250163971');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data', [
+            'customer_type' => 'all',
+            'duplicate_by' => 'phone',
+            'q' => 'dup.phone',
+            'per_page' => 100,
+        ]));
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('dup.phone.one@example.com', $emails);
+        $this->assertContains('dup.phone.two@example.com', $emails);
+        $this->assertNotContains('dup.phone.unique@example.com', $emails);
+    }
+
+    public function test_customers_data_filters_name_duplicates(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_286, 'dup.name.one@example.com', 'wholesale');
+        $two = $this->createTypedShopifyCustomer(9_900_000_287, 'dup.name.two@example.com', 'wholesale');
+        $unique = $this->createTypedShopifyCustomer(9_900_000_288, 'dup.name.unique@example.com', 'wholesale');
+        $one->forceFill(['first_name' => 'Ada', 'last_name' => 'Duplicate'])->save();
+        $two->forceFill(['first_name' => 'Ada', 'last_name' => 'Duplicate'])->save();
+        $unique->forceFill(['first_name' => 'Unique', 'last_name' => 'Person'])->save();
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data', [
+            'customer_type' => 'all',
+            'duplicate_by' => 'name',
+            'q' => 'dup.name',
+            'per_page' => 100,
+        ]));
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('dup.name.one@example.com', $emails);
+        $this->assertContains('dup.name.two@example.com', $emails);
+        $this->assertNotContains('dup.name.unique@example.com', $emails);
+    }
+
+    public function test_customers_data_filters_address_duplicates(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_289, 'dup.addr.one@example.com', 'wholesale');
+        $two = $this->createTypedShopifyCustomer(9_900_000_290, 'dup.addr.two@example.com', 'wholesale');
+        $unique = $this->createTypedShopifyCustomer(9_900_000_291, 'dup.addr.unique@example.com', 'wholesale');
+
+        $shared = ['address1' => '400 Pine Court lot 10', 'city' => 'Stanley', 'country' => 'United States'];
+        foreach ([$one, $two] as $customer) {
+            $payload = is_array($customer->raw_payload) ? $customer->raw_payload : [];
+            $payload['default_address'] = $shared;
+            $customer->forceFill(['raw_payload' => $payload])->save();
+        }
+        $payload = is_array($unique->raw_payload) ? $unique->raw_payload : [];
+        $payload['default_address'] = ['address1' => '1 Unique Lane', 'city' => 'Elsewhere', 'country' => 'United States'];
+        $unique->forceFill(['raw_payload' => $payload])->save();
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data', [
+            'customer_type' => 'all',
+            'duplicate_by' => 'address',
+            'q' => 'dup.addr',
+            'per_page' => 100,
+        ]));
+        $response->assertOk();
+
+        $emails = collect($response->json('data'))->pluck('email');
+        $this->assertContains('dup.addr.one@example.com', $emails);
+        $this->assertContains('dup.addr.two@example.com', $emails);
+        $this->assertNotContains('dup.addr.unique@example.com', $emails);
+    }
+
+    public function test_customer_tags_endpoint_includes_counts(): void
+    {
+        $this->createTypedShopifyCustomer(9_900_000_270, 'tag.count.a@example.com', 'wholesale', null, 'CountTagAlpha, CountTagBeta');
+        $this->createTypedShopifyCustomer(9_900_000_271, 'tag.count.b@example.com', 'wholesale', null, 'CountTagAlpha');
+        $this->createTypedShopifyCustomer(9_900_000_272, 'tag.count.c@example.com', 'wholesale', null, 'CountTagGamma');
+        $this->createTypedShopifyCustomer(9_900_000_273, 'tag.count.d@example.com', 'wholesale', null, 'Login with CountTagAlpha');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.tags', [
+            'customer_type' => 'wholesale',
+        ]));
+        $response->assertOk();
+
+        $tags = $response->json('tags');
+        $counts = $response->json('counts');
+        $this->assertIsArray($tags);
+        $this->assertIsArray($counts);
+        $this->assertContains('CountTagAlpha', $tags);
+        $this->assertContains('CountTagBeta', $tags);
+        $this->assertContains('CountTagGamma', $tags);
+        $this->assertContains('Login with CountTagAlpha', $tags);
+        $this->assertSame(2, $counts['CountTagAlpha']);
+        $this->assertSame(1, $counts['CountTagBeta']);
+        $this->assertSame(1, $counts['CountTagGamma']);
+        $this->assertSame(1, $counts['Login with CountTagAlpha']);
+    }
+
+    public function test_add_tags_to_selected_customers(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_250, 'add.tags.one@example.com', 'wholesale', null, 'Shop');
+        $two = $this->createTypedShopifyCustomer(9_900_000_251, 'add.tags.two@example.com', 'wholesale', null, '');
+        $seen = [];
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) use (&$seen) {
+            $mock->shouldReceive('addTagsToShopifyCustomer')->twice()->andReturnUsing(function (ShopifyCustomer $record, array $tags) use (&$seen) {
+                $seen[] = [
+                    'shopify_customer_id' => (int) $record->shopify_customer_id,
+                    'tags' => $tags,
+                ];
+
+                return $record;
+            });
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.tags.add'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+            'tags' => ['VIP', 'Shop'],
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+
+        $ids = collect($seen)->pluck('shopify_customer_id')->all();
+        $this->assertContains(9_900_000_250, $ids);
+        $this->assertContains(9_900_000_251, $ids);
+        $this->assertSame(['VIP', 'Shop'], $seen[0]['tags']);
+    }
+
+    public function test_delete_tag_from_selected_customers(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_260, 'delete.tag.one@example.com', 'wholesale', null, 'wholesale, Shop');
+        $two = $this->createTypedShopifyCustomer(9_900_000_261, 'delete.tag.two@example.com', 'wholesale', null, 'wholesale');
+        $seen = [];
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) use (&$seen) {
+            $mock->shouldReceive('removeTagsFromShopifyCustomer')->twice()->andReturnUsing(function (ShopifyCustomer $record, array $tags) use (&$seen) {
+                $seen[] = [
+                    'shopify_customer_id' => (int) $record->shopify_customer_id,
+                    'tags' => $tags,
+                ];
+
+                return $record;
+            });
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.tags.delete'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+            'tag' => 'wholesale',
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+
+        $ids = collect($seen)->pluck('shopify_customer_id')->all();
+        $this->assertContains(9_900_000_260, $ids);
+        $this->assertContains(9_900_000_261, $ids);
+        $this->assertSame(['wholesale'], $seen[0]['tags']);
+    }
+
+    public function test_merge_tag_on_selected_customers(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_270, 'merge.tag.one@example.com', 'wholesale', null, 'wholesale, Shop');
+        $two = $this->createTypedShopifyCustomer(9_900_000_271, 'merge.tag.two@example.com', 'wholesale', null, 'wholesale');
+        $seen = [];
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) use (&$seen) {
+            $mock->shouldReceive('mergeCustomerTag')->twice()->andReturnUsing(function (ShopifyCustomer $record, string $from, string $to) use (&$seen) {
+                $seen[] = [
+                    'shopify_customer_id' => (int) $record->shopify_customer_id,
+                    'from' => $from,
+                    'to' => $to,
+                ];
+
+                return $record;
+            });
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.tags.merge'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+            'from' => 'wholesale',
+            'to' => 'VIP',
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+
+        $ids = collect($seen)->pluck('shopify_customer_id')->all();
+        $this->assertContains(9_900_000_270, $ids);
+        $this->assertContains(9_900_000_271, $ids);
+        $this->assertSame('wholesale', $seen[0]['from']);
+        $this->assertSame('VIP', $seen[0]['to']);
+    }
+
+    public function test_merge_tag_rejects_the_same_source_and_target(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_280, 'merge.same@example.com', 'wholesale', null, 'wholesale');
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) {
+            $mock->shouldReceive('mergeCustomerTag')->never();
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.tags.merge'), [
+            'ids' => [(int) $one->getKey()],
+            'from' => 'Wholesale',
+            'to' => 'wholesale',
+        ]);
+        $response->assertStatus(422);
+    }
+
+    public function test_update_selected_customers(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_300, 'edit.one@example.com', 'wholesale', null, 'Shop');
+        $two = $this->createTypedShopifyCustomer(9_900_000_301, 'edit.two@example.com', 'wholesale', null, 'Shop');
+        $seen = [];
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) use (&$seen) {
+            $mock->shouldReceive('updateShopifyCustomerFromCrm')->twice()->andReturnUsing(function (ShopifyCustomer $record, array $data) use (&$seen) {
+                $seen[] = [
+                    'shopify_customer_id' => (int) $record->shopify_customer_id,
+                    'data' => $data,
+                ];
+
+                return $record;
+            });
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.update'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+            'tags' => 'VIP',
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+        $this->assertSame('VIP', $seen[0]['data']['tags']);
+        $this->assertSame('VIP', $seen[1]['data']['tags']);
+        $this->assertSame('edit.one@example.com', $seen[0]['data']['email']);
+        $this->assertSame('edit.two@example.com', $seen[1]['data']['email']);
+    }
+
+    public function test_delete_selected_customers(): void
+    {
+        $one = $this->createTypedShopifyCustomer(9_900_000_310, 'delete.one@example.com', 'wholesale');
+        $two = $this->createTypedShopifyCustomer(9_900_000_311, 'delete.two@example.com', 'wholesale');
+        $seen = [];
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) use (&$seen) {
+            $mock->shouldReceive('deleteShopifyCustomer')->twice()->andReturnUsing(function (ShopifyCustomer $record) use (&$seen) {
+                $seen[] = (int) $record->shopify_customer_id;
+                $record->delete();
+
+                return null;
+            });
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.delete'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+        $this->assertContains(9_900_000_310, $seen);
+        $this->assertContains(9_900_000_311, $seen);
     }
 
     public function test_marketplace_customer_data_filters_by_channel(): void
@@ -763,5 +1238,235 @@ class ShopifyCustomerSyncTest extends TestCase
         $record = ShopifyCustomer::query()->where('shopify_customer_id', $apiRow['id'])->first();
         $this->assertSame('official@example.com', $record->email);
         $this->assertSame('official', $record->raw_payload['tags']);
+    }
+
+    public function test_customers_data_includes_whatsapp_status(): void
+    {
+        $this->createTypedShopifyCustomer(
+            9_900_000_260,
+            'wa.column@example.com',
+            'wholesale',
+            null,
+            '',
+            '+50250163971'
+        );
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data').'?q=wa.column%40example.com');
+        $response->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('email', 'wa.column@example.com');
+        $this->assertNotNull($row);
+        $this->assertSame('+50250163971', $row['phone']);
+        $this->assertArrayHasKey('whatsapp', $row);
+        $this->assertArrayHasKey('whatsapp_checked', $row);
+        $this->assertNull($row['whatsapp']);
+        $this->assertFalse($row['whatsapp_checked']);
+    }
+
+    public function test_guest_cannot_check_whatsapp_availability(): void
+    {
+        $response = $this->postJson(route('crm.shopify.customers.whatsapp.check'), [
+            'ids' => [1],
+        ]);
+
+        $response->assertStatus(401);
+    }
+
+    public function test_whatsapp_check_empty_phone_is_unknown(): void
+    {
+        $customer = $this->createTypedShopifyCustomer(
+            9_900_000_261,
+            'wa.empty@example.com',
+            'wholesale'
+        );
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.whatsapp.check'), [
+            'ids' => [(int) $customer->getKey()],
+        ]);
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', (int) $customer->getKey());
+        $response->assertJsonPath('data.0.whatsapp', null);
+    }
+
+    public function test_whatsapp_check_invalid_phone_is_unavailable(): void
+    {
+        $customer = $this->createTypedShopifyCustomer(
+            9_900_000_262,
+            'wa.invalid@example.com',
+            'wholesale',
+            null,
+            '',
+            '123'
+        );
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.whatsapp.check'), [
+            'ids' => [(int) $customer->getKey()],
+        ]);
+        $response->assertOk();
+        $response->assertJsonPath('data.0.whatsapp', false);
+    }
+
+    public function test_whatsapp_check_plausible_phone_is_available_without_provider(): void
+    {
+        $customer = $this->createTypedShopifyCustomer(
+            9_900_000_263,
+            'waplausible@example.com',
+            'wholesale',
+            null,
+            '',
+            '+17876671861'
+        );
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.whatsapp.check'), [
+            'ids' => [(int) $customer->getKey()],
+        ]);
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', (int) $customer->getKey());
+        $response->assertJsonPath('data.0.whatsapp', true);
+
+        $service = app(WhatsAppAvailabilityService::class);
+        $this->assertTrue($service->checkAndStore($customer));
+        $state = $service->cacheState($customer);
+        $this->assertTrue($state['whatsapp']);
+        $this->assertTrue($state['checked']);
+    }
+
+    public function test_customers_data_includes_social_fields(): void
+    {
+        $customer = $this->createTypedShopifyCustomer(
+            9_900_000_400,
+            'social.column@example.com',
+            'wholesale'
+        );
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('shopify_customers', 'website')) {
+            $customer->forceFill([
+                'website' => 'https://example.com',
+                'facebook' => 'https://facebook.com/shop',
+                'instagram' => '@shop',
+            ])->save();
+        }
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->getJson(route('crm.shopify.customers.data').'?q=social.column%40example.com');
+        $response->assertOk();
+
+        $row = collect($response->json('data'))->firstWhere('email', 'social.column@example.com');
+        $this->assertNotNull($row);
+        $this->assertArrayHasKey('website', $row);
+        $this->assertArrayHasKey('facebook', $row);
+        $this->assertArrayHasKey('instagram', $row);
+        if (\Illuminate\Support\Facades\Schema::hasColumn('shopify_customers', 'website')) {
+            $this->assertSame('https://example.com', $row['website']);
+            $this->assertSame('https://facebook.com/shop', $row['facebook']);
+            $this->assertSame('@shop', $row['instagram']);
+        }
+    }
+
+    public function test_guest_cannot_update_customer_social_fields(): void
+    {
+        $response = $this->postJson(route('crm.shopify.customers.social'), [
+            'ids' => [1],
+            'website' => 'https://example.com',
+        ]);
+
+        $response->assertStatus(401);
+    }
+
+    public function test_update_customer_social_fields_locally(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('shopify_customers', 'website')) {
+            $this->markTestSkipped('shopify_customers social columns are not migrated.');
+        }
+
+        $one = $this->createTypedShopifyCustomer(9_900_000_401, 'social.one@example.com', 'wholesale');
+        $two = $this->createTypedShopifyCustomer(9_900_000_402, 'social.two@example.com', 'wholesale');
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.social'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+            'website' => 'https://fivecore.com',
+            'instagram' => '@fivecore',
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+
+        $rows = collect($response->json('data'));
+        $this->assertSame('https://fivecore.com', $rows->firstWhere('id', (int) $one->getKey())['website'] ?? null);
+        $this->assertSame('@fivecore', $rows->firstWhere('id', (int) $one->getKey())['instagram'] ?? null);
+        $this->assertSame('https://fivecore.com', $rows->firstWhere('id', (int) $two->getKey())['website'] ?? null);
+        $this->assertSame('@fivecore', $rows->firstWhere('id', (int) $two->getKey())['instagram'] ?? null);
+    }
+
+    public function test_bulk_edit_social_only_skips_shopify(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('shopify_customers', 'website')) {
+            $this->markTestSkipped('shopify_customers social columns are not migrated.');
+        }
+
+        $one = $this->createTypedShopifyCustomer(9_900_000_403, 'social.bulk.one@example.com', 'wholesale');
+        $two = $this->createTypedShopifyCustomer(9_900_000_404, 'social.bulk.two@example.com', 'wholesale');
+
+        $this->mock(ShopifyServiceInterface::class, function ($mock) {
+            $mock->shouldNotReceive('updateShopifyCustomerFromCrm');
+        });
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.update'), [
+            'ids' => [(int) $one->getKey(), (int) $two->getKey()],
+            'website' => 'https://bulk.example',
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 2);
+    }
+
+    public function test_clear_customer_social_field(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('shopify_customers', 'website')) {
+            $this->markTestSkipped('shopify_customers social columns are not migrated.');
+        }
+
+        $one = $this->createTypedShopifyCustomer(9_900_000_405, 'social.clear@example.com', 'wholesale');
+        $one->forceFill(['facebook' => 'https://facebook.com/keep'])->save();
+
+        $this->actingAs($this->actingUser());
+
+        $response = $this->postJson(route('crm.shopify.customers.social'), [
+            'ids' => [(int) $one->getKey()],
+            'facebook' => '',
+        ]);
+        $response->assertOk()->assertJsonPath('updated', 1);
+        $response->assertJsonPath('data.0.facebook', null);
+    }
+
+    public function test_sync_customers_command_requires_shopify_config(): void
+    {
+        $this->mock(ShopifyServiceInterface::class, function ($mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(false);
+            $mock->shouldReceive('syncCustomers')->never();
+        });
+
+        $this->artisan('shopify:sync-customers')->assertFailed();
+    }
+
+    public function test_sync_customers_command_runs_when_configured(): void
+    {
+        $this->mock(ShopifyServiceInterface::class, function ($mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+            $mock->shouldReceive('syncCustomers')->once()->with(250)->andReturn(4);
+        });
+
+        $this->artisan('shopify:sync-customers')
+            ->expectsOutput('Synced 4 Shopify customers.')
+            ->assertSuccessful();
     }
 }

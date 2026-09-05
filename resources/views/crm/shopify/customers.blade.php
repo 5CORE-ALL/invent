@@ -9,6 +9,15 @@
     @include('crm.shopify._nav', ['active' => 'customers'])
 
     <style>
+        .b2b-dot-cell { position:relative; text-align:center; cursor:default; }
+        .b2b-dot { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; }
+        .b2b-dot-yes { background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18); }
+        .b2b-dot-no { background:#dc2626; box-shadow:0 0 0 3px rgba(220,38,38,.16); }
+        .b2b-dot-tip { display:none; position:absolute; left:50%; bottom:calc(100% + 8px); transform:translateX(-50%); z-index:80; max-width:min(360px, calc(100vw - 16px)); background:#0f172a; color:#fff; font-size:.75rem; font-weight:600; line-height:1.35; padding:.35rem .55rem; border-radius:6px; box-shadow:0 8px 24px rgba(15,23,42,.2); white-space:pre-wrap; word-break:break-word; pointer-events:none; text-align:left; }
+        .b2b-dot-cell:hover .b2b-dot-tip, .b2b-dot-tip.is-open { display:block; }
+        .b2b-dot-tip.is-open { position:fixed; transform:none; bottom:auto; }
+        .b2b-dup-btn.has-value { color:#1d4ed8; border-color:#93c5fd; background:#eff6ff; font-weight:600; }
+        .b2b-dup-banner { display:flex; align-items:center; justify-content:space-between; gap:.75rem; background:#eff6ff; border:1px solid #bfdbfe; color:#1e3a8a; border-radius:8px; padding:.4rem .7rem; margin-bottom:.75rem; font-size:.8rem; }
         .b2b-action-sep { width:1px; height:18px; background:#e2e8f0; flex-shrink:0; margin:0 .15rem; }
         .b2b-stat-strip { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:.5rem 1rem; margin-bottom:.75rem; display:flex; flex-wrap:wrap; gap:0; }
         .b2b-stat-item { flex:1 1 auto; min-width:120px; padding:.35rem .75rem; border-right:1px solid #e2e8f0; }
@@ -21,18 +30,75 @@
         .b2b-filter-bar .form-select-sm { padding-right:1.6rem; }
         .b2b-filter-bar .b2b-filter-sep { width:1px; height:18px; background:#e2e8f0; flex-shrink:0; }
         .b2b-filter-bar [data-filter-control] { flex-shrink:0; }
+        .b2b-filter-bar .b2b-filter-label { font-size:.7rem; font-weight:700; color:#64748b; white-space:nowrap; margin:0; }
         .b2b-filter-bar [data-filter-control="search"] { flex:1 1 180px; min-width:140px; max-width:260px; }
-        .b2b-filter-bar [data-filter-control="customerType"] { width:120px; }
-        .b2b-filter-bar [data-filter-control="tag"] { width:140px; position:relative; }
+        .b2b-filter-bar [data-filter-control="customerType"] { width:auto; display:flex; align-items:center; gap:.35rem; }
+        .b2b-filter-bar [data-filter-control="customerType"] .form-select-sm { width:130px; }
+        .b2b-filter-bar [data-filter-control="tag"] { width:auto; display:flex; align-items:center; gap:.35rem; position:relative; }
         .b2b-filter-bar [data-filter-control="classificationSource"] { width:120px; }
         .b2b-filter-bar [data-filter-control="marketplaceChannel"] { width:130px; }
         .b2b-filter-bar [data-filter-control="syncStatus"] { width:110px; }
         .b2b-filter-bar [data-filter-control="perPage"] { width:70px; }
-        .b2b-filter-tag-wrap { position:relative; display:flex; align-items:center; width:100%; }
-        .b2b-filter-tag-wrap select { width:100%; }
-        .b2b-filter-tag-wrap .b2b-tag-spin { position:absolute; right:1.6rem; pointer-events:none; }
+        .b2b-tag-ms { position:relative; width:180px; }
+        .b2b-tag-ms-toggle { width:100%; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .b2b-tag-ms-toggle.has-value { color:#0f172a; font-weight:600; }
+        .b2b-tag-spin { position:absolute; right:1.6rem; top:50%; transform:translateY(-50%); pointer-events:none; }
+        .b2b-tag-ms-panel { position:absolute; top:calc(100% + 4px); left:0; z-index:30; width:260px; background:#fff; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.12); padding:.5rem; }
+        .b2b-tag-ms-list { max-height:220px; overflow:auto; margin-top:.4rem; }
+        .b2b-tag-ms-option { display:flex; align-items:flex-start; gap:.4rem; padding:.25rem .2rem; border-radius:4px; font-size:.78rem; color:#0f172a; cursor:pointer; }
+        .b2b-tag-ms-option:hover { background:#f8fafc; }
+        .b2b-tag-ms-option input { margin-top:.15rem; }
+        .b2b-tag-ms-name { flex:1 1 auto; font-weight:700; min-width:0; }
+        .b2b-tag-ms-count { flex:0 0 auto; color:#94a3b8; font-size:.72rem; font-weight:600; }
+        .b2b-tag-ms-empty { font-size:.75rem; color:#94a3b8; padding:.35rem .2rem; }
+        .b2b-tag-ms-footer { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-top:.4rem; padding-top:.35rem; border-top:1px solid #e2e8f0; }
         .b2b-btn-customize { flex-shrink:0; color:#94a3b8; border:1px solid #e2e8f0; background:#f8fafc; border-radius:6px; padding:.2rem .55rem; font-size:.8rem; line-height:1.6; cursor:pointer; display:flex; align-items:center; gap:.25rem; white-space:nowrap; }
         .b2b-btn-customize:hover { background:#f1f5f9; color:#475569; }
+        .b2b-sync-icon { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; }
+        .b2b-sync-icon svg { width:16px; height:16px; display:block; }
+        .b2b-sync-ok { color:#059669; }
+        .b2b-sync-no { color:#dc2626; }
+        .b2b-wa-yes { display:inline-flex; align-items:center; gap:.3rem; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; border-radius:999px; padding:.1rem .5rem; font-size:.72rem; font-weight:700; text-decoration:none; }
+        .b2b-wa-yes:hover { background:#d1fae5; color:#065f46; }
+        .b2b-wa-no, .b2b-wa-unknown { color:#94a3b8; }
+        .b2b-act-btn { width:28px; height:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; line-height:1; }
+        .b2b-act-btn svg { width:14px; height:14px; display:block; }
+        .b2b-act-btn:disabled { opacity:.4; }
+        .b2b-social-td { min-width:88px; max-width:132px; padding-left:.3rem; padding-right:.3rem; }
+        .b2b-social-input { height:26px; font-size:.72rem; padding:.1rem .35rem; border-color:#e2e8f0; background:#fff; }
+        .b2b-social-input:focus { background:#fff; border-color:#93c5fd; box-shadow:0 0 0 2px rgba(59,130,246,.15); }
+        .b2b-tag-add-btn { width:22px; height:22px; border-radius:6px; border:1px solid #cbd5e1; background:#fff; color:#0f172a; font-size:1rem; font-weight:700; line-height:1; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+        .b2b-tag-add-btn:hover:not(:disabled) { background:#f1f5f9; border-color:#94a3b8; }
+        .b2b-tag-add-btn:disabled { opacity:.4; cursor:default; }
+        .b2b-tag-drawer-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:1040; }
+        .b2b-tag-drawer { position:fixed; top:0; right:0; height:100vh; width:25%; min-width:360px; max-width:440px; background:#fff; z-index:1041; box-shadow:-12px 0 40px rgba(15,23,42,.18); display:flex; flex-direction:column; }
+        .b2b-tag-drawer-header { padding:1.1rem 1.15rem .9rem; border-bottom:1px solid #e2e8f0; display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
+        .b2b-tag-drawer-title { font-size:1.05rem; font-weight:800; color:#0f172a; margin:0; }
+        .b2b-tag-drawer-sub { font-size:.78rem; color:#64748b; margin-top:.2rem; }
+        .b2b-tag-drawer-body { flex:1 1 auto; overflow:auto; padding:1rem 1.15rem; display:flex; flex-direction:column; gap:.85rem; }
+        .b2b-tag-drawer-section-label { font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#94a3b8; margin-bottom:.35rem; }
+        .b2b-tag-drawer-list { border:1px solid #e2e8f0; border-radius:8px; max-height:42vh; overflow:auto; background:#f8fafc; }
+        .b2b-tag-drawer-row { border-bottom:1px solid #e2e8f0; }
+        .b2b-tag-drawer-row:last-child { border-bottom:0; }
+        .b2b-tag-drawer-option { display:flex; align-items:center; gap:.4rem; padding:.45rem .65rem; font-size:.82rem; color:#0f172a; margin:0; }
+        .b2b-tag-drawer-row:hover { background:#fff; }
+        .b2b-tag-drawer-check { display:flex; align-items:center; gap:.5rem; flex:1 1 auto; min-width:0; cursor:pointer; margin:0; }
+        .b2b-tag-drawer-name { font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .b2b-tag-drawer-actions { display:flex; align-items:center; gap:.15rem; flex:0 0 auto; }
+        .b2b-tag-drawer-action { border:0; background:transparent; font-size:.68rem; font-weight:700; line-height:1.2; padding:.12rem .28rem; border-radius:4px; }
+        .b2b-tag-drawer-action:disabled { opacity:.45; }
+        .b2b-tag-drawer-action-merge { color:#0d9488; }
+        .b2b-tag-drawer-action-merge:hover:not(:disabled) { background:#ccfbf1; }
+        .b2b-tag-drawer-action-delete { color:#dc2626; }
+        .b2b-tag-drawer-action-delete:hover:not(:disabled) { background:#fee2e2; }
+        .b2b-tag-drawer-merge { padding:.15rem .65rem .55rem 1.85rem; background:#fff; }
+        .b2b-tag-drawer-merge-label { font-size:.68rem; color:#64748b; margin-bottom:.3rem; }
+        .b2b-tag-drawer-chips { display:flex; flex-wrap:wrap; gap:.35rem; }
+        .b2b-tag-drawer-chip { display:inline-flex; align-items:center; gap:.3rem; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; padding:.15rem .55rem; font-size:.72rem; font-weight:600; }
+        .b2b-tag-drawer-chip button { border:0; background:transparent; color:#1d4ed8; line-height:1; padding:0; font-size:.85rem; }
+        .b2b-tag-drawer-footer { padding:.85rem 1.15rem 1.1rem; border-top:1px solid #e2e8f0; display:flex; gap:.5rem; }
+        .b2b-tag-drawer-footer .btn { flex:1; }
+        @media (max-width: 767px) { .b2b-tag-drawer { width:85%; max-width:none; } }
         @media(max-width:767px){ .b2b-stat-item{ border-right:none; border-bottom:1px solid #e2e8f0; } .b2b-stat-item:last-child{border-bottom:none;} .b2b-filter-bar{ flex-wrap:wrap; } }
     </style>
 
@@ -79,22 +145,33 @@
         <div class="b2b-filter-sep"></div>
 
         <div data-filter-control="customerType">
-            <select id="crm-shopify-customer-type" class="form-select form-select-sm" title="Customer type">
+            <label class="b2b-filter-label" for="crm-shopify-customer-type">Type</label>
+            <select id="crm-shopify-customer-type" class="form-select form-select-sm" title="Type">
+                <option value="all" selected>All</option>
                 <option value="">All B2B</option>
                 <option value="wholesale">Wholesale</option>
                 <option value="dropshipper">Dropshipper</option>
+                <option value="b2c">B2C</option>
+                <option value="marketplace">Marketplace</option>
+                <option value="unknown">Unknown</option>
             </select>
         </div>
 
         <div data-filter-control="tag">
-            <div class="b2b-filter-tag-wrap">
-                <select id="crm-shopify-tag" class="form-select form-select-sm" title="Segment">
-                    <option value="">All segments</option>
-                    @foreach (($tagFilters ?? []) as $tag)
-                        <option value="{{ $tag }}">{{ $tag }}</option>
-                    @endforeach
-                </select>
+            <label class="b2b-filter-label" for="crm-shopify-tag-toggle">Tags</label>
+            <div class="b2b-tag-ms" id="crm-shopify-tag-ms">
+                <button type="button" id="crm-shopify-tag-toggle" class="form-select form-select-sm b2b-tag-ms-toggle" title="Tags" aria-haspopup="listbox" aria-expanded="false" aria-controls="crm-shopify-tag-panel">
+                    All tags
+                </button>
                 <span id="crm-shopify-tag-loading" class="b2b-tag-spin spinner-border spinner-border-sm d-none text-secondary" role="status" style="width:.65rem;height:.65rem;"></span>
+                <div id="crm-shopify-tag-panel" class="b2b-tag-ms-panel d-none" role="listbox" aria-multiselectable="true">
+                    <input type="search" id="crm-shopify-tag-search" class="form-control form-control-sm" placeholder="Search tags…" autocomplete="off">
+                    <div id="crm-shopify-tag-list" class="b2b-tag-ms-list"></div>
+                    <div class="b2b-tag-ms-footer">
+                        <button type="button" id="crm-shopify-tag-clear" class="btn btn-link btn-sm p-0 text-decoration-none">Clear</button>
+                        <span id="crm-shopify-tag-count" class="small text-muted"></span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -152,11 +229,11 @@
                 </div>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-type" data-filter-visibility="customerType">
-                    <label class="form-check-label small" for="crm-shopify-show-filter-type">Customer type</label>
+                    <label class="form-check-label small" for="crm-shopify-show-filter-type">Type</label>
                 </div>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-tag" data-filter-visibility="tag">
-                    <label class="form-check-label small" for="crm-shopify-show-filter-tag">Segment</label>
+                    <label class="form-check-label small" for="crm-shopify-show-filter-tag">Tags</label>
                 </div>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="crm-shopify-show-filter-source" data-filter-visibility="classificationSource">
@@ -179,6 +256,35 @@
 
         <div class="b2b-action-sep"></div>
 
+        <div class="dropdown flex-shrink-0">
+            <button type="button" id="crm-shopify-dup-btn" class="btn btn-outline-secondary btn-sm dropdown-toggle b2b-dup-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">
+                Search Duplicates
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-3 shadow-sm" aria-labelledby="crm-shopify-dup-btn" style="min-width:220px;">
+                <div class="small fw-semibold mb-2 text-muted">Find duplicates by</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="crm-shopify-dup-by" id="crm-shopify-dup-email" value="email" checked>
+                    <label class="form-check-label small" for="crm-shopify-dup-email">Email</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="crm-shopify-dup-by" id="crm-shopify-dup-phone" value="phone">
+                    <label class="form-check-label small" for="crm-shopify-dup-phone">Phone</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="crm-shopify-dup-by" id="crm-shopify-dup-name" value="name">
+                    <label class="form-check-label small" for="crm-shopify-dup-name">Name</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="crm-shopify-dup-by" id="crm-shopify-dup-address" value="address">
+                    <label class="form-check-label small" for="crm-shopify-dup-address">Address</label>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" id="crm-shopify-dup-search" class="btn btn-primary btn-sm flex-fill">Search</button>
+                    <button type="button" id="crm-shopify-dup-clear" class="btn btn-outline-secondary btn-sm flex-fill">Clear</button>
+                </div>
+            </div>
+        </div>
+
         {{-- Action buttons inline in filter bar --}}
         <button type="button" id="crm-shopify-sync-btn" class="btn btn-primary btn-sm flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">
             <span class="sync-label">Sync</span>
@@ -187,6 +293,11 @@
         <button type="button" id="crm-shopify-create-btn" class="btn btn-success btn-sm flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">+ Create</button>
         <button type="button" id="crm-shopify-import-btn" class="btn btn-outline-secondary btn-sm flex-shrink-0" style="height:30px;font-size:.8rem;padding:.2rem .65rem;white-space:nowrap;">Import</button>
         <span id="crm-shopify-sync-status" class="small text-muted flex-shrink-0" aria-live="polite" style="font-size:.72rem;"></span>
+    </div>
+
+    <div id="crm-shopify-dup-banner" class="b2b-dup-banner d-none" role="status">
+        <span id="crm-shopify-dup-banner-text">Showing duplicate customers.</span>
+        <button type="button" id="crm-shopify-dup-banner-clear" class="btn btn-link btn-sm p-0 text-decoration-none">Clear</button>
     </div>
 
     <div class="card position-relative" id="crm-shopify-list-card">
@@ -207,6 +318,9 @@
                 <table class="table table-sm align-middle mb-0">
                     <thead>
                         <tr>
+                            <th class="text-center" style="width:32px;">
+                                <input type="checkbox" id="crm-shopify-select-all" class="form-check-input" title="Select all on this page">
+                            </th>
                             <th class="d-none">
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="shopify_customer_id">Shopify ID</button>
                             </th>
@@ -219,11 +333,24 @@
                             <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="phone">Phone</button>
                             </th>
+                            <th>Whatsapp</th>
                             <th>
-                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="province">Province</button>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="address" data-sort-label="Add">Add</button>
                             </th>
                             <th>
-                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="zip">Zip</button>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="province">State</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="website">Website</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="facebook">FB</button>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="instagram">Insta</button>
+                            </th>
+                            <th class="text-center">
+                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="orders_count" data-sort-label="Orders">Orders</button>
                             </th>
                             <th>
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="customer_type">Type</button>
@@ -235,7 +362,10 @@
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="classification_source">Source</button>
                             </th>
                             <th>
-                                <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="tags">Tags</button>
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="tags" data-sort-label="Tags">Tags</button>
+                                    <button type="button" id="crm-shopify-add-tags-btn" class="b2b-tag-add-btn" title="Add tags" aria-label="Add tags">+</button>
+                                </div>
                             </th>
                             <th class="d-none">CRM customer</th>
                             <th>
@@ -245,11 +375,21 @@
                                 <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-reset crm-shopify-sort" data-sort-by="last_synced_at">Last synced</button>
                             </th>
                             <th class="text-end">Follow-up</th>
+                            <th class="text-center text-nowrap">
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    <button type="button" id="crm-shopify-bulk-edit-btn" class="btn btn-outline-secondary btn-sm b2b-act-btn" title="Edit selected" aria-label="Edit selected" disabled>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"/></svg>
+                                    </button>
+                                    <button type="button" id="crm-shopify-bulk-delete-btn" class="btn btn-outline-danger btn-sm b2b-act-btn" title="Delete selected" aria-label="Delete selected" disabled>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>
+                                    </button>
+                                </div>
+                            </th>
                         </tr>
                     </thead>
                     <tbody id="crm-shopify-customers-tbody">
                         <tr>
-                            <td colspan="14" class="text-muted text-center py-4">Loading…</td>
+                            <td colspan="21" class="text-muted text-center py-4">Loading…</td>
                         </tr>
                     </tbody>
                 </table>
@@ -366,7 +506,7 @@
                     </div>
                     <div class="modal-body">
                         <div id="crm-shopify-create-alert" class="alert alert-danger d-none small py-2 mb-3" role="alert"></div>
-                        <p class="small text-muted mb-3">This creates the customer in Shopify first, then stores Shopify's returned data locally.</p>
+                        <p class="small text-muted mb-3">This creates the customer in Shopify first, then stores Shopify's returned data locally. Website, FB, and Insta stay in CRM only.</p>
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="form-label small mb-0" for="crm-shopify-create-name">Name</label>
@@ -381,12 +521,24 @@
                                 <input type="text" class="form-control form-control-sm" id="crm-shopify-create-phone" maxlength="64">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small mb-0" for="crm-shopify-create-province">Province</label>
+                                <label class="form-label small mb-0" for="crm-shopify-create-province">State</label>
                                 <input type="text" class="form-control form-control-sm" id="crm-shopify-create-province" maxlength="128">
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-0" for="crm-shopify-create-zip">Zip</label>
                                 <input type="text" class="form-control form-control-sm" id="crm-shopify-create-zip" maxlength="32">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-0" for="crm-shopify-create-website">Website</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-website" maxlength="255" placeholder="https://">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-0" for="crm-shopify-create-facebook">FB</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-facebook" maxlength="255">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-0" for="crm-shopify-create-instagram">Insta</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-create-instagram" maxlength="255">
                             </div>
                             <div class="col-12">
                                 <label class="form-label small mb-0" for="crm-shopify-create-tags">Tags</label>
@@ -402,6 +554,93 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="crm-shopify-edit-modal" tabindex="-1" aria-labelledby="crm-shopify-edit-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="crm-shopify-edit-form">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="crm-shopify-edit-modal-label">Edit customer</h5>
+                            <div class="small text-muted" id="crm-shopify-edit-modal-sub">Update this customer in Shopify.</div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="crm-shopify-edit-alert" class="alert alert-danger d-none small py-2 mb-3" role="alert"></div>
+                        <p class="small text-muted mb-3" id="crm-shopify-edit-hint">Name, email, phone, state, zip, and tags are saved to Shopify. Website, FB, and Insta stay in CRM only.</p>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-name">Name</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-name" maxlength="255">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-email">Email</label>
+                                <input type="email" class="form-control form-control-sm" id="crm-shopify-edit-email" maxlength="255">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-phone">Phone</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-phone" maxlength="64">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-province">State</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-province" maxlength="128">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-zip">Zip</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-zip" maxlength="32">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-website">Website</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-website" maxlength="255" placeholder="https://">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-facebook">FB</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-facebook" maxlength="255">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-instagram">Insta</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-instagram" maxlength="255">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small mb-0" for="crm-shopify-edit-tags">Tags</label>
+                                <input type="text" class="form-control form-control-sm" id="crm-shopify-edit-tags" maxlength="1000" placeholder="VIP, wholesale">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary btn-sm" id="crm-shopify-edit-submit">
+                            <span class="edit-submit-label">Save</span>
+                            <span class="edit-submit-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="crm-shopify-delete-modal" tabindex="-1" aria-labelledby="crm-shopify-delete-modal-label" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="crm-shopify-delete-modal-label">Delete customers</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="crm-shopify-delete-alert" class="alert alert-danger d-none small py-2 mb-3" role="alert"></div>
+                    <p class="mb-0" id="crm-shopify-delete-text">Delete this customer from Shopify and this list? This cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger btn-sm" id="crm-shopify-delete-confirm">
+                        <span class="delete-submit-label">Delete</span>
+                        <span class="delete-submit-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -431,12 +670,59 @@
         </div>
     </div>
 
+    <div id="crm-shopify-tag-drawer-backdrop" class="b2b-tag-drawer-backdrop d-none" hidden></div>
+    <aside id="crm-shopify-tag-drawer" class="b2b-tag-drawer d-none" hidden aria-hidden="true" aria-labelledby="crm-shopify-tag-drawer-title">
+        <div class="b2b-tag-drawer-header">
+            <div>
+                <h2 class="b2b-tag-drawer-title" id="crm-shopify-tag-drawer-title">Add tags</h2>
+                <div class="b2b-tag-drawer-sub" id="crm-shopify-tag-drawer-sub">Select customers, then add, merge, or delete tags.</div>
+            </div>
+            <button type="button" class="btn-close" id="crm-shopify-tag-drawer-close" aria-label="Close"></button>
+        </div>
+        <div class="b2b-tag-drawer-body">
+            <div id="crm-shopify-tag-drawer-alert" class="alert alert-danger d-none small py-2 mb-0" role="alert"></div>
+            <div>
+                <div class="b2b-tag-drawer-section-label">Existing tags</div>
+                <input type="search" id="crm-shopify-tag-drawer-search" class="form-control form-control-sm mb-2" placeholder="Search tags…" autocomplete="off">
+                <div id="crm-shopify-tag-drawer-list" class="b2b-tag-drawer-list"></div>
+            </div>
+            <div>
+                <div class="b2b-tag-drawer-section-label">New tag</div>
+                <div class="d-flex gap-2">
+                    <input type="text" id="crm-shopify-tag-drawer-new" class="form-control form-control-sm" maxlength="100" placeholder="Type a new tag">
+                    <button type="button" id="crm-shopify-tag-drawer-new-btn" class="btn btn-outline-primary btn-sm flex-shrink-0">Add</button>
+                </div>
+            </div>
+            <div>
+                <div class="b2b-tag-drawer-section-label">Selected</div>
+                <div id="crm-shopify-tag-drawer-chips" class="b2b-tag-drawer-chips">
+                    <span class="small text-muted">No tags selected</span>
+                </div>
+            </div>
+        </div>
+        <div class="b2b-tag-drawer-footer">
+            <button type="button" id="crm-shopify-tag-drawer-cancel" class="btn btn-light btn-sm">Cancel</button>
+            <button type="button" id="crm-shopify-tag-drawer-apply" class="btn btn-primary btn-sm">
+                <span class="apply-label">Apply tags</span>
+                <span class="apply-spinner spinner-border spinner-border-sm d-none ms-1" role="status" aria-hidden="true"></span>
+            </button>
+        </div>
+    </aside>
+
     <script>
         (function () {
             const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const dataUrl = @json(route('crm.shopify.customers.data'));
+            const addTagsUrl = @json(route('crm.shopify.customers.tags.add'));
+            const deleteTagsUrl = @json(route('crm.shopify.customers.tags.delete'));
+            const mergeTagsUrl = @json(route('crm.shopify.customers.tags.merge'));
+            const whatsappCheckUrl = @json(route('crm.shopify.customers.whatsapp.check'));
             const syncUrl = @json(route('crm.shopify.sync-customers'));
             const storeUrl = @json(route('crm.shopify.customers.store'));
+            const updateCustomersUrl = @json(route('crm.shopify.customers.update'));
+            const socialCustomersUrl = @json(route('crm.shopify.customers.social'));
+            const deleteCustomersUrl = @json(route('crm.shopify.customers.delete'));
+            const tableColSpan = 21;
             const importUrl = @json(route('crm.shopify.customers.import'));
             const crmCustomerBase = @json(url('/crm/customers'));
             const shopifyCustomersBase = @json(url('/crm/shopify/customers'));
@@ -453,12 +739,24 @@
             const syncStatus = document.getElementById('crm-shopify-sync-status');
             const syncSpinner = syncBtn?.querySelector('.sync-spinner');
             const searchInput = document.getElementById('crm-shopify-search');
-            const tagSelect = document.getElementById('crm-shopify-tag');
+            const tagMs = document.getElementById('crm-shopify-tag-ms');
+            const tagToggle = document.getElementById('crm-shopify-tag-toggle');
+            const tagPanel = document.getElementById('crm-shopify-tag-panel');
+            const tagSearch = document.getElementById('crm-shopify-tag-search');
+            const tagList = document.getElementById('crm-shopify-tag-list');
+            const tagClear = document.getElementById('crm-shopify-tag-clear');
+            const tagCount = document.getElementById('crm-shopify-tag-count');
             const typeSelect = document.getElementById('crm-shopify-customer-type');
             const sourceSelect = document.getElementById('crm-shopify-source');
             const marketplaceChannelSelect = document.getElementById('crm-shopify-marketplace-channel');
             const syncStatusSelect = document.getElementById('crm-shopify-sync-status-filter');
             const perPageSelect = document.getElementById('crm-shopify-per-page');
+            const dupBtn = document.getElementById('crm-shopify-dup-btn');
+            const dupSearchBtn = document.getElementById('crm-shopify-dup-search');
+            const dupClearBtn = document.getElementById('crm-shopify-dup-clear');
+            const dupBanner = document.getElementById('crm-shopify-dup-banner');
+            const dupBannerText = document.getElementById('crm-shopify-dup-banner-text');
+            const dupBannerClear = document.getElementById('crm-shopify-dup-banner-clear');
             const filterControls = document.querySelectorAll('[data-filter-control]');
             const filterVisibilityInputs = document.querySelectorAll('[data-filter-visibility]');
             const summaryEls = document.querySelectorAll('#crm-shopify-summary [data-summary-key]');
@@ -485,8 +783,8 @@
                 page: 1,
                 perPage: parseInt(perPageSelect.value, 10) || 25,
                 q: '',
-                tag: '',
-                customerType: '',
+                tags: [],
+                customerType: 'all',
                 classificationSource: '',
                 marketplaceChannel: '',
                 syncStatus: '',
@@ -494,6 +792,7 @@
                 sortDir: 'desc',
                 lastPage: 1,
                 total: 0,
+                duplicateBy: '',
             };
             let visibleFilters = loadVisibleFilters();
 
@@ -501,6 +800,600 @@
             let listAbort = null;
             let successHideTimer = null;
             let filterDebounceTimer = null;
+            let availableTags = @json($tagFilters ?? []);
+            let tagCounts = @json($tagCounts ?? new \stdClass());
+            const selectedTagSet = new Set();
+
+            function applyTagPayload(payload) {
+                if (Array.isArray(payload)) {
+                    if (payload.length && payload[0] && typeof payload[0] === 'object' && payload[0].tag) {
+                        availableTags = payload.map(function (item) { return item.tag; });
+                        tagCounts = {};
+                        payload.forEach(function (item) { tagCounts[item.tag] = Number(item.count || 0); });
+                        return;
+                    }
+                    availableTags = payload.filter(function (tag) { return typeof tag === 'string'; });
+                    return;
+                }
+                if (payload && Array.isArray(payload.tags)) {
+                    availableTags = payload.tags;
+                    tagCounts = payload.counts && typeof payload.counts === 'object' ? payload.counts : {};
+                }
+            }
+            const selectedCustomerIds = new Set();
+            let lastRowsById = {};
+            const drawerTagSet = new Set();
+            let drawerAvailableTags = [];
+            let drawerMergeFrom = '';
+            let drawerBusy = false;
+
+            function selectedTags() {
+                return availableTags.filter(function (tag) { return selectedTagSet.has(tag); });
+            }
+
+            function setSelectedTags(tags, options) {
+                options = options || {};
+                selectedTagSet.clear();
+                (tags || []).forEach(function (tag) {
+                    if (tag) selectedTagSet.add(tag);
+                });
+                state.tags = selectedTags();
+                renderTagOptions();
+                updateTagToggle();
+                if (options.apply) applyFiltersNow();
+            }
+
+            function updateTagToggle() {
+                const tags = selectedTags();
+                if (!tagToggle) return;
+                if (!tags.length) {
+                    tagToggle.textContent = 'All tags';
+                    tagToggle.classList.remove('has-value');
+                } else if (tags.length === 1) {
+                    tagToggle.textContent = tags[0];
+                    tagToggle.classList.add('has-value');
+                } else {
+                    tagToggle.textContent = tags.length + ' tags';
+                    tagToggle.classList.add('has-value');
+                }
+                if (tagCount) {
+                    tagCount.textContent = tags.length ? (tags.length + ' selected') : '';
+                }
+            }
+
+            function renderTagOptions() {
+                if (!tagList) return;
+                const query = (tagSearch?.value || '').trim().toLowerCase();
+                const matches = availableTags.filter(function (tag) {
+                    return !query || String(tag).toLowerCase().includes(query);
+                });
+                tagList.innerHTML = '';
+                if (!matches.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'b2b-tag-ms-empty';
+                    empty.textContent = availableTags.length ? 'No matching tags' : 'No tags found';
+                    tagList.appendChild(empty);
+                    return;
+                }
+                matches.forEach(function (tag) {
+                    const label = document.createElement('label');
+                    label.className = 'b2b-tag-ms-option';
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.value = tag;
+                    input.checked = selectedTagSet.has(tag);
+                    input.addEventListener('change', function () {
+                        if (input.checked) selectedTagSet.add(tag);
+                        else selectedTagSet.delete(tag);
+                        state.tags = selectedTags();
+                        updateTagToggle();
+                        applyFiltersNow();
+                    });
+                    const text = document.createElement('span');
+                    text.className = 'b2b-tag-ms-name';
+                    text.textContent = tag;
+                    const count = document.createElement('span');
+                    count.className = 'b2b-tag-ms-count';
+                    const n = Number(tagCounts[tag] || 0);
+                    count.textContent = String(n);
+                    label.appendChild(input);
+                    label.appendChild(text);
+                    label.appendChild(count);
+                    tagList.appendChild(label);
+                });
+            }
+
+            function setTagPanelOpen(open) {
+                if (!tagPanel || !tagToggle) return;
+                tagPanel.classList.toggle('d-none', !open);
+                tagToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                if (open) {
+                    renderTagOptions();
+                    setTimeout(function () { tagSearch?.focus(); }, 0);
+                }
+            }
+
+            const addTagsBtn = document.getElementById('crm-shopify-add-tags-btn');
+            const selectAll = document.getElementById('crm-shopify-select-all');
+            const bulkEditBtn = document.getElementById('crm-shopify-bulk-edit-btn');
+            const bulkDeleteBtn = document.getElementById('crm-shopify-bulk-delete-btn');
+            const drawerEl = document.getElementById('crm-shopify-tag-drawer');
+            const drawerBackdrop = document.getElementById('crm-shopify-tag-drawer-backdrop');
+            const drawerClose = document.getElementById('crm-shopify-tag-drawer-close');
+            const drawerCancel = document.getElementById('crm-shopify-tag-drawer-cancel');
+            const drawerApply = document.getElementById('crm-shopify-tag-drawer-apply');
+            const drawerSearch = document.getElementById('crm-shopify-tag-drawer-search');
+            const drawerList = document.getElementById('crm-shopify-tag-drawer-list');
+            const drawerNew = document.getElementById('crm-shopify-tag-drawer-new');
+            const drawerNewBtn = document.getElementById('crm-shopify-tag-drawer-new-btn');
+            const drawerChips = document.getElementById('crm-shopify-tag-drawer-chips');
+            const drawerSub = document.getElementById('crm-shopify-tag-drawer-sub');
+            const drawerAlert = document.getElementById('crm-shopify-tag-drawer-alert');
+            const drawerApplySpinner = drawerApply?.querySelector('.apply-spinner');
+            const drawerApplyLabel = drawerApply?.querySelector('.apply-label');
+
+            function selectedCustomerCount() {
+                return selectedCustomerIds.size;
+            }
+
+            function updateSelectAllState() {
+                if (selectAll && tbody) {
+                    const boxes = tbody.querySelectorAll('.crm-shopify-row-check');
+                    const checked = tbody.querySelectorAll('.crm-shopify-row-check:checked');
+                    selectAll.checked = boxes.length > 0 && checked.length === boxes.length;
+                    selectAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+                }
+                const n = selectedCustomerCount();
+                if (bulkEditBtn) bulkEditBtn.disabled = n === 0;
+                if (bulkDeleteBtn) bulkDeleteBtn.disabled = n === 0;
+            }
+
+            function updateDrawerSelectionCopy() {
+                if (!drawerSub) return;
+                const n = selectedCustomerCount();
+                drawerSub.textContent = n === 0
+                    ? 'Select customers in the table, then add, merge, or delete tags.'
+                    : (n === 1 ? 'Editing tags for 1 selected customer.' : 'Editing tags for ' + n + ' selected customers.');
+            }
+
+            function showDrawerAlert(message) {
+                if (!drawerAlert) return;
+                drawerAlert.textContent = message || '';
+                drawerAlert.classList.toggle('d-none', !message);
+            }
+
+            function selectedDrawerTags() {
+                return drawerAvailableTags.filter(function (tag) { return drawerTagSet.has(tag); });
+            }
+
+            function renderDrawerChips() {
+                if (!drawerChips) return;
+                const tags = selectedDrawerTags();
+                drawerChips.innerHTML = '';
+                if (!tags.length) {
+                    const empty = document.createElement('span');
+                    empty.className = 'small text-muted';
+                    empty.textContent = 'No tags selected';
+                    drawerChips.appendChild(empty);
+                    return;
+                }
+                tags.forEach(function (tag) {
+                    const chip = document.createElement('span');
+                    chip.className = 'b2b-tag-drawer-chip';
+                    chip.appendChild(document.createTextNode(tag));
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.setAttribute('aria-label', 'Remove ' + tag);
+                    remove.textContent = '×';
+                    remove.addEventListener('click', function () {
+                        drawerTagSet.delete(tag);
+                        renderDrawerTagList();
+                        renderDrawerChips();
+                    });
+                    chip.appendChild(remove);
+                    drawerChips.appendChild(chip);
+                });
+            }
+
+            function selectedCustomerIdList() {
+                return Array.from(selectedCustomerIds).map(Number);
+            }
+
+            async function postJsonCrm(url, body) {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body),
+                });
+                let json = {};
+                try { json = await res.json(); } catch (e) {}
+                if (!res.ok) {
+                    throw new Error(messageFromJson(json, res) || 'Request failed.');
+                }
+                return json;
+            }
+
+            function socialInputTd(rowId, field, value, label) {
+                const td = document.createElement('td');
+                td.className = 'b2b-social-td';
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control form-control-sm b2b-social-input';
+                input.maxLength = 255;
+                input.value = value || '';
+                input.dataset.field = field;
+                input.dataset.saved = value || '';
+                input.setAttribute('aria-label', label);
+                input.addEventListener('click', function (e) { e.stopPropagation(); });
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        input.blur();
+                    }
+                });
+                input.addEventListener('blur', function () {
+                    saveSocialField(rowId, field, input);
+                });
+                td.appendChild(input);
+                return td;
+            }
+
+            function applySocialToVisibleRows(ids, field, value) {
+                ids.forEach(function (id) {
+                    if (lastRowsById[String(id)]) {
+                        lastRowsById[String(id)][field] = value || null;
+                    }
+                    const check = tbody && tbody.querySelector('.crm-shopify-row-check[value="' + id + '"]');
+                    const row = check && check.closest('tr');
+                    const input = row && row.querySelector('.b2b-social-input[data-field="' + field + '"]');
+                    if (input) {
+                        input.value = value;
+                        input.dataset.saved = value;
+                    }
+                });
+            }
+
+            async function saveSocialField(rowId, field, input) {
+                const value = String(input.value || '').trim();
+                if (value === String(input.dataset.saved || '')) {
+                    input.value = value;
+                    return;
+                }
+                const ids = actionTargetIds(rowId);
+                const payload = { ids: ids };
+                payload[field] = value;
+                input.disabled = true;
+                try {
+                    await postJsonCrm(socialCustomersUrl, payload);
+                    applySocialToVisibleRows(ids, field, value);
+                } catch (e) {
+                    input.value = input.dataset.saved || '';
+                    showAlert('warning', e && e.message ? e.message : 'Could not save ' + field + '.', { dismissible: true });
+                } finally {
+                    input.disabled = false;
+                }
+            }
+
+            async function afterDrawerTagMutation(json) {
+                await refreshTagsForType(typeSelect ? typeSelect.value : '');
+                drawerAvailableTags = availableTags.slice();
+                drawerMergeFrom = '';
+                renderDrawerTagList();
+                renderDrawerChips();
+                await loadPage(state.page, { loadingMessage: 'Refreshing tags…' });
+                showAlert('success', json.message || 'Updated.', { autoHideMs: 5000, dismissible: false });
+                if (json.failed) {
+                    showAlert('warning', json.message + ' ' + (json.errors || []).join(' '), { dismissible: true });
+                }
+            }
+
+            function setDrawerBusy(busy) {
+                drawerBusy = !!busy;
+                if (drawerApply) drawerApply.disabled = drawerBusy;
+                renderDrawerTagList();
+            }
+
+            function requireSelectedCustomers() {
+                const ids = selectedCustomerIdList();
+                if (!ids.length) {
+                    showDrawerAlert('Select one or more customers in the table first.');
+                    return null;
+                }
+                return ids;
+            }
+
+            async function deleteDrawerTag(tag) {
+                const ids = requireSelectedCustomers();
+                if (!ids) return;
+                const n = ids.length;
+                if (!window.confirm('Remove “' + tag + '” from ' + n + ' selected customer' + (n === 1 ? '' : 's') + '?')) {
+                    return;
+                }
+                showDrawerAlert('');
+                setDrawerBusy(true);
+                try {
+                    const json = await postJsonCrm(deleteTagsUrl, { ids: ids, tag: tag });
+                    drawerTagSet.delete(tag);
+                    await afterDrawerTagMutation(json);
+                } catch (e) {
+                    showDrawerAlert(e && e.message ? e.message : 'Could not delete tag.');
+                } finally {
+                    setDrawerBusy(false);
+                }
+            }
+
+            async function mergeDrawerTag(from, to) {
+                const ids = requireSelectedCustomers();
+                if (!ids) return;
+                to = (to || '').trim();
+                if (!to) {
+                    showDrawerAlert('Choose or type a tag to merge into.');
+                    return;
+                }
+                if (String(from).toLowerCase() === to.toLowerCase()) {
+                    showDrawerAlert('Pick a different tag to merge into.');
+                    return;
+                }
+                showDrawerAlert('');
+                setDrawerBusy(true);
+                try {
+                    const json = await postJsonCrm(mergeTagsUrl, { ids: ids, from: from, to: to });
+                    if (drawerTagSet.has(from)) {
+                        drawerTagSet.delete(from);
+                        drawerTagSet.add(to);
+                    }
+                    await afterDrawerTagMutation(json);
+                } catch (e) {
+                    showDrawerAlert(e && e.message ? e.message : 'Could not merge tags.');
+                } finally {
+                    setDrawerBusy(false);
+                }
+            }
+
+            function buildMergePanel(tag) {
+                const panel = document.createElement('div');
+                panel.className = 'b2b-tag-drawer-merge';
+                const hint = document.createElement('div');
+                hint.className = 'b2b-tag-drawer-merge-label';
+                hint.textContent = 'Merge “' + tag + '” into';
+                const row = document.createElement('div');
+                row.className = 'd-flex gap-1';
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control form-control-sm';
+                input.maxLength = 100;
+                input.placeholder = 'Choose or type a tag';
+                input.setAttribute('list', 'crm-shopify-tag-drawer-merge-list');
+                input.disabled = drawerBusy;
+                const confirm = document.createElement('button');
+                confirm.type = 'button';
+                confirm.className = 'btn btn-outline-primary btn-sm flex-shrink-0';
+                confirm.textContent = 'Merge';
+                confirm.disabled = drawerBusy;
+                const cancel = document.createElement('button');
+                cancel.type = 'button';
+                cancel.className = 'btn btn-light btn-sm flex-shrink-0';
+                cancel.textContent = 'Cancel';
+                cancel.disabled = drawerBusy;
+                confirm.addEventListener('click', function () { mergeDrawerTag(tag, input.value); });
+                cancel.addEventListener('click', function () {
+                    drawerMergeFrom = '';
+                    renderDrawerTagList();
+                });
+                input.addEventListener('keydown', function (ev) {
+                    if (ev.key === 'Enter') {
+                        ev.preventDefault();
+                        mergeDrawerTag(tag, input.value);
+                    }
+                    if (ev.key === 'Escape') {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        drawerMergeFrom = '';
+                        renderDrawerTagList();
+                    }
+                });
+                row.appendChild(input);
+                row.appendChild(confirm);
+                row.appendChild(cancel);
+                panel.appendChild(hint);
+                panel.appendChild(row);
+                setTimeout(function () { input.focus(); }, 0);
+                return panel;
+            }
+
+            function renderDrawerTagList() {
+                if (!drawerList) return;
+                const query = (drawerSearch?.value || '').trim().toLowerCase();
+                const matches = drawerAvailableTags.filter(function (tag) {
+                    return !query || String(tag).toLowerCase().includes(query);
+                });
+                drawerList.innerHTML = '';
+                const datalist = document.createElement('datalist');
+                datalist.id = 'crm-shopify-tag-drawer-merge-list';
+                drawerAvailableTags.forEach(function (optionTag) {
+                    if (optionTag === drawerMergeFrom) return;
+                    const option = document.createElement('option');
+                    option.value = optionTag;
+                    datalist.appendChild(option);
+                });
+                drawerList.appendChild(datalist);
+                if (!matches.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'b2b-tag-ms-empty px-2 py-2';
+                    empty.textContent = drawerAvailableTags.length ? 'No matching tags' : 'No existing tags';
+                    drawerList.appendChild(empty);
+                    return;
+                }
+                matches.forEach(function (tag) {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'b2b-tag-drawer-row';
+                    const row = document.createElement('div');
+                    row.className = 'b2b-tag-drawer-option';
+                    const label = document.createElement('label');
+                    label.className = 'b2b-tag-drawer-check';
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.className = 'form-check-input';
+                    input.checked = drawerTagSet.has(tag);
+                    input.disabled = drawerBusy;
+                    input.addEventListener('change', function () {
+                        if (input.checked) drawerTagSet.add(tag);
+                        else drawerTagSet.delete(tag);
+                        renderDrawerChips();
+                    });
+                    const text = document.createElement('span');
+                    text.className = 'b2b-tag-drawer-name';
+                    text.textContent = tag;
+                    text.title = tag;
+                    label.appendChild(input);
+                    label.appendChild(text);
+                    const actions = document.createElement('span');
+                    actions.className = 'b2b-tag-drawer-actions';
+                    const mergeBtn = document.createElement('button');
+                    mergeBtn.type = 'button';
+                    mergeBtn.className = 'b2b-tag-drawer-action b2b-tag-drawer-action-merge';
+                    mergeBtn.textContent = 'Merge';
+                    mergeBtn.disabled = drawerBusy;
+                    mergeBtn.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        drawerMergeFrom = drawerMergeFrom === tag ? '' : tag;
+                        renderDrawerTagList();
+                    });
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.type = 'button';
+                    deleteBtn.className = 'b2b-tag-drawer-action b2b-tag-drawer-action-delete';
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.disabled = drawerBusy;
+                    deleteBtn.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deleteDrawerTag(tag);
+                    });
+                    actions.appendChild(mergeBtn);
+                    actions.appendChild(deleteBtn);
+                    const count = document.createElement('span');
+                    count.className = 'b2b-tag-ms-count';
+                    count.textContent = String(Number(tagCounts[tag] || 0));
+                    row.appendChild(label);
+                    row.appendChild(actions);
+                    row.appendChild(count);
+                    wrap.appendChild(row);
+                    if (drawerMergeFrom === tag) {
+                        wrap.appendChild(buildMergePanel(tag));
+                    }
+                    drawerList.appendChild(wrap);
+                });
+            }
+
+            function addDrawerNewTag() {
+                const tag = (drawerNew?.value || '').trim();
+                if (!tag) return;
+                const exists = drawerAvailableTags.some(function (item) {
+                    return String(item).toLowerCase() === tag.toLowerCase();
+                });
+                if (!exists) drawerAvailableTags = [tag].concat(drawerAvailableTags);
+                drawerTagSet.add(exists
+                    ? drawerAvailableTags.find(function (item) { return String(item).toLowerCase() === tag.toLowerCase(); })
+                    : tag);
+                if (drawerNew) drawerNew.value = '';
+                if (drawerSearch) drawerSearch.value = '';
+                showDrawerAlert('');
+                renderDrawerTagList();
+                renderDrawerChips();
+            }
+
+            function setTagDrawerOpen(open) {
+                if (!drawerEl || !drawerBackdrop) return;
+                drawerEl.classList.toggle('d-none', !open);
+                drawerBackdrop.classList.toggle('d-none', !open);
+                drawerEl.hidden = !open;
+                drawerBackdrop.hidden = !open;
+                drawerEl.setAttribute('aria-hidden', open ? 'false' : 'true');
+                document.body.style.overflow = open ? 'hidden' : '';
+                if (open) {
+                    drawerAvailableTags = availableTags.slice();
+                    drawerTagSet.clear();
+                    drawerMergeFrom = '';
+                    drawerBusy = false;
+                    if (drawerSearch) drawerSearch.value = '';
+                    if (drawerNew) drawerNew.value = '';
+                    showDrawerAlert('');
+                    updateDrawerSelectionCopy();
+                    renderDrawerTagList();
+                    renderDrawerChips();
+                    setTimeout(function () { drawerSearch?.focus(); }, 0);
+                }
+            }
+
+            function syncRowCheckboxesFromSelection() {
+                if (tbody) {
+                    tbody.querySelectorAll('.crm-shopify-row-check').forEach(function (box) {
+                        box.checked = selectedCustomerIds.has(box.value);
+                    });
+                }
+                updateSelectAllState();
+                updateDrawerSelectionCopy();
+            }
+
+            function openTagsForIds(ids) {
+                const next = (ids || []).map(String).filter(Boolean);
+                if (!next.length) {
+                    showAlert('warning', 'Select one or more customers first.', { dismissible: true });
+                    return;
+                }
+                selectedCustomerIds.clear();
+                next.forEach(function (id) { selectedCustomerIds.add(id); });
+                syncRowCheckboxesFromSelection();
+                setTagDrawerOpen(true);
+            }
+
+            async function applyDrawerTags() {
+                const ids = Array.from(selectedCustomerIds);
+                const tags = selectedDrawerTags();
+                showDrawerAlert('');
+                if (!ids.length) {
+                    showDrawerAlert('Select one or more customers in the table first.');
+                    return;
+                }
+                if (!tags.length) {
+                    showDrawerAlert('Select existing tags or add a new tag.');
+                    return;
+                }
+                if (drawerApply) drawerApply.disabled = true;
+                if (drawerApplySpinner) drawerApplySpinner.classList.remove('d-none');
+                try {
+                    const json = await postJsonCrm(addTagsUrl, { ids: ids.map(Number), tags: tags });
+                    setTagDrawerOpen(false);
+                    selectedCustomerIds.clear();
+                    if (selectAll) {
+                        selectAll.checked = false;
+                        selectAll.indeterminate = false;
+                    }
+                    tags.forEach(function (tag) {
+                        if (availableTags.indexOf(tag) === -1) availableTags.push(tag);
+                    });
+                    availableTags.sort(function (a, b) { return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }); });
+                    renderTagOptions();
+                    showAlert('success', json.message || 'Tags added.', { autoHideMs: 5000, dismissible: false });
+                    await refreshTagsForType(typeSelect ? typeSelect.value : '');
+                    await loadPage(state.page, { loadingMessage: 'Refreshing tags…' });
+                    if (json.failed) {
+                        showAlert('warning', json.message + ' ' + (json.errors || []).join(' '), { dismissible: true });
+                    }
+                } catch (e) {
+                    showDrawerAlert(e && e.message ? e.message : 'Could not add tags.');
+                } finally {
+                    if (drawerApply) drawerApply.disabled = false;
+                    if (drawerApplySpinner) drawerApplySpinner.classList.add('d-none');
+                }
+            }
 
             function loadVisibleFilters() {
                 try {
@@ -519,7 +1412,7 @@
 
             function filterValueForKey(key) {
                 if (key === 'search') return (searchInput?.value || '').trim();
-                if (key === 'tag') return (tagSelect?.value || '').trim();
+                if (key === 'tag') return (state.tags || []).join(',');
                 if (key === 'customerType') return (typeSelect?.value || '').trim();
                 if (key === 'classificationSource') return (sourceSelect?.value || '').trim();
                 if (key === 'marketplaceChannel') return (marketplaceChannelSelect?.value || '').trim();
@@ -529,8 +1422,8 @@
 
             function clearFilterValueForKey(key) {
                 if (key === 'search' && searchInput) searchInput.value = '';
-                if (key === 'tag' && tagSelect) tagSelect.value = '';
-                if (key === 'customerType' && typeSelect) typeSelect.value = '';
+                if (key === 'tag') setSelectedTags([]);
+                if (key === 'customerType' && typeSelect) typeSelect.value = 'all';
                 if (key === 'classificationSource' && sourceSelect) sourceSelect.value = '';
                 if (key === 'marketplaceChannel' && marketplaceChannelSelect) marketplaceChannelSelect.value = '';
                 if (key === 'syncStatus' && syncStatusSelect) syncStatusSelect.value = '';
@@ -576,7 +1469,9 @@
                 setTableBusy(on);
                 if (perPageSelect) perPageSelect.disabled = on;
                 if (searchInput) searchInput.disabled = on;
-                if (tagSelect) tagSelect.disabled = on;
+                if (tagToggle) tagToggle.disabled = on;
+                if (tagSearch) tagSearch.disabled = on;
+                if (tagClear) tagClear.disabled = on;
                 if (typeSelect) typeSelect.disabled = on;
                 if (sourceSelect) sourceSelect.disabled = on;
                 if (marketplaceChannelSelect) marketplaceChannelSelect.disabled = on;
@@ -674,9 +1569,8 @@
                 try {
                     const d = new Date(iso);
                     if (Number.isNaN(d.getTime())) return iso;
-                    const pad = function (n) { return String(n).padStart(2, '0'); };
-                    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' '
-                        + pad(d.getHours()) + ':' + pad(d.getMinutes());
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + String(d.getFullYear()).slice(-2);
                 } catch (e) {
                     return iso;
                 }
@@ -689,8 +1583,191 @@
                 return td;
             }
 
+            let openTip = null;
+            let openTipHome = null;
+
+            function hideDotTipNow() {
+                if (!openTip || !openTipHome) return;
+                openTip.classList.remove('is-open');
+                openTip.style.left = '';
+                openTip.style.top = '';
+                if (openTip.parentNode !== openTipHome) openTipHome.appendChild(openTip);
+                openTip = null;
+                openTipHome = null;
+            }
+
+            function showDotTip(td) {
+                const tip = td._dotTip;
+                if (!tip) return;
+                if (openTip && openTip !== tip) hideDotTipNow();
+                openTip = tip;
+                openTipHome = td;
+                document.body.appendChild(tip);
+                tip.classList.add('is-open');
+                const rect = td.getBoundingClientRect();
+                const tipRect = tip.getBoundingClientRect();
+                let left = rect.left + (rect.width / 2) - (tipRect.width / 2);
+                left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+                let top = rect.top - tipRect.height - 8;
+                if (top < 8) top = rect.bottom + 8;
+                tip.style.left = left + 'px';
+                tip.style.top = top + 'px';
+            }
+
+            function paintDotCell(td, options) {
+                const available = !!options.available;
+                const text = options.text == null || String(options.text).trim() === ''
+                    ? '—'
+                    : String(options.text);
+                td.className = (options.className || 'text-center') + ' b2b-dot-cell';
+                td.setAttribute('aria-label', text);
+                td.innerHTML = '';
+                const dot = document.createElement('span');
+                dot.className = 'b2b-dot ' + (available ? 'b2b-dot-yes' : 'b2b-dot-no');
+                const tip = document.createElement('div');
+                tip.className = 'b2b-dot-tip';
+                tip.textContent = text;
+                td.appendChild(dot);
+                td.appendChild(tip);
+                td._dotTip = tip;
+                if (options.href) {
+                    td.style.cursor = 'pointer';
+                    td.setAttribute('data-tip-href', options.href);
+                } else {
+                    td.style.cursor = 'default';
+                    td.removeAttribute('data-tip-href');
+                }
+                if (!td.dataset.dotBound) {
+                    td.dataset.dotBound = '1';
+                    td.addEventListener('mouseenter', function () { showDotTip(td); });
+                    td.addEventListener('mouseleave', hideDotTipNow);
+                    td.addEventListener('click', function () {
+                        const href = td.getAttribute('data-tip-href');
+                        if (href) window.open(href, '_blank', 'noopener,noreferrer');
+                    });
+                }
+            }
+
+            function hoverDotTd(options) {
+                const td = document.createElement('td');
+                paintDotCell(td, options);
+                return td;
+            }
+
+            function addressTd(address, zip) {
+                const value = address == null ? '' : String(address).trim();
+                const zipValue = zip == null ? '' : String(zip).trim();
+                const parts = [];
+                if (value) parts.push(value);
+                if (zipValue) parts.push('Zip: ' + zipValue);
+                return hoverDotTd({
+                    available: !!(value || zipValue),
+                    text: parts.length ? parts.join('\n') : '—',
+                });
+            }
+
+            function syncTd(status) {
+                const td = document.createElement('td');
+                td.className = 'text-center';
+                const synced = String(status || '').toLowerCase() === 'synced';
+                const icon = document.createElement('span');
+                icon.className = 'b2b-sync-icon ' + (synced ? 'b2b-sync-ok' : 'b2b-sync-no');
+                icon.title = synced ? 'Synced' : (status ? String(status) : 'Not synced');
+                icon.setAttribute('aria-label', icon.title);
+                icon.innerHTML = synced
+                    ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11.534 7h3.932a.25.25 0 0 0 .192-.41l-1.966-2.36a.25.25 0 0 0-.384 0l-1.966 2.36a.25.25 0 0 0 .192.41m-11 2h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0L.192 9.41A.25.25 0 0 1 .384 9z"/><path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z"/></svg>'
+                    : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/></svg>';
+                td.appendChild(icon);
+                return td;
+            }
+
+            function phoneDigits(phone) {
+                return String(phone || '').replace(/\D/g, '');
+            }
+
+            function paintWhatsappCell(td, row) {
+                td.setAttribute('data-whatsapp-id', String(row.id));
+                if (row.phone && row.whatsapp == null && row.whatsapp_checked !== true) {
+                    td.className = 'small text-center';
+                    td.removeAttribute('data-tip');
+                    td.removeAttribute('data-tip-href');
+                    td.removeAttribute('aria-label');
+                    td.classList.remove('b2b-dot-cell');
+                    td.innerHTML = '';
+                    const spin = document.createElement('span');
+                    spin.className = 'spinner-border spinner-border-sm text-secondary';
+                    spin.style.width = '.65rem';
+                    spin.style.height = '.65rem';
+                    spin.setAttribute('role', 'status');
+                    td.appendChild(spin);
+                    return;
+                }
+                const available = row.whatsapp === true;
+                let text = '—';
+                let href = null;
+                if (available) {
+                    text = String(row.phone);
+                    const digits = phoneDigits(row.phone);
+                    href = digits ? ('https://wa.me/' + digits) : null;
+                } else if (row.phone && row.whatsapp === false) {
+                    text = 'No';
+                }
+                paintDotCell(td, { available: available, text: text, href: href });
+            }
+
+            function whatsappTd(row) {
+                const td = document.createElement('td');
+                td.setAttribute('data-whatsapp-id', String(row.id));
+                paintWhatsappCell(td, row);
+                return td;
+            }
+
+            async function checkWhatsappForRows(rows) {
+                const pending = (rows || []).filter(function (r) {
+                    return r && r.id && r.phone && r.whatsapp == null && r.whatsapp_checked !== true;
+                });
+                const ids = pending.map(function (r) { return r.id; });
+                if (!ids.length) return;
+
+                const paintRow = function (row) {
+                    const td = tbody ? tbody.querySelector('[data-whatsapp-id="' + row.id + '"]') : null;
+                    if (td) paintWhatsappCell(td, row);
+                };
+
+                try {
+                    const res = await fetch(whatsappCheckUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ ids: ids }),
+                    });
+                    const json = await res.json();
+                    const data = Array.isArray(json.data) ? json.data : [];
+                    const byId = {};
+                    data.forEach(function (item) { byId[String(item.id)] = item; });
+                    pending.forEach(function (row) {
+                        const item = byId[String(row.id)];
+                        row.whatsapp_checked = true;
+                        row.whatsapp = item ? item.whatsapp : null;
+                        paintRow(row);
+                    });
+                } catch (e) {
+                    pending.forEach(function (row) {
+                        row.whatsapp_checked = true;
+                        row.whatsapp = null;
+                        paintRow(row);
+                    });
+                }
+            }
+
             function humanLabel(value) {
                 if (!value) return '—';
+                if (String(value).toLowerCase() === 'direct') return 'B2C';
                 return String(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, function (m) { return m.toUpperCase(); });
             }
 
@@ -754,19 +1831,39 @@
 
             function renderRows(rows) {
                 if (!tbody) return;
+                hideDotTipNow();
+                lastRowsById = {};
                 tbody.innerHTML = '';
                 if (!rows.length) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
-                    td.colSpan = 14;
+                    td.colSpan = tableColSpan;
                     td.className = 'text-muted text-center py-4';
-                    td.textContent = 'No customers found. Try syncing from Shopify or adjust search.';
+                    td.textContent = state.duplicateBy
+                        ? ('No duplicate customers found for ' + duplicateByLabel(state.duplicateBy) + '.')
+                        : 'No customers found. Try syncing from Shopify or adjust search.';
                     tr.appendChild(td);
                     tbody.appendChild(tr);
                     return;
                 }
                 rows.forEach(function (r) {
+                    lastRowsById[String(r.id)] = r;
                     const tr = document.createElement('tr');
+
+                    const tdCheck = document.createElement('td');
+                    tdCheck.className = 'text-center';
+                    const check = document.createElement('input');
+                    check.type = 'checkbox';
+                    check.className = 'form-check-input crm-shopify-row-check';
+                    check.value = String(r.id);
+                    check.checked = selectedCustomerIds.has(String(r.id));
+                    check.addEventListener('change', function () {
+                        if (check.checked) selectedCustomerIds.add(String(r.id));
+                        else selectedCustomerIds.delete(String(r.id));
+                        updateSelectAllState();
+                        updateDrawerSelectionCopy();
+                    });
+                    tdCheck.appendChild(check);
 
                     const tdId = document.createElement('td');
                     tdId.className = 'font-monospace small d-none';
@@ -774,10 +1871,23 @@
 
                     const tdName = tdText(r.name || '');
 
-                    const tdEmail = tdText(r.email);
-                    const tdPhone = tdText(r.phone);
+                    const email = r.email == null ? '' : String(r.email).trim();
+                    const phone = r.phone == null ? '' : String(r.phone).trim();
+                    const tdEmail = hoverDotTd({ available: !!email, text: email || '—' });
+                    const tdPhone = hoverDotTd({ available: !!phone, text: phone || '—' });
+                    const tdWhatsapp = whatsappTd(r);
+                    const tdAddress = addressTd(r.address, r.zip);
                     const tdProvince = tdText(r.province);
-                    const tdZip = tdText(r.zip);
+                    const tdWebsite = socialInputTd(r.id, 'website', r.website, 'Website');
+                    const tdFacebook = socialInputTd(r.id, 'facebook', r.facebook, 'FB');
+                    const tdInstagram = socialInputTd(r.id, 'instagram', r.instagram, 'Insta');
+                    const ordersCount = Number(r.orders_count || 0);
+                    const qty = Number(r.qty || 0);
+                    const revenue = Number(r.revenue || 0);
+                    const tdOrders = hoverDotTd({
+                        available: ordersCount > 0 || qty > 0 || revenue > 0,
+                        text: 'Orders: ' + fmtNum.format(ordersCount) + '\nQty: ' + fmtNum.format(qty) + '\nRevenue: ' + fmtMoney.format(revenue),
+                    });
 
                     const tdType = badgeTd(r.customer_type || 'unknown', 'badge bg-primary-subtle text-primary border', r.classification_reason || '');
 
@@ -798,19 +1908,37 @@
                     const tdSource = badgeTd(r.classification_source, 'badge bg-light text-dark border', r.classification_reason || '');
 
                     const tdTags = document.createElement('td');
+                    tdTags.className = 'b2b-tags-td';
+                    const tagsWrap = document.createElement('div');
+                    tagsWrap.className = 'd-inline-flex align-items-center flex-wrap gap-1';
                     const tags = Array.isArray(r.tags) ? r.tags : [];
                     if (tags.length) {
                         tags.forEach(function (tag) {
                             const span = document.createElement('span');
-                            span.className = 'badge bg-secondary-subtle text-secondary border me-1 mb-1';
+                            span.className = 'badge bg-secondary-subtle text-secondary border';
                             span.style.fontSize = '0.7rem';
                             span.textContent = tag;
-                            tdTags.appendChild(span);
+                            tagsWrap.appendChild(span);
                         });
                     } else {
-                        tdTags.className = 'small';
-                        tdTags.textContent = '—';
+                        const empty = document.createElement('span');
+                        empty.className = 'small text-muted';
+                        empty.textContent = '—';
+                        tagsWrap.appendChild(empty);
                     }
+                    const addBtn = document.createElement('button');
+                    addBtn.type = 'button';
+                    addBtn.className = 'b2b-tag-add-btn';
+                    addBtn.title = 'Add tags';
+                    addBtn.setAttribute('aria-label', 'Add tags');
+                    addBtn.textContent = '+';
+                    addBtn.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openTagsForIds(actionTargetIds(r.id));
+                    });
+                    tagsWrap.appendChild(addBtn);
+                    tdTags.appendChild(tagsWrap);
 
                     const tdCrm = document.createElement('td');
                     tdCrm.className = 'small d-none';
@@ -823,11 +1951,7 @@
                         tdCrm.textContent = '—';
                     }
 
-                    const tdSync = document.createElement('td');
-                    const badge = document.createElement('span');
-                    badge.className = 'badge bg-light text-dark border';
-                    badge.textContent = r.sync_status || '—';
-                    tdSync.appendChild(badge);
+                    const tdSync = syncTd(r.sync_status);
 
                     const tdLast = document.createElement('td');
                     tdLast.className = 'small text-nowrap';
@@ -844,12 +1968,37 @@
                     });
                     tdFu.appendChild(fuBtn);
 
+                    const tdAct = document.createElement('td');
+                    tdAct.className = 'text-center text-nowrap';
+                    const editBtn = document.createElement('button');
+                    editBtn.type = 'button';
+                    editBtn.className = 'btn btn-outline-secondary btn-sm b2b-act-btn me-1';
+                    editBtn.title = 'Edit';
+                    editBtn.setAttribute('aria-label', 'Edit');
+                    editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"/></svg>';
+                    editBtn.addEventListener('click', function () { openEditModal(actionTargetIds(r.id)); });
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.className = 'btn btn-outline-danger btn-sm b2b-act-btn';
+                    delBtn.title = 'Delete';
+                    delBtn.setAttribute('aria-label', 'Delete');
+                    delBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/></svg>';
+                    delBtn.addEventListener('click', function () { openDeleteModal(actionTargetIds(r.id)); });
+                    tdAct.appendChild(editBtn);
+                    tdAct.appendChild(delBtn);
+
+                    tr.appendChild(tdCheck);
                     tr.appendChild(tdId);
                     tr.appendChild(tdName);
                     tr.appendChild(tdEmail);
                     tr.appendChild(tdPhone);
+                    tr.appendChild(tdWhatsapp);
+                    tr.appendChild(tdAddress);
                     tr.appendChild(tdProvince);
-                    tr.appendChild(tdZip);
+                    tr.appendChild(tdWebsite);
+                    tr.appendChild(tdFacebook);
+                    tr.appendChild(tdInstagram);
+                    tr.appendChild(tdOrders);
                     tr.appendChild(tdType);
                     tr.appendChild(tdChannel);
                     tr.appendChild(tdSource);
@@ -858,8 +2007,10 @@
                     tr.appendChild(tdSync);
                     tr.appendChild(tdLast);
                     tr.appendChild(tdFu);
+                    tr.appendChild(tdAct);
                     tbody.appendChild(tr);
                 });
+                updateSelectAllState();
             }
 
             function pageWindow(current, last, spread) {
@@ -966,9 +2117,9 @@
                 if (state.q) {
                     params.set('q', state.q);
                 }
-                if (state.tag) {
-                    params.set('tag', state.tag);
-                }
+                (state.tags || []).forEach(function (tag) {
+                    params.append('tags[]', tag);
+                });
                 if (state.customerType) {
                     params.set('customer_type', state.customerType);
                 }
@@ -980,6 +2131,9 @@
                 }
                 if (state.syncStatus) {
                     params.set('sync_status', state.syncStatus);
+                }
+                if (state.duplicateBy) {
+                    params.set('duplicate_by', state.duplicateBy);
                 }
 
                 setListLoading(true, opts.loadingMessage || 'Loading customers…');
@@ -1013,9 +2167,11 @@
                     }
 
                     renderRows(json.data || []);
+                    checkWhatsappForRows(json.data || []);
                     updatePagination(json.meta || {});
                     updateSortHeaders(json.meta || {});
                     updateSummary((json.meta || {}).summary || {}, json.meta || {});
+                    updateDuplicateUi();
                 } catch (e) {
                     if (e.name === 'AbortError') return;
                     const msg = e && e.message
@@ -1028,7 +2184,7 @@
                         tbody.innerHTML = '';
                         const tr = document.createElement('tr');
                         const td = document.createElement('td');
-                        td.colSpan = 14;
+                        td.colSpan = tableColSpan;
                         td.className = 'text-center py-4';
                         const wrap = document.createElement('div');
                         wrap.className = 'text-danger small mb-2';
@@ -1127,6 +2283,9 @@
                     phone: document.getElementById('crm-shopify-create-phone')?.value || '',
                     province: document.getElementById('crm-shopify-create-province')?.value || '',
                     zip: document.getElementById('crm-shopify-create-zip')?.value || '',
+                    website: document.getElementById('crm-shopify-create-website')?.value || '',
+                    facebook: document.getElementById('crm-shopify-create-facebook')?.value || '',
+                    instagram: document.getElementById('crm-shopify-create-instagram')?.value || '',
                     tags: document.getElementById('crm-shopify-create-tags')?.value || '',
                 };
                 if (createSubmitBtn) createSubmitBtn.disabled = true;
@@ -1241,6 +2400,181 @@
                 }
             });
 
+            function actionTargetIds(rowId) {
+                const id = Number(rowId);
+                const selected = selectedCustomerIdList();
+                if (selected.length > 1 && selected.indexOf(id) !== -1) {
+                    return selected;
+                }
+                return [id];
+            }
+
+            const editModalEl = document.getElementById('crm-shopify-edit-modal');
+            const editForm = document.getElementById('crm-shopify-edit-form');
+            const editAlert = document.getElementById('crm-shopify-edit-alert');
+            const editTitle = document.getElementById('crm-shopify-edit-modal-label');
+            const editSub = document.getElementById('crm-shopify-edit-modal-sub');
+            const editHint = document.getElementById('crm-shopify-edit-hint');
+            const editSubmitBtn = document.getElementById('crm-shopify-edit-submit');
+            const editSubmitSpinner = editSubmitBtn ? editSubmitBtn.querySelector('.edit-submit-spinner') : null;
+            let editTargetIds = [];
+
+            function showEditAlert(message) {
+                if (!editAlert) return;
+                editAlert.textContent = message || '';
+                editAlert.classList.toggle('d-none', !message);
+            }
+
+            function setEditField(id, value) {
+                const el = document.getElementById(id);
+                if (el) el.value = value == null ? '' : String(value);
+            }
+
+            function openEditModal(ids) {
+                editTargetIds = (ids || []).map(Number).filter(function (id) { return id > 0; });
+                if (!editTargetIds.length) {
+                    showAlert('warning', 'Select one or more customers first.', { dismissible: true });
+                    return;
+                }
+                showEditAlert('');
+                const bulk = editTargetIds.length > 1;
+                if (editTitle) editTitle.textContent = bulk ? ('Edit ' + editTargetIds.length + ' customers') : 'Edit customer';
+                if (editSub) editSub.textContent = bulk
+                    ? 'Filled fields are applied to every selected customer. Leave a field blank to keep its current value.'
+                    : 'Update this customer in Shopify.';
+                if (editHint) editHint.textContent = bulk
+                    ? 'Blank fields are left unchanged on each selected customer.'
+                    : 'Name, email, phone, state, zip, and tags are saved to Shopify. Website, FB, and Insta stay in CRM only.';
+                setEditField('crm-shopify-edit-name', '');
+                setEditField('crm-shopify-edit-email', '');
+                setEditField('crm-shopify-edit-phone', '');
+                setEditField('crm-shopify-edit-province', '');
+                setEditField('crm-shopify-edit-zip', '');
+                setEditField('crm-shopify-edit-website', '');
+                setEditField('crm-shopify-edit-facebook', '');
+                setEditField('crm-shopify-edit-instagram', '');
+                setEditField('crm-shopify-edit-tags', '');
+                if (!bulk) {
+                    const row = lastRowsById[String(editTargetIds[0])] || {};
+                    setEditField('crm-shopify-edit-name', row.name || '');
+                    setEditField('crm-shopify-edit-email', row.email || '');
+                    setEditField('crm-shopify-edit-phone', row.phone || '');
+                    setEditField('crm-shopify-edit-province', row.province || '');
+                    setEditField('crm-shopify-edit-zip', row.zip || '');
+                    setEditField('crm-shopify-edit-website', row.website || '');
+                    setEditField('crm-shopify-edit-facebook', row.facebook || '');
+                    setEditField('crm-shopify-edit-instagram', row.instagram || '');
+                    setEditField('crm-shopify-edit-tags', Array.isArray(row.tags) ? row.tags.join(', ') : '');
+                }
+                if (editModalEl && window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(editModalEl).show();
+                }
+            }
+
+            editForm?.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                showEditAlert('');
+                if (!editTargetIds.length) {
+                    showEditAlert('Select one or more customers first.');
+                    return;
+                }
+                const payload = {
+                    ids: editTargetIds,
+                    name: document.getElementById('crm-shopify-edit-name')?.value || '',
+                    email: document.getElementById('crm-shopify-edit-email')?.value || '',
+                    phone: document.getElementById('crm-shopify-edit-phone')?.value || '',
+                    province: document.getElementById('crm-shopify-edit-province')?.value || '',
+                    zip: document.getElementById('crm-shopify-edit-zip')?.value || '',
+                    website: document.getElementById('crm-shopify-edit-website')?.value || '',
+                    facebook: document.getElementById('crm-shopify-edit-facebook')?.value || '',
+                    instagram: document.getElementById('crm-shopify-edit-instagram')?.value || '',
+                    tags: document.getElementById('crm-shopify-edit-tags')?.value || '',
+                };
+                if (editSubmitBtn) editSubmitBtn.disabled = true;
+                if (editSubmitSpinner) editSubmitSpinner.classList.remove('d-none');
+                try {
+                    const json = await postJsonCrm(updateCustomersUrl, payload);
+                    if (editModalEl && window.bootstrap && window.bootstrap.Modal) {
+                        window.bootstrap.Modal.getOrCreateInstance(editModalEl).hide();
+                    }
+                    showAlert('success', json.message || 'Customers updated.', { autoHideMs: 5000, dismissible: false });
+                    if (json.failed) {
+                        showAlert('warning', json.message + ' ' + (json.errors || []).join(' '), { dismissible: true });
+                    }
+                    await loadPage(state.page, { loadingMessage: 'Refreshing list…' });
+                } catch (e) {
+                    showEditAlert(e && e.message ? e.message : 'Could not update customers.');
+                } finally {
+                    if (editSubmitBtn) editSubmitBtn.disabled = false;
+                    if (editSubmitSpinner) editSubmitSpinner.classList.add('d-none');
+                }
+            });
+
+            const deleteModalEl = document.getElementById('crm-shopify-delete-modal');
+            const deleteAlert = document.getElementById('crm-shopify-delete-alert');
+            const deleteText = document.getElementById('crm-shopify-delete-text');
+            const deleteConfirmBtn = document.getElementById('crm-shopify-delete-confirm');
+            const deleteSubmitSpinner = deleteConfirmBtn ? deleteConfirmBtn.querySelector('.delete-submit-spinner') : null;
+            let deleteTargetIds = [];
+
+            function showDeleteAlert(message) {
+                if (!deleteAlert) return;
+                deleteAlert.textContent = message || '';
+                deleteAlert.classList.toggle('d-none', !message);
+            }
+
+            function openDeleteModal(ids) {
+                deleteTargetIds = (ids || []).map(Number).filter(function (id) { return id > 0; });
+                if (!deleteTargetIds.length) {
+                    showAlert('warning', 'Select one or more customers first.', { dismissible: true });
+                    return;
+                }
+                showDeleteAlert('');
+                if (deleteText) {
+                    deleteText.textContent = deleteTargetIds.length === 1
+                        ? 'Delete this customer from Shopify and this list? This cannot be undone.'
+                        : ('Delete ' + deleteTargetIds.length + ' selected customers from Shopify and this list? This cannot be undone.');
+                }
+                if (deleteModalEl && window.bootstrap && window.bootstrap.Modal) {
+                    window.bootstrap.Modal.getOrCreateInstance(deleteModalEl).show();
+                }
+            }
+
+            deleteConfirmBtn?.addEventListener('click', async function () {
+                showDeleteAlert('');
+                if (!deleteTargetIds.length) {
+                    showDeleteAlert('Select one or more customers first.');
+                    return;
+                }
+                if (deleteConfirmBtn) deleteConfirmBtn.disabled = true;
+                if (deleteSubmitSpinner) deleteSubmitSpinner.classList.remove('d-none');
+                try {
+                    const json = await postJsonCrm(deleteCustomersUrl, { ids: deleteTargetIds });
+                    if (deleteModalEl && window.bootstrap && window.bootstrap.Modal) {
+                        window.bootstrap.Modal.getOrCreateInstance(deleteModalEl).hide();
+                    }
+                    deleteTargetIds.forEach(function (id) { selectedCustomerIds.delete(String(id)); });
+                    updateSelectAllState();
+                    showAlert('success', json.message || 'Customers deleted.', { autoHideMs: 5000, dismissible: false });
+                    if (json.failed) {
+                        showAlert('warning', json.message + ' ' + (json.errors || []).join(' '), { dismissible: true });
+                    }
+                    await loadPage(state.page, { loadingMessage: 'Refreshing list…' });
+                } catch (e) {
+                    showDeleteAlert(e && e.message ? e.message : 'Could not delete customers.');
+                } finally {
+                    if (deleteConfirmBtn) deleteConfirmBtn.disabled = false;
+                    if (deleteSubmitSpinner) deleteSubmitSpinner.classList.add('d-none');
+                }
+            });
+
+            bulkEditBtn?.addEventListener('click', function () {
+                openEditModal(selectedCustomerIdList());
+            });
+            bulkDeleteBtn?.addEventListener('click', function () {
+                openDeleteModal(selectedCustomerIdList());
+            });
+
             followUpForm?.addEventListener('submit', async function (ev) {
                 ev.preventDefault();
                 hideFollowUpModalAlert();
@@ -1348,13 +2682,55 @@
                 }
             }
 
+            function duplicateByLabel(by) {
+                if (by === 'email') return 'Email';
+                if (by === 'phone') return 'Phone';
+                if (by === 'name') return 'Name';
+                if (by === 'address') return 'Address';
+                return '';
+            }
+
+            function selectedDuplicateBy() {
+                const checked = document.querySelector('input[name="crm-shopify-dup-by"]:checked');
+                return (checked && checked.value) ? checked.value : 'email';
+            }
+
+            function updateDuplicateUi() {
+                const label = duplicateByLabel(state.duplicateBy);
+                if (dupBtn) {
+                    dupBtn.textContent = label ? ('Duplicates: ' + label) : 'Search Duplicates';
+                    dupBtn.classList.toggle('has-value', Boolean(label));
+                }
+                if (dupBanner) {
+                    dupBanner.classList.toggle('d-none', !label);
+                }
+                if (dupBannerText && label) {
+                    const total = Number(state.total || 0);
+                    dupBannerText.textContent = total
+                        ? ('Showing ' + total + ' customers with the same ' + label.toLowerCase() + '.')
+                        : ('No duplicate customers found for ' + label + '.');
+                }
+            }
+
+            function searchDuplicates() {
+                state.duplicateBy = selectedDuplicateBy();
+                updateDuplicateUi();
+                loadPage(1, { loadingMessage: 'Finding duplicates…' });
+            }
+
+            function clearDuplicates() {
+                state.duplicateBy = '';
+                updateDuplicateUi();
+                loadPage(1);
+            }
+
             function applyFiltersNow() {
                 if (filterDebounceTimer) {
                     clearTimeout(filterDebounceTimer);
                     filterDebounceTimer = null;
                 }
                 state.q = (searchInput?.value || '').trim();
-                state.tag = (tagSelect?.value || '').trim();
+                state.tags = selectedTags();
                 state.customerType = (typeSelect?.value || '').trim();
                 state.classificationSource = (sourceSelect?.value || '').trim();
                 state.marketplaceChannel = (marketplaceChannelSelect?.value || '').trim();
@@ -1375,41 +2751,45 @@
             const tagsUrl = @json(route('crm.shopify.customers.tags'));
 
             async function refreshTagsForType(customerType) {
-                if (!tagSelect) return;
-
                 if (tagLoadingSpinner) tagLoadingSpinner.classList.remove('d-none');
-                tagSelect.disabled = true;
+                if (tagToggle) tagToggle.disabled = true;
 
                 try {
                     const url = tagsUrl + (customerType ? '?customer_type=' + encodeURIComponent(customerType) : '');
                     const res = await fetch(url, { headers: { Accept: 'application/json' } });
                     if (!res.ok) return;
-                    const tags = await res.json();
-
-                    const currentVal = tagSelect.value;
-                    tagSelect.innerHTML = '<option value="">All segments</option>';
-                    tags.forEach(function (tag) {
-                        const opt = document.createElement('option');
-                        opt.value = tag;
-                        opt.textContent = tag;
-                        if (tag === currentVal) opt.selected = true;
-                        tagSelect.appendChild(opt);
-                    });
-
-                    // If the previously selected tag no longer exists for this type, clear it
-                    if (currentVal && !tags.includes(currentVal)) {
-                        tagSelect.value = '';
-                    }
+                    applyTagPayload(await res.json());
+                    const keep = selectedTags().filter(function (tag) { return availableTags.indexOf(tag) !== -1; });
+                    setSelectedTags(keep);
                 } catch (_) {
                     // silently ignore fetch errors — keep current options
                 } finally {
-                    tagSelect.disabled = false;
+                    if (tagToggle) tagToggle.disabled = false;
                     if (tagLoadingSpinner) tagLoadingSpinner.classList.add('d-none');
                 }
             }
 
             searchInput?.addEventListener('input', applyFiltersDebounced);
-            tagSelect?.addEventListener('change', applyFiltersNow);
+            tagToggle?.addEventListener('click', function (e) {
+                e.preventDefault();
+                setTagPanelOpen(tagPanel?.classList.contains('d-none'));
+            });
+            tagSearch?.addEventListener('input', renderTagOptions);
+            tagSearch?.addEventListener('keydown', function (ev) {
+                ev.stopPropagation();
+                if (ev.key === 'Escape') setTagPanelOpen(false);
+            });
+            tagClear?.addEventListener('click', function () {
+                setSelectedTags([], { apply: true });
+            });
+            tagPanel?.addEventListener('click', function (e) { e.stopPropagation(); });
+            document.addEventListener('click', function (e) {
+                if (!tagMs || tagMs.contains(e.target)) return;
+                setTagPanelOpen(false);
+            });
+            document.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Escape') setTagPanelOpen(false);
+            });
             typeSelect?.addEventListener('change', async function () {
                 await refreshTagsForType(typeSelect.value);
                 applyFiltersNow();
@@ -1418,6 +2798,9 @@
             marketplaceChannelSelect?.addEventListener('change', applyFiltersNow);
             syncStatusSelect?.addEventListener('change', applyFiltersNow);
             perPageSelect?.addEventListener('change', applyFiltersNow);
+            dupSearchBtn?.addEventListener('click', searchDuplicates);
+            dupClearBtn?.addEventListener('click', clearDuplicates);
+            dupBannerClear?.addEventListener('click', clearDuplicates);
 
             filterVisibilityInputs.forEach(function (input) {
                 input.addEventListener('change', function () {
@@ -1459,8 +2842,53 @@
                 runSync();
             });
 
+            addTagsBtn?.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const ids = selectedCustomerIdList();
+                if (ids.length) openTagsForIds(ids);
+                else setTagDrawerOpen(true);
+            });
+            drawerClose?.addEventListener('click', function () { setTagDrawerOpen(false); });
+            drawerCancel?.addEventListener('click', function () { setTagDrawerOpen(false); });
+            drawerBackdrop?.addEventListener('click', function () { setTagDrawerOpen(false); });
+            drawerSearch?.addEventListener('input', renderDrawerTagList);
+            drawerNewBtn?.addEventListener('click', addDrawerNewTag);
+            drawerNew?.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    addDrawerNewTag();
+                }
+            });
+            drawerApply?.addEventListener('click', applyDrawerTags);
+            selectAll?.addEventListener('change', function () {
+                const boxes = tbody ? tbody.querySelectorAll('.crm-shopify-row-check') : [];
+                boxes.forEach(function (box) {
+                    box.checked = !!selectAll.checked;
+                    if (selectAll.checked) selectedCustomerIds.add(box.value);
+                    else selectedCustomerIds.delete(box.value);
+                });
+                updateSelectAllState();
+                updateDrawerSelectionCopy();
+            });
+            document.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Escape' && drawerEl && !drawerEl.classList.contains('d-none')) {
+                    if (drawerMergeFrom) {
+                        drawerMergeFrom = '';
+                        renderDrawerTagList();
+                        return;
+                    }
+                    setTagDrawerOpen(false);
+                }
+            });
+
+            tableRegion?.addEventListener('scroll', hideDotTipNow);
+            window.addEventListener('scroll', hideDotTipNow, true);
+
             applyFilterVisibility({ clearHidden: true });
             updateSortHeaders();
+            renderTagOptions();
+            updateTagToggle();
             loadPage(1);
         })();
     </script>

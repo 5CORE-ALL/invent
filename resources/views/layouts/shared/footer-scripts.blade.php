@@ -23,6 +23,22 @@
             return (el.textContent || '').replace(/\s+/g, ' ').trim();
         };
 
+        // Child items inherit parent group names so searching "CRM" shows the submenu.
+        const linkSearchText = (el) => {
+            const parts = [linkLabel(el)];
+            let node = el ? el.parentElement : null;
+            while (node && node !== sideNav) {
+                if (node.tagName === 'LI') {
+                    const headerLink = node.querySelector(':scope > a');
+                    if (headerLink && headerLink !== el) {
+                        parts.push(linkLabel(headerLink));
+                    }
+                }
+                node = node.parentElement;
+            }
+            return parts.join(' ');
+        };
+
         const allMenuLis = () => sideNav.querySelectorAll('li');
 
         const resetVisibility = () => {
@@ -57,6 +73,17 @@
 
             ownLi.style.display = '';
             anchor.style.display = '';
+
+            // Parent/group match: open the submenu under it (the "bottom menu")
+            if (anchor.matches('[data-bs-toggle="collapse"]')) {
+                ownLi.querySelectorAll('.collapse').forEach(expandCollapseEl);
+                ownLi.querySelectorAll('li').forEach((li) => {
+                    li.style.display = '';
+                });
+                ownLi.querySelectorAll('a').forEach((a) => {
+                    a.style.display = '';
+                });
+            }
 
             let node = ownLi.parentElement;
             while (node && node !== sideNav) {
@@ -94,7 +121,7 @@
             });
 
             const matchedLinks = [...sideNav.querySelectorAll('a')].filter((a) =>
-                matchesQuery(linkLabel(a), queryWords)
+                matchesQuery(linkSearchText(a), queryWords)
             );
 
             matchedLinks.forEach((a) => {

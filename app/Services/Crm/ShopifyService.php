@@ -339,6 +339,191 @@ class ShopifyService implements ShopifyServiceInterface
     }
 
     /**
+     * @param  array<int, string>  $tags
+     */
+    public function addTagsToShopifyCustomer(ShopifyCustomer $record, array $tags): ShopifyCustomer
+    {
+        $this->resetMaxExecutionTimeForSyncPage();
+
+        if ($this->customerAlreadyHasTags($record, $tags)) {
+            return $record;
+        }
+
+        return $this->persistCustomerTags($record, $this->mergedCustomerTags($record, $tags));
+    }
+
+    /**
+     * @param  array<int, string>  $tags
+     */
+    public function removeTagsFromShopifyCustomer(ShopifyCustomer $record, array $tags): ShopifyCustomer
+    {
+        $this->resetMaxExecutionTimeForSyncPage();
+
+        $remove = [];
+        foreach ($tags as $tag) {
+            $tag = mb_strtolower(trim((string) $tag));
+            if ($tag !== '') {
+                $remove[$tag] = true;
+            }
+        }
+        if ($remove === []) {
+            return $record;
+        }
+
+        $payload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $kept = [];
+        $removed = false;
+        foreach ($this->customerClassifier->tagsFromPayload($payload) as $tag) {
+            $key = mb_strtolower(trim((string) $tag));
+            if ($key !== '' && isset($remove[$key])) {
+                $removed = true;
+                continue;
+            }
+            if ($key !== '') {
+                $kept[$key] = trim((string) $tag);
+            }
+        }
+
+        if (! $removed) {
+            return $record;
+        }
+
+        return $this->persistCustomerTags($record, array_values($kept));
+    }
+
+    public function mergeCustomerTag(ShopifyCustomer $record, string $from, string $to): ShopifyCustomer
+    {
+        $this->resetMaxExecutionTimeForSyncPage();
+
+        $fromKey = mb_strtolower(trim($from));
+        $toTag = trim($to);
+        $toKey = mb_strtolower($toTag);
+        if ($fromKey === '' || $toTag === '' || $fromKey === $toKey) {
+            return $record;
+        }
+
+        $payload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $next = [];
+        $hadFrom = false;
+        foreach ($this->customerClassifier->tagsFromPayload($payload) as $tag) {
+            $key = mb_strtolower(trim((string) $tag));
+            if ($key === '') {
+                continue;
+            }
+            if ($key === $fromKey) {
+                $hadFrom = true;
+                continue;
+            }
+            $next[$key] = trim((string) $tag);
+        }
+
+        if (! $hadFrom) {
+            return $record;
+        }
+
+        $next[$toKey] = $toTag;
+
+        return $this->persistCustomerTags($record, array_values($next));
+    }
+
+    public function deleteShopifyCustomer(ShopifyCustomer $record): void
+    {
+        $this->resetMaxExecutionTimeForSyncPage();
+
+        $shopifyId = (int) $record->shopify_customer_id;
+        if ($this->isConfigured() && $shopifyId > 0) {
+            try {
+                $this->sendWithRetries('DELETE', $this->absoluteAdminUrl('customers/'.$shopifyId.'.json'));
+            } catch (ShopifyApiException $e) {
+                if ($e->getHttpStatus() !== 404) {
+                    throw $e;
+                }
+            }
+        }
+
+        $record->delete();
+    }
+
+    /**
+     * @param  array<int, string>  $tags
+     */
+    protected function persistCustomerTags(ShopifyCustomer $record, array $tags): ShopifyCustomer
+    {
+        $normalized = [];
+        foreach ($tags as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag !== '') {
+                $normalized[mb_strtolower($tag)] = $tag;
+            }
+        }
+        $tagString = implode(', ', array_values($normalized));
+        $shopifyId = (int) $record->shopify_customer_id;
+
+        if ($this->isConfigured() && $shopifyId > 0) {
+            $response = $this->sendWithRetries('PUT', $this->absoluteAdminUrl('customers/'.$shopifyId.'.json'), [
+                'json' => ['customer' => ['id' => $shopifyId, 'tags' => $tagString]],
+            ]);
+            $decoded = $this->decodeJsonBody($response);
+            $row = $decoded['customer'] ?? null;
+            if (! is_array($row) || ! isset($row['id'])) {
+                throw new ShopifyApiException('Shopify did not return a customer after tag update.');
+            }
+
+            return $this->upsertReturnedCustomerRow($row, $record->customer_id);
+        }
+
+        $payload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $payload['tags'] = $tagString;
+        $record->forceFill([
+            'raw_payload' => $payload,
+            'last_synced_at' => now(),
+        ])->save();
+
+        return $this->customerClassifier->classify($record->refresh());
+    }
+
+    /**
+     * @param  array<int, string>  $tags
+     */
+    protected function customerAlreadyHasTags(ShopifyCustomer $record, array $tags): bool
+    {
+        $payload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $current = [];
+        foreach ($this->customerClassifier->tagsFromPayload($payload) as $tag) {
+            $current[mb_strtolower(trim((string) $tag))] = true;
+        }
+
+        foreach ($tags as $tag) {
+            $tag = mb_strtolower(trim((string) $tag));
+            if ($tag !== '' && ! isset($current[$tag])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<int, string>  $tags
+     * @return array<int, string>
+     */
+    protected function mergedCustomerTags(ShopifyCustomer $record, array $tags): array
+    {
+        $payload = is_array($record->raw_payload) ? $record->raw_payload : [];
+        $current = $this->customerClassifier->tagsFromPayload($payload);
+        $merged = [];
+        foreach (array_merge($current, $tags) as $tag) {
+            $tag = trim((string) $tag);
+            if ($tag === '') {
+                continue;
+            }
+            $merged[mb_strtolower($tag)] = $tag;
+        }
+
+        return array_values($merged);
+    }
+
+    /**
      * @throws \InvalidArgumentException When the row cannot be matched or auto-created in CRM
      */
     public function ensureCrmCustomerForShopifyRecord(ShopifyCustomer $shopifyCustomer): Customer

@@ -19,6 +19,9 @@ class StoreShopifyCustomerRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:64', 'required_without:email'],
             'province' => ['nullable', 'string', 'max:128'],
             'zip' => ['nullable', 'string', 'max:32'],
+            'website' => ['nullable', 'string', 'max:255'],
+            'facebook' => ['nullable', 'string', 'max:255'],
+            'instagram' => ['nullable', 'string', 'max:255'],
             'tags' => ['nullable', 'string', 'max:1000'],
         ];
     }
