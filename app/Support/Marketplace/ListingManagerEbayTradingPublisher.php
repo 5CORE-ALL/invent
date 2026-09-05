@@ -356,6 +356,7 @@ class ListingManagerEbayTradingPublisher
     private static function appendVariations(SimpleXMLElement $item, array $variations): void
     {
         $block = $item->addChild('Variations');
+        $aspect = self::variationAspectName($variations);
         $labels = [];
         foreach ($variations as $row) {
             $variation = $block->addChild('Variation');
@@ -364,7 +365,7 @@ class ListingManagerEbayTradingPublisher
             $variation->addChild('Quantity', (string) max(0, $row['quantity']));
             $vs = $variation->addChild('VariationSpecifics');
             $nvl = $vs->addChild('NameValueList');
-            $nvl->addChild('Name', 'Pack');
+            $nvl->addChild('Name', $aspect);
             $nvl->addChild('Value', htmlspecialchars($row['variation_label'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             if (($row['upc'] ?? '') !== '') {
                 $pld = $variation->addChild('VariationProductListingDetails');
@@ -375,10 +376,139 @@ class ListingManagerEbayTradingPublisher
 
         $set = $block->addChild('VariationSpecificsSet');
         $setList = $set->addChild('NameValueList');
-        $setList->addChild('Name', 'Pack');
+        $setList->addChild('Name', $aspect);
         foreach (array_values(array_unique($labels)) as $label) {
             $setList->addChild('Value', htmlspecialchars($label, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
         }
+    }
+
+    /**
+     * @param  list<array{variation_label?: string}>  $variations
+     */
+    private static function variationAspectName(array $variations): string
+    {
+        $packish = 0;
+        foreach ($variations as $row) {
+            if (preg_match('/\d+\s*(?:pcs?|pieces?|pack|pk)\b/i', (string) ($row['variation_label'] ?? ''))) {
+                $packish++;
+            }
+        }
+
+        return $packish === count($variations) && $packish > 0 ? 'Pack' : 'Model';
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function getItem(string $channelKey, string $itemId): ?array
+    {
+        $itemId = trim($itemId);
+        if ($itemId === '') {
+            return null;
+        }
+        $ctx = self::context(ListingChannelCounts::normalize($channelKey));
+        if (! ($ctx['configured'] ?? false)) {
+            return null;
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ItemID', $itemId);
+            $xml->addChild('DetailLevel', 'ReturnAll');
+            $xml->addChild('IncludeItemSpecifics', 'true');
+
+            $response = Http::timeout(60)
+                ->withHeaders(self::tradingHeaders($ctx, 'GetItem'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+
+            $xmlResp = simplexml_load_string($response->body());
+            if ($xmlResp === false) {
+                return null;
+            }
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+
+            return ($ack === 'Success' || $ack === 'Warning') ? $data : null;
+        } catch (\Throwable $e) {
+            Log::warning(($ctx['label'] ?? 'eBay').' GetItem failed: '.$e->getMessage(), ['item_id' => $itemId]);
+
+            return null;
+        }
+    }
+
+    public static function itemHasVariations(string $channelKey, string $itemId): bool
+    {
+        $data = self::getItem($channelKey, $itemId);
+        $variations = $data['Item']['Variations']['Variation'] ?? null;
+
+        return is_array($variations) && $variations !== [];
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    public static function endItem(string $channelKey, string $itemId, string $reason = 'NotAvailable'): array
+    {
+        $itemId = trim($itemId);
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'Missing ItemID.'];
+        }
+        $ctx = self::context(ListingChannelCounts::normalize($channelKey));
+        if (! ($ctx['configured'] ?? false)) {
+            return ['success' => false, 'message' => ($ctx['label'] ?? 'eBay').' API credentials are not configured.'];
+        }
+
+        $allowed = ['Incorrect', 'LostOrBroken', 'NotAvailable', 'OtherListingError', 'Sold'];
+        if (! in_array($reason, $allowed, true)) {
+            $reason = 'NotAvailable';
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ItemID', $itemId);
+            $xml->addChild('EndingReason', $reason);
+
+            $response = Http::timeout(60)
+                ->withHeaders(self::tradingHeaders($ctx, 'EndItem'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+
+            $xmlResp = simplexml_load_string($response->body());
+            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
+            $ack = $data['Ack'] ?? 'Failure';
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return ['success' => true, 'message' => 'Ended eBay item '.$itemId.'.'];
+            }
+
+            $msg = trim((string) ($data['Errors']['LongMessage'] ?? $data['Errors']['ShortMessage'] ?? 'EndItem failed.'));
+            Log::warning(($ctx['label'] ?? 'eBay').' EndItem: '.$msg, ['item_id' => $itemId]);
+
+            return ['success' => false, 'message' => $msg];
+        } catch (\Throwable $e) {
+            Log::warning(($ctx['label'] ?? 'eBay').' EndItem failed: '.$e->getMessage(), ['item_id' => $itemId]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @return array<string, string>
+     */
+    private static function tradingHeaders(array $ctx, string $call): array
+    {
+        return [
+            'X-EBAY-API-COMPATIBILITY-LEVEL' => (string) ($ctx['compat'] ?? '1189'),
+            'X-EBAY-API-DEV-NAME' => (string) ($ctx['dev_id'] ?? ''),
+            'X-EBAY-API-APP-NAME' => (string) ($ctx['app_id'] ?? ''),
+            'X-EBAY-API-CERT-NAME' => (string) ($ctx['cert_id'] ?? ''),
+            'X-EBAY-API-CALL-NAME' => $call,
+            'X-EBAY-API-SITEID' => (string) ($ctx['site_id'] ?? '0'),
+            'Content-Type' => 'text/xml',
+        ];
     }
 
     /**

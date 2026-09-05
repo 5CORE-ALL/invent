@@ -654,7 +654,7 @@
                             <input type="radio" name="lc-publish-mode" value="variation">
                             <span>
                                 <strong>Variation listing</strong>
-                                <em>One listing with the SKUs you check. Suggested siblings start unchecked.</em>
+                                <em>One listing with the parent and every child SKU from Product Master.</em>
                             </span>
                         </label>
                     </div>
@@ -806,6 +806,12 @@
                     </div>
                     <select class="form-select mb-3 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
                     <p class="lc-help" id="lc-category-help">Search and select a marketplace category.</p>
+
+                    <div class="lc-amazon-only d-none mb-3">
+                        <label class="form-label">Amazon Product Type <span class="lc-req">*</span></label>
+                        <input id="lc-amazon-product-type" class="form-control" placeholder="e.g. LIGHTING_ACCESSORY">
+                        <p class="lc-help mb-0">Required to create a new Amazon SKU. Copy the product type from a sibling that already exists in Seller Central.</p>
+                    </div>
 
                     <div class="mb-2 lc-mp-category-selected">
                         <label class="form-label mb-1">Category <span class="lc-req lc-tiktok-only d-none">*</span></label>
@@ -2186,6 +2192,7 @@
             location_city: $('#lc-location-city').val() || '',
             location_country: $('#lc-location-country').val() || '',
             location_postal_code: $('#lc-location-postal').val() || '',
+            product_type: $('#lc-amazon-product-type').val() || '',
             package_length: $('#lc-pkg-l').val() || '',
             package_width: $('#lc-pkg-w').val() || '',
             package_height: $('#lc-pkg-h').val() || '',
@@ -2276,9 +2283,9 @@
             .prop('disabled', listed || !canVary);
         const parent = String($('#lc-family-parent').text() || '—').trim() || '—';
         if (isVariation) {
-            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. Check the SKUs to include. This draft SKU stays on the listing.');
+            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. All child SKUs are included on one eBay variation listing. Uncheck a SKU only if you do not want it on this listing.');
         } else {
-            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. Single listing publishes only this SKU.');
+            $('#lc-family-help').html('Siblings share <code id="lc-family-parent">' + escapeHtml(parent) + '</code> from Product Master. Single listing publishes only this SKU. Choose Variation listing to publish the parent with all children.');
         }
     }
 
@@ -2383,6 +2390,17 @@
                 || !!d.local_pickup_only;
             if (!hasShip) errors.policies.push('Shipping');
         }
+        const isAmazon = ((currentDraft && currentDraft.editor && currentDraft.editor.family) === 'amazon') || channel === 'amazon';
+        if (isAmazon) {
+            const ptype = String(d.product_type || d.category || '').trim();
+            if (!ptype || /^\d+$/.test(ptype)) errors.category.push('Product Type');
+            if (!(parseFloat(d.package_length) > 0) || !(parseFloat(d.package_width) > 0) || !(parseFloat(d.package_height) > 0)) {
+                errors.policies.push('Dimensions');
+            }
+            if (!((parseFloat(d.package_weight_lb) || 0) + ((parseFloat(d.package_weight_oz) || 0) / 16) > 0)) {
+                errors.policies.push('Weight');
+            }
+        }
         if (isTiktok || isTemu) {
             if (!d.primary_category_id) errors.category.push('Category');
             else if (isTiktok && !/^\d+$/.test(String(d.primary_category_id))) errors.category.push('Category');
@@ -2427,11 +2445,12 @@
 
         const family = (serverDraft && serverDraft.editor && serverDraft.editor.family) || '';
         const banners = [];
-        if (err.category.length) banners.push(['danger', (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : (family === 'reverb' ? 'Reverb Details' : 'Category'))) + ' tab is missing required information. Please fill in those required fields.']);
+        if (err.category.length) banners.push(['danger', (family === 'amazon' ? 'Product Type' : (family === 'tiktok' ? 'TikTok Category' : (family === 'temu' ? 'Temu Category' : (family === 'reverb' ? 'Reverb Details' : 'Category')))) + ' tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'ebay') banners.push(['danger', 'Business Policies tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'tiktok') banners.push(['danger', 'Warehouse & Package tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'temu') banners.push(['danger', 'Package tab is missing required information. Please fill in those required fields.']);
         if (err.policies.length && family === 'reverb') banners.push(['danger', 'Shipping & Package tab is missing required information. Please fill in those required fields.']);
+        if (err.policies.length && family === 'amazon') banners.push(['danger', 'Packaging tab is missing required information. Please fill in those required fields.']);
         if (err.title.length) banners.push(['danger', 'Title & Description tab is missing required information. Please fill in those required fields.']);
         if (err.images.length) banners.push(['danger', 'Images tab is missing required information. Please fill in those required fields.']);
         if (err.pricing.length) banners.push(['danger', 'Price & Stock tab is missing required information. Please fill in those required fields.']);
@@ -2454,13 +2473,17 @@
 
         const ready = !Object.values(err).some(a => a.length);
         const listed = serverDraft && serverDraft.status === 'listed';
-        $('input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]').prop('disabled', !!listed);
+        const savedMode = String((serverDraft && serverDraft.listing_details && serverDraft.listing_details.publish_mode) || '').toLowerCase();
+        const canRelistVariation = !!listed && canPublishVariation() && savedMode !== 'variation';
+        $('input[name="lc-publish-mode"], input[name="lc-publish-mode-footer"]').prop('disabled', !!listed && !canRelistVariation);
         $('input[name="lc-publish-mode"][value="variation"], input[name="lc-publish-mode-footer"][value="variation"]')
-            .prop('disabled', !!listed || !canPublishVariation());
-        $('#lc-publish-btn, #lc-save-close-btn, #lc-save-btn').prop('disabled', !!listed);
+            .prop('disabled', (!!listed && !canRelistVariation) || !canPublishVariation());
+        $('#lc-publish-btn, #lc-save-close-btn, #lc-save-btn').prop('disabled', !!listed && !canRelistVariation);
         if (!ready) $('#lc-publish-btn').prop('disabled', true);
-        if (listed) {
+        if (listed && !canRelistVariation) {
             $('#lc-publish-btn').prop('disabled', true).html('<i class="fas fa-check me-1"></i>Published');
+        } else if (listed && canRelistVariation) {
+            $('#lc-publish-btn').html('<i class="fas fa-layer-group me-1"></i>Publish as variation listing');
         } else {
             const ch = (serverDraft && serverDraft.channel) ? ` to ${serverDraft.channel}` : '';
             $('#lc-publish-btn').html(`<i class="fas fa-cloud-upload-alt me-1"></i>Save &amp; Publish${ch ? escapeHtml(ch) : ''}`);
@@ -2599,17 +2622,18 @@
         $('.lc-tiktok-only').toggleClass('d-none', !ed.tiktok);
         $('.lc-temu-only').toggleClass('d-none', !ed.temu);
         $('.lc-reverb-only').toggleClass('d-none', !ed.reverb);
+        $('.lc-amazon-only').toggleClass('d-none', !ed.amazon);
         $('.lc-mp-category-manual').toggleClass('d-none', !ed.temu);
         $('.lc-mp-category-search').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.reverb));
         $('.lc-mp-category-selected').toggleClass('d-none', !(ed.ebay || ed.tiktok || ed.temu || ed.reverb));
-        $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu));
+        $('.lc-weight-req').toggle(!!(ed.tiktok || ed.temu || ed.amazon));
         $('#lc-asin-label').text(ed.ebay ? 'ASIN / Source' : 'Source ASIN');
-        $('#lc-category-heading').text(ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.reverb ? 'Reverb Category' : 'Category')));
+        $('#lc-category-heading').text(ed.amazon ? 'Amazon Product Type' : (ed.tiktok ? 'TikTok Category' : (ed.temu ? 'Temu Category' : (ed.reverb ? 'Reverb Category' : 'Category'))));
         $('#lc-category-id-visible').attr('placeholder', ed.category_placeholder || 'Category ID');
         $('#lc-category-search').attr('placeholder', ed.category_placeholder || 'Search categories');
         $('#lc-optimize-desc-label').text(ed.optimize_label || 'Optimize Description');
         $('#lc-policies-title').text(
-            ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu ? 'Package' : (ed.reverb ? 'Shipping & Package' : 'Shipping')))
+            ed.amazon ? 'Packaging' : (ed.ebay ? 'Business Policies' : (ed.tiktok ? 'Warehouse & Package' : (ed.temu ? 'Package' : (ed.reverb ? 'Shipping & Package' : 'Shipping'))))
         );
         $('#lc-pricing-heading').text(ed.pricing_title || 'Pricing');
         $('#lc-title-heading').text(ed.title_heading || 'Title & Description');
@@ -2707,8 +2731,13 @@
         $('#lc-pkg-oz').val(d.package_weight_oz ?? '');
         $('#lc-vat').val(d.vat_percent || '');
         $('#lc-auto-relist').prop('checked', !!d.auto_relist);
-        setPublishMode(d.publish_mode === 'variation' ? 'variation' : 'single');
+        const familyKids = Array.isArray(draft.variations) ? draft.variations : (((draft.family || {}).children) || []);
+        const savedMode = String(d.publish_mode || '').toLowerCase();
+        setPublishMode(savedMode === 'single'
+            ? 'single'
+            : ((savedMode === 'variation' || familyKids.length > 1) ? 'variation' : 'single'));
         $('#lc-warehouse-id').val(d.warehouse_id || '');
+        $('#lc-amazon-product-type').val(d.product_type || d.category || '');
         $('#lc-category-id-visible').val(d.primary_category_id || d.category_uuid || '');
         $('#lc-category-path-visible').val(d.primary_category_path || d.category_name || d.category || '');
         if (d.category_uuid && !$('#lc-category-id').val()) {
@@ -2795,6 +2824,8 @@
         const saved = Array.isArray(draft && draft.listing_details && draft.listing_details.variation_skus)
             ? draft.listing_details.variation_skus.map(s => String(s || '').trim()).filter(Boolean)
             : [];
+        const savedMode = String((draft && draft.listing_details && draft.listing_details.publish_mode) || '').toLowerCase();
+        const defaultAll = kids.length > 1 && savedMode !== 'single' && saved.length <= 1;
         const picked = {};
         (existing.length ? existing : saved).forEach(function (sku) {
             if (sku) picked[sku.toUpperCase()] = true;
@@ -2803,7 +2834,7 @@
         $('#lc-family-rows').html(kids.length ? kids.map(v => {
             const sku = String(v.sku || '').trim();
             const isCurrent = !!v.is_current || (currentSku && sku.toUpperCase() === currentSku.toUpperCase());
-            const checked = isCurrent || !!picked[sku.toUpperCase()];
+            const checked = isCurrent || defaultAll || !!picked[sku.toUpperCase()];
             return `<tr class="${isCurrent ? 'lm-var-current' : ''}">
             <td class="lm-var-include"><input type="checkbox" class="form-check-input lc-var-sku" value="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${isCurrent ? 'disabled' : ''}></td>
             <td>${escapeHtml(sku)}</td>

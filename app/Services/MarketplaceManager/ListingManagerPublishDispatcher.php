@@ -158,8 +158,21 @@ class ListingManagerPublishDispatcher
     private function publishEbay(string $key, ListingManagerChannelDraft $draft, array $details): array
     {
         $variations = $this->variationPayload($draft, $details);
+        $parentSku = ListingManagerFamily::parentRowSku((string) $draft->seller_sku)
+            ?: (ListingManagerFamily::isParentSku((string) $draft->seller_sku)
+                ? trim((string) $draft->seller_sku)
+                : '');
+        $listingSku = $variations !== [] && $parentSku !== ''
+            ? $parentSku
+            : trim((string) $draft->seller_sku);
+
+        $existingId = trim((string) $draft->external_listing_id);
+        if ($variations !== [] && $existingId !== '' && ! ListingManagerEbayTradingPublisher::itemHasVariations($key, $existingId)) {
+            ListingManagerEbayTradingPublisher::endItem($key, $existingId, 'OtherListingError');
+        }
+
         $result = ListingManagerEbayTradingPublisher::publish($key, array_merge($details, [
-            'sku' => $draft->seller_sku,
+            'sku' => $listingSku,
             'title' => $draft->title,
             'price' => $draft->price,
             'quantity' => $draft->quantity,
@@ -172,13 +185,18 @@ class ListingManagerPublishDispatcher
 
         $itemId = trim((string) ($result['item_id'] ?? ''));
         $skus = $variations !== []
-            ? array_values(array_map(fn ($row) => (string) $row['sku'], $variations))
+            ? array_values(array_unique(array_filter(array_merge(
+                [trim((string) $draft->seller_sku), $parentSku],
+                array_map(fn ($row) => (string) $row['sku'], $variations)
+            ))))
             : [trim((string) $draft->seller_sku)];
         $this->persistEbayMetrics($key, $skus, $itemId, (string) $draft->title, $draft->price, $draft->quantity);
 
         return [
             'success' => true,
-            'message' => $result['message'] ?? 'Published.',
+            'message' => $variations !== []
+                ? ('Published variation listing with '.count($variations).' child SKUs.')
+                : ($result['message'] ?? 'Published.'),
             'item_id' => $itemId !== '' ? $itemId : null,
             'sibling_skus' => $skus,
         ];
@@ -245,7 +263,11 @@ class ListingManagerPublishDispatcher
     private function variationPayload(ListingManagerChannelDraft $draft, array $details): array
     {
         $selected = $this->publishSkusForMode($draft, $details);
-        if ($this->effectivePublishMode($details, $selected) !== 'variation') {
+        $explicit = strtolower(trim((string) ($details['publish_mode'] ?? '')));
+        if (count($selected) < 2) {
+            return [];
+        }
+        if ($explicit === 'single' && ! ListingManagerFamily::isParentSku((string) $draft->seller_sku)) {
             return [];
         }
 
@@ -285,7 +307,7 @@ class ListingManagerPublishDispatcher
      */
     private function publishMode(array $details): string
     {
-        return strtolower(trim((string) ($details['publish_mode'] ?? 'single'))) === 'variation'
+        return strtolower(trim((string) ($details['publish_mode'] ?? ''))) === 'variation'
             ? 'variation'
             : 'single';
     }
@@ -296,9 +318,15 @@ class ListingManagerPublishDispatcher
      */
     private function effectivePublishMode(array $details, array $skus): string
     {
-        return $this->publishMode($details) === 'variation' && count($skus) > 1
-            ? 'variation'
-            : 'single';
+        if (count($skus) < 2) {
+            return 'single';
+        }
+        $explicit = strtolower(trim((string) ($details['publish_mode'] ?? '')));
+        if ($explicit === 'single') {
+            return 'single';
+        }
+
+        return 'variation';
     }
 
     /**
@@ -308,17 +336,28 @@ class ListingManagerPublishDispatcher
     private function publishSkusForMode(ListingManagerChannelDraft $draft, array $details): array
     {
         $sku = trim((string) $draft->seller_sku);
-        if ($this->publishMode($details) !== 'variation') {
-            return $sku !== '' ? [$sku] : [];
-        }
-
         $family = ListingManagerFamily::forSku($sku);
         $allowed = [];
         foreach ($family['skus'] as $familySku) {
             $familySku = trim((string) $familySku);
-            if ($familySku !== '') {
-                $allowed[strtoupper($familySku)] = $familySku;
+            if ($familySku === '' || ListingManagerFamily::isParentSku($familySku)) {
+                continue;
             }
+            $allowed[strtoupper($familySku)] = $familySku;
+        }
+
+        $isParent = ListingManagerFamily::isParentSku($sku);
+        $explicit = strtolower(trim((string) ($details['publish_mode'] ?? '')));
+        $useVariation = ($isParent && count($allowed) > 1)
+            || $explicit === 'variation'
+            || ($explicit === '' && count($allowed) > 1);
+
+        if (! $useVariation) {
+            if ($isParent) {
+                return array_values($allowed);
+            }
+
+            return $sku !== '' ? [$sku] : [];
         }
 
         $selected = $details['variation_skus'] ?? [];
@@ -341,11 +380,13 @@ class ListingManagerPublishDispatcher
         $currentKey = strtoupper($sku);
         if ($sku !== '' && isset($allowed[$currentKey]) && ! isset($seen[$currentKey])) {
             array_unshift($out, $allowed[$currentKey]);
-        } elseif ($sku !== '' && $out === []) {
-            $out[] = $sku;
         }
 
-        return $out !== [] ? $out : ($sku !== '' ? [$sku] : []);
+        if (count($out) < 2) {
+            $out = array_values($allowed);
+        }
+
+        return $out !== [] ? $out : ($sku !== '' && ! $isParent ? [$sku] : []);
     }
 
     /**

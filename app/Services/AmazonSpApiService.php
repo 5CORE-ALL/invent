@@ -6048,6 +6048,100 @@ class AmazonSpApiService
     }
 
     /**
+     * Seller SKU as it exists on the US listings API, or null when Amazon has no offer.
+     */
+    public function resolveExistingSellerSku(string $sku): ?string
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! $this->isConfigured()) {
+            return null;
+        }
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return null;
+        }
+        $found = $this->findAmazonSkuFormat($sku, $token, 'ATVPDKIKX0DER');
+
+        return $found !== null && trim((string) $found) !== '' ? trim((string) $found) : null;
+    }
+
+    /**
+     * Create a new listings item (PUT). Used when the SKU is not yet in Seller Central.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array{success: bool, message: string, issues?: list<string>}
+     */
+    public function putListingsItem(string $sku, string $productType, array $attributes): array
+    {
+        $sku = trim($sku);
+        $productType = trim($productType);
+        if ($sku === '' || $productType === '') {
+            return ['success' => false, 'message' => 'SKU and Amazon product type are required to create a listing.'];
+        }
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Amazon SP-API is not connected.'];
+        }
+
+        $sellerId = (string) config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'Could not obtain Amazon access token.'];
+        }
+
+        $url = $this->endpoint.'/listings/2021-08-01/items/'
+            .rawurlencode($sellerId).'/'.rawurlencode($sku)
+            .'?marketplaceIds='.rawurlencode($marketplaceId);
+
+        try {
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $token,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->timeout(60)->put($url, [
+                'productType' => $productType,
+                'requirements' => 'LISTING',
+                'attributes' => $attributes,
+            ]);
+
+            $json = $response->json();
+            $json = is_array($json) ? $json : [];
+            $issues = [];
+            foreach ($json['issues'] ?? [] as $issue) {
+                if (! is_array($issue)) {
+                    continue;
+                }
+                $sev = strtoupper((string) ($issue['severity'] ?? ''));
+                $msg = trim((string) ($issue['message'] ?? $issue['code'] ?? ''));
+                if ($msg === '') {
+                    continue;
+                }
+                if ($sev === 'ERROR' || $sev === '') {
+                    $issues[] = $msg;
+                }
+            }
+
+            $status = strtoupper((string) ($json['status'] ?? ''));
+            $accepted = $response->successful() && ! in_array($status, ['INVALID', 'FAILED'], true) && $issues === [];
+            if ($accepted) {
+                return ['success' => true, 'message' => 'Amazon accepted the new listing for '.$sku.'.'];
+            }
+
+            return [
+                'success' => false,
+                'message' => $issues !== []
+                    ? implode(' ', $issues)
+                    : ('Amazon did not create '.$sku.' (HTTP '.$response->status().($status !== '' ? ' '.$status : '').').'),
+                'issues' => $issues,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('AmazonSpApiService: putListingsItem failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string, sample_count?: int|null}
      */
     public function testConnection(): array
