@@ -253,7 +253,7 @@ class AdvertisementMasterController extends Controller
             $this->attachNrReqs($rows);
             $this->attachViews($rows);
             $this->attachTSales($rows);
-            $this->attachAdTypeTcos($rows);
+            $this->clearTypeRowChannelMetrics($rows);
             $this->attachTotalRowAcos($rows, $prevByChannel);
             $this->attachMissingAds($rows);
             $this->attachMissingAdsTrends($rows, $prevByChannel);
@@ -1143,19 +1143,30 @@ class AdvertisementMasterController extends Controller
     }
 
     /**
-     * Ad-type children (Amazon · KW / Shopify · …) use the parent channel's
-     * T Sales. TCOS = that row's spend ÷ those T Sales.
+     * KW / PT / HL and other type rows do not get T Sales or TCOS.
+     * Those figures belong on All / Total channel rows only.
      *
+     * @param  array<string, mixed>  $row
+     */
+    private function shouldHideTypeChannelMetrics(array $row): bool
+    {
+        return $this->isAdTypeRow($row)
+            || (! empty($row['is_custom']) && empty($row['is_sum_row']) && empty($row['is_group_total']));
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $rows
      */
-    private function attachAdTypeTcos(array &$rows): void
+    private function clearTypeRowChannelMetrics(array &$rows): void
     {
         foreach ($rows as &$row) {
             if (! empty($row['_children']) && is_array($row['_children'])) {
-                $this->attachAdTypeTcos($row['_children']);
+                $this->clearTypeRowChannelMetrics($row['_children']);
             }
-            if ($this->isAdTypeRow($row) && ! empty($row['has_t_sales'])) {
-                $this->applyTcos($row, (float) ($row['t_sales'] ?? 0));
+            if ($this->shouldHideTypeChannelMetrics($row)) {
+                $row['t_sales'] = 0.0;
+                $row['has_t_sales'] = false;
+                $this->clearTcos($row);
             }
         }
         unset($row);
@@ -1763,6 +1774,10 @@ class AdvertisementMasterController extends Controller
             if (! $isTotal) {
                 continue;
             }
+            if ($this->shouldHideTypeChannelMetrics($row)) {
+                $this->clearTcos($row);
+                continue;
+            }
 
             $spend = (float) ($row['spend'] ?? 0);
             $totalSales = (float) ($row['t_sales'] ?? 0);
@@ -1843,19 +1858,21 @@ class AdvertisementMasterController extends Controller
                 }
             }
 
-            $own = $this->lookupRowTSales($row, $map);
-            if ($this->isAdTypeRow($row) && $own !== null) {
-                $row['t_sales'] = $own;
-                $row['has_t_sales'] = true;
-            } elseif ($childHasChannelSales) {
-                $row['t_sales'] = $childChannelSum;
-                $row['has_t_sales'] = true;
-            } elseif ($own !== null) {
-                $row['t_sales'] = $own;
-                $row['has_t_sales'] = true;
-            } else {
+            if ($this->shouldHideTypeChannelMetrics($row)) {
                 $row['t_sales'] = 0.0;
                 $row['has_t_sales'] = false;
+            } else {
+                $own = $this->lookupRowTSales($row, $map);
+                if ($childHasChannelSales) {
+                    $row['t_sales'] = $childChannelSum;
+                    $row['has_t_sales'] = true;
+                } elseif ($own !== null) {
+                    $row['t_sales'] = $own;
+                    $row['has_t_sales'] = true;
+                } else {
+                    $row['t_sales'] = 0.0;
+                    $row['has_t_sales'] = false;
+                }
             }
             $sum += (float) $row['t_sales'];
         }
@@ -1876,14 +1893,6 @@ class AdvertisementMasterController extends Controller
             (string) ($row['channel_group'] ?? ''),
             (string) ($row['marketplace'] ?? ''),
         ];
-        if ($this->isAdTypeRow($row)) {
-            foreach (['channel_key', 'channel'] as $field) {
-                $name = (string) ($row[$field] ?? '');
-                if (str_contains($name, self::SUBROW_SEPARATOR)) {
-                    $candidates[] = trim(explode(self::SUBROW_SEPARATOR, $name, 2)[0]);
-                }
-            }
-        }
 
         foreach ($candidates as $name) {
             $norm = $this->normalizeChannelMatchKey($name);

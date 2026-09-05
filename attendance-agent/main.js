@@ -354,7 +354,9 @@ function applyLiveWatch(liveWatch) {
 async function pollLiveCommand() {
     if (!store.get('token')) return;
     try {
-        const { data } = await jsonApi(8000).get('/live-command');
+        const { data } = await jsonApi(8000).get('/live-command', {
+            params: { agent_version: AGENT_VERSION },
+        });
         if (data?.force_logout) {
             forceRemoteSignOut(data.message);
             return;

@@ -240,17 +240,6 @@
 
                                
                             ],
-                            'Advertisement Master' => [
-                                 ['value' => 'ppc', 'text' => 'PPC'],
-                                ['value' => 'advt_kw_amazon', 'text' => 'KW Advt - Amz'],
-                                ['value' => 'advt_kw_ebay', 'text' => 'KW Advt - eBay'],
-                                ['value' => 'advt_kw_walmart', 'text' => 'KW Advt - Walmart'],
-                                ['value' => 'advt_prod_target_amazon', 'text' => 'Prod Target Advt - Amz'],
-                                ['value' => 'advt_headline_amazon', 'text' => 'Headline Advt - Amz'],
-                                ['value' => 'advt_promoted_ebay', 'text' => 'Promoted Advt - eBay'],
-                                ['value' => 'advt_serp_google', 'text' => 'Serp Advt - Google SERP'],
-                            ],
-                           
                             'Channel' => [
                                 ['value' => 'channel_master', 'text' => 'Channel Master'],
                                 ['value' => 'channel_opportunities', 'text' => 'Opportunities'],

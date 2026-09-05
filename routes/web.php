@@ -2,12 +2,6 @@
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
 use App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController;
-use App\Http\Controllers\AdvertisementMaster\Headline_Advt\HeadlineAmazonController;
-use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwAmazonController;
-use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwEbayController;
-use App\Http\Controllers\AdvertisementMaster\Kw_Advt\WalmartController;
-use App\Http\Controllers\AdvertisementMaster\Prod_Target_Advt\ProdTargetAmazonController;
-use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayController;
 use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAds\AmazonCampaignLinkController;
@@ -5043,21 +5037,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/variations-ads/data', [VariationsAdsController::class, 'data'])->name('advertisement.variations.ads.data');
     Route::post('/variations-ads/save', [VariationsAdsController::class, 'save'])->name('advertisement.variations.ads.save');
     Route::get('/variations-ads/history', [VariationsAdsController::class, 'history'])->name('advertisement.variations.ads.history');
-    Route::get('/kw-amazon', [KwAmazonController::class, 'Amazon'])->name('advertisment.kw.amazon');
-    Route::post('/update-checkbox-flag', [KwAmazonController::class, 'updateCheckboxes']);
-    Route::get('/kw-ebay', [KwEbayController::class, 'Ebay'])->name('advertisment.kw.eBay');
-    Route::get('/kw-walmart', [WalmartController::class, 'Walmart'])->name('advertisment.kw.walmart');
-    Route::get('/prod-target-amazon', [ProdTargetAmazonController::class, 'Amazon'])->name('advertisment.prod.target.Amazon');
-    Route::post('/update-all-checkbox', [ProdTargetAmazonController::class, 'updateCheckbox']);
-    Route::get('/headline-amazon', [HeadlineAmazonController::class, 'Amazon'])->name('advertisment.headline.Amazon');
-    Route::post('/update-checkbox', [HeadlineAmazonController::class, 'update']);
-    Route::get('/promoted-ebay', [PromotedEbayController::class, 'Ebay'])->name('advertisment.promoted.eBay');
 
-    // Ajax Advertisement Master view routes
-    Route::get('/kw-ebay-get-data', [KwEbayController::class, 'getViewKwEbayData'])->name('kwEbay.getData');
-    Route::post('/update-checkbox-flag', [KwEbayController::class, 'updateCheckboxes']);
-    Route::get('/kw-walmart-get-data', [WalmartController::class, 'getViewKwWalmartData'])->name('kwWalmart.getData');
-    Route::post('/update-checkbox-flag', [WalmartController::class, 'updateCheckboxes']);
     // channel master index view routes
     Route::get('/return-analysis', [ReturnController::class, 'return_master_index'])->name('return.master');
     Route::get('/expenses-analysis', [ExpensesController::class, 'expenses_master_index'])->name('expenses.master');

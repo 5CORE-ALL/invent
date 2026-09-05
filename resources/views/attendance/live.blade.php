@@ -73,6 +73,10 @@
     (function () {
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const startUrl = @json($start_url);
+        const defaultWaitTitle = @json($wait_title ?? 'Desktop app is not streaming yet');
+        const defaultWaitText = @json($wait_text ?? 'Ask the employee to restart 5Core Attendance while this window stays open, or install the latest app from /attendance/agent.');
+        let waitTitleCopy = defaultWaitTitle;
+        let waitTextCopy = defaultWaitText;
         const video = document.getElementById('liveVideo');
         const canvas = document.getElementById('liveCanvas');
         const ctx = canvas.getContext('2d');
@@ -171,7 +175,7 @@
             return recPromise;
         }
 
-        function paintFrame() {
+        function paintFrame(hideWait) {
             if (!loader.naturalWidth) return;
             if (canvas.width !== loader.naturalWidth || canvas.height !== loader.naturalHeight) {
                 canvas.width = loader.naturalWidth;
@@ -179,7 +183,7 @@
             }
             ctx.drawImage(loader, 0, 0, canvas.width, canvas.height);
             bindVideo();
-            setWait('', '', false);
+            if (hideWait) setWait('', '', false);
         }
 
         async function pullFrame() {
@@ -192,11 +196,7 @@
                 });
                 if (r.status === 204 || !r.ok) {
                     if (!firstFrameAt && Date.now() - startedAt > 8000) {
-                        setWait(
-                            'Desktop app is not streaming yet',
-                            'Ask the employee to restart 5Core Attendance while this window stays open, or install v1.4.2 from /attendance/agent. Old apps cannot send live video until they restart or update.',
-                            true
-                        );
+                        setWait(waitTitleCopy, waitTextCopy, true);
                     }
                     return;
                 }
@@ -206,12 +206,18 @@
                 if (!blob.size) return;
                 if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
                 lastObjectUrl = URL.createObjectURL(blob);
-                loader.onload = paintFrame;
+                const source = (r.headers.get('X-Live-Source') || 'live').toLowerCase();
+                const isLive = source === 'live';
+                loader.onload = function () { paintFrame(isLive); };
                 loader.src = lastObjectUrl;
-                firstFrameAt = firstFrameAt || Date.now();
+                if (isLive) {
+                    firstFrameAt = firstFrameAt || Date.now();
+                } else if (!firstFrameAt && Date.now() - startedAt > 8000) {
+                    setWait(waitTitleCopy, waitTextCopy, true);
+                }
                 const title = r.headers.get('X-Live-Window-Title') || '';
                 const app = r.headers.get('X-Live-App-Name') || '';
-                metaEl.textContent = ['Live video', app, title].filter(Boolean).join(' — ');
+                metaEl.textContent = [isLive ? 'Live video' : 'Last screen (waiting for live)', app, title].filter(Boolean).join(' — ');
             } catch (_) {}
         }
 
@@ -274,6 +280,8 @@
             }
             const data = await r.json();
             urls = data.urls;
+            if (data.wait_title) waitTitleCopy = data.wait_title;
+            if (data.wait_text) waitTextCopy = data.wait_text;
             startedAt = Date.now();
             setWait('Connecting live video', 'Asking the desktop app to stream this screen now. Recording starts when video appears.', true);
             pollTimer = setInterval(pullFrame, 200);

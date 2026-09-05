@@ -69,10 +69,16 @@ class AttendanceLiveController extends Controller
         abort_unless(AttendanceAccess::canMonitor() && AttendanceAccess::canViewUser($user->id), 403);
         abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
 
+        $agent = $this->employeeAgentContext($user);
+
         return view('attendance.live', [
             'title' => 'Live — '.$user->name,
             'employee' => $user,
             'start_url' => '/attendance/live/'.$user->id.'/start',
+            'latest_agent_version' => $agent['latest_version'],
+            'installed_agent_version' => $agent['installed_version'],
+            'wait_title' => $agent['wait_title'],
+            'wait_text' => $agent['wait_text'],
         ]);
     }
 
@@ -89,6 +95,7 @@ class AttendanceLiveController extends Controller
             $this->attendanceService->activeSession($user),
             $source
         );
+        $this->liveWatchService->seedStillFrame($user, true);
 
         return response()->json($this->sessionPayload($session, $user));
     }
@@ -191,6 +198,8 @@ class AttendanceLiveController extends Controller
      */
     private function sessionPayload(AttendanceLiveSession $session, User $employee): array
     {
+        $agent = $this->employeeAgentContext($employee);
+
         return [
             'ok' => true,
             'session_id' => $session->id,
@@ -205,6 +214,32 @@ class AttendanceLiveController extends Controller
                 'stop' => '/attendance/live/session/'.$session->id.'/stop',
                 'recording' => '/attendance/live/session/'.$session->id.'/recording',
             ],
+            'wait_title' => $agent['wait_title'],
+            'wait_text' => $agent['wait_text'],
+        ];
+    }
+
+    /**
+     * @return array{installed_version: string|null, latest_version: string, has_installed: bool, up_to_date: bool, wait_title: string, wait_text: string}
+     */
+    private function employeeAgentContext(User $employee): array
+    {
+        $status = $this->attendanceService->desktopAgentStatusForUser($employee);
+        $latest = (string) ($status['latest_version'] ?? config('attendance.agent_version', '1.0.0'));
+        $wait = AttendanceLiveWatchService::viewerWaitCopy(
+            $status['installed_version'] ?? null,
+            $latest,
+            (bool) ($status['has_installed'] ?? false),
+            (bool) ($status['up_to_date'] ?? false),
+        );
+
+        return [
+            'installed_version' => $status['installed_version'] ?? null,
+            'latest_version' => $latest,
+            'has_installed' => (bool) ($status['has_installed'] ?? false),
+            'up_to_date' => (bool) ($status['up_to_date'] ?? false),
+            'wait_title' => $wait['title'],
+            'wait_text' => $wait['text'],
         ];
     }
 }

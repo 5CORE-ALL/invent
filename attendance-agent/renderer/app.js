@@ -273,7 +273,17 @@ function showUpdateOverlay(payload) {
     }
 }
 
+async function paintAgentVersion() {
+    if (!window.agent?.getAgentVersion || !$('agentVersionLabel')) return;
+    try {
+        const info = await window.agent.getAgentVersion();
+        const current = info?.current || info?.latest;
+        if (current) $('agentVersionLabel').textContent = `v${current}`;
+    } catch (_) { /* keep build fallback */ }
+}
+
 async function init() {
+    await paintAgentVersion();
     if (typeof window.agent.onToday === 'function') {
         window.agent.onToday((today) => applyDailyFromToday(today));
     }

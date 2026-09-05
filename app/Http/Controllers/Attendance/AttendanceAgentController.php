@@ -445,6 +445,11 @@ class AttendanceAgentController extends Controller
 
     public function liveCommand(Request $request): JsonResponse
     {
+        $device = $this->resolveDevice($request);
+        if ($device) {
+            $this->deviceService->touch($device, $request->input('agent_version'));
+        }
+
         $payload = $this->withLiveWatch([
             'ok' => true,
             'config' => $this->agentConfig(),

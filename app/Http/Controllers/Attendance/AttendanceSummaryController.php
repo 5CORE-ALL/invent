@@ -131,7 +131,9 @@ class AttendanceSummaryController extends Controller
     private function filteredEmployees(string $team): array
     {
         $viewableIds = AttendanceAccess::viewableUserIds();
-        $all = $this->attendanceService->monitorableEmployees($viewableIds);
+        $all = $this->attendanceService->monitorableEmployees($viewableIds)
+            ->reject(fn (User $u) => AttendanceAccess::isDirector($u))
+            ->values();
         $teams = $all->pluck('designation')->filter()->unique()->sort()->values();
 
         $employees = $team === 'all'

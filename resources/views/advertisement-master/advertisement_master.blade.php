@@ -1,5 +1,5 @@
 @php
-    $pageTitle = 'Advertisement Master';
+    $pageTitle = 'Dashboard advertisement';
     $pageSubtitle = '';
 @endphp
 
@@ -76,6 +76,10 @@
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
         }
 
         #advertisement-master-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
@@ -105,6 +109,26 @@
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
+        }
+
+        #advertisement-master-wrap .tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
+        }
+
+        #advertisement-master-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: inline-flex !important;
+            align-items: center;
+            position: static !important;
+            pointer-events: none;
+            color: #94a3b8;
+            font-size: 10px;
+            line-height: 1;
+            margin: 0 !important;
+        }
+
+        #advertisement-master-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="ascending"] .tabulator-col-sorter,
+        #advertisement-master-wrap .tabulator .tabulator-header .tabulator-col[aria-sort="descending"] .tabulator-col-sorter {
+            color: #1e3a8a;
         }
 
         #advertisement-master-wrap .tabulator .tabulator-row {
@@ -480,9 +504,16 @@
                 return intFormatter(cell);
             }
 
+            function admIsTypeMetricRow(row) {
+                if (!row) return false;
+                if (row.is_custom && !row.is_sum_row && !row.is_group_total) return true;
+                const name = String(row.channel_key || row.channel || '');
+                return name.indexOf(' · ') !== -1;
+            }
+
             function tSalesFormatter(cell) {
                 const row = cell.getRow().getData() || {};
-                if (!row.has_t_sales) {
+                if (!row.has_t_sales || admIsTypeMetricRow(row)) {
                     return '<span class="text-muted">-</span>';
                 }
                 return wholeMoneyFormatter(cell);
@@ -527,7 +558,7 @@
 
             function tcosFormatter(cell) {
                 const row = cell.getRow().getData() || {};
-                if (!row.has_tcos) {
+                if (!row.has_tcos || admIsTypeMetricRow(row)) {
                     return '<span class="text-muted">-</span>';
                 }
                 return percentFormatter(cell);
@@ -641,6 +672,12 @@
                     copy.t_sales = Number(copy.t_sales || 0);
                     copy.has_t_sales = !!copy.has_t_sales;
                     copy.has_tcos = !!copy.has_tcos;
+                    if (admIsTypeMetricRow(copy)) {
+                        copy.t_sales = 0;
+                        copy.tcos = 0;
+                        copy.has_t_sales = false;
+                        copy.has_tcos = false;
+                    }
                     copy.missing_ads = Number(copy.missing_ads || 0);
                     copy.has_missing_ads = !!copy.has_missing_ads;
                     copy.is_sum_row = children.length > 0 || !!copy.is_group_total || !!copy.is_sum_row;
@@ -680,25 +717,67 @@
                 return '<span style="font-weight:600;color:#1e3a8a;">' + admEsc(name) + '</span>';
             }
 
-            function admGroupedSorter(a, b, aRow, bRow, column, dir) {
+            function admNumberSorter(a, b) {
+                const na = parseFloat(a);
+                const nb = parseFloat(b);
+                const va = Number.isFinite(na) ? na : 0;
+                const vb = Number.isFinite(nb) ? nb : 0;
+                return va - vb;
+            }
+
+            function admStringSorter(a, b) {
+                return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b), undefined, {
+                    numeric: true,
+                    sensitivity: 'base',
+                });
+            }
+
+            function admIsTextField(field) {
+                return field === 'channel_group' || field === 'channel' || field === 'nr_req';
+            }
+
+            function admCompareField(field, a, b) {
+                return admIsTextField(field) ? admStringSorter(a, b) : admNumberSorter(a, b);
+            }
+
+            function admGroupSortValue(group, field) {
+                const target = String(group || '').toLowerCase();
+                const rows = admAllRows || [];
+                let fallback = null;
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (String((row && row.channel_group) || '').toLowerCase() !== target) continue;
+                    if (row.is_sum_row) {
+                        return row[field];
+                    }
+                    if (fallback === null) fallback = row[field];
+                }
+                return fallback;
+            }
+
+            function admSmartSorter(a, b, aRow, bRow, column, dir) {
+                const field = (column && column.getField) ? column.getField() : '';
                 const da = (aRow && aRow.getData) ? (aRow.getData() || {}) : {};
                 const db = (bRow && bRow.getData) ? (bRow.getData() || {}) : {};
-                const ga = String(da.channel_group || '').toLowerCase();
-                const gb = String(db.channel_group || '').toLowerCase();
-                if (ga !== gb) {
-                    const cmp = ga.localeCompare(gb);
-                    return dir === 'desc' ? -cmp : cmp;
+
+                if (admFilterKind() === '') {
+                    const ga = String(da.channel_group || '');
+                    const gb = String(db.channel_group || '');
+                    if (ga !== gb) {
+                        const cmp = admCompareField(field, admGroupSortValue(ga, field), admGroupSortValue(gb, field));
+                        return cmp !== 0 ? cmp : admStringSorter(ga, gb);
+                    }
+                    const sa = da.is_sum_row ? 0 : 1;
+                    const sb = db.is_sum_row ? 0 : 1;
+                    if (sa !== sb) {
+                        const cmp = sa - sb;
+                        return dir === 'desc' ? -cmp : cmp;
+                    }
                 }
-                const sa = da.is_sum_row ? 0 : 1;
-                const sb = db.is_sum_row ? 0 : 1;
-                if (sa !== sb) {
-                    const cmp = sa - sb;
-                    return dir === 'desc' ? -cmp : cmp;
-                }
-                const va = Number(a) || 0;
-                const vb = Number(b) || 0;
-                if (va !== vb) return va - vb;
-                return String(da.channel || '').localeCompare(String(db.channel || ''));
+
+                const cmp = admCompareField(field, a, b);
+                if (cmp !== 0) return cmp;
+                return admStringSorter(da.channel, db.channel);
             }
 
             function sortAdmRows(rows) {
@@ -848,6 +927,12 @@
                 },
                 layout: 'fitColumns',
                 headerSort: true,
+                headerSortClickElement: 'header',
+                headerSortElement: function (column, dir) {
+                    if (dir === 'asc') return '<i class="fa fa-sort-asc" aria-hidden="true"></i>';
+                    if (dir === 'desc') return '<i class="fa fa-sort-desc" aria-hidden="true"></i>';
+                    return '<i class="fa fa-sort" aria-hidden="true"></i>';
+                },
                 initialSort: [{ column: 'channel_group', dir: 'asc' }],
                 rowFormatter: function (row) {
                     const data = row.getData() || {};
@@ -859,20 +944,20 @@
                     }
                 },
                 columns: [
-                    { title: 'Channel', field: 'channel_group', minWidth: 90, width: 100, hozAlign: 'left', headerSort: true, sorter: admGroupedSorter, formatter: groupFormatter },
-                    { title: 'Type', field: 'channel', minWidth: 150, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, sorter: admGroupedSorter, formatter: channelFormatter },
-                    { title: 'R/N', field: 'nr_req', width: 64, minWidth: 64, hozAlign: 'center', headerHozAlign: 'center', headerSort: false, formatter: rnFormatter, cssClass: 'adm-rn-cell' },
-                    { title: 'Missing', field: 'missing_ads', width: 110, minWidth: 100, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, titleFormatter: missingAdsTitleFormatter, formatter: missingAdsFormatter, cssClass: 'adm-metric-cell', cellClick: missingAdsCellClick },
-                    { title: 'ACTIVE', field: 'active', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'SPEND', field: 'spend', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'CLICKS', field: 'clicks', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'VIEWS', field: 'views', hozAlign: 'center', headerHozAlign: 'center', formatter: viewsFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter },
-                    { title: 'SOLD', field: 'sold', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'ADS SALES', field: 'sales', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'T Sales', field: 't_sales', hozAlign: 'center', headerHozAlign: 'center', formatter: tSalesFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter },
-                    { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
-                    { title: 'Tcos', field: 'tcos', hozAlign: 'center', formatter: tcosFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admGroupedSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'Channel', field: 'channel_group', minWidth: 110, width: 118, hozAlign: 'left', headerSort: true, sorter: admSmartSorter, formatter: groupFormatter },
+                    { title: 'Type', field: 'channel', minWidth: 150, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, sorter: admSmartSorter, formatter: channelFormatter },
+                    { title: 'R/N', field: 'nr_req', width: 64, minWidth: 64, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, sorter: admSmartSorter, formatter: rnFormatter, cssClass: 'adm-rn-cell' },
+                    { title: 'Missing', field: 'missing_ads', width: 110, minWidth: 100, hozAlign: 'center', headerHozAlign: 'center', headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, titleFormatter: missingAdsTitleFormatter, formatter: missingAdsFormatter, cssClass: 'adm-metric-cell', cellClick: missingAdsCellClick },
+                    { title: 'ACTIVE', field: 'active', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'SPEND', field: 'spend', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'CLICKS', field: 'clicks', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'VIEWS', field: 'views', hozAlign: 'center', headerHozAlign: 'center', formatter: viewsFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter },
+                    { title: 'SOLD', field: 'sold', hozAlign: 'center', formatter: intFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'ADS SALES', field: 'sales', hozAlign: 'center', formatter: wholeMoneyFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'T Sales', field: 't_sales', hozAlign: 'center', headerHozAlign: 'center', formatter: tSalesFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, visible: false },
+                    { title: 'CVR', field: 'cvr', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'ACOS', field: 'acos', hozAlign: 'center', formatter: percentFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admCellChart },
+                    { title: 'Tcos', field: 'tcos', hozAlign: 'center', formatter: tcosFormatter, headerSort: true, headerSortStartingDir: 'desc', sorter: admSmartSorter, cssClass: 'adm-metric-cell', cellClick: admTcosCellChart, visible: false },
                     { title: '', field: '_edit', width: 42, minWidth: 42, hozAlign: 'center', headerSort: false, formatter: editFormatter, cssClass: 'adm-edit-cell', cellClick: openAdmEditFromCell },
                 ],
             });
@@ -898,6 +983,24 @@
                     }).join('');
             }
 
+            function refreshAdmSort() {
+                const sorters = table.getSorters ? table.getSorters() : [];
+                if (!sorters.length) return;
+                table.setSort(sorters.map(function (s) {
+                    return { column: s.field, dir: s.dir };
+                }));
+            }
+
+            function syncAdmChannelSalesColumns() {
+                const show = admFilterKind() !== 'types';
+                ['t_sales', 'tcos'].forEach(function (field) {
+                    const col = table.getColumn(field);
+                    if (!col) return;
+                    if (show) col.show();
+                    else col.hide();
+                });
+            }
+
             function applyAdmFilters() {
                 const kind = String((document.getElementById('adm-filter-kind') || {}).value || '').trim();
                 const channelRaw = String((document.getElementById('adm-filter-channel') || {}).value || '').trim();
@@ -906,8 +1009,10 @@
                 const typeQ = String((document.getElementById('adm-search') || {}).value || '').trim().toLowerCase();
                 const rnRaw = String((document.getElementById('adm-filter-rn') || {}).value || '').trim().toUpperCase();
                 const rn = (rnRaw === 'REQ' || rnRaw === 'NR') ? rnRaw : '';
+                syncAdmChannelSalesColumns();
                 if (!kind && !channel && !typeQ && !rn) {
                     table.clearFilter();
+                    refreshAdmSort();
                     table.redraw(true);
                     return;
                 }
@@ -919,6 +1024,7 @@
                     if (rn && String(data.nr_req || 'REQ').toUpperCase() !== rn) return false;
                     return true;
                 });
+                refreshAdmSort();
                 table.redraw(true);
             }
 
@@ -1204,6 +1310,12 @@
                 const channel = data.channel_key || data.channel || '__total__';
                 const labels  = { spend: 'Spend', clicks: 'Clicks', sold: 'Sold', sales: 'Ads Sales', active: 'Active', cvr: 'CVR', acos: 'ACOS', tcos: 'Tcos', missing_ads: 'Missing' };
                 openAdmChart(metric, labels[metric] || metric.toUpperCase(), channel);
+            }
+
+            function admTcosCellChart(e, cell) {
+                const row = cell.getRow().getData() || {};
+                if (!row.has_tcos || admIsTypeMetricRow(row)) return;
+                admCellChart(e, cell);
             }
 
             document.querySelectorAll('.adm-badge-link').forEach(function (el) {

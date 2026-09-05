@@ -127,29 +127,73 @@ class AttendanceLiveWatchService
     }
 
     /**
+     * @return array{title: string, text: string}
+     */
+    public static function viewerWaitCopy(
+        ?string $installedVersion,
+        string $latestVersion,
+        bool $seenRecently,
+        bool $upToDate,
+    ): array {
+        $latest = $latestVersion !== '' ? $latestVersion : 'latest';
+        $installed = $installedVersion !== null && $installedVersion !== '' ? $installedVersion : null;
+
+        if ($upToDate || ($installed !== null && version_compare($latest, $installed, '<='))) {
+            return [
+                'title' => 'Desktop app is not streaming yet',
+                'text' => 'This employee already has v'.$installed.'. Ask them to restart 5Core Attendance while this window stays open. Live video starts after the app reconnects.',
+            ];
+        }
+
+        if ($seenRecently && $installed !== null) {
+            return [
+                'title' => 'Desktop app needs an update',
+                'text' => 'This employee is on v'.$installed.'. Ask them to install v'.$latest.' from /attendance/agent, then restart the app while this window stays open.',
+            ];
+        }
+
+        return [
+            'title' => 'Desktop app is not streaming yet',
+            'text' => 'Ask the employee to open 5Core Attendance v'.$latest.' and keep it running while this window stays open. Install it from /attendance/agent if needed.',
+        ];
+    }
+
+    /**
      * @return array{bytes: string|null, meta: array<string, mixed>, source: string|null}
      */
     public function latestFrame(AttendanceLiveSession $session): array
     {
         $bytes = Cache::get($this->frameKey($session->user_id));
         $meta = Cache::get($this->frameMetaKey($session->user_id), []);
-        if (! is_string($bytes) || $bytes === '') {
-            return ['bytes' => null, 'meta' => [], 'source' => null];
-        }
-
         $meta = is_array($meta) ? $meta : [];
-        $source = (string) ($meta['source'] ?? 'live');
-        $captured = isset($meta['at']) ? \Carbon\Carbon::parse($meta['at']) : null;
-        $age = $captured ? $captured->diffInSeconds(now()) : 0;
-        if ($source !== 'live' && $age > 6) {
-            return ['bytes' => null, 'meta' => [], 'source' => null];
+        $hasBytes = is_string($bytes) && $bytes !== '';
+        $source = $hasBytes ? (string) ($meta['source'] ?? 'live') : null;
+
+        if ($hasBytes && $source === 'live') {
+            return [
+                'bytes' => $bytes,
+                'meta' => $meta,
+                'source' => 'live',
+            ];
         }
 
-        return [
-            'bytes' => $bytes,
-            'meta' => $meta,
-            'source' => 'live',
-        ];
+        if ($hasBytes) {
+            $captured = isset($meta['at']) ? \Carbon\Carbon::parse($meta['at']) : null;
+            $age = $captured ? $captured->diffInSeconds(now()) : 0;
+            if ($age <= 6 || $session->status === 'requested') {
+                return [
+                    'bytes' => $bytes,
+                    'meta' => $meta,
+                    'source' => $source ?: 'screenshot',
+                ];
+            }
+        }
+
+        if ($session->status === 'requested') {
+            return $this->latestScreenshot($session->user_id);
+        }
+
+        return ['bytes' => null, 'meta' => [], 'source' => null];
     }
 
     public function seedStillFrame(User $employee, bool $force = false): void

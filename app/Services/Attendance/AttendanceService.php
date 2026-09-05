@@ -411,7 +411,7 @@ class AttendanceService
             $query->whereIn('id', $userIds);
         }
 
-        return $query->orderBy('name')->get(['id', 'name', 'email', 'designation', 'avatar']);
+        return $query->orderBy('name')->get(['id', 'name', 'email', 'designation', 'avatar', 'org_level', 'role']);
     }
 
     /**

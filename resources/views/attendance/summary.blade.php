@@ -371,6 +371,7 @@
             <div class="es-card p-3">
                 @php
                     $liveToggleCounts = collect($rows)->countBy(fn ($row) => $row['live_status'] ?? 'absent');
+                    $allToggleCount = count($rows);
                 @endphp
                 <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
                     <h6 class="mb-0"><i class="ri-group-line me-1"></i> Team Summary</h6>
@@ -385,7 +386,7 @@
                             Idle <span id="idleCount">{{ (int) ($liveToggleCounts['idle'] ?? 0) }}</span>
                         </button>
                         <button type="button" class="es-live-toggle is-all is-active" data-live-filter="all" title="Show all executives">
-                            ALL
+                            ALL <span id="allCount">{{ (int) $allToggleCount }}</span>
                         </button>
                     </div>
                 </div>
@@ -905,9 +906,11 @@
         const liveEl = document.getElementById('liveCount');
         const absentEl = document.getElementById('absentCount');
         const idleEl = document.getElementById('idleCount');
+        const allEl = document.getElementById('allCount');
         if (liveEl) liveEl.textContent = counts.working;
         if (absentEl) absentEl.textContent = counts.absent;
         if (idleEl) idleEl.textContent = counts.idle;
+        if (allEl) allEl.textContent = (rows || []).length;
     }
 
     function toggleCustomRange() {

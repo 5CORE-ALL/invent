@@ -19,6 +19,37 @@ class AttendanceAccess
         return in_array($normalized, array_map('strtolower', $list), true);
     }
 
+    /**
+     * Directors are omitted from /attendance/summary (table, badges, export).
+     */
+    public static function isDirector(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return self::isDirectorProfile(
+            $user->org_level ?? null,
+            $user->role ?? null,
+            $user->designation ?? null,
+        );
+    }
+
+    public static function isDirectorProfile(?string $orgLevel, ?string $role = null, ?string $designation = null): bool
+    {
+        if (strtolower(trim((string) $orgLevel)) === 'director') {
+            return true;
+        }
+
+        if (strtolower(trim((string) $role)) === 'director') {
+            return true;
+        }
+
+        $designation = strtolower(trim((string) $designation));
+
+        return $designation !== '' && (bool) preg_match('/\bdirector\b/', $designation);
+    }
+
     public static function isInternalEmployee(?User $user = null): bool
     {
         $user ??= auth()->user();
