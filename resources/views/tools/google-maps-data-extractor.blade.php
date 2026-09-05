@@ -1979,6 +1979,8 @@
                 }
 
                 addToCustomersBtn.disabled = true;
+                const originalLabel = addToCustomersBtn.innerHTML;
+                addToCustomersBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Adding ' + ids.length + ' leads…';
                 try {
                     const response = await fetch(addToCustomersBtn.dataset.addUrl, {
                         method: 'POST',
@@ -2016,6 +2018,7 @@
                 } catch (e) {
                     showAddToCustomersAlert('danger', e && e.message ? e.message : 'Could not add leads.');
                 } finally {
+                    addToCustomersBtn.innerHTML = originalLabel;
                     updateLeadSelectionUi();
                 }
             });

@@ -532,8 +532,15 @@ class GoogleMapsDataExtractorController extends Controller
 
     public function addToCustomers(Request $request, GoogleMapsExtractorSearch $search, GoogleMapsLeadImportService $importer): JsonResponse
     {
+        if (function_exists('set_time_limit')) {
+            try {
+                set_time_limit(0);
+            } catch (\Throwable) {
+            }
+        }
+
         $data = $request->validate([
-            'result_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'result_ids' => ['required', 'array', 'min:1'],
             'result_ids.*' => ['integer', 'min:1'],
         ]);
 
