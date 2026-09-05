@@ -461,46 +461,6 @@
                     <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;">
                         <i class="fas fa-upload"></i> Push to Doba
                     </button>
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin  (margin = 0.95 for Doba)
-                         Compact icon-only chip: 🎯 emoji replaces the word "Target",
-                         Apply button is icon-only (matches /doba-tabulator-withoutship). --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
-                               aria-label="Target ROI percent">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 60px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row"
-                            aria-label="Apply Target ROI">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
-                               aria-label="Target GPFT percent">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 60px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply'. Must be less than the Doba take-home margin (< 95%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Apply — Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row"
-                            aria-label="Apply Target GPFT">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
                 </div>
 
             </div>
@@ -655,12 +615,10 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba'])
         function dobaRowSpriceForAlert(data) {
-            let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
-            if (typeof chPromoLiveSprice === 'function' && !isDobaParentRow(data)) {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                return Number(chPromoSavedOrLiveSprice(data)) || 0;
             }
-            return sprice;
+            return parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
         }
         function dobaHasBlueTriangle(data) {
             if (isDobaParentRow(data)) return false;
@@ -1216,230 +1174,91 @@
                 }
             });
 
-            /*
-             * Target ROI% bulk apply (Doba, margin = 0.95)
-             * --------------------------------------------
-             * Back-solves SPRICE for every selected row so SROI = Target ROI%:
-             *     SROI = ((sprice * 0.95 − ship − lp) / lp) * 100
-             *   → sprice = (lp * (1 + ROI%/100) + ship) / 0.95
-             * Self Pick price = sprice − ship (mirrors Doba's existing applyDiscount
-             * flow). Sequential AJAX matches the page's existing per-SKU save loop
-             * so apply_status icons (clock → tick / cross) work the same way.
-             */
-            $('#apply-target-roi-btn').on('click', function () {
-                const rawInput = $('#target-roi-input').val();
-                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-                if (rawInput === '' || rawInput == null) {
-                    showToast('danger', 'Please enter a Target ROI%');
-                    return;
-                }
-                if (!isFinite(targetRoiPct)) {
-                    showToast('danger', 'Target ROI% must be a number');
-                    return;
-                }
-                if (selectedSkus.size === 0) {
-                    showToast('danger', 'Please select at least one SKU first');
-                    return;
-                }
-
-                applyTargetBackSolve(function (rowData) {
-                    const lp = parseFloat(rowData.LP_productmaster) || 0;
-                    if (lp <= 0) return null;
-                    const ship = parseFloat(rowData.Ship_productmaster) || 0;
-                    const candidate = (lp * (1 + targetRoiPct / 100) + ship) / 0.95;
-                    const newPrice = +candidate.toFixed(2);
-                    if (!isFinite(newPrice) || newPrice <= 0) return null;
-                    return { newPrice: newPrice, lp: lp, ship: ship };
-                }, `Target ROI ${targetRoiPct}%`);
-            });
-
-            /*
-             * Target GPFT% bulk apply (Doba, margin = 0.95)
-             * ---------------------------------------------
-             * Back-solves so SGPFT = Target GPFT%:
-             *     SGPFT = ((sprice * 0.95 − ship − lp) / sprice) * 100
-             *   → sprice = (lp + ship) / (0.95 − GPFT%/100)
-             * Constraint: (0.95 − target/100) must be > 0, i.e. target < 95.
-             */
-            $('#apply-target-gpft-btn').on('click', function () {
-                const rawInput = $('#target-gpft-input').val();
-                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-                if (rawInput === '' || rawInput == null) {
-                    showToast('danger', 'Please enter a Target GPFT%');
-                    return;
-                }
-                if (!isFinite(targetGpftPct)) {
-                    showToast('danger', 'Target GPFT% must be a number');
-                    return;
-                }
-                if (selectedSkus.size === 0) {
-                    showToast('danger', 'Please select at least one SKU first');
-                    return;
-                }
-
-                const denom = 0.95 - targetGpftPct / 100;
-                if (denom <= 0) {
-                    showToast('danger', `Target GPFT% ${targetGpftPct}% is too high — must be < 95% (Doba take-home).`);
-                    return;
-                }
-
-                applyTargetBackSolve(function (rowData) {
-                    const lp = parseFloat(rowData.LP_productmaster) || 0;
-                    if (lp <= 0) return null;
-                    const ship = parseFloat(rowData.Ship_productmaster) || 0;
-                    const candidate = (lp + ship) / denom;
-                    const newPrice = +candidate.toFixed(2);
-                    if (!isFinite(newPrice) || newPrice <= 0) return null;
-                    return { newPrice: newPrice, lp: lp, ship: ship };
-                }, `Target GPFT ${targetGpftPct}%`);
-            });
-
-            // Shared back-solve runner. Mirrors the existing applyDiscount per-SKU
-            // sequential AJAX flow (clock → tick / cross via apply_status) so the
-            // user sees the same per-row feedback as Decrease / Increase / Same Price.
-            function applyTargetBackSolve(computeFn, labelPrefix) {
-                const skusToProcess = Array.from(selectedSkus);
-                let currentIndex  = 0;
-                let successCount  = 0;
-                let errorCount    = 0;
-                let skippedNoLp   = 0;
-
-                function processNext() {
-                    if (currentIndex >= skusToProcess.length) {
-                        if (successCount > 0) {
-                            const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                            showToast('success', `${labelPrefix} applied to ${successCount} SKU(s)${note}`);
-                        }
-                        if (errorCount > 0) {
-                            showToast('warning', `${errorCount} SKU(s) could not be updated`);
-                        }
-                        if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
-                        return;
-                    }
-
-                    const sku = skusToProcess[currentIndex];
-                    let row = null;
-                    table.getRows().forEach(r => {
-                        if (r.getData()['(Child) sku'] === sku) row = r;
-                    });
-
-                    if (!row || row.getData().is_parent) {
-                        errorCount++;
-                        currentIndex++;
-                        setTimeout(processNext, 20);
-                        return;
-                    }
-
-                    const rowData = row.getData();
-                    const computed = computeFn(rowData);
-                    if (!computed) {
-                        // computeFn returned null (no LP or invalid sprice)
-                        skippedNoLp++;
-                        currentIndex++;
-                        setTimeout(processNext, 20);
-                        return;
-                    }
-
-                    const { newPrice, lp, ship } = computed;
-                    const selfPickValue = parseFloat(Math.max(0, newPrice - ship).toFixed(2));
-                    const spftValue = newPrice > 0 ? ((newPrice * 0.95) - ship - lp) / newPrice * 100 : 0;
-                    const sroiValue = lp > 0       ? ((newPrice * 0.95) - ship - lp) / lp * 100       : 0;
-
-                    row.update({ apply_status: 'applying' });
-
-                    dobaPersistClearThenSave(sku, {
-                        sprice: newPrice,
-                        spft_percent: spftValue.toFixed(2),
-                        sroi_percent: sroiValue.toFixed(2),
-                        s_self_pick: selfPickValue
-                    }, row)
-                    .done(function () {
-                        row.update({
-                            sprice: newPrice,
-                            s_self_pick: selfPickValue,
-                            spft: spftValue,
-                            sroi: sroiValue,
-                            apply_status: 'applied'
-                        });
-                        successCount++;
-                        currentIndex++;
-                        setTimeout(processNext, 60);
-                    })
-                    .fail(function (xhr) {
-                        console.error('Target back-solve save error:', sku, xhr && xhr.responseText);
-                        row.update({ apply_status: 'error' });
-                        errorCount++;
-                        currentIndex++;
-                        setTimeout(processNext, 60);
-                    });
-                }
-
-                processNext();
+            // Clear SPRICE for selected SKUs, save 0, then refill Sprc Dil (same as TikTok).
+            function dobaApplyRuleSpriceToRow(row, price) {
+                const d = row.getData() || {};
+                const lp = parseFloat(d.LP_productmaster) || 0;
+                const ship = parseFloat(d.Ship_productmaster) || 0;
+                const spft = price > 0 ? ((price * 0.95) - ship - lp) / price * 100 : 0;
+                const sroi = lp > 0 ? ((price * 0.95) - ship - lp) / lp * 100 : 0;
+                const sPick = Math.max(0, +(price - ship).toFixed(2));
+                const patch = (typeof chPromoSpricePatch === 'function')
+                    ? chPromoSpricePatch(price)
+                    : { sprice: price, SPRICE: price, has_custom_sprice: true };
+                row.update(Object.assign({}, patch, {
+                    sprice: price,
+                    s_self_pick: sPick,
+                    spft: spft,
+                    sroi: sroi,
+                    SPRICE_STATUS: 'applied',
+                    push_status: null,
+                    apply_status: 'applied',
+                }));
             }
 
-            $('#target-roi-input').on('keypress', function (e) {
-                if (e.which === 13) $('#apply-target-roi-btn').click();
-            });
-            $('#target-gpft-input').on('keypress', function (e) {
-                if (e.which === 13) $('#apply-target-gpft-btn').click();
-            });
-
-            // Clear SPRICE button handler
             $('#clear-sprice-selected-btn').on('click', function() {
                 if (selectedSkus.size === 0) {
                     showToast('danger', 'Please select SKUs first');
                     return;
                 }
 
-                if (confirm('Are you sure you want to clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
-                    let clearedCount = 0;
-
-                    selectedSkus.forEach(sku => {
-                        const rows = table.searchRows("(Child) sku", "=", sku);
-                        
-                        if (rows.length > 0) {
-                            const row = rows[0];
-                            row.update({
-                                sprice: 0,
-                                spft: 0,
-                                sroi: 0,
-                                s_self_pick: 0
-                            });
-                            
-                            row.reformat();
-                            
-                            // Save to database
-                            $.ajax({
-                                url: '/doba/save-sprice',
-                                method: 'POST',
-                                headers: {
-                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                },
-                                data: {
-                                    sku: sku,
-                                    sprice: 0,
-                                    spft_percent: 0,
-                                    sroi_percent: 0,
-                                    s_self_pick: 0,
-                                    push_status: null,
-                                    _token: $('meta[name="csrf-token"]').attr('content')
-                                },
-                                success: function() {
-                                    console.log('SPRICE cleared for SKU:', sku);
-                                },
-                                error: function(xhr) {
-                                    console.error('Failed to clear SPRICE for SKU:', sku, xhr.responseText);
-                                }
-                            });
-                            
-                            clearedCount++;
-                        }
-                    });
-
-                    showToast('success', 'SPRICE cleared for ' + clearedCount + ' SKU(s)');
+                if (!confirm('Are you sure you want to clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
+                    return;
                 }
+
+                const items = [];
+                selectedSkus.forEach(function(sku) {
+                    const rows = table.searchRows('(Child) sku', '=', sku);
+                    if (!rows.length) return;
+                    const row = rows[0];
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    else {
+                        row.update({ sprice: 0, spft: 0, sroi: 0, s_self_pick: 0, has_custom_sprice: false });
+                    }
+                    items.push({ row: row, sku: sku });
+                });
+
+                if (!items.length) return;
+
+                const token = $('meta[name="csrf-token"]').attr('content');
+                const zeros = items.map(function(i) {
+                    return { sku: i.sku, sprice: 0, spft_percent: 0, sroi_percent: 0, s_self_pick: 0 };
+                });
+                $.ajax({
+                    url: '/doba/save-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                    data: { updates: zeros, _token: token }
+                }).always(function() {
+                    const fills = [];
+                    items.forEach(function(item) {
+                        const d = item.row.getData() || {};
+                        let price = (typeof ebayTiktokRuleDiscount === 'function')
+                            ? ebayTiktokRuleDiscount(d)
+                            : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                        if (!(price > 0)) return;
+                        dobaApplyRuleSpriceToRow(item.row, price);
+                        fills.push({
+                            sku: item.sku,
+                            sprice: price,
+                            spft_percent: item.row.getData().spft,
+                            sroi_percent: item.row.getData().sroi,
+                            s_self_pick: item.row.getData().s_self_pick,
+                        });
+                    });
+                    if (fills.length) {
+                        $.ajax({
+                            url: '/doba/save-sprice',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                            data: { updates: fills, _token: token }
+                        });
+                        showToast('success', 'S PRC cleared, then Sprc Dil saved on ' + fills.length + ' SKU(s)');
+                    } else {
+                        showToast('success', 'SPRICE cleared for ' + items.length + ' SKU(s)');
+                    }
+                    if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
+                });
             });
 
             // SUGG AMZ - 30% button handler
@@ -2379,22 +2198,15 @@
                         width: 92,
                         sorter: "number",
                         visible: true,
-                        editor: "number",
-                        editorParams: {
-                            min: 0,
-                            step: 0.01
-                        },
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when Doba L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        editable: false,
+                        headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaParentRow(rowData)) return '';
-                            let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(rowData);
-                                if (calc > 0) value = calc;
-                            }
+                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
+                                ? Number(chPromoSavedOrLiveSprice(rowData))
+                                : parseFloat(cell.getValue() || 0);
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             const live = parseFloat(rowData['doba Price']) || 0;
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                             if (!(value > 0)) return '';
@@ -2403,7 +2215,10 @@
                             const priceHtml = overLmp
                                 ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
                                 : `<span style="color:#000;font-weight:600;">${formatted}</span>`;
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                            const redTri = overLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
+                                    + Number(lmp).toFixed(2) + '"></i>'
+                                : '';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
@@ -3100,66 +2915,7 @@
                     .catch(err => console.error('Column visibility load failed:', err));
             }
 
-            // Handle SPRICE cell edit
-            table.on('cellEdited', function(cell) {
-                const field = cell.getColumn().getField();
-                
-                if (field === 'sprice') {
-                    const rowData = cell.getRow().getData();
-                    const sprice = parseFloat(cell.getValue()) || 0;
-                    const lp = parseFloat(rowData.LP_productmaster) || 0;
-                    const ship = parseFloat(rowData.Ship_productmaster) || 0;
-                    const sku = rowData['(Child) sku'];
-                    
-                    if (sprice > 0 && lp > 0) {
-                        // Calculate SPFT% = ((sprice * 0.95) - ship - lp) / sprice * 100
-                        const spft = ((sprice * 0.95) - ship - lp) / sprice * 100;
-                        
-                        // Calculate SROI% = ((sprice * 0.95) - ship - lp) / lp * 100
-                        const sroi = ((sprice * 0.95) - ship - lp) / lp * 100;
-                        
-                        // Always: S Pick Price = SPRICE − Ship
-                        const sSelfPick = Math.max(0, parseFloat((sprice - ship).toFixed(2)));
-                        // Always: Pick Price = PRICE − Ship
-                        const listPrice = parseFloat(rowData['doba Price']) || 0;
-                        const pickPrice = listPrice > 0 ? Math.max(0, parseFloat((listPrice - ship).toFixed(2))) : 0;
-                        
-                        // Update row data with all calculated values
-                        // Reset push_status to null so push button shows again (like Amazon)
-                        cell.getRow().update({
-                            spft: spft,
-                            sroi: sroi,
-                            s_self_pick: sSelfPick,
-                            self_pick_price: pickPrice,
-                            push_status: null,
-                            apply_status: null
-                        });
-                        
-                        // Force refresh the _push cell to show upload button immediately
-                        const pushCell = cell.getRow().getCell('_push');
-                        if (pushCell) {
-                            pushCell.getElement().innerHTML = `<button class="push-single-btn" data-sku="${sku}" data-price="${sprice}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push to Doba">
-                                <i class="fas fa-upload"></i>
-                            </button>`;
-                        }
-                        
-                        dobaPersistClearThenSave(sku, {
-                            sprice: sprice,
-                            spft_percent: spft,
-                            sroi_percent: sroi,
-                            s_self_pick: sSelfPick,
-                            push_status: null
-                        }, cell.getRow())
-                        .done(function() {
-                            showToast('success', 'SPRICE updated successfully');
-                        })
-                        .fail(function(xhr) {
-                            showToast('danger', 'Failed to update SPRICE');
-                            console.error(xhr);
-                        });
-                    }
-                }
-            });
+            // SPRICE is not editable — auto-saved from Sprc Dil (same as TikTok).
 
             // Wait for table to be built
             table.on('tableBuilt', function() {

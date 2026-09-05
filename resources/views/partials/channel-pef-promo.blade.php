@@ -3401,8 +3401,8 @@
                 : CHANNEL_PROMO_CHANNEL === 'faire') {
                 return false;
             }
-            // TikTok: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
-            if (chPromoIsTiktokPromoChannel()) {
+            // TikTok / Doba: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
+            if (chPromoIsTiktokPromoChannel() || chPromoIsDobaPromoChannel()) {
                 return false;
             }
             if (!d) return true;
@@ -3476,6 +3476,7 @@
                 SPFT: 0,
                 spft: 0,
                 'Spft%': 0,
+                s_self_pick: 0,
             }));
             try { row.reformat(); } catch (e) { /* ignore */ }
         }
