@@ -180,7 +180,7 @@ class AliExpressApiService
                 is_array($weightFill['fields']['category_attributes'] ?? null) ? $weightFill['fields']['category_attributes'] : []
             );
         }
-        $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb, 'string');
+        $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb, 'json');
         $instance = $this->sanitizeCategoryAttributeKeys($instance);
         unset($instance['category_attributes']);
 
@@ -193,58 +193,31 @@ class AliExpressApiService
             'weight_kg' => $weight,
             'weight_lb' => $lb,
             'us_package_weight_lb' => $this->usPackageWeightPounds($weight, $lb),
+            'us_logistics_weight' => $instance['usLogisticsWeight'] ?? null,
         ]);
 
-        $last = [
-            'success' => false,
-            'message' => '',
-            'data' => null,
-        ];
-
-        $encodedInstance = $this->encodeRequestPayload($instance);
-        $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
-            'rest' => ['product_instance_request' => $encodedInstance],
-            'sync' => ['product_instance_request' => $encodedInstance],
-        ]);
-        $productId = $this->extractPostedProductId($res['data'] ?? [])
-            ?: $this->extractPostedProductId($res['result'] ?? [])
-            ?: $this->extractPostedProductId($res);
-        if ($productId !== '') {
-            $res['success'] = true;
-            $res['product_id'] = $productId;
-
-            return $res;
+        $last = $this->postSchemaProductInstance($instance);
+        if (! empty($last['success']) && trim((string) ($last['product_id'] ?? '')) !== '') {
+            return $last;
         }
-        $last = [
-            'success' => false,
-            'message' => $this->extractPostFailureMessage($res),
-            'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
-        ];
 
         if (str_contains(strtolower((string) ($last['message'] ?? '')), 'package weight')) {
-            $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb, 'string');
-            $encodedInstance = $this->encodeRequestPayload($instance);
-            $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
-                'rest' => ['product_instance_request' => $encodedInstance],
-                'sync' => ['product_instance_request' => $encodedInstance],
-            ]);
-            $productId = $this->extractPostedProductId($res['data'] ?? [])
-                ?: $this->extractPostedProductId($res['result'] ?? [])
-                ?: $this->extractPostedProductId($res);
-            if ($productId !== '') {
-                $res['success'] = true;
-                $res['product_id'] = $productId;
-
-                return $res;
+            foreach (['json_number', 'number'] as $kind) {
+                $instance = $this->forceUsLogisticsWeightObjects($instance, $weight, $lb, $kind);
+                $retry = $this->postSchemaProductInstance($instance);
+                if (! empty($retry['success']) && trim((string) ($retry['product_id'] ?? '')) !== '') {
+                    return $retry;
+                }
+                $last = [
+                    'success' => false,
+                    'message' => $retry['message'] ?? $last['message'],
+                    'data' => $retry['data'] ?? $last['data'] ?? null,
+                ];
             }
-            $last = [
-                'success' => false,
-                'message' => $this->extractPostFailureMessage($res) ?: $last['message'],
-                'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? $last['data'] ?? null,
-            ];
         }
 
         $official = $this->officialProductPostRequest($request, $weightFill['fields']);
+        $official = $this->forceUsLogisticsWeightObjects($official, $weight, $lb, 'json');
         $encodedPost = $this->encodeRequestPayload($official);
         $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
             'rest' => ['post_product_request' => $encodedPost],
@@ -265,6 +238,21 @@ class AliExpressApiService
             'message' => $this->extractPostFailureMessage($postRes) ?: $last['message'],
             'data' => $postRes['data'] ?? $postRes['result'] ?? $last['data'] ?? null,
         ];
+
+        if (str_contains(strtolower((string) ($last['message'] ?? '')), 'package weight')) {
+            $shaped = $this->retryProductPostWithWeightShapes($instance, $official, $weight, $lb);
+            if (! empty($shaped['success']) && trim((string) ($shaped['product_id'] ?? '')) !== '') {
+                return [
+                    'success' => true,
+                    'product_id' => (string) $shaped['product_id'],
+                    'message' => $shaped['message'] ?? null,
+                ];
+            }
+            if (is_array($shaped['instance'] ?? null)) {
+                $instance = $shaped['instance'];
+            }
+            $last['message'] = $shaped['message'] ?? $last['message'];
+        }
 
         $skuCodes = [];
         foreach ($request['sku_info_list'] ?? [] as $row) {
@@ -294,6 +282,34 @@ class AliExpressApiService
         }
 
         return $last;
+    }
+
+    /**
+     * @param  array<string, mixed>  $instance
+     * @return array{success: bool, message?: string, product_id?: string, data?: mixed}
+     */
+    private function postSchemaProductInstance(array $instance): array
+    {
+        $encodedInstance = $this->encodeRequestPayload($instance);
+        $res = $this->callApiFlexible('aliexpress.solution.schema.product.instance.post', [
+            'rest' => ['product_instance_request' => $encodedInstance],
+            'sync' => ['product_instance_request' => $encodedInstance],
+        ]);
+        $productId = $this->extractPostedProductId($res['data'] ?? [])
+            ?: $this->extractPostedProductId($res['result'] ?? [])
+            ?: $this->extractPostedProductId($res);
+        if ($productId !== '') {
+            $res['success'] = true;
+            $res['product_id'] = $productId;
+
+            return $res;
+        }
+
+        return [
+            'success' => false,
+            'message' => $this->extractPostFailureMessage($res),
+            'data' => $res['data'] ?? $res['result'] ?? $res['response'] ?? null,
+        ];
     }
 
     /**
@@ -1340,8 +1356,8 @@ class AliExpressApiService
             $keys = ['package_weight', 'aeLogisticsWeight', 'usLogisticsWeight'];
             $fields = [
                 'package_weight' => $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number'),
-                'aeLogisticsWeight' => $this->usPackageWeightObject($kg, $lb, 'string'),
-                'usLogisticsWeight' => $this->usPackageWeightObject($kg, $lb, 'string'),
+                'aeLogisticsWeight' => $this->usPackageWeightJson($kg, $lb),
+                'usLogisticsWeight' => $this->usPackageWeightJson($kg, $lb),
             ];
         }
 
@@ -1622,8 +1638,7 @@ class AliExpressApiService
     }
 
     /**
-     * US overlay wants only {"Package weight":"3.35"}. A nested
-     * {"Package weight":{"value":"3.35"}} fails CHK_BASIC_REQUIRED.
+     * Nested object used only when schema.get says Package weight is an object/number leaf.
      *
      * @return array{Package weight: float|int|string}
      */
@@ -1639,6 +1654,36 @@ class AliExpressApiService
         }
 
         return ['Package weight' => $text];
+    }
+
+    /**
+     * US Pop Choice stores usLogisticsWeight as a JSON string. A nested object
+     * is dropped by schema checks and returns CHK_BASIC_REQUIRED.
+     */
+    private function usPackageWeightJson(float $kg, float $lb, bool $numericValue = false): string
+    {
+        $pounds = $this->usPackageWeightPounds($kg, $lb);
+        $payload = $numericValue
+            ? ['Package weight' => $pounds]
+            : ['Package weight' => number_format($pounds, 2, '.', '')];
+
+        return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ?: '{"Package weight":"'.number_format($pounds, 2, '.', '').'"}';
+    }
+
+    /**
+     * @return array{Package weight: float|int|string}|string
+     */
+    private function logisticsWeightPayload(float $kg, float $lb, string $kind): array|string
+    {
+        if ($kind === 'json' || $kind === 'json_string') {
+            return $this->usPackageWeightJson($kg, $lb, false);
+        }
+        if ($kind === 'json_number') {
+            return $this->usPackageWeightJson($kg, $lb, true);
+        }
+
+        return $this->usPackageWeightObject($kg, $lb, $kind);
     }
 
     private function usPackageWeightPounds(float $kg, float $lb): float
@@ -1663,17 +1708,16 @@ class AliExpressApiService
         if ($kg <= 0 && $lb <= 0) {
             return $fields;
         }
-        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, $this->packageWeightSchemaKind($nodes)), $kg, $lb);
+        return $this->applyLogisticsWeightShape($fields, $this->logisticsWeightPayload($kg, $lb, $this->packageWeightSchemaKind($nodes)), $kg, $lb);
     }
 
     /**
-     * AliExpress US checks usLogisticsWeight.Package weight as a scalar string.
-     * Nested {"value":"..."} is treated as missing and returns CHK_BASIC_REQUIRED.
+     * Default is a JSON string: {"Package weight":"8.00"}. Objects fail US overlay required checks.
      *
      * @param  array<string, mixed>  $fields
      * @return array<string, mixed>
      */
-    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'string'): array
+    private function forceUsLogisticsWeightObjects(array $fields, float $kg, float $lb, string $kind = 'json'): array
     {
         $kg = abs($kg);
         $lb = abs($lb);
@@ -1681,7 +1725,7 @@ class AliExpressApiService
             return $fields;
         }
 
-        return $this->applyLogisticsWeightShape($fields, $this->usPackageWeightObject($kg, $lb, $kind), $kg, $lb);
+        return $this->applyLogisticsWeightShape($fields, $this->logisticsWeightPayload($kg, $lb, $kind), $kg, $lb);
     }
 
     /**
@@ -1691,6 +1735,19 @@ class AliExpressApiService
      */
     private function applyLogisticsWeightShape(array $fields, mixed $usObject, float $kg, float $lb): array
     {
+        if (is_string($usObject) && trim($usObject) !== '') {
+            foreach (['usLogisticsWeight', 'aeLogisticsWeight', 'LogisticsWeight', 'logisticsWeight'] as $key) {
+                $fields[$key] = $usObject;
+            }
+            $usl = is_array($fields['usl'] ?? null) ? $fields['usl'] : [];
+            $usl['logisticsWeight'] = $usObject;
+            $fields['usl'] = $usl;
+            unset($fields['Package weight']);
+            $fields['package_weight'] = $this->formatMarketplaceWeight($kg, $lb, 'kg', 'number');
+
+            return $this->copyUsWeightOntoSkus($fields, $usObject);
+        }
+
         $object = is_array($usObject) ? $usObject : $this->usPackageWeightObject($kg, $lb, 'string');
         if (! $this->hasPackageWeightKey($object)) {
             $object = array_merge($this->usPackageWeightObject($kg, $lb, 'string'), $object);
@@ -1783,8 +1840,15 @@ class AliExpressApiService
                 return 'string';
             }
         }
+        foreach ($nodes as $node) {
+            $path = strtolower((string) ($node['path'] ?? ''));
+            $type = strtolower((string) ($node['type'] ?? ''));
+            if ($type === 'string' && (str_contains($path, 'logisticsweight') || $path === 'usl')) {
+                return 'json';
+            }
+        }
 
-        return 'string';
+        return 'json';
     }
 
     private function hasValidLogisticsWeight(mixed $value): bool
@@ -1804,6 +1868,11 @@ class AliExpressApiService
         }
         if (is_string($value)) {
             $trim = trim($value);
+            if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
+                $decoded = json_decode($trim, true);
+
+                return is_array($decoded) && $this->hasValidLogisticsWeight($decoded);
+            }
 
             return $trim !== '' && is_numeric($trim) && (float) $trim > 0;
         }
@@ -2434,15 +2503,6 @@ class AliExpressApiService
                     continue;
                 }
                 $value = $bag[$key];
-                if (is_string($value)) {
-                    $trim = trim($value);
-                    if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
-                        $decoded = json_decode($trim, true);
-                        if (is_array($decoded)) {
-                            $value = $decoded;
-                        }
-                    }
-                }
                 $out[$key] = $value;
             }
         }
@@ -2463,6 +2523,15 @@ class AliExpressApiService
         $kgValue = max(0.001, abs($kg));
 
         $walk = function ($value, string $key) use (&$walk, $pounds, $kgValue) {
+            if (is_string($value)) {
+                $trim = trim($value);
+                if ($trim !== '' && ($trim[0] === '{' || $trim[0] === '[')) {
+                    $decoded = json_decode($trim, true);
+                    if (is_array($decoded)) {
+                        return json_encode($walk($decoded, $key), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: $value;
+                    }
+                }
+            }
             if (is_array($value)) {
                 $out = [];
                 foreach ($value as $childKey => $child) {
@@ -2502,10 +2571,10 @@ class AliExpressApiService
 
     /**
      * @param  array<string, mixed>  $fields
-     * @param  array{Package weight: string}  $usObject
+     * @param  array{Package weight: float|int|string}|string  $usObject
      * @return array<string, mixed>
      */
-    private function copyUsWeightOntoSkus(array $fields, array $usObject): array
+    private function copyUsWeightOntoSkus(array $fields, array|string $usObject): array
     {
         $skus = $fields['sku_info_list'] ?? null;
         if (! is_array($skus) || $skus === []) {
@@ -2531,25 +2600,25 @@ class AliExpressApiService
      */
     private function retryProductPostWithWeightShapes(array $instance, array $official, float $kg, float $lb): array
     {
-        $text = number_format($this->usPackageWeightPounds($kg, $lb), 2, '.', '');
-        $stringObject = $this->usPackageWeightObject($kg, $lb, 'string');
-        $jsonString = json_encode($stringObject, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{"Package weight":"'.$text.'"}';
         $lastMessage = '';
-        $lastInstance = $this->applyLogisticsWeightShape($instance, $stringObject, $kg, $lb);
-        $tryOfficial = $this->applyLogisticsWeightShape($official, $jsonString, $kg, $lb);
-        $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
-            'rest' => ['post_product_request' => $this->encodeRequestPayload($tryOfficial)],
-            'sync' => ['post_product_request' => $this->encodeRequestPayload($tryOfficial)],
-        ]);
-        $productId = $this->extractPostedProductId($postRes['data'] ?? [])
-            ?: $this->extractPostedProductId($postRes['result'] ?? [])
-            ?: $this->extractPostedProductId($postRes)
-            ?: (string) ($postRes['product_id'] ?? '');
-        if ($productId !== '') {
-            return ['success' => true, 'product_id' => $productId, 'instance' => $lastInstance];
+        $lastInstance = $instance;
+        foreach (['json', 'json_number'] as $kind) {
+            $payload = $this->logisticsWeightPayload($kg, $lb, $kind);
+            $tryOfficial = $this->applyLogisticsWeightShape($official, $payload, $kg, $lb);
+            $lastInstance = $this->applyLogisticsWeightShape($instance, $payload, $kg, $lb);
+            $postRes = $this->callApiFlexible('aliexpress.solution.product.post', [
+                'rest' => ['post_product_request' => $this->encodeRequestPayload($tryOfficial)],
+                'sync' => ['post_product_request' => $this->encodeRequestPayload($tryOfficial)],
+            ]);
+            $productId = $this->extractPostedProductId($postRes['data'] ?? [])
+                ?: $this->extractPostedProductId($postRes['result'] ?? [])
+                ?: $this->extractPostedProductId($postRes)
+                ?: (string) ($postRes['product_id'] ?? '');
+            if ($productId !== '') {
+                return ['success' => true, 'product_id' => $productId, 'instance' => $lastInstance];
+            }
+            $lastMessage = $this->extractPostFailureMessage($postRes) ?: $lastMessage;
         }
-        $lastMessage = $this->extractPostFailureMessage($postRes) ?: $lastMessage;
-        $lastInstance = $this->applyLogisticsWeightShape($instance, $jsonString, $kg, $lb);
 
         return ['message' => $lastMessage, 'instance' => $lastInstance];
     }
@@ -2814,7 +2883,7 @@ class AliExpressApiService
 
         $skus = [];
         $lb = $this->aliexpressWeightPounds($request, $weight);
-        $usWeight = $this->usPackageWeightObject($weight, $lb);
+        $usWeight = $this->usPackageWeightJson($weight, $lb);
         foreach ($request['sku_info_list'] ?? [] as $row) {
             if (! is_array($row)) {
                 continue;
