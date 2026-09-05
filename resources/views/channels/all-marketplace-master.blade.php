@@ -2619,14 +2619,20 @@
                             }
                         },
                         bottomCalc: function(values, data) {
-                            
                             let totalQty = 0, totalViews = 0;
                             data.forEach(function(row) {
                                 totalQty += parseNumber(row['Qty'] || 0);
                                 totalViews += parseNumber(row['Total Views'] || 0);
                             });
-                            if (totalViews === 0) return '-';
-                            return '<strong>' + ((totalQty / totalViews) * 100).toFixed(2) + '%</strong>';
+                            if (totalViews === 0) return null;
+                            return (totalQty / totalViews) * 100;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || value === '' || !isFinite(parseNumber(value))) {
+                                return '<strong>-</strong>';
+                            }
+                            return '<strong>' + (Math.round(parseNumber(value) * 100) / 100).toFixed(2) + '%</strong>';
                         }
                     },
                     {

@@ -90,6 +90,29 @@ class ChannelMasterViewsGuard
      *
      * @return array{views: float, qty: float}|null
      */
+    /**
+     * Snapshot keys that share one views history (rename / alias collisions).
+     *
+     * @return list<string>
+     */
+    public static function historyChannels(string $channel): array
+    {
+        $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
+        $aliases = [
+            'shopifyb2c' => ['shopifyb2c', 'shopify'],
+            'shopify' => ['shopifyb2c', 'shopify'],
+            'ebaytwo' => ['ebaytwo', 'ebay2'],
+            'ebaythree' => ['ebaythree', 'ebay3'],
+            'tiktokshop' => ['tiktokshop', 'tiktok'],
+            'tiktokshop2' => ['tiktokshop2', 'tiktok2'],
+            'temu3' => ['temu3', 'temuthree'],
+            'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
+            'bestbuyusa' => ['bestbuyusa', 'bestbuy'],
+        ];
+
+        return array_values(array_unique($aliases[$channel] ?? [$channel]));
+    }
+
     public static function lastTrusted(string $channel, ?string $beforeDate = null): ?array
     {
         $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
@@ -98,7 +121,7 @@ class ChannelMasterViewsGuard
         }
 
         $query = ChannelMasterSummary::query()
-            ->where('channel', $channel)
+            ->whereIn('channel', self::historyChannels($channel))
             ->orderByDesc('snapshot_date')
             ->limit(21);
         if ($beforeDate) {
@@ -231,7 +254,7 @@ class ChannelMasterViewsGuard
 
         $from = now('America/Los_Angeles')->subDays($days)->toDateString();
         $rows = ChannelMasterSummary::query()
-            ->where('channel', $channel)
+            ->whereIn('channel', self::historyChannels($channel))
             ->whereDate('snapshot_date', '>=', $from)
             ->orderBy('snapshot_date')
             ->get();

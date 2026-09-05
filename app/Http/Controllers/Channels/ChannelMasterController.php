@@ -2297,17 +2297,23 @@ class ChannelMasterController extends Controller
      */
     private function restoreSavedTableMetricsOnChannelRows(array $rows): array
     {
-        $saved = [];
+        $savedByName = [];
+        $savedByKey = [];
         $hasTodaySales = Schema::hasColumn('channel_master_calculated_data', 'today_sales');
         foreach (\App\Models\ChannelMasterCalculatedData::query()->get() as $calc) {
+            $name = strtolower(trim((string) $calc->channel));
             $ch = $this->allMarketplaceSnapshotKey((string) $calc->channel);
+            if ($name !== '') {
+                $savedByName[$name] = $calc;
+            }
             if ($ch !== '') {
-                $saved[$ch] = $calc;
+                $savedByKey[$ch] = $calc;
             }
         }
         foreach ($rows as &$row) {
+            $rowName = strtolower(trim((string) ($row['Channel '] ?? $row['Channel'] ?? '')));
             $ch = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            $calc = $saved[$ch] ?? null;
+            $calc = $savedByName[$rowName] ?? $savedByKey[$ch] ?? null;
             if (! $calc) {
                 continue;
             }
@@ -3426,74 +3432,85 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            // Match the channel_master row literally named "Shopify" (id 60).
-            if (strcasecmp($name, 'Shopify') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2c') {
                 continue;
             }
 
             $l30Sales = (float) $live['l30_sales'];
             $l60Sales = (float) $live['l60_sales'];
-
-            $row['L30 Sales']  = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) $live['l30_orders'];
-            $row['Qty']        = (int) $live['qty'];
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            $row['L60 Orders'] = (int) $live['l60_orders'];
-
-            // Profit / ROI / Ads metrics — connect /all-marketplace-master Shopify row
-            // to the same numbers /shopify computes for its NPFT / NROI cards (same
-            // 0.95 margin). Without this overlay these cells read 0 because there's
-            // no getShopifyChannelData() handler defined.
             $totalPft  = (float) ($live['total_pft']  ?? 0);
             $totalCogs = (float) ($live['total_cogs'] ?? 0);
 
             // Spend + TCOS match /shopify-ads-master SPEND (2nd badge) and TCOS badges.
+            // Live $0 must not wipe a persisted Spend the same way Today Sales is protected.
             $totalAdSpend  = (float) ($live['total_ad_spend'] ?? 0);
+            $existingSpend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? 0));
+            if ($totalAdSpend <= 0 && $existingSpend > 0) {
+                $totalAdSpend = $existingSpend;
+            }
             $shoppingSpend = (float) ($live['shopping_spent'] ?? 0);
             $serpSpend     = (float) ($live['serp_spent']     ?? 0);
 
-            $gpftPct  = $l30Sales  > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
-            $groi     = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
-            // Prefer the rolled-up TCOS from /shopify-ads-master (Spend / Shopify net sales).
-            $tacosPct = (float) ($live['tcos_pct'] ?? 0);
-            if ($tacosPct <= 0 && $l30Sales > 0) {
-                $tacosPct = ($totalAdSpend / $l30Sales) * 100;
-            }
-            $adsPct   = $tacosPct;
-            $nPftPct  = $gpftPct - $tacosPct;
-            $netPft   = $totalPft - $totalAdSpend;
-            $nRoi     = $totalCogs > 0 ? ($netPft / $totalCogs) * 100 : 0.0;
+            // Legacy row named "Shopify" has no dedicated sales handler — fill sales/profit.
+            // "Shopify B2C" already comes from getShopifyB2CChannelData; only stabilize Spend.
+            if (strcasecmp($name, 'Shopify') === 0) {
+                $row['L30 Sales']  = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) $live['l30_orders'];
+                $row['Qty']        = (int) $live['qty'];
+                $row['L-60 Sales'] = (int) round($l60Sales);
+                $row['L60 Orders'] = (int) $live['l60_orders'];
 
-            $row['Total PFT']      = round($totalPft, 2);
-            $row['cogs']           = round($totalCogs, 2);
-            $row['Gprofit%']       = round($gpftPct, 1) . '%';
-            $row['G Roi']          = round($groi, 1);
-            $row['N PFT']          = round($nPftPct, 1) . '%';
-            $row['N ROI']          = round($nRoi, 1);
+                $gpftPct  = $l30Sales  > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
+                $groi     = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+                $tacosPct = (float) ($live['tcos_pct'] ?? 0);
+                if ($tacosPct <= 0 && $l30Sales > 0) {
+                    $tacosPct = ($totalAdSpend / $l30Sales) * 100;
+                }
+                $nPftPct  = $gpftPct - $tacosPct;
+                $netPft   = $totalPft - $totalAdSpend;
+                $nRoi     = $totalCogs > 0 ? ($netPft / $totalCogs) * 100 : 0.0;
+
+                $row['Total PFT']      = round($totalPft, 2);
+                $row['cogs']           = round($totalCogs, 2);
+                $row['Gprofit%']       = round($gpftPct, 1) . '%';
+                $row['G Roi']          = round($groi, 1);
+                $row['N PFT']          = round($nPftPct, 1) . '%';
+                $row['N ROI']          = round($nRoi, 1);
+                $row['Ads%']           = round($tacosPct, 1) . '%';
+                $row['TACOS %']        = round($tacosPct, 1) . '%';
+
+                if ($l60Sales > 0) {
+                    $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
+                }
+
+                $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
+                if ($ySales !== null) {
+                    $this->applyLiveYSalesAllowZero($row, $ySales);
+                }
+
+                $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
+                if ($l7Sales !== null) {
+                    $row['L7 Sales'] = $l7Sales;
+                }
+            } else {
+                $rowL30 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+                $gpftPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+                $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+                $pft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+                $tacosPct = $rowL30 > 0 ? ($totalAdSpend / $rowL30) * 100 : 0.0;
+                $row['Ads%'] = round($tacosPct, 1).'%';
+                $row['TACOS %'] = round($tacosPct, 1).'%';
+                $row['N PFT'] = round($gpftPct - $tacosPct, 1).'%';
+                if ($cogs > 0) {
+                    $row['N ROI'] = round((($pft - $totalAdSpend) / $cogs) * 100, 1);
+                }
+            }
+
             $row['Total Ad Spend'] = round($totalAdSpend, 2);
             $row['Shopping Spent'] = round($shoppingSpend, 2);
             $row['SERP Spent']     = round($serpSpend, 2);
-            $row['Ads%']           = round($adsPct, 1) . '%';
-            $row['TACOS %']        = round($tacosPct, 1) . '%';
 
-            if ($l60Sales > 0) {
-                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2) . '%';
-            }
-
-            $ySales = $this->computeShopifyDirectYSalesLikeAmazon();
-            if ($ySales !== null) {
-                $this->applyLiveYSalesAllowZero($row, $ySales);
-            }
-
-            $l7Sales = $this->computeShopifyDirectL7SalesLikeAmazon();
-            if ($l7Sales !== null) {
-                $row['L7 Sales'] = $l7Sales;
-            }
-
-            // CVR + Total Views from /shopify-b2c-pricing CVR% badge (Qty ÷ Views)
-            $cvrSnap = $this->getShopifyB2CCvrFromPricingSkus();
-            $row['Total Views'] = $cvrSnap['total_views'];
-            $row['CVR'] = $cvrSnap['cvr_pct'];
+            $row = $this->applyShopifyB2CViewsSnapshot($row, $this->getShopifyB2CCvrFromPricingSkus());
         }
         unset($row);
 
@@ -3511,11 +3528,14 @@ class ChannelMasterController extends Controller
     private function getShopifyB2CCvrFromPricingSkus(): array
     {
         try {
-            $views = (float) ShopifySku::query()
-                ->where('inv', '>', 0)
-                ->sum('views');
+            $viewsQuery = ShopifySku::query()->where('inv', '>', 0);
+            if (Schema::hasColumn('shopify_skus', 'sku')) {
+                $viewsQuery->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'");
+            }
+            $views = (float) $viewsQuery->sum('views');
 
             $qty = (float) ($this->getShopifyDirectL30Snapshot()['qty'] ?? 0);
+            $views = ChannelMasterViewsGuard::stabilize('shopifyb2c', $views, $qty);
             $cvr = $views > 0 ? round(($qty / $views) * 100, 2) : 0.0;
 
             return [
@@ -3524,9 +3544,49 @@ class ChannelMasterController extends Controller
             ];
         } catch (\Throwable $e) {
             Log::warning('Shopify B2C CVR snapshot failed: ' . $e->getMessage());
+            $stable = ChannelMasterViewsGuard::stabilize('shopifyb2c', 0.0, 0.0);
 
-            return ['total_views' => 0, 'cvr_pct' => 0.0];
+            return [
+                'total_views' => (int) round($stable),
+                'cvr_pct' => 0.0,
+            ];
         }
+    }
+
+    /**
+     * Write Shopify B2C views/CVR onto a master row without letting a live 0
+     * or a collapsed scan wipe the number the table already shows.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array{total_views?: int|float, cvr_pct?: float}  $snap
+     * @return array<string, mixed>
+     */
+    private function applyShopifyB2CViewsSnapshot(array $row, array $snap): array
+    {
+        $existing = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Views'] ?? 0));
+        $candidate = (float) ($snap['total_views'] ?? 0);
+        if ($candidate <= 0 && $existing > 0) {
+            return $row;
+        }
+
+        $qty = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Qty'] ?? 0));
+        $stable = ChannelMasterViewsGuard::stabilize(
+            'shopifyb2c',
+            $candidate > 0 ? $candidate : $existing,
+            $qty
+        );
+        if ($stable <= 0 && $existing > 0) {
+            $stable = $existing;
+        }
+
+        $row['Total Views'] = (int) round($stable);
+        if (array_key_exists('cvr_pct', $snap) && $snap['cvr_pct'] !== null && $snap['cvr_pct'] !== '') {
+            $row['CVR'] = (float) $snap['cvr_pct'];
+        } elseif ($stable > 0 && $qty > 0) {
+            $row['CVR'] = round(($qty / $stable) * 100, 2);
+        }
+
+        return $row;
     }
 
     /**
@@ -3540,12 +3600,10 @@ class ChannelMasterController extends Controller
 
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            // Live table uses "Shopify"; keep "Shopify B2C" match for any legacy/direct path.
-            if (strcasecmp($name, 'Shopify') !== 0 && strcasecmp($name, 'Shopify B2C') !== 0) {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2c') {
                 continue;
             }
-            $row['Total Views'] = $snap['total_views'];
-            $row['CVR'] = $snap['cvr_pct'];
+            $row = $this->applyShopifyB2CViewsSnapshot($row, $snap);
         }
         unset($row);
 
@@ -7587,8 +7645,17 @@ class ChannelMasterController extends Controller
                 $clicks = $metrics['clicks'];
                 $adSales = $metrics['ad_sales'];
                 $adSold = $metrics['ad_sold'];
-                // Merge all breakdown fields into row
+                // Shopify B2C Total Ad Spend is ads-master rollup (set above).
+                // fetchAdMetricsFromTables is Google-only and used to overwrite it
+                // every calculate-data run — that made Spend jump on its own.
+                $preservedShopifySpend = null;
+                if ($key === 'shopifyb2c' && isset($row['Total Ad Spend'])) {
+                    $preservedShopifySpend = $row['Total Ad Spend'];
+                }
                 $row = array_merge($row, $metrics);
+                if ($preservedShopifySpend !== null && (float) $preservedShopifySpend > 0) {
+                    $row['Total Ad Spend'] = $preservedShopifySpend;
+                }
             } else {
                 $clicks = 0;
                 $adSold = 0;
@@ -15026,7 +15093,19 @@ class ChannelMasterController extends Controller
             2
         );
         
+        // Google Shopping + SERP is the breakdown. Total Spend must match
+        // /shopify-ads-master (Google + Youtube + TikTok + Meta) so hourly
+        // calculate-data does not flip the cell between those two sources.
         $totalAdSpend = round($shoppingAdSpend + $serpAdSpend, 2);
+        try {
+            $rollup = app(ShopifyAdsMasterController::class)->getRolledUpSpend();
+            $rolled = (float) ($rollup['total_spend'] ?? 0);
+            if ($rolled > 0) {
+                $totalAdSpend = round($rolled, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C ads-master spend rollup failed: '.$e->getMessage());
+        }
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
