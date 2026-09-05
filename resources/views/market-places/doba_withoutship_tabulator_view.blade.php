@@ -480,42 +480,6 @@
                             title="Push pickup / prepaid price (selfPickAnticipatedIncome) to Doba">
                         <i class="fas fa-upload"></i> Push Pickup Price
                     </button>
-
-                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
-                               aria-label="Target ROI percent">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 60px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} for every selected row"
-                            aria-label="Apply Target ROI">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Without-ship: sprice = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − GPFT%/100). Target GPFT% must be < {{ $dobaPercentage ?? 95 }}%. --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
-                               aria-label="Target GPFT percent">
-                            <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 60px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Doba take-home margin (< 95%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Apply — Compute & save S PRC = LP / ({{ ($dobaPercentage ?? 95) / 100 }} − Target GPFT%/100) for every selected row"
-                            aria-label="Apply Target GPFT">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
                 </div>
 
             </div>
@@ -645,9 +609,8 @@
          *   SPFT % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ SPRICE) × 100
          *   SROI % = ((SPRICE × FORMULA_PERCENT − SHIP − LP) ÷ LP)     × 100
          *
-         * --- Back-solve formulas (used by Target ROI / Target GPFT bulk apply) ---
-         *   Target ROI %  → sprice = (LP × (1 + ROI%/100) + SHIP) ÷ FORMULA_PERCENT
-         *   Target GPFT % → sprice = (LP + SHIP) ÷ (FORMULA_PERCENT − GPFT%/100)
+         * --- Sprc Dil (same as /doba-tabulator, ship omitted) ---
+         *   S PRC = (LP × (1 + GROI%/100)) / FORMULA_PERCENT
          *
          * SHIP is FORMULA_SHIP (= 0 on this "without ship" page).
          * Changing the admin Doba percentage automatically updates BOTH N* and S* margins.
@@ -702,6 +665,7 @@
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
+        let dwsColumnVisibilityMap = {};
 
         function isDobaWithoutshipParentRow(row) {
             if (!row) return false;
@@ -712,12 +676,10 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'doba_withoutship'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'doba_withoutship'])
         function dobaWithoutshipRowSpriceForAlert(data) {
-            let sprice = parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
-            if (typeof chPromoLiveSprice === 'function' && !isDobaWithoutshipParentRow(data)) {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                return Number(chPromoSavedOrLiveSprice(data)) || 0;
             }
-            return sprice;
+            return parseFloat(data && (data.sprice != null ? data.sprice : data.SPRICE)) || 0;
         }
         function dobaWithoutshipHasBlueTriangle(data) {
             if (isDobaWithoutshipParentRow(data)) return false;
@@ -1280,250 +1242,91 @@
                 }
             });
 
-            /*
-             * Target ROI% bulk apply (Doba "without ship" — ship NOT in formula)
-             * ------------------------------------------------------------------
-             * Mirrors the /topdawg-pricing Target ROI handler in flow but
-             * intentionally omits the `ship` term — this is the without-ship
-             * page; FORMULA_SHIP is 0 so the math was already ship-less, this
-             * just makes the code/comment match.
-             *
-             * Back-solve so SROI = Target ROI%:
-             *     SROI = ((sprice * FORMULA_PERCENT − lp) / lp) * 100
-             *   → sprice = (lp * (1 + ROI%/100)) / FORMULA_PERCENT
-             *
-             * FORMULA_PERCENT is the live Doba take-home margin pulled from
-             * MarketplacePercentage (e.g. 0.95).
-             *   2. Optimistically `row.update(...)` for every row so the UI flips
-             *      instantly (no per-row spinner — feels identical to TopDawg).
-             *   3. Fire all /doba/save-sprice-withoutship saves in PARALLEL so the
-             *      backend persistence doesn't bottleneck behind a sequential
-             *      setTimeout loop. There's no batch endpoint here, but parallel
-             *      requests give the same perceived "instant" feel as TopDawg's
-             *      single batched POST.
-             *   4. Single summary toast at the end.
-             */
-            $('#apply-target-roi-btn').on('click', function () {
-                const rawInput = $('#target-roi-input').val();
-                const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-                if (rawInput === '' || rawInput == null) {
-                    showToast('danger', 'Please enter a Target ROI%');
-                    return;
-                }
-                if (!isFinite(targetRoiPct)) {
-                    showToast('danger', 'Target ROI% must be a number');
-                    return;
-                }
-                if (selectedSkus.size === 0) {
-                    showToast('danger', 'Please select at least one SKU first');
-                    return;
-                }
-
-                const roiMultiplier = 1 + (targetRoiPct / 100);
-                applyTargetBackSolve(function (lp) {
-                    // Ship intentionally NOT in the formula (without-ship page):
-                    //   sprice = (LP × (1 + ROI%/100)) ÷ FORMULA_PERCENT
-                    return (lp * roiMultiplier) / FORMULA_PERCENT;
-                }, `Target ROI ${targetRoiPct}%`);
-            });
-
-            /*
-             * Target GPFT% bulk apply (Doba "without ship" — ship NOT in formula)
-             * -------------------------------------------------------------------
-             * Same optimistic-update + parallel-save pattern as Target ROI above,
-             * ship intentionally omitted (without-ship page):
-             *     SGPFT = ((sprice * FORMULA_PERCENT − lp) / sprice) * 100
-             *   → sprice = lp / (FORMULA_PERCENT − GPFT%/100)
-             * Constraint: (FORMULA_PERCENT − target/100) must be > 0,
-             * i.e. target < FORMULA_PERCENT × 100.
-             */
-            $('#apply-target-gpft-btn').on('click', function () {
-                const rawInput = $('#target-gpft-input').val();
-                const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-                if (rawInput === '' || rawInput == null) {
-                    showToast('danger', 'Please enter a Target GPFT%');
-                    return;
-                }
-                if (!isFinite(targetGpftPct)) {
-                    showToast('danger', 'Target GPFT% must be a number');
-                    return;
-                }
-                if (selectedSkus.size === 0) {
-                    showToast('danger', 'Please select at least one SKU first');
-                    return;
-                }
-
-                // denom = FORMULA_PERCENT − target/100  (back-solve denominator)
-                const denom = FORMULA_PERCENT - targetGpftPct / 100;
-                if (denom <= 0) {
-                    showToast('danger', `Target GPFT% ${targetGpftPct}% is too high — must be < ${(FORMULA_PERCENT * 100).toFixed(0)}% (Doba take-home).`);
-                    return;
-                }
-
-                applyTargetBackSolve(function (lp) {
-                    // Ship intentionally NOT in the formula (without-ship page):
-                    //   sprice = LP ÷ (FORMULA_PERCENT − GPFT%/100)
-                    return lp / denom;
-                }, `Target GPFT ${targetGpftPct}%`);
-            });
-
-            // Shared back-solve runner — mirrors /topdawg-pricing's flow:
-            //   - Walks table.getRows('active') and filters by `selectedSkus`
-            //     (more reliable than the old `Array.from(selectedSkus)` →
-            //     `table.getRows().forEach()` linear scan which was O(N²)
-            //     and missed rows on later pagination pages).
-            //   - Computes the new price + derived margins for every row first.
-            //   - Optimistically updates every row in one pass so the UI changes
-            //     instantly — no clock → tick spinner per row.
-            //   - Fires every /doba/save-sprice-withoutship save IN PARALLEL.
-            //   - Shows ONE summary toast at the end ("Target ROI 30% applied
-            //     to N SKU(s) (M skipped — no LP)").
-            //
-            // computePriceFn(lp) returns the new SPRICE for the row.
-            // Ship is intentionally not passed in — this is the without-ship page.
-            function applyTargetBackSolve(computePriceFn, labelPrefix) {
-                const updates = [];
-                let skippedNoLp = 0;
-
-                table.getRows('active').forEach(function (row) {
-                    const d = row.getData();
-                    if (d.is_parent) return;
-                    const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-                    if (!sku || !selectedSkus.has(sku)) return;
-
-                    const lp = parseFloat(d.LP_productmaster) || 0;
-                    if (lp <= 0) { skippedNoLp++; return; }
-
-                    const candidate = computePriceFn(lp);
-                    const newPrice  = +Number(candidate).toFixed(2);
-                    if (!isFinite(newPrice) || newPrice <= 0) return;
-
-                    // SGPFT% / SGROI% — same formula shape as NPFT% / NROI% but
-                    // ship-less (without-ship page). FORMULA_PERCENT pulls the
-                    // live Doba take-home margin so any admin tweak applies
-                    // here automatically.
-                    const spft = newPrice > 0 ? ((newPrice * FORMULA_PERCENT) - lp) / newPrice * 100 : 0;
-                    const sroi = lp > 0       ? ((newPrice * FORMULA_PERCENT) - lp) / lp       * 100 : 0;
-                    // SelfPick = SPRICE on this page (no ship deduction).
-                    const selfPick = +newPrice.toFixed(2);
-
-                    // Optimistic row update (no apply_status spinner — TopDawg-style).
-                    // Intentionally NOT setting `self_pick_price`: that field powers
-                    // the "Price" column and must stay independent of SPRICE.
-                    // Editing SPRICE (whether via cell edit, Same Price mode, or
-                    // these Target ROI / Target GPFT bulk apply paths) only changes
-                    // seller-side margins, never the displayed Price column.
-                    row.update({
-                        sprice: newPrice,
-                        s_self_pick: selfPick,
-                        spft: spft,
-                        sroi: sroi,
-                    });
-
-                    updates.push({ sku: sku, row: row, newPrice: newPrice, spft: spft, sroi: sroi, selfPick: selfPick });
-                });
-
-                if (!updates.length) {
-                    showToast('warning', 'No selected rows have a usable LP > 0');
-                    return;
-                }
-
-                // Fire all saves in parallel — no batch endpoint exists on
-                // /doba/save-sprice-withoutship, but parallel calls give the
-                // same perceived "instant" feel as TopDawg's batched save.
-                let okCount = 0;
-                let errCount = 0;
-
-                const reqs = updates.map(u =>
-                    dobaWsPersistClearThenSave(u.sku, {
-                        sprice: u.newPrice,
-                        spft_percent: u.spft.toFixed(2),
-                        sroi_percent: u.sroi.toFixed(2),
-                        s_self_pick: u.selfPick,
-                    }, u.row)
-                    .done(() => { okCount++; })
-                    .fail((xhr) => {
-                        errCount++;
-                        console.error('Target back-solve save error:', u.sku, xhr && xhr.responseText);
-                    })
-                );
-
-                $.when.apply($, reqs).always(function () {
-                    const note = skippedNoLp > 0 ? ` (${skippedNoLp} skipped — no LP)` : '';
-                    if (errCount === 0) {
-                        showToast('success', `${labelPrefix} applied to ${okCount} SKU(s)${note}`);
-                    } else if (okCount > 0) {
-                        showToast('warning', `${labelPrefix}: ${okCount} saved, ${errCount} failed${note}`);
-                    } else {
-                        showToast('danger', `${labelPrefix}: all ${errCount} saves failed`);
-                    }
-                    if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
-                });
+            function dwsApplyRuleSpriceToRow(row, price) {
+                const d = row.getData() || {};
+                const lp = parseFloat(d.LP_productmaster) || 0;
+                const ship = FORMULA_SHIP;
+                const margin = (typeof FORMULA_PERCENT === 'number' && FORMULA_PERCENT > 0) ? FORMULA_PERCENT : 0.95;
+                const spft = price > 0 ? ((price * margin) - ship - lp) / price * 100 : 0;
+                const sroi = lp > 0 ? ((price * margin) - ship - lp) / lp * 100 : 0;
+                const sPick = Math.max(0, +(price - ship).toFixed(2));
+                const patch = (typeof chPromoSpricePatch === 'function')
+                    ? chPromoSpricePatch(price)
+                    : { sprice: price, SPRICE: price, has_custom_sprice: true };
+                row.update(Object.assign({}, patch, {
+                    sprice: price,
+                    s_self_pick: sPick,
+                    spft: spft,
+                    sroi: sroi,
+                    SPRICE_STATUS: 'applied',
+                    push_status: null,
+                    apply_status: 'applied',
+                }));
             }
 
-            $('#target-roi-input').on('keypress', function (e) {
-                if (e.which === 13) $('#apply-target-roi-btn').click();
-            });
-            $('#target-gpft-input').on('keypress', function (e) {
-                if (e.which === 13) $('#apply-target-gpft-btn').click();
-            });
-
-            // Clear SPRICE button handler
             $('#clear-sprice-selected-btn').on('click', function() {
                 if (selectedSkus.size === 0) {
                     showToast('danger', 'Please select SKUs first');
                     return;
                 }
 
-                if (confirm('Are you sure you want to clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
-                    let clearedCount = 0;
-
-                    selectedSkus.forEach(sku => {
-                        const rows = table.searchRows("(Child) sku", "=", sku);
-                        
-                        if (rows.length > 0) {
-                            const row = rows[0];
-                            row.update({
-                                sprice: 0,
-                                spft: 0,
-                                sroi: 0,
-                                s_self_pick: 0
-                            });
-                            
-                            row.reformat();
-                            
-                            // Save to database
-                            $.ajax({
-                                url: '/doba/save-sprice-withoutship',
-                                method: 'POST',
-                                headers: {
-                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                                },
-                                data: {
-                                    sku: sku,
-                                    sprice: 0,
-                                    spft_percent: 0,
-                                    sroi_percent: 0,
-                                    s_self_pick: 0,
-                                    push_status: null,
-                                    _token: $('meta[name="csrf-token"]').attr('content')
-                                },
-                                success: function() {
-                                    console.log('SPRICE cleared for SKU:', sku);
-                                },
-                                error: function(xhr) {
-                                    console.error('Failed to clear SPRICE for SKU:', sku, xhr.responseText);
-                                }
-                            });
-                            
-                            clearedCount++;
-                        }
-                    });
-
-                    showToast('success', 'SPRICE cleared for ' + clearedCount + ' SKU(s)');
+                if (!confirm('Are you sure you want to clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
+                    return;
                 }
+
+                const items = [];
+                selectedSkus.forEach(function(sku) {
+                    const rows = table.searchRows('(Child) sku', '=', sku);
+                    if (!rows.length) return;
+                    const row = rows[0];
+                    if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
+                    else {
+                        row.update({ sprice: 0, spft: 0, sroi: 0, s_self_pick: 0, has_custom_sprice: false });
+                    }
+                    items.push({ row: row, sku: sku });
+                });
+
+                if (!items.length) return;
+
+                const token = $('meta[name="csrf-token"]').attr('content');
+                const zeros = items.map(function(i) {
+                    return { sku: i.sku, sprice: 0, spft_percent: 0, sroi_percent: 0, s_self_pick: 0 };
+                });
+                $.ajax({
+                    url: '/doba/save-sprice-withoutship',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                    data: { updates: zeros, _token: token }
+                }).always(function() {
+                    const fills = [];
+                    items.forEach(function(item) {
+                        const d = item.row.getData() || {};
+                        let price = (typeof ebayTiktokRuleDiscount === 'function')
+                            ? ebayTiktokRuleDiscount(d)
+                            : ((typeof ebaySprcDilForRow === 'function') ? (ebaySprcDilForRow(d) || 0) : 0);
+                        if (!(price > 0)) return;
+                        dwsApplyRuleSpriceToRow(item.row, price);
+                        fills.push({
+                            sku: item.sku,
+                            sprice: price,
+                            spft_percent: item.row.getData().spft,
+                            sroi_percent: item.row.getData().sroi,
+                            s_self_pick: item.row.getData().s_self_pick,
+                        });
+                    });
+                    if (fills.length) {
+                        $.ajax({
+                            url: '/doba/save-sprice-withoutship',
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json' },
+                            data: { updates: fills, _token: token }
+                        });
+                        showToast('success', 'S PRC cleared, then Sprc Dil saved on ' + fills.length + ' SKU(s)');
+                    } else {
+                        showToast('success', 'SPRICE cleared for ' + items.length + ' SKU(s)');
+                    }
+                    if (typeof updatePushButtonVisibility === 'function') updatePushButtonVisibility();
+                });
             });
 
             // SUGG AMZ - 30% button handler
@@ -2267,22 +2070,15 @@
                         width: 92,
                         sorter: "number",
                         visible: true,
-                        editor: "number",
-                        editorParams: {
-                            min: 0,
-                            step: 0.01
-                        },
-                        headerTooltip: "S PRC from Sprc Dil. Dil-matching Target GROI when Doba L30 > 0; 0 Sold uses the lowest Target GROI in the table. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Pickup Price. Red text = S PRC ≥ LMP.",
+                        editable: false,
+                        headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab when Doba L30 > 0; 0 Sold uses the lowest Target GROI). S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Pickup Price. Red triangle = S PRC ≥ LMP.",
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rowData)) return '';
-                            let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(rowData);
-                                if (calc > 0) value = calc;
-                            }
+                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
+                                ? Number(chPromoSavedOrLiveSprice(rowData))
+                                : parseFloat(cell.getValue() || 0);
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             const live = parseFloat(rowData.self_pick_price || rowData['doba Price']) || 0;
                             const lmp = cap ? cap.lmp : (parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0);
                             if (!(value > 0)) return '';
@@ -2291,7 +2087,10 @@
                             const priceHtml = overLmp
                                 ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`
                                 : `<span style="color:#000;font-weight:600;">${formatted}</span>`;
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                            const redTri = overLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
+                                    + Number(lmp).toFixed(2) + '"></i>'
+                                : '';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
@@ -2309,11 +2108,9 @@
                         formatter: function(cell, formatterParams) {
                             const rd = cell.getRow().getData();
                             if (isDobaWithoutshipParentRow(rd)) return '';
-                            let sprice = parseFloat(rd.sprice) || 0;
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(rd);
-                                if (calc > 0) sprice = calc;
-                            }
+                            let sprice = (typeof chPromoSavedOrLiveSprice === 'function')
+                                ? Number(chPromoSavedOrLiveSprice(rd))
+                                : (parseFloat(rd.sprice) || 0);
                             const ship = FORMULA_SHIP;
                             const stored = parseFloat(rd.s_self_pick) || 0;
                             const value = sprice > 0 ? Math.max(0, sprice - ship) : stored;
@@ -2749,19 +2546,54 @@
                 $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> VS AMZ: ' + discVsAmzCount);
             }
 
-            /**
-             * Column visibility persistence — matches /ebay3-tabulator-view.
-             *
-             * Flow on page load:
-             *   tableBuilt  → applyColumnVisibilityFromServer() (hides any
-             *                  columns the user previously turned off)
-             *               → buildColumnDropdown() (reflects current state
-             *                  in the dropdown checkboxes)
-             *
-             * Flow on user toggle / "Show All Columns":
-             *   show() / hide() the column, then saveColumnVisibilityToServer().
-             */
-            function buildColumnDropdown() {
+            function dwsColumnField(col) {
+                if (!col) return '';
+                const def = (typeof col.getDefinition === 'function') ? (col.getDefinition() || {}) : {};
+                return def.field || (typeof col.getField === 'function' ? col.getField() : '') || '';
+            }
+
+            function dwsVisibilityIsOn(v) {
+                return v === true || v === 1 || v === '1' || v === 'true';
+            }
+
+            function readDwsColumnVisibilityLocal() {
+                try {
+                    const raw = localStorage.getItem(COLUMN_VIS_KEY);
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    return (parsed && typeof parsed === 'object') ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function writeDwsColumnVisibilityLocal(map) {
+                try { localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(map || {})); } catch (e) {}
+            }
+
+            function applyDwsColumnVisibilityMap(map) {
+                if (!table || !map || typeof map !== 'object') return;
+                dwsColumnVisibilityMap = map;
+                table.getColumns().forEach(function(col) {
+                    const field = dwsColumnField(col);
+                    if (!field || field === '_select' || field === 'sl_no') return;
+                    if (!Object.prototype.hasOwnProperty.call(map, field)) return;
+                    if (dwsVisibilityIsOn(map[field])) col.show();
+                    else col.hide();
+                });
+            }
+
+            function collectDwsColumnVisibility() {
+                const visibility = {};
+                if (!table) return visibility;
+                table.getColumns().forEach(function(col) {
+                    const field = dwsColumnField(col);
+                    if (!field || field === '_select' || field === 'sl_no') return;
+                    visibility[field] = !!col.isVisible();
+                });
+                return visibility;
+            }
+
+            function buildColumnDropdown(savedVisibility) {
                 if (window.AnalyticsColVis) {
                     window.AnalyticsColVis.install({
                         getTable: function() { return table; },
@@ -2772,28 +2604,31 @@
                             if (typeof saveColumnVisibilityToServer === 'function') saveColumnVisibilityToServer();
                         }
                     });
-                    window.AnalyticsColVis.rebuild();
+                    window.AnalyticsColVis.rebuild(savedVisibility || dwsColumnVisibilityMap || null);
                     return;
                 }
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
+                const map = (savedVisibility && typeof savedVisibility === 'object')
+                    ? savedVisibility
+                    : dwsColumnVisibilityMap;
 
                 const existingItems = menu.querySelectorAll('.column-toggle-item');
                 existingItems.forEach(item => item.remove());
 
-                const columns = table.getColumns();
-                columns.forEach(column => {
-                    if (column.getField() === 'sl_no') return; // Skip sl_no column
+                table.getColumns().forEach(column => {
+                    const field = dwsColumnField(column);
+                    if (!field || field === 'sl_no' || field === '_select') return;
 
-                    const field = column.getField();
-                    if (!field) return;
-
+                    const isVisible = Object.prototype.hasOwnProperty.call(map, field)
+                        ? dwsVisibilityIsOn(map[field])
+                        : column.isVisible();
                     const item = document.createElement('label');
                     item.className = 'dropdown-item column-toggle-item d-flex align-items-center';
                     item.innerHTML = `
                         <input type="checkbox" class="form-check-input me-2"
-                               data-column="${field}"
-                               ${column.isVisible() ? 'checked' : ''}>
+                               data-column="${field}" data-field="${field}"
+                               ${isVisible ? 'checked' : ''}>
                         ${column.getDefinition().title}
                     `;
                     menu.appendChild(item);
@@ -2802,18 +2637,15 @@
 
             function saveColumnVisibilityToServer() {
                 if (!table) return;
-                const visibility = {};
-                table.getColumns().forEach(col => {
-                    const def = col.getDefinition();
-                    if (def.field) {
-                        visibility[def.field] = col.isVisible();
-                    }
-                });
+                const visibility = collectDwsColumnVisibility();
+                dwsColumnVisibilityMap = visibility;
+                writeDwsColumnVisibilityLocal(visibility);
 
                 fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     body: JSON.stringify({
@@ -2829,23 +2661,27 @@
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                         }
                     })
                     .then(response => response.json())
                     .then(savedVisibility => {
-                        if (!savedVisibility || typeof savedVisibility !== 'object') return;
-                        table.getColumns().forEach(col => {
-                            const def = col.getDefinition();
-                            if (def.field && savedVisibility[def.field] === false) {
-                                col.hide();
-                            }
-                        });
+                        const serverMap = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+                        const localMap = readDwsColumnVisibilityLocal();
+                        const map = Object.assign({}, serverMap, localMap);
+                        applyDwsColumnVisibilityMap(map);
+                        buildColumnDropdown(map);
                     })
-                    .catch(err => console.error('Column visibility load failed:', err));
+                    .catch(err => {
+                        console.error('Column visibility load failed:', err);
+                        const localMap = readDwsColumnVisibilityLocal();
+                        applyDwsColumnVisibilityMap(localMap);
+                        buildColumnDropdown(localMap);
+                    });
             }
 
-            // Handle SPRICE cell edit
+            // SPRICE is not editable — auto-saved from Sprc Dil (same as TikTok / Doba).
             table.on('cellEdited', function(cell) {
                 const field = cell.getColumn().getField();
                 const row = cell.getRow();
@@ -2880,62 +2716,13 @@
                             showToast('danger', 'Failed to save STD Price');
                         }
                     });
-                    return;
-                }
-
-                if (field === 'sprice') {
-                    const rowData = cell.getRow().getData();
-                    const sprice = parseFloat(cell.getValue()) || 0;
-                    const lp = parseFloat(rowData.LP_productmaster) || 0;
-                    const ship = FORMULA_SHIP;
-                    const sku = rowData['(Child) sku'];
-                    
-                    if (sprice > 0 && lp > 0) {
-                        // Same formula as NPFT% / NROI% (see header comment block):
-                        //   SPFT % = ((sprice × FORMULA_PERCENT − ship − lp) ÷ sprice) × 100
-                        //   SROI % = ((sprice × FORMULA_PERCENT − ship − lp) ÷ lp)     × 100
-                        const spft = ((sprice * FORMULA_PERCENT) - ship - lp) / sprice * 100;
-                        const sroi = ((sprice * FORMULA_PERCENT) - ship - lp) / lp     * 100;
-                        
-                        // Calculate S(PP) = SPRICE - SHIP
-                        const sSelfPick = sprice - ship;
-                        
-                        // Update row data with all calculated values; reset push so button shows again
-                        cell.getRow().update({
-                            spft: spft,
-                            sroi: sroi,
-                            s_self_pick: sSelfPick,
-                            apply_status: null,
-                            push_status: null
-                        });
-                        
-                        dobaWsPersistClearThenSave(sku, {
-                            sprice: sprice,
-                            spft_percent: spft,
-                            sroi_percent: sroi,
-                            s_self_pick: sSelfPick,
-                            push_status: null
-                        }, cell.getRow())
-                        .done(function() {
-                            showToast('success', 'SPRICE updated successfully');
-                            updatePushButtonVisibility();
-                        })
-                        .fail(function(xhr) {
-                            showToast('danger', 'Failed to update SPRICE');
-                            console.error(xhr);
-                        });
-                    }
                 }
             });
 
             // Wait for table to be built
             table.on('tableBuilt', function() {
                 ensureFooterVisibleRowsLabel();
-                // Apply user's saved visibility from the server, then build
-                // the dropdown so its checkboxes reflect the current state.
-                Promise.resolve(applyColumnVisibilityFromServer()).then(function() {
-                    buildColumnDropdown();
-                });
+                Promise.resolve(applyColumnVisibilityFromServer());
                 updateSummary();
                 fetchDobaWithoutShipSummaryMetrics();
                 applyFilters(); // Default: > 0 inventory
@@ -2972,6 +2759,10 @@
                 if (typeof ebayScheduleSprcDilAutoApply === 'function') {
                     ebayScheduleSprcDilAutoApply();
                 }
+                setTimeout(function() {
+                    applyDwsColumnVisibilityMap(dwsColumnVisibilityMap);
+                    buildColumnDropdown(dwsColumnVisibilityMap);
+                }, 800);
                 setTimeout(() => {
                     applyFilters();
                     updateSummary();
@@ -3116,6 +2907,122 @@
                 }
             }
 
+            function dwsFindRowBySku(sku) {
+                const want = String(sku || '').trim().toUpperCase();
+                if (!want || !table) return null;
+                let found = null;
+                try {
+                    (table.getRows() || []).forEach(function(r) {
+                        if (found || !r || typeof r.getData !== 'function') return;
+                        const d = r.getData() || {};
+                        if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = r;
+                    });
+                } catch (e) { /* ignore */ }
+                return found;
+            }
+
+            function dwsApplyPulledLivePickupPrice(sku, live) {
+                const p = Math.round((Number(live) || 0) * 100) / 100;
+                if (!(p > 0)) return;
+                const row = dwsFindRowBySku(sku);
+                if (row) {
+                    row.update({ self_pick_price: p });
+                    try { row.reformat(); } catch (e) { /* ignore */ }
+                }
+                const want = String(sku || '').trim().toUpperCase();
+                try {
+                    (allTableData || []).forEach(function(d) {
+                        if (!d) return;
+                        if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) {
+                            d.self_pick_price = p;
+                        }
+                    });
+                } catch (e) { /* ignore */ }
+                if (typeof updateSummary === 'function') updateSummary();
+            }
+
+            /** After a successful pickup push, GET live Pick Up price from Doba and write Price. */
+            function dwsPullAfterPush(skus) {
+                const list = [];
+                const seen = {};
+                (skus || []).forEach(function(sku) {
+                    const s = String(sku || '').trim();
+                    const key = s.toUpperCase();
+                    if (!s || seen[key]) return;
+                    seen[key] = true;
+                    list.push(s);
+                });
+                if (!list.length) return;
+                const expectedBySku = {};
+                list.forEach(function(sku) {
+                    const row = dwsFindRowBySku(sku);
+                    const d = row && typeof row.getData === 'function' ? (row.getData() || {}) : {};
+                    const want = Number(d.s_self_pick || d.sprice || d.SPRICE) || 0;
+                    if (want > 0) expectedBySku[String(sku).toUpperCase()] = want;
+                });
+                const csrf = $('meta[name="csrf-token"]').attr('content');
+                const retryMs = [1500, 3000, 5000];
+                function runPull(attempt, pending) {
+                    if (!pending || !pending.length) return;
+                    $.ajax({
+                        url: '/channel-push-sprice/doba_withoutship/pull',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                        data: { _token: csrf, skus: pending },
+                        timeout: 300000,
+                    }).done(function(resp) {
+                        const results = (resp && resp.results) || [];
+                        const stale = [];
+                        let pulled = 0;
+                        results.forEach(function(r) {
+                            if (!r || !r.success || !(Number(r.price) > 0) || !r.sku) return;
+                            const want = Number(expectedBySku[String(r.sku).toUpperCase()]) || 0;
+                            if (want > 0 && Math.abs(Number(r.price) - want) > 0.05) {
+                                stale.push(r.sku);
+                                return;
+                            }
+                            dwsApplyPulledLivePickupPrice(r.sku, r.price);
+                            pulled++;
+                        });
+                        if (stale.length && attempt + 1 < retryMs.length) {
+                            dwsPullAfterPush._t = setTimeout(function() {
+                                runPull(attempt + 1, stale);
+                            }, retryMs[attempt + 1]);
+                            return;
+                        }
+                        if (stale.length && attempt + 1 >= retryMs.length) {
+                            stale.forEach(function(sku) {
+                                const match = results.find(function(r) {
+                                    return r && String(r.sku || '').toUpperCase() === String(sku).toUpperCase()
+                                        && r.success && Number(r.price) > 0;
+                                });
+                                if (match) dwsApplyPulledLivePickupPrice(match.sku, match.price);
+                            });
+                        }
+                        if (pulled > 0 && !stale.length) {
+                            showToast('success', 'Pulled live Pickup Price for ' + pulled + ' SKU(s)');
+                        } else if (stale.length) {
+                            showToast('success', 'Pushed ' + list.length + ' SKU(s) — live Pickup Price still catching up');
+                        } else if (!(Number(resp && resp.skip_count) > 0)) {
+                            showToast('danger', (resp && resp.message) || 'Doba Pickup Price pull failed');
+                        }
+                    }).fail(function(xhr) {
+                        if (attempt + 1 < retryMs.length) {
+                            dwsPullAfterPush._t = setTimeout(function() {
+                                runPull(attempt + 1, pending);
+                            }, retryMs[attempt + 1]);
+                            return;
+                        }
+                        showToast('danger', (xhr.responseJSON && xhr.responseJSON.message) || 'Doba Pickup Price pull failed');
+                    });
+                }
+                showToast('success', 'Pulling live Pickup Price for ' + list.length + ' SKU(s)…');
+                clearTimeout(dwsPullAfterPush._t);
+                dwsPullAfterPush._t = setTimeout(function() {
+                    runPull(0, list.slice());
+                }, retryMs[0]);
+            }
+
             // Bulk push selected SKUs' pickup / prepaid price
             $('#push-to-doba-btn').on('click', function() {
                 const skusWithSprice = [];
@@ -3147,6 +3054,7 @@
                 let successCount = 0;
                 let errorCount = 0;
                 const responseLog = [];
+                const pushedOkSkus = [];
 
                 function processNextSku() {
                     if (currentIndex >= skusWithSprice.length) {
@@ -3160,6 +3068,7 @@
                             showToast('danger', `Failed to push pickup price for ${errorCount} SKU(s)`);
                         }
                         showPushResponseModal(responseLog, `Done: ${successCount} ok, ${errorCount} failed`);
+                        if (pushedOkSkus.length) dwsPullAfterPush(pushedOkSkus);
                         return;
                     }
 
@@ -3171,6 +3080,7 @@
                     pushPickupPriceToDobaWithRetry(sku, pickupPrice, 5, 5000)
                         .then((result) => {
                             successCount++;
+                            pushedOkSkus.push(sku);
                             const apiResponse = result.response || {};
                             responseLog.push({
                                 sku: sku,
@@ -3252,6 +3162,7 @@
                         updatePushCell(row, sku, pickupPrice, 'pushed');
                         savePushStatusToDatabase(sku, 'pushed', row.getData());
                         showToast('success', `Pickup price pushed for ${sku}`);
+                        dwsPullAfterPush([sku]);
                         showPushResponseModal([{
                             sku: sku,
                             pickup_price: pickupPrice,
@@ -3278,20 +3189,24 @@
                     });
             });
 
-            // Toggle column from dropdown — persist choice to server (same as /ebay3-tabulator-view).
+            // Toggle column from dropdown — persist choice (AnalyticsColVis handles its own checkboxes).
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type === 'checkbox') {
-                    const columnField = e.target.getAttribute('data-column');
-                    const column = table.getColumn(columnField);
-                    if (!column) return;
-
-                    if (e.target.checked) {
-                        column.show();
-                    } else {
-                        column.hide();
-                    }
-                    saveColumnVisibilityToServer();
+                if (!e.target || e.target.type !== 'checkbox') return;
+                if (e.target.classList.contains('col-vis-field-toggle')
+                    || e.target.classList.contains('col-vis-group-toggle')) {
+                    return;
                 }
+                const columnField = e.target.getAttribute('data-field')
+                    || e.target.getAttribute('data-column');
+                const column = columnField ? table.getColumn(columnField) : null;
+                if (!column) return;
+
+                if (e.target.checked) {
+                    column.show();
+                } else {
+                    column.hide();
+                }
+                saveColumnVisibilityToServer();
             });
 
             // Show All Columns button — also persists.
