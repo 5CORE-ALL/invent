@@ -548,9 +548,31 @@
                 label = rule.label;
                 key = rule.key;
             }
-            const sprc = ebaySpriceFromGroi(d, groi);
-            if (!(sprc > 0)) return null;
-            return { dil: dil, key: key, label: label, groi: groi, sprc: sprc, zeroSoldMin: zeroSoldMin };
+            const rawSprc = ebaySpriceFromGroi(d, groi);
+            if (!(rawSprc > 0)) return null;
+            let sprc = rawSprc;
+            let amzApplied = false;
+            if (ebayDgIsShopifyB2c()) {
+                const floored = (typeof chPromoFinalSpriceToSave === 'function')
+                    ? Number(chPromoFinalSpriceToSave(d, rawSprc))
+                    : ((typeof chPromoFloorShopifySpriceToAmz === 'function')
+                        ? Number(chPromoFloorShopifySpriceToAmz(d, rawSprc))
+                        : rawSprc);
+                if (floored > 0) {
+                    amzApplied = floored > rawSprc + 0.001;
+                    sprc = ebayDgRound2(floored);
+                }
+            }
+            return {
+                dil: dil,
+                key: key,
+                label: label,
+                groi: groi,
+                sprc: sprc,
+                rawSprc: rawSprc,
+                amzApplied: amzApplied,
+                zeroSoldMin: zeroSoldMin,
+            };
         }
         function ebaySprcDilForRow(d) {
             const meta = ebayDilGroiMetaForRow(d);

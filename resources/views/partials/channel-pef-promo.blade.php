@@ -13,7 +13,7 @@
     $channelPromoHidePushCpn = !empty($channelPromoHidePushCpn);
     $channelPromoShowZeroSoldRules = !empty($channelPromoShowZeroSoldRules);
     $channelPromoShowGtSoldRules = !empty($channelPromoShowGtSoldRules);
-    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'bestbuy', 'newegg'], true);
+    $channelPromoUsesSprcDil = in_array($channelPromoChannel, ['ebay1', 'ebay2', 'ebay3', 'temu', 'temu2', 'temu3', 'macys', 'macy', 'purchasing_power', 'wayfair', 'reverb', 'doba', 'doba_withoutship', 'aliexpress', 'shein', 'faire', 'tiktok', 'tiktok2', 'shopify_b2c', 'bestbuy', 'newegg'], true);
     $channelPromoShowZeroSoldDilRule = !$channelPromoUsesSprcDil;
     $channelPromoZeroSoldDilColorSlabs = true;
     $channelPromoShowCvrUpDn = in_array($channelPromoChannel, ['temu', 'temu2', 'temu3'], true) && empty($channelPromoUsesSprcDil);
@@ -1195,6 +1195,7 @@
                 || CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'tiktok'
                 || CHANNEL_PROMO_CHANNEL === 'tiktok2'
+                || CHANNEL_PROMO_CHANNEL === 'shopify_b2c'
                 || CHANNEL_PROMO_CHANNEL === 'bestbuy'
                 || CHANNEL_PROMO_CHANNEL === 'newegg';
         }
@@ -3726,7 +3727,12 @@
             if (!d || !chPromoIsChildRow(d)) return 0;
             if (typeof ebaySprcDilForRow === 'function') {
                 const sprcDil = ebaySprcDilForRow(d);
-                if (sprcDil > 0) return chPromoCapSpriceToLmp(d, sprcDil);
+                if (sprcDil > 0) {
+                    if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' && typeof chPromoFinalSpriceToSave === 'function') {
+                        return chPromoFinalSpriceToSave(d, sprcDil);
+                    }
+                    return chPromoCapSpriceToLmp(d, sprcDil);
+                }
             }
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
             if (typeof chPromoUsesSprcDilOnlySprice === 'function' && chPromoUsesSprcDilOnlySprice()) {
@@ -7168,6 +7174,7 @@
         }
         async function chPromoRunZeroSoldDilAutoApply(opts) {
             opts = opts || {};
+            if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) return;
             if (chPromoZeroSoldDilAutoBusy) {
                 chPromoZeroSoldDilAutoPending = opts;
                 return;
@@ -9611,7 +9618,7 @@
                 if (typeof chPromoRunCvrCpnAutoApply === 'function') {
                     await chPromoRunCvrCpnAutoApply({ force: forceSlabs, silent: true });
                 }
-                if (typeof chPromoRunZeroSoldDilAutoApply === 'function') {
+                if (CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE && typeof chPromoRunZeroSoldDilAutoApply === 'function') {
                     await chPromoRunZeroSoldDilAutoApply({ force: true });
                 }
                 const livePushOn = chPromoPageReloadPushAllowed();

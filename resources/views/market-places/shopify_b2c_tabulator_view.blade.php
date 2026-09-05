@@ -718,7 +718,7 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Sprc Dil (same Dil → Target GROI as /tiktok-2-pricing) + CVR Disc / 0 Sold --}}
+                    {{-- Sprc Dil (same Dil → Target GROI as /tiktok-2-pricing) + CVR Disc --}}
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2c'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
 
@@ -1356,10 +1356,17 @@
         return s > 0 ? s : 0;
     }
 
-    /** Displayed S PRC after LMP cap, before the Amz floor. */
+    /** Displayed S PRC after LMP cap, before the Amz floor. Sprc Dil uses the raw Dil $ so Amz still flags. */
     function shopifyB2cPriceBeforeAmzFloor(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
-        let value = shopifyB2cDisplayedSprice(data);
+        let value = 0;
+        if (typeof ebayDilGroiMetaForRow === 'function') {
+            const meta = ebayDilGroiMetaForRow(data);
+            if (meta && (meta.rawSprc > 0 || meta.sprc > 0)) {
+                value = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
+            }
+        }
+        if (!(value > 0)) value = shopifyB2cDisplayedSprice(data);
         if (!(value > 0)) return 0;
         if (!shopifyB2cIsAmzSuggApplied(data) && window.SpriceLmpCap) {
             const cap = SpriceLmpCap.apply(data, value);
@@ -3536,19 +3543,26 @@
                         };
                         return val(aRow.getData()) - val(bRow.getData());
                     },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as /tiktok-2-pricing). Dil-matching when B2C L30 > 0; 0 Sold (B2C L30 = 0, INV > 0) uses the lowest Target GROI in the table. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
+                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as /tiktok-2-pricing). Dil-matching when B2C L30 > 0; 0 Sold uses the lowest Target GROI. Below A Price is raised to Amz. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
                         if (typeof ebayDilGroiMetaForRow !== 'function') return '';
                         const meta = ebayDilGroiMetaForRow(rowData);
                         if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
+                        const raw = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || meta.sprc;
+                        const amz = shopifyB2cAmzPrice(rowData);
+                        const raised = amz > 0 && raw > 0 && raw + 0.001 < amz;
+                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
                             + ' → ' + meta.label
                             + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
+                            + ' → $' + Number(raw).toFixed(2);
+                        if (raised) tip += ' → Amz $' + amz.toFixed(2);
+                        const amzLbl = raised
+                            ? ' <span class="shopifyb2c-sprice-amz-lbl" title="Dil $' + Number(raw).toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — raised to Amz">Amz</span>'
+                            : '';
                         return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
+                            + meta.sprc.toFixed(2) + '</span>' + amzLbl;
                     },
                     width: 78
                 },
@@ -3556,12 +3570,9 @@
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
-                    editor: shopifyB2cSpriceEditor,
-                    editable: function(cell) {
-                        return !isShopifyB2cParentRow(cell.getRow().getData());
-                    },
+                    editable: false,
                     sorter: "number",
-                    headerTooltip: "S PRC from Sprc Dil when Dil matches and B2C L30 > 0; 0 Sold uses the lowest Target GROI. Otherwise CVR Disc / 0 Sold / Std. S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Below A Price is raised to Amz. Sugg Amz keeps A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP.",
+                    headerTooltip: "Not editable. Auto-saved from Sprc Dil (Dil slab or 0 Sold min GROI), then raised to Amz when below A Price. Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3807,17 +3818,7 @@
             });
         });
 
-        // Click S PRC: editor must show the same value as the formatted cell (LMP cap + Amz floor).
-        table.on('cellEditing', function(cell) {
-            if (cell.getField() !== 'SPRICE') return;
-            const shown = shopifyB2cShownSprice(cell.getRow().getData());
-            setTimeout(function() {
-                const input = cell.getElement() && cell.getElement().querySelector('input');
-                if (input && shown > 0) input.value = shown.toFixed(2);
-            }, 0);
-        });
-
-        // SPRICE cell edited - save to database
+        // SPRICE is not editable — auto-saved from Sprc Dil / Amz. Std Prc still saves here.
         table.on('cellEdited', function(cell) {
             const field = cell.getField();
             const row = cell.getRow();
@@ -3855,17 +3856,6 @@
                     }
                 });
                 return;
-            }
-
-            if (field === 'SPRICE') {
-                const row = cell.getRow();
-                const rowData = row.getData();
-                if (isShopifyB2cParentRow(rowData)) return;
-                const sku = rowData['(Child) sku'];
-                const newSprice = shopifyB2cFinalSprice(rowData, parseFloat(cell.getValue()) || 0);
-                shopifyB2cApplySpriceMetricsToRow(row, newSprice);
-                row.update({ AMZ_SUGG_APPLIED: false });
-                saveSpriceWithRetry(sku, newSprice, row);
             }
         });
 

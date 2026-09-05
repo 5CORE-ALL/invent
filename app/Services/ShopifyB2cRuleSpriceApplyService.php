@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Page-less CVR Disc / 0 Sold → S PRC (Prmt% / Dil vs PRMT is not used on Shopify B2C).
+ * Page-less CVR Disc → S PRC. 0 Sold Dil/Min ROI is removed; Sprc Dil owns 0 Sold on the page.
  * Writes shopifyb2c_data_view SPRICE + PEF_CPN_PCT even if /shopify-b2c-pricing is closed.
  */
 class ShopifyB2cRuleSpriceApplyService
@@ -33,14 +33,14 @@ class ShopifyB2cRuleSpriceApplyService
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
         $cvrRules = $this->loadCvrRules();
-        $zeroRules = $this->loadZeroSoldRules();
-        $zeroMinRoi = ChannelPromoPricingController::shopifyB2cZeroSoldMinRoiFromStore();
+        $zeroRules = [];
+        $zeroMinRoi = 0.0;
         $margin = MarketplacePercentage::takeHomeForPromoChannel('shopify_b2c');
         if (! ($margin > 0)) {
             $margin = 0.95;
         }
 
-        $this->log($logger, 'Loaded CVR slabs='.count($cvrRules).' 0-sold='.count($zeroRules).' min-roi='.$zeroMinRoi);
+        $this->log($logger, 'Loaded CVR slabs='.count($cvrRules).' (0 Sold Dil rule removed)');
 
         $stats = [
             'candidates' => 0,
@@ -256,11 +256,8 @@ class ShopifyB2cRuleSpriceApplyService
 
         $sprice = 0.0;
         if ($zeroSold) {
-            $groi = $this->zeroSoldGroi($dil, $zeroRules, $zeroMinRoi);
-            $lp = (float) ($row['lp'] ?? 0);
-            if ($lp > 0 && $margin > 0 && $groi !== null) {
-                $sprice = round(($lp * (1 + $groi / 100) + (float) ($row['ship'] ?? 0)) / $margin, 2);
-            }
+            // 0 Sold Dil / Min ROI rule removed. Sprc Dil on /shopify-b2c-pricing owns 0 Sold.
+            return null;
         } else {
             $std = (float) ($row['std'] ?? 0);
             if (! ($std > 0)) {
