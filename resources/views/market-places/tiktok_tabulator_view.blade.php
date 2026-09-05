@@ -4115,7 +4115,7 @@
                         }
                     },
                     {
-                        title: "SROI%",
+                        title: "SGROI",
                         field: "SROI",
                         hozAlign: "center",
                         sorter: "number",
@@ -4152,27 +4152,6 @@
                         width: 50
                     },
                     {
-                        title: "SNPFT%",
-                        field: "SNPFT",
-                        hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const aNet = ttComputeSnpft(aRow.getData());
-                            const bNet = ttComputeSnpft(bRow.getData());
-                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                        },
-                        headerTooltip: "SNPFT = live S GPFT − TACOS%. Same S PRC as SGPFT / SNROI.",
-                        formatter: function(cell) {
-                            const percent = ttComputeSnpft(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) {
-                                return '<span style="color:#6c757d;">-</span>';
-                            }
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 58
-                    },
-                    {
                         title: "SNROI%",
                         field: "SNROI",
                         hozAlign: "center",
@@ -4189,6 +4168,27 @@
                                 return '<span style="color:#6c757d;">-</span>';
                             }
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 58
+                    },
+                    {
+                        title: "SNPFT%",
+                        field: "SNPFT",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = ttComputeSnpft(aRow.getData());
+                            const bNet = ttComputeSnpft(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
+                        headerTooltip: "SNPFT = live S GPFT − TACOS%. Same S PRC as SGPFT / SNROI.",
+                        formatter: function(cell) {
+                            const percent = ttComputeSnpft(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 58
