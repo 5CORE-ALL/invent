@@ -938,6 +938,7 @@
                     <div class="lc-specific-row lc-ebay-only"><span>Manufacturer</span><input id="lc-manufacturer-specific" class="form-control" placeholder="5 Core Inc." readonly></div>
                     <div class="lc-specific-row lc-ebay-only"><span>MPN</span><input id="lc-mpn" class="form-control" placeholder="SKU" readonly></div>
                     <div class="lc-specific-row lc-ebay-only"><span>UPC</span><input id="lc-upc-specific" class="form-control" placeholder="From CP Master"></div>
+                    <div class="lc-specific-row lc-ebay-only"><span>Type <span class="lc-req">*</span></span><input id="lc-spec-type" class="form-control" placeholder="e.g. Light Stand"></div>
                     <div class="lc-section-title mt-3 lc-ebay-only">Recommended Item Specifics</div>
                     <div class="lc-specific-row lc-ebay-only"><span>Speaker Size</span><input id="lc-spec-speaker" class="form-control"></div>
                     <div class="lc-specific-row lc-ebay-only"><span>Voice Coil</span><input id="lc-spec-coil" class="form-control"></div>
@@ -2158,6 +2159,7 @@
             Manufacturer: manufacturer,
             MPN: mpn,
             UPC: upc,
+            Type: $('#lc-spec-type').val() || '',
             'Speaker Size': $('#lc-spec-speaker').val() || '',
             'Voice Coil': $('#lc-spec-coil').val() || '',
             'RMS Power': $('#lc-spec-rms').val() || '',
@@ -2691,6 +2693,7 @@
             const v = $(this).val();
             $('#lc-upc, #lc-upc-specific').not(this).val(v);
         });
+        $('#lc-spec-type').val(specs.Type || specs.type || '');
         $('#lc-spec-speaker').val(specs['Speaker Size'] || '');
         $('#lc-spec-coil').val(specs['Voice Coil'] || '');
         $('#lc-spec-rms').val(specs['RMS Power'] || '');
