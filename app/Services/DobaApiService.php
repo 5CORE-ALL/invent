@@ -285,8 +285,9 @@ class DobaApiService
 
             if ($selfPickPrice !== null && $selfPickPrice !== '') {
                 $payload['selfPickAnticipatedIncome'] = round((float) $selfPickPrice, 2);
-                // Doba 610017: supportSelfPick must be passed when updating pickup price.
-                $payload['supportSelfPick'] = true;
+                // Doba 610016/610017: form-urlencoded turns PHP true into "1".
+                // The goods/price/update API only accepts the strings "true" / "false".
+                $payload['supportSelfPick'] = 'true';
             }
 
             if (!isset($payload['anticipatedIncome']) && !isset($payload['selfPickAnticipatedIncome'])) {
