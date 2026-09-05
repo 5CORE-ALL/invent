@@ -40,20 +40,38 @@ class ListingManagerFamily
         ];
     }
 
+    public static function isParentSku(string $sku): bool
+    {
+        return stripos(trim($sku), 'PARENT') === 0;
+    }
+
+    public static function stripParentPrefix(string $sku): string
+    {
+        $sku = trim($sku);
+        if (preg_match('/^PARENT(?:\s+PARENT)*\s+(.+)$/i', $sku, $m)) {
+            $rest = trim($m[1]);
+            if ($rest !== '') {
+                return $rest;
+            }
+        }
+
+        return $sku;
+    }
+
     public static function parentKey(string $sku): string
     {
         $sku = trim($sku);
         if ($sku === '' || ! Schema::hasTable('product_master')) {
-            return $sku;
+            return self::stripParentPrefix($sku);
         }
 
         $row = DB::table('product_master')->where('sku', $sku)->first();
         $parent = trim((string) ($row->parent ?? ''));
         if ($parent !== '') {
-            return $parent;
+            return self::isParentSku($parent) ? self::stripParentPrefix($parent) : $parent;
         }
 
-        return $sku;
+        return self::stripParentPrefix($sku);
     }
 
     /**
@@ -97,7 +115,7 @@ class ListingManagerFamily
         }
 
         $targets = [];
-        $isParentRow = stripos($sku, 'PARENT') === 0;
+        $isParentRow = self::isParentSku($sku);
         $family = self::forSku($sku);
 
         if ($siblings || ($parent && $isParentRow)) {
@@ -128,21 +146,27 @@ class ListingManagerFamily
         $skus = [];
 
         if ($parent !== '' && Schema::hasTable('product_master')) {
-            $query = DB::table('product_master')->where('parent', $parent);
+            $keys = array_values(array_unique(array_filter([
+                $parent,
+                self::stripParentPrefix($parent),
+                'PARENT '.$parent,
+                'PARENT '.self::stripParentPrefix($parent),
+            ], static fn ($key) => trim((string) $key) !== '')));
+            $query = DB::table('product_master')->whereIn('parent', $keys);
             if (Schema::hasColumn('product_master', 'deleted_at')) {
                 $query->whereNull('deleted_at');
             }
             $rows = $query->orderBy('sku')->pluck('sku');
             foreach ($rows as $child) {
                 $child = trim((string) $child);
-                if ($child === '' || stripos($child, 'PARENT') === 0) {
+                if ($child === '' || self::isParentSku($child)) {
                     continue;
                 }
                 $skus[] = $child;
             }
         }
 
-        if ($skus === [] && $fallbackSku !== '' && stripos($fallbackSku, 'PARENT') !== 0) {
+        if ($skus === [] && $fallbackSku !== '' && ! self::isParentSku($fallbackSku)) {
             $skus[] = $fallbackSku;
         }
 

@@ -24,6 +24,7 @@ use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerImageStore;
 use App\Support\Marketplace\ListingManagerEbayDescriptionBuilder;
+use App\Support\Marketplace\ListingManagerEbayTradingPublisher;
 use App\Support\Marketplace\ListingManagerEditorProfile;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\ListingManagerMasterLoader;
@@ -2271,12 +2272,19 @@ class ListingManagerController extends Controller
             ], 422);
         }
 
+        $family = ListingManagerFamily::forSku((string) $draft->seller_sku);
+        $familyChildCount = count($family['skus'] ?? []);
+        $alreadyVariation = strtolower(trim((string) ($details['publish_mode'] ?? ''))) === 'variation'
+            && count(array_filter((array) ($details['variation_skus'] ?? []))) > 1;
         if ($draft->status === 'listed' && trim((string) $draft->external_listing_id) !== '') {
-            return response()->json([
-                'success' => true,
-                'message' => 'Already published (ItemID ' . $draft->external_listing_id . ').',
-                'draft' => $this->serializeDraft($draft, true),
-            ]);
+            $canRelistAsVariation = $familyChildCount > 1 && ! $alreadyVariation;
+            if (! $canRelistAsVariation) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Already published (ItemID ' . $draft->external_listing_id . ').',
+                    'draft' => $this->serializeDraft($draft, true),
+                ]);
+            }
         }
 
         $liveQty = ListingManagerAmazonHydrator::shopifyQuantity((string) $draft->seller_sku, true);
@@ -2302,10 +2310,32 @@ class ListingManagerController extends Controller
                 ? array_values(array_filter(array_map(static fn ($sku) => trim((string) $sku), $skus)))
                 : [];
         }
+        $isParentDraft = ListingManagerFamily::isParentSku((string) $draft->seller_sku);
+        $relistSingleAsVariation = $draft->status === 'listed' && $familyChildCount > 1 && ! $alreadyVariation;
+        if ($isParentDraft || $relistSingleAsVariation || ($familyChildCount > 1 && ($details['publish_mode'] ?? '') !== 'single')) {
+            $details['publish_mode'] = 'variation';
+            $selectedKids = array_values(array_filter(
+                is_array($details['variation_skus'] ?? null) ? $details['variation_skus'] : [],
+                static fn ($sku) => trim((string) $sku) !== '' && ! ListingManagerFamily::isParentSku((string) $sku)
+            ));
+            if (count($selectedKids) < 2) {
+                $details['variation_skus'] = $family['skus'];
+            }
+        }
         $draft->listing_details = $details;
         $draft->save();
 
-        $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $details);
+        $publishDetails = $details;
+        $editorFamily = ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName));
+        if (in_array($editorFamily, ['ebay', 'reverb', 'temu'], true)) {
+            $publishDetails['upc'] = '';
+            $publishDetails['upc_does_not_apply'] = true;
+            if (is_array($publishDetails['item_specifics'] ?? null)) {
+                $publishDetails['item_specifics'] = ListingManagerEbayTradingPublisher::withoutUpcKeys($publishDetails['item_specifics']);
+            }
+        }
+
+        $result = app(ListingManagerPublishDispatcher::class)->publish($draft, $publishDetails);
 
         if (! ($result['success'] ?? false)) {
             if (! empty($result['queued'])) {
@@ -2764,8 +2794,30 @@ class ListingManagerController extends Controller
         $draft->save();
     }
 
+    private function demoteUnverifiedAmazonDraft(ListingManagerChannelDraft $d): void
+    {
+        $channelName = (string) ($d->channel->channel ?? '');
+        if (ListingManagerEditorProfile::family(ListingChannelCounts::normalize($channelName)) !== 'amazon') {
+            return;
+        }
+        if ($d->status !== 'listed') {
+            return;
+        }
+        if (ListingManagerPublishStatus::amazonAsinForSku((string) $d->seller_sku)) {
+            return;
+        }
+        if (trim((string) $d->external_listing_id) !== '') {
+            return;
+        }
+        $d->status = 'ready';
+        $d->listed_at = null;
+        $d->notes = trim((string) $d->notes."\nMoved back to Drafts: Amazon Seller Central does not have this SKU.");
+        $d->save();
+    }
+
     private function serializeDraft(ListingManagerChannelDraft $d, bool $full = false): array
     {
+        $this->demoteUnverifiedAmazonDraft($d);
         $channelName = (string) ($d->channel->channel ?? '');
         $details = $this->ensureIdentifierDefaults(
             ListingManagerPublishStatus::normalizeDetails(

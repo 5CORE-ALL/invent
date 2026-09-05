@@ -2039,10 +2039,9 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 }
             }
 
-            // Required identifiers: Brand / MPN (item specifics) + UPC (ProductListingDetails)
+            // Brand / MPN only. Never send UPC on eBay listings.
             $brand = trim((string) ($payload['brand'] ?? ''));
             $mpn = trim((string) ($payload['mpn'] ?? ''));
-            $upc = trim((string) ($payload['upc'] ?? ''));
             if ($brand === '') {
                 $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
             }
@@ -2057,8 +2056,10 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             if ($mpn !== '') {
                 $specifics['MPN'] = $mpn;
             }
-            if ($upc !== '') {
-                $specifics['UPC'] = $upc;
+            foreach (array_keys($specifics) as $name) {
+                if (strcasecmp(trim((string) $name), 'UPC') === 0) {
+                    unset($specifics[$name]);
+                }
             }
 
             if ($specifics !== []) {
@@ -2066,18 +2067,13 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
                 foreach ($specifics as $name => $value) {
                     $name = trim((string) $name);
                     $value = trim((string) $value);
-                    if ($name === '' || $value === '') {
+                    if ($name === '' || $value === '' || strcasecmp($name, 'UPC') === 0) {
                         continue;
                     }
                     $nvl = $itemSpecifics->addChild('NameValueList');
                     $nvl->addChild('Name', htmlspecialchars($name, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
                     $nvl->addChild('Value', htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
                 }
-            }
-
-            if ($upc !== '') {
-                $pld = $item->addChild('ProductListingDetails');
-                $pld->addChild('UPC', htmlspecialchars($upc, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             }
 
             $length = (float) ($payload['package_length'] ?? 0);

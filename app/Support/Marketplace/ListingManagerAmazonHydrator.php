@@ -420,6 +420,8 @@ class ListingManagerAmazonHydrator
 
         $merged['category_uuid'] = trim((string) ($merged['category_uuid'] ?? $merged['primary_category_id'] ?? ''));
         $merged['category_name'] = trim((string) ($merged['category_name'] ?? $merged['primary_category_path'] ?? ''));
+        $merged['upc'] = '';
+        $merged['upc_does_not_apply'] = true;
         if ($merged['category_uuid'] !== '') {
             $merged['primary_category_id'] = $merged['category_uuid'];
         }

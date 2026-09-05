@@ -214,6 +214,7 @@ class ListingManagerPublishStatus
         $isTiktok = $family === 'tiktok';
         $isTemu = $family === 'temu';
         $isReverb = $family === 'reverb';
+        $isAmazon = $family === 'amazon';
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
@@ -255,6 +256,24 @@ class ListingManagerPublishStatus
             }
         }
 
+        if ($isAmazon) {
+            $productType = trim((string) ($details['product_type'] ?? $details['category'] ?? $details['primary_category_id'] ?? ''));
+            if ($productType === '' || preg_match('/^\d+$/', $productType)) {
+                $tabErrors['category'][] = 'Amazon product type is required.';
+            }
+            $length = (float) ($details['package_length'] ?? 0);
+            $width = (float) ($details['package_width'] ?? 0);
+            $height = (float) ($details['package_height'] ?? 0);
+            if ($length <= 0 || $width <= 0 || $height <= 0) {
+                $tabErrors['logistics'][] = 'Package length, width, and height are required.';
+            }
+            $weightLb = (float) ($details['package_weight_lb'] ?? 0);
+            $weightOz = (float) ($details['package_weight_oz'] ?? 0);
+            if (($weightLb + ($weightOz / 16)) <= 0) {
+                $tabErrors['logistics'][] = 'Package weight is required.';
+            }
+        }
+
         if ($isReverb) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_uuid'] ?? ''));
             if ($categoryId === '') {
@@ -290,10 +309,10 @@ class ListingManagerPublishStatus
             $label = match ($tab) {
                 'title_description' => 'Title & Description',
                 'pricing' => ($isEbay ? 'Pricing' : 'Price & Stock'),
-                'category' => $isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isReverb ? 'Reverb Details' : 'Category')),
+                'category' => $isAmazon ? 'Product Type' : ($isTiktok ? 'TikTok Category' : ($isTemu ? 'Temu Category' : ($isReverb ? 'Reverb Details' : 'Category'))),
                 'business_policies' => $family === 'ebay' ? 'Business Policies' : ($isReverb ? 'Shipping & Package' : 'Warehouse & Package'),
                 'auto_relist' => 'Auto Relist',
-                'logistics' => $isTiktok ? 'Warehouse & Package' : ($isReverb ? 'Shipping & Package' : 'Package'),
+                'logistics' => $isAmazon ? 'Packaging' : ($isTiktok ? 'Warehouse & Package' : ($isReverb ? 'Shipping & Package' : 'Package')),
                 default => ucfirst(str_replace('_', ' ', $tab)),
             };
             $banners[] = "{$label} tab is missing required information. Please fill in those required fields.";
@@ -424,6 +443,7 @@ class ListingManagerPublishStatus
             'private_listing' => false,
             'publish_mode' => 'single',
             'variation_skus' => [],
+            'product_type' => '',
         ], $details, [
             'brand' => $brand,
             'manufacturer' => $manufacturer,

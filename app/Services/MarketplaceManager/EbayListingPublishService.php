@@ -151,7 +151,9 @@ class EbayListingPublishService
             'payment_policy_id' => $policies['payment'],
             'return_policy_id' => $policies['return'],
             'variations' => $variations,
+            'upc' => '',
         ]);
+        $payload = ListingManagerEbayTradingPublisher::stripUpcFromPayload($payload);
 
         Log::info('Ebay listing publish: AddFixedPriceItem', [
             'channel' => $channel,
@@ -550,7 +552,7 @@ class EbayListingPublishService
                 'price' => $price,
                 'quantity' => $this->resolveQuantity($sku, $hydrated),
                 'variation_label' => ListingManagerFamily::variationLabel($sku, $parent),
-                'upc' => trim((string) ($hydrated['upc'] ?? '')),
+                'upc' => '',
             ];
         }
 
