@@ -2466,11 +2466,12 @@
         let priceLt80LmpFilterActive = false;
         let endedListingFilterActive = false;
 
-        /** Parent / summary rows are not selectable. */
+        /** Parent / summary rows are not selectable. Child SKUs often have Parent = "PARENT 10 FR" — that is the parent name, not a parent row. */
         function ebayIsParentRowData(d) {
             if (!d) return true;
-            if (d.is_parent_summary === true || d.is_parent_row === true) return true;
-            return !!(d.Parent && String(d.Parent).toUpperCase().startsWith('PARENT'));
+            if (d.is_parent_summary === true || d.is_parent_row === true || d.is_parent === true) return true;
+            const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').toUpperCase();
+            return sku.indexOf('PARENT') !== -1;
         }
 
         /**
@@ -3226,8 +3227,7 @@
             });
 
             function ebay1IsAlertParentRow(data) {
-                return !!(data && (data.is_parent_summary
-                    || (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))));
+                return ebayIsParentRowData(data);
             }
             function ebay1RowSpriceForAlert(data) {
                 if (typeof chPromoLiveSprice !== 'function' || ebay1IsAlertParentRow(data)) return 0;
@@ -3249,7 +3249,11 @@
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
             function ebay1HasRedTriangle(data) {
+                if (window.PriceGtLmpBadge && typeof PriceGtLmpBadge.hasRedTriangle === 'function') {
+                    return PriceGtLmpBadge.hasRedTriangle(data, 'eBay Price', ebayEffectiveLmp);
+                }
                 if (ebay1IsAlertParentRow(data)) return false;
+                if (!((parseFloat(data['INV']) || 0) > 0)) return false;
                 const price = parseFloat(data['eBay Price']) || 0;
                 const lmp = ebayEffectiveLmp(data);
                 return price > 0 && lmp > 0 && price > lmp;
@@ -5161,6 +5165,7 @@
                 ParentExpand.configure({
                     parentField: 'Parent',
                     skuField: '(Child) sku',
+                    isParentRow: ebayIsParentRowData,
                     getTable: () => table,
                     getDataset: () => allTableData,
                     onAfterExpand: () => {
@@ -5504,15 +5509,11 @@
                     // View type: All | Parent | SKU (parent = only parent rows; sku = only child SKU rows)
                     if (viewTypeFilter === 'parent') {
                         table.addFilter(function(data) {
-                            var isParent = data.is_parent_summary === true ||
-                                (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
-                            return !!isParent;
+                            return ebayIsParentRowData(data);
                         });
                     } else if (viewTypeFilter === 'sku') {
                         table.addFilter(function(data) {
-                            var isParent = data.is_parent_summary === true ||
-                                (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'));
-                            return !isParent;
+                            return !ebayIsParentRowData(data);
                         });
                     }
                 }
@@ -5992,10 +5993,8 @@
                     }
                 }
 
-                // Count of rows currently shown after filters (exclude parent summary rows)
-                const visibleRowCount = filteredData.filter(row =>
-                    !(row['Parent'] && String(row['Parent']).toUpperCase().startsWith('PARENT'))
-                ).length;
+                // Count of rows currently shown after filters (exclude parent summary rows only)
+                const visibleRowCount = filteredData.filter(row => !ebayIsParentRowData(row)).length;
                 $('#rows-count-badge').text('Rows: ' + visibleRowCount.toLocaleString());
 
                 setSummaryBadge($('#zero-sold-count-badge'), '0 Sold: ' + zeroSoldCount.toLocaleString(), zeroSoldCount);
@@ -7155,7 +7154,7 @@
                     LmpMissingBadge.update('#ebay1-lmp-missing-badge', allTableData, 'ebay');
                 }
                 if (window.PriceGtLmpBadge) {
-                    PriceGtLmpBadge.update('#ebay1-red-triangle-badge', allTableData, 'ebay', 'eBay Price');
+                    PriceGtLmpBadge.update('#ebay1-red-triangle-badge', allTableData, 'ebay', 'eBay Price', ebayEffectiveLmp);
                 }
                 if (window.PriceLt80LmpBadge) {
                     PriceLt80LmpBadge.update('#ebay1-purple-triangle-badge', allTableData, 'ebay', 'eBay Price');
