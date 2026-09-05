@@ -2228,7 +2228,7 @@ class TikTokShopService
                 $uris[] = ['uri' => $uri];
                 continue;
             }
-            $lastError = trim((string) ($uploaded['message'] ?? ''));
+            $lastError = $this->sanitizeTikTokClientError((string) ($uploaded['message'] ?? ''));
             if ($lastError === '') {
                 $lastError = 'TikTok rejected the Image Master photo.';
             }
@@ -2256,18 +2256,16 @@ class TikTokShopService
         }
 
         $this->ensureShopCipher();
-        $hosts = array_values(array_unique(array_filter([
-            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
-            'https://open-api.tiktokglobalshop.com',
-            'https://open-api-us.tiktokglobalshop.com',
-        ])));
+        $hosts = $this->tiktokImageUploadHosts();
         $paths = [
             '/product/202309/images/upload',
             '/product/202502/images/upload',
         ];
-        $lastError = '';
+        $apiError = '';
+        $networkError = '';
 
         foreach ($hosts as $base) {
+            $hostAnswered = false;
             foreach ($paths as $path) {
                 $query = [
                     'app_key' => (string) $this->clientKey,
@@ -2282,10 +2280,12 @@ class TikTokShopService
                     $response = Http::withoutVerifying()
                         ->withHeaders(['x-tts-access-token' => (string) $this->accessToken])
                         ->timeout(120)
+                        ->connectTimeout(10)
                         ->attach('data', $bytes, $filename)
                         ->post($base.$path.'?'.http_build_query($query), [
                             'use_case' => $useCase,
                         ]);
+                    $hostAnswered = true;
                     $json = $response->json() ?? [];
                     if ((int) ($json['code'] ?? -1) === 0) {
                         $uri = trim((string) (
@@ -2298,26 +2298,87 @@ class TikTokShopService
                             return ['uri' => $uri, 'message' => ''];
                         }
                     }
-                    $lastError = trim((string) ($json['message'] ?? $response->body()));
+                    $apiError = $this->sanitizeTikTokClientError((string) ($json['message'] ?? $response->body()));
                     Log::info('TikTok image upload attempt failed', [
                         'channel' => $this->configKey,
                         'base' => $base,
                         'path' => $path,
                         'code' => $json['code'] ?? null,
-                        'message' => $lastError,
+                        'message' => $apiError,
                     ]);
                 } catch (\Throwable $e) {
-                    $lastError = $e->getMessage();
+                    $msg = $this->sanitizeTikTokClientError($e->getMessage());
                     Log::info('TikTok image upload exception', [
                         'channel' => $this->configKey,
+                        'base' => $base,
                         'path' => $path,
-                        'error' => $lastError,
+                        'error' => $msg,
                     ]);
+                    if ($this->isTikTokUnreachableHostError($e->getMessage())) {
+                        $networkError = $msg;
+                        break;
+                    }
+                    $apiError = $msg;
                 }
+            }
+            if ($hostAnswered) {
+                break;
             }
         }
 
-        return ['uri' => null, 'message' => $lastError];
+        return ['uri' => null, 'message' => $apiError !== '' ? $apiError : $networkError];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tiktokImageUploadHosts(): array
+    {
+        $preferred = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $hosts = [];
+        foreach ([$preferred, 'https://open-api.tiktokglobalshop.com'] as $base) {
+            $base = rtrim((string) $base, '/');
+            if ($base === '' || in_array($base, $hosts, true)) {
+                continue;
+            }
+            if (! $this->tiktokHostResolves($base)) {
+                continue;
+            }
+            $hosts[] = $base;
+        }
+
+        return $hosts !== [] ? $hosts : [$preferred];
+    }
+
+    private function tiktokHostResolves(string $base): bool
+    {
+        $host = (string) (parse_url($base, PHP_URL_HOST) ?: '');
+        if ($host === '') {
+            return false;
+        }
+        $ip = @gethostbyname($host);
+
+        return $ip !== $host && filter_var($ip, FILTER_VALIDATE_IP) !== false;
+    }
+
+    private function isTikTokUnreachableHostError(string $message): bool
+    {
+        return (bool) preg_match('/Could not resolve host|cURL error 6|cURL error 7|Failed to connect|Resolving timed out/i', $message);
+    }
+
+    private function sanitizeTikTokClientError(string $message): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+        if (preg_match('/Could not resolve host:\s*([a-z0-9.-]+)/i', $message, $m)) {
+            return 'Could not reach TikTok API host '.$m[1];
+        }
+        $message = preg_replace('/\?[^ \]]+/', '', $message) ?? $message;
+        $message = preg_replace('#https?://[^\s\]]+#', '', $message) ?? $message;
+
+        return trim(preg_replace('/\s+/', ' ', $message) ?? $message);
     }
 
     /**
