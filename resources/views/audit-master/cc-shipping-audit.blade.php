@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'CC Shipping Audit', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'CC Shipping Audit', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -1333,6 +1333,7 @@
 @endsection
 
 @section('script-after-vite')
+    <script src="https://cdn.jsdelivr.net/npm/highcharts@11/highcharts.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         $(function () {
@@ -1532,6 +1533,7 @@
 
             // Server-supplied admin flag (also re-confirmed by getAuditConfig response)
             let isAuditAdmin = {{ isset($isAuditAdmin) && $isAuditAdmin ? 'true' : 'false' }};
+            const canManageParams = true;
 
             let currentChannel  = null;
             let currentParams   = [];   // [{id, code, label, description, category, max_score, weight, is_critical, is_active}]
@@ -1563,12 +1565,8 @@
                     groups[cat].items.push(p);
                 });
 
-                // Always render both section cards when admin (so the Add button is reachable
-                // even on a fresh module). For non-admins, hide empty sections.
                 Object.entries(groups).forEach(([key, group]) => {
-                    if (!group.items.length && !isAuditAdmin) return;
-
-                    const adminAddBtn = isAuditAdmin
+                    const adminAddBtn = canManageParams
                         ? `<button type="button" class="admin-add-btn add-param-btn" data-category="${key}" title="Add a new parameter to this section">
                                <i class="ri-add-line"></i> Add
                            </button>`
@@ -1594,7 +1592,7 @@
                     `);
                 });
 
-                if (!currentParams.length && !isAuditAdmin) {
+                if (!currentParams.length && !canManageParams) {
                     $c.html(`<div class="text-center text-muted py-3">
                         No active audit parameters configured for this module yet.
                     </div>`);
@@ -1612,13 +1610,13 @@
                 const desc = p.description
                     ? `<div class="param-desc">${escapeHtml(p.description)}</div>`
                     : '';
-                const adminActions = isAuditAdmin
+                const adminActions = canManageParams
                     ? `<div class="param-admin-actions">
                            <button type="button" class="edit-param-btn" data-param-id="${p.id}" title="Edit parameter">
                                <i class="ri-pencil-line"></i> Edit
                            </button>
-                           <button type="button" class="archive-param-btn" data-param-id="${p.id}" title="Archive (soft delete)">
-                               <i class="ri-archive-line"></i> Archive
+                           <button type="button" class="archive-param-btn" data-param-id="${p.id}" title="Delete parameter">
+                               <i class="ri-delete-bin-line"></i> Delete
                            </button>
                        </div>`
                     : '';
@@ -1951,7 +1949,7 @@
             let editingParamId = null;
 
             function openParamEditor(opts) {
-                if (!isAuditAdmin) return;
+                if (!canManageParams) return;
                 const mode     = opts.mode;
                 const category = opts.category;
                 const param    = opts.param;
@@ -2005,7 +2003,7 @@
                 const id = parseInt($(this).data('param-id'), 10);
                 const param = currentParams.find(p => p.id === id);
                 if (!param) return;
-                if (!confirm(`Archive parameter "${param.label}"?\n\nIt will be hidden from new audits, but historical audit records keep their snapshot.`)) return;
+                if (!confirm(`Delete parameter "${param.label}"?\n\nIt will be hidden from new audits. Historical audit records keep their snapshot.`)) return;
 
                 $.ajax({
                     url: ROUTES.paramDestroy + '/' + id,

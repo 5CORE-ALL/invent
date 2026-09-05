@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => $auditPageTitle ?? 'CC Messages Audit', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => $auditPageTitle ?? 'CC Messages Audit', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -1136,7 +1136,10 @@
                 <h4 class="page-title mb-0">
                     <i class="{{ $auditPageIcon ?? 'ri-message-3-line' }} me-2 text-primary"></i>{{ $auditPageTitle ?? 'CC Messages Audit' }}
                 </h4>
-                <div class="page-title-right">
+                <div class="page-title-right d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="addChannelAuditBtn">
+                        <i class="ri-add-line me-1"></i> Add
+                    </button>
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Audit Master</a></li>
                         <li class="breadcrumb-item active">{{ $auditPageTitle ?? 'CC Messages Audit' }}</li>
@@ -1272,6 +1275,34 @@
             <div class="card">
                 <div class="card-body">
                     <div id="ccMessagesAuditTable"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addChannelAuditPickModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0">
+                        <i class="ri-add-line me-1 text-primary"></i> Add {{ $auditPageTitle ?? 'Audit' }}
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label small mb-1" for="addChannelAuditChannel">Channel</label>
+                    <select id="addChannelAuditChannel" class="form-select form-select-sm">
+                        <option value="">Select a channel…</option>
+                        @foreach ($channels as $channel)
+                            <option value="{{ $channel }}">{{ $channel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="addChannelAuditStart">
+                        <i class="ri-play-line me-1"></i> Start Audit
+                    </button>
                 </div>
             </div>
         </div>
@@ -1628,6 +1659,7 @@
 @endsection
 
 @section('script-after-vite')
+    <script src="https://cdn.jsdelivr.net/npm/highcharts@11/highcharts.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     {{-- Markdown -> HTML renderer for the SOP viewer (so pasted ChatGPT
          Markdown shows as formatted document with images, headings, etc.
@@ -1903,6 +1935,7 @@
 
             // Server-supplied admin flag (also re-confirmed by getAuditConfig response)
             let isAuditAdmin = {{ isset($isAuditAdmin) && $isAuditAdmin ? 'true' : 'false' }};
+            const canManageParams = true;
 
             let currentChannel  = null;
             let currentParams   = [];   // [{id, code, label, description, category, max_score, weight, is_critical, is_active}]
@@ -1934,12 +1967,8 @@
                     groups[cat].items.push(p);
                 });
 
-                // Always render both section cards when admin (so the Add button is reachable
-                // even on a fresh module). For non-admins, hide empty sections.
                 Object.entries(groups).forEach(([key, group]) => {
-                    if (!group.items.length && !isAuditAdmin) return;
-
-                    const adminAddBtn = isAuditAdmin
+                    const adminAddBtn = canManageParams
                         ? `<button type="button" class="admin-add-btn add-param-btn" data-category="${key}" title="Add a new parameter to this section">
                                <i class="ri-add-line"></i> Add
                            </button>`
@@ -1965,7 +1994,7 @@
                     `);
                 });
 
-                if (!currentParams.length && !isAuditAdmin) {
+                if (!currentParams.length && !canManageParams) {
                     $c.html(`<div class="text-center text-muted py-3">
                         No active audit parameters configured for this module yet.
                     </div>`);
@@ -1983,13 +2012,13 @@
                 const desc = p.description
                     ? `<div class="param-desc">${escapeHtml(p.description)}</div>`
                     : '';
-                const adminActions = isAuditAdmin
+                const adminActions = canManageParams
                     ? `<div class="param-admin-actions">
                            <button type="button" class="edit-param-btn" data-param-id="${p.id}" title="Edit parameter">
                                <i class="ri-pencil-line"></i> Edit
                            </button>
-                           <button type="button" class="archive-param-btn" data-param-id="${p.id}" title="Archive (soft delete)">
-                               <i class="ri-archive-line"></i> Archive
+                           <button type="button" class="archive-param-btn" data-param-id="${p.id}" title="Delete parameter">
+                               <i class="ri-delete-bin-line"></i> Delete
                            </button>
                        </div>`
                     : '';
@@ -2183,16 +2212,37 @@
                 if (tabEl) bootstrap.Tab.getOrCreateInstance(tabEl).show();
             }
 
-            // Open the modal from any "Audit" button in the table
-            $(document).on('click', '.open-audit-btn', function () {
-                currentChannel = $(this).data('channel') || '';
+            function openAuditForChannel(channel) {
+                currentChannel = channel || '';
+                if (!currentChannel) return;
                 $('#auditChannelName').text(currentChannel);
                 resetAuditForm();
                 loadAuditConfig(currentChannel);
                 loadAuditHistory(currentChannel);
-
                 const el = document.getElementById('auditChecklistModal');
                 bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+
+            $('#addChannelAuditBtn').on('click', function () {
+                bootstrap.Modal.getOrCreateInstance(
+                    document.getElementById('addChannelAuditPickModal')
+                ).show();
+            });
+
+            $('#addChannelAuditStart').on('click', function () {
+                const channel = ($('#addChannelAuditChannel').val() || '').trim();
+                if (!channel) {
+                    $('#addChannelAuditChannel').focus();
+                    return;
+                }
+                const pickEl = document.getElementById('addChannelAuditPickModal');
+                const pickModal = bootstrap.Modal.getInstance(pickEl);
+                if (pickModal) pickModal.hide();
+                openAuditForChannel(channel);
+            });
+
+            $(document).on('click', '.open-audit-btn', function () {
+                openAuditForChannel($(this).data('channel') || '');
             });
 
             // Render the Remarks viewer modal for a given channel using the
@@ -2434,7 +2484,7 @@
             let editingParamId = null;
 
             function openParamEditor(opts) {
-                if (!isAuditAdmin) return;
+                if (!canManageParams) return;
                 const mode     = opts.mode;
                 const category = opts.category;
                 const param    = opts.param;
@@ -2488,7 +2538,7 @@
                 const id = parseInt($(this).data('param-id'), 10);
                 const param = currentParams.find(p => p.id === id);
                 if (!param) return;
-                if (!confirm(`Archive parameter "${param.label}"?\n\nIt will be hidden from new audits, but historical audit records keep their snapshot.`)) return;
+                if (!confirm(`Delete parameter "${param.label}"?\n\nIt will be hidden from new audits. Historical audit records keep their snapshot.`)) return;
 
                 $.ajax({
                     url: ROUTES.paramDestroy + '/' + id,

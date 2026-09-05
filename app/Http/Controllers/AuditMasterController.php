@@ -21,6 +21,7 @@ use App\Models\ChannelMaster;
 use App\Models\ShippingHealthAssessment;
 use App\Models\ShippingHealthAssessmentItem;
 use App\Models\ShippingHealthParameter;
+use App\Support\Audit\DefaultAuditCatalog;
 use App\Support\SuperAdminAccess;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
@@ -205,21 +206,14 @@ class AuditMasterController extends Controller
      */
     private function getActiveChannelsWithLogo(): array
     {
-        $hasLogo = Schema::hasColumn('channel_master', 'logo');
-
-        $columns = ['id', 'channel'];
-        if ($hasLogo) {
-            $columns[] = 'logo';
-        }
-
         return ChannelMaster::where('status', 'Active')
             ->orderBy('channel')
-            ->get($columns)
+            ->get(['id', 'channel', 'logo'])
             ->filter(fn ($row) => !empty($row->channel))
             ->map(fn ($row) => [
                 'channel_id' => (int) $row->id,
                 'channel'    => $row->channel,
-                'logo'       => $hasLogo ? ($row->logo ?? null) : null,
+                'logo'       => $row->logo ?? null,
             ])
             ->values()
             ->toArray();
@@ -1487,6 +1481,8 @@ class AuditMasterController extends Controller
         string $auditPageIcon,
         string $auditSopBadge
     ) {
+        $this->ensureDefaultAuditCatalog($module);
+
         $channelsWithLogo = $this->getActiveChannelsWithLogo();
         $channels = array_column($channelsWithLogo, 'channel');
 
@@ -1628,9 +1624,12 @@ class AuditMasterController extends Controller
      */
     public function ccReturnAudit()
     {
-        $channels = $this->getActiveChannels();
-
-        return view('audit-master.cc-return-audit', compact('channels'));
+        return $this->renderCcChannelAuditPage(
+            'cc_return',
+            'CC Return Audit',
+            'ri-arrow-go-back-line',
+            'CC Return'
+        );
     }
 
     /**
@@ -1651,6 +1650,8 @@ class AuditMasterController extends Controller
      */
     public function ccShippingAudit()
     {
+        $this->ensureDefaultAuditCatalog('cc_shipping');
+
         $channelsWithLogo = $this->getActiveChannelsWithLogo();
         $channels = array_column($channelsWithLogo, 'channel');
 
@@ -1788,10 +1789,6 @@ class AuditMasterController extends Controller
      */
     public function storeParameter(Request $request): JsonResponse
     {
-        if (! $this->isAuditAdmin()) {
-            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
-        }
-
         $data = $request->validate($this->parameterRules());
 
         // Auto-generate a unique code from the label if not supplied.
@@ -1826,10 +1823,6 @@ class AuditMasterController extends Controller
      */
     public function updateParameter(Request $request, int $id): JsonResponse
     {
-        if (! $this->isAuditAdmin()) {
-            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
-        }
-
         $param = AuditParameter::find($id);
         if (! $param) {
             return response()->json(['success' => false, 'message' => 'Parameter not found.'], 404);
@@ -1867,10 +1860,6 @@ class AuditMasterController extends Controller
      */
     public function destroyParameter(int $id): JsonResponse
     {
-        if (! $this->isAuditAdmin()) {
-            return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
-        }
-
         $param = AuditParameter::find($id);
         if (! $param) {
             return response()->json(['success' => false, 'message' => 'Parameter not found.'], 404);
@@ -2268,30 +2257,53 @@ class AuditMasterController extends Controller
 
     private function defaultCriticalFailReasons(string $module = 'cc_messages'): array
     {
-        if ($module === 'cc_shipping') {
-            return [
-                'Wrong shipping carrier',
-                'Wrong shipping address',
-                'Wrong package weight (charge adjustment)',
-                'Wrong product shipped',
-                'Duplicate shipment created',
-                'Invalid / missing tracking upload',
-                'SLA breach (label generated late)',
-                'International compliance violation',
-                'Hazardous goods mishandled',
-                'Customs documentation missing',
-            ];
+        return DefaultAuditCatalog::criticalReasons($module);
+    }
+
+    /**
+     * Insert default grades + parameters when a module has none yet
+     * so Return / Replacement / Shipping modals show a real checklist.
+     */
+    private function ensureDefaultAuditCatalog(string $module): void
+    {
+        if ($module === '') {
+            return;
         }
 
-        // Default: cc_messages and other modules
-        return [
-            'No response within 24 hours',
-            'Marketplace policy violation',
-            'Rude or unprofessional communication',
-            'False promises made to customer',
-            'Review manipulation attempt',
-            'Confidential data leak',
-        ];
+        try {
+            if (AuditParameter::where('module', $module)->exists()) {
+                return;
+            }
+
+            $sortByCategory = [];
+            foreach (DefaultAuditCatalog::parameters($module) as $row) {
+                [$code, $label, $desc, $max, $weight, $critical, $category] = $row;
+                $sortByCategory[$category] = ($sortByCategory[$category] ?? 0) + 1;
+                AuditParameter::create([
+                    'module'      => $module,
+                    'code'        => $code,
+                    'label'       => $label,
+                    'description' => $desc,
+                    'category'    => $category,
+                    'max_score'   => $max,
+                    'weight'      => $weight,
+                    'is_critical' => $critical,
+                    'is_active'   => true,
+                    'sort_order'  => $sortByCategory[$category],
+                ]);
+            }
+
+            if (! AuditGrade::where('module', $module)->exists()) {
+                foreach (DefaultAuditCatalog::grades() as $g) {
+                    AuditGrade::create($g + [
+                        'module'    => $module,
+                        'is_active' => true,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Catalog is optional; never block the audit page on seed.
+        }
     }
 
     private function boolish($v): bool
