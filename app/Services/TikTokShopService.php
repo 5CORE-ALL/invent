@@ -13,6 +13,7 @@ use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
 use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 
 class TikTokShopService
 {
@@ -2164,11 +2165,94 @@ class TikTokShopService
             return null;
         }
 
-        $pathName = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: 'image.jpg');
-        $filename = basename($pathName);
-        if (! preg_match('/\.(jpe?g|png|webp|gif)$/i', $filename)) {
-            $filename = preg_replace('/\.[a-z0-9]+$/i', '', $filename) ?: 'image';
-            $filename .= '.jpg';
+        $converted = $this->listingImageToTikTokBytes($bytes, basename((string) (parse_url($imageUrl, PHP_URL_PATH) ?: 'image.jpg')));
+        if ($converted === null) {
+            return null;
+        }
+
+        return $this->tiktokUploadImageBytes($converted['bytes'], $converted['filename'], $useCase)['uri'] ?? null;
+    }
+
+    /**
+     * Upload Image Master photos (local product_images files first, then CDN / public URLs).
+     *
+     * @return array{uris: list<array{uri: string}>, message: string}
+     */
+    public function uploadImageMasterForListing(string $sku, ?string $parentSku = null): array
+    {
+        if (! $this->accessToken) {
+            return ['uris' => [], 'message' => 'TikTok access token is missing. Connect the shop, then try Publish again.'];
+        }
+
+        $sources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, $parentSku);
+        if ($sources === []) {
+            return [
+                'uris' => [],
+                'message' => 'No Image Master photo for '.$sku.'. Add images on Image Master, then try Publish again.',
+            ];
+        }
+
+        $uris = [];
+        $lastError = '';
+        foreach ($sources as $source) {
+            $bytes = null;
+            $path = $source['path'] ?? null;
+            if (is_string($path) && $path !== '' && is_readable($path)) {
+                $read = @file_get_contents($path);
+                if (is_string($read) && $read !== '') {
+                    $bytes = $read;
+                }
+            }
+            $url = trim((string) ($source['url'] ?? ''));
+            if (($bytes === null || $bytes === '') && $url !== '') {
+                $bytes = $this->listingImageBytes($url);
+                if ($bytes === null || $bytes === '') {
+                    $lastError = 'Could not read Image Master photo'.($url !== '' ? ' ('.mb_substr($url, 0, 120).')' : '').'.';
+                    continue;
+                }
+            }
+            if ($bytes === null || $bytes === '') {
+                $lastError = 'Could not read Image Master photo for '.$sku.'.';
+                continue;
+            }
+
+            $converted = $this->listingImageToTikTokBytes($bytes, (string) ($source['name'] ?? 'image.jpg'));
+            if ($converted === null) {
+                $lastError = 'Image Master photo is not a JPEG/PNG TikTok accepts.';
+                continue;
+            }
+
+            $uploaded = $this->tiktokUploadImageBytes($converted['bytes'], $converted['filename'], 'MAIN_IMAGE');
+            $uri = trim((string) ($uploaded['uri'] ?? ''));
+            if ($uri !== '') {
+                $uris[] = ['uri' => $uri];
+                continue;
+            }
+            $lastError = trim((string) ($uploaded['message'] ?? ''));
+            if ($lastError === '') {
+                $lastError = 'TikTok rejected the Image Master photo.';
+            }
+        }
+
+        if ($uris === []) {
+            return [
+                'uris' => [],
+                'message' => $lastError !== ''
+                    ? 'TikTok image upload failed for '.$sku.'. '.$lastError
+                    : 'TikTok image upload failed for '.$sku.'. Check Image Master photos.',
+            ];
+        }
+
+        return ['uris' => $uris, 'message' => ''];
+    }
+
+    /**
+     * @return array{uri: ?string, message: string}
+     */
+    protected function tiktokUploadImageBytes(string $bytes, string $filename, string $useCase = 'MAIN_IMAGE'): array
+    {
+        if ($bytes === '' || ! $this->accessToken) {
+            return ['uri' => null, 'message' => 'TikTok access token is missing.'];
         }
 
         $this->ensureShopCipher();
@@ -2181,6 +2265,7 @@ class TikTokShopService
             '/product/202309/images/upload',
             '/product/202502/images/upload',
         ];
+        $lastError = '';
 
         foreach ($hosts as $base) {
             foreach ($paths as $path) {
@@ -2210,24 +2295,80 @@ class TikTokShopService
                             ?? ''
                         ));
                         if ($uri !== '') {
-                            return $uri;
+                            return ['uri' => $uri, 'message' => ''];
                         }
                     }
+                    $lastError = trim((string) ($json['message'] ?? $response->body()));
                     Log::info('TikTok image upload attempt failed', [
                         'channel' => $this->configKey,
                         'base' => $base,
                         'path' => $path,
                         'code' => $json['code'] ?? null,
-                        'message' => $json['message'] ?? $response->body(),
+                        'message' => $lastError,
                     ]);
                 } catch (\Throwable $e) {
+                    $lastError = $e->getMessage();
                     Log::info('TikTok image upload exception', [
                         'channel' => $this->configKey,
                         'path' => $path,
-                        'error' => $e->getMessage(),
+                        'error' => $lastError,
                     ]);
                 }
             }
+        }
+
+        return ['uri' => null, 'message' => $lastError];
+    }
+
+    /**
+     * @return array{bytes: string, filename: string}|null
+     */
+    private function listingImageToTikTokBytes(string $bytes, string $filename): ?array
+    {
+        $info = @getimagesizefromstring($bytes);
+        $mime = is_array($info) ? strtolower((string) ($info['mime'] ?? '')) : '';
+        $base = preg_replace('/\.[a-z0-9]+$/i', '', basename($filename)) ?: 'image';
+
+        if (in_array($mime, ['image/jpeg', 'image/jpg', 'image/png'], true)) {
+            return [
+                'bytes' => $bytes,
+                'filename' => $base.'.'.($mime === 'image/png' ? 'png' : 'jpg'),
+            ];
+        }
+
+        if (function_exists('imagecreatefromstring')) {
+            $im = @imagecreatefromstring($bytes);
+            if ($im !== false) {
+                if (function_exists('imagepalettetotruecolor') && ! imageistruecolor($im)) {
+                    @imagepalettetotruecolor($im);
+                }
+                if (imageistruecolor($im)) {
+                    $w = imagesx($im);
+                    $h = imagesy($im);
+                    $canvas = imagecreatetruecolor($w, $h);
+                    if ($canvas !== false) {
+                        $white = imagecolorallocate($canvas, 255, 255, 255);
+                        imagefilledrectangle($canvas, 0, 0, $w, $h, $white);
+                        imagecopy($canvas, $im, 0, 0, 0, 0, $w, $h);
+                        imagedestroy($im);
+                        $im = $canvas;
+                    }
+                }
+                ob_start();
+                $ok = imagejpeg($im, null, 90);
+                imagedestroy($im);
+                $jpeg = ob_get_clean();
+                if ($ok && is_string($jpeg) && $jpeg !== '') {
+                    return ['bytes' => $jpeg, 'filename' => $base.'.jpg'];
+                }
+            }
+        }
+
+        if (str_starts_with($bytes, "\xFF\xD8")) {
+            return ['bytes' => $bytes, 'filename' => $base.'.jpg'];
+        }
+        if (str_starts_with($bytes, "\x89PNG")) {
+            return ['bytes' => $bytes, 'filename' => $base.'.png'];
         }
 
         return null;
@@ -2242,6 +2383,10 @@ class TikTokShopService
                 return $bytes;
             }
         }
+        $byName = $this->localListingImageByBasename($imageUrl);
+        if ($byName !== null) {
+            return $byName;
+        }
 
         $candidates = [$imageUrl];
         $stripped = preg_replace('/\?.*$/', '', $imageUrl);
@@ -2253,8 +2398,9 @@ class TikTokShopService
             try {
                 $imgResp = Http::withoutVerifying()
                     ->withHeaders([
-                        'User-Agent' => 'Mozilla/5.0 (compatible; 5CORE-ListingPublish/1.0)',
+                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                         'Accept' => 'image/jpeg,image/jpg,image/png,image/webp,image/*,*/*;q=0.8',
+                        'Referer' => 'https://admin.shopify.com/',
                     ])
                     ->timeout(90)
                     ->get($try);
@@ -2307,6 +2453,32 @@ class TikTokShopService
             $full = storage_path('app/public/'.$rel);
             if (is_file($full)) {
                 return $full;
+            }
+        }
+
+        return null;
+    }
+
+    private function localListingImageByBasename(string $imageUrl): ?string
+    {
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: $imageUrl);
+        $basename = basename(urldecode($path));
+        if ($basename === '' || ! preg_match('/\.(jpe?g|png|webp|gif|avif)$/i', $basename)) {
+            return null;
+        }
+        $escaped = str_replace(['%', '*', '?', '['], ['\%', '\*', '\?', '\['], $basename);
+        foreach ([
+            storage_path('app/public/products/*/'.$escaped),
+            storage_path('app/public/product_images/*/'.$escaped),
+            storage_path('app/public/image_master/*/'.$escaped),
+        ] as $pattern) {
+            foreach (glob($pattern) ?: [] as $hit) {
+                if (is_file($hit) && is_readable($hit)) {
+                    $bytes = @file_get_contents($hit);
+                    if (is_string($bytes) && $bytes !== '') {
+                        return $bytes;
+                    }
+                }
             }
         }
 

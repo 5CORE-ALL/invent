@@ -275,40 +275,11 @@ class ListingVariationPreviewService
         if ($nrReq === 'NR') {
             return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
         }
-        if ($this->productMasterImages($product) === []
-            && ListingManagerAmazonHydrator::imageMasterUrls($sku) === []) {
+        if (ListingManagerAmazonHydrator::imageMasterUploadSources($sku, (string) ($product->parent ?? '')) === []) {
             return ['status' => 'skipped_no_image', 'reason' => 'No images on Image Master'];
         }
 
         return ['status' => 'will_publish', 'reason' => ''];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function productMasterImages(ProductMaster $product): array
-    {
-        $urls = [];
-        $push = function (string $raw) use (&$urls): void {
-            $raw = trim($raw);
-            if ($raw === '' || in_array($raw, $urls, true)) {
-                return;
-            }
-            $urls[] = $raw;
-        };
-
-        $push((string) ($product->main_image ?? ''));
-        $push((string) ($product->main_image_brand ?? ''));
-        for ($i = 1; $i <= 19; $i++) {
-            $push((string) ($product->{'image'.$i} ?? ''));
-        }
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['image_path', 'image', 'Image', 'main_image', 'photo'] as $key) {
-            $raw = $values[$key] ?? '';
-            $push(is_array($raw) ? (string) ($raw[0]['url'] ?? $raw[0] ?? '') : (string) $raw);
-        }
-
-        return $urls;
     }
 
     private function groupKeyForProduct(ProductMaster $product): string

@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Models\AmazonListingRaw;
+use App\Models\ShopifySku;
 use App\Services\ShopifyApiService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -668,7 +669,23 @@ class ListingManagerAmazonHydrator
             }
         }
 
-        // Listing Manager images come from Image Master only (not Shopify/Amazon).
+        // Image Master table thumb uses Values.image_path, then Shopify — same fallback here.
+        if ($images === []) {
+            foreach (self::shopifyCatalogImageUrls($sku) as $url) {
+                $push($url);
+            }
+            foreach (self::shopifySkuImageUrls($sku) as $url) {
+                $push($url);
+            }
+            if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
+                foreach (self::shopifyCatalogImageUrls($parentSku) as $url) {
+                    $push($url);
+                }
+                foreach (self::shopifySkuImageUrls($parentSku) as $url) {
+                    $push($url);
+                }
+            }
+        }
 
         return $images;
     }
@@ -733,6 +750,71 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * Image Master files + URLs for marketplace upload (disk first, then CDN / public URL).
+     *
+     * @return list<array{path: ?string, url: string, name: string}>
+     */
+    public static function imageMasterUploadSources(string $sku, ?string $parentSku = null, int $limit = 9): array
+    {
+        $skus = [];
+        foreach ([$sku, $parentSku] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '' && ! in_array($candidate, $skus, true)) {
+                $skus[] = $candidate;
+            }
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($skus as $candidate) {
+            foreach (self::productImageRows($candidate) as $row) {
+                $rel = str_replace('\\', '/', trim((string) ($row->image_path ?? '')));
+                $disk = self::publicDiskFile($rel);
+                $url = trim((string) ($row->cdn_url ?? ''));
+                if ($url === '') {
+                    $url = self::publicImageUrl($rel);
+                } else {
+                    $url = self::publicImageUrl($url);
+                }
+                $key = $disk ?: $url;
+                if ($key === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = [
+                    'path' => $disk,
+                    'url' => $url,
+                    'name' => basename($rel !== '' ? $rel : ($url !== '' ? (string) (parse_url($url, PHP_URL_PATH) ?: 'image.jpg') : 'image.jpg')),
+                ];
+                if (count($out) >= $limit) {
+                    return $out;
+                }
+            }
+        }
+
+        foreach (self::publishImageUrls($sku, $parentSku, $limit + 6) as $url) {
+            $path = (string) (parse_url($url, PHP_URL_PATH) ?: $url);
+            $disk = self::publicDiskFile($path);
+            $key = $disk ?: $url;
+            if ($key === '' || isset($seen[$key]) || isset($seen[$url])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $seen[$url] = true;
+            $out[] = [
+                'path' => $disk,
+                'url' => $url,
+                'name' => basename(urldecode($path) ?: 'image.jpg'),
+            ];
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Full Shopify product gallery stored on shopify_catalog_products.image_urls.
      *
      * @return list<string>
@@ -783,20 +865,8 @@ class ListingManagerAmazonHydrator
      */
     private static function productImageTableUrls(string $sku): array
     {
-        $sku = trim($sku);
-        if ($sku === '' || ! Schema::hasTable('product_images')) {
-            return [];
-        }
-
-        $query = DB::table('product_images')->where('sku', $sku)->orderBy('id');
-        if (Schema::hasColumn('product_images', 'cdn_url')) {
-            $query->select(['image_path', 'cdn_url']);
-        } else {
-            $query->select(['image_path']);
-        }
-
         $out = [];
-        foreach ($query->get() as $row) {
+        foreach (self::productImageRows($sku) as $row) {
             foreach (['cdn_url', 'image_path'] as $col) {
                 $url = self::publicImageUrl($row->{$col} ?? null);
                 if ($url !== '' && ! in_array($url, $out, true)) {
@@ -806,6 +876,116 @@ class ListingManagerAmazonHydrator
         }
 
         return $out;
+    }
+
+    /**
+     * @return list<object{sku?: string, image_path?: mixed, cdn_url?: mixed, original_name?: mixed}>
+     */
+    private static function productImageRows(string $sku): array
+    {
+        $sku = trim(str_replace("\u{00a0}", ' ', $sku));
+        if ($sku === '' || ! Schema::hasTable('product_images')) {
+            return [];
+        }
+
+        $cols = ['sku', 'image_path'];
+        if (Schema::hasColumn('product_images', 'cdn_url')) {
+            $cols[] = 'cdn_url';
+        }
+        if (Schema::hasColumn('product_images', 'original_name')) {
+            $cols[] = 'original_name';
+        }
+
+        $normalized = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $compact = ShopifySku::compactSkuForLookup($sku);
+
+        try {
+            $rows = DB::table('product_images')
+                ->where(function ($q) use ($sku, $normalized) {
+                    $q->where('sku', $sku)
+                        ->orWhereRaw('UPPER(TRIM(REPLACE(COALESCE(sku, \'\'), CHAR(160), \' \'))) = ?', [mb_strtoupper($sku)]);
+                    if ($normalized !== '' && $normalized !== mb_strtoupper($sku)) {
+                        $q->orWhereRaw('UPPER(TRIM(REPLACE(COALESCE(sku, \'\'), CHAR(160), \' \'))) = ?', [$normalized]);
+                    }
+                })
+                ->orderBy('id')
+                ->get($cols);
+
+            if ($rows->isEmpty() && $compact !== '') {
+                $rows = DB::table('product_images')
+                    ->whereRaw(
+                        'UPPER(REPLACE(REPLACE(REPLACE(COALESCE(sku, \'\'), \' \', \'\'), \'-\', \'\'), CHAR(160), \'\')) = ?',
+                        [$compact]
+                    )
+                    ->orderBy('id')
+                    ->get($cols);
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return $rows->all();
+    }
+
+    private static function publicDiskFile(?string $relative): ?string
+    {
+        $relative = str_replace('\\', '/', trim((string) $relative));
+        if ($relative === '') {
+            return null;
+        }
+        if (preg_match('#/storage/(.+)$#', $relative, $match)) {
+            $relative = $match[1];
+        }
+        $relative = ltrim(urldecode($relative), '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+        $candidates = [
+            storage_path('app/public/'.$relative),
+            public_path('storage/'.$relative),
+            public_path($relative),
+        ];
+        foreach ($candidates as $full) {
+            if (is_file($full) && is_readable($full)) {
+                return $full;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function shopifySkuImageUrls(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'image_src')) {
+            return [];
+        }
+
+        try {
+            $nbsp = str_replace(' ', "\u{00a0}", $sku);
+            $url = DB::table('shopify_skus')
+                ->where(function ($q) use ($sku, $nbsp) {
+                    $q->where('sku', $sku)
+                        ->orWhere('sku', $nbsp)
+                        ->orWhereRaw('UPPER(TRIM(REPLACE(COALESCE(sku, \'\'), CHAR(160), \' \'))) = ?', [mb_strtoupper($sku)]);
+                })
+                ->whereNotNull('image_src')
+                ->where('image_src', '!=', '')
+                ->orderByDesc('id')
+                ->value('image_src');
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $url = self::publicImageUrl($url);
+        if ($url === '') {
+            return [];
+        }
+
+        return [$url];
     }
 
     private static function publicImageUrl(mixed $value): string
@@ -848,6 +1028,15 @@ class ListingManagerAmazonHydrator
             return [];
         }
         $row = DB::table('product_master')->where('sku', $sku)->first();
+        if (! $row) {
+            try {
+                $row = DB::table('product_master')
+                    ->whereRaw('UPPER(TRIM(REPLACE(COALESCE(sku, \'\'), CHAR(160), \' \'))) = ?', [mb_strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))])
+                    ->first();
+            } catch (\Throwable) {
+                $row = null;
+            }
+        }
 
         return $row ? (array) $row : [];
     }

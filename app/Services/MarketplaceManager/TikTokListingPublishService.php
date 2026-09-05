@@ -91,8 +91,18 @@ class TikTokListingPublishService
             $description = '<p>'.e($title).'</p>';
         }
 
-        $images = $this->publicImages($details['images'] ?? $hydrated['images'] ?? [], $product, $primarySku);
-        if ($images === []) {
+        $imageSku = $primarySku;
+        $imageSources = ListingManagerAmazonHydrator::imageMasterUploadSources($primarySku, (string) ($product->parent ?? ''));
+        if ($imageSources === []) {
+            foreach ($publishSkus as $sku) {
+                $imageSources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, (string) ($product->parent ?? ''));
+                if ($imageSources !== []) {
+                    $imageSku = $sku;
+                    break;
+                }
+            }
+        }
+        if ($imageSources === []) {
             return [
                 'success' => false,
                 'message' => 'No Image Master photo for '.$primarySku.'. Add images on Image Master, then try Publish again.',
@@ -120,9 +130,15 @@ class TikTokListingPublishService
             return ['success' => false, 'message' => 'No price found for '.$primarySku.'. Set Shopify / Amazon price first.'];
         }
 
-        $uris = $api->uploadListingImageUris($images);
+        $uploaded = $api->uploadImageMasterForListing($imageSku, (string) ($product->parent ?? ''));
+        $uris = $uploaded['uris'] ?? [];
         if ($uris === []) {
-            return ['success' => false, 'message' => 'TikTok image upload failed for '.$primarySku.'. Check Image Master photos (public https or Shopify CDN).'];
+            return [
+                'success' => false,
+                'message' => trim((string) ($uploaded['message'] ?? '')) !== ''
+                    ? (string) $uploaded['message']
+                    : 'TikTok image upload failed for '.$imageSku.'. Check Image Master photos.',
+            ];
         }
 
         $skuRows = $mode === 'variation' && count($publishSkus) > 1
