@@ -137,7 +137,20 @@
         }
         .tabulator.lm-tabulator .tabulator-row { min-height: 38px; }
         .tabulator.lm-tabulator .tabulator-row:hover { background: #f8fafc !important; }
-        .lm-toast-wrap { position: fixed; top: 1rem; right: 1rem; z-index: 3000; }
+        .lm-toast-wrap { position: fixed; top: 1rem; right: 1rem; z-index: 4000; }
+        .lm-publish-overlay {
+            position: fixed; inset: 0; z-index: 3500;
+            background: rgba(15, 23, 42, .45);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .lm-publish-overlay[hidden] { display: none !important; }
+        .lm-publish-overlay-card {
+            background: #fff; border-radius: 14px; padding: 1.4rem 1.6rem;
+            min-width: min(360px, 90vw); text-align: center;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, .22);
+        }
+        .lm-publish-overlay-card i { font-size: 1.6rem; color: #2563eb; }
+        .lm-publish-overlay-card div { margin-top: .65rem; font-weight: 600; color: #0f172a; }
         .lm-channel-list { max-height: 320px; overflow: auto; }
         .lm-channel-row {
             display: flex; align-items: center; gap: .75rem; padding: .75rem .9rem;
@@ -448,6 +461,12 @@
 @section('content')
 <div class="lm-page">
     <div class="lm-toast-wrap" id="lm-toast-wrap"></div>
+    <div id="lm-publish-overlay" class="lm-publish-overlay" hidden>
+        <div class="lm-publish-overlay-card">
+            <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+            <div id="lm-publish-overlay-text">Publishing…</div>
+        </div>
+    </div>
 
     <div class="lm-header">
         <div>
@@ -3562,16 +3581,67 @@
             toast(multiEdit ? 'Multi Edit Mode on — select rows, then open one listing.' : 'Multi Edit Mode off.', 'info');
         });
 
+        function showPublishLoader(text) {
+            $('#lm-publish-overlay-text').text(text || 'Publishing…');
+            $('#lm-publish-overlay').removeAttr('hidden');
+        }
+        function hidePublishLoader() {
+            $('#lm-publish-overlay').attr('hidden', true);
+        }
+        function switchDraftsTab(tab) {
+            draftsTab = tab === 'active' ? 'active' : 'drafts';
+            $('.lm-channel-tab').removeClass('active');
+            $('.lm-channel-tab[data-tab="' + draftsTab + '"]').addClass('active');
+            loadDrafts();
+        }
         $('#lm-action-publish-selected').on('click', function () {
-            const rows = (draftsTable.getSelectedData() || []).filter(r => r.ui_status === 'Ready');
+            const rows = (draftsTable.getSelectedData() || []).filter(r => r.ui_status === 'Ready' && r.status !== 'listed');
             if (!rows.length) { toast('Select Ready drafts only.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('busy')) return;
+            $btn.data('busy', true);
             let i = 0;
+            let ok = 0;
+            let fail = 0;
+            const errors = [];
+            showPublishLoader('Publishing 1 of ' + rows.length + '…');
+            function finish() {
+                hidePublishLoader();
+                $btn.data('busy', false);
+                if (ok > 0) {
+                    toast(ok === 1
+                        ? 'Published successfully. The listing is now Active.'
+                        : ('Published ' + ok + ' listing(s) successfully. They are now Active.'), 'success');
+                    if (fail > 0) {
+                        toast((errors[0] || (fail + ' listing(s) failed to publish.')), 'error');
+                    }
+                    switchDraftsTab('active');
+                    return;
+                }
+                toast(errors[0] || 'Publish failed.', 'error');
+                loadDrafts();
+            }
             function next() {
-                if (i >= rows.length) { toast('Publish finished.', 'success'); loadDrafts(); return; }
+                if (i >= rows.length) {
+                    finish();
+                    return;
+                }
                 const row = rows[i++];
+                showPublishLoader('Publishing ' + i + ' of ' + rows.length + '… ' + (row.sku || ''));
                 $.ajax({
                     url: "{{ url('/listing-manager/drafts') }}/" + row.id + '/publish',
                     method: 'POST',
+                    timeout: 90000,
+                }).done(function (res) {
+                    if (res && res.success) {
+                        ok += 1;
+                    } else {
+                        fail += 1;
+                        if (res && res.message) errors.push(res.message);
+                    }
+                }).fail(function (xhr) {
+                    fail += 1;
+                    errors.push(xhr.responseJSON?.message || ('Publish failed for ' + (row.sku || 'listing') + '.'));
                 }).always(next);
             }
             next();
