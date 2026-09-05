@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => $tiktokPageTitle ?? 'TikTok 1 Shop - Analytics', 'sidenav' => 'condensed'])
 @php
-    $tiktokPromoChannel = ((str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok');
+    $tiktokPromoChannel = $tiktokPromoChannel
+        ?? ((str_contains($tiktokPageTitle ?? '', 'TikTok 2') || (($tiktokPricingClientConfig['summaryChannel'] ?? '') === 'tiktok2')) ? 'tiktok2' : 'tiktok');
 @endphp
 
 @section('css')
@@ -1385,6 +1386,18 @@
             const grossPft = (price * margin) - ship - lp;
             const adSpend = price * (tacos / 100);
             return ((grossPft - adSpend) / lp) * 100;
+        }
+        /** SNPFT = live S GPFT − TACOS% (Amazon SNPFT = S GPFT − Ads%). */
+        function ttComputeSnpft(rowData) {
+            const price = ttSavedSpriceAmount(rowData);
+            if (!(price > 0)) return null;
+            const lp = parseFloat(rowData && rowData.LP_productmaster) || 0;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const margin = getRowMarginFactor(rowData);
+            const tacos = parseFloat(rowData['TACOS%']) || 0;
+            const sgpft = ((price * margin) - ship - lp) / price * 100;
+            if (!isFinite(sgpft)) return null;
+            return sgpft - tacos;
         }
 
         /** GROI standard as 3 colors: red <60, gray 60-90, green >=90 (yellow->gray, pink->green). */
@@ -4139,6 +4152,27 @@
                         width: 50
                     },
                     {
+                        title: "SNPFT%",
+                        field: "SNPFT",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = ttComputeSnpft(aRow.getData());
+                            const bNet = ttComputeSnpft(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
+                        headerTooltip: "SNPFT = live S GPFT − TACOS%. Same S PRC as SGPFT / SNROI.",
+                        formatter: function(cell) {
+                            const percent = ttComputeSnpft(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 58
+                    },
+                    {
                         title: "SNROI%",
                         field: "SNROI",
                         hozAlign: "center",
@@ -5534,7 +5568,7 @@
 
                 // pricing
                 if (
-                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|SNROI|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
+                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|SNROI|SNPFT|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
                     /\b(prc|lmp|^diff$|gpft|pft|roi|profit|sales|^lp$|sprice|sgpft|spft|sroi|sku\s*link)\b/i.test(tl) ||
                     /^\+$/.test(t)
                 ) {
@@ -5701,9 +5735,11 @@
                         } catch (e) {}
                         try {
                             const sgpftCol = table.getColumn('SGPFT');
+                            const snpftCol = table.getColumn('SNPFT');
                             const snroiCol = table.getColumn('SNROI');
                             const spftCol = table.getColumn('SPFT');
                             if (sgpftCol) sgpftCol.show();
+                            if (snpftCol) snpftCol.show();
                             if (snroiCol) snroiCol.show();
                             if (spftCol) spftCol.hide();
                         } catch (e) {}

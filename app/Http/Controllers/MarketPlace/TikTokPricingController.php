@@ -51,6 +51,7 @@ class TikTokPricingController extends Controller
             "demo" => $demo,
             "tiktokPercentage" => $percentage,
             "tiktokPageTitle" => "TikTok 1 Shop - Analytics",
+            "tiktokPromoChannel" => "tiktok",
         ]);
     }
 
@@ -94,6 +95,7 @@ class TikTokPricingController extends Controller
             'demo' => $demo,
             'tiktokPercentage' => $percentage,
             'tiktokPageTitle' => 'TikTok 2 Shop - Analytics',
+            'tiktokPromoChannel' => 'tiktok2',
             // API-only (no CSV/sheet upload) — same model as TikTok 1.
             'tiktokPricingClientConfig' => [
                 'dataJson' => '/tiktok-2-data-json',
@@ -915,8 +917,9 @@ class TikTokPricingController extends Controller
             $salesValue = $ttL30 * $ttPrice;
             $processedItem["TACOS%"] = $salesValue > 0 ? round(($spend / $salesValue) * 100, 2) : ($spend > 0 ? 100 : 0);
             $processedItem["PFT %"] = round($processedItem["GPFT%"] - $processedItem["TACOS%"], 2);
-            // SPFT = SGPFT - TACOS%
+            // SPFT / SNPFT = SGPFT - TACOS%
             $processedItem["SPFT"] = round($processedItem["SGPFT"] - $processedItem["TACOS%"], 2);
+            $processedItem["SNPFT"] = $processedItem["SPFT"];
             $processedItem["ad_sold"] = (int)($metrics['sku_orders'] ?? 0);
             $processedItem["ad_clicks"] = (int)($metrics['clicks'] ?? 0);
             $adSold = $processedItem["ad_sold"];
@@ -1229,6 +1232,7 @@ class TikTokPricingController extends Controller
             'SGPFT' => $dash,
             'SPFT' => $dash,
             'SROI' => $dash,
+            'SNPFT' => $dash,
             'SNROI' => $dash,
             'percentage' => $dash,
             'Profit' => $parentProfit,

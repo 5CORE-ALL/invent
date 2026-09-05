@@ -2695,36 +2695,123 @@ class TikTokShopService
             if (! is_array($product)) {
                 continue;
             }
-            $status = strtoupper(trim((string) ($product['status'] ?? $product['product_status'] ?? '')));
-            if ($status !== '' && ! self::isLiveListingStatus($status)) {
-                continue;
+            $hit = $this->extractLiveSkuFromProductPayload($product, $want, '', true);
+            if ($hit && ($hit['price'] ?? 0) > 0) {
+                return $hit;
             }
-            $productId = trim((string) ($product['id'] ?? $product['product_id'] ?? ''));
-            if ($productId === '') {
-                continue;
-            }
-            foreach ((array) ($product['skus'] ?? []) as $skuNode) {
-                if (! is_array($skuNode)) {
-                    continue;
-                }
-                $liveSku = (string) ($skuNode['seller_sku'] ?? $skuNode['sku'] ?? '');
-                if ($want !== '' && self::normalizeSellerSkuKey($liveSku) !== $want) {
-                    continue;
-                }
-                $skuId = trim((string) ($skuNode['id'] ?? $skuNode['sku_id'] ?? ''));
-                if ($skuId === '') {
-                    continue;
-                }
+        }
 
-                return [
-                    'product_id' => $productId,
-                    'sku_id' => $skuId,
-                    'seller_sku' => $liveSku !== '' ? $liveSku : $sellerSku,
-                    'price' => $this->salePriceFromSkuNode($skuNode),
-                    'stock' => (int) (self::skuNodeAvailableQty($skuNode) ?? 0),
-                    'status' => $status !== '' ? $status : 'ACTIVATE',
-                ];
+        return null;
+    }
+
+    /**
+     * Pull the live Shop sale price after a push (product id first, then ACTIVATE seller SKU).
+     *
+     * @return array{product_id: string, sku_id: string, seller_sku: string, price: float, stock: int, status: string}|null
+     */
+    public function pullLiveSkuPrice(string $sellerSku, ?string $productId = null, ?string $skuId = null): ?array
+    {
+        $sellerSku = trim($sellerSku);
+        $productId = trim((string) $productId);
+        $skuId = trim((string) $skuId);
+        if ($sellerSku === '' || ! $this->accessToken) {
+            return null;
+        }
+
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+        } catch (\Throwable $e) {
+            Log::info('TikTok pullLiveSkuPrice auth failed', [
+                'channel' => $this->configKey,
+                'sku' => $sellerSku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->findActiveListingBySellerSku($sellerSku);
+        }
+
+        $want = self::normalizeSellerSkuKey($sellerSku);
+        if ($productId !== '') {
+            $fromSearch = $this->extractLiveSkuFromProductPayload(
+                $this->searchProductDataById($productId),
+                $want,
+                $skuId,
+                false
+            );
+            if ($fromSearch && ($fromSearch['price'] ?? 0) > 0) {
+                return $fromSearch;
             }
+
+            try {
+                $gp = $this->client->Product->getProduct($productId);
+                $payload = is_array($gp['data'] ?? null) ? $gp['data'] : (is_array($gp) ? $gp : []);
+                $fromGet = $this->extractLiveSkuFromProductPayload(
+                    is_array($payload) ? $payload : [],
+                    $want,
+                    $skuId,
+                    false
+                );
+                if ($fromGet && ($fromGet['price'] ?? 0) > 0) {
+                    return $fromGet;
+                }
+            } catch (\Throwable $e) {
+                Log::info('TikTok pullLiveSkuPrice getProduct failed', [
+                    'channel' => $this->configKey,
+                    'sku' => $sellerSku,
+                    'product_id' => $productId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $this->findActiveListingBySellerSku($sellerSku);
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     * @return array{product_id: string, sku_id: string, seller_sku: string, price: float, stock: int, status: string}|null
+     */
+    protected function extractLiveSkuFromProductPayload(array $product, string $wantSku, string $skuId = '', bool $liveOnly = true): ?array
+    {
+        if ($product === []) {
+            return null;
+        }
+        $status = strtoupper(trim((string) ($product['status'] ?? $product['product_status'] ?? '')));
+        if ($liveOnly && $status !== '' && ! self::isLiveListingStatus($status)) {
+            return null;
+        }
+        $productId = trim((string) ($product['id'] ?? $product['product_id'] ?? ''));
+        if ($productId === '') {
+            return null;
+        }
+
+        foreach ((array) ($product['skus'] ?? []) as $skuNode) {
+            if (! is_array($skuNode)) {
+                continue;
+            }
+            $liveSku = (string) ($skuNode['seller_sku'] ?? $skuNode['sku'] ?? '');
+            $nodeSkuId = trim((string) ($skuNode['id'] ?? $skuNode['sku_id'] ?? ''));
+            if ($skuId !== '' && $nodeSkuId !== '' && $nodeSkuId !== $skuId) {
+                continue;
+            }
+            if ($wantSku !== '' && self::normalizeSellerSkuKey($liveSku) !== $wantSku) {
+                if ($skuId === '' || $nodeSkuId !== $skuId) {
+                    continue;
+                }
+            }
+            if ($nodeSkuId === '') {
+                continue;
+            }
+
+            return [
+                'product_id' => $productId,
+                'sku_id' => $nodeSkuId,
+                'seller_sku' => $liveSku !== '' ? $liveSku : $wantSku,
+                'price' => $this->salePriceFromSkuNode($skuNode),
+                'stock' => (int) (self::skuNodeAvailableQty($skuNode) ?? 0),
+                'status' => $status !== '' ? $status : 'ACTIVATE',
+            ];
         }
 
         return null;

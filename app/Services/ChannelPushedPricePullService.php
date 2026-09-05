@@ -9,6 +9,8 @@ use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
 use App\Models\TemuMetric;
 use App\Models\TemuPricing;
+use App\Models\TikTokProduct;
+use App\Models\TikTokProductTwo;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -54,6 +56,10 @@ class ChannelPushedPricePullService
 
         if ($channel === 'newegg') {
             return $this->pullNewegg($skus);
+        }
+
+        if (in_array($channel, ['tiktok', 'tiktok2'], true)) {
+            return $this->pullTikTok($skus, $channel);
         }
 
         return array_map(static fn ($sku) => [
@@ -371,6 +377,102 @@ class ChannelPushedPricePullService
             : (float) ($ss->b2c_price ?: $ss->price);
 
         return $price > 0 ? $price : null;
+    }
+
+    /**
+     * Live TikTok / TikTok 2 sale price via searchProducts / getProduct.
+     *
+     * @param  list<string>  $skus
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string,skipped?:bool}>
+     */
+    private function pullTikTok(array $skus, string $channel): array
+    {
+        $model = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
+        $service = $channel === 'tiktok2'
+            ? app(TikTok2ShopService::class)
+            : app(TikTokShopService::class);
+        $cfgKey = $channel === 'tiktok2' ? 'tiktok2' : 'tiktok';
+
+        if (! $service->isAuthenticated()) {
+            $access = (string) config("services.{$cfgKey}.access_token", '');
+            $refresh = (string) config("services.{$cfgKey}.refresh_token", '');
+            if ($access !== '') {
+                $service->setTokens($access, $refresh !== '' ? $refresh : null);
+            }
+        }
+        if ($service->isAuthenticated()) {
+            $service->refreshAccessToken();
+        }
+
+        $out = [];
+        foreach ($skus as $i => $sku) {
+            try {
+                $cached = $model::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->first();
+                $live = $service->pullLiveSkuPrice(
+                    $sku,
+                    $cached?->product_id ? (string) $cached->product_id : null,
+                    $cached?->sku_id ? (string) $cached->sku_id : null
+                );
+                $price = ($live['price'] ?? 0) > 0 ? round((float) $live['price'], 2) : 0.0;
+                if (! ($price > 0)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => $channel,
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Live TikTok price not returned',
+                    ];
+                    continue;
+                }
+
+                if (! $cached) {
+                    $cached = new $model;
+                    $cached->sku = strtoupper(trim($sku));
+                }
+                $cached->product_id = (string) $live['product_id'];
+                $cached->sku_id = (string) $live['sku_id'];
+                $cached->price = $price;
+                if (array_key_exists('stock', $live) && $live['stock'] !== null) {
+                    $cached->stock = (int) $live['stock'];
+                }
+                $cached->listing_status = TikTokShopService::isLiveListingStatus($live['status'] ?? 'ACTIVATE')
+                    ? 'active'
+                    : 'inactive';
+                $cached->save();
+
+                $out[] = [
+                    'success' => true,
+                    'sku' => $sku,
+                    'marketplace' => $channel,
+                    'price' => $price,
+                    'sprice' => null,
+                    'message' => 'Pulled TikTok Price $'.number_format($price, 2),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price TikTok pull failed', [
+                    'sku' => $sku,
+                    'channel' => $channel,
+                    'error' => $e->getMessage(),
+                ]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => $channel,
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+
+            if ($i < count($skus) - 1) {
+                usleep(150000);
+            }
+        }
+
+        return $out;
     }
 
     /**

@@ -8888,24 +8888,42 @@ class CvrMasterController extends Controller
                 ], 400);
             }
 
+            $pushedProductId = $productId;
+            $pushedSkuId = $skuId;
             $result = $service->updateProductPrice($productId, $skuId, (float) $price, 'USD');
             $failMsg = (string) ($result['message'] ?? '');
             if (empty($result['success']) && $failMsg !== '' && $service->isPriceUpdateBlockedByProductStatus($failMsg)) {
                 $live = $service->findActiveListingBySellerSku($sku);
                 if ($live && ($live['product_id'] !== $productId || $live['sku_id'] !== $skuId)) {
                     $product = $this->persistTikTokActiveListing($channel, $sku, $live, $product);
+                    $pushedProductId = $live['product_id'];
+                    $pushedSkuId = $live['sku_id'];
                     $result = $service->updateProductPrice($live['product_id'], $live['sku_id'], (float) $price, 'USD');
                 }
             }
 
             if (! empty($result['success'])) {
-                $product->price = round((float) $price, 2);
+                $pushedPrice = round((float) $price, 2);
+                $pulled = $service->pullLiveSkuPrice($sku, $pushedProductId, $pushedSkuId);
+                $livePrice = ($pulled['price'] ?? 0) > 0 ? round((float) $pulled['price'], 2) : 0.0;
+                $savePrice = ($livePrice > 0 && abs($livePrice - $pushedPrice) < 0.05)
+                    ? $livePrice
+                    : $pushedPrice;
+                if ($pulled) {
+                    $product = $this->persistTikTokActiveListing($channel, $sku, $pulled, $product);
+                }
+                $product->price = $savePrice;
+                $product->listing_status = 'active';
                 $product->save();
-                $this->savePricePushStatus($sku, $statusKey, 'pushed', $price);
+                $this->savePricePushStatus($sku, $statusKey, 'pushed', $savePrice);
 
                 return response()->json([
                     'success' => true,
-                    'message' => $result['message'] ?? ("Price $".number_format($price, 2)." pushed to {$label} for SKU: {$sku}"),
+                    'message' => $result['message'] ?? ("Price $".number_format($savePrice, 2)." pushed to {$label} for SKU: {$sku}"),
+                    'price' => $savePrice,
+                    'new_price' => $savePrice,
+                    'ebay_price' => $savePrice,
+                    'pulled_price' => $livePrice > 0 ? $livePrice : null,
                     'result' => $result,
                 ]);
             }
