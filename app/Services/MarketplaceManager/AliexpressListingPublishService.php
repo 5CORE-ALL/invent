@@ -658,14 +658,11 @@ class AliexpressListingPublishService
     private function productPackageFields(array $pkg): array
     {
         $kg = (string) $pkg['weight'];
-        $usWeight = $this->usPackageWeightObject($pkg);
 
         return [
             'weight' => $kg,
             'weight_lb' => (string) ($pkg['weight_lb'] ?? ''),
             'package_weight' => (float) $kg,
-            'aeLogisticsWeight' => $usWeight,
-            'usLogisticsWeight' => $usWeight,
             'attribute_list' => [
                 [
                     'aliexpress_attribute_name_id' => 2,
@@ -687,8 +684,6 @@ class AliexpressListingPublishService
         return [
             'weight' => $kg,
             'package_weight' => (float) $kg,
-            'aeLogisticsWeight' => $this->usPackageWeightObject($pkg),
-            'usLogisticsWeight' => $this->usPackageWeightObject($pkg),
         ];
     }
 
