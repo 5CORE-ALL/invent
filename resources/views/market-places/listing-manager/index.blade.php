@@ -984,8 +984,8 @@
                 </div>
                 <div class="lm-channel-list" id="lm-channel-list"></div>
                 <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="lm-include-siblings" checked>
-                    <label class="form-check-label" for="lm-include-siblings">Include parent variations (sibling SKUs)</label>
+                    <input class="form-check-input" type="checkbox" id="lm-include-siblings">
+                    <label class="form-check-label" for="lm-include-siblings">Also add sibling SKUs from the same parent</label>
                 </div>
                 <div class="lm-info-box mx-0">Only marketplaces with a connected listing API are shown (create or update). Select the ones you want. Products go to <strong>Drafts</strong>. Then open Channel Listings and Save &amp; Publish.</div>
             </div>
@@ -1469,6 +1469,7 @@
             const enabled = allChannels.filter(c => c.enabled);
             renderChannelRows('#lm-channel-list', enabled, false, []);
             $('#lm-select-all-channels').prop('checked', false);
+            $('#lm-include-siblings').prop('checked', false);
             bootstrap.Modal.getOrCreateInstance(document.getElementById('lmListChannelModal')).show();
         });
     }
