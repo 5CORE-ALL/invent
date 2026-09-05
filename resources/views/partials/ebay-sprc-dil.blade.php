@@ -1020,6 +1020,120 @@
                 }
             } catch (e) { /* wait for dataLoaded */ }
         }
+        async function ebayTiktokSaveSpriceChunks(updates, extra) {
+            extra = extra || {};
+            if (!updates.length || typeof saveChannelSpriceBatch !== 'function') return;
+            const size = 200;
+            for (let i = 0; i < updates.length; i += size) {
+                await saveChannelSpriceBatch(updates.slice(i, i + size), extra);
+            }
+        }
+        function ebayTiktokMetricsPatch(d, sprice) {
+            const margin = Number(d && d.percentage)
+                || (typeof DEFAULT_TIKTOK_MARGIN_FACTOR === 'number' && DEFAULT_TIKTOK_MARGIN_FACTOR > 0
+                    ? DEFAULT_TIKTOK_MARGIN_FACTOR
+                    : 0.8);
+            const lp = Number(d && d.LP_productmaster) || 0;
+            const ship = Number(d && d.Ship_productmaster) || 0;
+            const sgpft = sprice > 0 ? Math.round(((sprice * margin - ship - lp) / sprice) * 10000) / 100 : 0;
+            const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 10000) / 100 : 0;
+            return { SGPFT: sgpft, SPFT: sgpft, SROI: sroi, sgpft: sgpft, sroi: sroi };
+        }
+        function ebayTiktokRuleDiscount(d) {
+            const meta = ebayDilGroiMetaForRow(d);
+            if (meta && meta.sprc > 0) return ebayDgRound2(meta.sprc);
+            if (typeof chPromoSpriceFromStdTPromo === 'function') {
+                const cvr = Number(chPromoSpriceFromStdTPromo(d, { skip_lmp_cap: true })) || 0;
+                if (cvr > 0) return ebayDgRound2(cvr);
+            }
+            return 0;
+        }
+        /**
+         * TikTok / TikTok 2: wipe every stored S PRC, then insert the Dil / 0 Sold / CVR discount
+         * (not the LMP Diff). Same clear-then-save as Temu / eBay rule apply.
+         */
+        async function ebayTiktokClearThenApplyAllRules() {
+            const items = [];
+            ebaySprcDilEachCatalogRow(function(row, d) {
+                if (!ebayDgIsChild(d)) return;
+                const sku = (typeof chPromoSku === 'function')
+                    ? chPromoSku(d)
+                    : String((d && d['(Child) sku']) || '').trim();
+                if (!sku) return;
+                items.push({ row: row, d: d, sku: sku });
+            });
+            if (!items.length) return 0;
+
+            const blocked = typeof table !== 'undefined' && table && typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                items.forEach(function(item) {
+                    if (item.row && typeof chPromoWipeSpriceRow === 'function') {
+                        chPromoWipeSpriceRow(item.row);
+                    } else if (item.row && typeof item.row.update === 'function') {
+                        item.row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, SGPFT: 0, SROI: 0, SPFT: 0 });
+                    }
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+
+            await ebayTiktokSaveSpriceChunks(
+                items.map(function(i) { return { sku: i.sku, sprice: 0 }; }),
+                { skip_push: true, queue_push: false }
+            );
+
+            const fills = [];
+            const livePushOn = typeof chPromoPageReloadPushAllowed === 'function'
+                && chPromoPageReloadPushAllowed();
+            if (blocked) table.blockRedraw();
+            try {
+                items.forEach(function(item) {
+                    const d = (item.row && typeof item.row.getData === 'function')
+                        ? (item.row.getData() || item.d)
+                        : item.d;
+                    const price = ebayTiktokRuleDiscount(d);
+                    if (!(price > 0)) return;
+                    const status = livePushOn ? 'queued' : 'applied';
+                    if (item.row && typeof item.row.update === 'function') {
+                        const patch = (typeof chPromoSpricePatch === 'function')
+                            ? chPromoSpricePatch(price)
+                            : { SPRICE: price, sprice: price, has_custom_sprice: true };
+                        item.row.update(Object.assign({}, patch, ebayTiktokMetricsPatch(d, price), {
+                            SPRICE_STATUS: status,
+                        }));
+                    }
+                    fills.push({ sku: item.sku, sprice: price, row: item.row });
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+
+            if (fills.length) {
+                await ebayTiktokSaveSpriceChunks(
+                    fills.map(function(f) { return { sku: f.sku, sprice: f.sprice }; }),
+                    { skip_push: true, queue_push: false }
+                );
+            }
+
+            if (livePushOn && fills.length) {
+                if (typeof enqueueChannelPushSpriceAfterSave === 'function') {
+                    fills.forEach(function(f) {
+                        const d = (f.row && typeof f.row.getData === 'function') ? f.row.getData() : {};
+                        const pushPrice = (window.SpriceLmpCap && typeof SpriceLmpCap.prepare === 'function')
+                            ? SpriceLmpCap.prepare(d, f.sprice)
+                            : f.sprice;
+                        enqueueChannelPushSpriceAfterSave(f.sku, pushPrice, f.row);
+                    });
+                }
+                ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
+            } else if (fills.length) {
+                ebayDgToast('success', 'S PRC cleared, then discount saved on ' + fills.length + ' SKU(s)');
+            }
+            redrawEbaySprcDilColumn();
+            try { if (typeof table !== 'undefined' && table) table.redraw(true); } catch (e) { /* ignore */ }
+            return fills.length;
+        }
         async function ebayApplySprcDilToTable() {
             if (ebayDgApplyBusy) {
                 ebayDgApplyPending = true;
@@ -1027,6 +1141,9 @@
             }
             ebayDgApplyBusy = true;
             try {
+                if (ebayDgIsTiktok()) {
+                    return await ebayTiktokClearThenApplyAllRules();
+                }
                 const jobs = [];
                 const nearly = typeof chPromoNearlyEqual === 'function'
                     ? chPromoNearlyEqual

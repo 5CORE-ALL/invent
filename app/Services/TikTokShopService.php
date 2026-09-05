@@ -2619,6 +2619,144 @@ class TikTokShopService
         return null;
     }
 
+    public static function normalizeSellerSkuKey(?string $sku): string
+    {
+        return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+    }
+
+    public static function isLiveListingStatus(?string $status): bool
+    {
+        $raw = strtoupper(trim((string) $status));
+
+        return in_array($raw, ['ACTIVATE', 'ACTIVE', 'LIVE'], true);
+    }
+
+    public function isPriceUpdateBlockedByProductStatus(string $message): bool
+    {
+        return $this->isProductStatusRestrictionError($message);
+    }
+
+    /**
+     * Live ACTIVATE listing for a seller SKU (ignores DELETED / DRAFT twins).
+     *
+     * @return array{product_id: string, sku_id: string, seller_sku: string, price: float, stock: int, status: string}|null
+     */
+    public function findActiveListingBySellerSku(string $sellerSku): ?array
+    {
+        $sellerSku = trim($sellerSku);
+        if ($sellerSku === '' || ! $this->accessToken) {
+            return null;
+        }
+
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+            if (! $this->shopCipher) {
+                return null;
+            }
+
+            $candidates = [$sellerSku];
+            $nbsp = str_replace(' ', "\xC2\xA0", $sellerSku);
+            if ($nbsp !== $sellerSku) {
+                $candidates[] = $nbsp;
+            }
+
+            $response = $this->client->Product->useVersion('202309')->searchProducts(
+                ['page_size' => 20],
+                ['seller_skus' => $candidates, 'status' => 'ACTIVATE']
+            );
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                return $this->findActiveListingBySellerSku($sellerSku);
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            Log::info('TikTok findActiveListingBySellerSku failed', [
+                'channel' => $this->configKey,
+                'sku' => $sellerSku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        $payload = is_array($response) ? ($response['data'] ?? $response) : [];
+        if (! is_array($payload)) {
+            $payload = [];
+        }
+        $products = $payload['products'] ?? $payload['product_list'] ?? [];
+        if (! is_array($products)) {
+            return null;
+        }
+
+        $want = self::normalizeSellerSkuKey($sellerSku);
+        foreach ($products as $product) {
+            if (! is_array($product)) {
+                continue;
+            }
+            $status = strtoupper(trim((string) ($product['status'] ?? $product['product_status'] ?? '')));
+            if ($status !== '' && ! self::isLiveListingStatus($status)) {
+                continue;
+            }
+            $productId = trim((string) ($product['id'] ?? $product['product_id'] ?? ''));
+            if ($productId === '') {
+                continue;
+            }
+            foreach ((array) ($product['skus'] ?? []) as $skuNode) {
+                if (! is_array($skuNode)) {
+                    continue;
+                }
+                $liveSku = (string) ($skuNode['seller_sku'] ?? $skuNode['sku'] ?? '');
+                if ($want !== '' && self::normalizeSellerSkuKey($liveSku) !== $want) {
+                    continue;
+                }
+                $skuId = trim((string) ($skuNode['id'] ?? $skuNode['sku_id'] ?? ''));
+                if ($skuId === '') {
+                    continue;
+                }
+
+                return [
+                    'product_id' => $productId,
+                    'sku_id' => $skuId,
+                    'seller_sku' => $liveSku !== '' ? $liveSku : $sellerSku,
+                    'price' => $this->salePriceFromSkuNode($skuNode),
+                    'stock' => (int) (self::skuNodeAvailableQty($skuNode) ?? 0),
+                    'status' => $status !== '' ? $status : 'ACTIVATE',
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $skuNode
+     */
+    protected function salePriceFromSkuNode(array $skuNode): float
+    {
+        $priceNode = $skuNode['price'] ?? null;
+        $candidates = [];
+        if (is_array($priceNode)) {
+            $candidates[] = $priceNode['sale_price'] ?? $priceNode['tax_exclusive_price'] ?? $priceNode['amount'] ?? $priceNode['price'] ?? null;
+        } elseif (is_numeric($priceNode)) {
+            $candidates[] = $priceNode;
+        }
+        $candidates[] = $skuNode['sale_price'] ?? $skuNode['price_amount'] ?? null;
+
+        foreach ($candidates as $value) {
+            if ($value === null || $value === '' || ! is_numeric($value)) {
+                continue;
+            }
+            $price = (float) $value;
+            if ($price > 0) {
+                return $price;
+            }
+        }
+
+        return 0.0;
+    }
+
     /**
      * Update sale price for a single SKU on TikTok Shop.
      * API: POST product/.../products/{product_id}/prices/update

@@ -283,8 +283,12 @@ class SyncTikTokApiData extends Command
             (new $this->productModel)->getTable(),
             'sku_id'
         );
+        $hasStatusCol = \Illuminate\Support\Facades\Schema::hasColumn(
+            (new $this->productModel)->getTable(),
+            'listing_status'
+        );
 
-        $this->writeItemsInChunks($products, function (array $chunk) use (&$created, &$updated, $hasSkuIdCol) {
+        $this->writeItemsInChunks($products, function (array $chunk) use (&$created, &$updated, $hasSkuIdCol, $hasStatusCol) {
             $chunkUpdated = 0;
             foreach ($chunk as $product) {
                 try {
@@ -313,6 +317,21 @@ class SyncTikTokApiData extends Command
                         }
                         if (array_key_exists('stock', $row) && $row['stock'] !== null) {
                             $updateData['stock'] = (int) $row['stock'];
+                        }
+                        if ($hasStatusCol) {
+                            $status = strtoupper(trim((string) ($product['status'] ?? $product['product_status'] ?? 'ACTIVATE')));
+                            $updateData['listing_status'] = \App\Services\TikTokShopService::isLiveListingStatus($status)
+                                ? 'active'
+                                : 'inactive';
+                        }
+
+                        $existing = ($this->productModel)::where('sku', $normalizedSku)->first();
+                        if ($existing
+                            && $hasStatusCol
+                            && ($updateData['listing_status'] ?? '') === 'inactive'
+                            && (string) $existing->product_id !== (string) $productId
+                            && \App\Services\TikTokShopService::isLiveListingStatus($existing->listing_status ?? '')) {
+                            continue;
                         }
 
                         $tiktokProduct = ($this->productModel)::updateOrCreate(

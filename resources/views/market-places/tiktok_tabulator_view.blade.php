@@ -648,7 +648,7 @@
                             title="Click to filter">&gt; 0 Sold: 0</span>
                         <span class="badge fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
                             id="roi-percent-badge" style="background-color:#6c757d;color:#fff;font-weight:bold;cursor:pointer;"
-                            title="ROI% = Σ PFT ÷ Σ COGS. Red &lt;60%, gray 60–90%, green ≥90% (GROI standard). Click for daily trend.">ROI%: 0%</span>
+                            title="GROI% = Σ PFT ÷ Σ COGS. Red &lt;60%, gray 60–90%, green ≥90%. Click for daily trend.">GROI%: 0%</span>
                         <span class="badge fs-6 p-2" id="tiktok-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
@@ -1365,6 +1365,28 @@
                 DEFAULT_TIKTOK_MARGIN_FACTOR;
         }
 
+        function ttSavedSpriceAmount(rowData) {
+            if (!rowData || ttIsParentRow(rowData)) return 0;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                const saved = Number(chPromoSavedOrLiveSprice(rowData));
+                if (isFinite(saved) && saved > 0) return saved;
+            }
+            const stored = Number(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice);
+            return (isFinite(stored) && stored > 0) ? stored : 0;
+        }
+        /** SNROI = (gross PFT$ − S PRC × TACOS%/100) / LP × 100 — same shape as eBay / Amazon SNROI. */
+        function ttComputeSnroi(rowData) {
+            const price = ttSavedSpriceAmount(rowData);
+            const lp = parseFloat(rowData && rowData.LP_productmaster);
+            if (!(price > 0) || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const margin = getRowMarginFactor(rowData);
+            const tacos = parseFloat(rowData['TACOS%']) || 0;
+            const grossPft = (price * margin) - ship - lp;
+            const adSpend = price * (tacos / 100);
+            return ((grossPft - adSpend) / lp) * 100;
+        }
+
         /** GROI standard as 3 colors: red <60, gray 60-90, green >=90 (yellow->gray, pink->green). */
         function ttRoiVisualBand(v) {
             if (window.MetricPctColors) {
@@ -1425,12 +1447,11 @@
             return parseFloat(data && (data['TT Price'] != null ? data['TT Price'] : data.Price)) || 0;
         }
         function ttRowSpriceForAlert(data) {
-            let sprice = parseFloat(data && data.SPRICE) || 0;
-            if (typeof chPromoLiveSprice === 'function' && !ttIsParentRow(data)) {
-                const calc = chPromoLiveSprice(data);
-                if (calc > 0) sprice = calc;
+            if (!data || ttIsParentRow(data)) return 0;
+            if (typeof chPromoSavedOrLiveSprice === 'function') {
+                return Number(chPromoSavedOrLiveSprice(data)) || 0;
             }
-            return sprice;
+            return parseFloat(data.SPRICE) || 0;
         }
         function ttHasBlueTriangle(data) {
             if (ttIsParentRow(data)) return false;
@@ -3762,6 +3783,25 @@
                         }
                     },
                     {
+                        title: "GROI%",
+                        field: "ROI%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = ttIsParentRow(rowData);
+                            if (value === null || value === undefined || value === '' || value ===
+                                '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return isParent ?
+                                '<span style="color:#6c757d;">-</span>' : '';
+                            const c = ttRoiBandColors(ttRoiVisualBand(percent));
+                            return `<span style="color:${c.text};font-weight:700;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+                    {
                         title: "GPFT%",
                         field: "GPFT%",
                         hozAlign: "center",
@@ -3816,25 +3856,6 @@
                                 '<span style="color:#6c757d;">-</span>' : '';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 50
-                    },
-                    {
-                        title: "ROI%",
-                        field: "ROI%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            const isParent = ttIsParentRow(rowData);
-                            if (value === null || value === undefined || value === '' || value ===
-                                '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return isParent ?
-                                '<span style="color:#6c757d;">-</span>' : '';
-                            const c = ttRoiBandColors(ttRoiVisualBand(percent));
-                            return `<span style="color:${c.text};font-weight:700;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 50
                     },
@@ -3973,11 +3994,7 @@
                         title: "SPRICE",
                         field: "SPRICE",
                         hozAlign: "center",
-                        editor: "number",
-                        editorParams: {
-                            min: 0,
-                            step: 0.01
-                        },
+                        editable: false,
                         sorter: "number",
                         headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
                             "S PRC from Sprc Dil when Dil matches and TT L30 > 0; 0 Sold uses the lowest Target GROI. Otherwise Std × (1 − CVR%/100). S PRC = (LP × (1 + GROI%/100) + Ship) / margin. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
@@ -3987,13 +4004,11 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
-                            let value = parseFloat(cell.getValue() || 0);
-                            if (typeof chPromoLiveSprice === 'function') {
-                                const calc = chPromoLiveSprice(rowData);
-                                if (calc > 0) value = calc;
-                            }
+                            let value = (typeof chPromoSavedOrLiveSprice === 'function')
+                                ? Number(chPromoSavedOrLiveSprice(rowData))
+                                : parseFloat(cell.getValue() || 0);
+                            if (!(value > 0)) return '';
                             const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                            if (cap && cap.shown > 0) value = cap.shown;
                             const hasCustom = rowData.has_custom_sprice;
                             const status = rowData.SPRICE_STATUS;
                             const live = ttLivePrice(rowData);
@@ -4005,13 +4020,15 @@
                             else if (status === 'error') bgColor = 'background-color: #f8d7da;';
                             else if (hasCustom) bgColor = 'background-color: #e7f1ff;';
 
-                            if (!(value > 0)) return '';
                             const formatted = '$' + value.toFixed(2);
                             const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                             const priceHtml = overLmp
                                 ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                                 : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
-                            const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
+                            const redTri = overLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Saved S PRC ≥ LMP $'
+                                    + Number(lmp).toFixed(2) + '"></i>'
+                                : '';
                             const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
@@ -4108,6 +4125,7 @@
                         field: "SGPFT",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "S GPFT from saved S PRC.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined || value === '' || value === '-') {
@@ -4121,10 +4139,33 @@
                         width: 50
                     },
                     {
-                        title: "SPFT%",
+                        title: "SNROI%",
+                        field: "SNROI",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = ttComputeSnroi(aRow.getData());
+                            const bNet = ttComputeSnroi(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
+                        headerTooltip: "SNROI from S PRC: (gross PFT$ − S PRC × TACOS%/100) / LP × 100.",
+                        formatter: function(cell) {
+                            const percent = ttComputeSnroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 58
+                    },
+                    {
+                        title: "SGPFT%",
                         field: "SPFT",
+                        visible: false,
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Legacy SPFT (SGPFT − TACOS%). Hidden — use SGPFT% / SNROI%.",
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined || value === '' || value === '-') {
@@ -4376,9 +4417,7 @@
                     const sku = rowData['(Child) sku'];
                     // Always store SPRICE to exactly 2 decimals (UI input may allow more digits).
                     const rawSprice = parseFloat(cell.getValue()) || 0;
-                    const newSprice = window.SpriceLmpCap
-                        ? SpriceLmpCap.prepare(rowData, Math.round(rawSprice * 100) / 100)
-                        : (Math.round(rawSprice * 100) / 100);
+                    const newSprice = Math.round(rawSprice * 100) / 100;
 
                     const percentage = getRowMarginFactor(rowData);
                     const lp = rowData['LP_productmaster'] || 0;
@@ -5286,7 +5325,7 @@
                 $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
                 $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
                 $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
-                $('#roi-percent-badge').text(`ROI%: ${Math.round(avgRoi)}%`);
+                $('#roi-percent-badge').text(`GROI%: ${Math.round(avgRoi)}%`);
                 applyTtRoiBadgeStyle(avgRoi, totalCogs > 0);
                 if (window.PriceGtLmpBadge && table) {
                     const ttChannel = (TTP_CFG && TTP_CFG.summaryChannel === 'tiktok2') ? 'tiktok2' : 'tiktok';
@@ -5495,7 +5534,7 @@
 
                 // pricing
                 if (
-                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
+                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|SNROI|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
                     /\b(prc|lmp|^diff$|gpft|pft|roi|profit|sales|^lp$|sprice|sgpft|spft|sroi|sku\s*link)\b/i.test(tl) ||
                     /^\+$/.test(t)
                 ) {
@@ -5659,6 +5698,14 @@
                                     col.show();
                                 }
                             });
+                        } catch (e) {}
+                        try {
+                            const sgpftCol = table.getColumn('SGPFT');
+                            const snroiCol = table.getColumn('SNROI');
+                            const spftCol = table.getColumn('SPFT');
+                            if (sgpftCol) sgpftCol.show();
+                            if (snroiCol) snroiCol.show();
+                            if (spftCol) spftCol.hide();
                         } catch (e) {}
                         // Listing CVR (TT L30 ÷ T views) — force into the Dil / TT L30 cluster.
                         try {

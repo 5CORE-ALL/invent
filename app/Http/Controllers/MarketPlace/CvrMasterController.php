@@ -8853,22 +8853,6 @@ class CvrMasterController extends Controller
                 $service = app(\App\Services\TikTokShopService::class);
             }
 
-            if (! $product) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "{$label} listing not found for SKU {$sku}. Run Sync API first.",
-                ], 404);
-            }
-
-            $productId = trim((string) ($product->product_id ?? ''));
-            $skuId = trim((string) ($product->sku_id ?? ''));
-            if ($productId === '' || $skuId === '') {
-                return response()->json([
-                    'success' => false,
-                    'message' => "{$label} product_id/sku_id missing for SKU {$sku}. Run Sync API (products) first.",
-                ], 400);
-            }
-
             if (! $service->isAuthenticated()) {
                 $cfgKey = $channel === 'tiktok2' ? 'tiktok2' : 'tiktok';
                 $access = config("services.{$cfgKey}.access_token");
@@ -8878,7 +8862,41 @@ class CvrMasterController extends Controller
                 }
             }
 
+            $productId = trim((string) ($product?->product_id ?? ''));
+            $skuId = trim((string) ($product?->sku_id ?? ''));
+            $cachedLive = $product && \App\Services\TikTokShopService::isLiveListingStatus($product->listing_status ?? '');
+            if (! $product || $productId === '' || $skuId === '' || ! $cachedLive) {
+                $live = $service->findActiveListingBySellerSku($sku);
+                if ($live) {
+                    $product = $this->persistTikTokActiveListing($channel, $sku, $live, $product);
+                    $productId = $live['product_id'];
+                    $skuId = $live['sku_id'];
+                }
+            }
+
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "{$label} listing not found for SKU {$sku}. Run Sync API first.",
+                ], 404);
+            }
+
+            if ($productId === '' || $skuId === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "{$label} product_id/sku_id missing for SKU {$sku}. Run Sync API (products) first.",
+                ], 400);
+            }
+
             $result = $service->updateProductPrice($productId, $skuId, (float) $price, 'USD');
+            $failMsg = (string) ($result['message'] ?? '');
+            if (empty($result['success']) && $failMsg !== '' && $service->isPriceUpdateBlockedByProductStatus($failMsg)) {
+                $live = $service->findActiveListingBySellerSku($sku);
+                if ($live && ($live['product_id'] !== $productId || $live['sku_id'] !== $skuId)) {
+                    $product = $this->persistTikTokActiveListing($channel, $sku, $live, $product);
+                    $result = $service->updateProductPrice($live['product_id'], $live['sku_id'], (float) $price, 'USD');
+                }
+            }
 
             if (! empty($result['success'])) {
                 $product->price = round((float) $price, 2);
@@ -8912,6 +8930,34 @@ class CvrMasterController extends Controller
                 'errors' => [['message' => $e->getMessage()]],
             ], 500);
         }
+    }
+
+    /**
+     * @param  array{product_id: string, sku_id: string, seller_sku?: string, price?: float, stock?: int}  $live
+     */
+    private function persistTikTokActiveListing(string $channel, string $sku, array $live, $product = null)
+    {
+        $model = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
+        if (! $product) {
+            $skuUpper = strtoupper(trim($sku));
+            $product = $model::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->first();
+        }
+        if (! $product) {
+            $product = new $model;
+            $product->sku = strtoupper(trim($sku));
+        }
+        $product->product_id = (string) $live['product_id'];
+        $product->sku_id = (string) $live['sku_id'];
+        if (isset($live['price']) && (float) $live['price'] > 0) {
+            $product->price = round((float) $live['price'], 2);
+        }
+        if (array_key_exists('stock', $live) && $live['stock'] !== null) {
+            $product->stock = (int) $live['stock'];
+        }
+        $product->listing_status = 'active';
+        $product->save();
+
+        return $product;
     }
 
     /**

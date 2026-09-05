@@ -685,6 +685,16 @@ class TikTokLinkMapSyncService
 
                 /** @var TikTokProduct|TikTokProductTwo|null $existing */
                 $existing = $model::query()->where('sku', $normalizedSku)->first();
+                $incomingLive = \App\Services\TikTokShopService::isLiveListingStatus($listingStatus);
+                $existingLive = $existing
+                    ? \App\Services\TikTokShopService::isLiveListingStatus($existing->listing_status ?? '')
+                    : false;
+                $sameProduct = $existing
+                    && (string) $existing->product_id === (string) $update['product_id'];
+                // ALL/DELETED/DRAFT must not replace a live ACTIVATE listing for the same SKU.
+                if ($existing && ! $sameProduct && $existingLive && ! $incomingLive) {
+                    continue;
+                }
                 if ($existing) {
                     $same = (string) $existing->product_id === (string) $update['product_id']
                         && (float) $existing->price === (float) $update['price']

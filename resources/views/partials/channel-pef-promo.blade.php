@@ -3389,11 +3389,18 @@
             }
             return 0;
         }
+        function chPromoIsTiktokPromoChannel() {
+            return CHANNEL_PROMO_CHANNEL === 'tiktok' || CHANNEL_PROMO_CHANNEL === 'tiktok2';
+        }
         function chPromoShouldCapSpriceToLmp(d) {
             // Faire: CVR / PRMT / 0 Sold only — never LMP, eBay, or Amazon cap.
             if (typeof chPromoIsFairePromoChannel === 'function'
                 ? chPromoIsFairePromoChannel()
                 : CHANNEL_PROMO_CHANNEL === 'faire') {
+                return false;
+            }
+            // TikTok: persist the rule discount. Cell shows saved S PRC; red triangle if ≥ LMP.
+            if (chPromoIsTiktokPromoChannel()) {
                 return false;
             }
             if (!d) return true;
@@ -9661,6 +9668,12 @@
             }
             if (chPromoUsesAmazonStyleRuleApply()) {
                 chPromoRunAllEbayRulesOnLoad();
+                return;
+            }
+            if (chPromoIsTiktokPromoChannel()) {
+                if (typeof ebayScheduleSprcDilAutoApply === 'function') {
+                    ebayScheduleSprcDilAutoApply();
+                }
                 return;
             }
             if (typeof chPromoUsesSprcDilOnlySprice === 'function' && chPromoUsesSprcDilOnlySprice()) {

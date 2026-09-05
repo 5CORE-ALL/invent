@@ -279,7 +279,7 @@ class TikTokPricingController extends Controller
 
         $days = (int) $request->input('days', 30);
         $sku = trim((string) $request->input('sku', ''));
-        $skuNorm = $sku !== '' ? strtoupper($sku) : null;
+        $skuNorm = $this->normalizeTiktokSkuKey($sku);
 
         if (! $skuNorm) {
             return response()->json([]);
@@ -329,9 +329,9 @@ class TikTokPricingController extends Controller
         // Overlay live product price for California today (matches Prc column).
         try {
             $liveModel = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
-            $live = $liveModel::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
-                ->first();
+            $live = $liveModel::query()->get()->first(function ($row) use ($skuNorm) {
+                return $this->normalizeTiktokSkuKey($row->sku) === $skuNorm;
+            });
             if ($live) {
                 $todayKey = $endDate->toDateString();
                 $dataByDate[$todayKey] = [
@@ -373,6 +373,15 @@ class TikTokPricingController extends Controller
     }
 
     /**
+     * Match Product Master SKUs to TikTok seller_sku values that use NBSP
+     * (U+00A0) instead of a normal space — e.g. "DS CH YLW REST-LVR".
+     */
+    private function normalizeTiktokSkuKey(?string $sku): string
+    {
+        return strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+    }
+
+    /**
      * Get TikTok Tabular Data (similar to Reverb)
      */
     public function getViewTikTokTabularData(Request $request, string $variant = 'v1')
@@ -407,26 +416,29 @@ class TikTokPricingController extends Controller
         $promoChannel = $isTiktokTwo ? 'tiktok2' : 'tiktok';
         $promoService = app(ChannelPromoPricingService::class);
         $promoMap = $promoService->mapForSkus($promoChannel, $skus);
-        
-        // Create uppercase version for TikTok products lookup
-        $skusUpper = array_map('strtoupper', $skus);
 
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
-        // Fetch TikTok (or TikTok 2) product data - use uppercase SKUs for query and normalize keys
-        if ($isTiktokTwo) {
-            $tiktokData = TikTokProductTwo::whereIn("sku", $skusUpper)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper($item->sku);
-                });
-        } else {
-            $tiktokData = TikTokProduct::whereIn("sku", $skusUpper)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper($item->sku);
-                });
+        // TikTok seller_sku can contain NBSP (e.g. "DS CH YLW REST-LVR"). Key by
+        // the same space-normalized SKU used for SPRICE so Product Master rows match.
+        $tiktokData = collect();
+        $tiktokRows = $isTiktokTwo ? TikTokProductTwo::query()->get() : TikTokProduct::query()->get();
+        foreach ($tiktokRows as $item) {
+            $key = $this->normalizeTiktokSkuKey($item->sku);
+            if ($key === '') {
+                continue;
+            }
+            $existing = $tiktokData->get($key);
+            $itemLive = \App\Services\TikTokShopService::isLiveListingStatus($item->listing_status ?? '');
+            $existingLive = $existing
+                ? \App\Services\TikTokShopService::isLiveListingStatus($existing->listing_status ?? '')
+                : false;
+            if ($existing === null
+                || ($itemLive && ! $existingLive)
+                || ((float) ($existing->price ?? 0) <= 0 && (float) ($item->price ?? 0) > 0 && $itemLive === $existingLive)) {
+                $tiktokData->put($key, $item);
+            }
         }
 
         // Fetch reverb view data for SPRICE
@@ -437,7 +449,7 @@ class TikTokPricingController extends Controller
             ? TiktokTwoShopDataView::query()->get(['sku', 'value'])
             : TiktokShopDataView::query()->get(['sku', 'value']);
         foreach ($ttShopRows as $row) {
-            $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $row->sku)));
+            $k = $this->normalizeTiktokSkuKey($row->sku);
             if ($k !== '') {
                 $ttShopDataByNormSku[$k] = $row;
             }
@@ -448,7 +460,7 @@ class TikTokPricingController extends Controller
         if (!$isTiktokTwo) {
             $linkRows = TiktokShopListingStatus::query()->get(['sku', 'value']);
             foreach ($linkRows as $lr) {
-                $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $lr->sku)));
+                $k = $this->normalizeTiktokSkuKey($lr->sku);
                 if ($k !== '') {
                     $ttListingLinksByNormSku[$k] = $lr;
                 }
@@ -456,9 +468,17 @@ class TikTokPricingController extends Controller
         }
 
         // L30: TikTok 1 → tiktok_orders API; TikTok 2 → tiktok2_orders API (no sheet)
-        $soldData = $isTiktokTwo
+        $soldDataRaw = $isTiktokTwo
             ? $this->getTiktokTwoL30SoldDataBySku()
             : $this->getTiktokL30SoldDataBySku();
+        $soldData = [];
+        foreach ($soldDataRaw as $soldSku => $soldQty) {
+            $soldKey = $this->normalizeTiktokSkuKey((string) $soldSku);
+            if ($soldKey === '') {
+                continue;
+            }
+            $soldData[$soldKey] = ($soldData[$soldKey] ?? 0) + (int) $soldQty;
+        }
 
         // Campaign map and metrics for utilized/ads columns (same as tiktok/utilized)
         $campaignMapBySku = [];
@@ -624,10 +644,11 @@ class TikTokPricingController extends Controller
                 $processedItem["image_path"] = $values["image_path"] ?? ($productMaster->image_path ?? null);
             }
 
-            // Add data from tiktok_products if available
+            // Add data from tiktok_products if available (NBSP-safe key)
+            $skuNorm = $this->normalizeTiktokSkuKey($sku);
             $skuUpper = strtoupper($sku);
-            if (isset($tiktokData[$skuUpper])) {
-                $tiktokItem = $tiktokData[$skuUpper];
+            if ($skuNorm !== '' && $tiktokData->has($skuNorm)) {
+                $tiktokItem = $tiktokData->get($skuNorm);
                 $processedItem["TT Price"] = $tiktokItem->price ?? 0;
                 $processedItem["TT Stock"] = $tiktokItem->stock ?? 0;
                 $viewCounts = $this->tiktokListingViewCounts($tiktokItem);
@@ -645,7 +666,7 @@ class TikTokPricingController extends Controller
             }
 
             // Get L30 sold from tiktok_orders (API)
-            $processedItem["TT L30"] = isset($soldData[$skuUpper]) ? $soldData[$skuUpper] : 0;
+            $processedItem["TT L30"] = $soldData[$skuNorm] ?? $soldData[$skuUpper] ?? 0;
 
             // MAP: |INV − TT Stock| ≤ 3 → Map; else signed N Map. Missing L rows have no MAP.
             // Negative Shopify INV + marketplace stock 0 = perfect Map.
@@ -673,8 +694,6 @@ class TikTokPricingController extends Controller
             $processedItem["SPRICE_PUSHED_VALUE"] = null;
             $processedItem["SPRICE_PUSHED_BY"] = null;
             $tiktokValArr = [];
-
-            $skuNorm = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
 
             // Buyer / Seller links default (TikTok 2 reads from its shop data view value below)
             $processedItem['B Link'] = '';
@@ -1210,6 +1229,7 @@ class TikTokPricingController extends Controller
             'SGPFT' => $dash,
             'SPFT' => $dash,
             'SROI' => $dash,
+            'SNROI' => $dash,
             'percentage' => $dash,
             'Profit' => $parentProfit,
             'Sales L30' => $sumTSales,
