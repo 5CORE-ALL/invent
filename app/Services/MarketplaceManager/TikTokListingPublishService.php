@@ -177,6 +177,7 @@ class TikTokListingPublishService
             'title' => $title,
             'description' => $description,
             'category_id' => $category['id'],
+            'category_version' => $api->listingCategoryVersion(),
             'main_images' => $uris,
             'skus' => $tiktokSkus,
             'package_weight' => ['value' => number_format($weight, 2, '.', ''), 'unit' => 'POUND'],
@@ -277,13 +278,6 @@ class TikTokListingPublishService
             $explicitId = $name;
             $name = '';
         }
-        if ($explicitId !== '') {
-            return [
-                'id' => $explicitId,
-                'path' => $name !== '' ? $name : 'Category '.$explicitId,
-                'name' => $name,
-            ];
-        }
 
         $api = $this->api($channel);
         if ($name !== '') {
@@ -291,6 +285,13 @@ class TikTokListingPublishService
             if ($fromName['id'] !== '') {
                 return $fromName;
             }
+        }
+        if ($explicitId !== '') {
+            return [
+                'id' => $explicitId,
+                'path' => $name !== '' ? $name : 'Category '.$explicitId,
+                'name' => $name,
+            ];
         }
 
         $fromSibling = $this->categoryFromListedSibling($skus, $channel);

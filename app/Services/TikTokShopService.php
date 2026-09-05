@@ -4688,14 +4688,19 @@ class TikTokShopService
     /**
      * @return list<string>
      */
+    public function listingCategoryVersion(): string
+    {
+        return 'v2';
+    }
+
+    /**
+     * All-region TikTok shops must use V2 categories (error 12052217).
+     *
+     * @return list<string>
+     */
     protected function tiktokCategoryVersions(): array
     {
-        $preferred = strtolower(trim((string) config('services.'.$this->configKey.'.category_version', 'v2')));
-        if (! in_array($preferred, ['v1', 'v2'], true)) {
-            $preferred = 'v2';
-        }
-
-        return array_values(array_unique([$preferred, $preferred === 'v2' ? 'v1' : 'v2']));
+        return [$this->listingCategoryVersion()];
     }
 
     /**
@@ -5160,6 +5165,7 @@ class TikTokShopService
                     'category_id' => $categoryId,
                     'brand_name' => $brandName,
                     'page_size' => '20',
+                    'category_version' => $this->listingCategoryVersion(),
                 ], null, 20);
             } catch (\Throwable) {
                 continue;
@@ -5192,7 +5198,10 @@ class TikTokShopService
         $data = [];
         foreach (["/product/202309/categories/{$categoryId}/attributes", "/product/202509/categories/{$categoryId}/attributes"] as $path) {
             try {
-                $data = $this->tiktokOpenApi('GET', $path, ['locale' => 'en-US'], null, 20);
+                $data = $this->tiktokOpenApi('GET', $path, [
+                    'locale' => 'en-US',
+                    'category_version' => $this->listingCategoryVersion(),
+                ], null, 20);
                 if ($data !== []) {
                     break;
                 }
@@ -5267,6 +5276,9 @@ class TikTokShopService
         $this->ensureShopCipher(true);
         if (is_string($this->shopCipher) && $this->shopCipher !== '') {
             $this->client->setShopCipher($this->shopCipher);
+        }
+        if (! isset($payload['category_version']) || trim((string) $payload['category_version']) === '') {
+            $payload['category_version'] = $this->listingCategoryVersion();
         }
 
         $lastError = '';
