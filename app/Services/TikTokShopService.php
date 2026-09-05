@@ -13,6 +13,7 @@ use App\Services\Support\Concerns\HandlesMarketplaceApiExceptions;
 use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 
 class TikTokShopService
 {
@@ -2159,54 +2160,128 @@ class TikTokShopService
             return null;
         }
 
-        try {
-            $imgResp = Http::withoutVerifying()->timeout(90)->get($imageUrl);
-            if (! $imgResp->successful()) {
-                Log::warning('TikTok image download failed', [
-                    'channel' => $this->configKey,
-                    'url' => mb_substr($imageUrl, 0, 300),
-                    'status' => $imgResp->status(),
-                ]);
-
-                return null;
-            }
-            $bytes = $imgResp->body();
-            if ($bytes === '') {
-                return null;
-            }
-        } catch (\Throwable $e) {
-            Log::warning('TikTok image download exception', [
-                'channel' => $this->configKey,
-                'error' => $e->getMessage(),
-            ]);
-
+        $bytes = $this->listingImageBytes($imageUrl);
+        if ($bytes === null || $bytes === '') {
             return null;
         }
 
-        $pathName = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: 'image.jpg');
-        $filename = basename($pathName);
-        if (! preg_match('/\.(jpe?g|png|webp|gif)$/i', $filename)) {
-            $filename = preg_replace('/\.[a-z0-9]+$/i', '', $filename) ?: 'image';
-            $filename .= '.jpg';
+        $converted = $this->listingImageToTikTokBytes($bytes, basename((string) (parse_url($imageUrl, PHP_URL_PATH) ?: 'image.jpg')));
+        if ($converted === null) {
+            return null;
+        }
+
+        return $this->tiktokUploadImageBytes($converted['bytes'], $converted['filename'], $useCase)['uri'] ?? null;
+    }
+
+    /**
+     * Upload Image Master photos (local product_images files first, then CDN / public URLs).
+     *
+     * @return array{uris: list<array{uri: string}>, message: string}
+     */
+    public function uploadImageMasterForListing(string $sku, ?string $parentSku = null): array
+    {
+        if (! $this->accessToken) {
+            return ['uris' => [], 'message' => 'TikTok access token is missing. Connect the shop, then try Publish again.'];
+        }
+
+        $sources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, $parentSku);
+        if ($sources === []) {
+            return [
+                'uris' => [],
+                'message' => 'No Image Master photo for '.$sku.'. Add images on Image Master, then try Publish again.',
+            ];
+        }
+
+        $uris = [];
+        $lastError = '';
+        foreach ($sources as $source) {
+            $bytes = null;
+            $path = $source['path'] ?? null;
+            if (is_string($path) && $path !== '' && is_readable($path)) {
+                $read = @file_get_contents($path);
+                if (is_string($read) && $read !== '') {
+                    $bytes = $read;
+                }
+            }
+            $url = trim((string) ($source['url'] ?? ''));
+            if (($bytes === null || $bytes === '') && $url !== '') {
+                $bytes = $this->listingImageBytes($url);
+                if ($bytes === null || $bytes === '') {
+                    $lastError = 'Could not read Image Master photo'.($url !== '' ? ' ('.mb_substr($url, 0, 120).')' : '').'.';
+                    continue;
+                }
+            }
+            if ($bytes === null || $bytes === '') {
+                $lastError = 'Could not read Image Master photo for '.$sku.'.';
+                continue;
+            }
+
+            $converted = $this->listingImageToTikTokBytes($bytes, (string) ($source['name'] ?? 'image.jpg'));
+            if ($converted === null) {
+                $lastError = 'Image Master photo is not a JPEG/PNG TikTok accepts.';
+                continue;
+            }
+
+            $uploaded = $this->tiktokUploadImageBytes($converted['bytes'], $converted['filename'], 'MAIN_IMAGE');
+            $uri = trim((string) ($uploaded['uri'] ?? ''));
+            if ($uri !== '') {
+                $uris[] = ['uri' => $uri];
+                continue;
+            }
+            $lastError = $this->sanitizeTikTokClientError((string) ($uploaded['message'] ?? ''));
+            if ($lastError === '') {
+                $lastError = 'TikTok rejected the Image Master photo.';
+            }
+        }
+
+        if ($uris === []) {
+            return [
+                'uris' => [],
+                'message' => $lastError !== ''
+                    ? 'TikTok image upload failed for '.$sku.'. '.$lastError
+                    : 'TikTok image upload failed for '.$sku.'. Check Image Master photos.',
+            ];
+        }
+
+        return ['uris' => $uris, 'message' => ''];
+    }
+
+    /**
+     * @return array{uri: ?string, message: string}
+     */
+    protected function tiktokUploadImageBytes(string $bytes, string $filename, string $useCase = 'MAIN_IMAGE'): array
+    {
+        if ($bytes === '' || ! $this->accessToken) {
+            return ['uri' => null, 'message' => 'TikTok access token is missing.'];
         }
 
         $this->ensureShopCipher();
-        $hosts = array_values(array_unique(array_filter([
-            rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: ''), '/'),
-            'https://open-api.tiktokglobalshop.com',
-            'https://open-api-us.tiktokglobalshop.com',
-        ])));
-        $paths = [
-            '/product/202309/images/upload',
-            '/product/202502/images/upload',
-        ];
+        $viaSdk = $this->tiktokUploadImageViaSdk($bytes, $filename, $useCase);
+        if (($viaSdk['uri'] ?? null) !== null && $viaSdk['uri'] !== '') {
+            return $viaSdk;
+        }
+
+        $hosts = $this->tiktokImageUploadHosts();
+        $tries = [];
+        foreach (['202509', '202309', '202405'] as $ver) {
+            foreach ([
+                '/product/'.$ver.'/images/upload',
+                '/product/'.$ver.'/products/upload_files',
+            ] as $path) {
+                $tries[] = ['path' => $path, 'query' => []];
+                $tries[] = ['path' => $path, 'query' => ['version' => $ver]];
+            }
+        }
+        $apiError = $this->sanitizeTikTokClientError((string) ($viaSdk['message'] ?? ''));
+        $networkError = '';
 
         foreach ($hosts as $base) {
-            foreach ($paths as $path) {
-                $query = [
+            foreach ($tries as $try) {
+                $path = $try['path'];
+                $query = array_merge([
                     'app_key' => (string) $this->clientKey,
                     'timestamp' => (string) time(),
-                ];
+                ], $try['query']);
                 if (is_string($this->shopCipher) && $this->shopCipher !== '') {
                     $query['shop_cipher'] = $this->shopCipher;
                 }
@@ -2216,6 +2291,7 @@ class TikTokShopService
                     $response = Http::withoutVerifying()
                         ->withHeaders(['x-tts-access-token' => (string) $this->accessToken])
                         ->timeout(120)
+                        ->connectTimeout(10)
                         ->attach('data', $bytes, $filename)
                         ->post($base.$path.'?'.http_build_query($query), [
                             'use_case' => $useCase,
@@ -2229,22 +2305,313 @@ class TikTokShopService
                             ?? ''
                         ));
                         if ($uri !== '') {
-                            return $uri;
+                            return ['uri' => $uri, 'message' => ''];
                         }
                     }
+                    $msg = $this->sanitizeTikTokClientError((string) ($json['message'] ?? $response->body()));
                     Log::info('TikTok image upload attempt failed', [
                         'channel' => $this->configKey,
                         'base' => $base,
                         'path' => $path,
                         'code' => $json['code'] ?? null,
-                        'message' => $json['message'] ?? $response->body(),
+                        'message' => $msg,
                     ]);
+                    if ($msg !== '' && ! $this->isInvalidApiVersionError($msg)) {
+                        $apiError = $msg;
+                    } elseif ($apiError === '') {
+                        $apiError = $msg;
+                    }
                 } catch (\Throwable $e) {
+                    $msg = $this->sanitizeTikTokClientError($e->getMessage());
                     Log::info('TikTok image upload exception', [
                         'channel' => $this->configKey,
+                        'base' => $base,
                         'path' => $path,
-                        'error' => $e->getMessage(),
+                        'error' => $msg,
                     ]);
+                    if ($this->isTikTokUnreachableHostError($e->getMessage())) {
+                        $networkError = $msg;
+                        break;
+                    }
+                    if ($msg !== '' && ! $this->isInvalidApiVersionError($msg)) {
+                        $apiError = $msg;
+                    } elseif ($apiError === '') {
+                        $apiError = $msg;
+                    }
+                }
+            }
+        }
+
+        return ['uri' => null, 'message' => $apiError !== '' ? $apiError : $networkError];
+    }
+
+    /**
+     * @return array{uri: ?string, message: string}
+     */
+    private function tiktokUploadImageViaSdk(string $bytes, string $filename, string $useCase): array
+    {
+        $ext = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION)) ?: 'jpg';
+        $tmp = tempnam(sys_get_temp_dir(), 'tts_img_');
+        if (! is_string($tmp) || $tmp === '') {
+            return ['uri' => null, 'message' => ''];
+        }
+        $path = $tmp.'.'.$ext;
+        @unlink($tmp);
+        if (@file_put_contents($path, $bytes) === false) {
+            return ['uri' => null, 'message' => ''];
+        }
+
+        $lastError = '';
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+                $this->client->setShopCipher($this->shopCipher);
+            }
+            foreach (['202509', '202309', '202405'] as $version) {
+                try {
+                    $product = $this->client->Product->useVersion($version);
+                    $data = [];
+                    if (method_exists($product, 'uploadProductImage')) {
+                        $data = $product->uploadProductImage($path, $useCase);
+                    } elseif (method_exists($product, 'uploadImage')) {
+                        $data = $product->uploadImage($path, 1);
+                    } else {
+                        break;
+                    }
+                    $data = is_array($data) ? $data : [];
+                    $uri = trim((string) ($data['uri'] ?? $data['url'] ?? $data['image_uri'] ?? ''));
+                    if ($uri !== '') {
+                        return ['uri' => $uri, 'message' => ''];
+                    }
+                } catch (\Throwable $e) {
+                    $lastError = $this->sanitizeTikTokClientError($e->getMessage());
+                    Log::info('TikTok SDK image upload failed', [
+                        'channel' => $this->configKey,
+                        'version' => $version,
+                        'error' => $lastError,
+                    ]);
+                    if (! $this->isInvalidApiVersionError($e->getMessage()) && ! $this->isNoSchemaError($e->getMessage())) {
+                        continue;
+                    }
+                }
+            }
+        } finally {
+            @unlink($path);
+        }
+
+        return ['uri' => null, 'message' => $lastError];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tiktokImageUploadHosts(): array
+    {
+        $preferred = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $hosts = [];
+        foreach ([$preferred, 'https://open-api.tiktokglobalshop.com'] as $base) {
+            $base = rtrim((string) $base, '/');
+            if ($base === '' || in_array($base, $hosts, true)) {
+                continue;
+            }
+            if (! $this->tiktokHostResolves($base)) {
+                continue;
+            }
+            $hosts[] = $base;
+        }
+
+        return $hosts !== [] ? $hosts : [$preferred];
+    }
+
+    private function tiktokHostResolves(string $base): bool
+    {
+        $host = (string) (parse_url($base, PHP_URL_HOST) ?: '');
+        if ($host === '') {
+            return false;
+        }
+        $ip = @gethostbyname($host);
+
+        return $ip !== $host && filter_var($ip, FILTER_VALIDATE_IP) !== false;
+    }
+
+    private function isTikTokUnreachableHostError(string $message): bool
+    {
+        return (bool) preg_match('/Could not resolve host|cURL error 6|cURL error 7|Failed to connect|Resolving timed out/i', $message);
+    }
+
+    private function sanitizeTikTokClientError(string $message): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+        if (preg_match('/Could not resolve host:\s*([a-z0-9.-]+)/i', $message, $m)) {
+            return 'Could not reach TikTok API host '.$m[1];
+        }
+        $message = preg_replace('/\?[^ \]]+/', '', $message) ?? $message;
+        $message = preg_replace('#https?://[^\s\]]+#', '', $message) ?? $message;
+
+        return trim(preg_replace('/\s+/', ' ', $message) ?? $message);
+    }
+
+    /**
+     * @return array{bytes: string, filename: string}|null
+     */
+    private function listingImageToTikTokBytes(string $bytes, string $filename): ?array
+    {
+        $info = @getimagesizefromstring($bytes);
+        $mime = is_array($info) ? strtolower((string) ($info['mime'] ?? '')) : '';
+        $base = preg_replace('/\.[a-z0-9]+$/i', '', basename($filename)) ?: 'image';
+
+        if (in_array($mime, ['image/jpeg', 'image/jpg', 'image/png'], true)) {
+            return [
+                'bytes' => $bytes,
+                'filename' => $base.'.'.($mime === 'image/png' ? 'png' : 'jpg'),
+            ];
+        }
+
+        if (function_exists('imagecreatefromstring')) {
+            $im = @imagecreatefromstring($bytes);
+            if ($im !== false) {
+                if (function_exists('imagepalettetotruecolor') && ! imageistruecolor($im)) {
+                    @imagepalettetotruecolor($im);
+                }
+                if (imageistruecolor($im)) {
+                    $w = imagesx($im);
+                    $h = imagesy($im);
+                    $canvas = imagecreatetruecolor($w, $h);
+                    if ($canvas !== false) {
+                        $white = imagecolorallocate($canvas, 255, 255, 255);
+                        imagefilledrectangle($canvas, 0, 0, $w, $h, $white);
+                        imagecopy($canvas, $im, 0, 0, 0, 0, $w, $h);
+                        imagedestroy($im);
+                        $im = $canvas;
+                    }
+                }
+                ob_start();
+                $ok = imagejpeg($im, null, 90);
+                imagedestroy($im);
+                $jpeg = ob_get_clean();
+                if ($ok && is_string($jpeg) && $jpeg !== '') {
+                    return ['bytes' => $jpeg, 'filename' => $base.'.jpg'];
+                }
+            }
+        }
+
+        if (str_starts_with($bytes, "\xFF\xD8")) {
+            return ['bytes' => $bytes, 'filename' => $base.'.jpg'];
+        }
+        if (str_starts_with($bytes, "\x89PNG")) {
+            return ['bytes' => $bytes, 'filename' => $base.'.png'];
+        }
+
+        return null;
+    }
+
+    private function listingImageBytes(string $imageUrl): ?string
+    {
+        $local = $this->localListingImagePath($imageUrl);
+        if ($local !== null && is_readable($local)) {
+            $bytes = @file_get_contents($local);
+            if (is_string($bytes) && $bytes !== '') {
+                return $bytes;
+            }
+        }
+        $byName = $this->localListingImageByBasename($imageUrl);
+        if ($byName !== null) {
+            return $byName;
+        }
+
+        $candidates = [$imageUrl];
+        $stripped = preg_replace('/\?.*$/', '', $imageUrl);
+        if (is_string($stripped) && $stripped !== $imageUrl) {
+            $candidates[] = $stripped;
+        }
+
+        foreach (array_values(array_unique($candidates)) as $try) {
+            try {
+                $imgResp = Http::withoutVerifying()
+                    ->withHeaders([
+                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept' => 'image/jpeg,image/jpg,image/png,image/webp,image/*,*/*;q=0.8',
+                        'Referer' => 'https://admin.shopify.com/',
+                    ])
+                    ->timeout(90)
+                    ->get($try);
+                if (! $imgResp->successful()) {
+                    Log::warning('TikTok image download failed', [
+                        'channel' => $this->configKey,
+                        'url' => mb_substr($try, 0, 300),
+                        'status' => $imgResp->status(),
+                    ]);
+                    continue;
+                }
+                $bytes = $imgResp->body();
+                if ($bytes !== '') {
+                    return $bytes;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok image download exception', [
+                    'channel' => $this->configKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    private function localListingImagePath(string $imageUrl): ?string
+    {
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '') {
+            return null;
+        }
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: $imageUrl);
+        $path = urldecode($path);
+
+        if (preg_match('#/storage/(.+)$#', $path, $match)) {
+            $full = storage_path('app/public/'.ltrim(str_replace('\\', '/', $match[1]), '/'));
+            if (is_file($full)) {
+                return $full;
+            }
+        }
+        if (preg_match('#/listing-manager/media/([^/?]+)#', $path, $match)) {
+            $full = storage_path('app/public/listing-manager/images/'.basename($match[1]));
+            if (is_file($full)) {
+                return $full;
+            }
+        }
+        $rel = ltrim(str_replace('\\', '/', $path), '/');
+        if (preg_match('#^(products|product_images|image_master)/#i', $rel)) {
+            $full = storage_path('app/public/'.$rel);
+            if (is_file($full)) {
+                return $full;
+            }
+        }
+
+        return null;
+    }
+
+    private function localListingImageByBasename(string $imageUrl): ?string
+    {
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?: $imageUrl);
+        $basename = basename(urldecode($path));
+        if ($basename === '' || ! preg_match('/\.(jpe?g|png|webp|gif|avif)$/i', $basename)) {
+            return null;
+        }
+        $escaped = str_replace(['%', '*', '?', '['], ['\%', '\*', '\?', '\['], $basename);
+        foreach ([
+            storage_path('app/public/products/*/'.$escaped),
+            storage_path('app/public/product_images/*/'.$escaped),
+            storage_path('app/public/image_master/*/'.$escaped),
+        ] as $pattern) {
+            foreach (glob($pattern) ?: [] as $hit) {
+                if (is_file($hit) && is_readable($hit)) {
+                    $bytes = @file_get_contents($hit);
+                    if (is_string($bytes) && $bytes !== '') {
+                        return $bytes;
+                    }
                 }
             }
         }
@@ -4321,14 +4688,19 @@ class TikTokShopService
     /**
      * @return list<string>
      */
+    public function listingCategoryVersion(): string
+    {
+        return 'v2';
+    }
+
+    /**
+     * All-region TikTok shops must use V2 categories (error 12052217).
+     *
+     * @return list<string>
+     */
     protected function tiktokCategoryVersions(): array
     {
-        $preferred = strtolower(trim((string) config('services.'.$this->configKey.'.category_version', 'v2')));
-        if (! in_array($preferred, ['v1', 'v2'], true)) {
-            $preferred = 'v2';
-        }
-
-        return array_values(array_unique([$preferred, $preferred === 'v2' ? 'v1' : 'v2']));
+        return [$this->listingCategoryVersion()];
     }
 
     /**
@@ -4787,12 +5159,13 @@ class TikTokShopService
         }
 
         $this->ensureShopCipher(false);
-        foreach (['/product/202309/brands', '/product/202502/brands'] as $path) {
+        foreach (['/product/202309/brands', '/product/202509/brands'] as $path) {
             try {
                 $data = $this->tiktokOpenApi('GET', $path, [
                     'category_id' => $categoryId,
                     'brand_name' => $brandName,
                     'page_size' => '20',
+                    'category_version' => $this->listingCategoryVersion(),
                 ], null, 20);
             } catch (\Throwable) {
                 continue;
@@ -4825,7 +5198,10 @@ class TikTokShopService
         $data = [];
         foreach (["/product/202309/categories/{$categoryId}/attributes", "/product/202509/categories/{$categoryId}/attributes"] as $path) {
             try {
-                $data = $this->tiktokOpenApi('GET', $path, ['locale' => 'en-US'], null, 20);
+                $data = $this->tiktokOpenApi('GET', $path, [
+                    'locale' => 'en-US',
+                    'category_version' => $this->listingCategoryVersion(),
+                ], null, 20);
                 if ($data !== []) {
                     break;
                 }
@@ -4898,52 +5274,91 @@ class TikTokShopService
 
         $this->client->setAccessToken($this->accessToken);
         $this->ensureShopCipher(true);
+        if (is_string($this->shopCipher) && $this->shopCipher !== '') {
+            $this->client->setShopCipher($this->shopCipher);
+        }
+        if (! isset($payload['category_version']) || trim((string) $payload['category_version']) === '') {
+            $payload['category_version'] = $this->listingCategoryVersion();
+        }
 
-        $paths = [
-            '/product/202309/products',
-            '/product/202502/products',
-            '/product/202509/products',
-        ];
         $lastError = '';
-        foreach ($paths as $path) {
+        $versionError = '';
+        foreach (['202309', '202509'] as $version) {
+            try {
+                $data = $this->client->Product->useVersion($version)->createProduct($payload);
+                $parsed = $this->listingCreateSuccess(is_array($data) ? $data : []);
+                if ($parsed['success'] ?? false) {
+                    return $parsed;
+                }
+            } catch (\Throwable $e) {
+                $msg = $this->sanitizeTikTokClientError($e->getMessage());
+                Log::warning('TikTok SDK create product failed', [
+                    'channel' => $this->configKey,
+                    'version' => $version,
+                    'error' => $msg,
+                ]);
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    $versionError = $msg;
+                    continue;
+                }
+                $lastError = $msg !== '' ? $msg : $e->getMessage();
+            }
+        }
+
+        foreach (['/product/202309/products', '/product/202509/products'] as $path) {
             try {
                 $data = $this->tiktokOpenApi('POST', $path, [], $payload, 90);
-                $productId = trim((string) ($data['product_id'] ?? $data['id'] ?? ''));
-                $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
-                $skuId = '';
-                foreach ($skus as $row) {
-                    if (! is_array($row)) {
-                        continue;
-                    }
-                    $skuId = trim((string) ($row['id'] ?? $row['sku_id'] ?? ''));
-                    if ($skuId !== '') {
-                        break;
-                    }
-                }
-                if ($productId !== '') {
-                    $this->activateProducts([$productId]);
-                }
 
-                return [
-                    'success' => true,
-                    'message' => $productId !== '' ? 'Published to TikTok Shop ('.$productId.').' : 'Published to TikTok Shop.',
-                    'product_id' => $productId !== '' ? $productId : null,
-                    'sku_id' => $skuId !== '' ? $skuId : null,
-                    'skus' => $skus,
-                ];
+                return $this->listingCreateSuccess(is_array($data) ? $data : []);
             } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
+                $msg = $this->sanitizeTikTokClientError($e->getMessage());
                 Log::warning('TikTok create product failed', [
                     'channel' => $this->configKey,
                     'path' => $path,
-                    'error' => $lastError,
+                    'error' => $msg,
                 ]);
+                if ($this->isInvalidApiVersionError($e->getMessage()) || $this->isNoSchemaError($e->getMessage())) {
+                    $versionError = $msg;
+                    continue;
+                }
+                $lastError = $msg !== '' ? $msg : $e->getMessage();
             }
         }
 
         return [
             'success' => false,
-            'message' => $lastError !== '' ? $lastError : 'TikTok create product failed.',
+            'message' => $lastError !== '' ? $lastError : ($versionError !== '' ? $versionError : 'TikTok create product failed.'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{success: bool, message: string, product_id?: string|null, sku_id?: string|null, skus?: list<array<string, mixed>>}
+     */
+    private function listingCreateSuccess(array $data): array
+    {
+        $productId = trim((string) ($data['product_id'] ?? $data['id'] ?? ''));
+        $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
+        $skuId = '';
+        foreach ($skus as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $skuId = trim((string) ($row['id'] ?? $row['sku_id'] ?? ''));
+            if ($skuId !== '') {
+                break;
+            }
+        }
+        if ($productId !== '') {
+            $this->activateProducts([$productId]);
+        }
+
+        return [
+            'success' => true,
+            'message' => $productId !== '' ? 'Published to TikTok Shop ('.$productId.').' : 'Published to TikTok Shop.',
+            'product_id' => $productId !== '' ? $productId : null,
+            'sku_id' => $skuId !== '' ? $skuId : null,
+            'skus' => $skus,
         ];
     }
 

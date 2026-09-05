@@ -13,6 +13,7 @@ use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\ReverbApiService;
 use App\Services\SheinApiService;
+use App\Services\WayfairApiService;
 use App\Services\MarketplaceManager\ListingManagerPublishDispatcher;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -643,7 +644,7 @@ class ListingManagerController extends Controller
     {
         $validated = $request->validate([
             'sku' => 'required|string|max:255',
-            'field' => 'required|string|in:title150,title100,title80,title60,bullet1,bullet2,bullet3,bullet4,bullet5,description_html',
+            'field' => 'required|string|in:title150,title100,title80,title75,title60,bullet1,bullet2,bullet3,bullet4,bullet5,description_html',
             'value' => 'nullable|string',
             'sync_siblings' => 'sometimes|boolean',
             'sync_parent' => 'sometimes|boolean',
@@ -658,6 +659,8 @@ class ListingManagerController extends Controller
             $value = mb_substr($value, 0, 105);
         } elseif ($field === 'title80') {
             $value = mb_substr($value, 0, 80);
+        } elseif ($field === 'title75') {
+            $value = mb_substr($value, 0, 75);
         } elseif ($field === 'title60') {
             $value = mb_substr($value, 0, 60);
         }
@@ -1442,6 +1445,12 @@ class ListingManagerController extends Controller
 
         if ($family === 'shein') {
             $result = app(SheinApiService::class)->searchListingCategories($q, $title);
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+        }
+
+        if ($family === 'wayfair') {
+            $result = app(WayfairApiService::class)->searchListingClasses($q, $title, true);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }

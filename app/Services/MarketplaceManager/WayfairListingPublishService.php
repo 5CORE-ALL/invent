@@ -11,6 +11,7 @@ use App\Services\WayfairApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -25,7 +26,7 @@ class WayfairListingPublishService
     }
 
     /**
-     * @return array{id: int, path: string, name: string}
+     * @return array{id: int, path: string, name: string, query?: string}
      */
     public function suggestClassForSku(string $sku): array
     {
@@ -63,7 +64,12 @@ class WayfairListingPublishService
             return ['id' => $cached, 'path' => 'Class '.$cached.' (from a listed sibling)', 'name' => ''];
         }
 
-        $hit = $this->api->lookupCatalogClassForSkus($candidates);
+        $catalogSkus = array_values(array_unique(array_merge(
+            [$sku],
+            $this->listedFamilySkus($sku),
+            array_slice($candidates, 0, 12)
+        )));
+        $hit = $this->api->lookupCatalogClassForSkus(array_slice($catalogSkus, 0, 12));
         if ($hit && ($hit['class_id'] ?? 0) > 0) {
             $name = trim((string) ($hit['class_name'] ?? ''));
             $this->rememberClassId($candidates, (int) $hit['class_id'], $name);
@@ -75,32 +81,21 @@ class WayfairListingPublishService
             ];
         }
 
-        $fromSubmission = $this->classIdFromProductAdditionSubmissions($candidates);
-        if ($fromSubmission > 0) {
-            $this->rememberClassId($candidates, $fromSubmission);
-
-            return ['id' => $fromSubmission, 'path' => 'Class '.$fromSubmission.' (from a prior Wayfair submission)', 'name' => ''];
-        }
-
         $title = $this->resolveTitleForClass($product, $sku, $candidates);
-        $fromTaxonomy = $this->api->searchTaxonomyClass($title);
-        if ($fromTaxonomy && ($fromTaxonomy['class_id'] ?? 0) > 0) {
-            $name = trim((string) ($fromTaxonomy['class_name'] ?? ''));
-            $this->rememberClassId($candidates, (int) $fromTaxonomy['class_id'], $name);
-
-            return [
-                'id' => (int) $fromTaxonomy['class_id'],
-                'path' => $name !== '' ? $name.' ('.$fromTaxonomy['class_id'].')' : 'Class '.$fromTaxonomy['class_id'],
-                'name' => $name,
-            ];
-        }
-
+        $parent = trim((string) ($product->parent ?? ''));
         $default = (int) config('services.wayfair.default_class_id', 0);
         if ($default > 0) {
             return ['id' => $default, 'path' => 'Configured Wayfair class '.$default, 'name' => ''];
         }
 
-        return $empty;
+        $hints = $this->api->classSearchHints($title, $sku, $parent);
+
+        return [
+            'id' => 0,
+            'path' => '',
+            'name' => '',
+            'query' => $hints[0] ?? 'stool',
+        ];
     }
 
     /**
@@ -109,6 +104,10 @@ class WayfairListingPublishService
      */
     public function publishSkus(array $skus, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $classId = null, ?string $className = null): array
     {
+        if (function_exists('ignore_user_abort')) {
+            @ignore_user_abort(true);
+        }
+
         $skus = $this->uniqueSkus($skus);
         if ($skus === []) {
             return ['success' => false, 'message' => 'SKU is required.'];
@@ -166,7 +165,7 @@ class WayfairListingPublishService
         if ($resolvedClass <= 0) {
             return [
                 'success' => false,
-                'message' => 'Wayfair class ID is required. Type the class ID in the publish window (from a listed sibling or Partner Home).',
+                'message' => 'Wayfair class is required. Type a class name in the publish window and pick one from the list.',
             ];
         }
 
@@ -241,19 +240,9 @@ class WayfairListingPublishService
         }
 
         $requestIds = $res['request_ids'] ?? [];
-        $pollMessage = $this->pollSubmissionFlaws($requestIds);
-        if ($pollMessage !== '') {
-            return [
-                'success' => false,
-                'message' => $pollMessage,
-                'goods_id' => $requestIds[0] ?? null,
-            ];
-        }
-
         $requestId = (string) ($requestIds[0] ?? '');
         try {
             $this->persistListed($prepared, $requestId, $resolvedClass);
-            $this->pushInventoryAndPrice($prepared);
         } catch (\Throwable $e) {
             Log::warning('Wayfair persist listed failed', ['error' => $e->getMessage()]);
         }
@@ -278,16 +267,18 @@ class WayfairListingPublishService
             return $classId;
         }
         $name = trim((string) $className);
-        if ($name !== '' && preg_match('/(\d{2,})/', $name, $match)) {
+        if ($name !== '' && preg_match('/^\d{2,}$/', $name)) {
+            return (int) $name;
+        }
+        if ($name !== '' && preg_match('/\((\d{2,})\)\s*$/', $name, $match)) {
             return (int) $match[1];
         }
-        $fromStatus = $this->classIdFromListingStatuses($skus);
-        if ($fromStatus > 0) {
-            return $fromStatus;
-        }
         $suggested = $this->suggestClassForSku($skus[0] ?? '');
+        if ((int) ($suggested['id'] ?? 0) > 0) {
+            return (int) $suggested['id'];
+        }
 
-        return (int) ($suggested['id'] ?? 0);
+        return 0;
     }
 
     /**
@@ -976,6 +967,21 @@ class WayfairListingPublishService
     }
 
     /**
+     * @param  list<string>  $tokens
+     * @return list<string>
+     */
+    private function familyCoreTokens(array $tokens): array
+    {
+        $skip = [
+            'BLK', 'BLACK', 'BLU', 'BLUE', 'GR', 'GRN', 'GREEN', 'PNK', 'PINK',
+            'ORG', 'ORANGE', 'RED', 'WHT', 'WH', 'WHITE', 'BK', 'GN', 'YL',
+            'GOLD', 'SLV', 'SILVER', 'HD', 'TRI',
+        ];
+
+        return array_values(array_filter($tokens, static fn ($token) => ! in_array($token, $skip, true)));
+    }
+
+    /**
      * @param  list<string>  $need
      * @param  list<string>  $have
      */
@@ -983,6 +989,21 @@ class WayfairListingPublishService
     {
         if ($need === [] || $have === []) {
             return false;
+        }
+        if (isset($need[0], $have[0]) && $need[0] === $have[0] && mb_strlen($need[0]) >= 4) {
+            return true;
+        }
+        if (count($need) >= 2 && count($have) >= 2 && $need[0] === $have[0] && $need[1] === $have[1]) {
+            return true;
+        }
+        $coreNeed = $this->familyCoreTokens($need);
+        $coreHave = $this->familyCoreTokens($have);
+        if ($coreNeed !== [] && $coreHave !== []) {
+            $shorter = count($coreNeed) <= count($coreHave) ? $coreNeed : $coreHave;
+            $longer = count($coreNeed) <= count($coreHave) ? $coreHave : $coreNeed;
+            if (array_diff($shorter, $longer) === []) {
+                return true;
+            }
         }
         foreach ($need as $token) {
             if (! in_array($token, $have, true)) {
@@ -1092,6 +1113,15 @@ class WayfairListingPublishService
      */
     private function productImages(ProductMaster $product, string $sku = ''): array
     {
+        $fromMaster = ListingManagerAmazonHydrator::publishImageUrls(
+            $sku !== '' ? $sku : trim((string) $product->sku),
+            (string) ($product->parent ?? ''),
+            8
+        );
+        if ($fromMaster !== []) {
+            return $fromMaster;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             $url = $this->absoluteImageUrl($raw);

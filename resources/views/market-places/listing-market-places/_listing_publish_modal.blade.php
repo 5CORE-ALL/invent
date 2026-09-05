@@ -27,10 +27,14 @@
                                     </div>
                                     <div id="listing-publish-wayfair-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'wayfair') hidden @endif>
                                         <label>Suggested Wayfair class</label>
-                                        <div id="listing-publish-wayfair-category-path" class="listing-publish-category-path">Looking up the Wayfair class…</div>
-                                        <label for="listing-publish-wayfair-class-id">Wayfair class ID</label>
-                                        <input type="number" id="listing-publish-wayfair-class-id" class="form-control form-control-sm" placeholder="e.g. 510" min="1" step="1" required>
-                                        <small>Required. This fills from a listed sibling or Wayfair class list when the API allows it. Otherwise type the class ID from Partner Home.</small>
+                                        <div id="listing-publish-wayfair-category-path" class="listing-publish-category-path">Matching from a listed sibling or title…</div>
+                                        <input type="hidden" id="listing-publish-wayfair-class-id" value="">
+                                        <label for="listing-publish-wayfair-class-name">Class</label>
+                                        <div class="listing-publish-cat-wrap">
+                                            <input type="text" id="listing-publish-wayfair-class-name" class="form-control form-control-sm" placeholder="e.g. Guitar Stands" autocomplete="off">
+                                            <div id="listing-publish-wayfair-class-results" class="listing-publish-cat-results"></div>
+                                        </div>
+                                        <small>Type to search Wayfair classes. Click one from the list. If you leave this blank, we copy the class from a listed sibling or match the title.</small>
                                     </div>
                                     <div id="listing-publish-aliexpress-category" class="listing-publish-category" hidden>
                                         <label>Suggested AliExpress category</label>

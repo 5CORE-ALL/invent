@@ -505,6 +505,7 @@ class MarketplaceMasterAuditService
             in_array($marketplace, ['ebay', 'ebay2', 'ebay3'], true) => trim((string) ($product->title80 ?? '')),
             in_array($marketplace, ['shopify_main', 'shopify_pls', 'doba'], true) => trim((string) ($product->title100 ?? '')),
             in_array($marketplace, ['macy', 'faire'], true) => trim((string) ($product->title60 ?? '')),
+            $marketplace === 'amazon' => trim((string) ($product->title75 ?? $product->title150 ?? $product->amazon_title ?? '')),
             default => trim((string) ($product->title150 ?? $product->amazon_title ?? '')),
         };
 

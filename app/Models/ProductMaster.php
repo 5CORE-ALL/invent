@@ -43,6 +43,7 @@ class ProductMaster extends Model
         'title150',
         'title100',
         'title80',
+        'title75',
         'title60',
         'amazon_last_sync',
         'amazon_sync_status',
@@ -238,8 +239,8 @@ class ProductMaster extends Model
     }
 
     /**
-     * Pure (no DB) recalculation of LP, CBM and FRGHT for a given Values array.
-     * Returns a new array; original $values is not mutated.
+     * Recalculate LP, CBM and FRGHT for a given Values array.
+     * Uses own L/W/H when present; combo SKUs fall back to component package dims.
      * Parent SKUs (containing "PARENT") are returned unchanged.
      */
     public static function recalcDerivedValues(array $values, string $sku = ''): array
@@ -261,6 +262,16 @@ class ProductMaster extends Model
         if ($l > 0 && $w > 0 && $h > 0) {
             $cbm = ($l * 2.54) * ($w * 2.54) * ($h * 2.54) / 1000000;
             $frght = $cbm * 200;
+        } elseif ($sku !== '' && self::isComboSku($sku, (string) ($values['Parent'] ?? $values['parent'] ?? ''))) {
+            try {
+                $combo = self::lookupComboFreightFromDatabase($sku, (string) ($values['Parent'] ?? $values['parent'] ?? ''));
+            } catch (\Throwable $e) {
+                $combo = null;
+            }
+            if ($combo !== null) {
+                $cbm = $combo['cbm'];
+                $frght = $combo['frght'];
+            }
         }
 
         if ($cbm !== null) {
@@ -294,6 +305,187 @@ class ProductMaster extends Model
         }
 
         return is_numeric($raw) ? (float) $raw : 0.0;
+    }
+
+    public static function skuKey(string $sku): string
+    {
+        $sku = str_replace("\u{00a0}", ' ', $sku);
+        $sku = preg_replace('/\s+/', ' ', trim($sku)) ?? '';
+
+        return strtoupper($sku);
+    }
+
+    public static function skuCompact(string $sku): string
+    {
+        return str_replace(' ', '', self::skuKey($sku));
+    }
+
+    public static function isComboSku(string $sku, string $parent = ''): bool
+    {
+        return str_contains($sku, '+')
+            || stripos($sku, 'combo') !== false
+            || stripos($parent, 'combo') !== false;
+    }
+
+    public static function parseComboComponentSkus(string $sku): array
+    {
+        if (trim($sku) === '') {
+            return [];
+        }
+
+        $parts = preg_split('/\+/', $sku) ?: [];
+
+        return array_values(array_filter(array_map(static function ($part) {
+            return trim(str_replace("\u{00a0}", ' ', (string) $part));
+        }, $parts), static fn ($part) => $part !== ''));
+    }
+
+    public static function cbmFromRowDims(array $row): ?float
+    {
+        $l = self::numericFromValues($row, 'l');
+        $w = self::numericFromValues($row, 'w');
+        $h = self::numericFromValues($row, 'h');
+        if ($l <= 0 || $w <= 0 || $h <= 0) {
+            return null;
+        }
+
+        return ($l * 2.54) * ($w * 2.54) * ($h * 2.54) / 1000000;
+    }
+
+    /**
+     * Sum CBM/FRGHT from combo component rows when the combo itself has no L/W/H.
+     *
+     * @param  callable(string): (?array)  $findComponent
+     */
+    public static function applyComboFreightToRow(array $row, callable $findComponent): array
+    {
+        $sku = (string) ($row['SKU'] ?? $row['sku'] ?? '');
+        $parent = (string) ($row['Parent'] ?? $row['parent'] ?? '');
+        if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+            return $row;
+        }
+        if (self::cbmFromRowDims($row) !== null) {
+            return $row;
+        }
+        if (! self::isComboSku($sku, $parent)) {
+            return $row;
+        }
+
+        $parts = self::parseComboComponentSkus($sku);
+        if (count($parts) < 2) {
+            return $row;
+        }
+
+        $totalCbm = 0.0;
+        $found = 0;
+        foreach ($parts as $part) {
+            $component = $findComponent($part);
+            if (! is_array($component)) {
+                continue;
+            }
+            $cbm = self::cbmFromRowDims($component);
+            if ($cbm === null) {
+                continue;
+            }
+            $totalCbm += $cbm;
+            $found++;
+        }
+
+        if ($found < 2 || $totalCbm <= 0) {
+            return $row;
+        }
+
+        $frght = $totalCbm * 200;
+        $row['cbm'] = round($totalCbm, 4);
+        $row['frght'] = round($frght, 2);
+
+        $customMapping = \App\Services\CustomLpMappingService::getCustomLpMapping();
+        if (array_key_exists($sku, $customMapping)) {
+            $row['lp'] = round((float) $customMapping[$sku], 2);
+        } else {
+            $cp = self::numericFromValues($row, 'cp');
+            $storedLp = self::numericFromValues($row, 'lp');
+            if ($cp > 0 && ($storedLp <= 0 || abs($storedLp - $cp) < 0.009)) {
+                $row['lp'] = round($cp + $frght, 2);
+            }
+        }
+
+        return $row;
+    }
+
+    public static function applyComboFreightToRows(array $rows): array
+    {
+        $byCompact = [];
+        foreach ($rows as $i => $row) {
+            $compact = self::skuCompact((string) ($row['SKU'] ?? $row['sku'] ?? ''));
+            if ($compact !== '') {
+                $byCompact[$compact] = $i;
+            }
+        }
+
+        foreach ($rows as $i => $row) {
+            $rows[$i] = self::applyComboFreightToRow($row, static function (string $componentSku) use ($rows, $byCompact) {
+                $idx = $byCompact[self::skuCompact($componentSku)] ?? null;
+
+                return $idx === null ? null : $rows[$idx];
+            });
+        }
+
+        return $rows;
+    }
+
+    public static function findByCompactSku(string $sku): ?self
+    {
+        $compact = self::skuCompact($sku);
+        if ($compact === '') {
+            return null;
+        }
+
+        $direct = self::query()->where('sku', $sku)->first();
+        if ($direct) {
+            return $direct;
+        }
+
+        $candidates = self::query()
+            ->whereRaw("REPLACE(UPPER(sku), ' ', '') = ?", [$compact])
+            ->get();
+
+        return $candidates->first(static fn (self $product) => self::skuCompact((string) $product->sku) === $compact);
+    }
+
+    /**
+     * @return array{cbm: float, frght: float}|null
+     */
+    public static function lookupComboFreightFromDatabase(string $sku, string $parent = ''): ?array
+    {
+        if (! self::isComboSku($sku, $parent)) {
+            return null;
+        }
+
+        $parts = self::parseComboComponentSkus($sku);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        $dummy = ['SKU' => $sku, 'Parent' => $parent];
+        $applied = self::applyComboFreightToRow($dummy, static function (string $componentSku) {
+            $product = self::findByCompactSku($componentSku);
+            if (! $product) {
+                return null;
+            }
+            $values = is_array($product->Values) ? $product->Values : [];
+
+            return array_merge(['SKU' => $product->sku], $values);
+        });
+
+        if (! isset($applied['cbm'], $applied['frght'])) {
+            return null;
+        }
+
+        return [
+            'cbm' => (float) $applied['cbm'],
+            'frght' => (float) $applied['frght'],
+        ];
     }
 
     protected $casts = [

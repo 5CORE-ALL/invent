@@ -73,7 +73,7 @@
         if (titleEl) {
             titleEl.textContent = title || (state === 'loading' ? 'Publishing…' : (state === 'success' ? 'Published' : 'Publish failed'));
         }
-        if (msgEl) msgEl.textContent = String(message || '');
+        if (msgEl) msgEl.textContent = withChannelName(String(message || ''));
         if (closeBtn) closeBtn.hidden = state === 'loading';
         if (el.parentNode !== document.body) {
             document.body.appendChild(el);
@@ -224,6 +224,8 @@
     let tiktokCatXhr = null;
     let sheinCatTimer = null;
     let sheinCatXhr = null;
+    let wayfairCatTimer = null;
+    let wayfairCatXhr = null;
 
     function selectedPublishMode() {
         const checked = document.querySelector('input[name="listing-publish-mode"]:checked');
@@ -303,6 +305,10 @@
         if (isSheinChannel()) {
             const shein = document.getElementById('listing-publish-shein-category-name');
             if (shein) return String(shein.value || '').trim();
+        }
+        if (isWayfairChannel()) {
+            const wf = document.getElementById('listing-publish-wayfair-class-name');
+            if (wf) return String(wf.value || '').trim();
         }
         const el = document.getElementById('listing-publish-category-name');
         return el ? String(el.value || '').trim() : '';
@@ -420,14 +426,112 @@
     function applySuggestedWayfairCategory(suggested) {
         const pathEl = document.getElementById('listing-publish-wayfair-category-path');
         const idEl = document.getElementById('listing-publish-wayfair-class-id');
+        const nameEl = document.getElementById('listing-publish-wayfair-class-name');
+        const typed = nameEl && nameEl.dataset.userTyped === '1'
+            ? String(nameEl.value || '').trim()
+            : '';
+        if (typed.length >= 2) {
+            searchWayfairClasses(typed);
+            return;
+        }
         const path = String((suggested && suggested.path) || '').trim();
         const rawId = String((suggested && suggested.id) || '').replace(/\D+/g, '');
         const id = rawId === '0' ? '' : rawId;
-        if (idEl && !String(idEl.value || '').trim()) idEl.value = id;
-        if (!pathEl) return;
-        pathEl.textContent = path || (id
-            ? 'Wayfair class matched from a listed sibling.'
-            : 'No class matched yet. Enter the Wayfair class ID from Partner Home or a listed sibling.');
+        const name = String((suggested && suggested.name) || '').trim();
+        const hint = String((suggested && suggested.query) || '').trim();
+        const leaf = path.split(/[>\-\/|]/).pop().trim();
+        if (idEl && id) idEl.value = id;
+        if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = name || leaf || hint || '';
+        if (pathEl) {
+            pathEl.textContent = path || (id
+                ? 'Wayfair class matched from a listed sibling or title.'
+                : 'No class matched yet. Type a Wayfair class name, then pick one from the list.');
+        }
+        const query = String((nameEl && nameEl.value) || name || leaf || hint || '').trim();
+        if (query.length >= 2) searchWayfairClasses(query);
+        else hideWayfairClassResults();
+    }
+
+    function hideWayfairClassResults() {
+        const box = document.getElementById('listing-publish-wayfair-class-results');
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+    }
+
+    function showWayfairClassResults(html) {
+        const box = document.getElementById('listing-publish-wayfair-class-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
+    }
+
+    function searchWayfairClasses(query) {
+        query = String(query || '').trim();
+        const box = document.getElementById('listing-publish-wayfair-class-results');
+        if (!box || !isWayfairChannel()) return;
+        if (query.length < 2) {
+            hideWayfairClassResults();
+            return;
+        }
+        showWayfairClassResults('<div class="listing-publish-cat-empty">Searching Wayfair classes…</div>');
+        if (wayfairCatXhr && wayfairCatXhr.abort) wayfairCatXhr.abort();
+        wayfairCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: {
+                q: query,
+                channel: cfg().channel || 'wayfair',
+                title: query
+            },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                const rows = (res && res.categories) || [];
+                if (!rows.length) {
+                    showWayfairClassResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'No Wayfair classes matched.') + '</div>');
+                    return;
+                }
+                const idEl = document.getElementById('listing-publish-wayfair-class-id');
+                const nameEl = document.getElementById('listing-publish-wayfair-class-name');
+                const pathEl = document.getElementById('listing-publish-wayfair-category-path');
+                const first = rows[0] || {};
+                const firstId = String(first.id || '').replace(/\D+/g, '');
+                if (firstId && idEl && !String(idEl.value || '').replace(/\D+/g, '')) {
+                    idEl.value = firstId;
+                    if (nameEl) nameEl.value = String(first.path || first.name || '').trim();
+                    if (pathEl) pathEl.textContent = String(first.path || first.name || '') +
+                        ' — selected. Click another class to change.';
+                }
+                showWayfairClassResults(rows.map(function (row) {
+                    return '<button type="button" class="listing-publish-cat-item listing-publish-wayfair-cat-item" data-id="' +
+                        escapeHtml(row.id || '') + '" data-path="' + escapeHtml(row.path || '') + '">' +
+                        escapeHtml(row.path || row.id || '') + '</button>';
+                }).join(''));
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                showWayfairClassResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Class search failed.') + '</div>');
+            }
+        });
+    }
+
+    function scheduleWayfairClassSearch(query) {
+        clearTimeout(wayfairCatTimer);
+        wayfairCatTimer = setTimeout(function () { searchWayfairClasses(query); }, 280);
+    }
+
+    function pickWayfairClass(id, path) {
+        const idEl = document.getElementById('listing-publish-wayfair-class-id');
+        const nameEl = document.getElementById('listing-publish-wayfair-class-name');
+        const pathEl = document.getElementById('listing-publish-wayfair-category-path');
+        if (idEl) idEl.value = String(id || '').replace(/\D+/g, '');
+        if (nameEl) nameEl.value = String(path || '').trim();
+        if (pathEl) pathEl.textContent = String(path || '').trim() || 'Wayfair class selected.';
+        hideWayfairClassResults();
     }
 
     function applySuggestedEbayCategory(suggested) {
@@ -954,21 +1058,30 @@
         return out;
     }
 
+    function channelLabel() {
+        return String(cfg().channelLabel || 'The marketplace').trim() || 'The marketplace';
+    }
+
+    function withChannelName(text) {
+        return String(text || '').replace(/AliExpress/gi, channelLabel());
+    }
+
     function ajaxError(xhr) {
         if (!xhr) return 'Request failed.';
+        const marketplace = channelLabel();
         if (xhr.statusText === 'timeout') {
-            return 'AliExpress took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
+            return marketplace + ' took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
         }
         if (xhr.status === 0) return 'Timed out or the connection dropped. Try again.';
         let json = xhr.responseJSON;
         if (!json && xhr.responseText) {
             try { json = JSON.parse(xhr.responseText); } catch (e) { json = null; }
         }
-        if (json && (json.message || json.error)) return String(json.message || json.error);
+        if (json && (json.message || json.error)) return withChannelName(String(json.message || json.error));
         if (xhr.status === 419) return 'Session expired. Refresh the page.';
         if (xhr.status === 405) return 'Publish route is blocked. Hard-refresh the page and try again.';
         if (xhr.status === 502 || xhr.status === 504) {
-            return 'AliExpress took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
+            return marketplace + ' took too long to respond. Refresh Missing L before trying again — the listing may already be created.';
         }
         if (xhr.status === 500) return 'Server error during publish. Try again.';
         if (xhr.status) return 'Request failed (HTTP ' + xhr.status + ').';
@@ -1296,7 +1409,8 @@
             .on('click.listingPageTools', '.listing-publish-cat-item', function (e) {
                 if (this.classList.contains('listing-publish-ebay-cat-item')
                     || this.classList.contains('listing-publish-tiktok-cat-item')
-                    || this.classList.contains('listing-publish-shein-cat-item')) {
+                    || this.classList.contains('listing-publish-shein-cat-item')
+                    || this.classList.contains('listing-publish-wayfair-cat-item')) {
                     return;
                 }
                 e.preventDefault();
@@ -1311,6 +1425,7 @@
                 hideEbayCategoryResults();
                 hideTiktokCategoryResults();
                 hideSheinCategoryResults();
+                hideWayfairClassResults();
             });
     }
 
@@ -1442,11 +1557,53 @@
             });
     }
 
+    function bindWayfairClassSearch() {
+        function onWayfairClassTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const idEl = document.getElementById('listing-publish-wayfair-class-id');
+            if (idEl) idEl.value = '';
+            const pathEl = document.getElementById('listing-publish-wayfair-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Searching Wayfair for “' + q + '”…'
+                    : 'Type a Wayfair class name, then pick one from the list.';
+            }
+            scheduleWayfairClassSearch(q);
+        }
+
+        $(document).off('input.listingPageToolsWayfair', '#listing-publish-wayfair-class-name')
+            .on('input.listingPageToolsWayfair', '#listing-publish-wayfair-class-name', function () {
+                onWayfairClassTyped(this);
+            });
+
+        $(document).off('focus.listingPageToolsWayfair', '#listing-publish-wayfair-class-name')
+            .on('focus.listingPageToolsWayfair', '#listing-publish-wayfair-class-name', function () {
+                const q = String(this.value || '').trim();
+                if (q.length >= 2) searchWayfairClasses(q);
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageToolsWayfair')
+            .on('shown.bs.modal.listingPageToolsWayfair', function () {
+                const nameEl = document.getElementById('listing-publish-wayfair-class-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageToolsWayfair', '.listing-publish-wayfair-cat-item')
+            .on('click.listingPageToolsWayfair', '.listing-publish-wayfair-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickWayfairClass($(this).attr('data-id'), $(this).attr('data-path'));
+            });
+    }
+
     $(function () {
         bindReverbCategorySearch();
         bindEbayCategorySearch();
         bindTiktokCategorySearch();
         bindSheinCategorySearch();
+        bindWayfairClassSearch();
         $(document).off('click.listingPageTools', '#listing-publish-status-close')
             .on('click.listingPageTools', '#listing-publish-status-close', function () {
                 hidePublishStatus();

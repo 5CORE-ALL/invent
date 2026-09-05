@@ -75,6 +75,7 @@ class ListingManagerMasterLoader
             'title150' => 'Title 170',
             'title100' => 'Title 100',
             'title80' => 'Title 80',
+            'title75' => 'Title 75',
             'title60' => 'Title 60',
         ] as $col => $label) {
             $value = Schema::hasTable('product_master') && Schema::hasColumn('product_master', $col)
@@ -175,7 +176,7 @@ class ListingManagerMasterLoader
         $source = strtolower(trim($source));
         $cols = match ($source) {
             'title', 'title_master', 'content', 'title_bullet_description', 'masters' => [
-                'title150', 'title100', 'title80', 'title60',
+                'title150', 'title100', 'title80', 'title75', 'title60',
             ],
             'bullets', 'bullet_points' => [
                 'bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5',
@@ -213,9 +214,11 @@ class ListingManagerMasterLoader
     {
         $pm = self::productMaster($sku);
         $limit = (int) (ListingManagerAmazonHydrator::limitsForChannel($channelName)['title'] ?? 80);
-        $candidates = $limit <= 80
-            ? ['title80', 'title60', 'title100', 'title150']
-            : ($limit <= 100 ? ['title100', 'title80', 'title150', 'title60'] : ['title150', 'title100', 'title80', 'title60']);
+        $candidates = $limit <= 75
+            ? ['title75', 'title80', 'title60', 'title100', 'title150']
+            : ($limit <= 80
+                ? ['title80', 'title75', 'title60', 'title100', 'title150']
+                : ($limit <= 100 ? ['title100', 'title80', 'title75', 'title150', 'title60'] : ['title150', 'title100', 'title80', 'title75', 'title60']));
         $title = '';
         foreach ($candidates as $col) {
             $title = trim((string) ($pm[$col] ?? ''));

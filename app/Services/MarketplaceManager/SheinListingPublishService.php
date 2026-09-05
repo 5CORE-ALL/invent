@@ -782,6 +782,11 @@ class SheinListingPublishService
      */
     private function publicImages(mixed $images, ProductMaster $product, string $sku): array
     {
+        $fromMaster = ListingManagerAmazonHydrator::publishImageUrls($sku, (string) ($product->parent ?? ''));
+        if ($fromMaster !== []) {
+            return $fromMaster;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             $raw = trim($raw);

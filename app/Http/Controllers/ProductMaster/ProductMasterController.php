@@ -194,8 +194,17 @@ class ProductMasterController extends Controller
         $row['shopify_inv'] = $shopifySku?->inv ?? null;
         $row['shopify_quantity'] = $shopifySku?->quantity ?? null;
         $row['Values'] = $product->Values;
+        $row = $this->applyFreightAlias($row);
 
-        return $this->applyFreightAlias($row);
+        return ProductMaster::applyComboFreightToRow($row, static function (string $componentSku) {
+            $component = ProductMaster::findByCompactSku($componentSku);
+            if (! $component) {
+                return null;
+            }
+            $values = is_array($component->Values) ? $component->Values : [];
+
+            return array_merge(['SKU' => $component->sku], $values);
+        });
     }
 
     /**
@@ -294,6 +303,7 @@ class ProductMasterController extends Controller
                 'title150' => $product->title150,
                 'title100' => $product->title100,
                 'title80' => $product->title80,
+                'title75' => $product->title75,
                 'title60' => $product->title60,
                 'bullet1' => $product->bullet1,
                 'bullet2' => $product->bullet2,
@@ -400,6 +410,8 @@ class ProductMasterController extends Controller
 
             $result[] = $row;
         }
+
+        $result = ProductMaster::applyComboFreightToRows($result);
 
         return response()->json([
             'message' => 'Data loaded from database',
@@ -2220,6 +2232,7 @@ class ProductMasterController extends Controller
                 'title150' => 'nullable|string',
                 'title100' => 'nullable|string',
                 'title80' => 'nullable|string',
+                'title75' => 'nullable|string',
                 'title60' => 'nullable|string',
                 'short_name' => 'nullable|string|max:5000',
             ]);
@@ -2234,7 +2247,10 @@ class ProductMasterController extends Controller
 
             // Only update title fields present in the request (import may send a subset).
             $payload = ['updated_at' => now()];
-            foreach (['title150', 'title100', 'title80', 'title60'] as $field) {
+            foreach (['title150', 'title100', 'title80', 'title75', 'title60'] as $field) {
+                if ($field === 'title75' && ! Schema::hasColumn('product_master', 'title75')) {
+                    continue;
+                }
                 if ($request->exists($field)) {
                     $value = $validated[$field] ?? null;
                     if (is_string($value)) {
@@ -2245,6 +2261,8 @@ class ProductMasterController extends Controller
                             $value = mb_substr($value, 0, 105);
                         } elseif ($field === 'title80') {
                             $value = mb_substr($value, 0, 80);
+                        } elseif ($field === 'title75') {
+                            $value = mb_substr($value, 0, 75);
                         } elseif ($field === 'title60') {
                             $value = mb_substr($value, 0, 60);
                         }
@@ -2389,10 +2407,11 @@ Requirements:
 Amazon title (title150 field): Max 170 chars - SEO optimized, include key features, brand name
 Title 100 (Shopify): Max 100 chars - Catchy, concise, focus on main selling points
 Title 80 (eBay/Walmart): Max 80 chars - Short, keyword-rich, attention-grabbing
+Title 75 (Amazon 75-char listing title): Max 75 chars - Amazon-ready, brand + core keywords, no truncation leftovers
 Title 60 (Other platforms): Max 60 chars - Ultra concise, core product name + key feature
 
 Return ONLY a JSON object with this exact structure (no markdown, no code block wrapper):
-{"title150":"generated title here","title100":"generated title here","title80":"generated title here","title60":"generated title here"}
+{"title150":"generated title here","title100":"generated title here","title80":"generated title here","title75":"generated title here","title60":"generated title here"}
 
 Make titles compelling, accurate to the product, and within character limits. Output valid JSON only.
 PROMPT;
@@ -2451,12 +2470,17 @@ PROMPT;
             $data['title150'] = mb_substr(trim($data['title150'] ?? ''), 0, 170);
             $data['title100'] = mb_substr(trim($data['title100'] ?? ''), 0, 100);
             $data['title80'] = mb_substr(trim($data['title80'] ?? ''), 0, 80);
+            $data['title75'] = mb_substr(trim($data['title75'] ?? ''), 0, 75);
             $data['title60'] = mb_substr(trim($data['title60'] ?? ''), 0, 60);
+            if ($data['title75'] === '' && $data['title150'] !== '') {
+                $data['title75'] = mb_substr($data['title150'], 0, 75);
+            }
 
             Log::info('AI generate titles: success', ['sku' => $sku, 'lengths' => [
                 'title150' => strlen($data['title150']),
                 'title100' => strlen($data['title100']),
                 'title80' => strlen($data['title80']),
+                'title75' => strlen($data['title75']),
                 'title60' => strlen($data['title60']),
             ]]);
 
@@ -3022,8 +3046,11 @@ PROMPT;
             'sku' => 'nullable|string',
             'title_150' => 'required|string',
             'current_title_80' => 'nullable|string',
+            'current_title_75' => 'nullable|string',
             'category' => 'nullable|string',
             'additional_details' => 'nullable|string',
+            'min_length' => 'nullable|integer|min:50|max:170',
+            'max_length' => 'nullable|integer|min:50|max:170',
         ]);
 
         $apiKey = config('services.anthropic.key');
@@ -3037,33 +3064,44 @@ PROMPT;
         }
 
         $title150 = trim($request->input('title_150', ''));
-        $currentTitle80 = trim($request->input('current_title_80', ''));
+        $currentTitle80 = trim((string) ($request->input('current_title_80') ?: $request->input('current_title_75', '')));
         $sku = $request->input('sku', '');
         $category = $request->input('category', '');
         $additionalDetails = trim((string) $request->input('additional_details', ''));
         $detailsLine = $additionalDetails !== '' ? "\nAdditional details / keywords the user wants included: {$additionalDetails}" : '';
 
         $model = 'claude-sonnet-4-20250514';
-        $minLen = 75;
-        $maxLen = 85;
+        $minLen = (int) $request->input('min_length', 75);
+        $maxLen = (int) $request->input('max_length', 85);
+        if ($minLen < 50 || $minLen > 170) {
+            $minLen = 75;
+        }
+        if ($maxLen < $minLen || $maxLen > 170) {
+            $maxLen = 85;
+        }
+        $isAmazon75 = $maxLen <= 75;
+        $marketplaceLine = $isAmazon75
+            ? 'Marketplace: Amazon (75-character title limit)'
+            : 'Marketplace: eBay';
 
         $prompt = <<<PROMPT
-Generate 4 eBay product titles that are between 75-85 characters.
+Generate 4 product titles that are between {$minLen}-{$maxLen} characters.
 
 Original title: "{$title150}"
 SKU: {$sku}
+{$marketplaceLine}
 Category: {$category}{$detailsLine}
-Existing Title 80 (if any): "{$currentTitle80}"
+Existing title (if any): "{$currentTitle80}"
 
 REQUIREMENTS:
-- Length: MUST be between 75-85 characters
+- Length: MUST be between {$minLen}-{$maxLen} characters
 - Include brand "5 Core" at beginning
-- Focus on key features for eBay marketplace
+- Focus on key features
 - Include important keywords
 - No promotional text
 - Return 4 variations with character counts
 
-For each title, provide a success score out of 100 (based on: character count 75-85 = high, brand inclusion, keyword density, eBay best practices).
+For each title, provide a success score out of 100 (based on: character count {$minLen}-{$maxLen} = high, brand inclusion, keyword density).
 
 Technical requirement: Return ONLY a JSON array of exactly 4 objects. No markdown, no code block, no explanations. Each object must have "title" (string) and "score" (integer 1-100).
 Example format: [{"title": "5 Core First title here 75-85 chars...", "score": 94}, {"title": "5 Core Second title...", "score": 87}, ...]
@@ -3126,7 +3164,7 @@ PROMPT;
                 }
                 $scoreFromAi = (is_array($raw) && isset($raw['score'])) ? max(1, min(100, (int) $raw['score'])) : null;
                 if ($scoreFromAi === null) {
-                    $scoreFromAi = ($len >= 75 && $len <= 85) ? 94 : 70;
+                    $scoreFromAi = ($len >= $minLen && $len <= $maxLen) ? 94 : 70;
                 }
                 $validItems[] = ['title' => $t, 'score' => $scoreFromAi];
             }
@@ -3134,7 +3172,7 @@ PROMPT;
             if (count($validItems) === 0) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'All 4 titles were out of range (75-85 characters). Please click Regenerate to try again.',
+                    'message' => "All 4 titles were out of range ({$minLen}-{$maxLen} characters). Please click Regenerate to try again.",
                 ], 422);
             }
 
@@ -3153,6 +3191,22 @@ PROMPT;
                 'message' => 'Error: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Generate 4 Title 75 options (70-75 chars) for Amazon.
+     * Delegates to the Title 80 generator with a 70-75 band so production
+     * still works if only the older generate-title-80 route is cached.
+     */
+    public function generateTitle75WithAI(Request $request)
+    {
+        $request->merge([
+            'min_length' => 70,
+            'max_length' => 75,
+            'current_title_80' => $request->input('current_title_75', $request->input('current_title_80')),
+        ]);
+
+        return $this->generateTitle80WithAI($request);
     }
 
     /**
@@ -3608,7 +3662,9 @@ PROMPT;
                 ->first();
 
             if ($product) {
-                if ($titleType === '150' || $titleType === '75') {
+                if ($titleType === '75') {
+                    $title = $product->title75 ?? $product->title150 ?? $product->amazon_title ?? '';
+                } elseif ($titleType === '150') {
                     $title = $product->title150 ?? $product->amazon_title ?? '';
                 } elseif ($titleType === '80') {
                     $title = $product->title80 ?? '';
@@ -4296,7 +4352,7 @@ PROMPT;
 
             // Platform to title field mapping
             $platformTitleMap = [
-                'amazon' => 'title150',
+                'amazon' => 'title75',
                 'shopify' => 'title100',
                 'shopify_main' => 'title100',
                 'shopify_pls' => 'title100',
@@ -4349,6 +4405,9 @@ PROMPT;
                     }
 
                     $title = $product->{$titleField};
+                    if ($platform === 'amazon' && ! $title) {
+                        $title = $product->title150 ?? $product->amazon_title ?? '';
+                    }
 
                     if (! $title) {
                         $errors[] = ucfirst($platform)." - SKU {$sku}: No title available for {$titleField}";
@@ -7041,11 +7100,35 @@ Return ONLY the dramatically improved title without quotes.";
     }
 
     /**
-     * Title 170 from the UI for Amazon (75) and Title-150 channels; other tiers from product_master.
+     * Title 75 (Amazon) from title75, else Title 170; Title 150 from the UI/title150; other tiers from product_master.
      */
     private function resolveTitleMasterTitleForType(?ProductMaster $product, string $titleType, string $title170): string
     {
-        if ($titleType === '75' || $titleType === '150') {
+        if ($titleType === '75') {
+            if ($product) {
+                $from75 = trim((string) ($product->title75 ?? ''));
+                if ($from75 !== '') {
+                    return $from75;
+                }
+            }
+            if (trim($title170) !== '') {
+                return trim($title170);
+            }
+            if ($product) {
+                $fromDb = trim((string) ($product->title150 ?? ''));
+                if ($fromDb !== '') {
+                    return $fromDb;
+                }
+                $amazon = trim((string) ($product->amazon_title ?? ''));
+                if ($amazon !== '') {
+                    return $amazon;
+                }
+            }
+
+            return '';
+        }
+
+        if ($titleType === '150') {
             if (trim($title170) !== '') {
                 return trim($title170);
             }

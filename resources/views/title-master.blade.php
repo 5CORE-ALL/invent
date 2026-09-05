@@ -989,6 +989,13 @@
                                         </select>
                                     </th>
                                     <th rowspan="2" class="title-master-title-dot-th">
+                                        <div style="font-size: 9px;">75 <span id="title75PresentCount" class="text-success" style="font-weight: bold;">(0)</span> <span id="title75MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterTitle75" class="form-control form-control-sm mt-1">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="font-size: 9px;">60 <span id="title60PresentCount" class="text-success" style="font-weight: bold;">(0)</span> <span id="title60MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle60" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
@@ -1134,6 +1141,17 @@
 
                         <div class="mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="title75" class="form-label mb-0">Title 75 <span class="char-counter" id="counter75">0/75</span></label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Title 75 AI actions">
+                                    <button type="button" class="btn btn-outline-secondary tm-title-revert d-none" data-field="title75" title="Revert to the previous Title 75"><i class="fas fa-rotate-left"></i> Revert</button>
+                                    <button type="button" class="btn btn-outline-primary" id="aiImproveBtn75" title="Generate Title 75 (70-75 chars) with AI for Amazon"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
+                                </div>
+                            </div>
+                            <textarea class="form-control" id="title75" name="title75" rows="2" maxlength="75"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
                                 <label for="title60" class="form-label mb-0">Title 60 <span class="char-counter" id="counter60">0/60</span></label>
                                 <div class="btn-group btn-group-sm" role="group" aria-label="Title 60 AI actions">
                                     <button type="button" class="btn btn-outline-secondary tm-title-revert d-none" data-field="title60" title="Revert to the previous Title 60"><i class="fas fa-rotate-left"></i> Revert</button>
@@ -1200,6 +1218,10 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">Title 80</label>
                         <div class="form-control-plaintext border rounded p-2" id="viewTitle80" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Title 75</label>
+                        <div class="form-control-plaintext border rounded p-2" id="viewTitle75" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Title 60</label>
@@ -1363,6 +1385,69 @@
         </div>
     </div>
 
+    <!-- AI Generated Title 75 Preview Modal (4 options, 70-75 chars) -->
+    <div class="modal fade" id="aiTitle75Modal" tabindex="-1" aria-labelledby="aiTitle75ModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="modal-title" id="aiTitle75ModalLabel" title="70-75 chars for Amazon">
+                        <i class="fas fa-magic me-2"></i>AI Generated Titles (75 chars)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="aiTitle75Warning" class="alert alert-warning mb-3 d-none" role="alert"></div>
+                    <div id="aiTitle75Option1" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 1:</div>
+                        <p class="mb-2 ai-title75-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title75-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char75-badge badge">0/75 chars</span>
+                            <span class="ai-char75-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-75" data-option="0"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle75Option2" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 2:</div>
+                        <p class="mb-2 ai-title75-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title75-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char75-badge badge">0/75 chars</span>
+                            <span class="ai-char75-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-75" data-option="1"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle75Option3" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 3:</div>
+                        <p class="mb-2 ai-title75-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title75-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char75-badge badge">0/75 chars</span>
+                            <span class="ai-char75-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-75" data-option="2"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                    <div id="aiTitle75Option4" class="p-3 bg-light rounded mb-3 border">
+                        <div class="fw-bold mb-2">Option 4:</div>
+                        <p class="mb-2 ai-title75-text" style="font-size: 15px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;"></p>
+                        <div class="ai-title75-score mb-2 text-muted small fw-bold"></div>
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <span class="ai-char75-badge badge">0/75 chars</span>
+                            <span class="ai-char75-status text-success"></span>
+                        </div>
+                        <button type="button" class="btn btn-keep-title ai-keep-btn-75" data-option="3"><i class="fas fa-check me-1"></i> KEEP THIS TITLE</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-regen-titles" id="aiRegenerateBtn75">
+                        <i class="fas fa-redo-alt me-1"></i> REGENERATE 4 NEW TITLES
+                    </button>
+                    <button type="button" class="btn btn-cancel-ai" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- AI Generated Title 60 Preview Modal (4 options, 55-60 chars) -->
     <div class="modal fade" id="aiTitle60Modal" tabindex="-1" aria-labelledby="aiTitle60ModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1512,7 +1597,7 @@
                                     <label class="form-check-label w-100" for="platform_amazon">
                                         <i class="fab fa-amazon platform-icon text-warning"></i>
                                         <strong>Amz</strong>
-                                        <span class="badge bg-primary platform-badge">Title 170</span>
+                                        <span class="badge bg-warning text-dark platform-badge">Title 75</span>
                                     </label>
                                 </div>
                             </div>
@@ -1885,7 +1970,8 @@
         function tmTitleText(item, mp) {
             if (!item) return '';
             const type = tmTitleType(mp);
-            if (type === '75' || type === '150') return titleMasterGetTitle170Text(item);
+            if (type === '75') return String(item.title75 || '').trim() || titleMasterGetTitle170Text(item);
+            if (type === '150') return titleMasterGetTitle170Text(item);
             if (type === '100') return String(item.title100 || '').trim();
             if (type === '80') return String(item.title80 || '').trim();
             if (type === '60') return String(item.title60 || '').trim();
@@ -2058,6 +2144,8 @@
         let currentAIGeneratedTitles100 = [];
         let aiTitle80ModalInstance;
         let currentAIGeneratedTitles80 = [];
+        let aiTitle75ModalInstance;
+        let currentAIGeneratedTitles75 = [];
         let aiTitle60ModalInstance;
         let currentAIGeneratedTitles60 = [];
         let tmAiStackModalInstance = null;
@@ -2141,6 +2229,8 @@
             if (aiTitle100ModalEl) aiTitle100ModalInstance = new bootstrap.Modal(aiTitle100ModalEl);
             const aiTitle80ModalEl = document.getElementById('aiTitle80Modal');
             if (aiTitle80ModalEl) aiTitle80ModalInstance = new bootstrap.Modal(aiTitle80ModalEl);
+            const aiTitle75ModalEl = document.getElementById('aiTitle75Modal');
+            if (aiTitle75ModalEl) aiTitle75ModalInstance = new bootstrap.Modal(aiTitle75ModalEl);
             const aiTitle60ModalEl = document.getElementById('aiTitle60Modal');
             if (aiTitle60ModalEl) aiTitle60ModalInstance = new bootstrap.Modal(aiTitle60ModalEl);
             const tmAiStackModalEl = document.getElementById('tmAiStackModal');
@@ -2507,7 +2597,7 @@
         }
 
         /** Hard character limit per title field (used for the red flag + Save block). */
-        const TM_TITLE_LIMITS = { title150: 170, title100: 105, title80: 80, title60: 60 };
+        const TM_TITLE_LIMITS = { title150: 170, title100: 105, title80: 80, title75: 75, title60: 60 };
         function titleMasterFieldLimit(fieldId) {
             return TM_TITLE_LIMITS[fieldId] != null ? TM_TITLE_LIMITS[fieldId] : titleMasterTitleMaxLen(fieldId);
         }
@@ -2525,7 +2615,7 @@
 
         /** Returns true if ANY title field is over its limit (also refreshes the red flags). */
         function titleMasterAnyTitleOverLimit() {
-            return ['title150', 'title100', 'title80', 'title60']
+            return ['title150', 'title100', 'title80', 'title75', 'title60']
                 .map(titleMasterMarkFieldOverLimit)
                 .some(Boolean);
         }
@@ -2534,7 +2624,7 @@
         function titleMasterPopulateModalTitles(sku) {
             const item = (typeof tableData !== 'undefined' ? tableData : []).find(d => d.SKU === sku);
             const val = (x) => (x != null ? String(x) : '');
-            ['title150', 'title100', 'title80', 'title60'].forEach(field => {
+            ['title150', 'title100', 'title80', 'title75', 'title60'].forEach(field => {
                 const el = document.getElementById(field);
                 if (!el) return;
                 if (field === 'title150') {
@@ -2579,7 +2669,7 @@
             const details = document.getElementById('tmEditAiDetails');
             if (details) details.value = '';
             document.querySelectorAll('.tm-title-revert').forEach(b => b.classList.add('d-none'));
-            ['title150', 'title100', 'title80', 'title60'].forEach(f => {
+            ['title150', 'title100', 'title80', 'title75', 'title60'].forEach(f => {
                 const el = document.getElementById(f);
                 if (el) delete el.dataset.tmPrevValue;
             });
@@ -2616,7 +2706,7 @@
 
         function setupModalHandlers() {
             // Character counters
-            const fields = ['title150', 'title100', 'title80', 'title60'];
+            const fields = ['title150', 'title100', 'title80', 'title75', 'title60'];
             fields.forEach(field => {
                 const maxLength = titleMasterTitleMaxLen(field);
                 const input = document.getElementById(field);
@@ -2706,6 +2796,7 @@
                             existing_titles: {
                                 title100: document.getElementById('title100').value || '',
                                 title80: document.getElementById('title80').value || '',
+                                title75: document.getElementById('title75').value || '',
                                 title60: document.getElementById('title60').value || ''
                             }
                         })
@@ -2719,6 +2810,7 @@
                         if (d.title150 != null) titleMasterApplyAiTitle('title150', d.title150);
                         if (d.title100 != null) titleMasterApplyAiTitle('title100', d.title100);
                         if (d.title80 != null) titleMasterApplyAiTitle('title80', d.title80);
+                        if (d.title75 != null) titleMasterApplyAiTitle('title75', d.title75);
                         if (d.title60 != null) titleMasterApplyAiTitle('title60', d.title60);
                         if (typeof showToast === 'function') showToast('success', 'AI generated all titles. Review and Save.');
                     })
@@ -2932,6 +3024,121 @@
                     if (aiTitle80ModalInstance) aiTitle80ModalInstance.hide();
                     setTimeout(function() {
                         if (document.getElementById('aiImproveBtn80')) document.getElementById('aiImproveBtn80').click();
+                    }, 300);
+                });
+            }
+
+            // Improve with AI button for Title 75 (4 options, 70-75 chars)
+            const aiImproveBtn75 = document.getElementById('aiImproveBtn75');
+            if (aiImproveBtn75) {
+                aiImproveBtn75.addEventListener('click', function() {
+                    const btn = this;
+                    const originalHtml = btn.innerHTML;
+                    const title150 = document.getElementById('title150').value.trim();
+                    const currentTitle75 = document.getElementById('title75').value.trim();
+                    const sku = (document.getElementById('editSku') && document.getElementById('editSku').value) || (document.getElementById('selectSku') && document.getElementById('selectSku').value) || '';
+                    const item = tableData && sku ? tableData.find(d => d.SKU === sku) : null;
+                    const category = (item && item.Parent) ? item.Parent : '';
+
+                    if (!title150) {
+                        alert('Please enter or load Title 170 before using Improve with AI for Title 75.');
+                        return;
+                    }
+
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Generating 75-char titles...';
+
+                    const title75Payload = {
+                        sku: sku,
+                        title_150: title150,
+                        current_title_75: currentTitle75,
+                        current_title_80: currentTitle75,
+                        additional_details: titleMasterAiDetails(),
+                        category: category,
+                        min_length: 70,
+                        max_length: 75
+                    };
+                    const title75Headers = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    };
+
+                    function titleMasterReadAiJson(response) {
+                        return response.text().then(function(text) {
+                            const body = (text || '').trim();
+                            if (!body || body.charAt(0) === '<') {
+                                const err = new Error('html');
+                                err.status = response.status;
+                                throw err;
+                            }
+                            try {
+                                return JSON.parse(body);
+                            } catch (e) {
+                                const err = new Error('html');
+                                err.status = response.status;
+                                throw err;
+                            }
+                        });
+                    }
+
+                    fetch('/title-master/ai/generate-title-75', {
+                        method: 'POST',
+                        headers: title75Headers,
+                        body: JSON.stringify(title75Payload)
+                    })
+                    .then(function(response) {
+                        if (response.status === 404 || response.status === 405) {
+                            return Promise.reject({ fallback: true });
+                        }
+                        return titleMasterReadAiJson(response);
+                    })
+                    .catch(function(err) {
+                        if ((err && err.message === 'html') || (err && err.fallback) || (err && err.status === 404)) {
+                            return fetch('/title-master/ai/generate-title-80', {
+                                method: 'POST',
+                                headers: title75Headers,
+                                body: JSON.stringify(title75Payload)
+                            }).then(titleMasterReadAiJson);
+                        }
+                        throw err;
+                    })
+                    .then(data => {
+                        if (data.success && data.titles && data.titles.length >= 1) {
+                            showTitle75Popup(data.titles, data.invalid_count || 0);
+                        } else {
+                            alert(data.message || 'Failed to generate titles. Please click Regenerate to try again.');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('AI generate title 75 error:', err);
+                        alert((err && err.message && err.message !== 'html')
+                            ? ('Error: ' + err.message)
+                            : 'Title 75 AI failed. Hard-refresh the page and try Change again.');
+                    })
+                    .finally(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    });
+                });
+            }
+
+            document.querySelectorAll('.ai-keep-btn-75').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const idx = parseInt(this.getAttribute('data-option'), 10);
+                    const title = currentAIGeneratedTitles75[idx];
+                    if (title) titleMasterApplyAiTitle('title75', title.length > 75 ? title.substring(0, 75) : title);
+                    if (aiTitle75ModalInstance) aiTitle75ModalInstance.hide();
+                    if (typeof showToast === 'function') showToast('success', 'Applied to Title 75. Click Save to store.');
+                });
+            });
+            const aiRegenBtn75 = document.getElementById('aiRegenerateBtn75');
+            if (aiRegenBtn75) {
+                aiRegenBtn75.addEventListener('click', function() {
+                    if (aiTitle75ModalInstance) aiTitle75ModalInstance.hide();
+                    setTimeout(function() {
+                        if (document.getElementById('aiImproveBtn75')) document.getElementById('aiImproveBtn75').click();
                     }, 300);
                 });
             }
@@ -3196,6 +3403,58 @@
             if (aiTitle80ModalInstance) aiTitle80ModalInstance.show();
         }
 
+        function showTitle75Popup(titles, invalidCount) {
+            invalidCount = invalidCount || 0;
+            if (!Array.isArray(titles) || titles.length < 1) return;
+            var padded = titles.slice(0, 4);
+            while (padded.length < 4) padded.push({ title: '', score: null });
+            currentAIGeneratedTitles75 = padded.map(function(t) { return (t && typeof t === 'string' ? t : (t.title || '')) || ''; });
+            const minLen = 70;
+            const maxLen = 75;
+            const optionIds = ['aiTitle75Option1', 'aiTitle75Option2', 'aiTitle75Option3', 'aiTitle75Option4'];
+            const warningEl = document.getElementById('aiTitle75Warning');
+            if (warningEl) {
+                if (invalidCount > 0) {
+                    warningEl.textContent = titles.length + ' title(s) generated, ' + invalidCount + ' out of range (70-75).';
+                    warningEl.classList.remove('d-none');
+                } else {
+                    warningEl.classList.add('d-none');
+                }
+            }
+            optionIds.forEach(function(id, i) {
+                const opt = document.getElementById(id);
+                if (!opt) return;
+                const item = padded[i];
+                const title = currentAIGeneratedTitles75[i] || '';
+                const hasTitle = title.length > 0;
+                const score = item && typeof item === 'object' && item.score != null ? item.score : null;
+                const len = title.length;
+                const textEl = opt.querySelector('.ai-title75-text');
+                const scoreEl = opt.querySelector('.ai-title75-score');
+                const badgeEl = opt.querySelector('.ai-char75-badge');
+                const statusEl = opt.querySelector('.ai-char75-status');
+                const keepBtn = opt.querySelector('.ai-keep-btn-75');
+                if (hasTitle) {
+                    opt.style.display = '';
+                    if (textEl) textEl.textContent = title;
+                    if (scoreEl) scoreEl.textContent = score != null ? ('Score: ' + score + '%') : '';
+                    if (badgeEl) {
+                        badgeEl.textContent = len + '/75 chars';
+                        badgeEl.className = 'ai-char75-badge badge ' + ((len >= minLen && len <= maxLen) ? 'bg-success' : 'bg-danger');
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = (len >= minLen && len <= maxLen) ? '✅ In range' : '❌ Out of range';
+                        statusEl.className = 'ai-char75-status ' + ((len >= minLen && len <= maxLen) ? 'text-success' : 'text-danger');
+                    }
+                    if (keepBtn) { keepBtn.disabled = false; keepBtn.style.display = ''; }
+                } else {
+                    opt.style.display = 'none';
+                    if (keepBtn) keepBtn.disabled = true;
+                }
+            });
+            if (aiTitle75ModalInstance) aiTitle75ModalInstance.show();
+        }
+
         function showTitle60Popup(titles, invalidCount) {
             invalidCount = invalidCount || 0;
             if (!Array.isArray(titles) || titles.length < 1) return;
@@ -3297,10 +3556,12 @@
             const f150 = document.getElementById('filterTitle150')?.value;
             const f100 = document.getElementById('filterTitle100')?.value;
             const f80 = document.getElementById('filterTitle80')?.value;
+            const f75 = document.getElementById('filterTitle75')?.value;
             const f60 = document.getElementById('filterTitle60')?.value;
             if (f150 && f150 !== 'all') params.set('filter_title150', f150);
             if (f100 && f100 !== 'all') params.set('filter_title100', f100);
             if (f80 && f80 !== 'all') params.set('filter_title80', f80);
+            if (f75 && f75 !== 'all') params.set('filter_title75', f75);
             if (f60 && f60 !== 'all') params.set('filter_title60', f60);
             const fShort = document.getElementById('filterShortName')?.value;
             if (fShort && fShort !== 'all') params.set('filter_short_name', fShort);
@@ -3324,6 +3585,7 @@
             setPresentMissing('title150PresentCount', 'title150MissingCount', stats.title150_present, stats.title150_missing);
             setPresentMissing('title100PresentCount', 'title100MissingCount', stats.title100_present, stats.title100_missing);
             setPresentMissing('title80PresentCount', 'title80MissingCount', stats.title80_present, stats.title80_missing);
+            setPresentMissing('title75PresentCount', 'title75MissingCount', stats.title75_present, stats.title75_missing);
             setPresentMissing('title60PresentCount', 'title60MissingCount', stats.title60_present, stats.title60_missing);
             setPresentMissing('shortNamePresentCount', 'shortNameMissingCount', stats.short_name_present, stats.short_name_missing);
         }
@@ -3699,7 +3961,7 @@
             const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="20" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="21" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3709,7 +3971,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="20" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="21" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3781,6 +4043,11 @@
                 const title80Cell = document.createElement('td');
                 titleMasterFillTitleDotCell(title80Cell, t80.trim() !== '', 'No Title 80', t80);
                 row.appendChild(title80Cell);
+
+                const t75 = item.title75 != null ? String(item.title75) : '';
+                const title75Cell = document.createElement('td');
+                titleMasterFillTitleDotCell(title75Cell, t75.trim() !== '', 'No Title 75', t75);
+                row.appendChild(title75Cell);
 
                 const t60 = item.title60 != null ? String(item.title60) : '';
                 const title60Cell = document.createElement('td');
@@ -3862,6 +4129,7 @@
             if (refCount) refCount.textContent = title150.length + ' chars';
             const t100 = item && item.title100 != null ? String(item.title100) : '';
             const t80 = item && item.title80 != null ? String(item.title80) : '';
+            const t75 = item && item.title75 != null ? String(item.title75) : '';
             const t60 = item && item.title60 != null ? String(item.title60) : '';
             const ref100 = document.getElementById('tmAiStackTitle100Ref');
             const ref100Count = document.getElementById('tmAiStackTitle100RefCount');
@@ -3871,6 +4139,10 @@
             const ref80Count = document.getElementById('tmAiStackTitle80RefCount');
             if (ref80) ref80.value = t80;
             if (ref80Count) ref80Count.textContent = t80.length + ' chars';
+            const ref75 = document.getElementById('tmAiStackTitle75Ref');
+            const ref75Count = document.getElementById('tmAiStackTitle75RefCount');
+            if (ref75) ref75.value = t75;
+            if (ref75Count) ref75Count.textContent = t75.length + ' chars';
             const ref60 = document.getElementById('tmAiStackTitle60Ref');
             const ref60Count = document.getElementById('tmAiStackTitle60RefCount');
             if (ref60) ref60.value = t60;
@@ -3999,14 +4271,17 @@
             var t80p = item.title80 != null ? String(item.title80) : '';
             var c80 = tds[11];
             if (c80) titleMasterFillTitleDotCell(c80, t80p.trim() !== '', 'No Title 80', t80p);
+            var t75p = item.title75 != null ? String(item.title75) : '';
+            var c75 = tds[12];
+            if (c75) titleMasterFillTitleDotCell(c75, t75p.trim() !== '', 'No Title 75', t75p);
             var t60p = item.title60 != null ? String(item.title60) : '';
-            var c60 = tds[12];
+            var c60 = tds[13];
             if (c60) titleMasterFillTitleDotCell(c60, t60p.trim() !== '', 'No Title 60', t60p);
             var shortNameP = item.short_name != null ? String(item.short_name) : '';
-            var cShort = tds[13];
+            var cShort = tds[14];
             if (cShort) titleMasterFillTitleDotCell(cShort, shortNameP.trim() !== '', 'No Short name', shortNameP);
             TM_TIER_GROUPS.forEach(function (tier, idx) {
-                var mpCell = tds[15 + idx];
+                var mpCell = tds[16 + idx];
                 if (mpCell) {
                     mpCell.className = 'tm-mp-tier-col-td marketplaces-cell';
                     mpCell.setAttribute('data-title-tier', tier.type);
@@ -4102,6 +4377,7 @@
             var shortCfg = {
                 title100: { refId: 'tmAiStackTitle100Ref', countId: 'tmAiStackTitle100RefCount', max: TITLE_MASTER_TITLE100_UI_MAX, editId: 'title100', label: 'Title 100' },
                 title80: { refId: 'tmAiStackTitle80Ref', countId: 'tmAiStackTitle80RefCount', max: 80, editId: 'title80', label: 'Title 80' },
+                title75: { refId: 'tmAiStackTitle75Ref', countId: 'tmAiStackTitle75RefCount', max: 75, editId: 'title75', label: 'Title 75' },
                 title60: { refId: 'tmAiStackTitle60Ref', countId: 'tmAiStackTitle60RefCount', max: 60, editId: 'title60', label: 'Title 60' }
             };
             var sc = shortCfg[fieldKey];
@@ -4134,7 +4410,7 @@
         }
 
         function setupTmAiStackRefFieldCharCounts() {
-            [['tmAiStackTitle150Ref', 'tmAiStackTitle150RefCount'], ['tmAiStackTitle100Ref', 'tmAiStackTitle100RefCount'], ['tmAiStackTitle80Ref', 'tmAiStackTitle80RefCount'], ['tmAiStackTitle60Ref', 'tmAiStackTitle60RefCount']].forEach(function(pair) {
+            [['tmAiStackTitle150Ref', 'tmAiStackTitle150RefCount'], ['tmAiStackTitle100Ref', 'tmAiStackTitle100RefCount'], ['tmAiStackTitle80Ref', 'tmAiStackTitle80RefCount'], ['tmAiStackTitle75Ref', 'tmAiStackTitle75RefCount'], ['tmAiStackTitle60Ref', 'tmAiStackTitle60RefCount']].forEach(function(pair) {
                 var ta = document.getElementById(pair[0]);
                 if (!ta) return;
                 ta.addEventListener('input', function() {
@@ -4431,6 +4707,7 @@
             document.getElementById('viewTitle150').textContent = titleMasterGetTitle170Text(item) || '-';
             document.getElementById('viewTitle100').textContent = item.title100 || '-';
             document.getElementById('viewTitle80').textContent = item.title80 || '-';
+            document.getElementById('viewTitle75').textContent = item.title75 || '-';
             document.getElementById('viewTitle60').textContent = item.title60 || '-';
             document.getElementById('viewShortName').textContent = item.short_name || '-';
 
@@ -4469,9 +4746,10 @@
             document.getElementById('title150').value = titleMasterGetTitle170Text(item);
             document.getElementById('title100').value = v(item.title100);
             document.getElementById('title80').value = v(item.title80);
+            document.getElementById('title75').value = v(item.title75);
             document.getElementById('title60').value = v(item.title60);
             document.getElementById('shortName').value = v(item.short_name);
-            ['title150', 'title100', 'title80', 'title60'].forEach(updateModalCounter);
+            ['title150', 'title100', 'title80', 'title75', 'title60'].forEach(updateModalCounter);
             updateShortNameCounter();
 
             // Reset the per-edit AI helpers (keywords box + revert state) for this SKU.
@@ -4497,7 +4775,7 @@
 
             // Reset form
             document.getElementById('titleForm').reset();
-            ['title150', 'title100', 'title80', 'title60'].forEach(field => {
+            ['title150', 'title100', 'title80', 'title75', 'title60'].forEach(field => {
                 const maxLength = titleMasterTitleMaxLen(field);
                 const c = document.getElementById('counter' + titleMasterTitleCounterSuffix(field));
                 if (c) {
@@ -4584,7 +4862,7 @@
                 }
                 selectSku.selectedIndex = 0;
             }
-            ['title150', 'title100', 'title80', 'title60'].forEach(function(field) {
+            ['title150', 'title100', 'title80', 'title75', 'title60'].forEach(function(field) {
                 const maxLength = titleMasterTitleMaxLen(field);
                 const counter = document.getElementById('counter' + titleMasterTitleCounterSuffix(field));
                 if (counter) {
@@ -4610,7 +4888,7 @@
 
             // Block saving while any title exceeds its character limit (fields are flagged red).
             if (titleMasterAnyTitleOverLimit()) {
-                const overNames = ['title150', 'title100', 'title80', 'title60']
+                const overNames = ['title150', 'title100', 'title80', 'title75', 'title60']
                     .filter(f => document.getElementById(f).value.length > titleMasterFieldLimit(f))
                     .map(f => 'Title ' + (f === 'title150' ? '170' : f.replace('title', '')) + ' (max ' + titleMasterFieldLimit(f) + ')');
                 const msg = 'Cannot save — over the character limit: ' + overNames.join(', ') + '. Please shorten.';
@@ -4621,6 +4899,7 @@
             const title150 = document.getElementById('title150').value;
             const title100 = document.getElementById('title100').value;
             const title80 = document.getElementById('title80').value;
+            const title75 = document.getElementById('title75').value;
             const title60 = document.getElementById('title60').value;
             const shortName = document.getElementById('shortName').value;
 
@@ -4639,6 +4918,7 @@
                     title150: title150,
                     title100: title100,
                     title80: title80,
+                    title75: title75,
                     title60: title60,
                     short_name: shortName
                 })
@@ -4651,6 +4931,7 @@
                         tableData[index].title150 = title150;
                         tableData[index].title100 = title100;
                         tableData[index].title80 = title80;
+                        tableData[index].title75 = title75;
                         tableData[index].title60 = title60;
                         tableData[index].short_name = shortName;
                     }
@@ -4715,6 +4996,7 @@
                                 'Title 170': titleMasterGetTitle170Text(item),
                                 'Title 100': item.title100 || '',
                                 'Title 80': item.title80 || '',
+                                'Title 75': item.title75 || '',
                                 'Title 60': item.title60 || '',
                                 'Short name': item.short_name || ''
                             };
@@ -4879,6 +5161,7 @@
                 title150: null,
                 title100: null,
                 title80: null,
+                title75: null,
                 title60: null
             };
 
@@ -4910,6 +5193,13 @@
                     )) {
                         titleColumns.title80 = colName;
                     }
+                    // Title 75 (Amazon)
+                    else if (!titleColumns.title75 && (
+                        lower.includes('title 75') || lower.includes('title75') ||
+                        lower === '75' || (/\b75\b/.test(lower) && !lower.includes('170'))
+                    )) {
+                        titleColumns.title75 = colName;
+                    }
                     // Title 60
                     else if (!titleColumns.title60 && (
                         lower.includes('title 60') || lower.includes('faire') ||
@@ -4919,8 +5209,8 @@
                     }
                 }
                 console.log('✓ Detected title columns:', titleColumns);
-                if (!titleColumns.title150 && !titleColumns.title100 && !titleColumns.title80 && !titleColumns.title60) {
-                    alert('Error: Could not detect any title columns (Title 170 / 100 / 80 / 60).\nColumns found: ' + columns.join(', '));
+                if (!titleColumns.title150 && !titleColumns.title100 && !titleColumns.title80 && !titleColumns.title75 && !titleColumns.title60) {
+                    alert('Error: Could not detect any title columns (Title 170 / 100 / 80 / 75 / 60).\nColumns found: ' + columns.join(', '));
                     return;
                 }
             }
@@ -4953,10 +5243,11 @@
                 const title150 = pickTitle(titleColumns.title150, 170);
                 const title100 = pickTitle(titleColumns.title100, 105);
                 const title80 = pickTitle(titleColumns.title80, 80);
+                const title75 = pickTitle(titleColumns.title75, 75);
                 const title60 = pickTitle(titleColumns.title60, 60);
 
                 // Skip rows with no title values (do not wipe existing DB titles with empties)
-                if (title150 === null && title100 === null && title80 === null && title60 === null) {
+                if (title150 === null && title100 === null && title80 === null && title75 === null && title60 === null) {
                     skippedCount++;
                     if (skippedCount <= 5) {
                         console.log('⊘ Skipped row ' + (index + 2) + ': "' + skuStr + '" (no title values)');
@@ -4967,7 +5258,7 @@
                 if (successCount + errorCount < 3) {
                     console.log('→ Processing row ' + (index + 2) + ': SKU="' + skuStr + '"', {
                         title150: title150 !== null, title100: title100 !== null,
-                        title80: title80 !== null, title60: title60 !== null
+                        title80: title80 !== null, title75: title75 !== null, title60: title60 !== null
                     });
                 }
 
@@ -4976,6 +5267,7 @@
                     if (title150 !== null) body.title150 = title150;
                     if (title100 !== null) body.title100 = title100;
                     if (title80 !== null) body.title80 = title80;
+                    if (title75 !== null) body.title75 = title75;
                     if (title60 !== null) body.title60 = title60;
 
                     return fetch('/title-master/save', {
@@ -5073,6 +5365,10 @@
             });
 
             document.getElementById('filterTitle80').addEventListener('change', function() {
+                loadTitleData(1);
+            });
+
+            document.getElementById('filterTitle75')?.addEventListener('change', function() {
                 loadTitleData(1);
             });
 
